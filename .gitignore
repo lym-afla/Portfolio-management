@@ -1,1 +1,5 @@
 AW-portolio-management/
+
+portfolio_management/dashboard/__pycache__/
+portfolio_management/dashboard/migrations/__pycache__/
+portfolio_management/portfolio_management/__pycache__/
