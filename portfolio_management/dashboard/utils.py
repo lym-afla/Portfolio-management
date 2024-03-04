@@ -6,6 +6,11 @@ import pandas as pd
 # Portfolio at [table_date] - assets with non zero positions
 # func.date used for correct query when transaction is at [table_date] (removes time (HH:MM:SS) effectively)
 def portfolio_at_date(date, brokers):
+    # Check if brokers is None, if so, return an empty queryset
+    if brokers is None:
+        return PA.objects.none()
+    
+    # Filter PA objects based on transactions with the given date and brokers
     return PA.objects.filter(
         transactions__date__lte=date, 
         transactions__broker_id__in=brokers

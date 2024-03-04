@@ -99,6 +99,9 @@ class Brokers(models.Model):
             )['balance']
             balance[cur] = query or 0
         return balance
+    
+    def __str__(self):
+        return self.name  # Define how the broker is represented as a string
 
 # Public assets
 class PA(models.Model):
@@ -111,7 +114,7 @@ class PA(models.Model):
     # Returns price at the date or latest available before the date
     def current_price(self, price_date):
         try:
-            quote = self.prices.filter(date__lte=price_date).order_by('-date').values_list('price', 'date').first()
+            quote = self.prices.filter(date__lte=price_date).order_by('-date').first()
             return quote
         except:
             return None
@@ -129,6 +132,9 @@ class PA(models.Model):
         if broker_id_list:
             query = query.filter(broker_id__in=broker_id_list)
         return query
+    
+    def __str__(self):
+        return self.name  # Define how the broker is represented as a string
 
 # Table with public asset transactions
 class PA_transactions(models.Model):
@@ -137,14 +143,17 @@ class PA_transactions(models.Model):
     currency = models.CharField(max_length=3, null=False)
     type = models.CharField(max_length=30, null=False)
     date = models.DateField(null=False)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2, null=False)
-    price = models.DecimalField(max_digits=10, decimal_places=2, null=False)
-    cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True)
-    commission = models.DecimalField(max_digits=5, decimal_places=2, null=True)
-    comment = models.TextField(null=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    comment = models.TextField(null=True, blank=True)
 
 # Table with non-public asset prices
 class PA_prices(models.Model):
     date = models.DateField(primary_key=True)
     security = models.ForeignKey(PA, on_delete=models.CASCADE, related_name='prices')
     price = models.DecimalField(max_digits=10, decimal_places=2, null=False)
+
+    def __str__(self):
+        return f"{self.security.name} is at {self.price} on {self.date}"

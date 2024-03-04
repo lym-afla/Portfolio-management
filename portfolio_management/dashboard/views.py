@@ -1,9 +1,29 @@
 from django.shortcuts import render
 from .models import Brokers, PA_transactions, FX
 from .utils import NAV_at_date, PA_irr, chart_dates, chart_labels, chart_colour
+from datetime import date
+
+selected_brokers = [2]
+currency_target = 'USD'
+table_date = date.today()
+numberOfDigits = 0
+# Default values for NAV chart
+nav_settings = {}
+nav_settings['breakdown'] = 'Broker'
+nav_settings['frequency'] = 'M'
+nav_settings['timeline'] = '6m'
+nav_settings['From'] = date(date.today().year, 1, 1)
+nav_settings['To'] = table_date
 
 def pa_dashboard(request):
-    currency_target = table_date = numberOfDigits = selected_brokers = nav_settings = None
+
+    global currency_target
+    global table_date
+    global numberOfDigits
+    global selected_brokers
+    global nav_settings
+
+    nav_settings = None
     sidebar_padding = 0
     sidebar_width = 0
     brokers = Brokers.objects.all()
@@ -36,6 +56,7 @@ def pa_dashboard(request):
 
     summary['Invested'] = 0
     summary['Cash-out'] = 0
+    print(currencies)
     for cur in currencies:
         quote = PA_transactions.objects.filter(brokers__in=selected_brokers, currency=cur, date__lte=table_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
         for cash_flow, date, transaction_type in quote:
