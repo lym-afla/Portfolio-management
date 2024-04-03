@@ -1,0 +1,59 @@
+{% extends "pa-main.html" %}
+{% load static %}
+
+{% block table_script %}
+
+    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script>
+
+    <script src="{% static 'js/dashboard.js' %}"></script>
+    <script src="{% static 'js/transaction-form.js' %}"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js" integrity="sha512-ElRFoEQdI5Ht6kZvyzXhYG9NqjtkmlkfYk0wr6wHxU9JEHakS7UJZNeml5ALk+8IKlU6jDgMabC3vkumRokgJA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.1.0"></script>
+    <script>
+        Chart.register(ChartDataLabels);
+        Chart.defaults.backgroundColor = [
+                                'rgb(13, 110, 227)',
+                                'rgb(92, 99, 106)',
+                                'rgb(40, 167, 69)',
+                                'rgb(220, 53, 69)',
+                                'rgb(255, 193, 7)',
+                                'rgb(23, 162, 184)'
+                                ];
+        Chart.defaults.font.family = 'Segoe UI';
+        Chart.defaults.font.size = 14;
+    </script>
+
+{% endblock table_script %}
+
+{% block title %}
+    Dashboard
+{% endblock title %}
+
+{% block main_page_title %}
+    <h2>Portfolio dashboard</h2>
+    <hr>
+{% endblock main_page_title %}
+
+{% block actions_menu %}
+    
+    {% comment %} {% set transaction_link = url_for(".add_pa_transaction") %}
+    {% set cash_link = url_for(".pa_cash") %}
+    {% set table_link = url_for(".pa_dashboard") %}
+
+    {% from './ancillary/portfolio-actions.html' import add_new_form, table_settings %}
+    
+    {{ add_new_form('Add new position', 'New investment entry', transaction_link, brokers, portfolio_open, ['brokers', 'exposure', 'transaction type new', 'security type', 'isin', 'new name', 'asset currency', 'price new', 'quantity new', 'date']) }}
+    {{ add_new_form('Add new transaction', 'New transaction entry', transaction_link, brokers, portfolio_open, ['brokers', 'transaction type existing', 'existing name', 'transaction currency', 'price existing', 'quantity existing', 'date']) }}
+    {{ add_new_form('Move cash', 'Cash inflow/outflow', cash_link, brokers, portfolio_open, ['brokers', 'cash', 'asset currency', 'date']) }}
+
+    {{ table_settings(table_link, table_date, number_of_digits, currency, brokers, selectedBrokers,
+        ['brokers', 'currency', 'date', 'digits']) }} {% endcomment %}
+    
+{% endblock actions_menu %}
+
+{% block main_table %}
+    {% comment %} {% include "./ancillary/public/pa-dashboard-table.html" %} {% endcomment %}
+{% endblock main_table %}

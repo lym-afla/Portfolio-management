@@ -14,7 +14,7 @@ def portfolio_at_date(date, brokers):
     return PA.objects.filter(
         transactions__date__lte=date, 
         transactions__broker_id__in=brokers
-    ).annotate(total_quantity=Sum('transactions__quantity')).filter(total_quantity__gt=0)
+    ).annotate(total_quantity=Sum('transactions__quantity')).exclude(total_quantity=0)
 
 # Create one dictionary from two. And add values for respective keys if keys present on both dictionaries
 def merge_dictionaries(dict_1, dict_2):
@@ -35,23 +35,39 @@ def update_analysis(analysis, key, value, date=None, currency=None, desired_curr
     else:
         analysis[key] += value
 
+# Get all the brokers associated with a given security
+def get_brokers_for_security(security_id):
+    # Filter transactions based on the security ID
+    transactions = PA_transactions.objects.filter(security_id=security_id)
+
+    # Retrieve distinct brokers from the filtered transactions
+    brokers = Brokers.objects.filter(transactions__in=transactions).distinct()
+
+    return brokers
+
 # Calculate NAV breakdown for selected brokers at certain date and in selected currency
 def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Currency', 'Asset class', 'Broker']):
+    
+    print(f"utils.py, line 51 {breakdown}")
+    
     portfolio = portfolio_at_date(date, broker_ids)
     portfolio_brokers = Brokers.objects.filter(id__in=broker_ids)
     analysis = {'Asset type': {}, 'Currency': {}, 'Asset class': {}, 'Broker': {}, 'aggregate': 0}
+    item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
 
-    for item in portfolio:
-        current_value = calculate_security_nav(item, date, target_currency)
+    for security in portfolio:
+        current_value = calculate_security_nav(security, date, target_currency)
 
         if 'Broker' in breakdown:
-            for broker in item.brokers.all():
+            for broker in get_brokers_for_security(security.id):
                 update_analysis(analysis['Broker'], broker.name, current_value)
 
+        print(f'utils.py, line 65 {breakdown}')
         for breakdown_type in breakdown:
-            if breakdown_type == 'Broker':
+            if breakdown_type == 'Broker' or breakdown_type == 'aggregate':
                 continue
-            key = getattr(item, breakdown_type)
+            print(f"utils.py, line 68 {breakdown_type}")
+            key = getattr(security, item_type[breakdown_type])
             update_analysis(analysis[breakdown_type], key, current_value)
         
         if 'aggregate' in breakdown:
@@ -140,7 +156,7 @@ def chart_dates(start_date, end_date, freq):
     frequency = {
         'D': 'B',
         'W': 'W',
-        'M': 'M',
+        'M': 'ME',
         'Q': 'Q',
         'Y': 'Y'
     }

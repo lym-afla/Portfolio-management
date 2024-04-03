@@ -1,0 +1,163 @@
+
+
+.container {
+    display: flex;
+    height: 100vh;
+    max-width: 100%;
+    padding: 0 0 0 0;
+}
+
+.left {
+    background-color: red;
+    display: flex;
+    flex-wrap: nowrap;
+    min-width: 60px;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: hidden;
+    overflow-x: auto;
+}
+
+.extended_sidebar {
+    width: 0px; /* 0 width - change this with JavaScript */
+    padding: 1rem 0 1rem 0; /* 1rem */
+    z-index: 1; /* Stay on top */
+    overflow-x: hidden; /* Disable horizontal scroll */
+    transition: 0.25s; /* 0.25 second transition effect to slide in the sidenav */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: hidden;
+}
+
+#sidebar {
+    /* Fill the parent width (.left) */
+    width: -webkit-fill-available;
+}
+
+.nav-menu-icon {
+    height: 37.5px;
+    cursor: pointer;
+}
+
+.nav-icon {
+    width: 30px;
+    height: 30px;
+    margin-bottom: 0.75em;
+    margin-top: 0.75em;
+    cursor: pointer;
+}
+
+.nav-link {
+    margin: 0.4375rem 0;
+    padding: 0.5rem 1rem;
+}
+
+.right {
+    flex: 3;
+    position: relative;
+    transition: margin-left .5s;
+}
+
+.wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    flex-flow: row;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+main {
+    flex: 16;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* The below two is to align with the table */
+#table-NPA_length {
+    padding-left: 0.5rem;
+}
+
+#table-NPA_filter {
+    padding-right: 0.5rem;
+}
+
+/* Get back black borders in the table on the top and bottom */
+table[id^=table-] {
+    border-collapse: collapse !important;
+    font-size: small;
+}
+
+[id*='table-button'] {
+    font-size: small;
+    padding: 2px 10px 2px 10px;
+}
+
+#nav-open, #nav-closed, #nav-analysis, #nav-brokers, #nav-securities {
+    margin-top: 0.75em
+}
+
+.alert {
+    margin: 1rem;
+}
+
+/* Make cursor pointer for class starting with form-check */
+[class*='form-check'] {
+    cursor: pointer;
+}
+
+.container-fluid {
+    padding: 0;
+}
+
+.analysis-container {
+    display: flex;
+}
+
+.analysis-child-1 {
+    flex-grow: 1;
+}
+
+.analysis-child-2 {
+    flex-grow: 2;
+    padding-left: 10px;
+}
+
+.analysis-sub-child {
+    flex-direction: column;
+    margin-bottom: 1rem;
+}
+
+.colspan {
+    border-bottom-color: black;
+}
+
+div.dataTables_filter > label,
+div.dataTables_length > label,
+div.dataTables_info,
+.page-link {
+    font-size: smaller;
+}
+
+#table-PA-database-fx_filter,
+#table-PA-database-etf_filter,
+#table-PA-database-mutual-fund_filter,
+#table-PA-database-stock_filter,
+#table-PA-database-bond_filter {
+    padding-top: 0.5rem;
+}
+
+.price-top-row {
+    padding-top: 0rem !important;
+    padding-bottom: 0rem !important;
+    border-bottom: none;
+}
+
+.chart-timeline {
+    margin: 0 0 10px 0;
+}

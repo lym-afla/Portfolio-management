@@ -23,7 +23,6 @@ def pa_dashboard(request):
     global selected_brokers
     global nav_settings
 
-    nav_settings = None
     sidebar_padding = 0
     sidebar_width = 0
     brokers = Brokers.objects.all()
@@ -50,20 +49,21 @@ def pa_dashboard(request):
 
     summary = {}
     summary['NAV'] = sum(analysis['Asset class'].values())
+    print(summary, analysis)
     currencies = set()
     for broker in Brokers.objects.filter(id__in=selected_brokers):
         currencies.update(broker.currencies())
 
-    summary['Invested'] = 0
-    summary['Cash-out'] = 0
-    print(currencies)
+    summary['Invested'] = summary['Cash-out'] = 0
+
     for cur in currencies:
-        quote = PA_transactions.objects.filter(brokers__in=selected_brokers, currency=cur, date__lte=table_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
+        quote = PA_transactions.objects.filter(broker__in=selected_brokers, currency=cur, date__lte=table_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
         for cash_flow, date, transaction_type in quote:
             if transaction_type == 'Cash in':
                 summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
             else:
                 summary['Cash-out'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
+    print(summary)
     summary['Return'] = round(summary['NAV'] / summary['Invested'] - 1, 4)
     summary['IRR'] = PA_irr(table_date, currency_target, asset_id='', broker_id_list=selected_brokers)
 
@@ -102,7 +102,8 @@ def pa_dashboard(request):
                 chart_dataset[0]['data'].append(IRR)
                 chart_dataset[1]['data'].append(NAV)
         else:
-            NAV = NAV_at_date(selected_brokers, d, currency_target, nav_settings['breakdown'])[nav_settings['breakdown']]
+            print(f"views.py, line 105 {nav_settings}")
+            NAV = NAV_at_date(selected_brokers, d, currency_target, [nav_settings['breakdown']])[nav_settings['breakdown']]
             if len(chart_dataset) == 0:
                 chart_dataset.append({
                     'label': 'IRR (RHS)',
@@ -134,7 +135,7 @@ def pa_dashboard(request):
                 else:
                     chart_dataset[index]['data'].append(value / 1000)
     
-    return render(request, 'pa-dashboard.html', {
+    return render(request, 'dashboard/pa-dashboard.html', {
         'analysis': analysis,
         'currency': currency_target,
         'sidebar_width': sidebar_width,

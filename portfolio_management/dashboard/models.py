@@ -90,10 +90,11 @@ class Brokers(models.Model):
             query = self.transactions.filter(broker_id=self.id, currency=cur, date__lte=date).aggregate(
                 balance=models.Sum(
                     models.Case(
-                        models.When(models.Q(quantity__gte=0), then=-1*models.F('quantity')*models.F('price')),
-                        models.When(models.Q(cash_flow__isnull=False), then=models.F('cash_flow')),
-                        models.When(models.Q(commission__isnull=False), then=models.F('commission')),
-                        default=0
+                        models.When(quantity__gte=0, then=-1*models.F('quantity')*models.F('price')),
+                        models.When(cash_flow__isnull=False, then=models.F('cash_flow')),
+                        models.When(commission__isnull=False, then=models.F('commission')),
+                        default=0,
+                        output_field=models.DecimalField()
                     )
                 )
             )['balance']
@@ -139,7 +140,7 @@ class PA(models.Model):
 # Table with public asset transactions
 class PA_transactions(models.Model):
     broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='transactions')
-    security = models.ForeignKey(PA, on_delete=models.CASCADE, related_name='transactions')
+    security = models.ForeignKey(PA, on_delete=models.CASCADE, related_name='transactions', null=True, blank=True)
     currency = models.CharField(max_length=3, null=False)
     type = models.CharField(max_length=30, null=False)
     date = models.DateField(null=False)
