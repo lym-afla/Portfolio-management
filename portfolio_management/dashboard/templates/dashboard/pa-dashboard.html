@@ -1,13 +1,14 @@
-{% extends "pa-main.html" %}
+{% extends "layout.html" %}
 {% load static %}
 
-{% block table_script %}
+{% block script %}
 
     <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
     <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script>
 
     <script src="{% static 'js/dashboard.js' %}"></script>
     <script src="{% static 'js/transaction-form.js' %}"></script>
+    <script src="{% static 'js/nav-chart.js' %}"></script>
 
     <!-- Chart.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js" integrity="sha512-ElRFoEQdI5Ht6kZvyzXhYG9NqjtkmlkfYk0wr6wHxU9JEHakS7UJZNeml5ALk+8IKlU6jDgMabC3vkumRokgJA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -19,14 +20,14 @@
                                 'rgb(92, 99, 106)',
                                 'rgb(40, 167, 69)',
                                 'rgb(220, 53, 69)',
-                                'rgb(255, 193, 7)',
+                                'rgb(255, 193, 7)', 
                                 'rgb(23, 162, 184)'
                                 ];
         Chart.defaults.font.family = 'Segoe UI';
         Chart.defaults.font.size = 14;
     </script>
 
-{% endblock table_script %}
+{% endblock script %}
 
 {% block title %}
     Dashboard
@@ -34,7 +35,6 @@
 
 {% block main_page_title %}
     <h2>Portfolio dashboard</h2>
-    <hr>
 {% endblock main_page_title %}
 
 {% block actions_menu %}
@@ -54,6 +54,6 @@
     
 {% endblock actions_menu %}
 
-{% block main_table %}
-    {% comment %} {% include "./ancillary/public/pa-dashboard-table.html" %} {% endcomment %}
-{% endblock main_table %}
+{% block content %}
+    {% include "dashboard/snippets/pa-dashboard-table.html" %}
+{% endblock content %}

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.db import models
-from .models import FX, Brokers, PA, PA_transactions, PA_prices
+from common.models import FX, Brokers, Assets, Transactions, Prices
 
 class BrokersAdmin(admin.ModelAdmin):
     list_display = ('name', 'country',)  # Customize which fields to display in the list view
@@ -15,6 +15,6 @@ class PATransactionsAdmin(admin.ModelAdmin):
 
 admin.site.register(FX)
 admin.site.register(Brokers, BrokersAdmin)
-admin.site.register(PA, PAAdmin)
-admin.site.register(PA_transactions, PATransactionsAdmin)
-admin.site.register(PA_prices)
+admin.site.register(Assets, PAAdmin)
+admin.site.register(Transactions, PATransactionsAdmin)
+admin.site.register(Prices)
