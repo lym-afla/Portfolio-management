@@ -1,21 +1,15 @@
 import json
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, chart_dates, chart_labels, chart_colour, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data
+from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data
 from datetime import date
 
 selected_brokers = [2]
 currency_target = 'USD'
 table_date = date.today()
 number_of_digits = 0
-# Default values for NAV chart
-navchart_settings = {}
-navchart_settings['breakdown'] = 'Asset type'
-navchart_settings['frequency'] = 'M'
-navchart_settings['timeline'] = '6m'
-navchart_settings['From'] = date(date.today().year, 1, 1)
-navchart_settings['To'] = table_date
 
 @login_required
 def dashboard(request):
@@ -24,7 +18,6 @@ def dashboard(request):
     global table_date
     number_of_digits = request.session['digits']
     global selected_brokers
-    global navchart_settings
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -33,20 +26,6 @@ def dashboard(request):
     if request.method == "GET":
         sidebar_width = request.GET.get("width")
         sidebar_padding = request.GET.get("padding")
-
-    # if request.method == "POST":
-    #     currency_target = request.POST.get('tableCurrency', currency_target)
-    #     table_date = request.POST.get('date', table_date)
-    #     number_of_digits = request.POST.get('numberOfDigits', number_of_digits)
-    #     selected_brokers = list(map(int, request.POST.getlist('selectedBrokers'))) or selected_brokers
-
-    #     navchart_settings['breakdown'] = request.POST.get('chartBreakdown', navchart_settings['breakdown'])
-    #     navchart_settings['frequency'] = request.POST.get('chartFrequency', navchart_settings['frequency'])
-    #     navchart_settings['timeline'] = request.POST.get('chartTimeline', navchart_settings['timeline'])
-    #     navchart_settings['From'] = request.POST.get('From', navchart_settings['From'])
-    #     if navchart_settings['From'] == '2000-01-01':
-    #         navchart_settings['From'] = Transactions.objects.filter(brokers__in=selected_brokers).order_by('date').first().date
-    #     navchart_settings['To'] = request.POST.get('To', navchart_settings['To'])
 
     analysis = NAV_at_date(selected_brokers, table_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
 
@@ -80,18 +59,22 @@ def dashboard(request):
     calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
     
     chart_settings = request.session['chart_settings']
-    chart_settings['breakdown'] = navchart_settings['breakdown']
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
+    if from_date == '1900-01-01':
+        from_date = Transactions.objects.filter(broker__in=brokers).order_by('date').first().date
+    print(f"views.dashboard. Line 65. From date: {from_date}")
     chart_settings['From'] = from_date
+    # print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
     analysis = currency_format_dict_values(analysis, currency_target, number_of_digits)
-    chart_data = get_chart_data(selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, navchart_settings['breakdown'])
+    chart_data = get_chart_data(selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
 
     # Add the "Currency" key to the dictionary
     chart_data["currency"] = currency_target + "k"
 
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
-    print(chart_dataset)
+    # print(f"dashboard.views. line 95. chart_dataset: {chart_dataset}") # DEBUG: chart_dataset
+    print(f"dashboard.views line 96. chart_settings['To']: {chart_settings['To']}")
 
     return render(request, 'dashboard/pa-dashboard.html', {
         'analysis': analysis,
@@ -110,12 +93,16 @@ def dashboard(request):
     })
 
 def nav_chart_data_request(request):
+
+    global selected_brokers
+
     if request.method == 'GET':
         frequency = request.GET.get('frequency')
         from_date = request.GET.get('from')
         to_date = request.GET.get('to')
+        breakdown = request.GET.get('breakdown')
 
-        chart_data = get_chart_data(type, id, frequency, from_date, to_date, currency, properties)
+        chart_data = get_chart_data(selected_brokers, frequency, from_date, to_date, request.session['default_currency'], breakdown)
 
         return JsonResponse(chart_data)
 

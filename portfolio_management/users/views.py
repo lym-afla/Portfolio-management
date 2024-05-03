@@ -28,6 +28,7 @@ def user_login(request):
             'frequency': user.chart_frequency,
             'timeline': user.chart_timeline,
             'To': str(effective_current_date),
+            'breakdown': user.NAV_barchart_default_breakdown,
         }
         request.session['default_currency'] = user.default_currency
         request.session['digits'] = user.digits
@@ -38,7 +39,7 @@ def user_login(request):
     else:
         # Add an error message to be displayed in the template
         messages.error(request, 'Invalid login credentials. Please try again.')
-    return render(request, 'login.html')
+    return render(request, 'registration/login.html')
 
 @login_required
 def profile(request):
@@ -56,6 +57,7 @@ def profile(request):
                 'frequency': user.chart_frequency,
                 'timeline': user.chart_timeline,
                 'To': str(effective_current_date),
+                'breakdown': user.NAV_barchart_default_breakdown,
             }
             request.session['default_currency'] = user.default_currency
             # request.session['default_currency_for_all_data'] = user.use_default_currency_for_all_data
@@ -79,6 +81,15 @@ def edit_profile(request):
         if profile_form.is_valid():
             print(f"Printing profile form from profile {profile_form}")
             profile_form.save()
-            return redirect('users:profile_page')
+            return redirect('users:profile')
 
-    return render(request, 'users/edit_profile.html', {'profile_form': profile_form})
+    return render(request, 'users/profile_edit.html', {'profile_form': profile_form})
+
+def reset_password(u, password):
+    try:
+        user = get_user_model().objects.get(username=u)
+    except:
+        return "User could not be found"
+    user.set_password(password)
+    user.save()
+    return "Password has been changed successfully"

@@ -208,11 +208,11 @@
 <div >
     <h5>Value and return over time</h5>
     <hr>
-    <form method="POST" action={% url "dashboard:dashboard" %}>
+    {% comment %} <form method="POST" action={% url "dashboard:dashboard" %}> {% endcomment %}
         <div class="row">
             <div class="col-3">
                 <label for="selectChartBreakdown" class="form-label" style="font-weight: 500;">Breakdown by</label>
-                <select class="form-select" name="chartBreakdown" id="selectChartBreakdown">
+                <select class="form-select" name="chartBreakdown" id="selectChartBreakdown" onchage='updateChart(NAVBarChart)'>
                     <option value="Broker" {% if chart_settings.breakdown == 'Broker' %} selected="selected" {% endif %}>Broker</option>
                     <option value="Asset type" {% if chart_settings.breakdown == 'Asset type' %} selected="selected" {% endif %}>Asset type</option>
                     <option value="Asset class" {% if chart_settings.breakdown == 'Asset class' %} selected="selected" {% endif %}>Asset class</option>
@@ -277,10 +277,9 @@
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body mx-2">
-                            {% comment %} <form class="row g-2" method="POST" action={% url "dashboard:pa_dashboard" %}> {% endcomment %}
                             <form class="row g-2" id="chartCustomTimeline">
                                 <label for="chartDateFrom" class="form-label">From</label>
-                                <input type="date" class="form-control chart-timeline" id="chartDateFrom" name="From" value="{{ chart_settings.From }}">
+                                <input type="date" class="form-control chart-timeline" id="chartDateFrom" name="From" value="{{ chart_settings.From|date:'Y-m-d' }}">
                                 
                                 <div class="w-100"></div>
 
@@ -297,11 +296,11 @@
                 </div>
             </div>
 
-            <div class="col-1">
+            {% comment %} <div class="col-1">
                 <button type="submit" class="btn btn-secondary" style="margin-top: 31px">Update</button>
-            </div>
+            </div> {% endcomment %}
         </div>
-    </form>
+    {% comment %} </form> {% endcomment %}
     
     <div class="tab-pane fade show active" id="nav-chart" role="tabpanel">
         <canvas id="NAVBarChart" style="width: 100%; padding-top: 10px;" role="img"></canvas>

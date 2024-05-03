@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 
-from constants import CURRENCY_CHOICES
+from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from users.models import CustomUser
 
 class SignUpForm(UserCreationForm):
@@ -53,7 +53,7 @@ class UserSettingsForm(forms.ModelForm):
         choices=CURRENCY_CHOICES,
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Default currency'
-        )
+    )
     chart_frequency = forms.ChoiceField(
         choices=FREQUENCY_CHOICES,
         widget=forms.Select(attrs={'class': 'form-select'}),
@@ -68,10 +68,15 @@ class UserSettingsForm(forms.ModelForm):
         widget=forms.NumberInput(attrs={'class': 'form-control'}),
         label='Digits for tables'
     )
+    NAV_barchart_default_breakdown = forms.ChoiceField(
+        choices=NAV_BARCHART_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Default NAV timeline breakdown'
+    )
     
     class Meta:
         model = CustomUser
-        fields = ['default_currency', 'chart_frequency', 'chart_timeline', 'digits']
+        fields = ['default_currency', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
         widgets = {
             # 'chart_frequency': forms.Select(attrs={'class': 'form-select'}),
         #     'chart_timeline': forms.Select(attrs={'class': 'form-select'})

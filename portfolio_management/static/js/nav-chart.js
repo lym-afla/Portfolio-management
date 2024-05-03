@@ -1,20 +1,26 @@
 document.addEventListener('DOMContentLoaded', function() {
 
-    // const timelineForm = document.getElementById('chartCustomTimeline');
-    // timelineForm.addEventListener('submit', handleCustomTimeline);
+    // Handle custom timeline
+    const timelineForm = document.getElementById('chartCustomTimeline');
+    timelineForm.addEventListener('submit', handleCustomTimeline);
+
+    // Handle breakdown change
+    const breakdownForm = document.getElementById('selectChartBreakdown');
+    breakdownForm.addEventListener('change', async function() {
+        await updateChart(NAVBarChart);
+    });
 
     const frequencyButtons = document.querySelectorAll('.chart-frequency');
     frequencyButtons.forEach(button => {
         button.addEventListener('click', async function() {
-            await updateChart(NAVBarChart, this);
+            await updateChart(NAVBarChart);
         });
     })
 });
 
 // Setting the chart
 function pieChartInitialization(type, chartData) {
-    // console.log(`Running pie chart initialization with ${type}`);
-    // console.log(chartData.labels, chartData.datasets);
+
     const ctxChart = document.getElementById(`${type}PieChart`);
 
     // Create a new Chart instance
@@ -61,35 +67,11 @@ function pieChartInitialization(type, chartData) {
 
 async function updateChart(chart) {
 
-    // let target;
-
-    // if (element.closest('.card')) {
-    //     target = element.closest('.card').getAttribute('id');
-    // }
-
-    // let type;
-    // let elementId;
-
-    // if (target === 'homePageChartCard') {
-    //     type = 'homePage';
-    //     elementId = document.getElementById('chartPropertySelection').value
-    //     if (elementId === 'all') {
-    //         elementId = null;
-    //     }
-    // } else {
-    //     if (target === 'tenantChartCard') {
-    //         type = 'tenant';
-    //     } else if (target === 'propertyValuationChartCard') {
-    //         type = 'property';
-    //     }
-    //     const Type = type.charAt(0).toUpperCase() + type.slice(1);
-    //     elementId = document.getElementById(`delete${Type}Button`).getAttribute(`data-${type}-id`)
-    // }
-
     const frequency = document.querySelector('input[name="chartFrequency"]:checked').value;
     const from = document.getElementById("chartDateFrom").value;
     const to = document.getElementById("chartDateTo").value;
-    const chartData = await getNAVChartData(frequency, from, to);
+    const breakdown = document.getElementById("selectChartBreakdown").value;
+    const chartData = await getNAVChartData(frequency, from, to, breakdown);
 
     chart.data.labels = chartData.labels;
     chart.data.datasets = chartData.datasets;
@@ -138,11 +120,6 @@ function changeTimeline(element) {
     updateChart(NAVBarChart);
 }
 
-// Handling changing the set of properties for the chart. Function referenced directly in timeline-chart.html
-function changeProperty(element) {
-    updateChart(window.myChart, element);
-}
-
 // Convert to YYYY-mmm-dd format
 function convertDate(date) {
     let day = ("0" + date.getDate()).slice(-2);
@@ -151,9 +128,9 @@ function convertDate(date) {
 }
 
 // Fetching data for the chart. Defined in layout.js as used on the several pages
-function getNAVChartData(frequency, from, to) {
+function getNAVChartData(frequency, from, to, breakdown) {
 
-    return fetch(`/get_nav_chart_data?frequency=${frequency}&from=${from}&to=${to}`)
+    return fetch(`/get_nav_chart_data?frequency=${frequency}&from=${from}&to=${to}&breakdown=${breakdown}`)
         .then(response => response.json())
         .then(chartData => {
             return chartData;
@@ -174,57 +151,17 @@ function handleCustomTimeline(event) {
     timelineModal.hide();
 
     // Feed select element as second argument to recover target correctly
-    updateChart(window.myChart, document.getElementById("id_chartTimeline"));
+    updateChart(NAVBarChart);
 
 }
 
-async function updateChart(chart, element) {
-
-    let target;
-
-    if (element.closest('.card')) {
-        target = element.closest('.card').getAttribute('id');
-    }
-
-    let type;
-    let elementId;
-
-    if (target === 'homePageChartCard') {
-        type = 'homePage';
-        elementId = document.getElementById('chartPropertySelection').value
-        if (elementId === 'all') {
-            elementId = null;
-        }
-    } else {
-        if (target === 'tenantChartCard') {
-            type = 'tenant';
-        } else if (target === 'propertyValuationChartCard') {
-            type = 'property';
-        }
-        const Type = type.charAt(0).toUpperCase() + type.slice(1);
-        elementId = document.getElementById(`delete${Type}Button`).getAttribute(`data-${type}-id`)
-    }
-
-    const frequency = document.querySelector('input[name="chartFrequency"]:checked').value;
-    const from = document.getElementById("chartDateFrom").value;
-    const to = document.getElementById("chartDateTo").value;
-    const chartData = await getNAVChartData(type, elementId, frequency, from, to);
-
-    chart.data.labels = chartData.labels;
-    chart.data.datasets = chartData.datasets;
-    chart.options.scales.y.title.text = chartData.currency;
-    chart.update();
-    // chart.draw();
-
-}
-
-// Show actual chart settings
-function updateFrequencySetting(frequency) {
-    const chartFrequencySettings = document.querySelectorAll('.chart-frequency');               
-    for (let i = 0; i < chartFrequencySettings.length; i++) {
-        if (chartFrequencySettings[i].value === frequency) {
-            chartFrequencySettings[i].checked = true;
-            break;
-        }                
-    }
-}
+// // Show actual chart settings
+// function updateFrequencySetting(frequency) {
+//     const chartFrequencySettings = document.querySelectorAll('.chart-frequency');               
+//     for (let i = 0; i < chartFrequencySettings.length; i++) {
+//         if (chartFrequencySettings[i].value === frequency) {
+//             chartFrequencySettings[i].checked = true;
+//             break;
+//         }                
+//     }
+// }

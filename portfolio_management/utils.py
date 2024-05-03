@@ -162,8 +162,8 @@ def chart_dates(start_date, end_date, freq):
         'D': 'B',
         'W': 'W',
         'M': 'ME',
-        'Q': 'Q',
-        'Y': 'Y'
+        'Q': 'QE',
+        'Y': 'YE'
     }
 
     # Convert the start_date and end_date strings to date objects
@@ -299,10 +299,15 @@ def calculate_percentage_shares(data_dict, selected_keys):
         }
 
 def get_chart_data(brokers, frequency, from_date, to_date, currency, breakdown):
+    
+    # Get the correct starting date for "All time" category
+    if from_date == '1900-01-01':
+        from_date = Transactions.objects.filter(broker__in=brokers).order_by('date').first().date
+        print(f"utils.py. Line 312. From date: {from_date}")
 
     dates = chart_dates(from_date, to_date, frequency)
+        # Create an empty data dictionary
     
-    # Create an empty data dictionary
     chart_data = {
         'labels': chart_labels(dates, frequency),
         'datasets': [],
@@ -392,7 +397,7 @@ def calculate_from_date(to_date, timeline):
     elif timeline == '5Y':
         from_date = to_date - relativedelta(years=5)
     elif timeline == 'All time':
-        from_date = '1900-01-01' # Convention that ultimately will be converted to the date of the first transaction
+        from_date = datetime.strptime('1900-01-01', "%Y-%m-%d").date() # Convention that ultimately will be converted to the date of the first transaction
     else:
         # Handle other cases as needed
         from_date = to_date
