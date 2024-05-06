@@ -1,9 +1,9 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.db.models import Sum
-from common.models import Assets, Brokers
+from common.models import FX, Assets, Brokers, Transactions
 from common.forms import DashboardForm
-from utils import Irr, format_percentage
+from utils import Irr, currency_format, currency_format_dict_values, format_percentage, selected_brokers, effective_current_date
 
 @login_required
 def closed_positions(request):
@@ -48,6 +48,7 @@ def closed_positions(request):
         }
         dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
 
+    # Get closed positions
     portfolio_closed = Assets.objects.filter(
         transactions__date__lte=effective_current_date,
         transactions__broker_id__in=selected_brokers
@@ -57,6 +58,9 @@ def closed_positions(request):
         total_quantity=0
     )
 
+    totals = ['unrealized_gl', 'capital_distribution']
+    portfolio_closed_totals = {}
+
     # portfolio_closed = PA.query.join(PA_transactions).\
     #     filter(func.date(PA_transactions.date) <= table_date,
     #            PA_transactions.broker_id.in_(selected_brokers)).\
@@ -65,63 +69,138 @@ def closed_positions(request):
     
     # Convert exit value to the target currency
     for item in portfolio_closed:
+
+        # Identify whether the position was long or short
+        last_transaction = Transactions.objects.filter(
+            security=item,
+            broker__in=selected_brokers,
+            date__lte=effective_current_date
+        ).order_by('-date').first()
+
+        if last_transaction is None:
+            continue
+
+        is_long_position = last_transaction.quantity < 0
+
+        transactions_sells = Transactions.objects.filter(
+                security=item,
+                broker__in=selected_brokers,
+                date__lte=effective_current_date,
+                quantity__lt=0
+            ).order_by('-date')
+        transactions_buys = Transactions.objects.filter(
+            security=item,
+            broker__in=selected_brokers,
+            date__lte=effective_current_date,
+            quantity__gt=0
+        ).order_by('-date')
+
         # Get transactions when selling stakes
-        transactions_exit = db.session.query(PA_transactions.price,
-                                         PA_transactions.currency,
-                                         PA_transactions.quantity,
-                                         PA_transactions.date).\
-            filter(PA_transactions.security_id == item.id,
-                   PA_transactions.broker_id.in_(selected_brokers),
-                   func.date(PA_transactions.date) <= table_date,
-                   PA_transactions.quantity < 0).order_by(PA_transactions.date.desc()).all()
+        if is_long_position:
+            transactions_exit = transactions_sells
+            transactions_entry = transactions_buys
+        else:
+            transactions_exit = transactions_buys
+            transactions_entry = transactions_sells
+
+        # transactions_exit = Transactions.objects.filter(
+        #     security=item,
+        #     broker__in=selected_brokers,
+        #     date__lte=effective_current_date,
+        #     quantity__lt=0 if is_long_position else quantity__gt=0
+        # ).order_by('-date').all()
+
+        # transactions_exit = db.session.query(PA_transactions.price,
+        #                                  PA_transactions.currency,
+        #                                  PA_transactions.quantity,
+        #                                  PA_transactions.date).\
+        #     filter(PA_transactions.security_id == item.id,
+        #            PA_transactions.broker_id.in_(selected_brokers),
+        #            func.date(PA_transactions.date) <= table_date,
+        #            PA_transactions.quantity < 0).order_by(PA_transactions.date.desc()).all()
         
-        item.exit_date = transactions_exit[0].date
+        item.exit_date = transactions_exit.first().date if transactions_exit.exists() else None
         
         # Calculate exit value in target currency
         item.exit_value = 0
         for transaction in transactions_exit:
-            item.exit_value += round(transaction.price * FX_rate(transaction.currency,
-                                                        currency_target,
-                                                        transaction.date)['FX'] * \
-                                                            -transaction.quantity, 2)
+            item.exit_value += round(transaction.price * \
+                                     FX.get_rate(transaction.currency,
+                                                 currency_target,
+                                                 transaction.date)['FX'] * \
+                                                    abs(transaction.quantity), 2)
+            # item.exit_value += round(transaction.price * FX_rate(transaction.currency,
+            #                                             currency_target,
+            #                                             transaction.date)['FX'] * \
+            #                                                 -transaction.quantity, 2)
         # Get transactions when buyting stakes
-        transactions_entry = db.session.query(PA_transactions.price,
-                                            PA_transactions.currency,
-                                            PA_transactions.quantity,
-                                            PA_transactions.date).\
-                filter(PA_transactions.security_id == item.id,
-                    PA_transactions.broker_id.in_(selected_brokers),
-                    func.date(PA_transactions.date) <= table_date,
-                    PA_transactions.quantity > 0).all()
+        # transactions_entry = Transactions.objects.filter(
+        #     security=item,
+        #     broker__in=selected_brokers,
+        #     date__lte=effective_current_date,
+        #     quantity__gt=0 if is_long_position else quantity__lt=0
+        # )
+
+        # transactions_entry = db.session.query(PA_transactions.price,
+        #                                     PA_transactions.currency,
+        #                                     PA_transactions.quantity,
+        #                                     PA_transactions.date).\
+        #         filter(PA_transactions.security_id == item.id,
+        #             PA_transactions.broker_id.in_(selected_brokers),
+        #             func.date(PA_transactions.date) <= table_date,
+        #             PA_transactions.quantity > 0).all()
         
         # Calculate exit value in target currency
         item.entry_value = 0
         for transaction in transactions_entry:
-            item.entry_value += round(transaction.price * FX_rate(transaction.currency,
-                                                        currency_target,
-                                                        transaction.date)['FX'] * \
-                                                            transaction.quantity, 2)
+            item.entry_value += round(transaction.price * \
+                                      FX.get_rate(transaction.currency,
+                                                  currency_target,
+                                                  transaction.date)['FX'] * \
+                                                    abs(transaction.quantity), 2)
         
         item.realized_gl = item.exit_value - item.entry_value
         
         # Calculate cumulative capital distribution
         item.capital_distribution = 0
-        transactions = PA_transactions.query.\
-            filter(PA_transactions.security_id == item.id,
-                   PA_transactions.broker_id.in_(selected_brokers),
-                   func.date(PA_transactions.date) <= table_date,
-                   PA_transactions.type == 'Dividend').all()
+        transactions = Transactions.objects.filter(
+            security=item,
+            broker__in=selected_brokers,
+            date__lte=effective_current_date,
+            type='Dividend'
+        )
+        # transactions = PA_transactions.query.\
+        #     filter(PA_transactions.security_id == item.id,
+        #            PA_transactions.broker_id.in_(selected_brokers),
+        #            func.date(PA_transactions.date) <= table_date,
+        #            PA_transactions.type == 'Dividend').all()
         
         for transaction in transactions:
-            fx_rate = FX_rate(transaction.currency.upper(), currency_target, transaction.date)['FX']
+            fx_rate = FX.get_rate(transaction.currency.upper(), currency_target, transaction.date)['FX']
             item.capital_distribution += round(transaction.cash_flow * fx_rate, 2)
     
         item.irr = format_percentage(Irr(effective_current_date, currency_target, item.id, selected_brokers))
     
+        # Calculating totals
+        for key in totals:
+            portfolio_closed_totals[key] = portfolio_closed_totals.get(key, 0) + getattr(item, key)
+
+        # Formatting for correct representation
+        item.entry_value = currency_format(item.entry_value, currency_target, number_of_digits)
+        item.investment_date = item.investment_date(selected_brokers)
+        # item.exit_date = currency_format(item.exit_date, currency_target, number_of_digits)
+        item.exit_value = currency_format(item.exit_value, currency_target, number_of_digits)
+        item.realized_gl = currency_format(item.realized_gl, currency_target, number_of_digits)
+        item.capital_distribution = currency_format(item.capital_distribution, currency_target, number_of_digits)
+
+    # Format totals
+    portfolio_closed_totals = currency_format_dict_values(portfolio_closed_totals, currency_target, number_of_digits)
+
     return render(request, 'closed_positions/closed-positions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         'portfolio_closed': portfolio_closed,
+        'portfolio_closed_totals': portfolio_closed_totals,
         'brokers': brokers,
         'currency': currency_target,
         'table_date': effective_current_date,

@@ -79,7 +79,7 @@ def open_positions(request):
                 item.position_at_date, 2)
         item.unrealized_gl = item.current_value - item.entry_value
 
-        print(f"view.open_positions. line 78. Item: {item.transactions.all()}")
+        # print(f"view.open_positions. line 78. Item: {item.transactions.all()}")
 
         # Calculate cumulative capital distribution
         item.capital_distribution = 0

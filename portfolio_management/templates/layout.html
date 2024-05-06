@@ -68,11 +68,11 @@
                                 </a>
                             </li>
                             <li
-                                {% if request.path == '/closed' %}
+                                {% if request.path == '/closed-positions/' %}
                                     style="background-color: #e9ecef; border-radius: 0.5rem"
                                 {% endif %}
                             >
-                                <a href=#>
+                                <a href={% url 'closed_positions:closed_positions' %}>
                                     <img src="{% static 'icons/clipboard2-x.svg' %}" alt="Bootstrap" class="nav-icon" title="Closed" height="30px" width="30px">
                                 </a>
                             </li>
@@ -129,8 +129,8 @@
                             </a>
                         </li>
                         <li>
-                            <a href=# 
-                                {% if request.path == '/closed' %}
+                            <a href={% url 'closed_positions:closed_positions' %}
+                                {% if request.path == '/closed-positions/' %}
                                     class="nav-link active">
                                 {% else %}
                                     class="nav-link link-dark">
