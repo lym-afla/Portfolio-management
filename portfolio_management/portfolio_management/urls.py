@@ -24,4 +24,5 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('open-positions/', include('open_positions.urls', namespace='open_positions')),
     path('closed-positions/', include('closed_positions.urls', namespace='closed_positions')),
+    path('transactions/', include('transactions.urls', namespace='transactions')),
 ]

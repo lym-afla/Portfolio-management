@@ -15,3 +15,5 @@ portfolio_management/closed_positions/migrations/__pycache__/
 portfolio_management/common/migrations/__pycache__/
 portfolio_management/users/migrations/__pycache__/
 portfolio_management/open_positions/migrations/__pycache__/
+portfolio_management/transactions/__pycache__/
+portfolio_management/transactions/migrations/__pycache__/
