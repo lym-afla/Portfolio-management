@@ -4,27 +4,27 @@ register = template.Library()
 
 # Implement formatting for currencies
 # @register.filter(name='currency_format')
-def currency_format(value, currency_digits):
-    """Format value as CUR."""
-    currency, digits = currency_digits.split(',')
-    match currency.upper():
-        case 'USD':
-            cur = '$'
-        case 'EUR':
-            cur = '€'
-        case 'GBP':
-            cur = '£'
-        case 'RUB':            
-            cur = '₽'
-        case default:
-            cur = currency.upper()
-    # digits = int(digits2)
-    if value < 0:
-        return f"({cur}{-value:,.{int(digits)}f})"
-    elif value == 0:
-        return "–"
-    else:
-        return f"{cur}{value:,.{int(digits)}f}"
+# def currency_format(value, currency_digits):
+#     """Format value as CUR."""
+#     currency, digits = currency_digits.split(',')
+#     match currency.upper():
+#         case 'USD':
+#             cur = '$'
+#         case 'EUR':
+#             cur = '€'
+#         case 'GBP':
+#             cur = '£'
+#         case 'RUB':            
+#             cur = '₽'
+#         case default:
+#             cur = currency.upper()
+#     # digits = int(digits2)
+#     if value < 0:
+#         return f"({cur}{-value:,.{int(digits)}f})"
+#     elif value == 0:
+#         return "–"
+#     else:
+#         return f"{cur}{value:,.{int(digits)}f}"
 
 @register.filter(name='mul')
 def mul(value, arg):

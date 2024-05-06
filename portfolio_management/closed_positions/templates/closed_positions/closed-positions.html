@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block script %}
+
+    {% comment %} <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script> {% endcomment %}
+
+    {% comment %} <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/2.0.6/css/dataTables.dataTables.css" />
+    <script src="https://cdn.datatables.net/2.0.6/js/dataTables.js"></script> {% endcomment %}
+
+    <link href="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.css" rel="stylesheet">
+    <script src="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.js"></script>
+
+    <!-- Script from DataTables -->
+    <script>
+        $(document).ready(function () {
+            $('#table-closed').DataTable( {
+                // Make the default sorting by column 4 (DATE) and do not show sorting for selected columns
+                "autoWidth": false,
+                {% comment %} columnDefs: [
+                    { orderable: false, targets: [0, 2, 3, 5, 7, 8, 13] }
+                ], {% endcomment %}
+                order: [[2, 'asc']],
+                dom: 'rt<"bottom"<"row"<"col-md-4"l><"col-md-4 text-center"f><"col-md-4 text-right"p>>>'
+                {% comment %} "dom": "<'row'<tr>>" +
+                            "<'row'<'col-md-3'l><'col-md-4'f><'col-md-5'p>>", {% endcomment %}
+                "pageLength": 25 
+            });
+        });
+
+    </script>
+
+{% endblock script %}
+
+{% block title %}
+    Closed positions
+{% endblock title %}
+
+{% block main_page_title %}
+    <h2>Closed positions</h2>
+{% endblock main_page_title %}
+
+{% block content %}
+
+    {% include "snippets/buttons-settings-header.html" %}
+
+    <table id="table-PA-closed" class="table table-hover table-striped align-middle">
+        <thead>
+            <tr>
+                <th class="text-start">Type</th>
+                <th class="text-start">Name</th>
+                <th class="text-center">Investment date</th>
+                <th class="text-center">Closure date</th>
+                <th class="text-center">Currency</th>
+                <th class="text-center">Investment</th>
+                <th class="text-center">Monetization</th>
+                <th class="text-center">Realized gain/(loss)</th>
+                <th class="text-center">Capital distribution</th>
+                <th class="text-center">Return</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for security in portfolio_closed %}    
+            <tr>
+                <td class="text-start">{{ security.type }}</td>
+                <td class="text-start" style="white-space: nowrap">{{ security.name }}</td>
+                <td class="text-center">{{ security.investment_date() }}</td>
+                <td class="text-center">{{ security.exit_date.strftime('%Y-%m-%d') }}</td>
+                <td class="text-center">{{ security.currency | upper }}</td>
+                <td class="text-center">{{ security.entry_value | currency_format(security.currency, number_of_digits) }}</td>
+                <td class="text-center">{{ security.exit_value | currency_format(security.currency, number_of_digits) }}</td>
+                <td class="text-center">{{ security.realized_gl | currency_format(currency, number_of_digits) }}</td>
+                <td class="text-center">{{ security.capital_distribution | currency_format(currency, number_of_digits) }}</td>
+                <td class="text-center">{{ "%.1f" | format(security.irr*100) }}%</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td class="border-0 fw-bold" colspan="2">TOTAL</td>
+                <td class="border-0"></td>
+                <td class="border-0"></td>
+                <td class="border-0"></td>
+                <td class="border-0"></td>
+                <td class="border-0"></td>
+                <td class="text-center border-0 fw-bold">{{ portfolio_closed | sum(attribute="realized_gl") | currency_format(currency, number_of_digits) }}</td>
+                <td class="text-center border-0 fw-bold">{{ portfolio_closed | sum(attribute="capital_distribution") | currency_format(currency, number_of_digits) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+{% endblock content %}

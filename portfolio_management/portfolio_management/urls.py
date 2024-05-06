@@ -19,7 +19,9 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('dashboard.urls')),
+    path('dashboard/', include('dashboard.urls')),
     path('users/', include('users.urls', namespace='users')),
     path('accounts/', include('django.contrib.auth.urls')),
+    path('open-positions/', include('open_positions.urls', namespace='open_positions')),
+    path('closed-positions/', include('closed_positions.urls', namespace='closed_positions')),
 ]

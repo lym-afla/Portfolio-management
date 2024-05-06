@@ -6,7 +6,6 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
-from utils import effective_current_date
 
 class SignUpView(generic.CreateView):
     form_class = SignUpForm
@@ -27,7 +26,6 @@ def user_login(request):
         request.session['chart_settings'] = {
             'frequency': user.chart_frequency,
             'timeline': user.chart_timeline,
-            'To': str(effective_current_date),
             'breakdown': user.NAV_barchart_default_breakdown,
         }
         request.session['default_currency'] = user.default_currency
@@ -56,7 +54,6 @@ def profile(request):
             request.session['chart_settings'] = {
                 'frequency': user.chart_frequency,
                 'timeline': user.chart_timeline,
-                'To': str(effective_current_date),
                 'breakdown': user.NAV_barchart_default_breakdown,
             }
             request.session['default_currency'] = user.default_currency
@@ -67,8 +64,15 @@ def profile(request):
         else:
             print(f"profile page: {settings_form.errors}")
             return JsonResponse({'errors': settings_form.errors}, status=400)
+        
+    user_info = [
+        {"label": "Username", "value": user.username},
+        {"label": "First Name", "value": user.first_name},
+        {"label": "Last Name", "value": user.last_name},
+        {"label": "Email", "value": user.email},
+    ]
 
-    return render(request, 'users/profile.html', {'user': user, 'settings_form': settings_form})
+    return render(request, 'users/profile.html', {'user_info': user_info, 'settings_form': settings_form})
 
 @login_required
 def edit_profile(request):

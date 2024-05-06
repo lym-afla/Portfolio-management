@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 
@@ -12,8 +12,9 @@ class CustomUser(AbstractUser):
     NAV_barchart_default_breakdown = models.CharField(max_length=12, choices=NAV_BARCHART_CHOICES, default='Asset type', blank=True, null=True)
     digits = models.IntegerField(
         default=0,
-        validators=[MaxValueValidator(6)],
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
         error_messages={
             'max_value': 'The value for digits must be less than or equal to 6.',
+            'min_value': 'The value for digits must be greater than or equal to 0.',
             }
         )

@@ -7,7 +7,10 @@ from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 
 # Define the effective 'current' date for the application
-effective_current_date = date.today()
+effective_current_date = str(date.today())
+
+# Define custom selected brokers for the application
+selected_brokers = [2]
 
 # Portfolio at [table_date] - assets with non zero positions
 # func.date used for correct query when transaction is at [table_date] (removes time (HH:MM:SS) effectively)
@@ -117,10 +120,18 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
     if start_date:
         transactions = transactions.filter(date__gte=start_date)
 
+    print(f"utils.py. line 123. Transactions: {transactions}")
+
     # Calculate cash flows and transaction dates
     for transaction in transactions:
+        # print(f"utils.py. line 127. Transaction details: {transaction.quantity}")
         fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
-        cash_flow = -transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
+
+        if transaction.type == 'Cash in' or transaction.type == 'Cash out':
+            cash_flow = -transaction.cash_flow
+        else:
+            cash_flow = transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
+        
         cash_flows.append(round(cash_flow * fx_rate, 2))
         transaction_dates.append(transaction.date)
 
@@ -137,12 +148,14 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
     cash_flows.append(portfolio_value)
     transaction_dates.append(date)
 
+    print(f"utils. line 146. Cash flows: {cash_flows}, Transaction dates: {transaction_dates}")
+
     try:
         return round(xirr(transaction_dates, cash_flows), 4)
     except:
         return 'N/A'
 
-def calculate_portfolio_value(date, currency, asset_id='', broker_id_list=[]):
+def calculate_portfolio_value(date, currency, asset_id=None, broker_id_list=[]):
     portfolio_value = 0
 
     if not asset_id:
@@ -150,7 +163,8 @@ def calculate_portfolio_value(date, currency, asset_id='', broker_id_list=[]):
     else:
         asset = Assets.objects.get(pk=asset_id)
         fx_rate = FX.get_rate(asset.currency.upper(), currency, date)['FX']
-        portfolio_value = round(fx_rate * asset.current_price(date) * asset.position(date, broker_id_list), 2)
+        print(f"utils.py. line 159. Asset data: {asset.current_price(date).price}, {asset.position(date, broker_id_list)}")
+        portfolio_value = round(fx_rate * asset.current_price(date).price * asset.position(date, broker_id_list), 2)
 
     return portfolio_value
 
@@ -285,18 +299,19 @@ def currency_format_dict_values(data, currency, digits):
 
 # Add percentage shares to the dict
 def calculate_percentage_shares(data_dict, selected_keys):
-    # Calculate the total for each selected category
-    totals = {
-        category: sum(values.values()) for category, values in data_dict.items() if category in selected_keys
-    }
+
+    # Calculate Total NAV based on one of the categories
+    total = sum(data_dict[selected_keys[0]].values())
     
     # Add new dictionaries with percentage shares for selected categories
     for category in selected_keys:
         percentage_key = category + ' percentage'
-        data_dict[percentage_key] = {
-            key: str((value / totals[category] * 100).quantize(Decimal('0.1'))) + '%'
-            for key, value in data_dict[category].items()
-        }
+        data_dict[percentage_key] = {}
+        for key, value in data_dict[category].items():
+            try:
+                data_dict[percentage_key][key] = str((value / total * 100).quantize(Decimal('0.1'))) + '%'
+            except ZeroDivisionError:
+                data_dict[percentage_key][key] = '–'
 
 def get_chart_data(brokers, frequency, from_date, to_date, currency, breakdown):
     
@@ -311,6 +326,7 @@ def get_chart_data(brokers, frequency, from_date, to_date, currency, breakdown):
     chart_data = {
         'labels': chart_labels(dates, frequency),
         'datasets': [],
+        'currency': currency + 'k',
     }
 
     for d in dates:
@@ -403,3 +419,31 @@ def calculate_from_date(to_date, timeline):
         from_date = to_date
 
     return from_date
+
+# Calculate effective buy-in price for security object (must have id)
+def entry_price(security, date, currency, broker_id_list=[]):
+    
+    try:
+        acquired_positions = Transactions.objects.filter(
+            security_id=security,
+            quantity__isnull=False,  # Filter out transactions where quantity is not empty
+            date__lte=date
+        ).values('price', 'quantity', 'date', 'currency')
+        
+        if broker_id_list != []:
+            acquired_positions = acquired_positions.filter(broker_id__in=broker_id_list)      
+        
+        # print(f"utils.py.line 425. entry_price: {acquired_positions}")
+
+        value = 0
+        quantity = 0
+        for transaction in acquired_positions:
+            fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+            if fx_rate and transaction['quantity'] > 0:
+                value += transaction['price'] * fx_rate * transaction['quantity']
+                quantity += transaction['quantity']
+            
+        return value / quantity if quantity else None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None

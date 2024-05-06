@@ -4,7 +4,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")
 import django
 django.setup()
 
-from common.models import Brokers, Transactions, FX
+from common.models import Brokers, Transactions, FX, Assets
 from utils import NAV_at_date, Irr, chart_dates, chart_labels, chart_colour, portfolio_at_date, calculate_security_nav
 from datetime import date
 
@@ -18,9 +18,11 @@ analysis = {'Asset type': {}, 'Currency': {}, 'Asset class': {}, 'Broker': {}, '
 
 # print(portfolio_brokers[0].transactions.all())
 
-print(Transactions.objects.filter(security_id=None))
-if not None:
-    print('None')
+security = Assets.objects.get(id=4)
+print(security.id, security.name, security.transactions.all())
+print(Transactions.objects.filter(security_id=4))
+
+# print(Transactions.objects.filter(security_id=None))
 
 # print(portfolio, portfolio_brokers)
 

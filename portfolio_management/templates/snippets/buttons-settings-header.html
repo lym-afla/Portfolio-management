@@ -1,0 +1,30 @@
+
+<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="">
+    Test button
+</button>
+
+<button type="button" class="btn btn-secondary float-end d-flex p-2" data-bs-toggle="collapse" data-bs-target="#tableTools" aria-expanded="false">
+    <img src="../static/icons/gear.svg" alt="Bootstrap" title="Table tools" width="20px" height="20px">
+</button>
+
+<h6 class="float-end d-flex p-2">{{ table_date }}</h6>
+
+<hr>
+
+<div class="collapse" id="tableTools">
+    <form  class="row g-3 d-flex" method="post" action="{% url 'dashboard:dashboard' %}">
+        {% csrf_token %}
+        {% for field in dashboardForm %}
+            <div class="col-md-2">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                {{ field }}
+                <div id="{{ field.id_for_label }}_error" class="invalid-feedback form-error">Test</div>
+            </div>
+        {% endfor %}
+
+        <div class="col-md-1 align-self-end">
+            <button type="submit" class="btn btn-secondary">Update</button>
+        </div>
+    </form>
+    <hr>
+</div>

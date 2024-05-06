@@ -123,16 +123,18 @@ class Assets(models.Model):
 
     # Define position at date by summing all movements to date
     def position(self, date, broker_id_list=[]):
-        query = self.transactions.filter(date__lte=date).aggregate(total=models.Sum('quantity'))
+        query = self.transactions.filter(date__lte=date)
         if broker_id_list:
             query = query.filter(broker_id__in=broker_id_list)
-        return query['total'] or 0
+        total_quantity = query.aggregate(total=models.Sum('quantity'))['total']
+        return total_quantity or 0
 
     # Investment date
     def investment_date(self, broker_id_list=[]):
-        query = self.transactions.order_by('date').values_list('date', flat=True).first()
+        queryset = self.transactions
         if broker_id_list:
-            query = query.filter(broker_id__in=broker_id_list)
+            queryset = queryset.filter(broker_id__in=broker_id_list)
+        query = queryset.order_by('date').values_list('date', flat=True).first()
         return query
     
     def __str__(self):

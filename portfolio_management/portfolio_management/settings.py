@@ -36,6 +36,8 @@ INSTALLED_APPS = [
     'dashboard',
     'common',
     'users',
+    'open_positions',
+    'closed_positions',
 
     'django.contrib.admin',
     'django.contrib.auth',

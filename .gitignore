@@ -3,3 +3,10 @@ AW-portolio-management/
 portfolio_management/dashboard/__pycache__/
 portfolio_management/dashboard/migrations/__pycache__/
 portfolio_management/portfolio_management/__pycache__/
+portfolio_management/closed_positions/__pycache__/
+portfolio_management/__pycache__/
+portfolio_management/common/__pycache__/
+portfolio_management/common/templatetags/__pycache__/
+portfolio_management/dashboard/templatetags/__pycache__/
+portfolio_management/open_positions/__pycache__/
+portfolio_management/users/__pycache__/
