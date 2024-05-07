@@ -72,7 +72,7 @@ def profile(request):
         {"label": "Email", "value": user.email},
     ]
 
-    return render(request, 'users/profile.html', {'user_info': user_info, 'settings_form': settings_form})
+    return render(request, 'profile.html', {'user_info': user_info, 'settings_form': settings_form})
 
 @login_required
 def edit_profile(request):
@@ -87,7 +87,7 @@ def edit_profile(request):
             profile_form.save()
             return redirect('users:profile')
 
-    return render(request, 'users/profile_edit.html', {'profile_form': profile_form})
+    return render(request, 'profile_edit.html', {'profile_form': profile_form})
 
 def reset_password(u, password):
     try:

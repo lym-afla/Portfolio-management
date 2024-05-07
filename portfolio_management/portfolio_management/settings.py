@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'open_positions',
     'closed_positions',
     'transactions',
+    'database',
 
     'django.contrib.admin',
     'django.contrib.auth',

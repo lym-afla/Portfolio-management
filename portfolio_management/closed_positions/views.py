@@ -1,7 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.db.models import Sum
-from common.models import FX, Assets, Brokers, Transactions
+from common.models import FX, Assets, Brokers
 from common.forms import DashboardForm
 from utils import Irr, currency_format, currency_format_dict_values, format_percentage, selected_brokers, effective_current_date
 
@@ -18,7 +18,7 @@ def closed_positions(request):
 
     sidebar_padding = 0
     sidebar_width = 0
-    brokers = Brokers.objects.all()
+    brokers = Brokers.objects.filter(investor=request.user).all()
 
     if request.method == "GET":
         sidebar_width = request.GET.get("width")
@@ -50,8 +50,11 @@ def closed_positions(request):
 
     # Get closed positions
     portfolio_closed = Assets.objects.filter(
+        investor=request.user,
         transactions__date__lte=effective_current_date,
         transactions__broker_id__in=selected_brokers
+    ).prefetch_related(
+        'transactions'
     ).annotate(
         total_quantity=Sum('transactions__quantity')
     ).filter(
@@ -60,21 +63,16 @@ def closed_positions(request):
 
     totals = ['unrealized_gl', 'capital_distribution']
     portfolio_closed_totals = {}
-
-    # portfolio_closed = PA.query.join(PA_transactions).\
-    #     filter(func.date(PA_transactions.date) <= table_date,
-    #            PA_transactions.broker_id.in_(selected_brokers)).\
-    #                group_by(PA_transactions.security_id).\
-    #                    having(func.sum(PA_transactions.quantity) == 0).all()
     
     # Convert exit value to the target currency
     for item in portfolio_closed:
 
         # Identify whether the position was long or short
-        last_transaction = Transactions.objects.filter(
-            security=item,
+        last_transaction = item.transactions.filter(
             broker__in=selected_brokers,
             date__lte=effective_current_date
+        ).select_related(
+            'broker', 'security'
         ).order_by('-date').first()
 
         if last_transaction is None:
@@ -82,17 +80,19 @@ def closed_positions(request):
 
         is_long_position = last_transaction.quantity < 0
 
-        transactions_sells = Transactions.objects.filter(
-                security=item,
+        transactions_sells = item.transactions.filter(
                 broker__in=selected_brokers,
                 date__lte=effective_current_date,
                 quantity__lt=0
+            ).select_related(
+                'broker', 'security'
             ).order_by('-date')
-        transactions_buys = Transactions.objects.filter(
-            security=item,
+        transactions_buys = item.transactions.filter(
             broker__in=selected_brokers,
             date__lte=effective_current_date,
             quantity__gt=0
+        ).select_related(
+            'broker', 'security'
         ).order_by('-date')
 
         # Get transactions when selling stakes
@@ -102,23 +102,7 @@ def closed_positions(request):
         else:
             transactions_exit = transactions_buys
             transactions_entry = transactions_sells
-
-        # transactions_exit = Transactions.objects.filter(
-        #     security=item,
-        #     broker__in=selected_brokers,
-        #     date__lte=effective_current_date,
-        #     quantity__lt=0 if is_long_position else quantity__gt=0
-        # ).order_by('-date').all()
-
-        # transactions_exit = db.session.query(PA_transactions.price,
-        #                                  PA_transactions.currency,
-        #                                  PA_transactions.quantity,
-        #                                  PA_transactions.date).\
-        #     filter(PA_transactions.security_id == item.id,
-        #            PA_transactions.broker_id.in_(selected_brokers),
-        #            func.date(PA_transactions.date) <= table_date,
-        #            PA_transactions.quantity < 0).order_by(PA_transactions.date.desc()).all()
-        
+      
         item.exit_date = transactions_exit.first().date if transactions_exit.exists() else None
         
         # Calculate exit value in target currency
@@ -129,27 +113,7 @@ def closed_positions(request):
                                                  currency_target,
                                                  transaction.date)['FX'] * \
                                                     abs(transaction.quantity), 2)
-            # item.exit_value += round(transaction.price * FX_rate(transaction.currency,
-            #                                             currency_target,
-            #                                             transaction.date)['FX'] * \
-            #                                                 -transaction.quantity, 2)
-        # Get transactions when buyting stakes
-        # transactions_entry = Transactions.objects.filter(
-        #     security=item,
-        #     broker__in=selected_brokers,
-        #     date__lte=effective_current_date,
-        #     quantity__gt=0 if is_long_position else quantity__lt=0
-        # )
-
-        # transactions_entry = db.session.query(PA_transactions.price,
-        #                                     PA_transactions.currency,
-        #                                     PA_transactions.quantity,
-        #                                     PA_transactions.date).\
-        #         filter(PA_transactions.security_id == item.id,
-        #             PA_transactions.broker_id.in_(selected_brokers),
-        #             func.date(PA_transactions.date) <= table_date,
-        #             PA_transactions.quantity > 0).all()
-        
+      
         # Calculate exit value in target currency
         item.entry_value = 0
         for transaction in transactions_entry:
@@ -163,21 +127,16 @@ def closed_positions(request):
         
         # Calculate cumulative capital distribution
         item.capital_distribution = 0
-        transactions = Transactions.objects.filter(
-            security=item,
+        transactions = item.transactions.filter(
             broker__in=selected_brokers,
             date__lte=effective_current_date,
             type='Dividend'
+        ).select_related(
+            'broker', 'security'
         )
-        # transactions = PA_transactions.query.\
-        #     filter(PA_transactions.security_id == item.id,
-        #            PA_transactions.broker_id.in_(selected_brokers),
-        #            func.date(PA_transactions.date) <= table_date,
-        #            PA_transactions.type == 'Dividend').all()
-        
+
         for transaction in transactions:
-            fx_rate = FX.get_rate(transaction.currency.upper(), currency_target, transaction.date)['FX']
-            item.capital_distribution += round(transaction.cash_flow * fx_rate, 2)
+            item.capital_distribution += round(transaction.cash_flow * FX.get_rate(transaction.currency.upper(), currency_target, transaction.date)['FX'], 2)
     
         item.irr = format_percentage(Irr(effective_current_date, currency_target, item.id, selected_brokers))
     
@@ -188,7 +147,6 @@ def closed_positions(request):
         # Formatting for correct representation
         item.entry_value = currency_format(item.entry_value, currency_target, number_of_digits)
         item.investment_date = item.investment_date(selected_brokers)
-        # item.exit_date = currency_format(item.exit_date, currency_target, number_of_digits)
         item.exit_value = currency_format(item.exit_value, currency_target, number_of_digits)
         item.realized_gl = currency_format(item.realized_gl, currency_target, number_of_digits)
         item.capital_distribution = currency_format(item.capital_distribution, currency_target, number_of_digits)
@@ -196,7 +154,7 @@ def closed_positions(request):
     # Format totals
     portfolio_closed_totals = currency_format_dict_values(portfolio_closed_totals, currency_target, number_of_digits)
 
-    return render(request, 'closed_positions/closed-positions.html', {
+    return render(request, 'closed-positions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         'portfolio_closed': portfolio_closed,
@@ -206,4 +164,5 @@ def closed_positions(request):
         'table_date': effective_current_date,
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
+        'dashboardForm': dashboard_form,
     })

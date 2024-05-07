@@ -1,13 +1,13 @@
 from decimal import Decimal
-from common.models import Brokers, Assets, FX, Transactions
-from django.db.models import Sum
+from common.models import Brokers, Assets, FX, Prices, Transactions
+from django.db.models import Sum, Max, Case, When
 from pyxirr import xirr
 import pandas as pd
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 
 # Define the effective 'current' date for the application
-effective_current_date = str(date.today())
+effective_current_date = date.today()
 
 # Define custom selected brokers for the application
 selected_brokers = [2]
@@ -120,7 +120,7 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
     if start_date:
         transactions = transactions.filter(date__gte=start_date)
 
-    print(f"utils.py. line 123. Transactions: {transactions}")
+    # print(f"utils.py. line 123. Transactions: {transactions}")
 
     # Calculate cash flows and transaction dates
     for transaction in transactions:
@@ -148,7 +148,7 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
     cash_flows.append(portfolio_value)
     transaction_dates.append(date)
 
-    print(f"utils. line 146. Cash flows: {cash_flows}, Transaction dates: {transaction_dates}")
+    # print(f"utils. line 146. Cash flows: {cash_flows}, Transaction dates: {transaction_dates}")
 
     try:
         return round(xirr(transaction_dates, cash_flows), 4)
@@ -161,9 +161,10 @@ def calculate_portfolio_value(date, currency, asset_id=None, broker_id_list=[]):
     if not asset_id:
         portfolio_value = NAV_at_date(broker_id_list, date, currency, [])['Total NAV']
     else:
-        asset = Assets.objects.get(pk=asset_id)
+        asset = Assets.objects.get(id=asset_id)
+        # print(f"utils.py. line 165. asset current price: {asset.current_price(date)}")
         fx_rate = FX.get_rate(asset.currency.upper(), currency, date)['FX']
-        print(f"utils.py. line 159. Asset data: {asset.current_price(date).price}, {asset.position(date, broker_id_list)}")
+        # print(f"utils.py. line 167. Asset data: {asset.current_price(date).price}, {asset.position(date, broker_id_list)}")
         portfolio_value = round(fx_rate * asset.current_price(date).price * asset.position(date, broker_id_list), 2)
 
     return portfolio_value
@@ -421,11 +422,11 @@ def calculate_from_date(to_date, timeline):
     return from_date
 
 # Calculate effective buy-in price for security object (must have id)
-def entry_price(security, date, currency, broker_id_list=[]):
+def entry_price(security_id, date, currency, broker_id_list=[]):
     
     try:
         acquired_positions = Transactions.objects.filter(
-            security_id=security,
+            security_id=security_id,
             quantity__isnull=False,  # Filter out transactions where quantity is not empty
             date__lte=date
         ).values('price', 'quantity', 'date', 'currency')
@@ -447,3 +448,32 @@ def entry_price(security, date, currency, broker_id_list=[]):
     except Exception as e:
         print(f"Error: {e}")
         return None
+    
+# Support function to create price table for Database page
+def create_price_table(security_type):
+    
+    # Get security IDs by security type
+    selected_ids = Assets.objects.filter(type=security_type).values_list('id', flat=True)
+
+    # Initialize table as a list of dates
+    dates = Prices.objects.dates('date', 'day')
+    table = [[date] for date in dates]
+
+    # Add columns with each security
+    for item in selected_ids:
+        asset = Assets.objects.get(id=item)
+        prices = Prices.objects.filter(security_id=item).order_by('date').values_list('price', flat=True)
+        for i, price in enumerate(prices):
+            table[i].append(price)
+
+    # Add column headers: Name and ISIN
+    header_row_1 = ['Date'] + [Assets.objects.get(id=item).name for item in selected_ids]
+    header_row_2 = [''] + [Assets.objects.get(id=item).ISIN for item in selected_ids]
+
+    table.insert(0, header_row_2)
+    table.insert(0, header_row_1)
+
+    # Filter for rows where all prices are empty
+    table = [x for x in table if any(i is not None for i in x[1:])]
+
+    return table

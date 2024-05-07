@@ -4,15 +4,6 @@
 
 {% block script %}
 
-    {% comment %} <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
-    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script> {% endcomment %}
-
-    {% comment %} <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/2.0.6/css/dataTables.dataTables.css" />
-    <script src="https://cdn.datatables.net/2.0.6/js/dataTables.js"></script> {% endcomment %}
-
-    <link href="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.css" rel="stylesheet">
-    <script src="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.js"></script>
-
     <!-- Script from DataTables -->
     <script>
         $(document).ready(function () {
@@ -66,8 +57,8 @@
             <tr>
                 <td class="text-start">{{ asset.type }}</td>
                 <td class="text-start">{{ asset.name }}</td>
-                <td class="text-center">{{ asset.investment_date }}</td>
-                <td class="text-center">{{ asset.exit_date }}</td>
+                <td class="text-center">{{ asset.investment_date|date:'d-M-y' }}</td>
+                <td class="text-center">{{ asset.exit_date|date:'d-M-y' }}</td>
                 <td class="text-center">{{ asset.currency | upper }}</td>
                 <td class="text-center">{{ asset.entry_value }}</td>
                 <td class="text-center">{{ asset.exit_value }}</td>

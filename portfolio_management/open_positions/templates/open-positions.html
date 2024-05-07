@@ -4,15 +4,6 @@
 
 {% block script %}
 
-    {% comment %} <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
-    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script> {% endcomment %}
-
-    {% comment %} <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/2.0.6/css/dataTables.dataTables.css" />
-    <script src="https://cdn.datatables.net/2.0.6/js/dataTables.js"></script> {% endcomment %}
-
-    <link href="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.css" rel="stylesheet">
-    <script src="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.js"></script>
-
     <!-- Script from DataTables -->
     <script>
         $(document).ready(function () {
@@ -55,7 +46,7 @@
                 <th class="text-center" rowspan="2">Position</th>
                 <th class="text-center colspan" colspan="3">Entry</th>
                 <th rowspan="2"></th>
-                <th class="text-center colspan" colspan="5">As of {{ table_date }}</th>
+                <th class="text-center colspan" colspan="5">As of {{ table_date|date:'j-M-y' }}</th>
                 <th rowspan="2"></th>
             </tr>
             <tr>
@@ -77,7 +68,7 @@
                 <td class="text-start">{{ asset.name }}</td>
                 <td class="text-center">{{ asset.currency | upper }}</td>
                 <td class="text-center">{{ asset.position_at_date }}</td>
-                <td class="text-center" nowrap>{{ asset.investment_date }}</td>
+                <td class="text-center text-nowrap">{{ asset.investment_date }}</td>
                 <td class="text-center">{{ asset.entry_price }}</td>
                 <td class="text-center">{{ asset.entry_value }}</td>
                 <td></td>

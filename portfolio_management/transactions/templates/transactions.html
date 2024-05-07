@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block script %}
+
+    <!-- Script from DataTables -->
+    <script>
+        $(document).ready(function () {
+            $('#table-transactions').DataTable( {
+                // Make the default sorting by column 4 (DATE) and do not show sorting for selected columns
+                "autoWidth": false,
+                columnDefs: [
+                    {
+                        targets: '_all',
+                        orderable: false
+                    }
+                ],
+                order: [],
+                "dom": "<'row'<tr>>" +
+                            "<'row'<'col-md-3'l><'col-md-4'f><'col-md-5'p>>",
+                "pageLength": 25
+            });
+         });
+    </script>
+
+{% endblock script %}
+
+{% block title %}
+    Transactions
+{% endblock title %}
+
+{% block main_page_title %}
+    <h2>Transactions</h2>
+{% endblock main_page_title %}
+
+{% block content %}
+
+    {% include "snippets/buttons-settings-header.html" %}
+
+    <table id="table-transactions" class="table table-hover table-striped align-middle">
+        <thead>
+            <tr>
+                <th class="text-start" rowspan="2">Date</th>
+                <th class="text-start" rowspan="2">Transaction</th>
+                <th class="text-center" rowspan="2">Type</th>
+                <th class="text-center colspan" colspan="{{ currencies | length }}">Cash flow</th>
+                <th rowspan="2"></th>
+                <th class="text-center colspan" colspan="{{ currencies | length }}">Balance</th>
+            </tr>
+            <tr>
+                {% for cur in currencies %}
+                    <th class="text-center">{{ cur }}</th>
+                {% endfor %}
+                {% for cur in currencies %}
+                    <th class="text-center">{{ cur }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for transaction in transactions %}   
+            <tr>
+                <td class="text-start">{{ transaction.date }}</td>
+                <td class="text-start text-nowrap">{{ transaction.type }}
+                    {% if 'Cash' in transaction.type %}
+                        {{ transaction.cash_flow }}
+                    {% elif 'Dividend' in transaction.type %}
+                        of {{ transaction.cash_flow }} for {{ transaction.security.name }}
+                    {% elif transaction.type == 'Close' %}
+                        {{ transaction.quantity }} of {{ transaction.security.name }}
+                    {% else %}
+                        {{ transaction.quantity }}
+                        @ {{ transaction.price }} of {{ transaction.security.name }}
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ transaction.type }}</td>
+                {% for cur in currencies %}
+                    <td class="text-center">
+                        {% if transaction.currency == cur %}
+                            {% if transaction.type == 'Dividend' %}
+                                {{ transaction.cash_flow }}
+                            {% elif 'Cash' in transaction.type %}
+                                {{ transaction.cash_flow }}
+                            {% else %}
+                                {{ transaction.value }}
+                            {% endif %}
+                        {% else %}
+                            –
+                        {% endif %}
+                    </td>
+                {% endfor %}
+                <td class="text-center"></td>
+                {% for cur in currencies %}
+                    <td class="text-center">
+                        {{ transaction.balances|get_item:cur }}
+                    </td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+{% endblock content %}

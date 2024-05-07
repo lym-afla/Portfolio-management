@@ -130,7 +130,7 @@ function convertDate(date) {
 // Fetching data for the chart. Defined in layout.js as used on the several pages
 function getNAVChartData(frequency, from, to, breakdown) {
 
-    return fetch(`/get_nav_chart_data?frequency=${frequency}&from=${from}&to=${to}&breakdown=${breakdown}`)
+    return fetch(`/dashboard/get_nav_chart_data?frequency=${frequency}&from=${from}&to=${to}&breakdown=${breakdown}`)
         .then(response => response.json())
         .then(chartData => {
             return chartData;

@@ -2,6 +2,9 @@ from django.db import models
 from django.db.models import F
 import networkx as nx
 
+from constants import CURRENCY_CHOICES, ASSET_TYPE_CHOICES
+from users.models import CustomUser
+
 # Table with FX data
 class FX(models.Model):
     date = models.DateField(primary_key=True)
@@ -74,11 +77,13 @@ class FX(models.Model):
 
 # Brokers
 class Brokers(models.Model):
+    investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='brokers')
     name = models.CharField(max_length=20, null=False)
     country = models.CharField(max_length=20)
+    securities = models.ManyToManyField('Assets', related_name='brokers')
 
     # List of currencies used
-    def currencies(self):
+    def get_currencies(self):
         currencies = set()
         for transaction in self.transactions.all():
             currencies.add(transaction.currency)
@@ -87,7 +92,7 @@ class Brokers(models.Model):
     # Cash balance at date
     def balance(self, date):
         balance = {}
-        for cur in self.currencies():
+        for cur in self.get_currencies():
             query = self.transactions.filter(broker_id=self.id, currency=cur, date__lte=date).aggregate(
                 balance=models.Sum(
                     models.Case(
@@ -107,14 +112,16 @@ class Brokers(models.Model):
 
 # Public assets
 class Assets(models.Model):
-    type = models.CharField(max_length=10, null=False)
+    investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='assets')
+    type = models.CharField(max_length=15, choices=ASSET_TYPE_CHOICES, null=False)
     ISIN = models.CharField(max_length=12)
     name = models.CharField(max_length=30, null=False)
-    currency = models.CharField(max_length=3, null=False)
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     exposure = models.TextField(null=False)
 
     # Returns price at the date or latest available before the date
     def current_price(self, price_date):
+        # print(f"Models. Assets. {self.name} Current_price. {self.prices.filter(date__lte=price_date).all()}")
         try:
             quote = self.prices.filter(date__lte=price_date).order_by('-date').first()
             return quote
@@ -144,7 +151,7 @@ class Assets(models.Model):
 class Transactions(models.Model):
     broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='transactions')
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name='transactions', null=True, blank=True)
-    currency = models.CharField(max_length=3, null=False)
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     type = models.CharField(max_length=30, null=False)
     date = models.DateField(null=False)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -155,7 +162,7 @@ class Transactions(models.Model):
 
 # Table with non-public asset prices
 class Prices(models.Model):
-    date = models.DateField(primary_key=True)
+    date = models.DateField(null=False)
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name='prices')
     price = models.DecimalField(max_digits=10, decimal_places=2, null=False)
 
