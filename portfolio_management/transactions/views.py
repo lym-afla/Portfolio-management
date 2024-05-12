@@ -79,7 +79,7 @@ def transactions(request):
                 balance[currency] = balance.get(currency,0) - (transaction.price or 0) * (transaction.quantity or 0) \
                     + (transaction.cash_flow or 0) \
                         + (transaction.commission or 0)
-            transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
+                transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
 
         # Prepare data for passing to the front-end
         if transaction.quantity:

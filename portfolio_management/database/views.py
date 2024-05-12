@@ -3,7 +3,7 @@ from django.shortcuts import render
 from common.models import FX, Assets, Brokers, Transactions
 from common.forms import DashboardForm
 
-from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, calculate_buy_in_price, currency_format, format_percentage
+from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, currency_format, format_percentage
 
 def database(request):
     
@@ -123,11 +123,11 @@ def database(request):
             security.capital_distribution += (transaction.cash_flow or 0)
             if transaction.quantity and transaction.quantity < 0:
                 security.realised += (transaction.price -\
-                    calculate_buy_in_price(security.id, transaction.date, transaction.currency)) * \
+                    security.calculate_buy_in_price(transaction.date, transaction.currency)) * \
                         -transaction.quantity
         try:
             security.unrealised = security.current_value - \
-                (calculate_buy_in_price(security, effective_current_date, security.currency)) * \
+                (security.calculate_buy_in_price(effective_current_date, security.currency)) * \
                     security.open_position
         except:
             security.unrealised = 0

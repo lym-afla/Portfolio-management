@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Sum
 import networkx as nx
 from datetime import timedelta
 
@@ -125,7 +125,7 @@ class Assets(models.Model):
         # print(f"Models. Assets. {self.name} Current_price. {self.prices.filter(date__lte=price_date).all()}")
         try:
             quote = self.prices.filter(date__lte=price_date).order_by('-date').first()
-            if currency:
+            if currency is not None:
                 quote.price = quote.price * FX.get_rate(self.currency, currency, price_date)['FX']
             return quote
         except:
@@ -191,7 +191,7 @@ class Assets(models.Model):
 
         return entry_dates
 
-    def calculate_buy_in_price(self, date, currency, broker_id_list=None, start_date=None):
+    def calculate_buy_in_price(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculates the buy-in price for the given date, currency, broker ID list, and start date.
 
@@ -216,6 +216,9 @@ class Assets(models.Model):
 
             if broker_id_list is not None:
                 transactions = transactions.filter(broker_id__in=broker_id_list) 
+            
+            if not transactions:
+                return None
 
             # Step 2: Calculate based on the period starting from the previous position == 0 or start_date, whichever is later
             if self.position(date) == 0:
@@ -247,7 +250,12 @@ class Assets(models.Model):
             value = 0
             quantity = 0
             for transaction in transactions:
-                fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+                
+                if currency is not None:
+                    fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+                else:
+                    fx_rate = 1
+
                 if fx_rate:
                     previous_buy_in_price = value / quantity if quantity else 0
                     current_price = transaction['price'] * fx_rate
@@ -269,7 +277,7 @@ class Assets(models.Model):
             print(f"Error: {e}")
             return None
 
-    def realized_gain_loss(security, date, currency, broker_id_list=None):
+    def realized_gain_loss(self, date, currency=None, broker_id_list=None):
         """
         Calculates the realized gain or loss of a security as of a specific date.
 
@@ -296,41 +304,104 @@ class Assets(models.Model):
         total_gl_before_entry = 0
 
         # Step 1: Find the latest date when position is 0
-        zero_positions_dates = security.dates_of_zero_positions(date)
+        zero_positions_dates = self.dates_of_zero_positions(date)
         if zero_positions_dates:
-            latest_zero_position = security.dates_of_zero_positions(date)[0]
+            latest_zero_position = self.dates_of_zero_positions(date)[0]
         else:
             return 0
 
         # Step 2: Sum up values of all transactions before that date
-        transactions_before_entry = security.transactions.filter(date__lte=latest_zero_position)
+        transactions_before_entry = self.transactions.filter(date__lte=latest_zero_position)
         if broker_id_list is not None:
             transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
         
-        for transaction in transactions_before_entry:
-            fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
-            if fx_rate:
-                total_gl_before_entry -= transaction.price * transaction.quantity * fx_rate
+        if currency is not None:
+            for transaction in transactions_before_entry:
+                fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
+                if fx_rate:
+                    total_gl_before_entry -= transaction.price * transaction.quantity * fx_rate
+        else:
+            total_gl_before_entry = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
+            total_gl_before_entry = -total_gl_before_entry
 
         # Step 3: Determine whether it is a long or short position
-        position_at_date = security.position(date)
+        position_at_date = self.position(date)
 
         if position_at_date != 0:
             is_long_position = position_at_date > 0
             exit_type = 'Sell' if is_long_position else 'Buy'
 
             # Step 4: Calculate realized gain/loss based on exit price and buy-in price
-            exit_transactions = security.transactions.filter(type=exit_type, date__gte=latest_zero_position, date__lte=date)
+            exit_transactions = self.transactions.filter(type=exit_type, date__gte=latest_zero_position, date__lte=date)
 
             for exit in exit_transactions:
-                buy_in_price = security.calculate_buy_in_price(exit.date, exit.currency, broker_id_list)
+                buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list)
                 if buy_in_price is not None:
-                    fx_rate = FX.get_rate(exit.currency, currency, exit.date)['FX']
+                    if currency is not None:
+                        fx_rate = FX.get_rate(exit.currency, currency, exit.date)['FX']
+                    else:
+                        fx_rate = 1
                     if fx_rate:
-                        realized_gain_loss -= (exit.price * fx_rate - buy_in_price) * (exit.quantity)
+                        realized_gain_loss -= (exit.price - buy_in_price) * fx_rate * (exit.quantity)
+                else:
+                    print("WARNING: Buy-in price is not available")
+                    return None
 
         return round(total_gl_before_entry + realized_gain_loss, 2)
     
+    def unrealized_gain_loss(self, date, currency=None, broker_id_list=None):
+        """
+        Calculates the capital distribution (dividends) for a security as of a specific date.
+
+        Parameters:
+            date (datetime.date): The date as of which the capital distribution is calculated.
+            currency (str, optional): The currency in which the capital distribution is calculated. If None, the original currency of the dividends is used. Defaults to None.
+            broker_id_list (list, optional): A list of broker IDs to filter the transactions. Defaults to None.
+
+        Returns:
+            float: The total capital distribution (dividends) for the security as of the given date, rounded to 2 decimal places. If there are no dividend transactions, it returns 0.
+
+        This method calculates the capital distribution by summing up the cash flow from all 'dividend' type transactions as of the given date. If a currency is provided, the dividends are converted to that currency using the FX.get_rate function.
+        """
+        unrealized_gain_loss = 0
+
+        current_position = self.position(date, broker_id_list)
+        # print('Current position', current_position)
+        current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
+        # print('Current price', current_price)
+        
+        buy_in_price = self.calculate_buy_in_price(date, None, broker_id_list)
+        # print("Buy-in price", buy_in_price)
+        if buy_in_price is not None:
+            if currency is not None:
+                fx_rate = FX.get_rate(self.currency, currency, date)['FX']
+            else:
+                fx_rate = 1
+            if fx_rate:
+                unrealized_gain_loss += (current_price - buy_in_price) * fx_rate * (current_position)
+        
+        return round(unrealized_gain_loss, 2)
+    
+    def capital_distribution(self, date, currency=None, broker_id_list=None):
+        """
+        Calculate the capital distribution (dividends) for this asset.
+        Capital distribution is the total cash flow from 'dividend' type transactions.
+        """
+        total_dividends = 0
+        dividend_transactions = self.transactions.filter(type='Dividend', date__lte=date)
+
+        if dividend_transactions:
+            if currency is None:
+                total_dividends += dividend_transactions.aggregate(total=Sum('cash_flow'))['total']
+            else:
+                for dividend in dividend_transactions:
+                    fx_rate = FX.get_rate(dividend.currency, currency, dividend.date)['FX']
+                    if fx_rate:
+                        total_dividends += dividend.cash_flow * fx_rate
+            return round(total_dividends, 2)
+        else:
+            return 0
+
     def __str__(self):
         return self.name  # Define how the broker is represented as a string
 

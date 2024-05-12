@@ -7,6 +7,7 @@ from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 class CustomUser(AbstractUser):
     
     default_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', blank=True, null=True)
+    use_default_currency_where_relevant = models.BooleanField(default=False)
     chart_frequency = models.CharField(max_length=1, default='M')
     chart_timeline = models.CharField(max_length=3, default='6m')
     NAV_barchart_default_breakdown = models.CharField(max_length=12, choices=NAV_BARCHART_CHOICES, default='Asset type', blank=True, null=True)

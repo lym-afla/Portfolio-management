@@ -54,6 +54,11 @@ class UserSettingsForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Default currency'
     )
+    # use_default_currency_for_all_data = forms.BooleanField(
+    #     widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    #     label='Use default currency for data where relevant?',
+    #     required=False
+    # )
     chart_frequency = forms.ChoiceField(
         choices=FREQUENCY_CHOICES,
         widget=forms.Select(attrs={'class': 'form-select'}),
@@ -76,8 +81,9 @@ class UserSettingsForm(forms.ModelForm):
     
     class Meta:
         model = CustomUser
-        fields = ['default_currency', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
+        fields = ['default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
         widgets = {
+            'use_default_currency_where_relevant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             # 'chart_frequency': forms.Select(attrs={'class': 'form-select'}),
         #     'chart_timeline': forms.Select(attrs={'class': 'form-select'})
         }

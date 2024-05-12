@@ -33,7 +33,7 @@ def merge_dictionaries(dict_1, dict_2):
     return dict_3
 
 def calculate_security_nav(item, date, currency):
-    current_quote = item.current_price(date)
+    current_quote = item.price_at_date(date)
     return round(current_quote.price * FX.get_rate(item.currency.upper(), currency, current_quote.date)['FX'] * item.position(date), 2)
 
 def update_analysis(analysis, key, value, date=None, currency=None, desired_currency=None):
@@ -65,7 +65,8 @@ def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Cur
     item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
 
     for security in portfolio:
-        current_value = calculate_security_nav(security, date, target_currency)
+        current_value = security.position(date, broker_ids) * security.price_at_date(date, target_currency).price
+        # current_value = calculate_security_nav(security, date, target_currency)
 
         if 'Broker' in breakdown:
             for broker in get_brokers_for_security(security.id):
@@ -103,8 +104,15 @@ def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Cur
     return analysis
 
 # Calculate portfolio IRR at date for public assets
-def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
-    portfolio_value = 0
+def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=''):
+    
+    # Calculate portfolio value
+    portfolio_value = calculate_portfolio_value(date, currency, asset_id, broker_id_list)
+
+    # Not relevant for short positions
+    if portfolio_value < 0:
+        return 'N/R'
+
     cash_flows = []
     transaction_dates = []
 
@@ -125,13 +133,16 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
     # Calculate cash flows and transaction dates
     for transaction in transactions:
         # print(f"utils.py. line 127. Transaction details: {transaction.quantity}")
-        fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
-
         if transaction.type == 'Cash in' or transaction.type == 'Cash out':
             cash_flow = -transaction.cash_flow
         else:
             cash_flow = transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
-        
+            
+        if currency is not None:
+            fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
+        else:
+            fx_rate = 1
+
         cash_flows.append(round(cash_flow * fx_rate, 2))
         transaction_dates.append(transaction.date)
 
@@ -155,17 +166,15 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
     except:
         return 'N/A'
 
-def calculate_portfolio_value(date, currency, asset_id=None, broker_id_list=[]):
-    portfolio_value = 0
+def calculate_portfolio_value(date, currency=None, asset_id=None, broker_id_list=None):
 
     if asset_id is None:
         portfolio_value = NAV_at_date(broker_id_list, date, currency, [])['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
         # print(f"utils.py. line 165. asset current price: {asset.current_price(date)}")
-        fx_rate = FX.get_rate(asset.currency.upper(), currency, date)['FX']
         # print(f"utils.py. line 167. Asset data: {asset.current_price(date).price}, {asset.position(date, broker_id_list)}")
-        portfolio_value = round(fx_rate * asset.price_at_date(date).price * asset.position(date, broker_id_list), 2)
+        portfolio_value = round(asset.price_at_date(date, currency).price * asset.position(date, broker_id_list), 2)
 
     return portfolio_value
 
@@ -247,6 +256,7 @@ def decimal_default(obj):
     raise TypeError
 
 def format_percentage(value):
+    
     # Check if the value is exactly None, which is different from 0
     if value is None:
         return "NA"
@@ -260,7 +270,7 @@ def format_percentage(value):
             return f"{float(value * 100):.1f}%"
     except (TypeError, ValueError):
         # If the value cannot be converted to float, return 'NA'
-        return "NA"
+        return value
     
 
 def currency_format(value, currency, digits):
@@ -503,3 +513,6 @@ def create_price_table(security_type):
 
     return table
 
+def open_position_totals(asset, key, date, currency)
+    
+    
