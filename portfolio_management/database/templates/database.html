@@ -135,14 +135,14 @@
                             {% endif %}
                         </td>
                         <td class="text-center">{{ broker.no_of_securities }}</td>
-                        <td class="text-center">{{ broker.first_investment }}</td>
+                        <td class="text-center">{{ broker.first_investment|date:'d-M-y' }}</td>
                         <td class="text-center">{{ broker.NAV }}</td>
                         {% for cur in currencies %}
                             <td class="text-center">
                                 {{ broker.cash|get_item:cur }}
                             </td>
                         {% endfor %}
-                        <td class="text-center">{{ broker.irr }}%</td>
+                        <td class="text-center">{{ broker.irr }}</td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -153,6 +153,10 @@
                         <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"no_of_securities" }}</td>
                         <td class="border-0"></td>
                         <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"NAV" }}</td>
+                        {% for cur in currencies %}
+                            <td class="border-0 text-center"></td>
+                        {% endfor %}
+                        <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"IRR" }}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -368,4 +372,4 @@
         </div>
     </div>
 
-{% endblock content%}
+{% endblock content %}

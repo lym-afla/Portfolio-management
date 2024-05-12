@@ -46,9 +46,9 @@
 
     <body>
         
-        <div class="container">
+        <div class="d-flex">
             {% if user.is_authenticated %}
-                <nav class="left text-center">
+                <nav class="d-flex text-center">
                     <div class="d-flex flex-column flex-shrink-0 p-3 bg-light" id="sidebar">
                         <img src="{% static 'icons/list.svg' %}" alt="Bootstrap" class="nav-menu-icon" title="Expand menu" height="37.5px" width="37.5px" onclick="actionNav()">
                         <hr>
@@ -106,7 +106,7 @@
                         </a>
                     </div>
                 </nav>
-                <div class="extended_sidebar bg-light" style="width: {{ sidebar_width }}px; padding-right: {{ sidebar_padding }}rem;">
+                <div class="extended_sidebar d-flex flex-column bg-light" style="width: {{ sidebar_width }}px; padding-right: {{ sidebar_padding }}rem;">
                     <a href="#" class="link-dark text-decoration-none">
                         <span class="d-flex nav-menu-icon fs-3">Menu</span>
                     </a>

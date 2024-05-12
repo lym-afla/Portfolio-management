@@ -79,14 +79,14 @@ def transactions(request):
                 balance[currency] = balance.get(currency,0) - (transaction.price or 0) * (transaction.quantity or 0) \
                     + (transaction.cash_flow or 0) \
                         + (transaction.commission or 0)
-            transaction.balances[currency] = currency_format(balance[currency], currency_target, number_of_digits)
+            transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
 
         # Prepare data for passing to the front-end
         if transaction.quantity:
             transaction.value = currency_format(-transaction.quantity * transaction.price, currency_target, number_of_digits)
             transaction.quantity = abs(transaction.quantity)
         if transaction.cash_flow:
-            transaction.cash_flow = currency_format(transaction.cash_flow, currency_target, number_of_digits)
+            transaction.cash_flow = currency_format(transaction.cash_flow, currency, number_of_digits)
         transaction.date = str(transaction.date.strftime('%d-%b-%y'))
            
     return render(request, 'transactions.html', {

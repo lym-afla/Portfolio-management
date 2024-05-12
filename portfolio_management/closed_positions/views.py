@@ -61,7 +61,7 @@ def closed_positions(request):
         total_quantity=0
     )
 
-    totals = ['unrealized_gl', 'capital_distribution']
+    totals = ['realized_gl', 'capital_distribution']
     portfolio_closed_totals = {}
     
     # Convert exit value to the target currency

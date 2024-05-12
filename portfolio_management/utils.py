@@ -158,14 +158,14 @@ def Irr(date, currency, asset_id=None, broker_id_list=[], start_date=''):
 def calculate_portfolio_value(date, currency, asset_id=None, broker_id_list=[]):
     portfolio_value = 0
 
-    if not asset_id:
+    if asset_id is None:
         portfolio_value = NAV_at_date(broker_id_list, date, currency, [])['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
         # print(f"utils.py. line 165. asset current price: {asset.current_price(date)}")
         fx_rate = FX.get_rate(asset.currency.upper(), currency, date)['FX']
         # print(f"utils.py. line 167. Asset data: {asset.current_price(date).price}, {asset.position(date, broker_id_list)}")
-        portfolio_value = round(fx_rate * asset.current_price(date).price * asset.position(date, broker_id_list), 2)
+        portfolio_value = round(fx_rate * asset.price_at_date(date).price * asset.position(date, broker_id_list), 2)
 
     return portfolio_value
 
@@ -422,32 +422,57 @@ def calculate_from_date(to_date, timeline):
     return from_date
 
 # Calculate effective buy-in price for security object (must have id)
-def entry_price(security_id, date, currency, broker_id_list=[]):
+# def calculate_buy_in_price(security_id, date, currency, broker_id_list=None, start_date=None):
     
-    try:
-        acquired_positions = Transactions.objects.filter(
-            security_id=security_id,
-            quantity__isnull=False,  # Filter out transactions where quantity is not empty
-            date__lte=date
-        ).values('price', 'quantity', 'date', 'currency')
+#     try:
         
-        if broker_id_list != []:
-            acquired_positions = acquired_positions.filter(broker_id__in=broker_id_list)      
-        
-        # print(f"utils.py.line 425. entry_price: {acquired_positions}")
+#         is_long_position = None
 
-        value = 0
-        quantity = 0
-        for transaction in acquired_positions:
-            fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
-            if fx_rate and transaction['quantity'] > 0:
-                value += transaction['price'] * fx_rate * transaction['quantity']
-                quantity += transaction['quantity']
+#         security = Assets.objects.get(id=security_id)
+
+#         transactions = security.transactions.filter(
+#             quantity__isnull=False,  # Filter out transactions where quantity is not empty
+#             date__lte=date
+#         ).values('price', 'quantity', 'date', 'currency')
+
+#         if broker_id_list:
+#             transactions = transactions.filter(broker_id__in=broker_id_list) 
+
+#         if start_date:
+#             transactions = transactions.filter(date__gt=start_date)
+#             position = security.position(start_date, broker_id_list)
+#             if position != 0:
+#                 transactions = list(transactions) + [{
+#                     'price': security.price_at_date(start_date).price,
+#                     'quantity': position,
+#                     'date': start_date,
+#                     'currency': security.currency,
+#                 }]
+#                 is_long_position = position > 0
+
+#         # If start date is not provided, or position at start date is 0
+#         if is_long_position is None:
+#             first_transaction = transactions.order_by('date').first()
+#             is_long_position = first_transaction['quantity'] > 0
+
+#         if is_long_position:
+#             transactions = [t for t in transactions if t['quantity'] > 0]
+#         else:
+#             transactions = [t for t in transactions if t['quantity'] < 0]
+
+#         value = 0
+#         quantity = 0
+#         for transaction in transactions:
+#             fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+#             if fx_rate:
+#                 value += transaction['price'] * fx_rate * transaction['quantity']
+#                 quantity += transaction['quantity']
             
-        return value / quantity if quantity else None
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
+#         return value / quantity if quantity else None
+        
+#     except Exception as e:
+#         print(f"Error: {e}")
+#         return None
     
 # Support function to create price table for Database page
 def create_price_table(security_type):
@@ -477,3 +502,4 @@ def create_price_table(security_type):
     table = [x for x in table if any(i is not None for i in x[1:])]
 
     return table
+

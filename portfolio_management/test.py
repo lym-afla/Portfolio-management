@@ -13,7 +13,12 @@ selected_brokers = broker_ids = [2]
 table_date = date.today()
 target_currency = 'USD'
 
-print(Assets.objects.filter(type='ETF').values_list('id', flat=True))
+security = Assets.objects.get(id=6)
+print(security)
+
+
+
+
 
 # transactions = Transactions.objects.filter(
 #         date__lte=table_date,
