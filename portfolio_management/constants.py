@@ -12,3 +12,12 @@ NAV_BARCHART_CHOICES = (
     ('Currency', 'Currency'),
     ('No breakdown', 'No breakdown'),
 )
+
+ASSET_TYPE_CHOICES = (
+    ('Stock', 'Stock'),
+    ('Bond', 'Bond'),
+    ('ETF', 'ETF'),
+    ('Mutual fund', 'Mutual fund'),
+    ('Option', 'Option'),
+    ('Future', 'Future'),
+)

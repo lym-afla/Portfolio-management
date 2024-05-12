@@ -4,15 +4,6 @@
 
 {% block script %}
 
-    {% comment %} <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
-    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script> {% endcomment %}
-
-    {% comment %} <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/2.0.6/css/dataTables.dataTables.css" />
-    <script src="https://cdn.datatables.net/2.0.6/js/dataTables.js"></script> {% endcomment %}
-
-    <link href="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.css" rel="stylesheet">
-    <script src="https://cdn.datatables.net/v/bs5/dt-2.0.6/datatables.min.js"></script>
-
     <!-- Script from DataTables -->
     <script>
         $(document).ready(function () {
@@ -55,25 +46,25 @@
                 <th class="text-center">Closure date</th>
                 <th class="text-center">Currency</th>
                 <th class="text-center">Investment</th>
-                <th class="text-center">Monetization</th>
+                <th class="text-center">Exit value</th>
                 <th class="text-center">Realized gain/(loss)</th>
                 <th class="text-center">Capital distribution</th>
                 <th class="text-center">Return</th>
             </tr>
         </thead>
         <tbody>
-        {% for security in portfolio_closed %}    
+        {% for asset in portfolio_closed %}    
             <tr>
-                <td class="text-start">{{ security.type }}</td>
-                <td class="text-start" style="white-space: nowrap">{{ security.name }}</td>
-                <td class="text-center">{{ security.investment_date() }}</td>
-                <td class="text-center">{{ security.exit_date.strftime('%Y-%m-%d') }}</td>
-                <td class="text-center">{{ security.currency | upper }}</td>
-                <td class="text-center">{{ security.entry_value | currency_format(security.currency, number_of_digits) }}</td>
-                <td class="text-center">{{ security.exit_value | currency_format(security.currency, number_of_digits) }}</td>
-                <td class="text-center">{{ security.realized_gl | currency_format(currency, number_of_digits) }}</td>
-                <td class="text-center">{{ security.capital_distribution | currency_format(currency, number_of_digits) }}</td>
-                <td class="text-center">{{ "%.1f" | format(security.irr*100) }}%</td>
+                <td class="text-start">{{ asset.type }}</td>
+                <td class="text-start">{{ asset.name }}</td>
+                <td class="text-center">{{ asset.investment_date|date:'d-M-y' }}</td>
+                <td class="text-center">{{ asset.exit_date|date:'d-M-y' }}</td>
+                <td class="text-center">{{ asset.currency | upper }}</td>
+                <td class="text-center">{{ asset.entry_value }}</td>
+                <td class="text-center">{{ asset.exit_value }}</td>
+                <td class="text-center">{{ asset.realized_gl }}</td>
+                <td class="text-center">{{ asset.capital_distribution }}</td>
+                <td class="text-center">{{ asset.irr }}%</td>
             </tr>
         {% endfor %}
         </tbody>
@@ -85,8 +76,8 @@
                 <td class="border-0"></td>
                 <td class="border-0"></td>
                 <td class="border-0"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_closed | sum(attribute="realized_gl") | currency_format(currency, number_of_digits) }}</td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_closed | sum(attribute="capital_distribution") | currency_format(currency, number_of_digits) }}</td>
+                <td class="text-center border-0 fw-bold">{{ portfolio_closed_totals|get_item:"realized_gl" }}</td>
+                <td class="text-center border-0 fw-bold">{{ portfolio_closed_totals|get_item:"capital_distribution!" }}</td>
             </tr>
         </tfoot>
     </table>

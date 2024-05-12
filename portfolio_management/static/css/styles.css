@@ -1,40 +1,16 @@
-
-
-.container {
-    display: flex;
-    height: 100vh;
-    max-width: 100%;
-    padding: 0 0 0 0;
-}
-
-.left {
-    background-color: red;
-    display: flex;
-    flex-wrap: nowrap;
-    min-width: 60px;
-    height: 100vh;
-    max-height: 100vh;
-    overflow-y: hidden;
-    overflow-x: auto;
-}
-
+/* Extended sidebar to the left */
 .extended_sidebar {
-    width: 0px; /* 0 width - change this with JavaScript */
-    padding: 1rem 0 1rem 0; /* 1rem */
-    z-index: 1; /* Stay on top */
-    overflow-x: hidden; /* Disable horizontal scroll */
+    width: 0px;
+    padding: 1rem 0 1rem 0;
     transition: 0.25s; /* 0.25 second transition effect to slide in the sidenav */
-    display: flex;
-    flex-direction: column;
     height: 100vh;
-    max-height: 100vh;
     overflow-y: hidden;
 }
 
-#sidebar {
-    /* Fill the parent width (.left) */
+/* #sidebar {
+    Fill the parent width (.left)
     width: -webkit-fill-available;
-}
+} */
 
 .nav-menu-icon {
     height: 37.5px;
@@ -76,15 +52,6 @@ main {
     flex: 16;
     overflow-y: auto;
     overflow-x: hidden;
-}
-
-/* The below two is to align with the table */
-#table-NPA_length {
-    padding-left: 0.5rem;
-}
-
-#table-NPA_filter {
-    padding-right: 0.5rem;
 }
 
 /* Get back black borders in the table on the top and bottom */
@@ -144,11 +111,11 @@ div.dataTables_info,
     font-size: smaller;
 }
 
-#table-PA-database-fx_filter,
-#table-PA-database-etf_filter,
-#table-PA-database-mutual-fund_filter,
-#table-PA-database-stock_filter,
-#table-PA-database-bond_filter {
+#table-database-fx_filter,
+#table-database-etf_filter,
+#table-database-mutual-fund_filter,
+#table-database-stock_filter,
+#table-database-bond_filter {
     padding-top: 0.5rem;
 }
 

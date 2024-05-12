@@ -25,8 +25,7 @@ def dashboard(request):
 
     sidebar_padding = 0
     sidebar_width = 0
-    brokers = Brokers.objects.all()
-    
+    brokers = Brokers.objects.filter(id__in=selected_brokers, investor=request.user).all()
 
     if request.method == "GET":
         sidebar_width = request.GET.get("width")
@@ -61,8 +60,8 @@ def dashboard(request):
     summary = {}
     summary['NAV'] = analysis['Total NAV']
     currencies = set()
-    for broker in Brokers.objects.filter(id__in=selected_brokers):
-        currencies.update(broker.currencies())
+    for broker in brokers:
+        currencies.update(broker.get_currencies())
 
     summary['Invested'] = summary['Cash-out'] = 0
 
@@ -110,7 +109,7 @@ def dashboard(request):
     print(f"dashboard.views line 96. chart_settings['To']: {chart_settings['To']}")
     print(effective_current_date)
 
-    return render(request, 'dashboard/pa-dashboard.html', {
+    return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         'analysis': analysis,
@@ -118,7 +117,7 @@ def dashboard(request):
         # 'currency_digits': f'{currency_target},{number_of_digits}',
         'currency': currency_target,
         'table_date': effective_current_date,
-        'number_of_digits': number_of_digits,
+        # 'number_of_digits': number_of_digits,
         'brokers': brokers,
         'selectedBrokers': selected_brokers,
         'summary': summary,
