@@ -126,7 +126,7 @@ def closed_positions(request):
         item.realized_gl = item.exit_value - item.entry_value
         
         # Calculate cumulative capital distribution
-        item.capital_distribution = 0
+        item.get_capital_distribution = 0
         transactions = item.transactions.filter(
             broker__in=selected_brokers,
             date__lte=effective_current_date,
@@ -136,7 +136,7 @@ def closed_positions(request):
         )
 
         for transaction in transactions:
-            item.capital_distribution += round(transaction.cash_flow * FX.get_rate(transaction.currency.upper(), currency_target, transaction.date)['FX'], 2)
+            item.get_capital_distribution += round(transaction.cash_flow * FX.get_rate(transaction.currency.upper(), currency_target, transaction.date)['FX'], 2)
     
         item.irr = format_percentage(Irr(effective_current_date, currency_target, item.id, selected_brokers))
     
@@ -149,7 +149,7 @@ def closed_positions(request):
         item.investment_date = item.investment_date(selected_brokers)
         item.exit_value = currency_format(item.exit_value, currency_target, number_of_digits)
         item.realized_gl = currency_format(item.realized_gl, currency_target, number_of_digits)
-        item.capital_distribution = currency_format(item.capital_distribution, currency_target, number_of_digits)
+        item.get_capital_distribution = currency_format(item.get_capital_distribution, currency_target, number_of_digits)
 
     # Format totals
     portfolio_closed_totals = currency_format_dict_values(portfolio_closed_totals, currency_target, number_of_digits)

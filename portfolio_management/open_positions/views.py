@@ -64,7 +64,7 @@ def open_positions(request):
 
     # print(f"open_positions.views. line 61. Portfolio_open: {portfolio_open[0].position}")
 
-    totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
+    totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission', 'total_return']
     portfolio_open_totals = {}
 
     portfolio_NAV = NAV_at_date(selected_brokers, effective_current_date, currency_target)['Total NAV']
@@ -85,9 +85,9 @@ def open_positions(request):
         asset.realized_gl = asset.realized_gain_loss(effective_current_date, currency_used, selected_brokers)
         asset.unrealized_gl = asset.unrealized_gain_loss(effective_current_date, currency_used, selected_brokers)
         asset.price_change_percentage = (asset.realized_gl + asset.unrealized_gl) / abs(asset.entry_value)
-        asset.capital_distribution = asset.capital_distribution(effective_current_date, currency_used, selected_brokers)
+        asset.capital_distribution = asset.get_capital_distribution(effective_current_date, currency_used, selected_brokers)
         asset.capital_distribution_percentage = asset.capital_distribution / asset.entry_value
-        asset.commission = asset.transactions.aggregate(commission=Sum('commission'))['commission']
+        asset.commission = asset.get_commission(effective_current_date, currency_used, selected_brokers)
         asset.commission_percentage = asset.commission / asset.entry_value
         asset.total_return_amount = asset.realized_gl + asset.unrealized_gl + asset.capital_distribution + asset.commission
         asset.total_return_percentage = asset.total_return_amount / abs(asset.entry_value)
@@ -103,9 +103,12 @@ def open_positions(request):
             if not use_default_currency:
                 addition = getattr(asset, key)
             else:
-                addition = open_position_totals(asset, key, effective_current_date, currency_target)
+                addition = open_position_totals(asset, key, effective_current_date, currency_target, selected_brokers)
             portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + addition
-
+        portfolio_open_totals['price_change_percentage'] = (portfolio_open_totals['realized_gl'] + portfolio_open_totals['unrealized_gl']) / portfolio_open_totals['entry_value']
+        portfolio_open_totals['capital_distribution_percentage'] = portfolio_open_totals['capital_distribution'] / portfolio_open_totals['entry_value']
+        portfolio_open_totals['commission_percentage'] = portfolio_open_totals['commission'] / portfolio_open_totals['entry_value']
+        portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return'] / abs(portfolio_open_totals['entry_value'])
         
         # Formatting for correct representation
         asset.current_position = currency_format(asset.current_position, '', 0)

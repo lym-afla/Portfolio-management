@@ -382,13 +382,16 @@ class Assets(models.Model):
         
         return round(unrealized_gain_loss, 2)
     
-    def capital_distribution(self, date, currency=None, broker_id_list=None):
+    def get_capital_distribution(self, date, currency=None, broker_id_list=None):
         """
         Calculate the capital distribution (dividends) for this asset.
         Capital distribution is the total cash flow from 'dividend' type transactions.
         """
         total_dividends = 0
         dividend_transactions = self.transactions.filter(type='Dividend', date__lte=date)
+
+        if broker_id_list is not None:
+            dividend_transactions = dividend_transactions.filter(broker_id__in=broker_id_list)
 
         if dividend_transactions:
             if currency is None:
@@ -399,6 +402,28 @@ class Assets(models.Model):
                     if fx_rate:
                         total_dividends += dividend.cash_flow * fx_rate
             return round(total_dividends, 2)
+        else:
+            return 0
+        
+    def get_commission(self, date, currency=None, broker_id_list=None):
+        """
+        Calculate the comission for this asset.
+        """
+        total_commission = 0
+        commission_transactions = self.transactions.filter(commission__isnull=False, date__lte=date)
+
+        if broker_id_list is not None:
+            commission_transactions = commission_transactions.filter(broker_id__in=broker_id_list)
+
+        if commission_transactions:
+            if currency is None:
+                total_commission += commission_transactions.aggregate(total=Sum('commission'))['total']
+            else:
+                for commission in commission_transactions:
+                    fx_rate = FX.get_rate(commission.currency, currency, commission.date)['FX']
+                    if fx_rate:
+                        total_commission += commission.commission * fx_rate
+            return round(total_commission, 2)
         else:
             return 0
 
@@ -417,6 +442,9 @@ class Transactions(models.Model):
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.security.name} || {self.type} || {self.date}"
 
 # Table with non-public asset prices
 class Prices(models.Model):

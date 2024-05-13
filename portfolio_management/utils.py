@@ -263,11 +263,11 @@ def format_percentage(value):
     try:
         # Attempt to format the value as a percentage
         if value < 0:
-            return f"({float(-value * 100):.1f}%)"
+            return f"({float(-value * 100):.0f}%)"
         elif value == 0:
             return "–"
         else:
-            return f"{float(value * 100):.1f}%"
+            return f"{float(value * 100):.0f}%"
     except (TypeError, ValueError):
         # If the value cannot be converted to float, return 'NA'
         return value
@@ -301,8 +301,11 @@ def currency_format_dict_values(data, currency, digits):
             # Recursively format nested dictionaries
             formatted_data[key] = currency_format_dict_values(value, currency, digits)
         elif isinstance(value, Decimal):
-            # Apply the currency_format function to Decimal values
-            formatted_data[key] = currency_format(value, currency, digits)
+            if 'percentage' in key:
+                formatted_data[key] = format_percentage(value)
+            else:
+                # Apply the currency_format function to Decimal values
+                formatted_data[key] = currency_format(value, currency, digits)
         else:
             # Copy other values as is
             formatted_data[key] = value
@@ -513,6 +516,41 @@ def create_price_table(security_type):
 
     return table
 
-def open_position_totals(asset, key, date, currency)
+def open_position_totals(asset, key, date, currency, selected_brokers):
+    """
+    Calculate various totals for the given asset based on the specified key.
+
+    Parameters:
+        asset (Assets): The asset for which totals are calculated.
+        key (str): The key indicating the type of total to calculate.
+        date (datetime): The date for which totals are calculated.
+        currency (str): The target currency for conversion.
+        selected_brokers (list): List of selected broker IDs.
+
+    Returns:
+        float or None: The calculated total or None if the key is invalid.
+    """
+    if asset is None:
+        return None
     
+    asset.current_position = asset.position(date, selected_brokers)
     
+    if key == 'entry_value':
+        return asset.calculate_buy_in_price(date, currency, selected_brokers) * asset.current_position
+    elif key == 'current_value':
+        return asset.price_at_date(date, currency).price * asset.current_position
+    elif key == 'realized_gl':
+        return asset.realized_gain_loss(date, currency, selected_brokers)
+    elif key == 'unrealized_gl':
+        return asset.unrealized_gain_loss(date, currency, selected_brokers)
+    elif key == 'capital_distribution':
+        return asset.get_capital_distribution(date, currency, selected_brokers)
+    elif key == 'commission':
+        return asset.get_commission(date, currency, selected_brokers)
+    elif key == 'total_return':
+        return asset.realized_gain_loss(date, currency, selected_brokers) + \
+               asset.unrealized_gain_loss(date, currency, selected_brokers) + \
+               asset.get_capital_distribution(date, currency, selected_brokers) + \
+               asset.get_commission(date, currency, selected_brokers)
+    else:
+        return None  # Invalid key

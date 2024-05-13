@@ -118,9 +118,9 @@ def database(request):
         #     security.current_value = 0
             
         security.realised = 0
-        security.capital_distribution = 0
+        security.get_capital_distribution = 0
         for transaction in security.transactions.all():
-            security.capital_distribution += (transaction.cash_flow or 0)
+            security.get_capital_distribution += (transaction.cash_flow or 0)
             if transaction.quantity and transaction.quantity < 0:
                 security.realised += (transaction.price -\
                     security.calculate_buy_in_price(transaction.date, transaction.currency)) * \
