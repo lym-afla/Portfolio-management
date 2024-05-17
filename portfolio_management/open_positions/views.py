@@ -3,7 +3,7 @@ from django.db.models import Sum
 from django.shortcuts import render
 from common.models import Brokers, Assets, FX
 from common.forms import DashboardForm
-from utils import Irr, currency_format, calculate_buy_in_price, format_percentage, selected_brokers, effective_current_date, currency_format_dict_values
+from utils import Irr, NAV_at_date, calculate_table_output, currency_format, format_percentage, selected_brokers, effective_current_date, currency_format_dict_values
 
 
 @login_required
@@ -16,6 +16,7 @@ def open_positions(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
+    use_default_currency = user.use_default_currency_where_relevant
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -63,51 +64,82 @@ def open_positions(request):
 
     # print(f"open_positions.views. line 61. Portfolio_open: {portfolio_open[0].position}")
 
-    totals = ['entry_value', 'current_value', 'unrealized_gl', 'capital_distribution']
-    portfolio_open_totals = {}
+    # totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission', 'total_return']
+    # portfolio_open_totals = {}
+
+    categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
+
+    portfolio_open, portfolio_open_totals = calculate_table_output(portfolio_open,
+                                                                   effective_current_date,
+                                                                   categories,
+                                                                   use_default_currency,
+                                                                   currency_target,
+                                                                   selected_brokers,
+                                                                   number_of_digits
+                                                                   )
+    
+    for asset in portfolio_open:
+        print(asset)
+        
 
     # Convert current value to the target currency
-    for item in portfolio_open:
+    # for asset in portfolio_open:
 
-        item.position_at_date = item.position(effective_current_date, selected_brokers)
-        item.investment_date = item.investment_date().strftime('%#d-%b-%y')
+    #     currency_used = None if use_default_currency else currency_target
 
-        # Calculate unrealized gain/loss
-        item.entry_price = calculate_buy_in_price(item.id, effective_current_date, currency_target, selected_brokers)
-        # print(f"view.open_positions. line 70. Entry price: {item.entry_price}")
-        item.entry_value = item.entry_price * item.position_at_date
-        current_quote = item.price_at_date(effective_current_date)
-        item.current_value = round(current_quote.price * \
-            FX.get_rate(item.currency.upper(), currency_target, current_quote.date)['FX'] * \
-                item.position_at_date, 2)
-        item.unrealized_gl = item.current_value - item.entry_value
-
-        # print(f"view.open_positions. line 78. Item: {item.transactions.all()}")
-
-        # Calculate cumulative capital distribution
-        item.capital_distribution = 0
-        for transaction in item.transactions.all():
-            fx_rate = FX.get_rate(transaction.currency.upper(), currency_target, transaction.date)['FX']
-            if (transaction.type == 'Dividend'):
-                item.capital_distribution += round(transaction.cash_flow * fx_rate, 2)
+    #     # Calculate position metrics
+    #     asset.current_position = asset.position(effective_current_date, selected_brokers)
+    #     asset.investment_date = asset.dates_of_zero_positions(effective_current_date, selected_brokers)[0].strftime('%#d-%b-%y')
+    #     asset.entry_price = asset.calculate_buy_in_price(effective_current_date, currency_used, selected_brokers)
+    #     asset.entry_value = asset.entry_price * asset.current_position
+    #     asset.current_price = asset.price_at_date(effective_current_date, currency_used).price
+    #     asset.current_value = asset.current_price * asset.current_position
+    #     asset.share_of_portfolio = asset.price_at_date(effective_current_date, currency_target).price * asset.current_position / portfolio_NAV
+    #     asset.realized_gl = asset.realized_gain_loss(effective_current_date, currency_used, selected_brokers)
+    #     asset.unrealized_gl = asset.unrealized_gain_loss(effective_current_date, currency_used, selected_brokers)
+    #     asset.price_change_percentage = (asset.realized_gl + asset.unrealized_gl) / abs(asset.entry_value)
+    #     asset.capital_distribution = asset.get_capital_distribution(effective_current_date, currency_used, selected_brokers)
+    #     asset.capital_distribution_percentage = asset.capital_distribution / asset.entry_value
+    #     asset.commission = asset.get_commission(effective_current_date, currency_used, selected_brokers)
+    #     asset.commission_percentage = asset.commission / asset.entry_value
+    #     asset.total_return_amount = asset.realized_gl + asset.unrealized_gl + asset.capital_distribution + asset.commission
+    #     asset.total_return_percentage = asset.total_return_amount / abs(asset.entry_value)
         
-        # Calculate IRR for security
-        item.irr = format_percentage(Irr(effective_current_date, currency_target, asset_id=item.id, broker_id_list=selected_brokers))
+    #     # Calculate IRR for security
+    #     currency_used = asset.currency if use_default_currency else currency_target
+    #     asset.irr = format_percentage(Irr(effective_current_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers))
         
-        # Calculating totals
-        for key in totals:
-            portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + getattr(item, key)
+    #     # Calculating totals
+    #     for key in totals:
+    #         if not use_default_currency:
+    #             addition = getattr(asset, key)
+    #         else:
+    #             addition = open_position_totals(asset, key, effective_current_date, currency_target, selected_brokers)
+    #         portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + addition
+    #     portfolio_open_totals['price_change_percentage'] = (portfolio_open_totals['realized_gl'] + portfolio_open_totals['unrealized_gl']) / portfolio_open_totals['entry_value']
+    #     portfolio_open_totals['capital_distribution_percentage'] = portfolio_open_totals['capital_distribution'] / portfolio_open_totals['entry_value']
+    #     portfolio_open_totals['commission_percentage'] = portfolio_open_totals['commission'] / portfolio_open_totals['entry_value']
+    #     portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return'] / abs(portfolio_open_totals['entry_value'])
         
-        # Formatting for correct representation
-        item.entry_price = currency_format(item.entry_price, currency_target, number_of_digits)
-        item.entry_value = currency_format(item.entry_value, currency_target, number_of_digits)
-        item.price_at_date = currency_format(current_quote.price, currency_target, number_of_digits)
-        item.current_value = currency_format(item.current_value, currency_target, number_of_digits)
-        item.unrealized_gl = currency_format(item.unrealized_gl, currency_target, number_of_digits)
-        item.capital_distribution = currency_format(item.capital_distribution, currency_target, number_of_digits)
+    #     # Formatting for correct representation
+    #     asset.current_position = currency_format(asset.current_position, '', 0)
+    #     asset.entry_price = currency_format(asset.entry_price, currency_used, number_of_digits)
+    #     asset.entry_value = currency_format(asset.entry_value, currency_used, number_of_digits)
+    #     asset.current_price = currency_format(asset.current_price, currency_used, number_of_digits)
+    #     asset.current_value = currency_format(asset.current_value, currency_used, number_of_digits)
+    #     asset.share_of_portfolio = format_percentage(asset.share_of_portfolio)
+    #     asset.realized_gl = currency_format(asset.realized_gl, currency_used, number_of_digits)
+    #     asset.unrealized_gl = currency_format(asset.unrealized_gl, currency_used, number_of_digits)
+    #     asset.price_change_percentage = format_percentage(asset.price_change_percentage)
+    #     asset.capital_distribution = currency_format(asset.capital_distribution, currency_used, number_of_digits)
+    #     asset.capital_distribution_percentage = format_percentage(asset.capital_distribution_percentage)
+    #     asset.commission = currency_format(asset.commission, currency_used, number_of_digits)
+    #     asset.commission_percentage = format_percentage(asset.commission_percentage)
+    #     asset.total_return_amount = currency_format(asset.total_return_amount, currency_used, number_of_digits)
+    #     asset.total_return_percentage = format_percentage(asset.total_return_percentage)
 
-    # Format totals
-    portfolio_open_totals = currency_format_dict_values(portfolio_open_totals, currency_target, number_of_digits)
+    # # Format totals
+    # portfolio_open_totals = currency_format_dict_values(portfolio_open_totals, currency_target, number_of_digits)
 
     return render(request, 'open-positions.html', {
         'sidebar_width': sidebar_width,
