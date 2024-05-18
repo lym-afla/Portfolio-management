@@ -570,8 +570,8 @@ def calculate_table_output(portfolio, date, categories, use_default_currency, cu
     portfolio_open_totals = {}
     
     for asset in portfolio:
-        print('utils.py. Line 573', asset)
-
+        # print('utils.py. Line 573', asset)
+        print('utils.py. Line 574', asset.exit_dates(date, selected_brokers))
 
         currency_used = None if use_default_currency else currency_target
 
@@ -581,13 +581,13 @@ def calculate_table_output(portfolio, date, categories, use_default_currency, cu
             asset.entry_price = asset.calculate_buy_in_price(date, currency_used, selected_brokers)
             asset.entry_value = asset.entry_price * asset.current_position
 
-            print('utils.py. Line 584', asset.entry_price)
+            # print('utils.py. Line 584', asset.entry_price)
 
             asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
 
         else:
 
-            asset.exit_date = asset.dates_of_zero_positions(date, selected_brokers)[0]
+            asset.exit_date = asset.exit_dates(date, selected_brokers)[-1]
 
             is_long_position = asset.transactions.filter(date__lte=date)
             if selected_brokers is not None:
@@ -599,8 +599,8 @@ def calculate_table_output(portfolio, date, categories, use_default_currency, cu
                 asset.entry_value = 0
 
                 # Get entry date for the latest long position
-                entry_date = asset.dates_of_zero_positions(date, selected_brokers)[1]
-                transactions = asset.transactions.filter(date__gt=entry_date, date__lte=date, quantity__lt=0)
+                entry_date = asset.entry_dates(date, selected_brokers)[-1]
+                transactions = asset.transactions.filter(date__gte=entry_date, date__lte=date, quantity__lt=0)
                 
                 if selected_brokers is not None:
                     transactions = transactions.filter(broker_id__in=selected_brokers)
@@ -618,10 +618,11 @@ def calculate_table_output(portfolio, date, categories, use_default_currency, cu
         # Calculate position metrics
         
         if 'investment_date' in categories:
-            if asset.current_position != 0:
-                asset.investment_date = (asset.dates_of_zero_positions(date, selected_brokers)[0] + timedelta(days=1)).strftime('%#d-%b-%y')
-            else:
-                asset.investment_date = (asset.dates_of_zero_positions(date, selected_brokers)[1] + timedelta(days=1)).strftime('%#d-%b-%y')
+            asset.investment_date = asset.entry_dates(date, selected_brokers)[-1].strftime('%#d-%b-%y')
+            # if asset.current_position != 0:
+            #     asset.investment_date = (asset.dates_of_zero_positions(date, selected_brokers)[0] + timedelta(days=1)).strftime('%#d-%b-%y')
+            # else:
+            #     asset.investment_date = (asset.dates_of_zero_positions(date, selected_brokers)[1] + timedelta(days=1)).strftime('%#d-%b-%y')
         
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(date, currency_used).price
