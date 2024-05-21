@@ -53,18 +53,18 @@
             </tr>
         </thead>
         <tbody>
-        {% for asset in portfolio_closed %}    
+        {% for position in portfolio_closed %}    
             <tr>
-                <td class="text-start">{{ asset.type }}</td>
-                <td class="text-start">{{ asset.name }}</td>
-                <td class="text-center">{{ asset.investment_date }}</td>
-                <td class="text-center">{{ asset.exit_date|date:'j-M-y' }}</td>
-                <td class="text-center">{{ asset.currency | upper }}</td>
-                <td class="text-center">{{ asset.entry_value }}</td>
-                <td class="text-center">{{ asset.exit_value }}</td>
-                <td class="text-center">{{ asset.realized_gl }}</td>
-                <td class="text-center">{{ asset.capital_distribution }}</td>
-                <td class="text-center fst-italic">{{ asset.irr }}</td>
+                <td class="text-start">{{ position.type }}</td>
+                <td class="text-start">{{ position.name }}</td>
+                <td class="text-center">{{ position.investment_date }}</td>
+                <td class="text-center">{{ position.exit_date|date:'j-M-y' }}</td>
+                <td class="text-center">{{ position.currency | upper }}</td>
+                <td class="text-center">{{ position.entry_value }}</td>
+                <td class="text-center">{{ position.exit_value }}</td>
+                <td class="text-center">{{ position.realized_gl }}</td>
+                <td class="text-center">{{ position.capital_distribution }}</td>
+                <td class="text-center fst-italic">{{ position.irr }}</td>
             </tr>
         {% endfor %}
         </tbody>

@@ -701,10 +701,11 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
     
     if len(portfolio) == 0:
         return None
-    else:
-        portfolio_NAV = NAV_at_date(selected_brokers, date, currency_target)['Total NAV']
+    # else:
+        # for asset in portfolio:
+
     
-    totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
+    totals = ['entry_value', 'current_value', 'realized_gl', 'capital_distribution', 'commission']
     portfolio_closed_totals = {}
     
     for asset in portfolio:
@@ -746,16 +747,6 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
         # Calculate position metrics
         if 'investment_date' in categories:
             asset.investment_date = asset.entry_dates(date, selected_brokers)[-1].strftime('%#d-%b-%y')
-        
-        if 'current_value' in categories:
-            asset.current_price = asset.price_at_date(date, currency_used).price
-            asset.current_value = asset.current_price * asset.current_position
-            asset.share_of_portfolio = asset.price_at_date(date, currency_used).price * asset.current_position / portfolio_NAV
-            
-            # Formatting
-            asset.current_price = currency_format(asset.current_price, asset.currency if use_default_currency else currency_target, number_of_digits)
-            asset.current_value = currency_format(asset.current_value, asset.currency if use_default_currency else currency_target, number_of_digits)
-            asset.share_of_portfolio = format_percentage(asset.share_of_portfolio)
         
         if 'realized_gl' in categories:
             asset.realized_gl = asset.realized_gain_loss(date, currency_used, selected_brokers)
