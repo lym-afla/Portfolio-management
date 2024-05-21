@@ -3,7 +3,7 @@ from django.db.models import Sum
 from django.shortcuts import render
 from common.models import Brokers, Assets, FX
 from common.forms import DashboardForm
-from utils import Irr, NAV_at_date, calculate_table_output, currency_format, format_percentage, selected_brokers, effective_current_date, currency_format_dict_values
+from utils import Irr, NAV_at_date, calculate_open_table_output, currency_format, format_percentage, selected_brokers, effective_current_date, currency_format_dict_values
 
 
 @login_required
@@ -69,7 +69,7 @@ def open_positions(request):
 
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
 
-    portfolio_open, portfolio_open_totals = calculate_table_output(portfolio_open,
+    portfolio_open, portfolio_open_totals = calculate_open_table_output(portfolio_open,
                                                                    effective_current_date,
                                                                    categories,
                                                                    use_default_currency,

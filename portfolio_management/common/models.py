@@ -148,8 +148,6 @@ class Assets(models.Model):
         query = queryset.order_by('date').values_list('date', flat=True).first()
         return query
 
-    from django.db import models
-
     def entry_dates(self, date, broker_id_list=None):
         """
         Returns a list of dates when the position changes from 0 to non-zero.
@@ -191,50 +189,6 @@ class Assets(models.Model):
             position = new_position
 
         return exit_dates
-
-
-
-    # def dates_of_zero_positions(self, date, broker_id_list=None):
-    #     """
-    #     Calculate the entry dates for a specific position as of a given date.
-
-    #     Parameters:
-    #         date (datetime): The date for which the entry dates are calculated.
-    #         broker_id_list (list, optional): A list of broker IDs to filter the transactions. Defaults to None.
-
-    #     Returns:
-    #         list: A list of entry dates for the position in reversed chronological order.
-    #     """
-        
-    #     position = self.position(date, broker_id_list)
-
-    #     # Get the transactions for this asset
-    #     transactions = self.transactions.filter(date__lte=date, quantity__isnull=False).all()
-    #     if broker_id_list is not None:
-    #         transactions = transactions.filter(broker_id__in=broker_id_list)
-
-    #     # Order the transactions by date in ascending order
-    #     transactions = transactions.order_by('-date')
-
-    #     # Initialize the list of entry dates
-    #     entry_dates = []
-
-    #     # Check if the position is 0
-    #     if position == 0 and transactions:
-    #         # Add the date of the last transaction to the list of entry dates
-    #         entry_dates.append(transactions.first().date)
-
-    #     # Iterate over the transactions
-    #     for transaction in transactions:
-    #         # Check if the quantity is not None before subtracting it from the position
-    #         position -= transaction.quantity
-            
-    #         # Check if the position is 0
-    #         if position == 0:
-    #             # Add the date of this transaction to the list of entry dates
-    #             entry_dates.append(transaction.date - timedelta(days=1))
-
-    #     return entry_dates
 
     def calculate_buy_in_price(self, date, currency=None, broker_id_list=None, start_date=None):
         """
@@ -351,11 +305,6 @@ class Assets(models.Model):
 
         # Step 1: Find the latest date when position is 0
         latest_entry_date = self.entry_dates(date, broker_id_list)[-1]
-        # zero_positions_dates = self.dates_of_zero_positions(date)
-        # if zero_positions_dates:
-        #     latest_zero_position = self.dates_of_zero_positions(date)[0]
-        # else:
-        #     return 0
 
         # Step 2: Sum up values of all transactions before that date
         transactions_before_entry = self.transactions.filter(date__lt=latest_entry_date)

@@ -3,7 +3,7 @@ from django.shortcuts import render
 from django.db.models import Sum
 from common.models import FX, Assets, Brokers
 from common.forms import DashboardForm
-from utils import Irr, calculate_table_output, currency_format, currency_format_dict_values, format_percentage, selected_brokers, effective_current_date
+from utils import Irr, calculate_closed_table_output, calculate_open_table_output, currency_format, currency_format_dict_values, format_percentage, selected_brokers, effective_current_date
 
 @login_required
 def closed_positions(request):
@@ -49,22 +49,35 @@ def closed_positions(request):
         }
         dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
 
-    # Get closed positions
-    portfolio_closed = Assets.objects.filter(
+    # # Get closed positions
+    # portfolio_closed = Assets.objects.filter(
+    #     investor=request.user,
+    #     transactions__date__lte=effective_current_date,
+    #     transactions__broker_id__in=selected_brokers
+    # ).prefetch_related(
+    #     'transactions'
+    # ).annotate(
+    #     total_quantity=Sum('transactions__quantity')
+    # ).filter(
+    #     total_quantity=0
+    # )
+
+    assets = Assets.objects.filter(
         investor=request.user,
         transactions__date__lte=effective_current_date,
-        transactions__broker_id__in=selected_brokers
-    ).prefetch_related(
-        'transactions'
-    ).annotate(
-        total_quantity=Sum('transactions__quantity')
-    ).filter(
-        total_quantity=0
-    )
+        transactions__broker_id__in=selected_brokers,
+        transactions__quantity__isnull=False
+    ).distinct()
+
+    portfolio_closed = []
+
+    for asset in assets:
+        if len(asset.exit_dates(effective_current_date)) != 0:
+            portfolio_closed.append(asset)
 
     categories = ['investment_date', 'exit_date', 'realized_gl', 'capital_distribution', 'commission']
 
-    portfolio_closed, portfolio_closed_totals = calculate_table_output(portfolio_closed,
+    portfolio_closed, portfolio_closed_totals = calculate_closed_table_output(portfolio_closed,
                                                                    effective_current_date,
                                                                    categories,
                                                                    use_default_currency,
