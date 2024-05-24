@@ -190,7 +190,7 @@ class Assets(models.Model):
 
         return exit_dates
 
-    def calculate_buy_in_price(self, date, currency=None, broker_id_list=None, start_date=None):
+    def calculate_effective_price(self, date, type='entry', currency=None, broker_id_list=None, start_date=None):
         """
         Calculates the buy-in price for the given date, currency, broker ID list, and start date.
 
@@ -221,15 +221,11 @@ class Assets(models.Model):
 
             # Step 2: Get latest entry date
             entry_date = self.entry_dates(date, broker_id_list)[-1]
-            # if self.position(date) == 0:
-            #     entry_date = self.dates_of_zero_positions(date)[1]
-            # else:
-            #     entry_date = self.dates_of_zero_positions(date)[0]
 
             if start_date and start_date > entry_date:
                 entry_date = start_date
 
-                transactions = transactions.filter(date__gt=entry_date)
+                transactions = transactions.filter(date__gte=entry_date)
                 position = self.position(entry_date, broker_id_list)
                 if position != 0:
                     transactions = list(transactions) + [{
@@ -240,15 +236,17 @@ class Assets(models.Model):
                     }]
                     is_long_position = position > 0
             else:
-                transactions = transactions.filter(date__gt=entry_date)
+                transactions = transactions.filter(date__gte=entry_date)
 
             if is_long_position is None:
                 first_transaction = transactions.order_by('date').first()
                 is_long_position = first_transaction['quantity'] > 0
 
             # Step 3: Amend the calculation method. For every entry transaction buy-in price is the weighted average of previous buy-in price and price for the current transaction.
-            value = 0
-            quantity = 0
+            value_entry = 0
+            quantity_entry = 0
+            value_exit = 0
+            quantity_exit = 0
             for transaction in transactions:
                 
                 if currency is not None:
@@ -257,21 +255,44 @@ class Assets(models.Model):
                     fx_rate = 1
 
                 if fx_rate:
-                    previous_buy_in_price = value / quantity if quantity else 0
                     current_price = transaction['price'] * fx_rate
-                    weight_previous = quantity
                     weight_current = transaction['quantity']
-                    # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
-                    price = current_price if (is_long_position and transaction['quantity'] > 0) or (not is_long_position and transaction['quantity'] < 0) else previous_buy_in_price
-                    
-                    if (weight_previous + weight_current) == 0:
-                        buy_in_price = previous_buy_in_price
-                    else:
-                        buy_in_price = (previous_buy_in_price * weight_previous + price * weight_current) / (weight_previous + weight_current)
-                    value = buy_in_price * (quantity + transaction['quantity'])
-                    quantity += transaction['quantity']
 
-            return value / quantity if quantity else previous_buy_in_price
+                    # Calculate entry price
+                    previous_entry_price = value_entry / quantity_entry if quantity_entry else 0
+                    weight_entry_previous = quantity_entry
+                    # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
+                    entry_price = current_price if (is_long_position and transaction['quantity'] > 0) or (not is_long_position and transaction['quantity'] < 0) else previous_entry_price
+                    
+                    if (weight_entry_previous + weight_current) == 0:
+                        entry_price = previous_entry_price
+                    else:
+                        entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
+                    value_entry = entry_price * (quantity_entry + transaction['quantity'])
+                    quantity_entry += transaction['quantity']
+
+                    # Calculate exit price
+                    previous_exit_price = value_exit / quantity_exit if quantity_exit else 0
+                    weight_exit_previous = quantity_exit
+                    # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
+                    exit_price = current_price if (is_long_position and transaction['quantity'] < 0) or (not is_long_position and transaction['quantity'] > 0) else previous_exit_price
+                    
+                    if (weight_exit_previous + weight_current) == 0:
+                        exit_price = previous_exit_price
+                    else:
+                        exit_price = (previous_exit_price * weight_exit_previous + exit_price * weight_current) / (weight_exit_previous + weight_current)
+                    value_exit = exit_price * (quantity_exit + transaction['quantity'])
+                    quantity_exit += transaction['quantity']
+
+            # effective_entry_price = value_entry / quantity_entry if quantity_entry else previous_entry_price
+            # effective_exit_price = value_exit / quantity_exit if quantity_exit else previous_exit_price
+
+            if type == 'buy':
+                return value_entry / quantity_entry if quantity_entry else previous_entry_price
+            elif type == 'sell':
+                return value_exit / quantity_exit if quantity_exit else previous_exit_price
+
+            # return value_entry / quantity_entry if quantity_entry else previous_entry_price
 
         except Exception as e:
             print(f"Error: {e}")
@@ -331,7 +352,7 @@ class Assets(models.Model):
             exit_transactions = self.transactions.filter(type=exit_type, date__gte=latest_entry_date, date__lte=date)
 
             for exit in exit_transactions:
-                buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list)
+                buy_in_price = self.calculate_effective_price(exit.date, 'entry', exit.currency, broker_id_list)
                 if buy_in_price is not None:
                     if currency is not None:
                         fx_rate = FX.get_rate(exit.currency, currency, exit.date)['FX']
@@ -366,7 +387,7 @@ class Assets(models.Model):
         current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
         # print('Current price', current_price)
         
-        buy_in_price = self.calculate_buy_in_price(date, None, broker_id_list)
+        buy_in_price = self.calculate_effective_price(date, 'entry', currency=None, broker_id_list=broker_id_list)
         # print("Buy-in price", buy_in_price)
         if buy_in_price is not None:
             if currency is not None:

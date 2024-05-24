@@ -123,11 +123,11 @@ def database(request):
             security.get_capital_distribution += (transaction.cash_flow or 0)
             if transaction.quantity and transaction.quantity < 0:
                 security.realised += (transaction.price -\
-                    security.calculate_buy_in_price(transaction.date, transaction.currency)) * \
+                    security.calculate_effective_price(transaction.date, 'entry', transaction.currency)) * \
                         -transaction.quantity
         try:
             security.unrealised = security.current_value - \
-                (security.calculate_buy_in_price(effective_current_date, security.currency)) * \
+                (security.calculate_effective_price(effective_current_date, 'entry', security.currency)) * \
                     security.open_position
         except:
             security.unrealised = 0

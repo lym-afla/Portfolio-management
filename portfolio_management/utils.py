@@ -581,7 +581,7 @@ def calculate_open_table_output(portfolio, date, categories, use_default_currenc
             print("The position is zero. The asset is not in the portfolio.")
             return None
 
-        asset.entry_price = asset.calculate_buy_in_price(date, currency_used, selected_brokers)
+        asset.entry_price = asset.calculate_buy_in_price(date, 'entry', currency_used, selected_brokers)
         asset.entry_value = asset.entry_price * asset.current_position
 
         # print('utils.py. Line 584', asset.entry_price)
@@ -701,8 +701,8 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
     
     if len(portfolio) == 0:
         return None
-    # else:
-        # for asset in portfolio:
+    else:
+        closed_positions = []
 
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'capital_distribution', 'commission']
@@ -711,8 +711,21 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
     for asset in portfolio:
         # print('utils.py. Line 573', asset)
         # print('utils.py. Line 574', asset.exit_dates(date, selected_brokers))
+        for exit_date in asset.exit_dates(effective_current_date):
+            
+            currency_used = None if use_default_currency else currency_target
+            
+            position = {}
+            position['type'] = asset.type
+            position['name'] = asset.name
+            position['investment_date'] = asset.entry_dates(exit_date)[-1]
+            position['exit_date'] = exit_date
+            position['currency'] = asset.currency
+            position['buy_in_price'] = asset.calculate_effective_price(exit_date, 'entry', currency_used, selected_brokers)
+            position['sell_in_price'] = asset.calculate_effective_price(exit_date, 'exit', currency_used, selected_brokers)
 
-        currency_used = None if use_default_currency else currency_target
+
+        
 
         asset.current_position = asset.position(date, selected_brokers)
 
@@ -787,7 +800,7 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
                 addition = getattr(asset, key)
             else:
                 if key == 'entry_value':
-                    addition = asset.calculate_buy_in_price(date, currency_target, selected_brokers) * asset.current_position
+                    addition = asset.calculate_buy_in_price(date, 'entry',currency_target, selected_brokers) * asset.current_position
                 elif key == 'current_value':
                     addition = asset.price_at_date(date, currency_target).price * asset.current_position
                 elif key == 'realized_gl':
