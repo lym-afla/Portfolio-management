@@ -56,20 +56,6 @@ def transactions(request):
         broker_id__in=selected_brokers
     ).select_related('broker', 'security').order_by('date')
 
-    # transactions = db.session.query(PA_transactions, PA.name).join(PA).\
-    #     filter(func.date(PA_transactions.date) <= table_date,
-    #            PA_transactions.broker_id.in_(selected_brokers)).all()
-                   
-    # # Add cash movements
-    # transactions.extend(db.session.query(PA_transactions, PA_transactions.type).\
-    #     filter(func.date(PA_transactions.date) <= table_date,
-    #        PA_transactions.broker_id.in_(selected_brokers),
-    #        PA_transactions.security_id == None).all())
-        
-    # transactions.sort(key=lambda x: x[0].date)
-        
-    # Calculate cash balance for each currency
-    # balance = [0 for _ in range(len(currencies))]
     balance = {}
     for transaction in transactions:
         # transaction.balances = [0 for _ in range(len(currencies))]
@@ -79,15 +65,19 @@ def transactions(request):
                 balance[currency] = balance.get(currency,0) - (transaction.price or 0) * (transaction.quantity or 0) \
                     + (transaction.cash_flow or 0) \
                         + (transaction.commission or 0)
-                transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
+            else:
+                balance[currency] = balance.get(currency,0)
+            transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
 
         # Prepare data for passing to the front-end
         if transaction.quantity:
-            transaction.value = currency_format(-transaction.quantity * transaction.price, currency_target, number_of_digits)
-            transaction.quantity = abs(transaction.quantity)
+            transaction.value = currency_format(-transaction.quantity * transaction.price + (transaction.commission or 0), transaction.currency, number_of_digits)
+            transaction.quantity = abs(round(transaction.quantity, 0))
         if transaction.cash_flow:
-            transaction.cash_flow = currency_format(transaction.cash_flow, currency, number_of_digits)
+            transaction.cash_flow = currency_format(transaction.cash_flow, transaction.currency, number_of_digits)
         transaction.date = str(transaction.date.strftime('%d-%b-%y'))
+        if transaction.commission:
+            transaction.commission = currency_format(-transaction.commission, transaction.currency, number_of_digits)
            
     return render(request, 'transactions.html', {
         'sidebar_width': sidebar_width,

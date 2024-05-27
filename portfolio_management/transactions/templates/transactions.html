@@ -71,6 +71,7 @@
                     {% else %}
                         {{ transaction.quantity }}
                         @ {{ transaction.price }} of {{ transaction.security.name }}
+                        <span class="small text-muted"> || Fee: {{ transaction.commission }}</span>
                     {% endif %}
                 </td>
                 <td class="text-center">{{ transaction.type }}</td>

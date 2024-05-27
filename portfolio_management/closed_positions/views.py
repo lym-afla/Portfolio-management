@@ -86,8 +86,8 @@ def closed_positions(request):
                                                                    number_of_digits
                                                                    )
     
-    for asset in portfolio_closed:
-        print(f"Closed. views.py. Line 77. {asset}")
+    # for asset in portfolio_closed:
+    #     print(f"Closed. views.py. Line 77. {asset}")
 
     # totals = ['realized_gl', 'capital_distribution']
     # portfolio_closed_totals = {}

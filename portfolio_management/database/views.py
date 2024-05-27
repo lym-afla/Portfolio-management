@@ -74,12 +74,6 @@ def database(request):
                     order_by('date').first().date
         except:
             broker.first_investment = 'None'        
-        
-        # broker.cash = {}    
-        # for currency in currencies:
-        #     cash_flow = sum((-(x.price or 0) * (x.quantity or 0) + (x.cash_flow or 0)) \
-        #         for x in broker.transactions.all() if x.currency == currency)
-        #     broker.cash[currency] = cash_flow
 
         broker.cash = broker.balance(effective_current_date)
     
@@ -123,11 +117,11 @@ def database(request):
             security.get_capital_distribution += (transaction.cash_flow or 0)
             if transaction.quantity and transaction.quantity < 0:
                 security.realised += (transaction.price -\
-                    security.calculate_effective_price(transaction.date, 'entry', transaction.currency)) * \
+                    security.calculate_buy_in_price(transaction.date, transaction.currency)) * \
                         -transaction.quantity
         try:
             security.unrealised = security.current_value - \
-                (security.calculate_effective_price(effective_current_date, 'entry', security.currency)) * \
+                (security.calculate_buy_in_price(effective_current_date, security.currency)) * \
                     security.open_position
         except:
             security.unrealised = 0

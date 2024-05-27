@@ -11,9 +11,9 @@
                 // Make the default sorting by column 4 (DATE) and do not show sorting for selected columns
                 "autoWidth": false,
                 columnDefs: [
-                    { orderable: false, targets: [0, 2, 3, 5, 7, 8, 13] }
+                    { orderable: false, targets: [0, 2, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18] }
                 ],
-                order: [[2, 'asc']],
+                order: [[4, 'asc']],
                 dom: 'rt<"bottom"<"row"<"col-md-4"l><"col-md-4 text-center"f><"col-md-4 text-right"p>>>'
                 {% comment %} "dom": "<'row'<tr>>" +
                             "<'row'<'col-md-3'l><'col-md-4'f><'col-md-5'p>>",
@@ -40,16 +40,36 @@
     <table id="table-closed" class="table table-hover table-striped align-middle">
         <thead>
             <tr>
-                <th class="text-start">Type</th>
-                <th class="text-start">Name</th>
-                <th class="text-center">Investment date</th>
-                <th class="text-center">Closure date</th>
-                <th class="text-center">Currency</th>
-                <th class="text-center">Investment</th>
-                <th class="text-center">Exit value</th>
-                <th class="text-center">Realized gain/(loss)</th>
-                <th class="text-center">Capital distribution</th>
-                <th class="text-center">Return</th>
+                <th class="text-start" rowspan="2">Type</th>
+                <th class="text-start" rowspan="2">Name</th>
+                <th class="text-center" rowspan="2">Currency</th>
+                <th class="text-center" rowspan="2">Max position</th>
+                <th class="text-center colspan" colspan="2">Entry</th>
+                <th rowspan="2"></th>
+                <th class="text-center colspan" colspan="2">Exit</th>
+                <th rowspan="2"></th>
+                <th class="text-center colspan" colspan="2">Realized gain/(loss)</th>
+                <th rowspan="2"></th>
+                <th class="text-center colspan" colspan="2">Capital distribution</th>
+                <th rowspan="2"></th>
+                <th class="text-center colspan" colspan="2">Commission</th>
+                <th rowspan="2"></th>
+                <th class="text-center colspan" colspan="3">Total return</th>
+            </tr>
+            <tr>
+                <th class="text-center">Date</th>
+                <th class="text-center">Price</th>
+                <th class="text-center">Date</th>
+                <th class="text-center">Price</th>
+                <th class="text-center">Amount</th>
+                <th class="text-center">%</th>
+                <th class="text-center">Amount</th>
+                <th class="text-center">%</th>
+                <th class="text-center">Amount</th>
+                <th class="text-center">%</th>
+                <th class="text-center">Amount</th>
+                <th class="text-center">%</th>
+                <th class="text-center">IRR</th>
             </tr>
         </thead>
         <tbody>
@@ -57,13 +77,25 @@
             <tr>
                 <td class="text-start">{{ position.type }}</td>
                 <td class="text-start">{{ position.name }}</td>
-                <td class="text-center">{{ position.investment_date }}</td>
-                <td class="text-center">{{ position.exit_date|date:'j-M-y' }}</td>
                 <td class="text-center">{{ position.currency | upper }}</td>
-                <td class="text-center">{{ position.entry_value }}</td>
-                <td class="text-center">{{ position.exit_value }}</td>
+                <td class="text-center">{{ position.max_position }}</td>
+                <td class="text-center">{{ position.investment_date|date:'j-M-y' }}</td>
+                <td class="text-center">{{ position.entry_price }}</td>
+                <td></td>
+                <td class="text-center">{{ position.exit_date|date:'j-M-y' }}</td>
+                <td class="text-center">{{ position.exit_price }}</td>
+                <td></td>
                 <td class="text-center">{{ position.realized_gl }}</td>
+                <td class="text-center">{{ position.price_change_percentage }}</td>
+                <td></td>
                 <td class="text-center">{{ position.capital_distribution }}</td>
+                <td class="text-center">{{ position.capital_distribution_percentage }}</td>
+                <td></td>
+                <td class="text-center">{{ position.commission }}</td>
+                <td class="text-center">{{ position.commission_percentage }}</td>
+                <td></td>
+                <td class="text-center">{{ position.total_return_amount }}</td>
+                <td class="text-center">{{ position.total_return_percentage }}</td>
                 <td class="text-center fst-italic">{{ position.irr }}</td>
             </tr>
         {% endfor %}

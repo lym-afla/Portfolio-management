@@ -190,7 +190,7 @@ class Assets(models.Model):
 
         return exit_dates
 
-    def calculate_effective_price(self, date, type='entry', currency=None, broker_id_list=None, start_date=None):
+    def calculate_buy_in_price(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculates the buy-in price for the given date, currency, broker ID list, and start date.
 
@@ -245,8 +245,7 @@ class Assets(models.Model):
             # Step 3: Amend the calculation method. For every entry transaction buy-in price is the weighted average of previous buy-in price and price for the current transaction.
             value_entry = 0
             quantity_entry = 0
-            value_exit = 0
-            quantity_exit = 0
+
             for transaction in transactions:
                 
                 if currency is not None:
@@ -268,31 +267,10 @@ class Assets(models.Model):
                         entry_price = previous_entry_price
                     else:
                         entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
-                    value_entry = entry_price * (quantity_entry + transaction['quantity'])
                     quantity_entry += transaction['quantity']
+                    value_entry = entry_price * quantity_entry
 
-                    # Calculate exit price
-                    previous_exit_price = value_exit / quantity_exit if quantity_exit else 0
-                    weight_exit_previous = quantity_exit
-                    # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
-                    exit_price = current_price if (is_long_position and transaction['quantity'] < 0) or (not is_long_position and transaction['quantity'] > 0) else previous_exit_price
-                    
-                    if (weight_exit_previous + weight_current) == 0:
-                        exit_price = previous_exit_price
-                    else:
-                        exit_price = (previous_exit_price * weight_exit_previous + exit_price * weight_current) / (weight_exit_previous + weight_current)
-                    value_exit = exit_price * (quantity_exit + transaction['quantity'])
-                    quantity_exit += transaction['quantity']
-
-            # effective_entry_price = value_entry / quantity_entry if quantity_entry else previous_entry_price
-            # effective_exit_price = value_exit / quantity_exit if quantity_exit else previous_exit_price
-
-            if type == 'buy':
-                return value_entry / quantity_entry if quantity_entry else previous_entry_price
-            elif type == 'sell':
-                return value_exit / quantity_exit if quantity_exit else previous_exit_price
-
-            # return value_entry / quantity_entry if quantity_entry else previous_entry_price
+            return value_entry / quantity_entry if quantity_entry else previous_entry_price
 
         except Exception as e:
             print(f"Error: {e}")
@@ -321,25 +299,27 @@ class Assets(models.Model):
         The exit price and the average buy-in price are converted to
         the specified currency using the FX.get_rate function.
         """
-        realized_gain_loss = 0
-        total_gl_before_entry = 0
+        realized_gain_loss_for_current_position = 0
+        total_gl_before_current_position = 0
+        latest_exit_date = None
 
-        # Step 1: Find the latest date when position is 0
-        latest_entry_date = self.entry_dates(date, broker_id_list)[-1]
+        if len(self.exit_dates(date, broker_id_list)) != 0:
+            # Step 1: Find the latest date when position is 0
+            latest_exit_date = self.exit_dates(date, broker_id_list)[-1]
 
-        # Step 2: Sum up values of all transactions before that date
-        transactions_before_entry = self.transactions.filter(date__lt=latest_entry_date)
-        if broker_id_list is not None:
-            transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
-        
-        if currency is not None:
-            for transaction in transactions_before_entry:
-                fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
-                if fx_rate:
-                    total_gl_before_entry -= transaction.price * transaction.quantity * fx_rate
-        else:
-            total_gl_before_entry = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
-            total_gl_before_entry = -total_gl_before_entry
+            # Step 2: Sum up values of all transactions before that date
+            transactions_before_entry = self.transactions.filter(date__lte=latest_exit_date, quantity__isnull=False)
+            if broker_id_list is not None:
+                transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
+            
+            if currency is not None:
+                for transaction in transactions_before_entry:
+                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
+                    if fx_rate:
+                        total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
+            else:
+                total_gl_before_current_position = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
+                total_gl_before_current_position = -total_gl_before_current_position
 
         # Step 3: Determine whether it is a long or short position
         position_at_date = self.position(date)
@@ -349,22 +329,29 @@ class Assets(models.Model):
             exit_type = 'Sell' if is_long_position else 'Buy'
 
             # Step 4: Calculate realized gain/loss based on exit price and buy-in price
-            exit_transactions = self.transactions.filter(type=exit_type, date__gte=latest_entry_date, date__lte=date)
+            exit_transactions = self.transactions.filter(type=exit_type, date__lte=date)
+            if latest_exit_date:
+                exit_transactions = exit_transactions.filter(date__gt=latest_exit_date)
+            if broker_id_list is not None:
+                exit_transactions = exit_transactions.filter(broker_id__in=broker_id_list)
 
             for exit in exit_transactions:
-                buy_in_price = self.calculate_effective_price(exit.date, 'entry', exit.currency, broker_id_list)
+                buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list)
                 if buy_in_price is not None:
                     if currency is not None:
                         fx_rate = FX.get_rate(exit.currency, currency, exit.date)['FX']
                     else:
                         fx_rate = 1
                     if fx_rate:
-                        realized_gain_loss -= (exit.price - buy_in_price) * fx_rate * (exit.quantity)
+                        realized_gain_loss_for_current_position -= (exit.price - buy_in_price) * fx_rate * (exit.quantity)
                 else:
                     print("WARNING: Buy-in price is not available")
                     return None
 
-        return round(total_gl_before_entry + realized_gain_loss, 2)
+        return {
+            "current_position": round(realized_gain_loss_for_current_position, 2),
+            "all_time": round(total_gl_before_current_position + realized_gain_loss_for_current_position, 2)
+        }
     
     def unrealized_gain_loss(self, date, currency=None, broker_id_list=None):
         """
@@ -383,12 +370,9 @@ class Assets(models.Model):
         unrealized_gain_loss = 0
 
         current_position = self.position(date, broker_id_list)
-        # print('Current position', current_position)
         current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
-        # print('Current price', current_price)
         
-        buy_in_price = self.calculate_effective_price(date, 'entry', currency=None, broker_id_list=broker_id_list)
-        # print("Buy-in price", buy_in_price)
+        buy_in_price = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list)
         if buy_in_price is not None:
             if currency is not None:
                 fx_rate = FX.get_rate(self.currency, currency, date)['FX']
@@ -399,7 +383,7 @@ class Assets(models.Model):
         
         return round(unrealized_gain_loss, 2)
     
-    def get_capital_distribution(self, date, currency=None, broker_id_list=None):
+    def get_capital_distribution(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculate the capital distribution (dividends) for this asset.
         Capital distribution is the total cash flow from 'dividend' type transactions.
@@ -409,6 +393,9 @@ class Assets(models.Model):
 
         if broker_id_list is not None:
             dividend_transactions = dividend_transactions.filter(broker_id__in=broker_id_list)
+
+        if start_date is not None:
+            dividend_transactions = dividend_transactions.filter(date__gte=start_date)
 
         if dividend_transactions:
             if currency is None:
@@ -422,7 +409,7 @@ class Assets(models.Model):
         else:
             return 0
         
-    def get_commission(self, date, currency=None, broker_id_list=None):
+    def get_commission(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculate the comission for this asset.
         """
@@ -431,6 +418,9 @@ class Assets(models.Model):
 
         if broker_id_list is not None:
             commission_transactions = commission_transactions.filter(broker_id__in=broker_id_list)
+
+        if start_date is not None:
+            commission_transactions = commission_transactions.filter(date__gte=start_date)
 
         if commission_transactions:
             if currency is None:
