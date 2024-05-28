@@ -9,11 +9,12 @@ from users.models import CustomUser
 # Table with FX data
 class FX(models.Model):
     date = models.DateField(primary_key=True)
-    USDEUR = models.DecimalField(max_digits=7, decimal_places=4)
-    USDGBP = models.DecimalField(max_digits=7, decimal_places=4)
-    CHFGBP = models.DecimalField(max_digits=7, decimal_places=4)
-    RUBUSD = models.DecimalField(max_digits=7, decimal_places=4)
-    PLNUSD = models.DecimalField(max_digits=7, decimal_places=4)
+    investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='FX')
+    USDEUR = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+    USDGBP = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+    CHFGBP = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+    RUBUSD = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+    PLNUSD = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
 
     # Get FX quote for date
     @classmethod
@@ -50,23 +51,32 @@ class FX(models.Model):
                 if i_source in element and i_target in element:
                     if element.find(i_source) == 0:
                         try:
-                            fx_call = cls.objects.filter(date__lte=date).values('date', quote=F(f'{i_source}{i_target}')).order_by("-date").first()
+                            fx_call = cls.objects.filter(
+                                date__lte=date,
+                                **{f'{i_source}{i_target}__isnull': False}
+                            ).values(
+                                'date', quote=F(f'{i_source}{i_target}')
+                            ).order_by("-date").first()
                         except:
                             raise ValueError
                         fx_rate *= fx_call['quote']
-                        # dates_list.append(fx_call['date'])
-                        # dates_async = (dates_list[0] != fx_call['date']) or dates_async
                     else:
                         try:
-                            fx_call = cls.objects.filter(date__lte=date).values('date', quote=F(f'{i_target}{i_source}')).order_by("-date").first()
+                            fx_call = cls.objects.filter(
+                                date__lte=date,
+                                **{f'{i_target}{i_source}__isnull': False}
+                            ).values(
+                                'date', quote=F(f'{i_target}{i_source}')
+                            ).order_by("-date").first()
                         except:
                             raise ValueError
+                        print("models. Line 63", f'{i_target}{i_source}', fx_call)
                         fx_rate /= fx_call['quote']
                     dates_list.append(fx_call['date'])
                     dates_async = (dates_list[0] != fx_call['date']) or dates_async
                     break
         
-        # Thea target is to multiply when using, not divide
+        # The target is to multiply when using, not divide
         fx_rate = round(1 / fx_rate, 6)
                 
         return {
@@ -122,7 +132,7 @@ class Assets(models.Model):
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
-        # print(f"Models. Assets. {self.name} Current_price. {self.prices.filter(date__lte=price_date).all()}")
+        print(f"Models. Assets. {self.name} Current_price. {self.prices.filter(date__lte=price_date).all()}")
         try:
             quote = self.prices.filter(date__lte=price_date).order_by('-date').first()
             if currency is not None:

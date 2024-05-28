@@ -103,16 +103,16 @@
                         </li>
                         <hr>
                         <li>
-                            <a href="#" class="nav-link {% if request.path == '/database/' %}active{% else %}link-dark{% endif %}" onclick="toggleDatabaseSubMenu()">Database</a>
+                            <a class="nav-link" onclick="toggleDatabaseSubMenu()">Database</a>
                                 <ul class="nav flex-column ms-3" id="databaseSubMenu" style="display: none;">
                                     <li>
-                                        <a href="{% url 'database:database' %}" class="nav-link {% if request.path == '/database/' %}active{% else %}link-dark{% endif %}">Brokers</a>
+                                        <a href="{% url 'database:brokers' %}" class="nav-link {% if request.path == '/database/brokers/' %}active{% else %}link-dark{% endif %}">Brokers</a>
                                     </li>
                                     <li>
-                                        <a href="{% url 'database:database' %}" class="nav-link {% if request.path == '/database/' %}active{% else %}link-dark{% endif %}">Securities</a>
+                                        <a href="{% url 'database:securities' %}" class="nav-link {% if request.path == '/database/securities/' %}active{% else %}link-dark{% endif %}">Securities</a>
                                     </li>
                                     <li>
-                                        <a href="{% url 'database:database' %}" class="nav-link {% if request.path == '/database/' %}active{% else %}link-dark{% endif %}">Prices</a>
+                                        <a href="{% url 'database:prices' %}" class="nav-link {% if request.path == '/database/prices/' %}active{% else %}link-dark{% endif %}">Prices</a>
                                     </li>
                                 </ul>
                         </li>

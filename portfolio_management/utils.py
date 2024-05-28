@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal
 from common.models import Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, F
@@ -63,6 +64,8 @@ def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Cur
     portfolio_brokers = Brokers.objects.filter(id__in=broker_ids)
     analysis = {'Asset type': {}, 'Currency': {}, 'Asset class': {}, 'Broker': {}, 'Total NAV': 0}
     item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
+
+    print(f"utils.py, line 68 {portfolio}. Date: {date}")
 
     for security in portfolio:
         current_value = security.position(date, broker_ids) * security.price_at_date(date, target_currency).price
@@ -499,21 +502,26 @@ def calculate_from_date(to_date, timeline):
 #         return None
     
 # Support function to create price table for Database page
-def create_price_table(security_type):
+def create_price_table(security_type, user):
     
     # Get security IDs by security type
-    selected_ids = Assets.objects.filter(type=security_type).values_list('id', flat=True)
+    selected_ids = Assets.objects.filter(type=security_type, investor=user).values_list('id', flat=True)
 
-    # Initialize table as a list of dates
-    dates = Prices.objects.dates('date', 'day')
-    table = [[date] for date in dates]
+    # Initialize table as a dictionary of lists with dates as keys
+    price_data = defaultdict(lambda: [None] * len(selected_ids))
+    dates = set()
+    
+    for index, item in enumerate(selected_ids):
+        prices = Prices.objects.filter(security_id=item).order_by('date').values_list('date', 'price')
+        for date, price in prices:
+            price_data[date][index] = price
+            dates.add(date)
 
-    # Add columns with each security
-    for item in selected_ids:
-        asset = Assets.objects.get(id=item)
-        prices = Prices.objects.filter(security_id=item).order_by('date').values_list('price', flat=True)
-        for i, price in enumerate(prices):
-            table[i].append(price)
+    # Sort the dates
+    sorted_dates = sorted(dates)
+    
+    # Convert the dictionary to a list with sorted dates
+    table = [[date] + price_data[date] for date in sorted_dates]
 
     # Add column headers: Name and ISIN
     header_row_1 = ['Date'] + [Assets.objects.get(id=item).name for item in selected_ids]
@@ -522,7 +530,7 @@ def create_price_table(security_type):
     table.insert(0, header_row_2)
     table.insert(0, header_row_1)
 
-    # Filter for rows where all prices are empty
+    # Filter for rows where all prices are None
     table = [x for x in table if any(i is not None for i in x[1:])]
 
     return table
@@ -593,7 +601,7 @@ def calculate_open_table_output(portfolio, date, categories, use_default_currenc
         entry_date = asset.entry_dates(date, selected_brokers)[-1]
         
         if 'investment_date' in categories:
-            asset.investment_date = entry_date.strftime('%#d-%b-%y')
+            asset.investment_date = entry_date
         
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(date, currency_used).price
