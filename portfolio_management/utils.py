@@ -65,7 +65,7 @@ def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Cur
     analysis = {'Asset type': {}, 'Currency': {}, 'Asset class': {}, 'Broker': {}, 'Total NAV': 0}
     item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
 
-    print(f"utils.py, line 68 {portfolio}. Date: {date}")
+    # print(f"utils.py, line 68 {portfolio}. Date: {date}")
 
     for security in portfolio:
         current_value = security.position(date, broker_ids) * security.price_at_date(date, target_currency).price
@@ -157,7 +157,6 @@ def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None
             fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
         else:
             fx_rate = 1
-
         cash_flows.append(round(cash_flow * fx_rate, 2))
         transaction_dates.append(transaction.date)
 
@@ -169,9 +168,6 @@ def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None
         # Otherwise, append the portfolio value as a separate cash flow
         cash_flows.append(portfolio_value)
         transaction_dates.append(date)
-
-    # name = transactions.first().security.name
-    print(f"utils. line 162. Date: {date}. Cash flows: {cash_flows}, Transaction dates: {transaction_dates}") #, IRR: {xirr(transaction_dates, cash_flows)}")
 
     try:
         irr = round(xirr(transaction_dates, cash_flows), 4)

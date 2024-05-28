@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
 from common.forms import DashboardForm
+from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import currency_format, effective_current_date, selected_brokers
 
 @login_required
@@ -90,4 +91,8 @@ def transactions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'transaction_form': TransactionForm(),
+        'broker_form': BrokerForm(),
+        'price_form': PriceForm(),
+        'security_form': SecurityForm(),
     })

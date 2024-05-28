@@ -1,0 +1,85 @@
+<!-- add_transaction.html -->
+<div class="modal fade" id="addTransactionModal" tabindex="-1" aria-labelledby="addTransactionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTransactionModalLabel">Add New Transaction</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'database:add_transaction' %}">
+                    {% csrf_token %}
+                    {% for field in transaction_form %}
+                        <div class="mb-3 row">
+                            <label for="{{ field.id_for_label }}" class="col-md-4 col-form-label">{{ field.label }}</label>
+                            <div class="col-md-8">
+                                {{ field }}
+                                <div class="invalid-feedback" id="{{ field.auto_id }}_error"></div> <!-- Error message container -->
+                            </div>
+                        </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </form>
+                <div id="form-errors"></div> <!-- General error messages will be displayed here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#addTransactionModal form').on('submit', function (e) {
+            e.preventDefault();  // Prevent form submission
+            console.log("Script Error function called");
+            var form = $(this);
+            var csrfToken = $('[name=csrfmiddlewaretoken]').val(); // Get CSRF token from cookie
+            $.ajax({
+                type: form.attr('method'),
+                url: form.attr('action'),
+                data: form.serialize(),
+                beforeSend: function(xhr, settings) {
+                    if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+                        xhr.setRequestHeader("X-CSRFToken", csrfToken); // Set CSRF token in request header
+                    }
+                },
+                success: function (response) {
+                    // Check if the response contains a redirect URL
+                    if (response.redirect_url) {
+                        // If a redirect URL is provided, redirect the user
+                        console.log("Realized redirect URL: " + response.redirect_url);
+                        window.location.href = response.redirect_url;
+                    } else {
+                        // If no redirect URL is provided, close the modal or perform other actions
+                        $('#addTransactionModal').modal('hide'); // Close the modal
+                        // You can perform other actions here if needed
+                    }
+                },
+                error: function (xhr) {
+                    // Handle form errors
+                    var errors = xhr.responseJSON;
+                    console.log("There are errors:", errors);
+                    $.each(errors, function (field, messages) {
+                        console.log(field);
+                        console.log(messages);
+                        // Display error message below the field
+                        $.each(messages, function (index, message) {
+                            var errorHtml = '<ul>';
+                            errorHtml += '<li>' + message + '</li>';
+                            errorHtml += '</ul>';
+                            var errorContainer = $('#id_' + index + '_error');
+                            errorContainer.html(errorHtml);
+                            errorContainer.show(); // Show the error message container
+                        });
+                    });
+                }
+            });
+        });
+    });
+
+    // Function to check if the request is safe from CSRF protection
+    function csrfSafeMethod(method) {
+        // these HTTP methods do not require CSRF protection
+        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+    }
+    
+</script>

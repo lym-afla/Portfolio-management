@@ -1,11 +1,29 @@
 
-<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="">
-    Test button
+<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addTransactionModal">
+    Add Transaction
+</button>
+
+<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addBrokerModal">
+    Add Broker
+</button>
+
+<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addPriceModal">
+    Add Price
+</button>
+
+<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addSecurityModal">
+    Add Security
 </button>
 
 <button type="button" class="btn btn-secondary float-end d-flex p-2" data-bs-toggle="collapse" data-bs-target="#tableTools" aria-expanded="false">
     <img src="../static/icons/gear.svg" alt="Bootstrap" title="Table tools" width="20px" height="20px">
 </button>
+
+<!-- Include modal templates -->
+{% include "snippets/add_transaction.html" %}
+{% include "snippets/add_broker.html" %}
+{% include "snippets/add_price.html" %}
+{% include "snippets/add_security.html" %}
 
 <h6 class="float-end d-flex p-2">{{ table_date|date:'j-M-y' }}</h6>
 

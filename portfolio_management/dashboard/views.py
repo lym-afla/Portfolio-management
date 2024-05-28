@@ -4,8 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
+from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, selected_brokers
-from datetime import date
 
 # selected_brokers = [2]
 # currency_target = 'USD'
@@ -94,9 +94,9 @@ def dashboard(request):
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
     if from_date == '1900-01-01':
         from_date = Transactions.objects.filter(broker__in=brokers).order_by('date').first().date
-    print(f"views.dashboard. Line 65. From date: {from_date}")
+    # print(f"views.dashboard. Line 65. From date: {from_date}")
     chart_settings['From'] = from_date
-    print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
+    # print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
     analysis = currency_format_dict_values(analysis, currency_target, number_of_digits)
     chart_data = get_chart_data(selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
 
@@ -106,8 +106,8 @@ def dashboard(request):
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
     # print(f"dashboard.views. line 95. chart_dataset: {chart_dataset}") # DEBUG: chart_dataset
-    print(f"dashboard.views line 96. chart_settings['To']: {chart_settings['To']}")
-    print(effective_current_date)
+    # print(f"dashboard.views line 96. chart_settings['To']: {chart_settings['To']}")
+    # print(effective_current_date)
 
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
@@ -123,7 +123,11 @@ def dashboard(request):
         'summary': summary,
         'chart_settings': chart_settings,
         'chartDataset': chart_dataset,
-        'dashboardForm': dashboard_form
+        'dashboardForm': dashboard_form,
+        'transaction_form': TransactionForm(),
+        'broker_form': BrokerForm(),
+        'price_form': PriceForm(),
+        'security_form': SecurityForm(),
     })
 
 def nav_chart_data_request(request):

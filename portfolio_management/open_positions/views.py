@@ -3,6 +3,7 @@ from django.db.models import Sum
 from django.shortcuts import render
 from common.models import Brokers, Assets, FX
 from common.forms import DashboardForm
+from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import calculate_open_table_output, selected_brokers, effective_current_date
 
 
@@ -86,4 +87,8 @@ def open_positions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'transaction_form': TransactionForm(),
+        'broker_form': BrokerForm(),
+        'price_form': PriceForm(),
+        'security_form': SecurityForm(),
     })

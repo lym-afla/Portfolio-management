@@ -5,6 +5,14 @@ CURRENCY_CHOICES = (
     ('RUB', '₽'),
 )
 
+TRANSACTION_TYPE_CHOICES = (
+    ('Cash in', 'Cash in'),
+    ('Cash out', 'Cash out'),
+    ('Buy', 'Buy'),
+    ('Sell', 'Sell'),
+    ('Dividend', 'Dividend'),
+)
+
 NAV_BARCHART_CHOICES = (
     ('Broker', 'Broker'),
     ('Asset type', 'Asset type'),
