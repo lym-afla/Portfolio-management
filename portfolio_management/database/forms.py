@@ -34,6 +34,9 @@ class TransactionForm(forms.ModelForm):
         
         if cash_flow is not None and transaction_type == 'Cash out' and cash_flow >= 0:
             self.add_error('cash_flow', 'Cash flow must be negative for cash-out transactions.')
+
+        if cash_flow is not None and transaction_type == 'Cash in' and cash_flow <= 0:
+            self.add_error('cash_flow', 'Cash flow must be positive for cash-in transactions.')
         
         if price is not None and price <= 0:
             self.add_error('price', 'Price must be positive.')

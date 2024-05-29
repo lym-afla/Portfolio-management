@@ -34,41 +34,43 @@
 
 {% block content %}
 
-    <div class="tab-pane" id="nav-securities" role="tabpanel">
-        <table id="table-database-securities" class="table table-hover table-striped align-middle">
-            <thead>
-                <tr>
-                    <th class="text-start">Type</th>
-                    <th class="text-center">ISIN</th>
-                    <th class="text-start">Name</th>
-                    <th class="text-center">First investment</th>
-                    <th class="text-center">Currency</th>
-                    <th class="text-center">Open position</th>
-                    <th class="text-center">Current value</th>
-                    <th class="text-center">Realized gain/(loss)</th>
-                    <th class="text-center">Unrealized gain/(loss)</th>
-                    <th class="text-center">Capital distribution</th>
-                    <th class="text-center">Return</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for security in securities %}    
-                <tr>
-                    <td class="text-start">{{ security.type }}</td>
-                    <td class="text-start">{{ security.ISIN }}</td>
-                    <td class="text-start text-nowrap">{{ security.name }}</td>
-                    <td class="text-center">{{ security.first_investment | date:'j-M-y' }}</td>
-                    <td class="text-center">{{ security.currency | upper }}</td>
-                    <td class="text-center">{{ security.open_position }}</td>
-                    <td class="text-center">{{ security.current_value }}</td>
-                    <td class="text-center">{{ security.realised }}</td>
-                    <td class="text-center">{{ security.unrealised }}</td>
-                    <td class="text-center">{{ security.capital_distribution }}</td>
-                    <td class="text-center fst-italic">{{ security.irr }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+    <div class="content-body">
+        <div class="tab-pane" id="nav-securities" role="tabpanel">
+            <table id="table-database-securities" class="table table-hover table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th class="text-start">Type</th>
+                        <th class="text-center">ISIN</th>
+                        <th class="text-start">Name</th>
+                        <th class="text-center">First investment</th>
+                        <th class="text-center">Currency</th>
+                        <th class="text-center">Open position</th>
+                        <th class="text-center">Current value</th>
+                        <th class="text-center">Realized gain/(loss)</th>
+                        <th class="text-center">Unrealized gain/(loss)</th>
+                        <th class="text-center">Capital distribution</th>
+                        <th class="text-center">Return</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for security in securities %}    
+                    <tr>
+                        <td class="text-start">{{ security.type }}</td>
+                        <td class="text-start">{{ security.ISIN }}</td>
+                        <td class="text-start text-nowrap">{{ security.name }}</td>
+                        <td class="text-center">{{ security.first_investment | date:'j-M-y' }}</td>
+                        <td class="text-center">{{ security.currency | upper }}</td>
+                        <td class="text-center">{{ security.open_position }}</td>
+                        <td class="text-center">{{ security.current_value }}</td>
+                        <td class="text-center">{{ security.realised }}</td>
+                        <td class="text-center">{{ security.unrealised }}</td>
+                        <td class="text-center">{{ security.capital_distribution }}</td>
+                        <td class="text-center fst-italic">{{ security.irr }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
 {% endblock content %}

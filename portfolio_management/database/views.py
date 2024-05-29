@@ -230,8 +230,7 @@ def add_transaction(request):
         form = TransactionForm(request.POST)
         if form.is_valid():
             form.save()
-            # Check if the request is an AJAX request
-            if request.is_ajax():
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
                 return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
             else:
@@ -241,17 +240,24 @@ def add_transaction(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = TransactionForm()
-    return render(request, 'snippets/add_transaction.html', {'form': form}) 
+    return render(request, 'snippets/add_transaction.html', {'form': form, 'type': 'Transaction'})
 
 def add_broker(request):
     if request.method == 'POST':
         form = BrokerForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect('database:brokers')
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                # If it's an AJAX request, return a JSON response with success and redirect_url
+                return JsonResponse({'success': True, 'redirect_url': reverse('database:brokers')})
+            else:
+                # If it's not an AJAX request, redirect to a URL
+                return redirect('database:brokers')
+        else:
+            return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = BrokerForm()
-    return render(request, 'snippets/add_broker.html', {'form': form})
+    return render(request, 'snippets/add_database_item.html', {'form': form, 'type': 'Broker'})
 
 def add_price(request):
     if request.method == 'POST':

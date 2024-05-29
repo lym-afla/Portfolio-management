@@ -34,63 +34,65 @@
 
 {% block content %}
 
-    <div class="tab-pane" id="nav-brokers" role="tabpanel">
-        <table id="table-database-brokers" class="table table-hover table-striped align-middle">
-            <thead>
-                <tr>
-                    <th class="text-start" rowspan="2">Name</th>
-                    <th class="text-center" rowspan="2">Country</th>
-                    <th class="text-center" rowspan="2">Currencies</th>
-                    <th class="text-center" rowspan="2">Number of securities</th>
-                    <th class="text-center" rowspan="2">First investment</th>
-                    <th class="text-center" rowspan="2">Current NAV</th>
-                    <th class="text-center colspan" colspan="{{ currencies | length }}">Cash balance</th>
-                    <th class="text-center" rowspan="2">Return to date</th>
-                </tr>
-                <tr>
-                    {% for cur in currencies %}
-                        <th class="text-center">{{ cur }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-            {% for broker in brokers %}    
-                <tr>
-                    <td class="text-start">{{ broker.name }}</td>
-                    <td class="text-center">{{ broker.country }}</td>
-                    <td class="text-center">
-                        {% if broker.currencies %}
-                            {{ broker.currencies }}
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
-                    <td class="text-center">{{ broker.no_of_securities }}</td>
-                    <td class="text-center">{{ broker.first_investment|date:'d-M-y' }}</td>
-                    <td class="text-center">{{ broker.NAV }}</td>
-                    {% for cur in currencies %}
+    <div class="content-body">
+        <div class="tab-pane" id="nav-brokers" role="tabpanel">
+            <table id="table-database-brokers" class="table table-hover table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th class="text-start" rowspan="2">Name</th>
+                        <th class="text-center" rowspan="2">Country</th>
+                        <th class="text-center" rowspan="2">Currencies</th>
+                        <th class="text-center" rowspan="2">Number of securities</th>
+                        <th class="text-center" rowspan="2">First investment</th>
+                        <th class="text-center" rowspan="2">Current NAV</th>
+                        <th class="text-center colspan" colspan="{{ currencies | length }}">Cash balance</th>
+                        <th class="text-center" rowspan="2">Return to date</th>
+                    </tr>
+                    <tr>
+                        {% for cur in currencies %}
+                            <th class="text-center">{{ cur }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for broker in brokers %}    
+                    <tr>
+                        <td class="text-start">{{ broker.name }}</td>
+                        <td class="text-center">{{ broker.country }}</td>
                         <td class="text-center">
-                            {{ broker.cash|get_item:cur }}
+                            {% if broker.currencies %}
+                                {{ broker.currencies }}
+                            {% else %}
+                                -
+                            {% endif %}
                         </td>
-                    {% endfor %}
-                    <td class="text-center">{{ broker.irr }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-            <tfoot>
-                <tr>
-                    <td class="border-0 fw-bold" colspan="2">TOTAL</td>
-                    <td class="border-0"></td>
-                    <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"no_of_securities" }}</td>
-                    <td class="border-0"></td>
-                    <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"NAV" }}</td>
-                    {% for cur in currencies %}
-                        <td class="border-0 text-center"></td>
-                    {% endfor %}
-                    <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"IRR" }}</td>
-                </tr>
-            </tfoot>
-        </table>
+                        <td class="text-center">{{ broker.no_of_securities }}</td>
+                        <td class="text-center">{{ broker.first_investment|date:'d-M-y' }}</td>
+                        <td class="text-center">{{ broker.NAV }}</td>
+                        {% for cur in currencies %}
+                            <td class="text-center">
+                                {{ broker.cash|get_item:cur }}
+                            </td>
+                        {% endfor %}
+                        <td class="text-center">{{ broker.irr }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="border-0 fw-bold" colspan="2">TOTAL</td>
+                        <td class="border-0"></td>
+                        <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"no_of_securities" }}</td>
+                        <td class="border-0"></td>
+                        <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"NAV" }}</td>
+                        {% for cur in currencies %}
+                            <td class="border-0 text-center"></td>
+                        {% endfor %}
+                        <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"IRR" }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
     </div>
 
 {% endblock content %}

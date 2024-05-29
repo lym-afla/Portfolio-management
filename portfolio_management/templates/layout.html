@@ -129,15 +129,7 @@
                 </div>
             {% endif %}
             <div class="right">
-                <div class="wrapper">
-                    {% comment %} {% if get_flashed_messages() %}
-                            <div class="alert alert-warning text-center alert-dismissible fade show" role="alert">
-                                {{ get_flashed_messages() | join(" ") }}.
-                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            </div>
-                    {% endif %} {% endcomment %}
-
-                    
+                <div class="wrapper">                    
                     {% if user.is_authenticated %} <main class="p-3"> {% endif %}
                         {% block main_page_title %} {% endblock main_page_title %}
                         <hr>

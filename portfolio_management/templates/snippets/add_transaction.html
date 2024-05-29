@@ -30,18 +30,12 @@
     $(document).ready(function () {
         $('#addTransactionModal form').on('submit', function (e) {
             e.preventDefault();  // Prevent form submission
-            console.log("Script Error function called");
             var form = $(this);
             var csrfToken = $('[name=csrfmiddlewaretoken]').val(); // Get CSRF token from cookie
             $.ajax({
                 type: form.attr('method'),
                 url: form.attr('action'),
                 data: form.serialize(),
-                beforeSend: function(xhr, settings) {
-                    if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
-                        xhr.setRequestHeader("X-CSRFToken", csrfToken); // Set CSRF token in request header
-                    }
-                },
                 success: function (response) {
                     // Check if the response contains a redirect URL
                     if (response.redirect_url) {
@@ -51,16 +45,13 @@
                     } else {
                         // If no redirect URL is provided, close the modal or perform other actions
                         $('#addTransactionModal').modal('hide'); // Close the modal
-                        // You can perform other actions here if needed
+                        location.reload();
                     }
                 },
                 error: function (xhr) {
                     // Handle form errors
                     var errors = xhr.responseJSON;
-                    console.log("There are errors:", errors);
                     $.each(errors, function (field, messages) {
-                        console.log(field);
-                        console.log(messages);
                         // Display error message below the field
                         $.each(messages, function (index, message) {
                             var errorHtml = '<ul>';
@@ -76,10 +67,4 @@
         });
     });
 
-    // Function to check if the request is safe from CSRF protection
-    function csrfSafeMethod(method) {
-        // these HTTP methods do not require CSRF protection
-        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-    }
-    
 </script>

@@ -35,115 +35,120 @@
 
 {% block content %}
 
-    {% include "snippets/buttons-settings-header.html" %}
+    <div class="content-header">
+        {% include "snippets/buttons-settings-header.html" %}
+    </div>
 
-    <table id="table-open" class="table table-hover table-striped align-middle">
-        <thead>
-            <tr>
-                <th class="text-start" rowspan="3">Type</th>
-                <th class="text-start" rowspan="3">Name</th>
-                <th class="text-center" rowspan="3">Currency</th>
-                <th class="text-center" rowspan="3">Position</th>
-                <th class="text-center colspan" colspan="3">Entry</th>
-                <th rowspan="3"></th>
-                <th class="text-center colspan" colspan="16">As of {{ table_date|date:'j-M-y' }}</th>
-                <th rowspan="3"></th>
-            </tr>
-            <tr>
-                <th class="text-center" rowspan="2">Date</th>
-                <th class="text-center" rowspan="2">Price</th>
-                <th class="text-center" rowspan="2">Value</th>
-                <th class="text-center" rowspan="2">Price</th>
-                <th class="text-center" rowspan="2">Value</th>
-                <th class="text-center" rowspan="2">Portfolio share</th>
-                <th class="text-center colspan" colspan="3">Price change</th>
-                <th rowspan="2"></th>
-                <th class="text-center colspan" colspan="2">Capital distribution</th>
-                <th rowspan="2"></th>
-                <th class="text-center colspan" colspan="2">Commission</th>
-                <th rowspan="2"></th>
-                <th class="text-center colspan" colspan="3">Total return</th>
-                <!-- <th></th> -->
-            </tr>
-            <tr>
-                <th class="text-center">Realized</th>
-                <th class="text-center">Unrealized</th>
-                <th class="text-center">%</th>
-                <th class="text-center">Amount</th>
-                <th class="text-center">%</th>
-                <th class="text-center">Amount</th>
-                <th class="text-center">%</th>
-                <th class="text-center">Amount</th>
-                <th class="text-center">%</th>
-                <th class="text-center">IRR</th>
-            </tr>
-        </thead>
-        <tbody>
-        {% for asset in portfolio_open %}    
-            <tr>
-                <td class="text-start">{{ asset.type }}</td>
-                <td class="text-start">{{ asset.name }}</td>
-                <td class="text-center">{{ asset.currency | upper }}</td>
-                <td class="text-center">{{ asset.current_position }}</td>
-                <td class="text-center text-nowrap">{{ asset.investment_date|date:'j-M-y' }}</td>
-                <td class="text-center">{{ asset.entry_price }}</td>
-                <td class="text-center">{{ asset.entry_value }}</td>
-                <td></td>
-                <td class="text-center">{{ asset.current_price }}</td>
-                <td class="text-center">{{ asset.current_value }}</td>
-                <td class="text-center fst-italic">{{ asset.share_of_portfolio }}</td>
-                <td class="text-center">{{ asset.realized_gl }}</td>
-                <td class="text-center">{{ asset.unrealized_gl }}</td>
-                <td class="text-center fst-italic">{{ asset.price_change_percentage }}</td>
-                <td></td>
-                <td class="text-center">{{ asset.capital_distribution }}</td>
-                <td class="text-center fst-italic">{{ asset.capital_distribution_percentage }}</td>
-                <td></td>
-                <td class="text-center">{{ asset.commission }}</td>
-                <td class="text-center fst-italic">{{ asset.commission_percentage }}</td>
-                <td></td>
-                <td class="text-center">{{ asset.total_return_amount }}</td>
-                <td class="text-center fst-italic">{{ asset.total_return_percentage }}</td>
-                <td class="text-center fst-italic">{{ asset.irr }}</td>
-                <td class="text-end" width="10%">
-                    <!-- Button trigger modal -->
-                    <button type="button" class="btn btn-secondary" id="table-button-buy" data-bs-toggle="modal" data-bs-target="#Addnewtransaction" onclick="fillTransactionForm(this)">
-                        Buy
-                    </button>
-                    <button type="button" class="btn btn-danger" id="table-button-sell" data-bs-toggle="modal" data-bs-target="#Addnewtransaction" onclick="fillTransactionForm(this)">
-                        Sell
-                    </button>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr>
-                <td class="border-0 fw-bold" colspan="2">TOTAL</td>
-                <td class="border-0"></td>
-                <td class="border-0"></td>
-                <td class="border-0"></td>
-                <td class="border-0"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"entry_value" }}</td>
-                <td class="border-0"></td>
-                <td class="text-center border-0 fw-bold"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"current_value" }}</td>
-                <td class="text-center border-0 fw-bold"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"realized_gl" }}</td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"unrealized_gl" }}</td>
-                <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"price_change_percentage" }}</td>
-                <td class="border-0"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"capital_distribution" }}</td>
-                <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"capital_distribution_percentage" }}</td>
-                <td class="border-0"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"commission" }}</td>
-                <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"commission_percentage" }}</td>
-                <td class="border-0"></td>
-                <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"total_return_amount" }}</td>
-                <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"total_return_percentage" }}</td>
-                <td class="text-center border-0 fw-bold fst-italic">[CALCULATE]</td>
-            </tr>
-        </tfoot>
-    </table>    
+    <div class="content-body">
+
+        <table id="table-open" class="table table-hover table-striped align-middle">
+            <thead>
+                <tr>
+                    <th class="text-start" rowspan="3">Type</th>
+                    <th class="text-start" rowspan="3">Name</th>
+                    <th class="text-center" rowspan="3">Currency</th>
+                    <th class="text-center" rowspan="3">Position</th>
+                    <th class="text-center colspan" colspan="3">Entry</th>
+                    <th rowspan="3"></th>
+                    <th class="text-center colspan" colspan="16">As of {{ table_date|date:'j-M-y' }}</th>
+                    <th rowspan="3"></th>
+                </tr>
+                <tr>
+                    <th class="text-center" rowspan="2">Date</th>
+                    <th class="text-center" rowspan="2">Price</th>
+                    <th class="text-center" rowspan="2">Value</th>
+                    <th class="text-center" rowspan="2">Price</th>
+                    <th class="text-center" rowspan="2">Value</th>
+                    <th class="text-center" rowspan="2">Portfolio share</th>
+                    <th class="text-center colspan" colspan="3">Price change</th>
+                    <th rowspan="2"></th>
+                    <th class="text-center colspan" colspan="2">Capital distribution</th>
+                    <th rowspan="2"></th>
+                    <th class="text-center colspan" colspan="2">Commission</th>
+                    <th rowspan="2"></th>
+                    <th class="text-center colspan" colspan="3">Total return</th>
+                    <!-- <th></th> -->
+                </tr>
+                <tr>
+                    <th class="text-center">Realized</th>
+                    <th class="text-center">Unrealized</th>
+                    <th class="text-center">%</th>
+                    <th class="text-center">Amount</th>
+                    <th class="text-center">%</th>
+                    <th class="text-center">Amount</th>
+                    <th class="text-center">%</th>
+                    <th class="text-center">Amount</th>
+                    <th class="text-center">%</th>
+                    <th class="text-center">IRR</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for asset in portfolio_open %}    
+                <tr>
+                    <td class="text-start">{{ asset.type }}</td>
+                    <td class="text-start">{{ asset.name }}</td>
+                    <td class="text-center">{{ asset.currency | upper }}</td>
+                    <td class="text-center">{{ asset.current_position }}</td>
+                    <td class="text-center text-nowrap">{{ asset.investment_date|date:'j-M-y' }}</td>
+                    <td class="text-center">{{ asset.entry_price }}</td>
+                    <td class="text-center">{{ asset.entry_value }}</td>
+                    <td></td>
+                    <td class="text-center">{{ asset.current_price }}</td>
+                    <td class="text-center">{{ asset.current_value }}</td>
+                    <td class="text-center fst-italic">{{ asset.share_of_portfolio }}</td>
+                    <td class="text-center">{{ asset.realized_gl }}</td>
+                    <td class="text-center">{{ asset.unrealized_gl }}</td>
+                    <td class="text-center fst-italic">{{ asset.price_change_percentage }}</td>
+                    <td></td>
+                    <td class="text-center">{{ asset.capital_distribution }}</td>
+                    <td class="text-center fst-italic">{{ asset.capital_distribution_percentage }}</td>
+                    <td></td>
+                    <td class="text-center">{{ asset.commission }}</td>
+                    <td class="text-center fst-italic">{{ asset.commission_percentage }}</td>
+                    <td></td>
+                    <td class="text-center">{{ asset.total_return_amount }}</td>
+                    <td class="text-center fst-italic">{{ asset.total_return_percentage }}</td>
+                    <td class="text-center fst-italic">{{ asset.irr }}</td>
+                    <td class="text-end" width="10%">
+                        <!-- Button trigger modal -->
+                        <button type="button" class="btn btn-secondary" id="table-button-buy" data-bs-toggle="modal" data-bs-target="#Addnewtransaction" onclick="fillTransactionForm(this)">
+                            Buy
+                        </button>
+                        <button type="button" class="btn btn-danger" id="table-button-sell" data-bs-toggle="modal" data-bs-target="#Addnewtransaction" onclick="fillTransactionForm(this)">
+                            Sell
+                        </button>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td class="border-0 fw-bold" colspan="2">TOTAL</td>
+                    <td class="border-0"></td>
+                    <td class="border-0"></td>
+                    <td class="border-0"></td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"entry_value" }}</td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"current_value" }}</td>
+                    <td class="text-center border-0 fw-bold"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"realized_gl" }}</td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"unrealized_gl" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"price_change_percentage" }}</td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"capital_distribution" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"capital_distribution_percentage" }}</td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"commission" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"commission_percentage" }}</td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"total_return_amount" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"total_return_percentage" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">[CALCULATE]</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
 
 {% endblock content %}
