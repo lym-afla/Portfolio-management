@@ -91,8 +91,4 @@ def transactions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })

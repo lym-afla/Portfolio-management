@@ -67,7 +67,7 @@ def open_positions(request):
 
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
 
-    portfolio_open, portfolio_open_totals = calculate_open_table_output(portfolio_open,
+    portfolio_open, portfolio_open_totals = calculate_open_table_output(user.id, portfolio_open,
                                                                    effective_current_date,
                                                                    categories,
                                                                    use_default_currency,
@@ -87,8 +87,4 @@ def open_positions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })

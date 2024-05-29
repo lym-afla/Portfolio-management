@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
+from django.template.loader import render_to_string
 
 from common.models import FX, Assets, Brokers, Transactions
 from common.forms import DashboardForm
@@ -97,10 +98,6 @@ def database_brokers(request):
         'broker_totals': broker_totals,
         'currencies': currencies,
         'currency': currency_target,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })
 
 @login_required
@@ -163,10 +160,6 @@ def database_securities(request):
         'sidebar_padding': sidebar_padding,
         'securities': securities,
         'currency': currency_target,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })
 
 @login_required
@@ -219,10 +212,6 @@ def database_prices(request):
         'mutualFund': mutual_fund,
         'stock': stock,
         'bond': bond,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })
 
 def add_transaction(request):
@@ -240,7 +229,8 @@ def add_transaction(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = TransactionForm()
-    return render(request, 'snippets/add_transaction.html', {'form': form, 'type': 'Transaction'})
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+    return JsonResponse({'form_html': form_html})
 
 def add_broker(request):
     if request.method == 'POST':
@@ -257,7 +247,8 @@ def add_broker(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = BrokerForm()
-    return render(request, 'snippets/add_database_item.html', {'form': form, 'type': 'Broker'})
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+    return JsonResponse({'form_html': form_html})
 
 def add_price(request):
     if request.method == 'POST':
@@ -267,7 +258,8 @@ def add_price(request):
             return redirect('database:prices')
     else:
         form = PriceForm()
-    return render(request, 'snippets/add_price.html', {'form': form})
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+    return JsonResponse({'form_html': form_html})
 
 def add_security(request):
     if request.method == 'POST':
@@ -277,4 +269,5 @@ def add_security(request):
             return redirect('database:securities')
     else:
         form = SecurityForm()
-    return render(request, 'snippets/add_security.html', {'form': form})
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+    return JsonResponse({'form_html': form_html})

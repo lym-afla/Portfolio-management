@@ -4,7 +4,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
-from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, selected_brokers
 
 # selected_brokers = [2]
@@ -55,7 +54,7 @@ def dashboard(request):
         }
         dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
 
-    analysis = NAV_at_date(selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
 
     summary = {}
     summary['NAV'] = analysis['Total NAV']
@@ -66,7 +65,7 @@ def dashboard(request):
     summary['Invested'] = summary['Cash-out'] = 0
 
     for cur in currencies:
-        quote = Transactions.objects.filter(broker__in=selected_brokers, currency=cur, date__lte=effective_current_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
+        quote = Transactions.objects.filter(user__id=user.id, broker__in=selected_brokers, currency=cur, date__lte=effective_current_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
         for cash_flow, date, transaction_type in quote:
             if transaction_type == 'Cash in':
                 summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
@@ -76,7 +75,7 @@ def dashboard(request):
         summary['Return'] = format_percentage(summary['NAV'] / summary['Invested'] - 1)
     except:
         summary['Return'] = '–'
-    summary['IRR'] = format_percentage(Irr(effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers))
+    summary['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers))
     
     # Convert data to string representation to feed the page
     summary['NAV'] = currency_format(summary['NAV'], currency_target, number_of_digits)
@@ -98,16 +97,13 @@ def dashboard(request):
     chart_settings['From'] = from_date
     # print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
     analysis = currency_format_dict_values(analysis, currency_target, number_of_digits)
-    chart_data = get_chart_data(selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
+    chart_data = get_chart_data(user.id, selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
 
     # Add the "Currency" key to the dictionary
     chart_data["currency"] = currency_target + "k"
 
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
-    # print(f"dashboard.views. line 95. chart_dataset: {chart_dataset}") # DEBUG: chart_dataset
-    # print(f"dashboard.views line 96. chart_settings['To']: {chart_settings['To']}")
-    # print(effective_current_date)
 
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
@@ -124,10 +120,6 @@ def dashboard(request):
         'chart_settings': chart_settings,
         'chartDataset': chart_dataset,
         'dashboardForm': dashboard_form,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })
 
 def nav_chart_data_request(request):

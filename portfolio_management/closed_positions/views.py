@@ -50,19 +50,6 @@ def closed_positions(request):
         }
         dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
 
-    # # Get closed positions
-    # portfolio_closed = Assets.objects.filter(
-    #     investor=request.user,
-    #     transactions__date__lte=effective_current_date,
-    #     transactions__broker_id__in=selected_brokers
-    # ).prefetch_related(
-    #     'transactions'
-    # ).annotate(
-    #     total_quantity=Sum('transactions__quantity')
-    # ).filter(
-    #     total_quantity=0
-    # )
-
     assets = Assets.objects.filter(
         investor=request.user,
         transactions__date__lte=effective_current_date,
@@ -98,8 +85,4 @@ def closed_positions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
-        'transaction_form': TransactionForm(),
-        'broker_form': BrokerForm(),
-        'price_form': PriceForm(),
-        'security_form': SecurityForm(),
     })

@@ -1,17 +1,18 @@
+{% load static %}
 
-<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addTransactionModal">
+<button type="button" class="btn btn-secondary mb-1" data-type="transaction">
     Add Transaction
 </button>
 
-<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addBrokerModal">
+<button type="button" class="btn btn-secondary mb-1" data-type="broker">
     Add Broker
 </button>
 
-<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addPriceModal">
+<button type="button" class="btn btn-secondary mb-1" data-type="price">
     Add Price
 </button>
 
-<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="#addSecurityModal">
+<button type="button" class="btn btn-secondary mb-1" data-type="security">
     Add Security
 </button>
 
@@ -20,10 +21,10 @@
 </button>
 
 <!-- Include modal templates -->
-{% include "snippets/add_transaction.html" %}
-{% include "snippets/add_broker.html" %}
-{% include "snippets/add_price.html" %}
-{% include "snippets/add_security.html" %}
+<div id="transactionFormModalContainer"></div>
+<div id="brokerFormModalContainer"></div>
+<div id="priceFormModalContainer"></div>
+<div id="securityFormModalContainer"></div>
 
 <h6 class="float-end d-flex p-2">{{ table_date|date:'j-M-y' }}</h6>
 
@@ -46,3 +47,13 @@
     </form>
     <hr>
 </div>
+
+<script type="text/javascript">
+    var urls = {
+        transaction: "{% url 'database:add_transaction' %}",
+        broker: "{% url 'database:add_broker' %}",
+        price: "{% url 'database:add_price' %}",
+        security: "{% url 'database:add_security' %}",
+    };
+</script>
+<script src="{% static 'js/formHandler.js' %}"></script>
