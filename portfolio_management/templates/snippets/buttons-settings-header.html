@@ -1,11 +1,30 @@
+{% load static %}
 
-<button type="button" class="btn btn-secondary mb-1" data-bs-toggle="modal" data-bs-target="">
-    Test button
+<button type="button" class="btn btn-secondary mb-1" data-type="transaction">
+    Add Transaction
+</button>
+
+<button type="button" class="btn btn-secondary mb-1" data-type="broker">
+    Add Broker
+</button>
+
+<button type="button" class="btn btn-secondary mb-1" data-type="price">
+    Add Price
+</button>
+
+<button type="button" class="btn btn-secondary mb-1" data-type="security">
+    Add Security
 </button>
 
 <button type="button" class="btn btn-secondary float-end d-flex p-2" data-bs-toggle="collapse" data-bs-target="#tableTools" aria-expanded="false">
     <img src="../static/icons/gear.svg" alt="Bootstrap" title="Table tools" width="20px" height="20px">
 </button>
+
+<!-- Include modal templates -->
+<div id="transactionFormModalContainer"></div>
+<div id="brokerFormModalContainer"></div>
+<div id="priceFormModalContainer"></div>
+<div id="securityFormModalContainer"></div>
 
 <h6 class="float-end d-flex p-2">{{ table_date|date:'j-M-y' }}</h6>
 
@@ -28,3 +47,13 @@
     </form>
     <hr>
 </div>
+
+<script type="text/javascript">
+    var urls = {
+        transaction: "{% url 'database:add_transaction' %}",
+        broker: "{% url 'database:add_broker' %}",
+        price: "{% url 'database:add_price' %}",
+        security: "{% url 'database:add_security' %}",
+    };
+</script>
+<script src="{% static 'js/formHandler.js' %}"></script>

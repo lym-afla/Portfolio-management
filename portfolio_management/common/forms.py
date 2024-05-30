@@ -10,7 +10,10 @@ class DashboardForm(forms.ModelForm):
     )
 
     table_date = forms.DateField(
-        widget=forms.DateInput(attrs={'class': 'form-control', 'id': 'inputTableDate'}),
+        widget=forms.DateInput(attrs={'class': 'form-control',
+                                      'id': 'inputTableDate',
+                                      'type': 'date'
+                                      }),
         label='Date'
     )
 
@@ -30,21 +33,3 @@ class DashboardForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Retrieve the currency choices from the model and exclude the empty option
         self.fields['default_currency'].choices = [(choice[0], choice[0]) for choice in CustomUser._meta.get_field('default_currency').choices if choice[0]]
-
-    # currency_choices = [
-    #     ('USD', 'USD'),
-    #     ('EUR', 'EUR'),
-    #     ('GBP', 'GBP'),
-    #     ('RUB', 'RUB'),
-    # ]
-
-    # table_currency = forms.ChoiceField(
-    #     choices=currency_choices,
-    #     widget=forms.Select(attrs={'class': 'form-select', 'id': 'inputCurrency'}),
-    #     label='Currency'
-    # )
-
-    # number_of_digits = forms.IntegerField(
-    #     widget=forms.NumberInput(attrs={'class': 'form-control', 'id': 'numberOfDigits'}),
-    #     label='Number of digits'
-    # )

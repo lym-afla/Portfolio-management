@@ -36,69 +36,73 @@
 
 {% block content %}
 
-    {% include "snippets/buttons-settings-header.html" %}
+    <div class="content-header">
+        {% include "snippets/buttons-settings-header.html" %}
+    </div>
 
-    <table id="table-transactions" class="table table-hover table-striped align-middle">
-        <thead>
-            <tr>
-                <th class="text-start" rowspan="2">Date</th>
-                <th class="text-start" rowspan="2">Transaction</th>
-                <th class="text-center" rowspan="2">Type</th>
-                <th class="text-center colspan" colspan="{{ currencies | length }}">Cash flow</th>
-                <th rowspan="2"></th>
-                <th class="text-center colspan" colspan="{{ currencies | length }}">Balance</th>
-            </tr>
-            <tr>
-                {% for cur in currencies %}
-                    <th class="text-center">{{ cur }}</th>
-                {% endfor %}
-                {% for cur in currencies %}
-                    <th class="text-center">{{ cur }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-        {% for transaction in transactions %}   
-            <tr>
-                <td class="text-start">{{ transaction.date }}</td>
-                <td class="text-start text-nowrap">{{ transaction.type }}
-                    {% if 'Cash' in transaction.type %}
-                        {{ transaction.cash_flow }}
-                    {% elif 'Dividend' in transaction.type %}
-                        of {{ transaction.cash_flow }} for {{ transaction.security.name }}
-                    {% elif transaction.type == 'Close' %}
-                        {{ transaction.quantity }} of {{ transaction.security.name }}
-                    {% else %}
-                        {{ transaction.quantity }}
-                        @ {{ transaction.price }} of {{ transaction.security.name }}
-                        <span class="small text-muted"> || Fee: {{ transaction.commission }}</span>
-                    {% endif %}
-                </td>
-                <td class="text-center">{{ transaction.type }}</td>
-                {% for cur in currencies %}
-                    <td class="text-center">
-                        {% if transaction.currency == cur %}
-                            {% if transaction.type == 'Dividend' %}
-                                {{ transaction.cash_flow }}
-                            {% elif 'Cash' in transaction.type %}
-                                {{ transaction.cash_flow }}
-                            {% else %}
-                                {{ transaction.value }}
-                            {% endif %}
+    <div class="content-body">
+        <table id="table-transactions" class="table table-hover table-striped align-middle">
+            <thead>
+                <tr>
+                    <th class="text-start" rowspan="2">Date</th>
+                    <th class="text-start" rowspan="2">Transaction</th>
+                    <th class="text-center" rowspan="2">Type</th>
+                    <th class="text-center colspan" colspan="{{ currencies | length }}">Cash flow</th>
+                    <th rowspan="2"></th>
+                    <th class="text-center colspan" colspan="{{ currencies | length }}">Balance</th>
+                </tr>
+                <tr>
+                    {% for cur in currencies %}
+                        <th class="text-center">{{ cur }}</th>
+                    {% endfor %}
+                    {% for cur in currencies %}
+                        <th class="text-center">{{ cur }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for transaction in transactions %}   
+                <tr>
+                    <td class="text-start">{{ transaction.date }}</td>
+                    <td class="text-start text-nowrap">{{ transaction.type }}
+                        {% if 'Cash' in transaction.type %}
+                            {{ transaction.cash_flow }}
+                        {% elif 'Dividend' in transaction.type %}
+                            of {{ transaction.cash_flow }} for {{ transaction.security.name }}
+                        {% elif transaction.type == 'Close' %}
+                            {{ transaction.quantity }} of {{ transaction.security.name }}
                         {% else %}
-                            –
+                            {{ transaction.quantity }}
+                            @ {{ transaction.price }} of {{ transaction.security.name }}
+                            <span class="small text-muted"> || Fee: {{ transaction.commission }}</span>
                         {% endif %}
                     </td>
-                {% endfor %}
-                <td class="text-center"></td>
-                {% for cur in currencies %}
-                    <td class="text-center">
-                        {{ transaction.balances|get_item:cur }}
-                    </td>
-                {% endfor %}
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+                    <td class="text-center">{{ transaction.type }}</td>
+                    {% for cur in currencies %}
+                        <td class="text-center">
+                            {% if transaction.currency == cur %}
+                                {% if transaction.type == 'Dividend' %}
+                                    {{ transaction.cash_flow }}
+                                {% elif 'Cash' in transaction.type %}
+                                    {{ transaction.cash_flow }}
+                                {% else %}
+                                    {{ transaction.value }}
+                                {% endif %}
+                            {% else %}
+                                –
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                    <td class="text-center"></td>
+                    {% for cur in currencies %}
+                        <td class="text-center">
+                            {{ transaction.balances|get_item:cur }}
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
 {% endblock content %}

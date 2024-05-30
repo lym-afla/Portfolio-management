@@ -50,49 +50,29 @@
                         <img src="{% static 'icons/list.svg' %}" alt="Bootstrap" class="nav-menu-icon" title="Expand menu" height="37.5px" width="37.5px" onclick="actionNav()">
                         <hr>
                         <ul class="nav nav-pills flex-column mb-auto">
-                            <li
-                                {% if request.path == '/dashboard/' %}
-                                    style="background-color: #e9ecef; border-radius: 0.5rem"
-                                {% endif %}
-                            >
+                            <li {% if request.path == '/dashboard/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="{% url 'dashboard:dashboard' %}">
                                     <img src="{% static 'icons/briefcase.svg' %}" alt="Bootstrap" class="nav-icon" title="Dashboard" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li
-                                {% if request.path == '/open-positions/' %}
-                                    style="background-color: #e9ecef; border-radius: 0.5rem"
-                                {% endif %}
-                            >
+                            <li {% if request.path == '/open-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="{% url 'open_positions:open_positions' %}">
                                     <img src="{% static 'icons/clipboard2-check.svg' %}" alt="Bootstrap" class="nav-icon" title="Open" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li
-                                {% if request.path == '/closed-positions/' %}
-                                    style="background-color: #e9ecef; border-radius: 0.5rem"
-                                {% endif %}
-                            >
+                            <li {% if request.path == '/closed-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href={% url 'closed_positions:closed_positions' %}>
                                     <img src="{% static 'icons/clipboard2-x.svg' %}" alt="Bootstrap" class="nav-icon" title="Closed" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li
-                                {% if request.path == '/transactions/' %}
-                                    style="background-color: #e9ecef; border-radius: 0.5rem"
-                                {% endif %}
-                            >
+                            <li {% if request.path == '/transactions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href={% url 'transactions:transactions' %}>
                                     <img src="{% static 'icons/arrow-left-right.svg' %}" alt="Bootstrap" class="nav-icon" title="Transactions" height="30px" width="30px">
                                 </a>
                             </li>
                             <hr>
-                            <li
-                                {% if request.path == '/database/' %}
-                                    style="background-color: #e9ecef; border-radius: 0.5rem"
-                                {% endif %}
-                            >
-                                <a href={% url 'database:database' %}>
+                            <li {% if request.path == '/database/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                                <a href="#" onclick="toggleExtendedSidebar()">
                                     <img src="{% static 'icons/database.svg' %}" alt="Bootstrap" class="nav-icon" title="Database" height="30px" width="30px">
                                 </a>
                             </li>
@@ -103,62 +83,38 @@
                         </a>
                     </div>
                 </nav>
-                <div class="extended_sidebar d-flex flex-column bg-light" style="width: {{ sidebar_width }}px; padding-right: {{ sidebar_padding }}rem;">
+                <div class="extended_sidebar d-flex flex-column bg-light" id="extendedSidebar" style="width: {{ sidebar_width }}px; padding-right: {{ sidebar_padding }}rem;">
                     <a href="#" class="link-dark text-decoration-none">
                         <span class="d-flex nav-menu-icon fs-3">Menu</span>
                     </a>
                     <hr>
                     <ul class="nav nav-pills flex-column mb-auto">
                         <li>
-                            <a href="{% url 'dashboard:dashboard' %}"
-                                {% if request.path == '/dashboard/' %}
-                                    class="nav-link active">
-                                {% else %}
-                                    class="nav-link link-dark">
-                                {% endif %}
-                                Dashboard
-                            </a>
+                            <a href="{% url 'dashboard:dashboard' %}" class="nav-link {% if request.path == '/dashboard/' %}active{% else %}link-dark{% endif %}">Dashboard</a>
                         </li>
                         <li>
-                            <a href="{% url 'open_positions:open_positions' %}" 
-                                {% if request.path == '/open-positions/' %}
-                                    class="nav-link active">
-                                {% else %}
-                                    class="nav-link link-dark">
-                                {% endif %}
-                                Open
-                            </a>
+                            <a href="{% url 'open_positions:open_positions' %}" class="nav-link {% if request.path == '/open-positions/' %}active{% else %}link-dark{% endif %}">Open</a>
                         </li>
                         <li>
-                            <a href={% url 'closed_positions:closed_positions' %}
-                                {% if request.path == '/closed-positions/' %}
-                                    class="nav-link active">
-                                {% else %}
-                                    class="nav-link link-dark">
-                                {% endif %}
-                                Closed
-                            </a>
+                            <a href="{% url 'closed_positions:closed_positions' %}" class="nav-link {% if request.path == '/closed-positions/' %}active{% else %}link-dark{% endif %}">Closed</a>
                         </li>
                         <li>
-                            <a href={% url 'transactions:transactions' %}
-                                {% if request.path == '/transactions/' %}
-                                    class="nav-link active">
-                                {% else %}
-                                    class="nav-link link-dark">
-                                {% endif %}
-                                Transactions
-                            </a>
+                            <a href="{% url 'transactions:transactions' %}" class="nav-link {% if request.path == '/transactions/' %}active{% else %}link-dark{% endif %}">Transactions</a>
                         </li>
                         <hr>
                         <li>
-                            <a href={% url 'database:database' %}
-                                {% if request.path == '/database/' %}
-                                    class="nav-link active">
-                                {% else %}
-                                    class="nav-link link-dark">
-                                {% endif %}
-                                Database
-                            </a>
+                            <a class="nav-link" onclick="toggleDatabaseSubMenu()">Database</a>
+                                <ul class="nav flex-column ms-3" id="databaseSubMenu" style="display: none;">
+                                    <li>
+                                        <a href="{% url 'database:brokers' %}" class="nav-link {% if request.path == '/database/brokers/' %}active{% else %}link-dark{% endif %}">Brokers</a>
+                                    </li>
+                                    <li>
+                                        <a href="{% url 'database:securities' %}" class="nav-link {% if request.path == '/database/securities/' %}active{% else %}link-dark{% endif %}">Securities</a>
+                                    </li>
+                                    <li>
+                                        <a href="{% url 'database:prices' %}" class="nav-link {% if request.path == '/database/prices/' %}active{% else %}link-dark{% endif %}">Prices</a>
+                                    </li>
+                                </ul>
                         </li>
                     </ul>
                     
@@ -166,34 +122,19 @@
                     <div>
                         <ul class="nav nav-pills flex-column mb-auto">
                             <li>
-                                <a href="{% url 'users:profile' %}"
-                                    {% if request.path == '/users/profile/' %}
-                                        class="nav-link active">
-                                    {% else %}
-                                        class="nav-link link-dark">
-                                    {% endif %}
-                                    Profile
-                                </a>
+                                <a href="{% url 'users:profile' %}" class="nav-link {% if request.path == '/users/profile/' %}active{% else %}link-dark{% endif %}">Profile</a>
                             </li>
                         </ul>
                     </div>
                 </div>
             {% endif %}
             <div class="right">
-                <div class="wrapper">
-                    {% comment %} {% if get_flashed_messages() %}
-                            <div class="alert alert-warning text-center alert-dismissible fade show" role="alert">
-                                {{ get_flashed_messages() | join(" ") }}.
-                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            </div>
-                    {% endif %} {% endcomment %}
-
-                    
-                    <main class="p-3">
+                <div class="wrapper">                    
+                    {% if user.is_authenticated %} <main class="p-3"> {% endif %}
                         {% block main_page_title %} {% endblock main_page_title %}
                         <hr>
                         {% block content %} {% endblock content %}
-                    </main>
+                    {% if user.is_authenticated %} </main> {% endif %}
                 </div>
             </div>  
         </div>
@@ -211,7 +152,7 @@
                     </div>
                     <div class="modal-footer justify-content-between">
                         <button type="button" class="btn btn-secondary flex-fill col-md-5" data-bs-dismiss="modal">OK</button>
-                        <a href=# class="btn btn-primary flex-fill col-md-5">[Link is here]</a>
+                        <a class="btn btn-primary flex-fill col-md-5">[Link is here]</a>
                     </div>
                 </div>
             </div>

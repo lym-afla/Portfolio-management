@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
 from common.forms import DashboardForm
+from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import currency_format, effective_current_date, selected_brokers
 
 @login_required

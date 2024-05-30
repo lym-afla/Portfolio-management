@@ -10,3 +10,29 @@ function actionNav() {
         sidebar.style.width = "0px";
     }
 }
+
+function toggleSidebar() {
+    document.getElementById('extendedSidebar').style.display = 'none';
+}
+
+function toggleExtendedSidebar() {
+    var extendedSidebar = document.getElementById('extendedSidebar');
+    if (extendedSidebar.style.width == "0px" || extendedSidebar.style.width == "") {
+        extendedSidebar.style.paddingRight = "1rem";
+        extendedSidebar.style.width = "150px";
+        toggleDatabaseSubMenu();
+    }
+    else {
+        extendedSidebar.style.paddingRight = "0";
+        extendedSidebar.style.width = "0px";
+    }
+}
+
+function toggleDatabaseSubMenu() {
+    var subMenu = document.getElementById('databaseSubMenu');
+    if (subMenu.style.display === 'none' || subMenu.style.display === '') {
+        subMenu.style.display = 'block';
+    } else {
+        subMenu.style.display = 'none';
+    }
+}

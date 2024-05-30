@@ -5,6 +5,7 @@
     transition: 0.25s; /* 0.25 second transition effect to slide in the sidenav */
     height: 100vh;
     overflow-y: hidden;
+    overflow-x: hidden;
 }
 
 /* #sidebar {
@@ -34,30 +35,50 @@
     flex: 3;
     position: relative;
     transition: margin-left .5s;
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Make the right side take the full viewport height */
 }
 
 .wrapper {
     display: flex;
-    flex-wrap: wrap;
-    flex-flow: row;
     flex-direction: column;
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    height: 100%;
+    position: relative;
 }
 
 main {
-    flex: 16;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.content-header {
+    flex-shrink: 0;
+    /* additional styles for your header */
+}
+
+.content-body {
+    flex-grow: 1;
+    overflow-y: auto; /* Enable vertical scrolling for the table */
     overflow-x: hidden;
+    /* Ensure the table takes the full width */
+    width: 100%;
 }
 
 /* Get back black borders in the table on the top and bottom */
 table[id^=table-] {
     border-collapse: collapse !important;
     font-size: small;
+    width: 100%;
+    /* Optional: Fix table header to the top */
+    thead {
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 1;
+    }
 }
 
 [id*='table-button'] {

@@ -1,0 +1,27 @@
+<!-- add_database_item.html -->
+<div class="modal fade" id="add{{ type }}Modal" tabindex="-1" aria-labelledby="add{{ type }}ModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="add{{ type }}ModalLabel">Add New {{ type }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'database:add_transaction' %}">
+                    {% csrf_token %}
+                    {% for field in form %}
+                        <div class="mb-3 row">
+                            <label for="{{ field.id_for_label }}" class="col-md-4 col-form-label">{{ field.label }}</label>
+                            <div class="col-md-8">
+                                {{ field }}
+                                <div class="invalid-feedback" id="{{ field.auto_id }}_error"></div> <!-- Error message container -->
+                            </div>
+                        </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </form>
+                <div id="form-errors"></div> <!-- General error messages will be displayed here -->
+            </div>
+        </div>
+    </div>
+</div>

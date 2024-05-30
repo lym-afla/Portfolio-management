@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal
 from common.models import Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, F
@@ -14,13 +15,14 @@ selected_brokers = [2]
 
 # Portfolio at [table_date] - assets with non zero positions
 # func.date used for correct query when transaction is at [table_date] (removes time (HH:MM:SS) effectively)
-def portfolio_at_date(date, brokers):
+def portfolio_at_date(user_id, date, brokers):
     # Check if brokers is None, if so, return an empty queryset
     if brokers is None:
         return Assets.objects.none()
     
     # Filter Assets objects based on transactions with the given date and brokers
     return Assets.objects.filter(
+        investor__id=user_id,
         transactions__date__lte=date, 
         transactions__broker_id__in=brokers
     ).annotate(total_quantity=Sum('transactions__quantity')).exclude(total_quantity=0)
@@ -55,14 +57,16 @@ def get_brokers_for_security(security_id):
     return brokers
 
 # Calculate NAV breakdown for selected brokers at certain date and in selected currency
-def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Currency', 'Asset class', 'Broker']):
+def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset type', 'Currency', 'Asset class', 'Broker']):
     
     # print(f"utils.py, line 51 {breakdown}")
     
-    portfolio = portfolio_at_date(date, broker_ids)
-    portfolio_brokers = Brokers.objects.filter(id__in=broker_ids)
+    portfolio = portfolio_at_date(user_id, date, broker_ids)
+    portfolio_brokers = Brokers.objects.filter(investor__id=user_id, id__in=broker_ids)
     analysis = {'Asset type': {}, 'Currency': {}, 'Asset class': {}, 'Broker': {}, 'Total NAV': 0}
     item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
+
+    # print(f"utils.py, line 68 {portfolio}. Date: {date}")
 
     for security in portfolio:
         current_value = security.position(date, broker_ids) * security.price_at_date(date, target_currency).price
@@ -104,10 +108,10 @@ def NAV_at_date(broker_ids, date, target_currency, breakdown=['Asset type', 'Cur
     return analysis
 
 # Calculate portfolio IRR at date for public assets
-def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None):
+def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_date=None):
     
     # Calculate portfolio value
-    portfolio_value = calculate_portfolio_value(date, currency, asset_id, broker_id_list)
+    portfolio_value = calculate_portfolio_value(user_id, date, currency, asset_id, broker_id_list)
 
     # Not relevant for short positions
     if portfolio_value < 0:
@@ -117,7 +121,7 @@ def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None
     transaction_dates = []
 
     # Collect cash flows and transaction dates for the portfolio
-    transactions = Transactions.objects.filter(date__lte=date, security_id=asset_id)
+    transactions = Transactions.objects.filter(investor__id=user_id, date__lte=date, security_id=asset_id)
     
     # if asset_id:
     #     transactions = transactions.filter(security_id=asset_id)
@@ -154,7 +158,6 @@ def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None
             fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
         else:
             fx_rate = 1
-
         cash_flows.append(round(cash_flow * fx_rate, 2))
         transaction_dates.append(transaction.date)
 
@@ -167,9 +170,6 @@ def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None
         cash_flows.append(portfolio_value)
         transaction_dates.append(date)
 
-    # name = transactions.first().security.name
-    print(f"utils. line 162. Date: {date}. Cash flows: {cash_flows}, Transaction dates: {transaction_dates}") #, IRR: {xirr(transaction_dates, cash_flows)}")
-
     try:
         irr = round(xirr(transaction_dates, cash_flows), 4)
         irr = irr if irr < 2 else 'N/R'
@@ -177,10 +177,10 @@ def Irr(date, currency=None, asset_id=None, broker_id_list=None, start_date=None
     except:
         return 'N/A'
 
-def calculate_portfolio_value(date, currency=None, asset_id=None, broker_id_list=None):
+def calculate_portfolio_value(user_id, date, currency=None, asset_id=None, broker_id_list=None):
 
     if asset_id is None:
-        portfolio_value = NAV_at_date(broker_id_list, date, currency, [])['Total NAV']
+        portfolio_value = NAV_at_date(user_id, broker_id_list, date, currency, [])['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
         # print(f"utils.py. line 165. asset current price: {asset.current_price(date)}")
@@ -338,12 +338,12 @@ def calculate_percentage_shares(data_dict, selected_keys):
             except ZeroDivisionError:
                 data_dict[percentage_key][key] = '–'
 
-def get_chart_data(brokers, frequency, from_date, to_date, currency, breakdown):
+def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, breakdown):
     
     # Get the correct starting date for "All time" category
     if from_date == '1900-01-01':
         from_date = Transactions.objects.filter(broker__in=brokers).order_by('date').first().date
-        print(f"utils.py. Line 312. From date: {from_date}")
+        # print(f"utils.py. Line 312. From date: {from_date}")
 
     dates = chart_dates(from_date, to_date, frequency)
         # Create an empty data dictionary
@@ -355,9 +355,9 @@ def get_chart_data(brokers, frequency, from_date, to_date, currency, breakdown):
     }
 
     for d in dates:
-        IRR = Irr(d, currency, None, brokers)
+        IRR = Irr(user_id, d, currency, None, brokers)
         if breakdown == 'No breakdown':
-            NAV = NAV_at_date(brokers, d, currency)['Total NAV'] / 1000
+            NAV = NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000
             if len(chart_data['datasets']) == 0:
                 chart_data['datasets'].append({
                     'label': 'IRR (RHS)',
@@ -385,7 +385,7 @@ def get_chart_data(brokers, frequency, from_date, to_date, currency, breakdown):
                 chart_data['datasets'][0]['data'].append(IRR)
                 chart_data['datasets'][1]['data'].append(NAV)
         else:
-            NAV = NAV_at_date(brokers, d, currency, [breakdown])[breakdown]
+            NAV = NAV_at_date(user_id, brokers, d, currency, [breakdown])[breakdown]
             if len(chart_data['datasets']) == 0:
                 chart_data['datasets'].append({
                     'label': 'IRR (RHS)',
@@ -499,21 +499,26 @@ def calculate_from_date(to_date, timeline):
 #         return None
     
 # Support function to create price table for Database page
-def create_price_table(security_type):
+def create_price_table(security_type, user):
     
     # Get security IDs by security type
-    selected_ids = Assets.objects.filter(type=security_type).values_list('id', flat=True)
+    selected_ids = Assets.objects.filter(type=security_type, investor=user).values_list('id', flat=True)
 
-    # Initialize table as a list of dates
-    dates = Prices.objects.dates('date', 'day')
-    table = [[date] for date in dates]
+    # Initialize table as a dictionary of lists with dates as keys
+    price_data = defaultdict(lambda: [None] * len(selected_ids))
+    dates = set()
+    
+    for index, item in enumerate(selected_ids):
+        prices = Prices.objects.filter(security_id=item).order_by('date').values_list('date', 'price')
+        for date, price in prices:
+            price_data[date][index] = price
+            dates.add(date)
 
-    # Add columns with each security
-    for item in selected_ids:
-        asset = Assets.objects.get(id=item)
-        prices = Prices.objects.filter(security_id=item).order_by('date').values_list('price', flat=True)
-        for i, price in enumerate(prices):
-            table[i].append(price)
+    # Sort the dates
+    sorted_dates = sorted(dates)
+    
+    # Convert the dictionary to a list with sorted dates
+    table = [[date] + price_data[date] for date in sorted_dates]
 
     # Add column headers: Name and ISIN
     header_row_1 = ['Date'] + [Assets.objects.get(id=item).name for item in selected_ids]
@@ -522,7 +527,7 @@ def create_price_table(security_type):
     table.insert(0, header_row_2)
     table.insert(0, header_row_1)
 
-    # Filter for rows where all prices are empty
+    # Filter for rows where all prices are None
     table = [x for x in table if any(i is not None for i in x[1:])]
 
     return table
@@ -567,12 +572,12 @@ def create_price_table(security_type):
 #         return None  # Invalid key
     
 
-def calculate_open_table_output(portfolio, date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits):
+def calculate_open_table_output(user_id, portfolio, date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits):
     
     if portfolio is None:
         return None
     else:
-        portfolio_NAV = NAV_at_date(selected_brokers, date, currency_target)['Total NAV']
+        portfolio_NAV = NAV_at_date(user_id, selected_brokers, date, currency_target)['Total NAV']
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     portfolio_open_totals = {}
@@ -593,7 +598,7 @@ def calculate_open_table_output(portfolio, date, categories, use_default_currenc
         entry_date = asset.entry_dates(date, selected_brokers)[-1]
         
         if 'investment_date' in categories:
-            asset.investment_date = entry_date.strftime('%#d-%b-%y')
+            asset.investment_date = entry_date
         
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(date, currency_used).price
