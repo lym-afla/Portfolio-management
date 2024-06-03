@@ -1,8 +1,9 @@
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.template.loader import render_to_string
+from django.views.decorators.http import require_http_methods
 
 from common.models import FX, Assets, Brokers, Transactions
 from common.forms import DashboardForm
@@ -92,7 +93,7 @@ def database_brokers(request):
     broker_totals = currency_format_dict_values(broker_totals, currency_target, number_of_digits)
     broker_totals['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id for broker in brokers]))
 
-    buttons = ["transaction", "broker", "price", "security", "settings"]
+    buttons = ['broker', 'edit', 'delete']
 
     return render(request, 'brokers.html', {
         'sidebar_width': sidebar_width,
@@ -157,13 +158,15 @@ def database_securities(request):
         security.unrealised = currency_format(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)
         security.capital_distribution = currency_format(security.get_capital_distribution(effective_current_date), security.currency, number_of_digits)
         security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
-        
+
+    buttons = ['security', 'edit', 'delete']        
 
     return render(request, 'securities.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         'securities': securities,
         'currency': currency_target,
+        'buttons': buttons,
     })
 
 @login_required
@@ -208,6 +211,8 @@ def database_prices(request):
     stock = create_price_table('Stock', user)
     bond = create_price_table('Bond', user)
 
+    buttons = ['price', 'edit', 'delete']
+
     return render(request, 'prices.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
@@ -216,6 +221,7 @@ def database_prices(request):
         'mutualFund': mutual_fund,
         'stock': stock,
         'bond': bond,
+        'buttons': buttons,
     })
 
 def add_transaction(request):
@@ -235,7 +241,7 @@ def add_transaction(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = TransactionForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction', 'action_url': 'database:add_transaction'}, request)
     return JsonResponse({'form_html': form_html})
 
 @login_required
@@ -256,7 +262,7 @@ def add_broker(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = BrokerForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Broker'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Broker', 'action_url': 'database:add_broker'}, request)
     return JsonResponse({'form_html': form_html})
 
 def add_price(request):
@@ -274,7 +280,7 @@ def add_price(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = PriceForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Price'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Price', 'action_url': 'database:add_price'}, request)
     return JsonResponse({'form_html': form_html})
 
 def add_security(request):
@@ -294,5 +300,42 @@ def add_security(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = SecurityForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Security'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Security', 'action_url': 'database:add_security'}, request)
     return JsonResponse({'form_html': form_html})
+
+@login_required
+def edit_item(request, model_class, form_class, item_id, type):
+    item = get_object_or_404(model_class, id=item_id)
+    if request.method == 'POST':
+        form = form_class(request.POST, instance=item)
+        if form.is_valid():
+            item = form.save(commit=False)
+            if type in ['broker', 'security', 'transaction']:
+                item.investor = request.user
+            item.save()
+            if type == 'transaction':
+                redirect_url = reverse('transactions:transactions')
+            else:
+                redirect_url = reverse(f'database:{type}s')
+            return JsonResponse({'success': True, 'redirect_url': redirect_url})
+        else:
+            return JsonResponse({'errors': form.errors}, status=400)
+    else:
+        form = form_class(instance=item)
+        form_html = render_to_string(
+            'snippets/add_database_item.html',
+            {
+                'form': form,
+                'type': model_class.__name__,
+                'action_url': reverse(f'database:edit_{type}', args=[item_id])
+            },
+            request
+        )
+        return JsonResponse({'form_html': form_html})
+    
+@login_required
+@require_http_methods(["DELETE"])
+def delete_item(request, model_class, item_id):
+    item = get_object_or_404(model_class, id=item_id)
+    item.delete()
+    return JsonResponse({'success': True})

@@ -1,5 +1,7 @@
 from django.urls import path
 from .import views
+from common.models import Brokers, Assets, Transactions, Prices
+from database.forms import BrokerForm, SecurityForm, TransactionForm, PriceForm
 
 app_name = 'database' # Optional, but useful for namespacing
 
@@ -13,5 +15,13 @@ urlpatterns = [
     path('add-broker/', views.add_broker, name='add_broker'),
     path('add-price/', views.add_price, name='add_price'),
     path('add-security/', views.add_security, name='add_security'),
-
+    path('edit_broker/<int:item_id>/', views.edit_item, {'model_class': Brokers, 'form_class': BrokerForm, 'type': 'broker'}, name='edit_broker'),
+    path('delete_broker/<int:item_id>/', views.delete_item, {'model_class': Brokers}, name='delete_broker'),
+    path('edit_transaction/<int:item_id>/', views.edit_item, {'model_class': Transactions, 'form_class': TransactionForm, 'type': 'transaction'}, name='edit_transaction'),
+    path('delete_transaction/<int:item_id>/', views.delete_item, {'model_class': Transactions}, name='delete_transaction'),
+    path('edit_security/<int:item_id>/', views.edit_item, {'model_class': Assets, 'form_class': SecurityForm, 'type': 'security'}, name='edit_security'),
+    path('delete_security/<int:item_id>/', views.delete_item, {'model_class': Assets}, name='delete_security'),
+    path('edit_price/<int:item_id>/', views.edit_item, {'model_class': Prices, 'form_class': PriceForm, 'type': 'price  '}, name='edit_price'),
+    path('delete_price/<int:item_id>/', views.delete_item, {'model_class': Prices}, name='delete_price'),
+    
 ]

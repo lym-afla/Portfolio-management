@@ -7,7 +7,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form method="post" action="{% url 'database:add_transaction' %}">
+                <form method="post" action="{{ action_url }}">
                     {% csrf_token %}
                     {% for field in form %}
                         <div class="mb-3 row">

@@ -38,6 +38,7 @@ $(document).ready(function () {
             security: '#securityFormModalContainer'
         };
         var container = containerMap[type];
+        console.log(type);
 
         $(container).find('form').off('submit').on('submit', function (e) {
             e.preventDefault();

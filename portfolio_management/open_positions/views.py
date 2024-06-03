@@ -75,6 +75,8 @@ def open_positions(request):
                                                                    number_of_digits
                                                                    )
     
+    buttons = ['transaction', 'broker', 'price', 'security', 'settings']
+    
     return render(request, 'open-positions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
@@ -86,4 +88,5 @@ def open_positions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'buttons': buttons,
     })

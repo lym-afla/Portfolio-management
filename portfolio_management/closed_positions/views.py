@@ -63,6 +63,8 @@ def closed_positions(request):
 
     categories = ['investment_date', 'exit_date', 'realized_gl', 'capital_distribution', 'commission']
 
+    buttons = ['transaction', 'broker', 'price', 'security', 'settings']
+
     portfolio_closed, portfolio_closed_totals = calculate_closed_table_output(user.id, portfolio_closed,
                                                                    effective_current_date,
                                                                    categories,
@@ -83,4 +85,5 @@ def closed_positions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'buttons': buttons,
     })

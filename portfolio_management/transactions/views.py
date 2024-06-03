@@ -80,6 +80,8 @@ def transactions(request):
         if transaction.commission:
             transaction.commission = currency_format(-transaction.commission, transaction.currency, number_of_digits)
            
+    buttons = ['transaction', 'settings']
+
     return render(request, 'transactions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
@@ -91,4 +93,5 @@ def transactions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'buttons': buttons,
     })
