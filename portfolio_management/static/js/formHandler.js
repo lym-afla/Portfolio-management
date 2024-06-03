@@ -62,6 +62,7 @@ $(document).ready(function () {
                 error: function (xhr) {
                     var errors = xhr.responseJSON;
                     $.each(errors, function (field, messages) {
+                        console.log(messages);
                         $.each(messages, function (index, message) {
                             var errorHtml = '<ul><li>' + message + '</li></ul>';
                             var errorContainer = $('#id_' + index + '_error');

@@ -83,7 +83,7 @@ class UserSettingsForm(forms.ModelForm):
         model = CustomUser
         fields = ['default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
         widgets = {
-            'use_default_currency_where_relevant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'use_default_currency_where_relevant': forms.CheckboxInput(attrs={'class': 'form-check-input ml-0'}),
             # 'chart_frequency': forms.Select(attrs={'class': 'form-select'}),
         #     'chart_timeline': forms.Select(attrs={'class': 'form-select'})
         }

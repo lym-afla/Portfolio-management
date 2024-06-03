@@ -38,27 +38,10 @@
     <h2>Portfolio dashboard</h2>
 {% endblock main_page_title %}
 
-{% block actions_menu %}
-    
-    {% comment %} {% set transaction_link = url_for(".add_pa_transaction") %}
-    {% set cash_link = url_for(".pa_cash") %}
-    {% set table_link = url_for(".pa_dashboard") %}
-
-    {% from './ancillary/portfolio-actions.html' import add_new_form, table_settings %}
-    
-    {{ add_new_form('Add new position', 'New investment entry', transaction_link, brokers, portfolio_open, ['brokers', 'exposure', 'transaction type new', 'security type', 'isin', 'new name', 'asset currency', 'price new', 'quantity new', 'date']) }}
-    {{ add_new_form('Add new transaction', 'New transaction entry', transaction_link, brokers, portfolio_open, ['brokers', 'transaction type existing', 'existing name', 'transaction currency', 'price existing', 'quantity existing', 'date']) }}
-    {{ add_new_form('Move cash', 'Cash inflow/outflow', cash_link, brokers, portfolio_open, ['brokers', 'cash', 'asset currency', 'date']) }}
-
-    {{ table_settings(table_link, table_date, number_of_digits, currency, brokers, selectedBrokers,
-        ['brokers', 'currency', 'date', 'digits']) }} {% endcomment %}
-    
-{% endblock actions_menu %}
-
 {% block content %}
 
     <div class="content-header">
-        {% include "snippets/buttons-settings-header.html" %}
+        {% include "snippets/buttons-settings-header.html" with buttons=buttons %}
     </div>
 
     <div class="content-body">

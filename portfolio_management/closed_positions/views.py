@@ -1,10 +1,8 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
-from django.db.models import Sum
-from common.models import FX, Assets, Brokers
+from common.models import Assets, Brokers
 from common.forms import DashboardForm
-from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
-from utils import Irr, calculate_closed_table_output, calculate_open_table_output, currency_format, currency_format_dict_values, format_percentage, selected_brokers, effective_current_date
+from utils import calculate_closed_table_output, selected_brokers, effective_current_date
 
 @login_required
 def closed_positions(request):
@@ -51,7 +49,7 @@ def closed_positions(request):
         dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
 
     assets = Assets.objects.filter(
-        investor=request.user,
+        investor=user,
         transactions__date__lte=effective_current_date,
         transactions__broker_id__in=selected_brokers,
         transactions__quantity__isnull=False
@@ -65,7 +63,7 @@ def closed_positions(request):
 
     categories = ['investment_date', 'exit_date', 'realized_gl', 'capital_distribution', 'commission']
 
-    portfolio_closed, portfolio_closed_totals = calculate_closed_table_output(portfolio_closed,
+    portfolio_closed, portfolio_closed_totals = calculate_closed_table_output(user.id, portfolio_closed,
                                                                    effective_current_date,
                                                                    categories,
                                                                    use_default_currency,

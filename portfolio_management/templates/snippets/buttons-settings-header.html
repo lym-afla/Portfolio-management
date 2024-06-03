@@ -1,24 +1,36 @@
 {% load static %}
 
-<button type="button" class="btn btn-secondary mb-1" data-type="transaction">
-    Add Transaction
-</button>
+{% if "transaction" in buttons %}
+    <button type="button" class="btn btn-secondary mb-1" data-type="transaction">
+        Add Transaction
+    </button>
+{% endif %}
 
-<button type="button" class="btn btn-secondary mb-1" data-type="broker">
-    Add Broker
-</button>
+{% if "broker" in buttons %}
+    <button type="button" class="btn btn-secondary mb-1" data-type="broker">
+        Add Broker
+    </button>
+{% endif %}
 
-<button type="button" class="btn btn-secondary mb-1" data-type="price">
-    Add Price
-</button>
+{% if "price" in buttons %}
+    <button type="button" class="btn btn-secondary mb-1" data-type="price">
+        Add Price
+    </button>
+{% endif %}
 
-<button type="button" class="btn btn-secondary mb-1" data-type="security">
-    Add Security
-</button>
+{% if "security" in buttons %}
+    <button type="button" class="btn btn-secondary mb-1" data-type="security">
+        Add Security
+    </button>
+{% endif %}
 
-<button type="button" class="btn btn-secondary float-end d-flex p-2" data-bs-toggle="collapse" data-bs-target="#tableTools" aria-expanded="false">
-    <img src="../static/icons/gear.svg" alt="Bootstrap" title="Table tools" width="20px" height="20px">
-</button>
+{% if "settings" in buttons %}
+    <button type="button" class="btn btn-secondary float-end d-flex p-2" data-bs-toggle="collapse" data-bs-target="#tableTools" aria-expanded="false">
+        <img src="../static/icons/gear.svg" alt="Settings" title="Table tools" width="20px" height="20px">
+    </button>
+{% endif %}
+
+<h6 class="float-end d-flex p-2">{{ table_date|date:'j-M-y' }}</h6>
 
 <!-- Include modal templates -->
 <div id="transactionFormModalContainer"></div>
@@ -26,27 +38,27 @@
 <div id="priceFormModalContainer"></div>
 <div id="securityFormModalContainer"></div>
 
-<h6 class="float-end d-flex p-2">{{ table_date|date:'j-M-y' }}</h6>
-
 <hr>
 
-<div class="collapse" id="tableTools">
-    <form  class="row g-3 d-flex" method="post" action="{% url 'dashboard:dashboard' %}">
-        {% csrf_token %}
-        {% for field in dashboardForm %}
-            <div class="col-md-2">
-                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                {{ field }}
-                <div id="{{ field.id_for_label }}_error" class="invalid-feedback form-error">Test</div>
-            </div>
-        {% endfor %}
+{% if "settings" in buttons %}
+    <div class="collapse" id="tableTools">
+        <form  class="row g-3 d-flex" method="post" action="{% url 'dashboard:dashboard' %}">
+            {% csrf_token %}
+            {% for field in dashboardForm %}
+                <div class="col-md-2">
+                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                    <div id="{{ field.id_for_label }}_error" class="invalid-feedback form-error"></div>
+                </div>
+            {% endfor %}
 
-        <div class="col-md-1 align-self-end">
-            <button type="submit" class="btn btn-secondary">Update</button>
-        </div>
-    </form>
-    <hr>
-</div>
+            <div class="col-md-1 align-self-end">
+                <button type="submit" class="btn btn-secondary">Update</button>
+            </div>
+        </form>
+        <hr>
+    </div>
+{% endif %}
 
 <script type="text/javascript">
     var urls = {

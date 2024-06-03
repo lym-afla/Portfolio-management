@@ -47,12 +47,12 @@ def update_analysis(analysis, key, value, date=None, currency=None, desired_curr
         analysis[key] += value
 
 # Get all the brokers associated with a given security
-def get_brokers_for_security(security_id):
+def get_brokers_for_security(user_id, security_id):
     # Filter transactions based on the security ID
-    transactions = Transactions.objects.filter(security_id=security_id)
+    transactions = Transactions.objects.filter(investor__id=user_id, security_id=security_id)
 
     # Retrieve distinct brokers from the filtered transactions
-    brokers = Brokers.objects.filter(transactions__in=transactions).distinct()
+    brokers = Brokers.objects.filter(investor__id=user_id, transactions__in=transactions).distinct()
 
     return brokers
 
@@ -73,7 +73,7 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
         # current_value = calculate_security_nav(security, date, target_currency)
 
         if 'Broker' in breakdown:
-            for broker in get_brokers_for_security(security.id):
+            for broker in get_brokers_for_security(user_id, security.id):
                 update_analysis(analysis['Broker'], broker.name, current_value)
 
         # print(f'utils.py, line 65 {breakdown}')
@@ -134,7 +134,7 @@ def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_
 
         # Calculate start portfolio value if provided
         initial_value_date = start_date - timedelta(days=1)
-        start_portfolio_value = calculate_portfolio_value(initial_value_date, currency, asset_id, broker_id_list)
+        start_portfolio_value = calculate_portfolio_value(user_id, initial_value_date, currency, asset_id, broker_id_list)
         
         # Not relevant for short positions
         if (start_portfolio_value < 0) or (start_portfolio_value == 0 and transactions.order_by('date').first().quantity < 0):
@@ -342,7 +342,7 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
     
     # Get the correct starting date for "All time" category
     if from_date == '1900-01-01':
-        from_date = Transactions.objects.filter(broker__in=brokers).order_by('date').first().date
+        from_date = Transactions.objects.filter(investor__id=user_id, broker__in=brokers).order_by('date').first().date
         # print(f"utils.py. Line 312. From date: {from_date}")
 
     dates = chart_dates(from_date, to_date, frequency)
@@ -444,59 +444,6 @@ def calculate_from_date(to_date, timeline):
         from_date = to_date
 
     return from_date
-
-# Calculate effective buy-in price for security object (must have id)
-# def calculate_buy_in_price(security_id, date, currency, broker_id_list=None, start_date=None):
-    
-#     try:
-        
-#         is_long_position = None
-
-#         security = Assets.objects.get(id=security_id)
-
-#         transactions = security.transactions.filter(
-#             quantity__isnull=False,  # Filter out transactions where quantity is not empty
-#             date__lte=date
-#         ).values('price', 'quantity', 'date', 'currency')
-
-#         if broker_id_list:
-#             transactions = transactions.filter(broker_id__in=broker_id_list) 
-
-#         if start_date:
-#             transactions = transactions.filter(date__gt=start_date)
-#             position = security.position(start_date, broker_id_list)
-#             if position != 0:
-#                 transactions = list(transactions) + [{
-#                     'price': security.price_at_date(start_date).price,
-#                     'quantity': position,
-#                     'date': start_date,
-#                     'currency': security.currency,
-#                 }]
-#                 is_long_position = position > 0
-
-#         # If start date is not provided, or position at start date is 0
-#         if is_long_position is None:
-#             first_transaction = transactions.order_by('date').first()
-#             is_long_position = first_transaction['quantity'] > 0
-
-#         if is_long_position:
-#             transactions = [t for t in transactions if t['quantity'] > 0]
-#         else:
-#             transactions = [t for t in transactions if t['quantity'] < 0]
-
-#         value = 0
-#         quantity = 0
-#         for transaction in transactions:
-#             fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
-#             if fx_rate:
-#                 value += transaction['price'] * fx_rate * transaction['quantity']
-#                 quantity += transaction['quantity']
-            
-#         return value / quantity if quantity else None
-        
-#     except Exception as e:
-#         print(f"Error: {e}")
-#         return None
     
 # Support function to create price table for Database page
 def create_price_table(security_type, user):
@@ -532,52 +479,12 @@ def create_price_table(security_type, user):
 
     return table
 
-# def open_position_totals(asset, key, date, currency, selected_brokers):
-#     """
-#     Calculate various totals for the given asset based on the specified key.
-
-#     Parameters:
-#         asset (Assets): The asset for which totals are calculated.
-#         key (str): The key indicating the type of total to calculate.
-#         date (datetime): The date for which totals are calculated.
-#         currency (str): The target currency for conversion.
-#         selected_brokers (list): List of selected broker IDs.
-
-#     Returns:
-#         float or None: The calculated total or None if the key is invalid.
-#     """
-#     if asset is None:
-#         return None
-    
-#     asset.current_position = asset.position(date, selected_brokers)
-    
-#     if key == 'entry_value':
-#         return asset.calculate_buy_in_price(date, currency, selected_brokers) * asset.current_position
-#     elif key == 'current_value':
-#         return asset.price_at_date(date, currency).price * asset.current_position
-#     elif key == 'realized_gl':
-#         return asset.realized_gain_loss(date, currency, selected_brokers)
-#     elif key == 'unrealized_gl':
-#         return asset.unrealized_gain_loss(date, currency, selected_brokers)
-#     elif key == 'capital_distribution':
-#         return asset.get_capital_distribution(date, currency, selected_brokers)
-#     elif key == 'commission':
-#         return asset.get_commission(date, currency, selected_brokers)
-#     elif key == 'total_return':
-#         return asset.realized_gain_loss(date, currency, selected_brokers) + \
-#                asset.unrealized_gain_loss(date, currency, selected_brokers) + \
-#                asset.get_capital_distribution(date, currency, selected_brokers) + \
-#                asset.get_commission(date, currency, selected_brokers)
-#     else:
-#         return None  # Invalid key
-    
-
 def calculate_open_table_output(user_id, portfolio, date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits):
     
-    if portfolio is None:
-        return None
-    else:
-        portfolio_NAV = NAV_at_date(user_id, selected_brokers, date, currency_target)['Total NAV']
+    # if portfolio is None:
+    #     return None, None
+    # else:
+    portfolio_NAV = NAV_at_date(user_id, selected_brokers, date, currency_target)['Total NAV']
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     portfolio_open_totals = {}
@@ -639,7 +546,7 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
         
         # Calculate IRR for security
         currency_used = asset.currency if use_default_currency else currency_target
-        asset.irr = format_percentage(Irr(date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date))
+        asset.irr = format_percentage(Irr(user_id, date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date))
         
         # Calculating totals
         for key in (list(set(totals) & set(categories)) + ['entry_value', 'total_return_amount']):
@@ -669,7 +576,10 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
                     # print(use_default_currency, key)
                     addition = None
                     
-            portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + addition
+            try:
+                portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + addition
+            except:
+                portfolio_open_totals[key] = portfolio_open_totals.get(key, 0)
 
         # Formatting for correct representation
         asset.current_position = currency_format(asset.current_position, '', 0)
@@ -687,13 +597,14 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
         asset.total_return_amount = currency_format(asset.total_return_amount, currency_used, number_of_digits)
         asset.total_return_percentage = format_percentage(asset.total_return_percentage)
 
-    if portfolio_open_totals['entry_value'] != 0:    
-        portfolio_open_totals['price_change_percentage'] = (portfolio_open_totals.get('realized_gl', 0) + portfolio_open_totals.get('unrealized_gl', 0)) / abs(portfolio_open_totals['entry_value'])
-        if 'capital_distribution' in categories:
-            portfolio_open_totals['capital_distribution_percentage'] = portfolio_open_totals['capital_distribution'] / portfolio_open_totals['entry_value']
-        if 'commission' in categories:
-            portfolio_open_totals['commission_percentage'] = portfolio_open_totals['commission'] / portfolio_open_totals['entry_value']
-        portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return_amount'] / abs(portfolio_open_totals['entry_value'])
+    if 'entry_value' in portfolio_open_totals.keys():
+        if portfolio_open_totals['entry_value'] != 0:    
+            portfolio_open_totals['price_change_percentage'] = (portfolio_open_totals.get('realized_gl', 0) + portfolio_open_totals.get('unrealized_gl', 0)) / abs(portfolio_open_totals['entry_value'])
+            if 'capital_distribution' in categories:
+                portfolio_open_totals['capital_distribution_percentage'] = portfolio_open_totals['capital_distribution'] / portfolio_open_totals['entry_value']
+            if 'commission' in categories:
+                portfolio_open_totals['commission_percentage'] = portfolio_open_totals['commission'] / portfolio_open_totals['entry_value']
+            portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return_amount'] / abs(portfolio_open_totals['entry_value'])
     
     # Format totals
     portfolio_open_totals = currency_format_dict_values(portfolio_open_totals, currency_target, number_of_digits)
@@ -701,13 +612,12 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
     return portfolio, portfolio_open_totals
 
 
-def calculate_closed_table_output(portfolio, date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits):
+def calculate_closed_table_output(user_id, portfolio, date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits):
     
-    if len(portfolio) == 0:
-        return None
-    else:
-        closed_positions = []
-
+    # if len(portfolio) == 0:
+    #     return None, None
+    # else:
+    closed_positions = []
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'capital_distribution', 'commission']
     portfolio_closed_totals = {}
@@ -727,7 +637,7 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
             position['exit_date'] = exit_date
             position['currency'] = asset.currency
 
-            asset_transactions = asset.transactions.filter(date__gte=entry_date, date__lte=exit_date).order_by('-date')
+            asset_transactions = asset.transactions.filter(investor__id=user_id, date__gte=entry_date, date__lte=exit_date).order_by('-date')
             is_long_position = asset_transactions.first().quantity < 0
             if is_long_position:
                 entry_transactions = asset_transactions.filter(quantity__gt=0)
@@ -762,7 +672,7 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
 
             if 'realized_gl' in categories:
                 
-                position_transactions = asset.transactions.filter(date__lte=exit_date, date__gte=entry_date, quantity__isnull=False)
+                position_transactions = asset.transactions.filter(investor__id=user_id, date__lte=exit_date, date__gte=entry_date, quantity__isnull=False)
                 total_gl = 0
                 if currency_used is not None:
                     for transaction in position_transactions:
@@ -795,7 +705,7 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
         
             # Calculate IRR for security
             currency_used = asset.currency if use_default_currency else currency_target
-            position['irr'] = format_percentage(Irr(exit_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date))
+            position['irr'] = format_percentage(Irr(user_id, exit_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date))
             # print("Utils. Line 786", asset.irr)
         
             # Calculating totals
@@ -828,11 +738,12 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
                         # print(use_default_currency, key)
                         addition = None
                         
-                portfolio_closed_totals[key] = portfolio_closed_totals.get(key, 0) + addition
+                try:
+                    portfolio_closed_totals[key] = portfolio_closed_totals.get(key, 0) + addition
+                except:
+                    portfolio_closed_totals[key] = portfolio_closed_totals.get(key, 0)
 
             # Formatting for correct representation
-            # position['entry_value'] = currency_format(position['entry_value'], currency_used, number_of_digits)
-            # position['exit_value'] = currency_format(position['exit_value'], currency_used, number_of_digits)
             position['entry_price'] = currency_format(position['entry_price'], currency_used, number_of_digits)
             position['exit_price'] = currency_format(position['exit_price'], currency_used, number_of_digits)
 
@@ -850,14 +761,15 @@ def calculate_closed_table_output(portfolio, date, categories, use_default_curre
 
             closed_positions.append(position)
 
-    if portfolio_closed_totals['entry_value'] != 0:    
-        portfolio_closed_totals['price_change_percentage'] = (portfolio_closed_totals.get('realized_gl', 0) + portfolio_closed_totals.get('unrealized_gl', 0)) / abs(portfolio_closed_totals['entry_value'])
-        if 'capital_distribution' in categories:
-            portfolio_closed_totals['capital_distribution_percentage'] = portfolio_closed_totals['capital_distribution'] / portfolio_closed_totals['entry_value']
-        if 'commission' in categories:
-            portfolio_closed_totals['commission_percentage'] = portfolio_closed_totals['commission'] / portfolio_closed_totals['entry_value']
-        portfolio_closed_totals['total_return_percentage'] = portfolio_closed_totals['total_return_amount'] / abs(portfolio_closed_totals['entry_value'])
-    
+    if 'entry_value' in portfolio_closed_totals.keys():
+        if portfolio_closed_totals['entry_value'] != 0:    
+            portfolio_closed_totals['price_change_percentage'] = (portfolio_closed_totals.get('realized_gl', 0) + portfolio_closed_totals.get('unrealized_gl', 0)) / abs(portfolio_closed_totals['entry_value'])
+            if 'capital_distribution' in categories:
+                portfolio_closed_totals['capital_distribution_percentage'] = portfolio_closed_totals['capital_distribution'] / portfolio_closed_totals['entry_value']
+            if 'commission' in categories:
+                portfolio_closed_totals['commission_percentage'] = portfolio_closed_totals['commission'] / portfolio_closed_totals['entry_value']
+            portfolio_closed_totals['total_return_percentage'] = portfolio_closed_totals['total_return_amount'] / abs(portfolio_closed_totals['entry_value'])
+
     # Format totals
     portfolio_closed_totals = currency_format_dict_values(portfolio_closed_totals, currency_target, number_of_digits)
 

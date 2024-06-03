@@ -2,7 +2,6 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
 from common.forms import DashboardForm
-from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import currency_format, effective_current_date, selected_brokers
 
 @login_required
@@ -26,7 +25,7 @@ def transactions(request):
 
     if request.method == "POST":
 
-        dashboard_form = DashboardForm(request.POST, instance=request.user)
+        dashboard_form = DashboardForm(request.POST, instance=user)
 
         if dashboard_form.is_valid():
             # Process the form data
@@ -46,13 +45,14 @@ def transactions(request):
             'table_date': effective_current_date,
             'digits': number_of_digits
         }
-        dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+        dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     currencies = set()
-    for broker in Brokers.objects.filter(id__in=selected_brokers):
+    for broker in Brokers.objects.filter(investor=user, id__in=selected_brokers):
         currencies.update(broker.get_currencies())
         
     transactions = Transactions.objects.filter(
+        investor=user,
         date__lte=effective_current_date,
         broker_id__in=selected_brokers
     ).select_related('broker', 'security').order_by('date')
