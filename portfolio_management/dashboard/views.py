@@ -6,11 +6,6 @@ from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
 from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, selected_brokers
 
-# selected_brokers = [2]
-# currency_target = 'USD'
-# table_date = date.today()
-# number_of_digits = 0
-
 @login_required
 def dashboard(request):
 
@@ -24,7 +19,7 @@ def dashboard(request):
 
     sidebar_padding = 0
     sidebar_width = 0
-    brokers = Brokers.objects.filter(id__in=selected_brokers, investor=request.user).all()
+    brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
 
     if request.method == "GET":
         sidebar_width = request.GET.get("width")
@@ -65,7 +60,7 @@ def dashboard(request):
     summary['Invested'] = summary['Cash-out'] = 0
 
     for cur in currencies:
-        quote = Transactions.objects.filter(user__id=user.id, broker__in=selected_brokers, currency=cur, date__lte=effective_current_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
+        quote = Transactions.objects.filter(investor=user, broker__in=selected_brokers, currency=cur, date__lte=effective_current_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
         for cash_flow, date, transaction_type in quote:
             if transaction_type == 'Cash in':
                 summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
@@ -92,7 +87,7 @@ def dashboard(request):
     chart_settings['To'] = effective_current_date
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
     if from_date == '1900-01-01':
-        from_date = Transactions.objects.filter(broker__in=brokers).order_by('date').first().date
+        from_date = Transactions.objects.filter(investor=user, broker__in=brokers).order_by('date').first().date
     # print(f"views.dashboard. Line 65. From date: {from_date}")
     chart_settings['From'] = from_date
     # print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
@@ -105,21 +100,22 @@ def dashboard(request):
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
 
+    buttons = ['transaction', 'broker', 'price', 'security', 'settings']
+
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         'analysis': analysis,
         'json_analysis': json_analysis, # Feed for chart_dataset
-        # 'currency_digits': f'{currency_target},{number_of_digits}',
         'currency': currency_target,
         'table_date': effective_current_date,
-        # 'number_of_digits': number_of_digits,
         'brokers': brokers,
         'selectedBrokers': selected_brokers,
         'summary': summary,
         'chart_settings': chart_settings,
         'chartDataset': chart_dataset,
         'dashboardForm': dashboard_form,
+        'buttons': buttons,
     })
 
 def nav_chart_data_request(request):
@@ -132,7 +128,7 @@ def nav_chart_data_request(request):
         to_date = request.GET.get('to')
         breakdown = request.GET.get('breakdown')
 
-        chart_data = get_chart_data(selected_brokers, frequency, from_date, to_date, request.user.default_currency, breakdown)
+        chart_data = get_chart_data(request.user.id, selected_brokers, frequency, from_date, to_date, request.user.default_currency, breakdown)
 
         return JsonResponse(chart_data)
 

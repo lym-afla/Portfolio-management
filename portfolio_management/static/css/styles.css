@@ -149,3 +149,7 @@ div.dataTables_info,
 .chart-timeline {
     margin: 0 0 10px 0;
 }
+
+h2 {
+    margin-bottom: 0px;
+}

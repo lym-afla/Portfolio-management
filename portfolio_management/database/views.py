@@ -30,7 +30,7 @@ def database_brokers(request):
 
     if request.method == "POST":
 
-        dashboard_form = DashboardForm(request.POST, instance=request.user)
+        dashboard_form = DashboardForm(request.POST, instance=user)
 
         if dashboard_form.is_valid():
             # Process the form data
@@ -60,22 +60,23 @@ def database_brokers(request):
         broker.no_of_securities = 0
         # broker.NAV = 0
 
-        for security in broker.securities.all():
+        for security in broker.securities.filter(investor__id=user.id).all():
             if security.position(effective_current_date, [broker.id]) != 0:
                 broker.no_of_securities += 1
 
-        broker.NAV = NAV_at_date([broker.id], effective_current_date, currency_target, [])['Total NAV']
+        broker.NAV = NAV_at_date(user.id, [broker.id], effective_current_date, currency_target, [])['Total NAV']
 
         try:
             broker.first_investment = Transactions.objects.\
-                filter(broker = broker).\
+                filter(investor=user,
+                       broker=broker).\
                     order_by('date').first().date
         except:
             broker.first_investment = 'None'        
 
         broker.cash = broker.balance(effective_current_date)
     
-        broker.irr = format_percentage(Irr(effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id]))
+        broker.irr = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id]))
 
         # Calculating totals
         for key in totals:
@@ -89,7 +90,9 @@ def database_brokers(request):
         # print(f"database. views.py. line 88. {broker.name}")
     
     broker_totals = currency_format_dict_values(broker_totals, currency_target, number_of_digits)
-    broker_totals['IRR'] = format_percentage(Irr(effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id for broker in brokers]))
+    broker_totals['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id for broker in brokers]))
+
+    buttons = ["transaction", "broker", "price", "security", "settings"]
 
     return render(request, 'brokers.html', {
         'sidebar_width': sidebar_width,
@@ -98,6 +101,7 @@ def database_brokers(request):
         'broker_totals': broker_totals,
         'currencies': currencies,
         'currency': currency_target,
+        'buttons': buttons,
     })
 
 @login_required
@@ -117,7 +121,7 @@ def database_securities(request):
 
     if request.method == "POST":
 
-        dashboard_form = DashboardForm(request.POST, instance=request.user)
+        dashboard_form = DashboardForm(request.POST, instance=user)
 
         if dashboard_form.is_valid():
             # Process the form data
@@ -152,7 +156,7 @@ def database_securities(request):
         security.realised = currency_format(security.realized_gain_loss(effective_current_date)['all_time'], security.currency, number_of_digits)
         security.unrealised = currency_format(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)
         security.capital_distribution = currency_format(security.get_capital_distribution(effective_current_date), security.currency, number_of_digits)
-        security.irr = format_percentage(Irr(effective_current_date, security.currency, asset_id=security.id))
+        security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
         
 
     return render(request, 'securities.html', {
@@ -218,7 +222,9 @@ def add_transaction(request):
     if request.method == 'POST':
         form = TransactionForm(request.POST)
         if form.is_valid():
-            form.save()
+            transaction = form.save(commit=False)  # Don't save to the database yet
+            transaction.investor = request.user     # Set the investor field
+            transaction.save()
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
                 return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
@@ -232,11 +238,14 @@ def add_transaction(request):
         form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
     return JsonResponse({'form_html': form_html})
 
+@login_required
 def add_broker(request):
     if request.method == 'POST':
         form = BrokerForm(request.POST)
         if form.is_valid():
-            form.save()
+            broker = form.save(commit=False)  # Don't save to the database yet
+            broker.investor = request.user     # Set the investor field
+            broker.save()
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
                 return JsonResponse({'success': True, 'redirect_url': reverse('database:brokers')})
@@ -247,7 +256,7 @@ def add_broker(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = BrokerForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Broker'}, request)
     return JsonResponse({'form_html': form_html})
 
 def add_price(request):
@@ -255,19 +264,35 @@ def add_price(request):
         form = PriceForm(request.POST)
         if form.is_valid():
             form.save()
-            return redirect('database:prices')
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                # If it's an AJAX request, return a JSON response with success and redirect_url
+                return JsonResponse({'success': True, 'redirect_url': reverse('database:prices')})
+            else:
+                # If it's not an AJAX request, redirect to a URL
+                return redirect('database:prices')
+        else:
+            return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = PriceForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Price'}, request)
     return JsonResponse({'form_html': form_html})
 
 def add_security(request):
     if request.method == 'POST':
         form = SecurityForm(request.POST)
         if form.is_valid():
-            form.save()
-            return redirect('database:securities')
+            security = form.save(commit=False)  # Don't save to the database yet
+            security.investor = request.user     # Set the investor field
+            security.save()
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                # If it's an AJAX request, return a JSON response with success and redirect_url
+                return JsonResponse({'success': True, 'redirect_url': reverse('database:securities')})
+            else:
+                # If it's not an AJAX request, redirect to a URL
+                return redirect('database:securities')
+        else:
+            return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = SecurityForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction'}, request)
+        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Security'}, request)
     return JsonResponse({'form_html': form_html})

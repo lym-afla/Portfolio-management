@@ -1,9 +1,8 @@
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.shortcuts import render
-from common.models import Brokers, Assets, FX
+from common.models import Brokers, Assets
 from common.forms import DashboardForm
-from database.forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
 from utils import calculate_open_table_output, selected_brokers, effective_current_date
 
 
@@ -21,7 +20,7 @@ def open_positions(request):
 
     sidebar_padding = 0
     sidebar_width = 0
-    brokers = Brokers.objects.filter(investor=request.user).all()
+    brokers = Brokers.objects.filter(investor=user).all()
 
     if request.method == "GET":
         sidebar_width = request.GET.get("width")
@@ -29,7 +28,7 @@ def open_positions(request):
 
     if request.method == "POST":
 
-        dashboard_form = DashboardForm(request.POST, instance=request.user)
+        dashboard_form = DashboardForm(request.POST, instance=user)
 
         if dashboard_form.is_valid():
             # Process the form data
@@ -49,12 +48,12 @@ def open_positions(request):
             'table_date': effective_current_date,
             'digits': number_of_digits
         }
-        dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+        dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     # Portfolio at [date] - assets with non zero positions
     # func.date used for correct query when transaction is at [table_date] (removes time effectively)
     portfolio_open = Assets.objects.filter(
-        investor=request.user,
+        investor=user,
         transactions__date__lte=effective_current_date,
         transactions__broker_id__in=selected_brokers
     ).prefetch_related(

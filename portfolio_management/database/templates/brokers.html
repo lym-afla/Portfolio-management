@@ -34,11 +34,21 @@
 
 {% block content %}
 
+    <div>
+        <button type="button" class="btn btn-secondary me-2 edit-entry-button" data-edit-type="broker" id="editTransactionButton" disabled>
+            Edit
+        </button>
+        <button type="button" class="btn btn-danger" id="deleteBrokerButton" data-delete-type="broker" data-bs-toggle="modal" data-bs-target="#deleteConfirmationModal" disabled>
+            <i class="bi bi-trash3"></i>
+        </button>
+    </div>
+
     <div class="content-body">
         <div class="tab-pane" id="nav-brokers" role="tabpanel">
             <table id="table-database-brokers" class="table table-hover table-striped align-middle">
                 <thead>
                     <tr>
+                        <th rowspan="2"></th>
                         <th class="text-start" rowspan="2">Name</th>
                         <th class="text-center" rowspan="2">Country</th>
                         <th class="text-center" rowspan="2">Currencies</th>
@@ -57,6 +67,9 @@
                 <tbody>
                 {% for broker in brokers %}    
                     <tr>
+                        <td>
+                            <input class="form-check-input transaction-radio" type="radio" name="radioTransaction" value="{{ broker.id }}">
+                        </td>
                         <td class="text-start">{{ broker.name }}</td>
                         <td class="text-center">{{ broker.country }}</td>
                         <td class="text-center">
@@ -80,6 +93,7 @@
                 </tbody>
                 <tfoot>
                     <tr>
+                        <td class="border-0"></td>
                         <td class="border-0 fw-bold" colspan="2">TOTAL</td>
                         <td class="border-0"></td>
                         <td class="text-center border-0 fw-bold">{{ broker_totals|get_item:"no_of_securities" }}</td>
