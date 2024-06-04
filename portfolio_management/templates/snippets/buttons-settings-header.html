@@ -84,6 +84,6 @@
 
 <script src="{% static 'js/formHandler.js' %}"></script>
 
-{% if "edit" in buttons or "delete" in buttons %}
-    <script src="{% static 'js/edit-delete.js' %}"></script>
-{% endif %}
+    {% comment %} {% if "edit" in buttons or "delete" in buttons %}
+        <script src="{% static 'js/edit-delete.js' %}"></script>
+    {% endif %} {% endcomment %}
