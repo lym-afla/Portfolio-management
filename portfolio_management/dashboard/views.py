@@ -11,43 +11,27 @@ def dashboard(request):
 
     user = request.user
     
-    global selected_brokers
+    # global selected_brokers
     global effective_current_date
     
     currency_target = user.default_currency
     number_of_digits = user.digits
+    selected_brokers = user.custom_brokers
 
     sidebar_padding = 0
     sidebar_width = 0
     brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
 
-    if request.method == "GET":
-        sidebar_width = request.GET.get("width")
-        sidebar_padding = request.GET.get("padding")
+    sidebar_width = request.GET.get("width")
+    sidebar_padding = request.GET.get("padding")
 
-    # In case settings at the top menu are changed
-    if request.method == "POST":
-
-        dashboard_form = DashboardForm(request.POST, instance=request.user)
-        if dashboard_form.is_valid():
-            # Process the form data
-            selected_brokers = dashboard_form.cleaned_data['selected_brokers']
-            currency_target = dashboard_form.cleaned_data['default_currency']
-            effective_current_date = dashboard_form.cleaned_data['table_date']
-            number_of_digits = dashboard_form.cleaned_data['digits']
-            
-            # Save new parameters to user setting
-            user.default_currency = currency_target
-            user.digits = number_of_digits
-            user.save()
-    else:
-        initial_data = {
-            'selected_brokers': selected_brokers,
-            'default_currency': currency_target,
-            'table_date': effective_current_date,
-            'digits': number_of_digits
-        }
-        dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+    initial_data = {
+        'selected_brokers': selected_brokers,
+        'default_currency': currency_target,
+        'table_date': effective_current_date,
+        'digits': number_of_digits
+    }
+    dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
 
     analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
 

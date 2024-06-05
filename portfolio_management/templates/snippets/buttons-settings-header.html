@@ -7,7 +7,7 @@
             <img src="../static/icons/gear.svg" alt="Settings" title="Table tools" width="20px" height="20px">
         </button>
     {% elif item == "edit" %}
-        <button type="button" class="btn btn-secondary" data-edit-type={{ type }} id="editEntryButton" disabled>
+        <button type="button" class="btn btn-secondary" data-edit-type="{{ type }}" id="editEntryButton" disabled>
             Edit
         </button>
     {% elif item == "delete" %}
@@ -55,7 +55,7 @@
 
 {% if "settings" in buttons %}
     <div class="collapse" id="tableTools">
-        <form  class="row g-3 d-flex" method="post" action="{% url 'dashboard:dashboard' %}">
+        <form  class="row g-3 d-flex" method="post" action="{% url 'users:update_dashboard' %}">
             {% csrf_token %}
             {% for field in dashboardForm %}
                 <div class="col-md-2">
@@ -83,7 +83,3 @@
 </script>
 
 <script src="{% static 'js/formHandler.js' %}"></script>
-
-    {% comment %} {% if "edit" in buttons or "delete" in buttons %}
-        <script src="{% static 'js/edit-delete.js' %}"></script>
-    {% endif %} {% endcomment %}

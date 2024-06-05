@@ -2,8 +2,11 @@ from django.db import models
 from django.db.models import F, Sum
 import networkx as nx
 from datetime import timedelta
+import requests
+import yfinance as yf
 
 from constants import CURRENCY_CHOICES, ASSET_TYPE_CHOICES, TRANSACTION_TYPE_CHOICES
+# from .utils import update_FX_database
 from users.models import CustomUser
 
 # Table with FX data
@@ -84,6 +87,34 @@ class FX(models.Model):
             'dates_async': dates_async,
             'dates': dates_list
         }
+    
+    @classmethod
+    def update_fx_rate(cls, date, investor):
+        # Get FX model variables, except 'date'
+        fx_variables = [field for field in cls._meta.get_fields() if (field.name != 'date' and field.name != 'investor')]
+
+        # Extract source and target currencies
+        currency_pairs = [(field.name[:3], field.name[3:]) for field in fx_variables]
+
+        for source, target in currency_pairs:
+            # Check if an FX rate exists for the date and currency pair
+            existing_rate = cls.objects.filter(date=date).values(f'{source}{target}').first()
+
+            if existing_rate is None or existing_rate[f'{source}{target}'] is None:
+                # Get the FX rate for the date
+                rate_data = update_FX_from_Yahoo(source, target, date)
+
+                if rate_data is not None:
+                    # Update or create an FX instance with the new rate
+                    fx_instance, created = cls.objects.get_or_create(date=rate_data['requested_date'], investor=investor)
+                    setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
+                    fx_instance.save()
+                    print(f'{source}{target} for {rate_data["requested_date"]} is updated')
+                else:
+                    raise Exception(f'{source}{target} for {rate_data["requested_date"]} is NOT updated. Yahoo Finance is not responding correctly')
+            else:
+                print(f'{source}{target} for {date} already exists')
+
 
 # Brokers
 class Brokers(models.Model):
@@ -455,14 +486,14 @@ class Transactions(models.Model):
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
     date = models.DateField(null=False)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
 
     def __str__(self):
-        return f"{self.security.name} || {self.type} || {self.date}"
+        return f"{self.type} || {self.date}"
 
 # Table with non-public asset prices
 class Prices(models.Model):
@@ -472,3 +503,57 @@ class Prices(models.Model):
 
     def __str__(self):
         return f"{self.security.name} is at {self.price} on {self.date}"
+    
+
+
+def is_yahoo_finance_available():
+    url = "https://finance.yahoo.com"  # Replace with the Yahoo Finance API endpoint if needed
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return True
+    except requests.ConnectionError:
+        pass
+    return False
+
+def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
+    
+    if not is_yahoo_finance_available():
+        raise ConnectionError("Yahoo Finance is not available")
+
+    # Define the currency pair
+    currency_pair = f"{target_currency}{base_currency}=X"
+
+    # Initialize a counter for the number of attempts
+    attempt = 0
+
+    while attempt < max_attempts:
+        # Define the date for which you want the exchange rate
+        end_date = date - timedelta(days=attempt - 1)  # Go back in time for each attempt. Need to deduct 1 to get rate for exactly the date
+        start_date = end_date - timedelta(days=1)  # Go back one day to ensure the date is covered
+        
+        # Fetch historical data for the currency pair within the date range
+        data = yf.Ticker(currency_pair)
+        # exchange_rate_data = data.history(period="1d", start=start_date, end=end_date)
+        try:
+            exchange_rate_data = data.history(period="1d", start=start_date, end=end_date)
+        except:
+            attempt += 1
+            continue
+
+        if not exchange_rate_data.empty and not exchange_rate_data["Close"].isnull().all():
+            # Get the exchange rate for the specified date
+            exchange_rate = round(exchange_rate_data["Close"].iloc[0], 6)
+            actual_date = exchange_rate_data.index[0].date()  # Extract the actual date
+
+            return {
+                'exchange_rate': exchange_rate,
+                'actual_date': actual_date,
+                'requested_date': date
+            }
+
+        # Increment the attempt counter
+        attempt += 1
+
+    # If no data is found after max_attempts, return None or an appropriate error message
+    return None

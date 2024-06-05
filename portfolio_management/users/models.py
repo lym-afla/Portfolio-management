@@ -19,3 +19,4 @@ class CustomUser(AbstractUser):
             'min_value': 'The value for digits must be greater than or equal to 0.',
             }
         )
+    custom_brokers = models.JSONField(default=list, blank=True)  # Store list of broker IDs as JSON

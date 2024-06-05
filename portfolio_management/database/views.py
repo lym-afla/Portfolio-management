@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 
-from common.models import FX, Assets, Brokers, Transactions
+from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
 
 from .forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
@@ -116,29 +116,8 @@ def database_securities(request):
     sidebar_padding = 0
     sidebar_width = 0
 
-    if request.method == "GET":
-        sidebar_width = request.GET.get("width")
-        sidebar_padding = request.GET.get("padding")
-
-    if request.method == "POST":
-
-        dashboard_form = DashboardForm(request.POST, instance=user)
-
-        if dashboard_form.is_valid():
-            # Process the form data
-            currency_target = dashboard_form.cleaned_data['default_currency']
-            number_of_digits = dashboard_form.cleaned_data['digits']
-            
-            # Save new parameters to user setting
-            user.default_currency = currency_target
-            user.digits = number_of_digits
-            user.save()
-        else:
-            initial_data = {
-                'default_currency': currency_target,
-                'digits': number_of_digits
-            }
-        dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+    sidebar_width = request.GET.get("width")
+    sidebar_padding = request.GET.get("padding")
 
     # Calculate securities' metrics
     securities = Assets.objects.filter(investor=user).all()
@@ -150,14 +129,16 @@ def database_securities(request):
             security.first_investment = 'None'
         
         security.open_position = security.position(effective_current_date)
-        security.current_value = currency_format(security.open_position * security.price_at_date(effective_current_date).price or 0, security.currency, number_of_digits)
-
+        if security.price_at_date(effective_current_date) is not None:
+            security.current_value = currency_format(security.open_position * security.price_at_date(effective_current_date).price or 0, security.currency, number_of_digits)
+            security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
+        
         security.open_position = currency_format(security.open_position, '', 0)
         
         security.realised = currency_format(security.realized_gain_loss(effective_current_date)['all_time'], security.currency, number_of_digits)
         security.unrealised = currency_format(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)
         security.capital_distribution = currency_format(security.get_capital_distribution(effective_current_date), security.currency, number_of_digits)
-        security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
+        
 
     buttons = ['security', 'edit', 'delete']        
 
@@ -173,36 +154,12 @@ def database_securities(request):
 def database_prices(request):
     
     user = request.user
-    
-    currency_target = user.default_currency
-    number_of_digits = user.digits
 
     sidebar_padding = 0
     sidebar_width = 0
 
-    if request.method == "GET":
-        sidebar_width = request.GET.get("width")
-        sidebar_padding = request.GET.get("padding")
-
-    if request.method == "POST":
-
-        dashboard_form = DashboardForm(request.POST, instance=request.user)
-
-        if dashboard_form.is_valid():
-            # Process the form data
-            currency_target = dashboard_form.cleaned_data['default_currency']
-            number_of_digits = dashboard_form.cleaned_data['digits']
-            
-            # Save new parameters to user setting
-            user.default_currency = currency_target
-            user.digits = number_of_digits
-            user.save()
-        else:
-            initial_data = {
-                'default_currency': currency_target,
-                'digits': number_of_digits
-            }
-        dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+    sidebar_width = request.GET.get("width")
+    sidebar_padding = request.GET.get("padding")
 
     # Calculate price data
     fx_data = FX.objects.filter(investor=user).all()
@@ -226,11 +183,22 @@ def database_prices(request):
 
 def add_transaction(request):
     if request.method == 'POST':
-        form = TransactionForm(request.POST)
+        form = TransactionForm(request.POST, investor=request.user.id)
         if form.is_valid():
             transaction = form.save(commit=False)  # Don't save to the database yet
             transaction.investor = request.user     # Set the investor field
             transaction.save()
+
+            # When adding new transaction update FX rates from Yahoo
+            FX.update_fx_rate(transaction.date, request.user)
+
+            price_instance = Prices(
+                date=transaction.date,
+                security=transaction.security,
+                price=transaction.price,
+            )
+            price_instance.save()
+            
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
                 return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
@@ -240,7 +208,7 @@ def add_transaction(request):
         else:
             return JsonResponse({'errors': form.errors}, status=400)
     else:
-        form = TransactionForm()
+        form = TransactionForm(investor=request.user)
         form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction', 'action_url': 'database:add_transaction'}, request)
     return JsonResponse({'form_html': form_html})
 
@@ -315,6 +283,8 @@ def edit_item(request, model_class, form_class, item_id, type):
             item.save()
             if type == 'transaction':
                 redirect_url = reverse('transactions:transactions')
+            elif type == 'security':
+                redirect_url = reverse(f'database:securities')
             else:
                 redirect_url = reverse(f'database:{type}s')
             return JsonResponse({'success': True, 'redirect_url': redirect_url})
