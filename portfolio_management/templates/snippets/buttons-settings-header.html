@@ -14,6 +14,10 @@
         <button type="button" class="btn btn-danger" id="deleteEntryButton" data-delete-type="{{ type }}" data-bs-toggle="modal" data-bs-target="#deleteConfirmationModal" disabled>
             <i class="bi bi-trash3"></i>
         </button>
+    {% elif item == "import" %}
+        <button type="button" class="btn btn-primary" id="importTransactionsBtn">
+            Import transactions
+        </button>
     {% else %}
         <button type="button" class="btn btn-secondary" data-type="{{ item }}">
             Add {{ item }}
@@ -23,12 +27,6 @@
 {% endfor %}
 
 <h6 class="float-end d-flex p-2">{{ table_date|date:'j-M-y' }}</h6>
-
-<!-- Include modal templates -->
-<div id="transactionFormModalContainer"></div>
-<div id="brokerFormModalContainer"></div>
-<div id="priceFormModalContainer"></div>
-<div id="securityFormModalContainer"></div>
 
 {% if "delete" in buttons %}
     <!-- Delete Confirmation Modal -->
@@ -50,6 +48,98 @@
         </div>
     </div>
 {% endif %}
+
+{% if "import" in buttons %}
+    <!-- Import Modal -->
+    <div class="modal fade" id="importModal" tabindex="-1" role="dialog" aria-labelledby="importModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <form id="importForm" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="importModalLabel">Import transactions</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group mb-3 row">
+                            <label for="broker" class="col-md-4 col-form-label">Select broker</label>
+                            <div class="col-md-8">
+                                <select id="broker" name="broker" class="form-select"></select>
+                            </div>
+                        </div>
+                        <div class="form-group mb-3 row">
+                            <label for="currency" class="col-md-4 col-form-label">Currency</label>
+                            <div class="col-md-8">
+                                <select id="currency" name="currency" class="form-select"></select>
+                            </div>
+                        </div>
+                        <div class="form-group mb-3 row">
+                            <label for="file" class="col-md-4 col-form-label">Select file</label>
+                            <div class="col-md-8">
+                                <input type="file" id="file" name="file" class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-group mb-3 row">
+                            <label class="form-check-label col-md-4" for="confirm_each">Confirm each transaction</label>
+                            <div class="col-md-8">    
+                                <input type="checkbox" id="confirm_each" name="confirm_each" class="form-check-input">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Import</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div class="modal fade" id="progressModal" tabindex="-1" role="dialog" aria-labelledby="progressModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="progressModalLabel">Importing Transactions</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p id="progressMessage"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmationModalLabel">Confirm Transaction</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="transactionDetails"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Skip</button>
+                    <button type="button" class="btn btn-primary" id="confirmBtn">Confirm</button>
+                    <button type="button" class="btn btn-warning" id="editBtn">Edit</button>
+                    <button type="button" class="btn btn-danger" id="stopBtn">Stop Importing</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endif %}
+
+<!-- Include modal templates -->
+<div id="transactionFormModalContainer"></div>
+<div id="brokerFormModalContainer"></div>
+<div id="priceFormModalContainer"></div>
+<div id="securityFormModalContainer"></div>
 
 <hr>
 
@@ -79,6 +169,9 @@
         broker: "{% url 'database:add_broker' %}",
         price: "{% url 'database:add_price' %}",
         security: "{% url 'database:add_security' %}",
+        import_form: "{% url 'database:import_transactions_form' %}",
+        import_transactions: "{% url 'database:import_transactions' %}",
+        process_import_transactions: "{% url 'database:process_import_transactions' %}"
     };
 </script>
 

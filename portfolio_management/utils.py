@@ -1,5 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
+
+from django.http import JsonResponse
 from common.models import Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, F
 from pyxirr import xirr
@@ -794,3 +796,137 @@ def update_fx_database(investor):
         count += 1
         print(f'{count} of {len(transaction_dates)}')
         FX.update_fx_rate(date, investor)
+
+def import_transactions_from_file(file, user, broker, currency, confirm_each):
+    
+    df = pd.read_excel(file, header=None)
+    transactions = []
+    i = 0
+
+    while i < len(df.columns):
+        if pd.notna(df.iloc[1, i]):
+            security_name = df.iloc[1, i]
+            isin = df.iloc[2, i]
+            
+            security = Assets.objects.filter(name=security_name, ISIN=isin).first()
+
+            if not security:
+                # If the security does not exist, return a response to open the form
+                return {
+                        'status': 'missing_security',
+                        'security': {
+                            'name': security_name,
+                            'isin': isin,
+                            'currency': currency,
+                        }
+                    }
+
+            # Process transactions...
+            transactions_start = df[df.iloc[:, i] == 'Дата'].index[0] + 1
+
+            for row in range(transactions_start, len(df)):
+                if pd.isna(df.iloc[row, i]):
+                    break
+
+                date = df.iloc[row, i]
+
+                price = df.iloc[row, i + 1]
+                quantity = df.iloc[row, i + 2]
+                dividend = df.iloc[row, i + 3] if not pd.isna(df.iloc[row, i + 3]) else None
+                commission = df.iloc[row, i + 4] if not pd.isna(df.iloc[row, i + 4]) else None
+
+                transaction_data = {
+                    'security_name': security_name,
+                    'isin': isin,
+                    'date': date,
+                    'price': price,
+                    'quantity': quantity,
+                    'dividend': dividend,
+                    'commission': commission,
+                }
+
+                if confirm_each:
+                    transactions.append(transaction_data)
+                else:
+                    if quantity > 0:
+                        transaction_type = 'Buy'
+                    elif quantity < 0:
+                        transaction_type = 'Sell'
+                    else:
+                        transaction_type = 'Dividend'
+                    
+                    Transactions.objects.create(
+                        investor=user,
+                        broker=broker,
+                        security=security,
+                        currency=currency,
+                        type=transaction_type,
+                        date=date,
+                        quantity=quantity,
+                        price=price,
+                        cash_flow=dividend,
+                        commission=commission,
+                    )
+
+            i += 1
+            while i < len(df.columns) and pd.isna(df.iloc[1, i]):
+                i += 1
+        else:
+            i += 1
+
+    # Return transactions list for further processing if needed
+    return {
+        'status': 'success',
+        'transactions': transactions
+    }
+
+def parse_excel_file(file, currency):
+    df = pd.read_excel(file, header=None)
+    securities = []
+    transactions = []
+    i = 0
+
+    while i < len(df.columns):
+        if pd.notna(df.iloc[1, i]):
+            security_name = df.iloc[1, i]
+            isin = df.iloc[2, i]
+            securities.append({'name': security_name, 'isin': isin, 'currency': currency})
+
+            transactions_start = df[df.iloc[:, i] == 'Дата'].index[0] + 1
+
+            for row in range(transactions_start, len(df)):
+                if pd.isna(df.iloc[row, i]):
+                    continue
+
+                date = df.iloc[row, i].strftime("%Y-%m-%d")
+                price = df.iloc[row, i + 1]
+                quantity = df.iloc[row, i + 2]
+                dividend = df.iloc[row, i + 3] if not pd.isna(df.iloc[row, i + 3]) else None
+                commission = df.iloc[row, i + 4] if not pd.isna(df.iloc[row, i + 4]) else None
+
+                if quantity > 0:
+                        transaction_type = 'Buy'
+                elif quantity < 0:
+                    transaction_type = 'Sell'
+                else:
+                    transaction_type = 'Dividend'
+
+                transaction_data = {
+                    'security_name': security_name,
+                    'isin': isin,
+                    'date': date,
+                    'type': transaction_type,
+                    'currency': currency,
+                    'price': price,
+                    'quantity': quantity,
+                    'dividend': dividend,
+                    'commission': commission,
+                }
+                transactions.append(transaction_data)
+            i += 1
+            while i < len(df.columns) and pd.isna(df.iloc[1, i]):
+                i += 1
+        else:
+            i += 1
+
+    return securities, transactions

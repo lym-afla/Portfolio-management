@@ -7,9 +7,10 @@ from django.views.decorators.http import require_http_methods
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
+from constants import CURRENCY_CHOICES
 
 from .forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
-from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, currency_format, format_percentage
+from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, currency_format, format_percentage, import_transactions_from_file, parse_excel_file
 
 @login_required
 def database_brokers(request):
@@ -184,6 +185,8 @@ def database_prices(request):
 def add_transaction(request):
     if request.method == 'POST':
         form = TransactionForm(request.POST, investor=request.user.id)
+        import_flag = request.POST.get('importing', False)
+
         if form.is_valid():
             transaction = form.save(commit=False)  # Don't save to the database yet
             transaction.investor = request.user     # Set the investor field
@@ -201,7 +204,10 @@ def add_transaction(request):
             
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
-                return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
+                if import_flag:
+                    return JsonResponse({'status': 'success'})
+                else:
+                    return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
             else:
                 # If it's not an AJAX request, redirect to a URL
                 return redirect('transactions:transactions')
@@ -254,13 +260,19 @@ def add_price(request):
 def add_security(request):
     if request.method == 'POST':
         form = SecurityForm(request.POST)
+        import_flag = request.POST.get('importing', False)
+
         if form.is_valid():
             security = form.save(commit=False)  # Don't save to the database yet
             security.investor = request.user     # Set the investor field
             security.save()
+
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
-                return JsonResponse({'success': True, 'redirect_url': reverse('database:securities')})
+                if import_flag:
+                    return JsonResponse({'status': 'success'})
+                else:
+                    return JsonResponse({'success': True, 'redirect_url': reverse('database:securities')})
             else:
                 # If it's not an AJAX request, redirect to a URL
                 return redirect('database:securities')
@@ -309,3 +321,66 @@ def delete_item(request, model_class, item_id):
     item = get_object_or_404(model_class, id=item_id)
     item.delete()
     return JsonResponse({'success': True})
+
+@login_required
+def import_transactions_form(request):
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        brokers = list(Brokers.objects.filter(investor=request.user).values('id', 'name'))
+        return JsonResponse({
+            'brokers': brokers,
+            'CURRENCY_CHOICES': CURRENCY_CHOICES,
+        })
+    else:
+        # If it's not an AJAX request, redirect to a URL
+        return redirect('transactions:transactions')
+
+@login_required
+def import_transactions(request):
+    if request.method == 'POST':
+        broker_id = request.POST.get('broker')
+        currency = request.POST.get('currency')
+        confirm_each = request.POST.get('confirm_each') == 'on'
+        file = request.FILES['file']
+
+        user = request.user
+        broker = get_object_or_404(Brokers, id=broker_id)
+
+        securities, transactions = parse_excel_file(file, currency)
+        
+        for security in securities:
+            if not Assets.objects.filter(investor=user, name=security['name'], ISIN=security['isin']).exists():
+                return JsonResponse({'status': 'missing_security', 'security': security})
+
+        request.session['transactions'] = transactions
+        print("views. database. line 351", transactions)
+        return JsonResponse({'status': 'success', 'transactions': transactions})
+
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+@login_required
+def process_import_transactions(request):
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        transaction_data = request.POST.dict()
+        transaction_id = int(request.POST.get('transaction_id'))
+
+        if action == 'confirm':
+            form = TransactionForm(transaction_data, investor=request.user.id)
+            print("views. database. 369", form)
+            if form.is_valid():
+                security = form.save(commit=False)  # Don't save to the database yet
+                security.investor = request.user     # Set the investor field
+                security.save()
+                return JsonResponse({'status': 'success'})
+            else:
+                return JsonResponse({'status': 'error', 'errors': form.errors})
+        elif action == 'skip':
+            return JsonResponse({'status': 'skipped'})
+        elif action == 'edit':
+            form = TransactionForm(transaction_data)
+            form_html = render_to_string('edit_transaction_form.html', {'form': form}, request)
+            return JsonResponse({'status': 'edit', 'form_html': form_html})
+        elif action == 'stop':
+            return JsonResponse({'status': 'stopped'})
+
+    return JsonResponse({'error': 'Invalid request method'}, status=400)

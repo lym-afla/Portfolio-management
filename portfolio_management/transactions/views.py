@@ -64,7 +64,7 @@ def transactions(request):
         if transaction.commission:
             transaction.commission = currency_format(-transaction.commission, transaction.currency, number_of_digits)
            
-    buttons = ['transaction', 'settings']
+    buttons = ['transaction', 'settings', 'import']
 
     return render(request, 'transactions.html', {
         'sidebar_width': sidebar_width,
