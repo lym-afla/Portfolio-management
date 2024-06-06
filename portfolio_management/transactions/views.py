@@ -10,52 +10,36 @@ def transactions(request):
     user = request.user
 
     global effective_current_date
-    global selected_brokers
 
     currency_target = user.default_currency
     number_of_digits = user.digits
+    selected_brokers = user.custom_brokers
 
     sidebar_padding = 0
     sidebar_width = 0
-    brokers = Brokers.objects.all()
+    brokers = Brokers.objects.filter(investor=user, id__in=selected_brokers).all()
 
-    if request.method == "GET":
-        sidebar_width = request.GET.get("width")
-        sidebar_padding = request.GET.get("padding")
+    sidebar_width = request.GET.get("width")
+    sidebar_padding = request.GET.get("padding")
 
-    if request.method == "POST":
 
-        dashboard_form = DashboardForm(request.POST, instance=user)
-
-        if dashboard_form.is_valid():
-            # Process the form data
-            selected_brokers = dashboard_form.cleaned_data['selected_brokers']
-            currency_target = dashboard_form.cleaned_data['default_currency']
-            effective_current_date = dashboard_form.cleaned_data['table_date']
-            number_of_digits = dashboard_form.cleaned_data['digits']
-            
-            # Save new parameters to user setting
-            user.default_currency = currency_target
-            user.digits = number_of_digits
-            user.save()
-    else:
-        initial_data = {
-            'selected_brokers': selected_brokers,
-            'default_currency': currency_target,
-            'table_date': effective_current_date,
-            'digits': number_of_digits
-        }
-        dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    initial_data = {
+        'selected_brokers': selected_brokers,
+        'default_currency': currency_target,
+        'table_date': effective_current_date,
+        'digits': number_of_digits
+    }
+    dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     currencies = set()
-    for broker in Brokers.objects.filter(investor=user, id__in=selected_brokers):
+    for broker in brokers:
         currencies.update(broker.get_currencies())
         
     transactions = Transactions.objects.filter(
         investor=user,
         date__lte=effective_current_date,
         broker_id__in=selected_brokers
-    ).select_related('broker', 'security').order_by('date')
+    ).select_related('broker', 'security').order_by('date').all()
 
     balance = {}
     for transaction in transactions:
@@ -80,6 +64,8 @@ def transactions(request):
         if transaction.commission:
             transaction.commission = currency_format(-transaction.commission, transaction.currency, number_of_digits)
            
+    buttons = ['transaction', 'settings']
+
     return render(request, 'transactions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
@@ -91,4 +77,5 @@ def transactions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'buttons': buttons,
     })

@@ -1,6 +1,8 @@
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
+
+from common.forms import DashboardForm
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -43,7 +45,6 @@ def user_login(request):
 def profile(request):
 
     user = request.user
-    settings_form = UserSettingsForm(instance=user)
 
     if request.method == 'POST':
         settings_form = UserSettingsForm(request.POST, instance=user)
@@ -59,11 +60,14 @@ def profile(request):
             request.session['default_currency'] = user.default_currency
             # request.session['default_currency_for_all_data'] = user.use_default_currency_for_all_data
             request.session['digits'] = user.digits
+            request.session['custom_brokers'] = user.custom_brokers
 
             return JsonResponse({'success': True}, status=200)
         else:
             print(f"profile page: {settings_form.errors}")
             return JsonResponse({'errors': settings_form.errors}, status=400)
+    else:
+        settings_form = UserSettingsForm(instance=user)
         
     user_info = [
         {"label": "Username", "value": user.username},
@@ -78,12 +82,12 @@ def profile(request):
 def edit_profile(request):
     user = request.user
     profile_form = UserProfileForm(instance=user)
-    print(f"users.views.py. {profile_form}")
+    # print(f"users.views.py. {profile_form}")
 
     if request.method == 'POST':
         profile_form = UserProfileForm(request.POST, instance=user)
         if profile_form.is_valid():
-            print(f"Printing profile form from profile {profile_form}")
+            # print(f"Printing profile form from profile {profile_form}")
             profile_form.save()
             return redirect('users:profile')
 
@@ -97,3 +101,27 @@ def reset_password(u, password):
     user.set_password(password)
     user.save()
     return "Password has been changed successfully"
+
+@login_required
+def update_from_dashboard_form(request):
+
+    global effective_current_date
+
+    user = request.user
+
+    # In case settings at the top menu are changed
+    if request.method == "POST":
+        dashboard_form = DashboardForm(request.POST, instance=user)
+        if dashboard_form.is_valid():
+            # Process the form data
+            effective_current_date = dashboard_form.cleaned_data['table_date']
+            
+            # Save new parameters to user setting
+            user.default_currency = dashboard_form.cleaned_data['default_currency']
+            user.digits = dashboard_form.cleaned_data['digits']
+            selected_broker_ids = [broker.id for broker in dashboard_form.cleaned_data['selected_brokers']]
+            user.custom_brokers = selected_broker_ids
+            user.save()
+            # Redirect to the same page to refresh it
+            return redirect(request.META.get('HTTP_REFERER'))
+    return redirect('dashboard:dashboard')  # Redirect to home page if request method is not POST

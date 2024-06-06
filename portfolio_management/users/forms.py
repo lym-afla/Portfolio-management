@@ -3,6 +3,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from common.models import Brokers
 from users.models import CustomUser
 
 class SignUpForm(UserCreationForm):
@@ -54,11 +55,6 @@ class UserSettingsForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Default currency'
     )
-    # use_default_currency_for_all_data = forms.BooleanField(
-    #     widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-    #     label='Use default currency for data where relevant?',
-    #     required=False
-    # )
     chart_frequency = forms.ChoiceField(
         choices=FREQUENCY_CHOICES,
         widget=forms.Select(attrs={'class': 'form-select'}),
@@ -69,29 +65,36 @@ class UserSettingsForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Chart timeline'
     )
-    digits = forms.IntegerField(
-        widget=forms.NumberInput(attrs={'class': 'form-control'}),
-        label='Digits for tables'
-    )
     NAV_barchart_default_breakdown = forms.ChoiceField(
         choices=NAV_BARCHART_CHOICES,
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Default NAV timeline breakdown'
     )
+    custom_brokers = forms.MultipleChoiceField(
+        choices=[],
+        widget=forms.SelectMultiple(attrs={'class': 'selectpicker show-tick', 'data-actions-box': 'true', 'data-width': '100%', 'title': 'Choose broker', 'data-selected-text-format': 'count', 'id': 'inputBrokers'}),
+        label='Brokers'
+    )
     
     class Meta:
         model = CustomUser
-        fields = ['default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
+        fields = ['custom_brokers', 'default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
         widgets = {
             'use_default_currency_where_relevant': forms.CheckboxInput(attrs={'class': 'form-check-input ml-0'}),
-            # 'chart_frequency': forms.Select(attrs={'class': 'form-select'}),
-        #     'chart_timeline': forms.Select(attrs={'class': 'form-select'})
+            'digits': forms.NumberInput(attrs={'class': 'form-control'}),
         }
         labels = {
             'digits': 'Number of digits',
-        #     'chart_frequency': 'Chart frequency:',
-        #     'chart_timeline': 'Chart timeline:',
         }
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.get('instance')
+        super().__init__(*args, **kwargs)
+        # Set choices dynamically for broker, security, and type fields
+        if user is not None:
+            brokers = Brokers.objects.filter(investor=user).order_by('name')
+            self.fields['custom_brokers'].choices = [(broker.pk, broker.name) for broker in brokers]
+            self.fields['custom_brokers'].initial = user.custom_brokers
 
     def clean_digits(self):
         digits = self.cleaned_data.get('digits')

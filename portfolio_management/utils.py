@@ -7,6 +7,8 @@ import pandas as pd
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
+from users.models import CustomUser
+
 # Define the effective 'current' date for the application
 effective_current_date = date.today()
 
@@ -183,9 +185,12 @@ def calculate_portfolio_value(user_id, date, currency=None, asset_id=None, broke
         portfolio_value = NAV_at_date(user_id, broker_id_list, date, currency, [])['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
-        # print(f"utils.py. line 165. asset current price: {asset.current_price(date)}")
-        # print(f"utils.py. line 167. Asset data: {asset.current_price(date).price}, {asset.position(date, broker_id_list)}")
-        portfolio_value = round(asset.price_at_date(date, currency).price * asset.position(date, broker_id_list), 2)
+        # print(f"utils.py. line 188. Asset: {asset.name}, {asset.id}, {user_id}, {date}, {currency}, {asset_id}, {broker_id_list}")
+        # print(f"utils.py. line 189. Asset data: {asset.price_at_date(date).price}, {asset.position(date, broker_id_list)}")
+        try:
+            portfolio_value = round(asset.price_at_date(date, currency).price * asset.position(date, broker_id_list), 2)
+        except:
+            portfolio_value = 0
 
     return portfolio_value
 
@@ -503,6 +508,7 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
         asset.entry_value = asset.entry_price * asset.current_position
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
         entry_date = asset.entry_dates(date, selected_brokers)[-1]
+        print(f'utils.py. LIne 508. Entry date: {entry_date}')
         
         if 'investment_date' in categories:
             asset.investment_date = entry_date
@@ -774,3 +780,17 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
     portfolio_closed_totals = currency_format_dict_values(portfolio_closed_totals, currency_target, number_of_digits)
 
     return closed_positions, portfolio_closed_totals
+
+def update_fx_database(investor):
+
+    # Get the specific investor
+    investor_instance = CustomUser.objects.get(id=investor.id)
+
+    # Scan Transaction instances in the database to collect dates
+    transaction_dates = investor_instance.transactions.values_list('date', flat=True)
+    
+    count = 0
+    for date in transaction_dates:
+        count += 1
+        print(f'{count} of {len(transaction_dates)}')
+        FX.update_fx_rate(date, investor)

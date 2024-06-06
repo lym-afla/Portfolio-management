@@ -4,7 +4,7 @@ from users.models import CustomUser
 
 class DashboardForm(forms.ModelForm):
     selected_brokers = forms.ModelMultipleChoiceField(
-        queryset=Brokers.objects.all(),
+        queryset=Brokers.objects.none(),
         widget=forms.SelectMultiple(attrs={'class': 'selectpicker show-tick', 'data-actions-box': 'true', 'data-width': '100%', 'title': 'Choose broker', 'data-selected-text-format': 'count', 'id': 'inputBrokers'}),
         label='Brokers'
     )
@@ -30,6 +30,9 @@ class DashboardForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.get('instance')
         super().__init__(*args, **kwargs)
         # Retrieve the currency choices from the model and exclude the empty option
         self.fields['default_currency'].choices = [(choice[0], choice[0]) for choice in CustomUser._meta.get_field('default_currency').choices if choice[0]]
+        if user is not None:
+            self.fields['selected_brokers'].queryset = Brokers.objects.filter(investor=user)

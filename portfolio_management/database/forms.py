@@ -4,12 +4,13 @@ from common.models import Assets, Brokers, Prices, Transactions
 class TransactionForm(forms.ModelForm):
     class Meta:
         model = Transactions
-        fields = ['date', 'broker', 'security', 'type', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
+        fields = ['date', 'broker', 'type', 'currency', 'security', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
         widgets = {
             'date': forms.DateInput(attrs={'class': 'form-control',
                                            'type': 'date'}),
             'broker': forms.Select(attrs={'class': 'form-select'}),
             'security': forms.Select(attrs={'class': 'form-select'}),
+            'currency': forms.Select(attrs={'class': 'form-select'}),
             'type': forms.Select(attrs={'class': 'form-select'}),
             'quantity': forms.NumberInput(attrs={'class': 'form-control'}),
             'price': forms.NumberInput(attrs={'class': 'form-control'}),
@@ -19,9 +20,15 @@ class TransactionForm(forms.ModelForm):
         }
     
     def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
-        self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.order_by('name').all()]
+        if investor is not None:
+            self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+            self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investor=investor).order_by('name')]
+        else:
+            self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.order_by('name').all()]
+
         self.fields['type'].choices = [(choice[0], choice[0]) for choice in Transactions._meta.get_field('type').choices if choice[0]]
 
     def clean(self):

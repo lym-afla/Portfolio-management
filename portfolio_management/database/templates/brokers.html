@@ -11,9 +11,9 @@
                 // Make the default sorting by column 4 (DATE) and do not show sorting for selected columns
                 "autoWidth": false,
                 columnDefs: [
-                    { orderable: false, targets: [1, 2, 7] }
+                    { orderable: false, targets: [0, 2, 3, 8] }
                 ],
-                order: [[0, 'asc']],
+                order: [[1, 'asc']],
                 "dom": "<'row'<'col-sm-12'tr>>" +
                             "<'row'<'col-sm-12 col-md-3'l><'col-sm-12 col-md-4'f><'col-sm-12 col-md-5'p>>",
                 "pageLength": 25
@@ -34,13 +34,8 @@
 
 {% block content %}
 
-    <div>
-        <button type="button" class="btn btn-secondary me-2 edit-entry-button" data-edit-type="broker" id="editTransactionButton" disabled>
-            Edit
-        </button>
-        <button type="button" class="btn btn-danger" id="deleteBrokerButton" data-delete-type="broker" data-bs-toggle="modal" data-bs-target="#deleteConfirmationModal" disabled>
-            <i class="bi bi-trash3"></i>
-        </button>
+    <div class="content-header">
+        {% include "snippets/buttons-settings-header.html" with type="broker" buttons=buttons %}
     </div>
 
     <div class="content-body">
@@ -68,7 +63,7 @@
                 {% for broker in brokers %}    
                     <tr>
                         <td>
-                            <input class="form-check-input transaction-radio" type="radio" name="radioTransaction" value="{{ broker.id }}">
+                            <input class="form-check-input edit-radio" type="radio" name="radioBroker" value="{{ broker.id }}">
                         </td>
                         <td class="text-start">{{ broker.name }}</td>
                         <td class="text-center">{{ broker.country }}</td>

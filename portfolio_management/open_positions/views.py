@@ -10,45 +10,28 @@ from utils import calculate_open_table_output, selected_brokers, effective_curre
 def open_positions(request):
 
     user = request.user
-    
-    global selected_brokers
+
     global effective_current_date
     
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
+    selected_brokers = user.custom_brokers
 
     sidebar_padding = 0
     sidebar_width = 0
     brokers = Brokers.objects.filter(investor=user).all()
 
-    if request.method == "GET":
-        sidebar_width = request.GET.get("width")
-        sidebar_padding = request.GET.get("padding")
+    sidebar_width = request.GET.get("width")
+    sidebar_padding = request.GET.get("padding")
 
-    if request.method == "POST":
-
-        dashboard_form = DashboardForm(request.POST, instance=user)
-
-        if dashboard_form.is_valid():
-            # Process the form data
-            selected_brokers = dashboard_form.cleaned_data['selected_brokers']
-            currency_target = dashboard_form.cleaned_data['default_currency']
-            effective_current_date = dashboard_form.cleaned_data['table_date']
-            number_of_digits = dashboard_form.cleaned_data['digits']
-            
-            # Save new parameters to user setting
-            user.default_currency = currency_target
-            user.digits = number_of_digits
-            user.save()
-    else:
-        initial_data = {
-            'selected_brokers': selected_brokers,
-            'default_currency': currency_target,
-            'table_date': effective_current_date,
-            'digits': number_of_digits
-        }
-        dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    initial_data = {
+        'selected_brokers': selected_brokers,
+        'default_currency': currency_target,
+        'table_date': effective_current_date,
+        'digits': number_of_digits
+    }
+    dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     # Portfolio at [date] - assets with non zero positions
     # func.date used for correct query when transaction is at [table_date] (removes time effectively)
@@ -62,7 +45,7 @@ def open_positions(request):
         total_quantity=Sum('transactions__quantity')
     ).exclude(total_quantity=0)
 
-    # print(f"open_positions.views. line 61. Portfolio_open: {portfolio_open[0].position}")
+    print(f"open_positions.views. line 48. Portfolio_open: {portfolio_open}")
 
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
 
@@ -75,6 +58,8 @@ def open_positions(request):
                                                                    number_of_digits
                                                                    )
     
+    buttons = ['transaction', 'broker', 'price', 'security', 'settings']
+    
     return render(request, 'open-positions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
@@ -86,4 +71,5 @@ def open_positions(request):
         'number_of_digits': number_of_digits,
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
+        'buttons': buttons,
     })
