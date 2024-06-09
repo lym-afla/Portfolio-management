@@ -86,9 +86,21 @@ function loadForm(type, itemId = null, element = null) {
                     form.find('#id_isin').val(element.isin);
                     form.find('#id_currency').val(element.currency);
                 } else if (type === 'transaction') {
-                    form.find('#id_date').val(element.date)
-                    form.find('#id_price').val(element.price)
-                    form.find('#id_type').val(element.transaction_type)
+                    console.log(element.date, element.type, element);
+                    form.find('#id_date').val(element.date);
+                    form.find('#id_price').val(element.price);
+                    form.find('#id_type').val(element.type);
+                    form.find('#id_currency').val(element.currency);
+                    form.find('#id_quantity').val(element.quantity);
+                    form.find('#id_cash_flow').val(element.dividend);
+                    form.find('#id_commission').val(element.commission);
+
+                    // Find the option element with the matching security name and update its text
+                    var securitySelect = form.find('#id_security');
+                    var option = securitySelect.find('option').filter(function() {
+                        return $(this).text() === element.security_name;
+                    });
+                    option.prop('selected', true);
                 }
             }
             
@@ -122,8 +134,9 @@ function attachFormSubmitHandler(form) {
                 'X-CSRFToken': getCookie('csrftoken') // Add CSRF token to headers
             },
             success: function (response) {
-                if (response.status === 'success') {
-                    $('#addSecurityModal').modal('hide');
+                if (response.status === 'import_success') {
+                    console.log("Import Success");
+                    form.closest('.modal').modal('hide');
                     $('#importForm').trigger('submit'); // Continue importing
                 } else if (response.redirect_url) { // Check if the response contains a redirect URL
                     // If a redirect URL is provided, redirect the user
@@ -177,7 +190,7 @@ function confirmDelete(type, itemId) {
         },
         success: function(response) {
             if (response.success) {
-                location.reload();
+                window.location.reload();
             } else {
                 alert('Failed to delete item.');
             }
@@ -207,7 +220,6 @@ function attachImportHandler(form) {
         e.preventDefault();
 
         const formData = new FormData(this);
-        console.log("Running import handler");
 
         $.ajax({
             url: urls["import_transactions"],
@@ -219,15 +231,18 @@ function attachImportHandler(form) {
             processData: false,
             contentType: false,
             success: function(response) {
-                console.log(response.status);
+                form.closest('.modal').modal('hide');
                 if (response.status === 'missing_security') {
                     // Pre-fill and open the security form
                     loadForm('security', null, response.security);
                 } else if (response.status === 'success') {
                     transactions = response.transactions;
-                    currentTransactionIndex = 0;
-                    processTransactions(transactions, confirm_each = true);  // Assuming confirm_each is true
+                    processTransactions(transactions, response.confirm_each);  // Assuming confirm_each is true
                 }
+            },
+            error: function (xhr) {
+                var errors = xhr.responseJSON.errors;
+                console.log(errors);
             }
         });
   });
@@ -235,70 +250,130 @@ function attachImportHandler(form) {
 
 function processTransactions(transactions, confirm_each) {
 
-    function showTransactionModal(transaction) {
-        var details = `
-            <table class="table">
-                <tr><th>Security Name</th><td>${transaction.security_name}</td></tr>
-                <tr><th>ISIN</th><td>${transaction.isin}</td></tr>
-                <tr><th>Date</th><td>${transaction.date}</td></tr>
-                <tr><th>Type</th><td>${transaction.type}</td></tr>
-                <tr><th>Currency</th><td>${transaction.currency}</td></tr>
-                <tr><th>Price</th><td>${transaction.price}</td></tr>
-                <tr><th>Quantity</th><td>${transaction.quantity}</td></tr>
-                <tr><th>Dividend</th><td>${transaction.dividend}</td></tr>
-                <tr><th>Commission</th><td>${transaction.commission}</td></tr>
-            </table>
-        `;
-        $('#transactionDetails').html(details);
-        $('#confirmationModal').modal('show');
+    let currentTransactionIndex = 0;
 
-        $('#confirmBtn').off('click').on('click', function() {
-            processTransactionAction('confirm');
-        });
-        $('#skipBtn').off('click').on('click', function() {
-            processTransactionAction('skip');
-        });
-        $('#editBtn').off('click').on('click', function() {
-            loadForm('transaction', null, transaction);
-        });
-        $('#stopBtn').off('click').on('click', function() {
-            processTransactionAction('stop');
-        });
+    function showTransactionModal(transaction, confirm_each = false) {
+        console.log("Show Transaction Modal. Before hiding modal", confirm_each);
+        // $('#confirmationModal').modal('hide');
+        console.log("Show Transaction Modal. After hiding modal");
+        if (confirm_each) {
+            console.log("Show Transaction Modal. Confirm_each is true");
+            var details = `
+                <table class="table">
+                    <tr><th>Security Name</th><td>${transaction.security_name}</td></tr>
+                    <tr><th>ISIN</th><td>${transaction.isin}</td></tr>
+                    <tr><th>Date</th><td>${transaction.date}</td></tr>
+                    <tr><th>Type</th><td>${transaction.type}</td></tr>
+                    <tr><th>Currency</th><td>${transaction.currency}</td></tr>
+                    <tr><th>Price</th><td>${transaction.price}</td></tr>
+                    <tr><th>Quantity</th><td>${transaction.quantity}</td></tr>
+                    <tr><th>Dividend</th><td>${transaction.dividend}</td></tr>
+                    <tr><th>Commission</th><td>${transaction.commission}</td></tr>
+                </table>
+            `;
+            $('#transactionDetails').html(details);
+            $('#confirmationModal').modal('show');
+
+            $('#confirmBtn').off('click').on('click', function() {
+                processTransactionAction('confirm', confirm_each);
+            });
+            $('#skipBtn').off('click').on('click', function() {
+                processTransactionAction('skip', confirm_each);
+            });
+            $('#editBtn').off('click').on('click', function() {
+                loadForm('transaction', null, transaction);
+            });
+            $('#stopBtn').off('click').on('click', function() {
+                processTransactionAction('stop');
+            });
+        } else {
+            processTransactionAction('confirm', confirm_each);
+        }
     }
 
-    function processTransactionAction(action) {
-        var transaction = transactions[currentTransactionIndex];
-
-        $.ajax({
-            type: 'POST',
-            url: urls['process_import_transactions'],
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken') // Add CSRF token to headers
-            },
-            data: {
-                action: action,
-                transaction: transaction,
-                transaction_id: currentTransactionIndex,
-                importing: 'True'
-            },
-            success: function (response) {
-                if (response.status === 'success' || response.status === 'skipped') {
-                    currentTransactionIndex++;
-                    if (currentTransactionIndex < transactions.length) {
-                        showTransactionModal(transactions[currentTransactionIndex]);
-                    } else {
-                        $('#confirmationModal').modal('hide');
-                        alert('All transactions processed');
-                    }
-                } else if (response.status === 'error') {
-                    alert('An error occurred: ' + response.errors);
-                } else if (response.status === 'stopped') {
-                    $('#confirmationModal').modal('hide');
-                    alert('Import process stopped');
-                }
+    function processTransactionAction(action, confirm_each) {
+        console.log(action);
+        if (action === 'skip'){
+            currentTransactionIndex++;
+            console.log('Skipping transaction', confirm_each, currentTransactionIndex, transactions.length);
+            if (currentTransactionIndex < transactions.length) {
+                console.log('Next transaction after skipping', transactions[currentTransactionIndex]);
+                showTransactionModal(transactions[currentTransactionIndex], confirm_each);
+            } else {
+                $('#confirmationModal').modal('hide');
+                alert('All transactions processed');
+                window.location.reload();
             }
-        });
+            return;
+        } else if (action === 'stop') {
+            $('#confirmationModal').modal('hide');
+            alert('Import process stopped');
+            return
+        } else if (action === 'confirm') {
+        
+            var transaction = transactions[currentTransactionIndex];
+            console.log(transaction);
+
+            var formData = new FormData();
+
+            for (var key in transaction) {
+                // Convert null or undefined values to empty strings
+                formData.append(key, transaction[key] != null ? transaction[key] : '');
+            }
+    
+
+            $.ajax({
+                type: 'POST',
+                url: urls['process_import_transactions'],
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken') // Add CSRF token to headers
+                },
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (response) {
+                    if (response.status === 'success') {
+                        currentTransactionIndex++;
+                        if (currentTransactionIndex < transactions.length) {
+                            showTransactionModal(transactions[currentTransactionIndex]);
+                        } else {
+                            $('#confirmationModal').modal('hide');
+                            alert('All transactions processed');
+                            window.location.reload();
+                        }
+                    } else if (response.status === 'check_required') {
+                        loadForm('transaction', itemId=null, transaction);
+                    } else if (response.status === 'error') {
+                        showErrors(response.errors);
+                    } 
+                },
+                error: function (xhr) {
+                    var errors = xhr.responseJSON.errors;
+                    showErrors(errors);
+                }
+            });
+        }
     }
 
-    showTransactionModal(transactions[currentTransactionIndex]);
+    showTransactionModal(transactions[currentTransactionIndex], confirm_each);
+}
+
+function showErrors(errors) {
+    var errorContainer = $('#import-form-errors');
+    errorContainer.empty();  // Clear previous errors
+
+    // Create a Bootstrap alert div to contain the errors
+    var alertDiv = $('<div class="alert alert-danger" role="alert"></div>');
+
+    $.each(errors, function (field, messages) {
+        var errorHtml = '<div><strong>' + field + ':</strong><ul>';
+        $.each(messages, function (index, message) {
+            errorHtml += '<li>' + message + '</li>';
+        });
+        errorHtml += '</ul></div>';
+        alertDiv.append(errorHtml);
+    });
+
+    errorContainer.append(alertDiv);
+    errorContainer.show();
 }

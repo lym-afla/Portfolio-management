@@ -1,9 +1,12 @@
+from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
+from django.db.models import Q
+
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
@@ -205,7 +208,7 @@ def add_transaction(request):
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
                 if import_flag:
-                    return JsonResponse({'status': 'success'})
+                    return JsonResponse({'status': 'import_success'})
                 else:
                     return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
             else:
@@ -343,44 +346,78 @@ def import_transactions(request):
         file = request.FILES['file']
 
         user = request.user
-        broker = get_object_or_404(Brokers, id=broker_id)
 
-        securities, transactions = parse_excel_file(file, currency)
+        securities, transactions = parse_excel_file(file, currency, broker_id)
         
         for security in securities:
             if not Assets.objects.filter(investor=user, name=security['name'], ISIN=security['isin']).exists():
                 return JsonResponse({'status': 'missing_security', 'security': security})
 
-        request.session['transactions'] = transactions
-        print("views. database. line 351", transactions)
-        return JsonResponse({'status': 'success', 'transactions': transactions})
+        # request.session['transactions'] = transactions
+        print("views. database. line 355", transactions)
+        return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each})
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
 @login_required
 def process_import_transactions(request):
     if request.method == 'POST':
-        action = request.POST.get('action')
-        transaction_data = request.POST.dict()
-        transaction_id = int(request.POST.get('transaction_id'))
 
-        if action == 'confirm':
-            form = TransactionForm(transaction_data, investor=request.user.id)
-            print("views. database. 369", form)
-            if form.is_valid():
-                security = form.save(commit=False)  # Don't save to the database yet
-                security.investor = request.user     # Set the investor field
-                security.save()
-                return JsonResponse({'status': 'success'})
-            else:
-                return JsonResponse({'status': 'error', 'errors': form.errors})
-        elif action == 'skip':
-            return JsonResponse({'status': 'skipped'})
-        elif action == 'edit':
-            form = TransactionForm(transaction_data)
-            form_html = render_to_string('edit_transaction_form.html', {'form': form}, request)
-            return JsonResponse({'status': 'edit', 'form_html': form_html})
-        elif action == 'stop':
-            return JsonResponse({'status': 'stopped'})
+        # Convert fields to Decimal where applicable, handle invalid values
+        def to_decimal(value):
+            try:
+                return Decimal(value)
+            except (InvalidOperation, TypeError, ValueError):
+                return None
+            
+        try:
+            security = Assets.objects.get(name=request.POST.get('security_name'))
+        except Assets.DoesNotExist:
+            return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
+
+        price = to_decimal(request.POST.get('price'))
+        quantity = to_decimal(request.POST.get('quantity'))
+        cash_flow = to_decimal(request.POST.get('dividend'))
+        commission = to_decimal(request.POST.get('commission'))
+
+        # Filter out None values to avoid passing invalid data to the filter
+        filter_kwargs = {
+            'investor': request.user,
+            'broker': request.POST.get('broker'),
+            'security': security,
+            'date': request.POST.get('date'),
+            'type': request.POST.get('type'),
+            'currency': request.POST.get('currency'),
+        }
+
+        if price is not None:
+            filter_kwargs['price'] = price
+        if quantity is not None:
+            filter_kwargs['quantity'] = quantity
+        if cash_flow is not None:
+            filter_kwargs['cash_flow'] = cash_flow
+        if commission is not None:
+            filter_kwargs['commission'] = commission
+
+        existing_transactions = Transactions.objects.filter(**filter_kwargs)
+
+        # If there are any matching transactions, return 'check_required'
+        if existing_transactions.exists():
+            return JsonResponse({'status': 'check_required'})
+
+        # Prepare form data with security id
+        form_data = request.POST.dict()
+        form_data['security'] = security.id
+
+        form = TransactionForm(form_data, investor=request.user.id)
+
+        if form.is_valid():
+            transaction = form.save(commit=False)  # Don't save to the database yet
+            transaction.investor = request.user     # Set the investor field
+            transaction.save()
+            return JsonResponse({'status': 'success'})
+        else:
+            print("Form errors. database. 398", form.errors)
+            return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)

@@ -880,7 +880,7 @@ def import_transactions_from_file(file, user, broker, currency, confirm_each):
         'transactions': transactions
     }
 
-def parse_excel_file(file, currency):
+def parse_excel_file(file, currency, broker_id):
     df = pd.read_excel(file, header=None)
     securities = []
     transactions = []
@@ -912,6 +912,7 @@ def parse_excel_file(file, currency):
                     transaction_type = 'Dividend'
 
                 transaction_data = {
+                    'broker': broker_id,
                     'security_name': security_name,
                     'isin': isin,
                     'date': date,

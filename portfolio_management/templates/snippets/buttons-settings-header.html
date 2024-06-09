@@ -101,9 +101,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="progressModalLabel">Importing Transactions</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p id="progressMessage"></p>
@@ -124,11 +122,12 @@
                     <p id="transactionDetails"></p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Skip</button>
+                    <button type="button" class="btn btn-secondary" id="skipBtn">Skip</button>
                     <button type="button" class="btn btn-primary" id="confirmBtn">Confirm</button>
                     <button type="button" class="btn btn-warning" id="editBtn">Edit</button>
                     <button type="button" class="btn btn-danger" id="stopBtn">Stop Importing</button>
                 </div>
+                <div id="import-form-errors" class="w-100"></div>
             </div>
         </div>
     </div>

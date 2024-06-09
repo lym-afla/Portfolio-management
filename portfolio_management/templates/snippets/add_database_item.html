@@ -6,8 +6,8 @@
                 <h5 class="modal-title" id="add{{ type }}ModalLabel">Add New {{ type }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <form method="post" action="{{ action_url }}">
+            <form method="post" action="{{ action_url }}">
+                <div class="modal-body">
                     {% csrf_token %}
                     {% for field in form %}
                         <div class="mb-3 row">
@@ -18,10 +18,13 @@
                             </div>
                         </div>
                     {% endfor %}
+                </div>
+                <div class="modal-footer">
                     <button type="submit" class="btn btn-primary">Save</button>
-                </form>
-                <div id="form-errors"></div> <!-- General error messages will be displayed here -->
-            </div>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </form>
+            <div id="{{ type }}-form-errors"></div> <!-- General error messages will be displayed here -->
         </div>
     </div>
 </div>

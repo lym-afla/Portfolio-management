@@ -17,8 +17,8 @@
                     }
                 ],
                 order: [],
-                "dom": "<'row'<tr>>" +
-                            "<'row'<'col-md-3'l><'col-md-4'f><'col-md-5'p>>",
+                "dom": "<'row'<'col-12'tr>>" + 
+                        "<'row mt-3'<'col-md-3'l><'col-md-4 text-center'f><'col-md-5 text-right'p>>",
                 "pageLength": 25
             });
          });
@@ -37,13 +37,14 @@
 {% block content %}
 
     <div class="content-header">
-        {% include "snippets/buttons-settings-header.html" %}
+        {% include "snippets/buttons-settings-header.html" with type="transaction" %}
     </div>
 
     <div class="content-body">
         <table id="table-transactions" class="table table-hover table-striped align-middle">
             <thead>
                 <tr>
+                    <th rowspan="2"></th>
                     <th class="text-start" rowspan="2">Date</th>
                     <th class="text-start" rowspan="2">Transaction</th>
                     <th class="text-center" rowspan="2">Type</th>
@@ -63,6 +64,9 @@
             <tbody>
             {% for transaction in transactions %}   
                 <tr>
+                    <td>
+                        <input class="form-check-input edit-radio" type="radio" name="radioBroker" value="{{ transaction.id }}">
+                    </td>
                     <td class="text-start">{{ transaction.date }}</td>
                     <td class="text-start text-nowrap">{{ transaction.type }}
                         {% if 'Cash' in transaction.type %}
