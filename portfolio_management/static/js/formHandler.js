@@ -59,7 +59,7 @@ $(document).ready(function () {
 });
 
 // Function to load the form into the modal
-function loadForm(type, itemId = null, element = null) {
+function loadForm(type, itemId = null, element = null, confirm_each = false, processTransactionAction = null) {
     var containerMap = {
         transaction: '#transactionFormModalContainer',
         broker: '#brokerFormModalContainer',
@@ -106,6 +106,15 @@ function loadForm(type, itemId = null, element = null) {
             
             $(container).find('.modal').modal('show'); // Show the modal
             attachFormSubmitHandler(form);
+
+            type = type.charAt(0).toUpperCase() + type.slice(1);
+
+            // Attach event listener to cancel button
+            type = type.charAt(0).toUpperCase() + type.slice(1);
+            $(`#add${type}ModalCancel`).off('click').on('click', function() {
+                console.log('cancel clicked');
+                processTransactionAction('skip', confirm_each);
+            });
         }
     });
 }
@@ -146,6 +155,10 @@ function attachFormSubmitHandler(form) {
                     form.closest('.modal').modal('hide');
                     location.reload();
                 }
+
+                // if (confirm_each && processTransactionAction) {
+                //     processTransactionAction('skip', confirm_each); // Go to the next transaction if form is closed
+                // }
             },
             error: function (xhr) {
                 var errors = xhr.responseJSON;
@@ -252,10 +265,12 @@ function processTransactions(transactions, confirm_each) {
 
     let currentTransactionIndex = 0;
 
+    $('#progressModal').modal('show');
+    $('#stopUploadBtn').off('click').on('click', function() {
+        processTransactionAction('stop');
+    });
+
     function showTransactionModal(transaction, confirm_each = false) {
-        console.log("Show Transaction Modal. Before hiding modal", confirm_each);
-        // $('#confirmationModal').modal('hide');
-        console.log("Show Transaction Modal. After hiding modal");
         if (confirm_each) {
             console.log("Show Transaction Modal. Confirm_each is true");
             var details = `
@@ -275,18 +290,23 @@ function processTransactions(transactions, confirm_each) {
             $('#confirmationModal').modal('show');
 
             $('#confirmBtn').off('click').on('click', function() {
+                console.log('Confirm button clicked');
                 processTransactionAction('confirm', confirm_each);
             });
             $('#skipBtn').off('click').on('click', function() {
+                console.log('Skip button clicked');
                 processTransactionAction('skip', confirm_each);
             });
             $('#editBtn').off('click').on('click', function() {
-                loadForm('transaction', null, transaction);
+                console.log('Edit button clicked');
+                loadForm('transaction', null, transaction, confirm_each, processTransactionAction);
             });
             $('#stopBtn').off('click').on('click', function() {
+                console.log('Stop button clicked');
                 processTransactionAction('stop');
             });
         } else {
+            console.log('Auto confirm transaction');
             processTransactionAction('confirm', confirm_each);
         }
     }
@@ -298,15 +318,18 @@ function processTransactions(transactions, confirm_each) {
             console.log('Skipping transaction', confirm_each, currentTransactionIndex, transactions.length);
             if (currentTransactionIndex < transactions.length) {
                 console.log('Next transaction after skipping', transactions[currentTransactionIndex]);
+                updateProgressBar();
                 showTransactionModal(transactions[currentTransactionIndex], confirm_each);
             } else {
                 $('#confirmationModal').modal('hide');
+                $('#progressModal').modal('hide');
                 alert('All transactions processed');
                 window.location.reload();
             }
             return;
         } else if (action === 'stop') {
             $('#confirmationModal').modal('hide');
+            $('#progressModal').modal('hide');
             alert('Import process stopped');
             return
         } else if (action === 'confirm') {
@@ -320,7 +343,6 @@ function processTransactions(transactions, confirm_each) {
                 // Convert null or undefined values to empty strings
                 formData.append(key, transaction[key] != null ? transaction[key] : '');
             }
-    
 
             $.ajax({
                 type: 'POST',
@@ -335,24 +357,35 @@ function processTransactions(transactions, confirm_each) {
                     if (response.status === 'success') {
                         currentTransactionIndex++;
                         if (currentTransactionIndex < transactions.length) {
+                            updateProgressBar();
                             showTransactionModal(transactions[currentTransactionIndex]);
                         } else {
                             $('#confirmationModal').modal('hide');
+                            $('#progressModal').modal('hide');
                             alert('All transactions processed');
                             window.location.reload();
                         }
                     } else if (response.status === 'check_required') {
-                        loadForm('transaction', itemId=null, transaction);
+                        alert('The transaction seems to exist already. Please check.')
+                        loadForm('transaction', itemId=null, transaction, confirm_each, processTransactionAction);
                     } else if (response.status === 'error') {
                         showErrors(response.errors);
                     } 
                 },
                 error: function (xhr) {
-                    var errors = xhr.responseJSON.errors;
+                    console.log(xhr.responseText);
+                    var errors = xhr.responseText.errors;
                     showErrors(errors);
                 }
             });
         }
+    }
+    
+    function updateProgressBar() {
+        const progress = ((currentTransactionIndex + 1) / transactions.length) * 100;
+        $('.progress-bar').css('width', progress + '%').attr('aria-valuenow', progress);
+        $('#currentTransactionIndex').text(currentTransactionIndex + 1);
+        $('#totalTransactions').text(transactions.length);
     }
 
     showTransactionModal(transactions[currentTransactionIndex], confirm_each);

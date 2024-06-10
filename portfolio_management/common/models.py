@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import IntegrityError, models
 from django.db.models import F, Sum
 import networkx as nx
 from datetime import timedelta
@@ -103,10 +103,15 @@ class FX(models.Model):
             if existing_rate is None or existing_rate[f'{source}{target}'] is None:
                 # Get the FX rate for the date
                 rate_data = update_FX_from_Yahoo(source, target, date)
+                print(rate_data)
 
                 if rate_data is not None:
                     # Update or create an FX instance with the new rate
-                    fx_instance, created = cls.objects.get_or_create(date=rate_data['requested_date'], investor=investor)
+                    print("FX model, update FX. line 109", rate_data['requested_date'], rate_data['exchange_rate'])
+                    try:
+                        fx_instance = cls(date=rate_data['requested_date'], investor=investor)
+                    except IntegrityError:
+                        fx_instance, created = cls.objects.get_or_create(date=rate_data['requested_date'], investor=investor)
                     setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
                     fx_instance.save()
                     print(f'{source}{target} for {rate_data["requested_date"]} is updated')
@@ -178,7 +183,7 @@ class Assets(models.Model):
         # print(f"models.py. line 134. {query}")
         if broker_id_list is not None:
             query = query.filter(broker_id__in=broker_id_list)
-        total_quantity = query.aggregate(total=models.Sum('quantity'))['total']
+        total_quantity = round(query.aggregate(total=models.Sum('quantity'))['total'], 6)
         return total_quantity or 0
 
     # The very first investment date
@@ -486,7 +491,7 @@ class Transactions(models.Model):
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
     date = models.DateField(null=False)
-    quantity = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    quantity = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)

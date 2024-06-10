@@ -1,3 +1,4 @@
+from decimal import ROUND_DOWN, Decimal
 from django import forms
 from common.models import Assets, Brokers, Prices, Transactions
 
@@ -25,9 +26,16 @@ class TransactionForm(forms.ModelForm):
         # Set choices dynamically for broker, security, and type fields
         if investor is not None:
             self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
-            self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investor=investor).order_by('name')]
+            security_choices = [(security.pk, security.name) for security in Assets.objects.filter(investor=investor).order_by('name')]
+            # Add empty choice for securities
+            security_choices.insert(0, ('', '--- Select Security ---'))
+            self.fields['security'].choices = security_choices
         else:
             self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.order_by('name').all()]
+            # security_choices = []
+
+        # self.fields['broker'].choices = broker_choices
+        # self.fields['security'].choices = security_choices
 
         self.fields['type'].choices = [(choice[0], choice[0]) for choice in Transactions._meta.get_field('type').choices if choice[0]]
 
@@ -38,7 +46,7 @@ class TransactionForm(forms.ModelForm):
         price = cleaned_data.get('price')
         quantity = cleaned_data.get('quantity')
         commission = cleaned_data.get('commission')
-        
+
         if cash_flow is not None and transaction_type == 'Cash out' and cash_flow >= 0:
             self.add_error('cash_flow', 'Cash flow must be negative for cash-out transactions.')
 

@@ -1,7 +1,6 @@
 from collections import defaultdict
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
-from django.http import JsonResponse
 from common.models import Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, F
 from pyxirr import xirr
@@ -900,7 +899,16 @@ def parse_excel_file(file, currency, broker_id):
 
                 date = df.iloc[row, i].strftime("%Y-%m-%d")
                 price = df.iloc[row, i + 1]
-                quantity = df.iloc[row, i + 2]
+                quantity = Decimal(df.iloc[row, i + 2])
+
+                # Validate the quantity
+                quantity_field = Transactions._meta.get_field('quantity')
+                decimal_places = quantity_field.decimal_places
+                # If the number of decimal places exceeds the allowed decimal places,
+                # round the quantity to the allowed number of decimal places
+                if quantity.as_tuple().exponent < -decimal_places:
+                    quantity = quantity.quantize(Decimal(10) ** -decimal_places, rounding=ROUND_DOWN)
+
                 dividend = df.iloc[row, i + 3] if not pd.isna(df.iloc[row, i + 3]) else None
                 commission = df.iloc[row, i + 4] if not pd.isna(df.iloc[row, i + 4]) else None
 

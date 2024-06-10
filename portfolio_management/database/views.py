@@ -306,7 +306,7 @@ def edit_item(request, model_class, form_class, item_id, type):
         else:
             return JsonResponse({'errors': form.errors}, status=400)
     else:
-        form = form_class(instance=item)
+        form = form_class(instance=item, investor=request.user)
         form_html = render_to_string(
             'snippets/add_database_item.html',
             {
@@ -354,7 +354,7 @@ def import_transactions(request):
                 return JsonResponse({'status': 'missing_security', 'security': security})
 
         # request.session['transactions'] = transactions
-        print("views. database. line 355", transactions)
+        # print("views. database. line 355", transactions)
         return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each})
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
@@ -400,6 +400,7 @@ def process_import_transactions(request):
             filter_kwargs['commission'] = commission
 
         existing_transactions = Transactions.objects.filter(**filter_kwargs)
+        # print("views. database. line 403", existing_transactions)
 
         # If there are any matching transactions, return 'check_required'
         if existing_transactions.exists():
@@ -415,6 +416,17 @@ def process_import_transactions(request):
             transaction = form.save(commit=False)  # Don't save to the database yet
             transaction.investor = request.user     # Set the investor field
             transaction.save()
+            
+            # When adding new transaction update FX rates from Yahoo
+            FX.update_fx_rate(transaction.date, request.user)
+
+            price_instance = Prices(
+                date=transaction.date,
+                security=transaction.security,
+                price=transaction.price,
+            )
+            price_instance.save()
+
             return JsonResponse({'status': 'success'})
         else:
             print("Form errors. database. 398", form.errors)

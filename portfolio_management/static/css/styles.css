@@ -153,3 +153,9 @@ div.dataTables_info,
 h2 {
     margin-bottom: 0px;
 }
+
+.modal-dialog-top-left {
+    position: fixed;
+    top: 0;
+    left: 0;
+}
