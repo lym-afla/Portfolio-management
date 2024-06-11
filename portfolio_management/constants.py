@@ -29,3 +29,5 @@ ASSET_TYPE_CHOICES = (
     ('Option', 'Option'),
     ('Future', 'Future'),
 )
+
+TOLERANCE = 1e-7
