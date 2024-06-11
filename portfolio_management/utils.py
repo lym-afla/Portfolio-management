@@ -272,7 +272,7 @@ def decimal_default(obj):
         return float(obj)
     raise TypeError
 
-def format_percentage(value):
+def format_percentage(value, digits=0):
     
     # Check if the value is exactly None, which is different from 0
     if value is None:
@@ -280,11 +280,11 @@ def format_percentage(value):
     try:
         # Attempt to format the value as a percentage
         if value < 0:
-            return f"({float(-value * 100):.0f}%)"
+            return f"({float(-value * 100):.{int(digits)}f}%)"
         elif value == 0:
             return "–"
         else:
-            return f"{float(value * 100):.0f}%"
+            return f"{float(value * 100):.{int(digits)}f}%"
     except (TypeError, ValueError):
         # If the value cannot be converted to float, return 'NA'
         return value
@@ -653,21 +653,23 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
                 entry_transactions = asset_transactions.filter(quantity__lt=0)
                 exit_transactions = asset_transactions.filter(quantity__gt=0)
 
+            total_value = Decimal(0)
+            total_quantity = Decimal(0)
             for transaction in entry_transactions:
-                total_value = Decimal(0)
-                total_quantity = Decimal(0)
                 if currency_used is None:
                     fx_rate = 1
                 else:
                     fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
                 total_value += transaction.price * abs(transaction.quantity) * fx_rate
                 total_quantity += abs(transaction.quantity)
+                if asset.id == 8:
+                    print(transaction, total_value, total_quantity)
             position['entry_price'] = total_value / total_quantity if total_quantity else Decimal(0)
             position['entry_value'] = total_value
             
+            total_value = Decimal(0)
+            total_quantity = Decimal(0)
             for transaction in exit_transactions:
-                total_value = Decimal(0)
-                total_quantity = Decimal(0)
                 if currency_used is None:
                     fx_rate = 1
                 else:
@@ -712,7 +714,7 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
         
             # Calculate IRR for security
             currency_used = asset.currency if use_default_currency else currency_target
-            position['irr'] = format_percentage(Irr(user_id, exit_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date))
+            position['irr'] = format_percentage(Irr(user_id, exit_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date), number_of_digits)
             # print("Utils. Line 786", asset.irr)
         
             # Calculating totals
@@ -758,13 +760,13 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
             if position['realized_gl']:
                 position['realized_gl'] = currency_format(position['realized_gl'], currency_used, number_of_digits)
 
-            position['price_change_percentage'] = format_percentage(position['price_change_percentage'])
+            position['price_change_percentage'] = format_percentage(position['price_change_percentage'], number_of_digits)
             position['capital_distribution'] = currency_format(position['capital_distribution'], currency_used, number_of_digits)
-            position['capital_distribution_percentage'] = format_percentage(position['capital_distribution_percentage'])
+            position['capital_distribution_percentage'] = format_percentage(position['capital_distribution_percentage'], number_of_digits)
             position['commission'] = currency_format(position['commission'], currency_used, number_of_digits)
-            position['commission_percentage'] = format_percentage(position['commission_percentage'])
+            position['commission_percentage'] = format_percentage(position['commission_percentage'], number_of_digits)
             position['total_return_amount'] = currency_format(position['total_return_amount'], currency_used, number_of_digits)
-            position['total_return_percentage'] = format_percentage(position['total_return_percentage'])
+            position['total_return_percentage'] = format_percentage(position['total_return_percentage'], number_of_digits)
 
             closed_positions.append(position)
 
