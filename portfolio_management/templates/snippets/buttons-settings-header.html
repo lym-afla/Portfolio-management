@@ -18,6 +18,10 @@
         <button type="button" class="btn btn-primary" id="importTransactionsBtn">
             Import transactions
         </button>
+    {% elif item == "update_FX" %}
+        <button type="button" class="btn btn-primary" id="updateFXBtn">
+            Update FX
+        </button>
     {% else %}
         <button type="button" class="btn btn-secondary" data-type="{{ item }}">
             Add {{ item }}
@@ -95,24 +99,6 @@
         </div>
     </div>
 
-    <!-- Progress Modal -->
-    <div class="modal fade" id="progressModal" tabindex="-1" role="dialog" aria-labelledby="progressModalLabel" aria-hidden="true">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="progressModalLabel">Import Progress</h5>
-                </div>
-                <div class="modal-body">
-                    <p>Processing Transaction <span id="currentTransactionIndex">0</span> / <span id="totalTransactions">0</span></p>
-                <div class="progress">
-                    <div class="progress-bar w-0" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-                <button type="button" class="btn btn-danger mt-2" id="stopUploadBtn">Stop</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Confirmation Modal -->
     <div class="modal fade" id="confirmationModal" tabindex="-1" role="dialog" aria-labelledby="confirmationModalLabel" aria-hidden="true">
         <div class="modal-dialog" role="document">
@@ -135,6 +121,26 @@
         </div>
     </div>
 
+{% endif %}
+
+{% if "import" in buttons or "update_FX" in buttons %}
+    <!-- Progress Modal -->
+    <div class="modal fade" id="progressModal" tabindex="-1" role="dialog" aria-labelledby="progressModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="progressModalLabel">Import Progress</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Processing Transaction <span id="currentTransactionIndex">0</span> / <span id="totalTransactions">0</span></p>
+                <div class="progress">
+                    <div class="progress-bar w-0" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <button type="button" class="btn btn-danger mt-2" id="stopUploadBtn">Stop</button>
+                </div>
+            </div>
+        </div>
+    </div>
 {% endif %}
 
 <!-- Include modal templates -->

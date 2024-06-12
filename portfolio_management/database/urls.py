@@ -25,6 +25,8 @@ urlpatterns = [
     path('delete_price/<int:item_id>/', views.delete_item, {'model_class': Prices}, name='delete_price'),
     path('import_transactions_form/', views.import_transactions_form, name='import_transactions_form'),
     path('import_transactions/', views.import_transactions, name='import_transactions'),
-    path('process_import_transactions/', views.process_import_transactions, name='process_import_transactions')
+    path('process_import_transactions/', views.process_import_transactions, name='process_import_transactions'),
+    path('prices/update_fx_dates/', views.get_update_fx_dates, name='update_fx_dates'),
+    path('prices/update_fx/', views.update_FX, name='update_fx'),
     
 ]
