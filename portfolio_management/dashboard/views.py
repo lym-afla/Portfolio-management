@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, selected_brokers
+from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date
 
 @login_required
 def dashboard(request):
@@ -16,6 +16,7 @@ def dashboard(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
+    use_default_currency = user.use_default_currency_where_relevant
     selected_brokers = user.custom_brokers
 
     sidebar_padding = 0
@@ -50,17 +51,20 @@ def dashboard(request):
                 summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
             else:
                 summary['Cash-out'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
+    
+    summary['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
+    
     try:
-        summary['Return'] = format_percentage(summary['NAV'] / summary['Invested'] - 1)
+        summary['Return'] = format_percentage((summary['NAV'] - summary['Cash-out']) / summary['Invested'] - 1, digits=1)
     except:
         summary['Return'] = '–'
-    summary['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers))
     
     # Convert data to string representation to feed the page
     summary['NAV'] = currency_format(summary['NAV'], currency_target, number_of_digits)
     summary['Invested'] = currency_format(summary['Invested'], currency_target, number_of_digits)
     summary['Cash-out'] = currency_format(summary['Cash-out'], currency_target, number_of_digits)
     
+
     # Convert Python object to JSON string to be recognizable by Chart.js
     json_analysis = json.dumps(analysis, default=decimal_default)
 
@@ -104,13 +108,16 @@ def dashboard(request):
 
 def nav_chart_data_request(request):
 
-    global selected_brokers
+    # global selected_brokers
+    selected_brokers = request.user.custom_brokers
 
     if request.method == 'GET':
         frequency = request.GET.get('frequency')
         from_date = request.GET.get('from')
         to_date = request.GET.get('to')
         breakdown = request.GET.get('breakdown')
+
+        # print("database. views. 115", selected_brokers, frequency, from_date, to_date, request.user.default_currency, breakdown)
 
         chart_data = get_chart_data(request.user.id, selected_brokers, frequency, from_date, to_date, request.user.default_currency, breakdown)
 

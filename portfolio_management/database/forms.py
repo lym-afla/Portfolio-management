@@ -102,7 +102,7 @@ class SecurityForm(forms.ModelForm):
             'ISIN': forms.TextInput(attrs={'class': 'form-control'}),
             'type': forms.Select(attrs={'class': 'form-select'}),
             'currency': forms.Select(attrs={'class': 'form-select'}),
-            'exposure': forms.TextInput(attrs={'class': 'form-control'}),
+            'exposure': forms.Select(attrs={'class': 'form-select'}),
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
         }
 

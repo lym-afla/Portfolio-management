@@ -15,7 +15,7 @@
             <i class="bi bi-trash3"></i>
         </button>
     {% elif item == "import" %}
-        <button type="button" class="btn btn-primary" id="importTransactionsBtn">
+        <button type="button" class="btn btn-primary" id="importBtn">
             Import transactions
         </button>
     {% elif item == "update_FX" %}
@@ -66,26 +66,41 @@
                     </div>
                     <div class="modal-body">
                         <div class="form-group mb-3 row">
-                            <label for="broker" class="col-md-4 col-form-label">Select broker</label>
-                            <div class="col-md-8">
+                            <label for="broker" class="col-md-6 col-form-label">Select broker</label>
+                            <div class="col-md-6">
                                 <select id="broker" name="broker" class="form-select"></select>
                             </div>
                         </div>
                         <div class="form-group mb-3 row">
-                            <label for="currency" class="col-md-4 col-form-label">Currency</label>
-                            <div class="col-md-8">
+                            <label for="currency" class="col-md-6 col-form-label">Currency</label>
+                            <div class="col-md-6">
                                 <select id="currency" name="currency" class="form-select"></select>
                             </div>
                         </div>
                         <div class="form-group mb-3 row">
-                            <label for="file" class="col-md-4 col-form-label">Select file</label>
-                            <div class="col-md-8">
+                            <label for="file" class="col-md-6 col-form-label">Select file</label>
+                            <div class="col-md-6">
                                 <input type="file" id="file" name="file" class="form-control">
                             </div>
                         </div>
                         <div class="form-group mb-3 row">
-                            <label class="form-check-label col-md-4" for="confirm_each">Confirm each transaction</label>
-                            <div class="col-md-8">    
+                            <label class="col-md-6 col-form-label">Select type of data imported</label>
+                            <div class="col-md-6">
+                                <label for="import_type_cash">Cash</label>
+                                <input type="radio" id="import_type_cash" name="cash_or_transaction" class="form-check-input edit-radio" value="cash">
+                                <label for="import_type_transaction">Transaction</label>
+                                <input type="radio" id="import_type_transaction" name="cash_or_transaction" class="form-check-input edit-radio" value="transaction">
+                            </div>
+                        </div>
+                        <div class="form-group mb-3 row">
+                            <label class="form-check-label col-md-6" for="skip_existing">Skip existing transaction</label>
+                            <div class="col-md-6">    
+                                <input type="checkbox" id="skip_existing" name="skip_existing" class="form-check-input">
+                            </div>
+                        </div>
+                        <div class="form-group mb-3 row">
+                            <label class="form-check-label col-md-6" for="confirm_each">Confirm each transaction</label>
+                            <div class="col-md-6">    
                                 <input type="checkbox" id="confirm_each" name="confirm_each" class="form-check-input">
                             </div>
                         </div>

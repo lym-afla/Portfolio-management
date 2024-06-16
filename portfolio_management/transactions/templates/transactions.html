@@ -75,6 +75,7 @@
                             of {{ transaction.cash_flow }} for {{ transaction.security.name }}
                         {% elif transaction.type == 'Close' %}
                             {{ transaction.quantity }} of {{ transaction.security.name }}
+                        {% elif transaction.type == 'Broker commission' %}
                         {% else %}
                             {{ transaction.quantity }}
                             @ {{ transaction.price }} of {{ transaction.security.name }}
@@ -85,10 +86,10 @@
                     {% for cur in currencies %}
                         <td class="text-center">
                             {% if transaction.currency == cur %}
-                                {% if transaction.type == 'Dividend' %}
+                                {% if transaction.type == 'Dividend' or 'Cash' in transaction.type %}
                                     {{ transaction.cash_flow }}
-                                {% elif 'Cash' in transaction.type %}
-                                    {{ transaction.cash_flow }}
+                                {% elif transaction.type == 'Broker commission' %}
+                                    ({{ transaction.commission }})
                                 {% else %}
                                     {{ transaction.value }}
                                 {% endif %}

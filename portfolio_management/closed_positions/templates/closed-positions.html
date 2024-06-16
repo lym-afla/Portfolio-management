@@ -111,8 +111,20 @@
                     <td class="border-0"></td>
                     <td class="border-0"></td>
                     <td class="border-0"></td>
+                    <td class="border-0"></td>
+                    <td class="border-0"></td>
+                    <td class="border-0"></td>
                     <td class="text-center border-0 fw-bold">{{ portfolio_closed_totals|get_item:"realized_gl" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_closed_totals|get_item:"price_change_percentage" }}</td>
+                    <td class="border-0"></td>
                     <td class="text-center border-0 fw-bold">{{ portfolio_closed_totals|get_item:"capital_distribution" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_closed_totals|get_item:"capital_distribution_percentage" }}</td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_closed_totals|get_item:"commission" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_closed_totals|get_item:"commission_percentage" }}</td>
+                    <td class="border-0"></td>
+                    <td class="text-center border-0 fw-bold">{{ portfolio_closed_totals|get_item:"total_return_amount" }}</td>
+                    <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_closed_totals|get_item:"total_return_percentage" }}</td>
                 </tr>
             </tfoot>
         </table>

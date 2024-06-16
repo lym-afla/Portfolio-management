@@ -9,7 +9,7 @@ $(document).ready(function () {
     });
 
     // Enable Edit and Delete buttons on radio button selection
-    $('.edit-radio').change(function() {
+    $('table[id^="table-"]').on('change', '.edit-radio', function() { //$('.edit-radio').change(function() {
         $('#editEntryButton').prop('disabled', false);
         $('#deleteEntryButton').prop('disabled', false);
     });
@@ -34,7 +34,7 @@ $(document).ready(function () {
     });
 
     // Import transactions click
-    $('#importTransactionsBtn').on('click', function() {
+    $('#importBtn').on('click', function() {
         $.ajax({
             url: urls["import_form"],
             method: 'GET',
@@ -259,7 +259,7 @@ function attachImportHandler(form) {
                     loadForm('security', null, response.security);
                 } else if (response.status === 'success') {
                     transactions = response.transactions;
-                    processTransactions(transactions, response.confirm_each);  // Assuming confirm_each is true
+                    processTransactions(transactions, response.confirm_each, response.skip_existing);  // Assuming confirm_each is true
                 }
             },
             error: function (xhr) {
@@ -270,7 +270,7 @@ function attachImportHandler(form) {
   });
 }
 
-function processTransactions(transactions, confirm_each) {
+function processTransactions(transactions, confirm_each, skip_existing) {
 
     let currentTransactionIndex = 0;
 
@@ -291,7 +291,7 @@ function processTransactions(transactions, confirm_each) {
                     <tr><th>Currency</th><td>${transaction.currency}</td></tr>
                     <tr><th>Price</th><td>${transaction.price}</td></tr>
                     <tr><th>Quantity</th><td>${transaction.quantity}</td></tr>
-                    <tr><th>Dividend</th><td>${transaction.dividend}</td></tr>
+                    <tr><th>Cash flow</th><td>${transaction.cash_flow}</td></tr>
                     <tr><th>Commission</th><td>${transaction.commission}</td></tr>
                 </table>
             `;
@@ -300,11 +300,11 @@ function processTransactions(transactions, confirm_each) {
 
             $('#confirmBtn').off('click').on('click', function() {
                 console.log('Confirm button clicked');
-                processTransactionAction('confirm', confirm_each);
+                processTransactionAction('confirm', confirm_each, skip_existing);
             });
             $('#skipBtn').off('click').on('click', function() {
                 console.log('Skip button clicked');
-                processTransactionAction('skip', confirm_each);
+                processTransactionAction('skip', confirm_each, skip_existing);
             });
             $('#editBtn').off('click').on('click', function() {
                 console.log('Edit button clicked');
@@ -312,15 +312,15 @@ function processTransactions(transactions, confirm_each) {
             });
             $('#stopBtn').off('click').on('click', function() {
                 console.log('Stop button clicked');
-                processTransactionAction('stop');
+                processTransactionAction('stop', confirm_each, skip_existing);
             });
         } else {
             console.log('Auto confirm transaction');
-            processTransactionAction('confirm', confirm_each);
+            processTransactionAction('confirm', confirm_each, skip_existing);
         }
     }
 
-    function processTransactionAction(action, confirm_each) {
+    function processTransactionAction(action, confirm_each, skip_existing = true) {
         console.log(action);
         if (action === 'skip'){
             currentTransactionIndex++;
@@ -352,6 +352,8 @@ function processTransactions(transactions, confirm_each) {
                 // Convert null or undefined values to empty strings
                 formData.append(key, transaction[key] != null ? transaction[key] : '');
             }
+
+            formData.append('skip_existing', skip_existing);
 
             $.ajax({
                 type: 'POST',
@@ -473,6 +475,7 @@ function processFXDates(dates, totalFXTransactions) {
                     currentTransactionIndex++;
                     $('#currentTransactionIndex').text(currentTransactionIndex);
                     const progressPercentage = (currentTransactionIndex / totalFXTransactions) * 100;
+                    console.log(currentTransactionIndex, totalFXTransactionsj, progressPercentage);
                     $('.progress-bar').css('width', progressPercentage + '%').attr('aria-valuenow', progressPercentage);
 
                     processFXNextDate();

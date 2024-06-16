@@ -11,6 +11,8 @@ TRANSACTION_TYPE_CHOICES = (
     ('Buy', 'Buy'),
     ('Sell', 'Sell'),
     ('Dividend', 'Dividend'),
+    ('Broker commission', 'Broker commission'),
+    ('Tax', 'Tax'),
 )
 
 NAV_BARCHART_CHOICES = (
@@ -28,6 +30,11 @@ ASSET_TYPE_CHOICES = (
     ('Mutual fund', 'Mutual fund'),
     ('Option', 'Option'),
     ('Future', 'Future'),
+)
+
+EXPOSURE_CHOICES = (
+    ('Equity', 'Equity'),
+    ('FI', 'Fixed income'),
 )
 
 TOLERANCE = 1e-7

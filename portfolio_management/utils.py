@@ -44,6 +44,7 @@ def calculate_security_nav(item, date, currency):
 def update_analysis(analysis, key, value, date=None, currency=None, desired_currency=None):
     if currency and date and desired_currency:
         value = round(value * FX.get_rate(currency, desired_currency, date)['FX'], 2)
+    
     if key not in analysis:
         analysis[key] = value
     else:
@@ -92,6 +93,7 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
     cash_balance = {}
     for broker in portfolio_brokers:
         cash_balance = merge_dictionaries(cash_balance, broker.balance(date))
+        # print("utils, 95", date, cash_balance)
         for currency, balance in broker.balance(date).items():
             update_analysis(analysis['Broker'], broker.name, balance, date, currency, target_currency)
 
@@ -101,12 +103,19 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
         cash += converted_cash
         update_analysis(analysis['Currency'], currency, converted_cash)
 
+    # print("utils. 104", cash_balance, cash)
+
     if 'Asset type' in breakdown:
         update_analysis(analysis['Asset type'], 'Cash', cash)
     if 'Asset class' in breakdown:
         update_analysis(analysis['Asset class'], 'Cash', cash)
 
     analysis['Total NAV'] += cash
+
+    # Remove keys with zero values
+    for key in list(analysis.keys()):
+        if isinstance(analysis[key], dict):
+            analysis[key] = {k: v for k, v in analysis[key].items() if v != 0}
     
     return analysis
 
@@ -153,7 +162,9 @@ def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_
     for transaction in transactions:
         # print(f"utils.py. line 127. Transaction details: {transaction.quantity}")
         if transaction.type == 'Cash in' or transaction.type == 'Cash out':
-            cash_flow = -transaction.cash_flow
+            cash_flow = -1 * transaction.cash_flow
+        elif transaction.type == 'Broker commission':
+            cash_flow = Decimal(0) # Do not account for pay-outs elsewhere
         else:
             cash_flow = transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
             
@@ -422,6 +433,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                     })
                 else:
                     chart_data['datasets'][index]['data'].append(value / 1000)
+
+    # print("utils. 437", chart_data)
                     
     return chart_data
 
@@ -798,6 +811,7 @@ def update_fx_database(investor):
         print(f'{count} of {len(transaction_dates)}')
         FX.update_fx_rate(date, investor)
 
+# THIS IT NOT USED (?!)
 def import_transactions_from_file(file, user, broker, currency, confirm_each):
     
     df = pd.read_excel(file, header=None)
@@ -881,7 +895,7 @@ def import_transactions_from_file(file, user, broker, currency, confirm_each):
         'transactions': transactions
     }
 
-def parse_excel_file(file, currency, broker_id):
+def parse_excel_file_transactions(file, currency, broker_id):
     df = pd.read_excel(file, header=None)
     securities = []
     transactions = []
@@ -930,7 +944,7 @@ def parse_excel_file(file, currency, broker_id):
                     'currency': currency,
                     'price': price,
                     'quantity': quantity,
-                    'dividend': dividend,
+                    'cash_flow': dividend,
                     'commission': commission,
                 }
                 transactions.append(transaction_data)
@@ -941,3 +955,77 @@ def parse_excel_file(file, currency, broker_id):
             i += 1
 
     return securities, transactions
+
+def parse_broker_cash_flows(excel_file, currency, broker_id):
+    # Read the Excel file
+    df = pd.read_excel(excel_file, header=3)  # Line 4 has table headers, so header=3 (0-based index)
+
+    # Initialize an empty list to hold transaction data
+    transactions = []
+
+    # Identify columns related to 'Инвестиции' and their corresponding currencies by processing columns in reverse order
+    # currency_columns = {}
+    # current_currency = None
+    # for col in reversed(df.columns):
+    #     if 'Cash' in col:
+    #         current_currency = col.split('(')[-1].split(')')[0]
+    #         if current_currency == '£':
+    #             current_currency = 'GBP'
+    #     elif 'Инвестиции' in col and current_currency:
+    #         currency_columns[col] = current_currency
+    #         current_currency = None
+
+    # Iterate over each row in the DataFrame
+    for index, row in df.iterrows():
+        date = row['Дата'].strftime("%Y-%m-%d")
+
+        # Check if there is any data in the current row
+        if pd.notna(date):
+            # for inv_col, currency in currency_columns.items():
+            cash_investment = row['Инвестиции']
+            commission = row['Комиссия']
+            tax = row['Tax']
+
+            if pd.notna(cash_investment):
+                # Determine the type of transaction based on cash_investment
+                if cash_investment > 0:
+                    transaction_type = 'Cash in'
+                elif cash_investment < 0:
+                    transaction_type = 'Cash out'
+
+                transaction_data = {
+                        'broker': broker_id,
+                        'date': date,
+                        'type': transaction_type,
+                        'currency': currency,
+                        'cash_flow': round(cash_investment, 2),
+                        'commission': None,
+                        'tax': None,
+                    }
+                transactions.append(transaction_data)
+
+            if pd.notna(commission):
+                transaction_data = {
+                    'broker': broker_id,
+                    'date': date,
+                    'type': 'Broker commission',
+                    'currency': currency,
+                    'cash_flow': None,
+                    'commission': round(commission, 2),
+                    'tax': None,
+                }
+                transactions.append(transaction_data)
+            
+            if pd.notna(tax):
+                transaction_data = {
+                    'broker': broker_id,
+                    'date': date,
+                    'type': 'Tax',
+                    'currency': currency,
+                    'cash_flow': None,
+                    'commission': None,
+                    'tax': round(tax, 2),
+                }
+                transactions.append(transaction_data)
+
+    return transactions
