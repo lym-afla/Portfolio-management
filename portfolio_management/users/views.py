@@ -1,8 +1,10 @@
+import json
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
 
 from common.forms import DashboardForm
+from common.models import Brokers
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -125,3 +127,34 @@ def update_from_dashboard_form(request):
             # Redirect to the same page to refresh it
             return redirect(request.META.get('HTTP_REFERER'))
     return redirect('dashboard:dashboard')  # Redirect to home page if request method is not POST
+
+@login_required
+def update_data_for_broker(request):
+
+    # In case settings at the top menu are changed
+    if request.method == "POST":
+        try:
+            user = request.user
+
+            data = json.loads(request.body.decode('utf-8'))
+            broker_name = data.get('broker_name')
+
+            print("users. 139", broker_name, data)
+            if broker_name:
+
+                selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
+                print("users. 140", selected_broker_ids)
+                user.custom_brokers = selected_broker_ids
+                user.save()
+
+                return JsonResponse({'ok': True})
+            else:
+                return JsonResponse({'ok': False, 'error': 'Broker name not provided'})
+        except json.JSONDecodeError:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON data'})
+        
+    return JsonResponse({'ok': False, 'error': 'Invalid request method'})
+
+    # Redirect to the same page to refresh it
+    return redirect(request.META.get('HTTP_REFERER'))
+

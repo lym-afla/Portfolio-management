@@ -88,6 +88,8 @@ def dashboard(request):
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
 
+    # selected_brokers = [{'id': broker.id, 'name': broker.name} for broker in brokers]
+
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
 
     return render(request, 'dashboard.html', {
@@ -97,7 +99,7 @@ def dashboard(request):
         'json_analysis': json_analysis, # Feed for chart_dataset
         'currency': currency_target,
         'table_date': effective_current_date,
-        'brokers': brokers,
+        'brokers': Brokers.objects.filter(investor=user).all(),
         'selectedBrokers': selected_brokers,
         'summary': summary,
         'chart_settings': chart_settings,

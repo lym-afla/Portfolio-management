@@ -2,6 +2,18 @@ let stopProcess = false; // Moved outside to a wider scope
 
 $(document).ready(function () {
 
+    $('#brokerSelect').change(function() {
+        updateDataForBroker();
+    });
+
+    $('#prevBroker').click(function() {
+        switchBroker(-1);
+    });
+
+    $('#nextBroker').click(function() {
+        switchBroker(1);
+    });
+
     // Event listeners for the buttons
     $('button[data-type]').on('click', function () {
         var type = $(this).data('type');
@@ -492,4 +504,40 @@ function processFXDates(dates, totalFXTransactions) {
     }
 
     processFXNextDate();
+}
+
+function updateDataForBroker() {
+    const selectedBroker = $('#brokerSelect option:selected').text();
+
+    console.log(selectedBroker);
+
+    $.ajax({
+        url: '/users/update_data_for_broker/',
+        type: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')  // Add CSRF token to headers
+        },
+        contentType: 'application/json',
+        data: JSON.stringify({ broker_name: selectedBroker }),
+        success: function(response) {
+            if (response.ok) {
+                window.location.reload(); // Reload the page upon successful update
+            } else {
+                console.error('Failed to update data for broker');
+            }
+        },
+        error: function(error) {
+            console.error('Error updating data:', error);
+        }
+    });
+}
+
+function switchBroker(direction) {
+    const currentIndex = $('#brokerSelect')[0].selectedIndex;
+    const newIndex = currentIndex + direction;
+
+    if (newIndex >= 0 && newIndex < $('#brokerSelect')[0].options.length) {
+        $('#brokerSelect')[0].selectedIndex = newIndex;
+        updateDataForBroker();
+    }
 }

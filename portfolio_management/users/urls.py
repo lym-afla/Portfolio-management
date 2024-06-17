@@ -12,4 +12,5 @@ urlpatterns = [
     path('login/', views.user_login, name='login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
     path('update_dashboard/', views.update_from_dashboard_form, name='update_dashboard'),
+    path('update_data_for_broker/', views.update_data_for_broker, name='update_data_for_broker'),
 ]

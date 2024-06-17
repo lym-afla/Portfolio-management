@@ -134,6 +134,7 @@
                     {% if user.is_authenticated %} <main class="p-3"> {% endif %}
                         {% block main_page_title %} {% endblock main_page_title %}
                         <hr>
+                        
                         {% block content %} {% endblock content %}
                     {% if user.is_authenticated %} </main> {% endif %}
                 </div>
