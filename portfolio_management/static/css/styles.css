@@ -160,7 +160,7 @@ h2 {
     left: 0;
 }
 
-#loadingIndicator {
+#loadingIndicatorNAVChart {
     display: none;
     flex-direction: column;
     align-items: center;
@@ -179,6 +179,7 @@ h2 {
     position: relative;
 }
 
+/* Spinner styles */
 .spinner {
     border: 4px solid rgba(0, 0, 0, 0.1);
     width: 36px;
@@ -195,6 +196,25 @@ h2 {
     100% {
         transform: rotate(360deg);
     }
+}
+
+/* New styles for the overlay */
+.loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.loading-overlay.show {
+    display: flex;
 }
 
 .broker-nav {

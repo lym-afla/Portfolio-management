@@ -121,7 +121,7 @@ def update_from_dashboard_form(request):
             # Save new parameters to user setting
             user.default_currency = dashboard_form.cleaned_data['default_currency']
             user.digits = dashboard_form.cleaned_data['digits']
-            selected_broker_ids = [broker.id for broker in dashboard_form.cleaned_data['selected_brokers']]
+            selected_broker_ids = [broker.id for broker in dashboard_form.cleaned_data['custom_brokers']]
             user.custom_brokers = selected_broker_ids
             user.save()
             # Redirect to the same page to refresh it
@@ -144,8 +144,9 @@ def update_data_for_broker(request):
 
                 selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
                 print("users. 140", selected_broker_ids)
-                user.custom_brokers = selected_broker_ids
-                user.save()
+                if selected_broker_ids is not None and len(selected_broker_ids) > 0:
+                    user.custom_brokers = selected_broker_ids
+                    user.save()
 
                 return JsonResponse({'ok': True})
             else:

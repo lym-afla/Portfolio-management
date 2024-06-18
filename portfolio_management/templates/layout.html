@@ -53,6 +53,12 @@
                         <ul class="nav nav-pills flex-column mb-auto">
                             <li {% if request.path == '/dashboard/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="{% url 'dashboard:dashboard' %}">
+                                    <img src="{% static 'icons/database.svg' %}" alt="Bootstrap" class="nav-icon" title="Database" height="30px" width="30px">
+                                </a>
+                            </li>
+                            <hr>
+                            <li {% if request.path == '/dashboard/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                                <a href="{% url 'dashboard:dashboard' %}">
                                     <img src="{% static 'icons/briefcase.svg' %}" alt="Bootstrap" class="nav-icon" title="Dashboard" height="30px" width="30px">
                                 </a>
                             </li>
@@ -90,6 +96,10 @@
                     </a>
                     <hr>
                     <ul class="nav nav-pills flex-column mb-auto">
+                        <li>
+                            <a href="{% url 'dashboard:dashboard' %}" class="nav-link {% if request.path == '/dashboard/' %}active{% else %}link-dark{% endif %}">[summary]</a>
+                        </li>
+                        <hr>
                         <li>
                             <a href="{% url 'dashboard:dashboard' %}" class="nav-link {% if request.path == '/dashboard/' %}active{% else %}link-dark{% endif %}">Dashboard</a>
                         </li>

@@ -2,6 +2,8 @@ let stopProcess = false; // Moved outside to a wider scope
 
 $(document).ready(function () {
 
+    updateBrokerHeader();
+
     $('#brokerSelect').change(function() {
         updateDataForBroker();
     });
@@ -78,6 +80,15 @@ $(document).ready(function () {
     });
 
 });
+
+// Spinner functions
+function showSpinner() {
+    $('#loadingOverlay').addClass('show');
+}
+
+function hideSpinner() {
+    $('#loadingOverlay').removeClass('show');
+}
 
 // Function to load the form into the modal
 function loadForm(type, itemId = null, element = null, confirm_each = false, processTransactionAction = null) {
@@ -511,6 +522,8 @@ function updateDataForBroker() {
 
     console.log(selectedBroker);
 
+    showSpinner();
+
     $.ajax({
         url: '/users/update_data_for_broker/',
         type: 'POST',
@@ -521,13 +534,17 @@ function updateDataForBroker() {
         data: JSON.stringify({ broker_name: selectedBroker }),
         success: function(response) {
             if (response.ok) {
+                // hideSpinner();
+                updateBrokerHeader();
                 window.location.reload(); // Reload the page upon successful update
             } else {
                 console.error('Failed to update data for broker');
+                // hideSpinner();
             }
         },
         error: function(error) {
             console.error('Error updating data:', error);
+            // hideSpinner();
         }
     });
 }
@@ -540,4 +557,9 @@ function switchBroker(direction) {
         $('#brokerSelect')[0].selectedIndex = newIndex;
         updateDataForBroker();
     }
+}
+
+function updateBrokerHeader() {
+    const selectedBrokerName = $('#brokerSelect option:selected').text();
+    $('#brokerNameHeader').text(selectedBrokerName);
 }

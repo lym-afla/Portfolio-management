@@ -70,10 +70,16 @@ class UserSettingsForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Default NAV timeline breakdown'
     )
-    custom_brokers = forms.MultipleChoiceField(
+    # custom_brokers = forms.MultipleChoiceField(
+    #     choices=[],
+    #     widget=forms.SelectMultiple(attrs={'class': 'selectpicker show-tick', 'data-actions-box': 'true', 'data-width': '100%', 'title': 'Choose broker', 'data-selected-text-format': 'count', 'id': 'inputBrokers'}),
+    #     label='Brokers'
+    # )
+
+    custom_brokers = forms.ChoiceField(
         choices=[],
-        widget=forms.SelectMultiple(attrs={'class': 'selectpicker show-tick', 'data-actions-box': 'true', 'data-width': '100%', 'title': 'Choose broker', 'data-selected-text-format': 'count', 'id': 'inputBrokers'}),
-        label='Brokers'
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Brokers',
     )
     
     class Meta:

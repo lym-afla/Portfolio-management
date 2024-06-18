@@ -68,7 +68,7 @@ function pieChartInitialization(type, chartData) {
 async function updateChart(chart) {
 
     // Show loading indicator
-    document.getElementById('loadingIndicator').style.display = 'flex';
+    document.getElementById('loadingIndicatorNAVChart').style.display = 'flex';
     // document.getElementById('NAVBarChart').style.display = 'none';
 
     const frequency = document.querySelector('input[name="chartFrequency"]:checked').value;
@@ -78,7 +78,7 @@ async function updateChart(chart) {
     const chartData = await getNAVChartData(frequency, from, to, breakdown);
 
     // Hide loading indicator and show chart
-    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('loadingIndicatorNAVChart').style.display = 'none';
     // document.getElementById('NAVBarChart').style.display = 'block';
 
     chart.data.labels = chartData.labels;

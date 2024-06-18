@@ -70,7 +70,7 @@ def transactions(request):
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         'transactions': transactions,
-        'brokers': brokers,
+        'brokers': Brokers.objects.filter(investor=user).all(),
         'currencies': currencies,
         'currency': currency_target,
         'table_date': effective_current_date,

@@ -91,6 +91,7 @@ def dashboard(request):
     # selected_brokers = [{'id': broker.id, 'name': broker.name} for broker in brokers]
 
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
+    print("views. dashboard. 94", selected_brokers, user.custom_brokers)
 
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
