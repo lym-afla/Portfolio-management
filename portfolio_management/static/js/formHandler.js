@@ -1,3 +1,5 @@
+let stopProcess = false; // Moved outside to a wider scope
+
 $(document).ready(function () {
 
     // Event listeners for the buttons
@@ -56,6 +58,13 @@ $(document).ready(function () {
             }
         });
     });
+
+    $('#updateFXBtn').off('click').on('click', function() {
+        stopProcess = false;
+        $('#progressModal').modal('show');
+        updateFX();
+    });
+
 });
 
 // Function to load the form into the modal
@@ -409,4 +418,75 @@ function showErrors(errors) {
 
     errorContainer.append(alertDiv);
     errorContainer.show();
+}
+
+function updateFX() {
+
+    $('#stopUploadBtn').off('click').on('click', function() {
+        stopProcess = true;
+        $('#progressModal').modal('hide');
+        alert('Process stopped by user');
+    });
+
+    $.ajax({
+        type: 'GET',  // Change to GET to first get the dates
+        url: 'update_fx_dates/',  // Ensure this URL points to a view that returns the dates
+        success: function(response) {
+            if (response.success) {
+                const dates = response.dates;
+                const totalFXTransactions = dates.length;
+                $('#totalTransactions').text(totalFXTransactions);
+                processFXDates(dates, totalFXTransactions);
+            } else {
+                alert('Error fetching dates');
+            }
+        },
+        error: function(xhr, status, error) {
+            alert('Error: ' + error);
+        }
+    });
+}
+
+function processFXDates(dates, totalFXTransactions) {
+    let currentTransactionIndex = 0;
+
+    function processFXNextDate() {
+        if (stopProcess || currentTransactionIndex >= totalFXTransactions) {
+            $('#progressModal').modal('hide');
+            if (!stopProcess) {
+                alert('All FX rates updated successfully');
+            }
+            return;
+        }
+
+        const date = dates[currentTransactionIndex];
+
+        $.ajax({
+            type: 'POST',
+            url: 'update_fx/',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')  // Add CSRF token to headers
+            },
+            data: { date: date },
+            success: function(response) {
+                if (response.success) {
+                    currentTransactionIndex++;
+                    $('#currentTransactionIndex').text(currentTransactionIndex);
+                    const progressPercentage = (currentTransactionIndex / totalFXTransactions) * 100;
+                    $('.progress-bar').css('width', progressPercentage + '%').attr('aria-valuenow', progressPercentage);
+
+                    processFXNextDate();
+                } else {
+                    alert('Error updating FX rate for date: ' + date);
+                    $('#progressModal').modal('hide');
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Error: ' + error);
+                $('#progressModal').modal('hide');
+            }
+        });
+    }
+
+    processFXNextDate();
 }

@@ -1,9 +1,11 @@
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
+from django.db.models.functions import Abs
 from django.shortcuts import render
 from common.models import Brokers, Assets
 from common.forms import DashboardForm
-from utils import calculate_open_table_output, selected_brokers, effective_current_date
+from constants import TOLERANCE
+from utils import calculate_open_table_output, effective_current_date
 
 
 @login_required
@@ -34,7 +36,16 @@ def open_positions(request):
     dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     # Portfolio at [date] - assets with non zero positions
-    # func.date used for correct query when transaction is at [table_date] (removes time effectively)
+    # portfolio_open = Assets.objects.filter(
+    #     investor=user,
+    #     transactions__date__lte=effective_current_date,
+    #     transactions__broker_id__in=selected_brokers
+    # ).prefetch_related(
+    #     'transactions'
+    # ).annotate(
+    #     total_quantity=Sum('transactions__quantity')
+    # ).exclude(total_quantity=0)
+
     portfolio_open = Assets.objects.filter(
         investor=user,
         transactions__date__lte=effective_current_date,
@@ -42,8 +53,10 @@ def open_positions(request):
     ).prefetch_related(
         'transactions'
     ).annotate(
-        total_quantity=Sum('transactions__quantity')
-    ).exclude(total_quantity=0)
+        abs_total_quantity=Abs(Sum('transactions__quantity'))
+    ).exclude(
+        abs_total_quantity__lt=TOLERANCE
+    )
 
     print(f"open_positions.views. line 48. Portfolio_open: {portfolio_open}")
 

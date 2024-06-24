@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -166,13 +167,13 @@ def database_prices(request):
     sidebar_padding = request.GET.get("padding")
 
     # Calculate price data
-    fx_data = FX.objects.filter(investor=user).all()
+    fx_data = FX.objects.filter(investor=user).order_by('date').all()
     ETF = create_price_table('ETF', user)
     mutual_fund = create_price_table('Mutual fund', user)
     stock = create_price_table('Stock', user)
     bond = create_price_table('Bond', user)
 
-    buttons = ['price', 'edit', 'delete']
+    buttons = ['price', 'update_FX', 'edit', 'delete']
 
     return render(request, 'prices.html', {
         'sidebar_width': sidebar_width,
@@ -418,7 +419,7 @@ def process_import_transactions(request):
             transaction.save()
             
             # When adding new transaction update FX rates from Yahoo
-            FX.update_fx_rate(transaction.date, request.user)
+            # FX.update_fx_rate(transaction.date, request.user)
 
             price_instance = Prices(
                 date=transaction.date,
@@ -433,3 +434,20 @@ def process_import_transactions(request):
             return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+def update_FX(request):
+    if request.method == 'POST':
+        date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d')
+        if date:
+            FX.update_fx_rate(date, request.user)
+            return JsonResponse({'success': True})
+        return JsonResponse({'error': 'Date not provided'}, status=400)
+    else:
+        return JsonResponse({'error': 'Invalid request method'}, status=400)
+    
+def get_update_fx_dates(request):
+    if request.method == 'GET':
+        dates = Transactions.objects.filter(investor=request.user).values_list('date', flat=True).distinct()
+        return JsonResponse({'success': True, 'dates': list(dates)})
+    else:
+        return JsonResponse({'error': 'Invalid request method'}, status=400)
