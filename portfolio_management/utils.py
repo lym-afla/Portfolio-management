@@ -147,9 +147,11 @@ def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_
         # Calculate start portfolio value if provided
         initial_value_date = start_date - timedelta(days=1)
         start_portfolio_value = calculate_portfolio_value(user_id, initial_value_date, currency, asset_id, broker_id_list)
+        # print("utils. 150", start_portfolio_value, transactions)
         
         # Not relevant for short positions
-        if (start_portfolio_value < 0) or (start_portfolio_value == 0 and transactions.order_by('date').first().quantity < 0):
+        first_transaction = transactions.order_by('date').first().quantity or 0
+        if (start_portfolio_value < 0) or (start_portfolio_value == 0 and first_transaction < 0):
             # print("Short position")
             return 'N/R'
 
@@ -198,7 +200,7 @@ def calculate_portfolio_value(user_id, date, currency=None, asset_id=None, broke
     else:
         asset = Assets.objects.get(id=asset_id)
         # print(f"utils.py. line 188. Asset: {asset.name}, {asset.id}, {user_id}, {date}, {currency}, {asset_id}, {broker_id_list}")
-        # print(f"utils.py. line 189. Asset data: {asset.price_at_date(date).price}, {asset.position(date, broker_id_list)}")
+        # print(f"utils.py. line 201. Asset data: {asset.price_at_date(date, currency).price}, {asset.position(date, broker_id_list)}")
         try:
             portfolio_value = round(asset.price_at_date(date, currency).price * asset.position(date, broker_id_list), 2)
         except:
@@ -522,7 +524,7 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
         asset.entry_value = asset.entry_price * asset.current_position
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
         entry_date = asset.entry_dates(date, selected_brokers)[-1]
-        print(f'utils.py. LIne 508. Entry date: {entry_date}')
+        # print(f'utils.py. LIne 508. Entry date: {entry_date}')
         
         if 'investment_date' in categories:
             asset.investment_date = entry_date
@@ -1029,3 +1031,169 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                 transactions.append(transaction_data)
 
     return transactions
+
+def get_last_exit_date_for_brokers(selected_brokers, date):
+    """
+    Calculate the last date after which all activities ended and no asset was opened for the selected brokers.
+
+    Args:
+        selected_brokers (list): List of broker IDs to include in the calculation.
+
+    Returns:
+        date: The last date after which all activities ended and no asset was opened for the selected brokers.
+    """
+    # Step 1: Check the position of each security at the current date
+    for broker in Brokers.objects.filter(id__in=selected_brokers):
+        for security in broker.securities.all():
+            if security.position(date, [broker.id]) != 0:
+                return date
+
+    # Step 2: If positions for all securities at the current date are zero, find the latest transaction date
+    latest_transaction_date = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=date).order_by('-date').values_list('date', flat=True).first()
+    
+    return latest_transaction_date
+
+# Collect data for summary financials table
+def summary_over_time(user, effective_date, selected_brokers, currency_target, number_of_digits):
+    print("Running summary_over_time function")
+    # Determine the starting year
+    first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=effective_date).order_by('date').first()
+    if first_transaction:
+        start_year = first_transaction.date.year
+    else:
+        context = {
+            "years": [],
+            "lines": [],
+        }
+        return context
+
+    # Determine the ending year
+    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_date)
+    last_year = last_exit_date.year if last_exit_date else effective_date.year
+
+    years = list(range(start_year, last_year + 1))
+
+    # Line names
+    line_names = [
+        "BoP NAV", "Invested", "Cash-out", "Price change", "Capital distribution",
+        "Commission", "Tax", "FX", "EoP NAV", "TSR"
+    ]
+    
+    lines = []
+
+    brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
+    currencies = set()
+    for broker in brokers:
+        currencies.update(broker.get_currencies())
+
+    for line_name in line_names:
+        line_data = {"name": line_name, "data": {}, "percentage": {}, "has_percentage": line_name not in ["BoP NAV", "Invested", "Cash-out", "TSR"]}
+        
+        for year in years:
+            end_of_year_date = date(year, 12, 31)
+            start_of_year_date = date(year, 1, 1)
+
+            bop_nav = NAV_at_date(user.id, selected_brokers, start_of_year_date - timedelta(days=1), currency_target)['Total NAV']
+
+            invested = 0
+            cash_out = 0
+            for cur in currencies:
+                transactions = Transactions.objects.filter(broker_id__in=selected_brokers, currency=cur, type__in=['Cash in', 'Cash out'], date__year=year).values_list('cash_flow', 'type', 'date')
+                for cash_flow, transaction_type, transaction_date in transactions:
+                    if transaction_type == 'Cash in':
+                        invested += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
+                    elif transaction_type == 'Cash out':
+                        cash_out += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
+            
+            # Collect data for each line
+            if line_name == "BoP NAV":
+                line_data["data"][year] = bop_nav
+            
+            elif line_name == "Invested":
+                line_data["data"][year] = invested
+                 
+            elif line_name == "Cash-out":
+                line_data["data"][year] = cash_out
+                                
+            elif line_name == "Price change":
+                realized_gl = 0
+                unrealized_gl = 0
+
+                for asset in Assets.objects.filter(investor=user, brokers__id__in=selected_brokers):
+                    asset_realized_gl = asset.realized_gain_loss(end_of_year_date, currency_target, broker_id_list=selected_brokers)
+                    realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
+
+                    unrealized_gl += asset.unrealized_gain_loss(end_of_year_date, currency_target, broker_id_list=selected_brokers)
+
+                line_data["data"][year] = realized_gl + unrealized_gl
+                print("utils. 1129", line_data["data"][year], bop_nav + invested + cash_out)
+                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+
+            elif line_name == "Capital distribution":
+                line_data["data"][year] = 0
+                
+                for asset in Assets.objects.filter(investor=user, brokers__id__in=selected_brokers):
+                    line_data["data"][year] += asset.get_capital_distribution(end_of_year_date, currency_target, broker_id_list=selected_brokers)
+                
+                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+            
+            elif line_name == "Commission":
+                line_data["data"][year] = 0
+
+                for cur in currencies:
+                    transactions = Transactions.objects.filter(broker_id__in=selected_brokers, currency=cur, date__year=year).values_list('commission', 'date')
+                    for commission, transaction_date in transactions:
+                        if commission:
+                            line_data["data"][year] += commission * FX.get_rate(cur, currency_target, transaction_date)['FX']
+                
+                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+            
+            elif line_name == "Tax":
+                line_data["data"][year] = 0
+
+                for cur in currencies:
+                    transactions = Transactions.objects.filter(broker_id__in=selected_brokers, currency=cur, type='Tax', date__year=year).values_list('cash_flow', 'date')
+                    for cash_flow, transaction_date in transactions:
+                        line_data["data"][year] += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
+                
+                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+            
+            # elif line_name == "FX":
+                # line_data["data"][year] = Assets.get_fx_impact(None, end_of_year_date, currency_target, broker_id_list=selected_brokers)
+                # bop_nav = NAV_at_date(user.id, selected_brokers, date(year-1, 12, 31), currency_target)['Total NAV']
+                # line_data["percentage"][year] = (line_data["data"][year] / bop_nav) * 100 if bop_nav != 0 else 0
+            
+            elif line_name == "EoP NAV":
+                line_data["data"][year] = NAV_at_date(user.id, selected_brokers, end_of_year_date, currency_target)['Total NAV']
+            
+            elif line_name == "TSR":
+                line_data["data"][year] = Irr(user.id, end_of_year_date, currency_target, broker_id_list=selected_brokers, start_date=start_of_year_date)
+
+        # Calculate YTD and All-time values
+        current_year = effective_date.year
+        line_data["data"]["YTD"] = line_data["data"].get(current_year, 0)
+        line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if isinstance(year, int))
+        
+        if line_data["has_percentage"]:
+            line_data["percentage"]["YTD"] = line_data["percentage"].get(current_year, 0)
+            line_data["percentage"]["All-time"] = sum(value for year, value in line_data["percentage"].items() if isinstance(year, int))
+
+        for year, value in line_data["data"].items():
+            if line_data["name"] == 'TSR':
+                line_data["data"][year] = format_percentage(line_data["data"][year], digits=1)
+            else:
+                line_data["data"][year] = currency_format(line_data["data"][year], currency_target, number_of_digits)
+
+        for year, value in line_data['percentage'].items():
+            line_data['percentage'][year] = format_percentage(line_data['percentage'][year], digits=1)
+
+        lines.append(line_data)
+
+        print(f"Finished {line_name}. {line_data}")
+
+    context = {
+        "years": years,
+        "lines": lines,
+    }
+
+    return context

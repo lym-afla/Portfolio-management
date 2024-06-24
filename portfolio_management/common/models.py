@@ -165,6 +165,7 @@ class Assets(models.Model):
     name = models.CharField(max_length=30, null=False)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default='Equity')
+    restricted = models.BooleanField(default=False, null=False)
     comment = models.TextField(null=True, blank=True)
 
     # Returns price at the date or latest available before the date

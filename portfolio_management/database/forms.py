@@ -89,24 +89,57 @@ class PriceForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
-        self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.order_by('name').all()]
+        self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investor=investor).order_by('name').all()]
 
 class SecurityForm(forms.ModelForm):
+
+    # broker = forms.ModelChoiceField(
+    #     queryset=None,  # Remove queryset definition here
+    #     widget=forms.Select(attrs={'class': 'form-select'}),
+    #     required=True,
+    #     label="Broker"
+    # )
+
+    custom_brokers = forms.MultipleChoiceField(
+        choices=[],  # We'll set choices in the __init__ method
+        widget=forms.SelectMultiple(
+            attrs={
+                'class': 'selectpicker show-tick',
+                'data-actions-box': 'true',
+                'data-width': '100%',
+                'title': 'Choose broker',
+                'data-selected-text-format': 'count',
+                # 'id': 'inputBrokers'
+            }
+        ),
+        label='Brokers'
+    )
+
     class Meta:
         model = Assets
-        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'comment']
+        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'comment']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'ISIN': forms.TextInput(attrs={'class': 'form-control'}),
             'type': forms.Select(attrs={'class': 'form-select'}),
             'currency': forms.Select(attrs={'class': 'form-select'}),
             'exposure': forms.Select(attrs={'class': 'form-select'}),
+            'restricted': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
         }
 
     def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
         self.fields['type'].choices = [(choice[0], choice[0]) for choice in Assets._meta.get_field('type').choices if choice[0]]
+        
+        # Filter brokers based on the investor
+        self.fields['custom_brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+
+        # # If instance exists, pre-select the current brokers
+        if self.instance.pk:
+            self.fields['custom_brokers'].initial = [broker.id for broker in self.instance.brokers.all()]

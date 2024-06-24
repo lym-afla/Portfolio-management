@@ -11,7 +11,7 @@ class DashboardForm(forms.ModelForm):
 
     custom_brokers = forms.ChoiceField(
         choices=[],
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'inputBrokers'}),
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'inputDashboardBrokers'}),
         label='Brokers',
     )
 

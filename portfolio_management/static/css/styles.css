@@ -240,3 +240,30 @@ h2 {
     padding: 10px;
     margin: 0 10px;
 }
+
+/* Specific styles for the summary-over-time table */
+.summary-over-time-wrapper {
+    overflow-x: auto;
+}
+
+.summary-over-time-table .fixed-column {
+    position: sticky;
+    left: 0;
+    background-color: white;
+    z-index: 1;
+}
+
+.summary-over-time-table th, .summary-over-time-table td {
+    white-space: nowrap;
+}
+
+.summary-over-time-table thead th:last-child, 
+.summary-over-time-table tbody td:last-child, 
+.summary-over-time-table thead th:nth-last-child(2), 
+.summary-over-time-table tbody td:nth-last-child(2) {
+    border-left: 2px solid #dee2e6; /* Bootstrap default border color */
+}
+
+.summary-over-time-table .highlight-column {
+    background-color: #f8f9fa; /* Light gray for highlighting */
+}

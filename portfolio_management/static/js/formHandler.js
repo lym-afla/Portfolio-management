@@ -136,6 +136,8 @@ function loadForm(type, itemId = null, element = null, confirm_each = false, pro
                 }
             }
             
+            $('.selectpicker').selectpicker();
+
             $(container).find('.modal').modal('show'); // Show the modal
             attachFormSubmitHandler(form);
 
@@ -145,7 +147,9 @@ function loadForm(type, itemId = null, element = null, confirm_each = false, pro
             type = type.charAt(0).toUpperCase() + type.slice(1);
             $(`#add${type}ModalCancel`).off('click').on('click', function() {
                 console.log('cancel clicked');
-                processTransactionAction('skip', confirm_each);
+                if (processTransactionAction) {
+                    processTransactionAction('skip', confirm_each);
+                }
             });
         }
     });

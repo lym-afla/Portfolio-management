@@ -107,7 +107,7 @@ def reset_password(u, password):
 @login_required
 def update_from_dashboard_form(request):
 
-    global effective_current_date
+    # global effective_current_date
 
     user = request.user
 
@@ -116,12 +116,17 @@ def update_from_dashboard_form(request):
         dashboard_form = DashboardForm(request.POST, instance=user)
         if dashboard_form.is_valid():
             # Process the form data
-            effective_current_date = dashboard_form.cleaned_data['table_date']
+            request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date']
+            # request.session['effective_current_date'] = effective_current_date.strftime('%Y-%m-%d')
+            print("views. users. 120", request.session['effective_current_date'])
             
             # Save new parameters to user setting
             user.default_currency = dashboard_form.cleaned_data['default_currency']
             user.digits = dashboard_form.cleaned_data['digits']
-            selected_broker_ids = [broker.id for broker in dashboard_form.cleaned_data['custom_brokers']]
+            selected_broker_ids = [dashboard_form.cleaned_data['custom_brokers']]
+            # broker_name = dashboard_form.cleaned_data['custom_brokers']
+            # print("users. views. 126", broker_name)
+            # selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
             user.custom_brokers = selected_broker_ids
             user.save()
             # Redirect to the same page to refresh it

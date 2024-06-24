@@ -5,7 +5,7 @@ from django.shortcuts import render
 from common.models import Brokers, Assets
 from common.forms import DashboardForm
 from constants import TOLERANCE
-from utils import calculate_open_table_output, effective_current_date
+from utils import calculate_open_table_output
 
 
 @login_required
@@ -13,7 +13,7 @@ def open_positions(request):
 
     user = request.user
 
-    global effective_current_date
+    effective_current_date = request.session['effective_current_date']
     
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -26,6 +26,8 @@ def open_positions(request):
 
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
+
+    print("views. open positions. 30", effective_current_date)
 
     initial_data = {
         'selected_brokers': selected_brokers,
@@ -58,7 +60,7 @@ def open_positions(request):
         abs_total_quantity__lt=TOLERANCE
     )
 
-    print(f"open_positions.views. line 48. Portfolio_open: {portfolio_open}")
+    # print(f"open_positions.views. line 48. Portfolio_open: {portfolio_open}")
 
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
 

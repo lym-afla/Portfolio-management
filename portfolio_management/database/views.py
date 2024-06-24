@@ -263,13 +263,32 @@ def add_price(request):
 
 def add_security(request):
     if request.method == 'POST':
-        form = SecurityForm(request.POST)
+        form = SecurityForm(request.POST, investor=request.user)  # Pass user to form
         import_flag = request.POST.get('importing', False)
 
         if form.is_valid():
+            isin = form.cleaned_data['ISIN']
+            broker = form.cleaned_data['broker']
+            
+            # Check if the security already exists
+            try:
+                security = Assets.objects.get(ISIN=isin)
+                # new_security = False
+            except Assets.DoesNotExist:
+                security = form.save(commit=False)  # Create new security instance
+                security.investor = request.user
+                security.save()
+                # new_security = True
+
+            # Attach the security to the broker
+            broker.securities.add(security)
+            
             security = form.save(commit=False)  # Don't save to the database yet
             security.investor = request.user     # Set the investor field
+            broker = form.cleaned_data['broker']
             security.save()
+
+            broker.securities.add(security)
 
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
@@ -283,7 +302,7 @@ def add_security(request):
         else:
             return JsonResponse({'errors': form.errors}, status=400)
     else:
-        form = SecurityForm()
+        form = SecurityForm(investor=request.user)
         form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Security', 'action_url': 'database:add_security'}, request)
     return JsonResponse({'form_html': form_html})
 
@@ -291,12 +310,21 @@ def add_security(request):
 def edit_item(request, model_class, form_class, item_id, type):
     item = get_object_or_404(model_class, id=item_id)
     if request.method == 'POST':
-        form = form_class(request.POST, instance=item)
+        form = form_class(request.POST, instance=item, investor=request.user)
         if form.is_valid():
             item = form.save(commit=False)
             if type in ['broker', 'security', 'transaction']:
                 item.investor = request.user
             item.save()
+
+            # Handle attaching security to broker
+            if type == 'security':
+                brokers = form.cleaned_data['custom_brokers']
+                print(brokers)
+                for broker_id in brokers:
+                    broker = Brokers.objects.get(id=broker_id)
+                    broker.securities.add(item)
+
             if type == 'transaction':
                 redirect_url = reverse('transactions:transactions')
             elif type == 'security':
@@ -305,6 +333,7 @@ def edit_item(request, model_class, form_class, item_id, type):
                 redirect_url = reverse(f'database:{type}s')
             return JsonResponse({'success': True, 'redirect_url': redirect_url})
         else:
+            print(form.errors)
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = form_class(instance=item, investor=request.user)
