@@ -14,7 +14,7 @@ from common.forms import DashboardForm
 from constants import CURRENCY_CHOICES
 
 from .forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
-from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, currency_format, format_percentage, import_transactions_from_file, parse_excel_file
+from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions
 
 @login_required
 def database_brokers(request):
@@ -263,13 +263,32 @@ def add_price(request):
 
 def add_security(request):
     if request.method == 'POST':
-        form = SecurityForm(request.POST)
+        form = SecurityForm(request.POST, investor=request.user)  # Pass user to form
         import_flag = request.POST.get('importing', False)
 
         if form.is_valid():
+            isin = form.cleaned_data['ISIN']
+            broker = form.cleaned_data['broker']
+            
+            # Check if the security already exists
+            try:
+                security = Assets.objects.get(ISIN=isin)
+                # new_security = False
+            except Assets.DoesNotExist:
+                security = form.save(commit=False)  # Create new security instance
+                security.investor = request.user
+                security.save()
+                # new_security = True
+
+            # Attach the security to the broker
+            broker.securities.add(security)
+            
             security = form.save(commit=False)  # Don't save to the database yet
             security.investor = request.user     # Set the investor field
+            broker = form.cleaned_data['broker']
             security.save()
+
+            broker.securities.add(security)
 
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
@@ -283,7 +302,7 @@ def add_security(request):
         else:
             return JsonResponse({'errors': form.errors}, status=400)
     else:
-        form = SecurityForm()
+        form = SecurityForm(investor=request.user)
         form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Security', 'action_url': 'database:add_security'}, request)
     return JsonResponse({'form_html': form_html})
 
@@ -291,12 +310,21 @@ def add_security(request):
 def edit_item(request, model_class, form_class, item_id, type):
     item = get_object_or_404(model_class, id=item_id)
     if request.method == 'POST':
-        form = form_class(request.POST, instance=item)
+        form = form_class(request.POST, instance=item, investor=request.user)
         if form.is_valid():
             item = form.save(commit=False)
             if type in ['broker', 'security', 'transaction']:
                 item.investor = request.user
             item.save()
+
+            # Handle attaching security to broker
+            if type == 'security':
+                brokers = form.cleaned_data['custom_brokers']
+                print(brokers)
+                for broker_id in brokers:
+                    broker = Brokers.objects.get(id=broker_id)
+                    broker.securities.add(item)
+
             if type == 'transaction':
                 redirect_url = reverse('transactions:transactions')
             elif type == 'security':
@@ -305,6 +333,7 @@ def edit_item(request, model_class, form_class, item_id, type):
                 redirect_url = reverse(f'database:{type}s')
             return JsonResponse({'success': True, 'redirect_url': redirect_url})
         else:
+            print(form.errors)
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = form_class(instance=item, investor=request.user)
@@ -344,19 +373,25 @@ def import_transactions(request):
         broker_id = request.POST.get('broker')
         currency = request.POST.get('currency')
         confirm_each = request.POST.get('confirm_each') == 'on'
+        import_type = request.POST.get('cash_or_transaction')
+        skip_existing = request.POST.get('skip_existing') == 'on'
         file = request.FILES['file']
 
         user = request.user
 
-        securities, transactions = parse_excel_file(file, currency, broker_id)
-        
-        for security in securities:
-            if not Assets.objects.filter(investor=user, name=security['name'], ISIN=security['isin']).exists():
-                return JsonResponse({'status': 'missing_security', 'security': security})
+        if import_type == 'transaction':
 
-        # request.session['transactions'] = transactions
-        # print("views. database. line 355", transactions)
-        return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each})
+            securities, transactions = parse_excel_file_transactions(file, currency, broker_id)
+            
+            for security in securities:
+                if not Assets.objects.filter(investor=user, name=security['name'], ISIN=security['isin']).exists():
+                    return JsonResponse({'status': 'missing_security', 'security': security})
+                
+        elif import_type == 'cash':
+            transactions = parse_broker_cash_flows(file, currency, broker_id)
+            print("views. database. 363", transactions)
+
+        return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each, 'skip_existing': skip_existing})
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
@@ -370,16 +405,19 @@ def process_import_transactions(request):
                 return Decimal(value)
             except (InvalidOperation, TypeError, ValueError):
                 return None
-            
-        try:
-            security = Assets.objects.get(name=request.POST.get('security_name'))
-        except Assets.DoesNotExist:
-            return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
-
+        
         price = to_decimal(request.POST.get('price'))
         quantity = to_decimal(request.POST.get('quantity'))
         cash_flow = to_decimal(request.POST.get('dividend'))
         commission = to_decimal(request.POST.get('commission'))
+            
+        if quantity is not None:
+            try:
+                security = Assets.objects.get(name=request.POST.get('security_name'))
+            except Assets.DoesNotExist:
+                return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
+        else:
+            security = None
 
         # Filter out None values to avoid passing invalid data to the filter
         filter_kwargs = {
@@ -405,11 +443,15 @@ def process_import_transactions(request):
 
         # If there are any matching transactions, return 'check_required'
         if existing_transactions.exists():
-            return JsonResponse({'status': 'check_required'})
+            if request.POST.get('skip_existing'):
+                return JsonResponse({'status': 'success'})
+            else:
+                return JsonResponse({'status': 'check_required'})
 
         # Prepare form data with security id
         form_data = request.POST.dict()
-        form_data['security'] = security.id
+        if quantity is not None:
+            form_data['security'] = security.id
 
         form = TransactionForm(form_data, investor=request.user.id)
 
@@ -421,12 +463,13 @@ def process_import_transactions(request):
             # When adding new transaction update FX rates from Yahoo
             # FX.update_fx_rate(transaction.date, request.user)
 
-            price_instance = Prices(
-                date=transaction.date,
-                security=transaction.security,
-                price=transaction.price,
-            )
-            price_instance.save()
+            if quantity is not None:
+                price_instance = Prices(
+                    date=transaction.date,
+                    security=transaction.security,
+                    price=transaction.price,
+                )
+                price_instance.save()
 
             return JsonResponse({'status': 'success'})
         else:

@@ -5,7 +5,7 @@ from datetime import timedelta
 import requests
 import yfinance as yf
 
-from constants import CURRENCY_CHOICES, ASSET_TYPE_CHOICES, TRANSACTION_TYPE_CHOICES
+from constants import CURRENCY_CHOICES, ASSET_TYPE_CHOICES, TRANSACTION_TYPE_CHOICES, EXPOSURE_CHOICES
 # from .utils import update_FX_database
 from users.models import CustomUser
 
@@ -117,8 +117,8 @@ class FX(models.Model):
                     print(f'{source}{target} for {rate_data["requested_date"]} is updated')
                 else:
                     raise Exception(f'{source}{target} for {rate_data["requested_date"]} is NOT updated. Yahoo Finance is not responding correctly')
-            else:
-                print(f'{source}{target} for {date} already exists')
+            # else:
+                # print(f'{source}{target} for {date} already exists')
 
 
 # Brokers
@@ -143,7 +143,7 @@ class Brokers(models.Model):
             query = self.transactions.filter(broker_id=self.id, currency=cur, date__lte=date).aggregate(
                 balance=models.Sum(
                     models.Case(
-                        models.When(quantity__gte=0, then=-1*models.F('quantity')*models.F('price')),
+                        models.When(quantity__isnull=False, then=-1*models.F('quantity')*models.F('price')),
                         models.When(cash_flow__isnull=False, then=models.F('cash_flow')),
                         models.When(commission__isnull=False, then=models.F('commission')),
                         default=0,
@@ -164,7 +164,8 @@ class Assets(models.Model):
     ISIN = models.CharField(max_length=12)
     name = models.CharField(max_length=30, null=False)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
-    exposure = models.TextField(null=False)
+    exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default='Equity')
+    restricted = models.BooleanField(default=False, null=False)
     comment = models.TextField(null=True, blank=True)
 
     # Returns price at the date or latest available before the date

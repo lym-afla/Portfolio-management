@@ -28,6 +28,20 @@
         Chart.defaults.font.size = 14;
     </script>
 
+    <script>
+        $(document).ready(function() {
+            var table = $('#financialSummaryTable').DataTable({
+                "scrollX": true,
+                "paging": false,
+                "searching": false,
+                "info": false
+            });
+        
+            // Scroll to the far right
+            $('.dataTables_scrollBody').scrollLeft($('.dataTables_scrollBody')[0].scrollWidth);
+        });
+        </script>
+
 {% endblock script %}
 
 {% block title %}
@@ -35,10 +49,31 @@
 {% endblock title %}
 
 {% block main_page_title %}
-    <h2>Portfolio dashboard</h2>
+    <h2>Portfolio dashboard — <span id="brokerNameHeader"></span></h2>
 {% endblock main_page_title %}
 
 {% block content %}
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col">
+                <div class="input-group">
+                    <button class="btn btn-outline-secondary" id="prevBroker">
+                        <i class="bi bi-arrow-left"></i> <!-- Bootstrap icon for left arrow -->
+                    </button>
+                    <select class="form-select" id="brokerSelect" aria-label="Select Broker">
+                        {% for broker in brokers %}
+                            <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary" id="nextBroker">
+                        <i class="bi bi-arrow-right"></i> <!-- Bootstrap icon for right arrow -->
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
 
     <div class="content-header">
         {% include "snippets/buttons-settings-header.html" with buttons=buttons %}
@@ -246,7 +281,50 @@
             </div>
         </div>
 
-        <div >
+        <div>
+            <h5>Summary over time</h5>
+            <hr>
+            <div class="row">
+                <div class="summary-over-time-wrapper">
+                    <table class="table table-hover table-striped align-middle summary-over-time-table" id="table-summary-over-time">
+                        <thead>
+                            <tr>
+                                <th class="fixed-column"></th>
+                                {% for year in years %}
+                                    <th>{{ year }}</th>
+                                {% endfor %}
+                                <th class="highlight-column">YTD</th>
+                                <th class="highlight-column">All-time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in lines %}
+                                <tr>
+                                    <td class="fixed-column {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% endif %}">{{ line.name }}</td>
+                                    {% for year in years %}
+                                        <td {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} class="fw-bold" {% endif %}>{{ line.data|get_item:year }}</td>
+                                    {% endfor %}
+                                    <td class="highlight-column fst-italic {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% endif %}">{{ line.data.YTD }}</td>
+                                    <td class="highlight-column fw-bold">{{ line.data|get_item:'All-time' }}</td>
+                                </tr>
+                                {% if line.has_percentage %}
+                                    <tr>
+                                        <td class="fixed-column"></td>
+                                        {% for year in years %}
+                                            <td class="fst-italic">{{ line.percentage|get_item:year }}</td>
+                                        {% endfor %}
+                                        <td class="highlight-column">{{ line.percentage.YTD }}</td>
+                                        <td class="highlight-column fw-bold fst-italic">{{ line.percentage|get_item:'All-time' }}%</td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div>
             <h5>Value and return over time</h5>
             <hr>
             <div class="row">
@@ -337,6 +415,10 @@
             </div>
             
             <div class="tab-pane fade show active" id="nav-chart" role="tabpanel">
+                <div id="loadingIndicatorNAVChart">
+                    <div class="spinner"></div>
+                    <p>Updating...</p>
+                </div>
                 <canvas id="NAVBarChart" class="w-100 pt-2" role="img"></canvas>
             </div>
 
@@ -444,6 +526,11 @@
                 });
             </script>
         </div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p>Loading...</p>
     </div>
     
 {% endblock content %}

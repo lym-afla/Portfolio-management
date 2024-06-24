@@ -31,10 +31,31 @@
 {% endblock title %}
 
 {% block main_page_title %}
-    <h2>Transactions</h2>
+    <h2>Transactions — <span id="brokerNameHeader"></h2>
 {% endblock main_page_title %}
 
 {% block content %}
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col">
+                <div class="input-group">
+                    <button class="btn btn-outline-secondary" id="prevBroker">
+                        <i class="bi bi-arrow-left"></i> <!-- Bootstrap icon for left arrow -->
+                    </button>
+                    <select class="form-select" id="brokerSelect" aria-label="Select Broker">
+                        {% for broker in brokers %}
+                            <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-outline-secondary" id="nextBroker">
+                        <i class="bi bi-arrow-right"></i> <!-- Bootstrap icon for right arrow -->
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
 
     <div class="content-header">
         {% include "snippets/buttons-settings-header.html" with type="transaction" %}
@@ -75,6 +96,7 @@
                             of {{ transaction.cash_flow }} for {{ transaction.security.name }}
                         {% elif transaction.type == 'Close' %}
                             {{ transaction.quantity }} of {{ transaction.security.name }}
+                        {% elif transaction.type == 'Broker commission' %}
                         {% else %}
                             {{ transaction.quantity }}
                             @ {{ transaction.price }} of {{ transaction.security.name }}
@@ -85,10 +107,10 @@
                     {% for cur in currencies %}
                         <td class="text-center">
                             {% if transaction.currency == cur %}
-                                {% if transaction.type == 'Dividend' %}
+                                {% if transaction.type == 'Dividend' or 'Cash' in transaction.type %}
                                     {{ transaction.cash_flow }}
-                                {% elif 'Cash' in transaction.type %}
-                                    {{ transaction.cash_flow }}
+                                {% elif transaction.type == 'Broker commission' %}
+                                    ({{ transaction.commission }})
                                 {% else %}
                                     {{ transaction.value }}
                                 {% endif %}
@@ -107,6 +129,11 @@
             {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <p>Loading...</p>
     </div>
 
 {% endblock content %}

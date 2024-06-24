@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, selected_brokers
+from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, get_last_exit_date_for_brokers, summary_over_time
 
 @login_required
 def dashboard(request):
@@ -16,6 +16,7 @@ def dashboard(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
+    use_default_currency = user.use_default_currency_where_relevant
     selected_brokers = user.custom_brokers
 
     sidebar_padding = 0
@@ -24,6 +25,8 @@ def dashboard(request):
 
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
+
+    print("views. dashboard", effective_current_date)
 
     initial_data = {
         'selected_brokers': selected_brokers,
@@ -50,28 +53,34 @@ def dashboard(request):
                 summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
             else:
                 summary['Cash-out'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
+    
+    summary['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
+    
     try:
-        summary['Return'] = format_percentage(summary['NAV'] / summary['Invested'] - 1)
+        summary['Return'] = format_percentage((summary['NAV'] - summary['Cash-out']) / summary['Invested'] - 1, digits=1)
     except:
         summary['Return'] = '–'
-    summary['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers))
     
     # Convert data to string representation to feed the page
     summary['NAV'] = currency_format(summary['NAV'], currency_target, number_of_digits)
     summary['Invested'] = currency_format(summary['Invested'], currency_target, number_of_digits)
     summary['Cash-out'] = currency_format(summary['Cash-out'], currency_target, number_of_digits)
     
+
     # Convert Python object to JSON string to be recognizable by Chart.js
     json_analysis = json.dumps(analysis, default=decimal_default)
 
     # Add percentage breakdowns
     calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
+
+    financial_table_context = summary_over_time(user, effective_current_date, selected_brokers, currency_target, number_of_digits)
     
     chart_settings = request.session['chart_settings']
-    chart_settings['To'] = effective_current_date
+    # chart_settings['To'] = effective_current_date
+    chart_settings['To'] = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
     if from_date == '1900-01-01':
-        from_date = Transactions.objects.filter(investor=user, broker__in=brokers).order_by('date').first().date
+        from_date = Transactions.objects.filter(investor=user, broker__in=selected_brokers).order_by('date').first().date
     # print(f"views.dashboard. Line 65. From date: {from_date}")
     chart_settings['From'] = from_date
     # print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
@@ -84,7 +93,12 @@ def dashboard(request):
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
 
+    # selected_brokers = [{'id': broker.id, 'name': broker.name} for broker in brokers]
+
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
+    # print("views. dashboard. 94", selected_brokers, user.custom_brokers)
+
+    print("views. dashboard. 99", financial_table_context)
 
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
@@ -93,24 +107,29 @@ def dashboard(request):
         'json_analysis': json_analysis, # Feed for chart_dataset
         'currency': currency_target,
         'table_date': effective_current_date,
-        'brokers': brokers,
+        'brokers': Brokers.objects.filter(investor=user).all(),
         'selectedBrokers': selected_brokers,
         'summary': summary,
         'chart_settings': chart_settings,
         'chartDataset': chart_dataset,
         'dashboardForm': dashboard_form,
         'buttons': buttons,
+        'lines': financial_table_context['lines'],
+        'years': financial_table_context['years'],
     })
 
 def nav_chart_data_request(request):
 
-    global selected_brokers
+    # global selected_brokers
+    selected_brokers = request.user.custom_brokers
 
     if request.method == 'GET':
         frequency = request.GET.get('frequency')
         from_date = request.GET.get('from')
         to_date = request.GET.get('to')
         breakdown = request.GET.get('breakdown')
+
+        # print("database. views. 115", selected_brokers, frequency, from_date, to_date, request.user.default_currency, breakdown)
 
         chart_data = get_chart_data(request.user.id, selected_brokers, frequency, from_date, to_date, request.user.default_currency, breakdown)
 

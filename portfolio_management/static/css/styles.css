@@ -159,3 +159,111 @@ h2 {
     top: 0;
     left: 0;
 }
+
+#loadingIndicatorNAVChart {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000; /* Ensure it's above other content */
+    background-color: rgba(255, 255, 255, 0.8); /* Optional: Add a semi-transparent background */
+    padding: 20px;
+    border-radius: 10px;
+}
+
+#nav-chart {
+    position: relative;
+}
+
+/* Spinner styles */
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border-left-color: #09f;
+    animation: spin 1s ease infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* New styles for the overlay */
+.loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.loading-overlay.show {
+    display: flex;
+}
+
+.broker-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.broker-nav-arrow {
+    background-color: #007bff;
+    border: none;
+    color: white;
+    padding: 10px;
+    cursor: pointer;
+}
+
+.broker-nav-arrow:hover {
+    background-color: #0056b3;
+}
+
+#brokerSelect {
+    padding: 10px;
+    margin: 0 10px;
+}
+
+/* Specific styles for the summary-over-time table */
+.summary-over-time-wrapper {
+    overflow-x: auto;
+}
+
+.summary-over-time-table .fixed-column {
+    position: sticky;
+    left: 0;
+    background-color: white;
+    z-index: 1;
+}
+
+.summary-over-time-table th, .summary-over-time-table td {
+    white-space: nowrap;
+}
+
+.summary-over-time-table thead th:last-child, 
+.summary-over-time-table tbody td:last-child, 
+.summary-over-time-table thead th:nth-last-child(2), 
+.summary-over-time-table tbody td:nth-last-child(2) {
+    border-left: 2px solid #dee2e6; /* Bootstrap default border color */
+}
+
+.summary-over-time-table .highlight-column {
+    background-color: #f8f9fa; /* Light gray for highlighting */
+}

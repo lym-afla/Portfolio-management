@@ -1,8 +1,10 @@
+import json
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
 
 from common.forms import DashboardForm
+from common.models import Brokers
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -105,7 +107,7 @@ def reset_password(u, password):
 @login_required
 def update_from_dashboard_form(request):
 
-    global effective_current_date
+    # global effective_current_date
 
     user = request.user
 
@@ -114,14 +116,51 @@ def update_from_dashboard_form(request):
         dashboard_form = DashboardForm(request.POST, instance=user)
         if dashboard_form.is_valid():
             # Process the form data
-            effective_current_date = dashboard_form.cleaned_data['table_date']
+            request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date']
+            # request.session['effective_current_date'] = effective_current_date.strftime('%Y-%m-%d')
+            print("views. users. 120", request.session['effective_current_date'])
             
             # Save new parameters to user setting
             user.default_currency = dashboard_form.cleaned_data['default_currency']
             user.digits = dashboard_form.cleaned_data['digits']
-            selected_broker_ids = [broker.id for broker in dashboard_form.cleaned_data['selected_brokers']]
+            selected_broker_ids = [dashboard_form.cleaned_data['custom_brokers']]
+            # broker_name = dashboard_form.cleaned_data['custom_brokers']
+            # print("users. views. 126", broker_name)
+            # selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
             user.custom_brokers = selected_broker_ids
             user.save()
             # Redirect to the same page to refresh it
             return redirect(request.META.get('HTTP_REFERER'))
     return redirect('dashboard:dashboard')  # Redirect to home page if request method is not POST
+
+@login_required
+def update_data_for_broker(request):
+
+    # In case settings at the top menu are changed
+    if request.method == "POST":
+        try:
+            user = request.user
+
+            data = json.loads(request.body.decode('utf-8'))
+            broker_name = data.get('broker_name')
+
+            print("users. 139", broker_name, data)
+            if broker_name:
+
+                selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
+                print("users. 140", selected_broker_ids)
+                if selected_broker_ids is not None and len(selected_broker_ids) > 0:
+                    user.custom_brokers = selected_broker_ids
+                    user.save()
+
+                return JsonResponse({'ok': True})
+            else:
+                return JsonResponse({'ok': False, 'error': 'Broker name not provided'})
+        except json.JSONDecodeError:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON data'})
+        
+    return JsonResponse({'ok': False, 'error': 'Invalid request method'})
+
+    # Redirect to the same page to refresh it
+    return redirect(request.META.get('HTTP_REFERER'))
+

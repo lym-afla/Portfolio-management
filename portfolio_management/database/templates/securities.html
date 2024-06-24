@@ -7,7 +7,9 @@
     <!-- Script from DataTables -->
     <script>
         $(document).ready(function () {
-            $('#table-database-securities').DataTable( {
+            $('.selectpicker').selectpicker();
+            
+            {% comment %} $('#table-database-securities').DataTable( {
                 // Make the default sorting by column 4 (DATE) and do not show sorting for selected columns
                 "autoWidth": false,
                 // columnDefs: [
@@ -17,8 +19,11 @@
                 "dom": "<'row'<'col-sm-12'tr>>" +
                             "<'row'<'col-sm-12 col-md-3'l><'col-sm-12 col-md-4'f><'col-sm-12 col-md-5'p>>",
                 "pageLength": 25
-            });
+            }); {% endcomment %}
+
         });
+
+        
 
     </script>
 
