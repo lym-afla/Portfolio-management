@@ -300,14 +300,15 @@
                         <tbody>
                             {% for line in lines %}
                                 <tr>
-                                    <td class="fixed-column {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% endif %}">{{ line.name }}</td>
+                                    <td class="fixed-column 
+                                        {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.name }}</td>
                                     {% for year in years %}
-                                        <td {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} class="fw-bold" {% endif %}>{{ line.data|get_item:year }}</td>
+                                        <td class="{% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:year }}</td>
                                     {% endfor %}
-                                    <td class="highlight-column fst-italic {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% endif %}">{{ line.data.YTD }}</td>
-                                    <td class="highlight-column fw-bold">{{ line.data|get_item:'All-time' }}</td>
+                                    <td class="highlight-column {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data.YTD }}</td>
+                                    <td class="highlight-column fw-bold {% if line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:'All-time' }}</td>
                                 </tr>
-                                {% if line.has_percentage %}
+                                {% comment %} {% if line.has_percentage %}
                                     <tr>
                                         <td class="fixed-column"></td>
                                         {% for year in years %}
@@ -316,7 +317,7 @@
                                         <td class="highlight-column">{{ line.percentage.YTD }}</td>
                                         <td class="highlight-column fw-bold fst-italic">{{ line.percentage|get_item:'All-time' }}%</td>
                                     </tr>
-                                {% endif %}
+                                {% endif %} {% endcomment %}
                             {% endfor %}
                         </tbody>
                     </table>

@@ -116,7 +116,7 @@ def update_from_dashboard_form(request):
         dashboard_form = DashboardForm(request.POST, instance=user)
         if dashboard_form.is_valid():
             # Process the form data
-            request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date']
+            request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date'].isoformat()
             # request.session['effective_current_date'] = effective_current_date.strftime('%Y-%m-%d')
             print("views. users. 120", request.session['effective_current_date'])
             

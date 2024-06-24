@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
 from django.db.models.functions import Abs
@@ -12,7 +13,7 @@ def open_positions(request):
 
     user = request.user
 
-    effective_current_date = request.session['effective_current_date']
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
     currency_target = user.default_currency
     number_of_digits = user.digits

@@ -1178,11 +1178,23 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
             line_data["percentage"]["YTD"] = line_data["percentage"].get(current_year, 0)
             line_data["percentage"]["All-time"] = sum(value for year, value in line_data["percentage"].items() if isinstance(year, int))
 
+        line_data["data"]["All-time"] = 0
+        
+        if line_name == 'TSR':
+            line_data["data"]["All-time"] = format_percentage(Irr(user.id, effective_date, currency_target, broker_id_list=selected_brokers), digits=1)
+        elif line_name == 'EoP NAV':
+            line_data["data"]["All-time"] = line_data["data"]["YTD"]
+        
         for year, value in line_data["data"].items():
-            if line_data["name"] == 'TSR':
+            if isinstance(year, int) and line_name != "EoP NAV" and line_name != "TSR" and line_name != "BoP NAV":
+                line_data["data"]["All-time"] += value
+            
+            if line_name == 'TSR':
                 line_data["data"][year] = format_percentage(line_data["data"][year], digits=1)
             else:
                 line_data["data"][year] = currency_format(line_data["data"][year], currency_target, number_of_digits)
+        
+        
 
         for year, value in line_data['percentage'].items():
             line_data['percentage'][year] = format_percentage(line_data['percentage'][year], digits=1)

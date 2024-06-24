@@ -245,7 +245,7 @@ def add_broker(request):
 
 def add_price(request):
     if request.method == 'POST':
-        form = PriceForm(request.POST)
+        form = PriceForm(request.POST, investor=request.user)
         if form.is_valid():
             form.save()
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
@@ -257,7 +257,7 @@ def add_price(request):
         else:
             return JsonResponse({'errors': form.errors}, status=400)
     else:
-        form = PriceForm()
+        form = PriceForm(investor=request.user)
         form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Price', 'action_url': 'database:add_price'}, request)
     return JsonResponse({'form_html': form_html})
 

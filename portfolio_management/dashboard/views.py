@@ -1,10 +1,11 @@
+from datetime import datetime
 import json
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, effective_current_date, get_last_exit_date_for_brokers, summary_over_time
+from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, summary_over_time
 
 @login_required
 def dashboard(request):
@@ -12,7 +13,7 @@ def dashboard(request):
     user = request.user
     
     # global selected_brokers
-    global effective_current_date
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -34,7 +35,7 @@ def dashboard(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+    dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
 

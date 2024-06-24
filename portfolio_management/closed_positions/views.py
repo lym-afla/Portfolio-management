@@ -9,7 +9,7 @@ def closed_positions(request):
     
     user = request.user
 
-    global effective_current_date
+    effective_current_date = request.session['effective_current_date']
     
     currency_target = user.default_currency
     number_of_digits = user.digits

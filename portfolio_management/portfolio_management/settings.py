@@ -50,8 +50,6 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'portfolio_management.middleware.InitializeEffectiveDateMiddleware',
-
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -59,6 +57,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    'portfolio_management.middleware.InitializeEffectiveDateMiddleware',
 ]
 
 ROOT_URLCONF = 'portfolio_management.urls'
