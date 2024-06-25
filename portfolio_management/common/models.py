@@ -323,7 +323,7 @@ class Assets(models.Model):
             print(f"Error: {e}")
             return None
 
-    def realized_gain_loss(self, date, currency=None, broker_id_list=None):
+    def realized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculates the realized gain or loss of a security as of a specific date.
 
@@ -331,6 +331,7 @@ class Assets(models.Model):
             date (datetime.date): The date as of which the gain or loss is calculated.
             currency (str): The currency in which the gain or loss is calculated.
             broker_id_list (list, optional): A list of broker IDs to filter the transactions. Defaults to None.
+            start_date (datetime.date, optional): The start date for the calculation. Defaults to None.
 
         Returns:
             float: The realized gain or loss of the security as of the given date,
@@ -356,6 +357,8 @@ class Assets(models.Model):
 
             # Step 2: Sum up values of all transactions before that date
             transactions_before_entry = self.transactions.filter(date__lte=latest_exit_date, quantity__isnull=False)
+            if start_date is not None:
+                transactions_before_entry = transactions_before_entry.filter(date__gte=start_date)
             if broker_id_list is not None:
                 transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
             
@@ -364,9 +367,10 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
                     if fx_rate:
                         total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
+                total_gl_before_current_position -= self.price_at_date(start_date, currency).price * self.position(start_date)
             else:
                 total_gl_before_current_position = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
-                total_gl_before_current_position = -total_gl_before_current_position
+                total_gl_before_current_position = -total_gl_before_current_position - self.price_at_date(start_date).price * self.position(start_date)
 
         # Step 3: Determine whether it is a long or short position
         position_at_date = self.position(date)
@@ -379,11 +383,13 @@ class Assets(models.Model):
             exit_transactions = self.transactions.filter(type=exit_type, date__lte=date)
             if latest_exit_date:
                 exit_transactions = exit_transactions.filter(date__gt=latest_exit_date)
+            if start_date:
+                exit_transactions = exit_transactions.filter(date__gte=start_date)
             if broker_id_list is not None:
                 exit_transactions = exit_transactions.filter(broker_id__in=broker_id_list)
 
             for exit in exit_transactions:
-                buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list)
+                buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list, start_date)
                 if buy_in_price is not None:
                     if currency is not None:
                         fx_rate = FX.get_rate(exit.currency, currency, exit.date)['FX']
@@ -400,7 +406,7 @@ class Assets(models.Model):
             "all_time": round(total_gl_before_current_position + realized_gain_loss_for_current_position, 2)
         }
     
-    def unrealized_gain_loss(self, date, currency=None, broker_id_list=None):
+    def unrealized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculates the capital distribution (dividends) for a security as of a specific date.
 
@@ -419,7 +425,7 @@ class Assets(models.Model):
         current_position = self.position(date, broker_id_list)
         current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
         
-        buy_in_price = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list)
+        buy_in_price = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list, start_date=start_date)
         if buy_in_price is not None:
             if currency is not None:
                 fx_rate = FX.get_rate(self.currency, currency, date)['FX']

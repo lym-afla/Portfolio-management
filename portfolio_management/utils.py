@@ -5,6 +5,7 @@ from common.models import Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, F
 from pyxirr import xirr
 import pandas as pd
+import time
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -1055,7 +1056,9 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
 # Collect data for summary financials table
 def summary_over_time(user, effective_date, selected_brokers, currency_target, number_of_digits):
-    print("Running summary_over_time function")
+    start_time = time.time()
+    start_t = time.time()
+
     # Determine the starting year
     first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=effective_date).order_by('date').first()
     if first_transaction:
@@ -1066,10 +1069,14 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
             "lines": [],
         }
         return context
+    
+    print("1073. Time taken for determining start year:", time.time() - start_t)
 
     # Determine the ending year
+    start_t = time.time()
     last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_date)
     last_year = last_exit_date.year if last_exit_date else effective_date.year
+    print("1079. Time taken for determining end year:", time.time() - start_t)
 
     years = list(range(start_year, last_year + 1))
 
@@ -1081,31 +1088,57 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
     
     lines = []
 
+    # Get brokers and currencies
+    start_t = time.time()
     brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
     currencies = set()
     for broker in brokers:
         currencies.update(broker.get_currencies())
+    print("1097. Time taken for fetching brokers and currencies:", time.time() - start_t)
+            
+    # Precompute values for each year
+    nav_values = {}
+    invested_values = {}
+    cash_out_values = {}
+    bop_nav = 0
+    
+    start_t = time.time()
+    for year in years:
+        
+        if year != start_year:
+            bop_nav = NAV_at_date(user.id, selected_brokers, date(year-1, 12, 31), currency_target)['Total NAV']
+
+        nav_values[year] = bop_nav
+
+        invested = 0
+        cash_out = 0
+        for cur in currencies:
+            transactions = Transactions.objects.filter(broker_id__in=selected_brokers, currency=cur, type__in=['Cash in', 'Cash out'], date__year=year).values_list('cash_flow', 'type', 'date')
+            for cash_flow, transaction_type, transaction_date in transactions:
+                if transaction_type == 'Cash in':
+                    invested += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
+                elif transaction_type == 'Cash out':
+                    cash_out += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
+
+        invested_values[year] = invested
+        cash_out_values[year] = cash_out
+    
+    print("1128. Time taken for calculating NAVs, invested and cash-out:", time.time() - start_t)
 
     for line_name in line_names:
+        start_line_time = time.time()
         line_data = {"name": line_name, "data": {}, "percentage": {}, "has_percentage": line_name not in ["BoP NAV", "Invested", "Cash-out", "TSR"]}
-        
+
         for year in years:
             end_of_year_date = date(year, 12, 31)
             start_of_year_date = date(year, 1, 1)
 
-            bop_nav = NAV_at_date(user.id, selected_brokers, start_of_year_date - timedelta(days=1), currency_target)['Total NAV']
+            bop_nav = nav_values[year]
+            invested = invested_values[year]
+            cash_out = cash_out_values[year]
 
-            invested = 0
-            cash_out = 0
-            for cur in currencies:
-                transactions = Transactions.objects.filter(broker_id__in=selected_brokers, currency=cur, type__in=['Cash in', 'Cash out'], date__year=year).values_list('cash_flow', 'type', 'date')
-                for cash_flow, transaction_type, transaction_date in transactions:
-                    if transaction_type == 'Cash in':
-                        invested += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
-                    elif transaction_type == 'Cash out':
-                        cash_out += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
-            
             # Collect data for each line
+            # start_t = time.time()
             if line_name == "BoP NAV":
                 line_data["data"][year] = bop_nav
             
@@ -1120,22 +1153,21 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
                 unrealized_gl = 0
 
                 for asset in Assets.objects.filter(investor=user, brokers__id__in=selected_brokers):
-                    asset_realized_gl = asset.realized_gain_loss(end_of_year_date, currency_target, broker_id_list=selected_brokers)
+                    asset_realized_gl = asset.realized_gain_loss(end_of_year_date, currency_target, broker_id_list=selected_brokers, start_date=start_of_year_date)
                     realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
 
-                    unrealized_gl += asset.unrealized_gain_loss(end_of_year_date, currency_target, broker_id_list=selected_brokers)
+                    unrealized_gl += asset.unrealized_gain_loss(end_of_year_date, currency_target, broker_id_list=selected_brokers, start_date=start_of_year_date)
 
                 line_data["data"][year] = realized_gl + unrealized_gl
-                print("utils. 1129", line_data["data"][year], bop_nav + invested + cash_out)
-                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+                # line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
 
             elif line_name == "Capital distribution":
                 line_data["data"][year] = 0
                 
                 for asset in Assets.objects.filter(investor=user, brokers__id__in=selected_brokers):
-                    line_data["data"][year] += asset.get_capital_distribution(end_of_year_date, currency_target, broker_id_list=selected_brokers)
+                    line_data["data"][year] += asset.get_capital_distribution(end_of_year_date, currency_target, broker_id_list=selected_brokers, start_date=start_of_year_date)
                 
-                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+                # line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
             
             elif line_name == "Commission":
                 line_data["data"][year] = 0
@@ -1146,7 +1178,7 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
                         if commission:
                             line_data["data"][year] += commission * FX.get_rate(cur, currency_target, transaction_date)['FX']
                 
-                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+                # line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
             
             elif line_name == "Tax":
                 line_data["data"][year] = 0
@@ -1156,7 +1188,7 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
                     for cash_flow, transaction_date in transactions:
                         line_data["data"][year] += cash_flow * FX.get_rate(cur, currency_target, transaction_date)['FX']
                 
-                line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
+                # line_data["percentage"][year] = (line_data["data"][year] / (bop_nav + invested + cash_out)) if bop_nav != 0 else 0
             
             # elif line_name == "FX":
                 # line_data["data"][year] = Assets.get_fx_impact(None, end_of_year_date, currency_target, broker_id_list=selected_brokers)
@@ -1164,25 +1196,33 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
                 # line_data["percentage"][year] = (line_data["data"][year] / bop_nav) * 100 if bop_nav != 0 else 0
             
             elif line_name == "EoP NAV":
-                line_data["data"][year] = NAV_at_date(user.id, selected_brokers, end_of_year_date, currency_target)['Total NAV']
+                if year != last_year:
+                    eop_nav = nav_values[year + 1]
+                else:
+                    eop_nav = NAV_at_date(user.id, selected_brokers, end_of_year_date, currency_target)['Total NAV']
+                line_data["data"][year] = eop_nav
             
             elif line_name == "TSR":
                 line_data["data"][year] = Irr(user.id, end_of_year_date, currency_target, broker_id_list=selected_brokers, start_date=start_of_year_date)
 
+        # print(f"1192. End of calculating {line_name}. Time taken for {line_name} for year {year}:", time.time() - start_line_time)
+        
         # Calculate YTD and All-time values
+        # start_t = time.time()
         current_year = effective_date.year
         line_data["data"]["YTD"] = line_data["data"].get(current_year, 0)
         line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if isinstance(year, int))
         
-        if line_data["has_percentage"]:
-            line_data["percentage"]["YTD"] = line_data["percentage"].get(current_year, 0)
-            line_data["percentage"]["All-time"] = sum(value for year, value in line_data["percentage"].items() if isinstance(year, int))
+        # if line_data["has_percentage"]:
+        #     line_data["percentage"]["YTD"] = line_data["percentage"].get(current_year, 0)
+        #     line_data["percentage"]["All-time"] = sum(value for year, value in line_data["percentage"].items() if isinstance(year, int))
 
         line_data["data"]["All-time"] = 0
         
         if line_name == 'TSR':
             line_data["data"]["All-time"] = format_percentage(Irr(user.id, effective_date, currency_target, broker_id_list=selected_brokers), digits=1)
-        elif line_name == 'EoP NAV':
+        
+        if line_name == 'EoP NAV':
             line_data["data"]["All-time"] = line_data["data"]["YTD"]
         
         for year, value in line_data["data"].items():
@@ -1194,18 +1234,17 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
             else:
                 line_data["data"][year] = currency_format(line_data["data"][year], currency_target, number_of_digits)
         
-        
-
-        for year, value in line_data['percentage'].items():
-            line_data['percentage'][year] = format_percentage(line_data['percentage'][year], digits=1)
+        # for year, value in line_data['percentage'].items():
+        #     line_data['percentage'][year] = format_percentage(line_data['percentage'][year], digits=1)
 
         lines.append(line_data)
-
-        print(f"Finished {line_name}. {line_data}")
+        print(f"1240. Finished {line_name}. Time taken: {time.time() - start_line_time}")
 
     context = {
         "years": years,
         "lines": lines,
     }
+
+    print("1247. Total time taken:", time.time() - start_time)
 
     return context

@@ -27,7 +27,7 @@ def dashboard(request):
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
 
-    print("views. dashboard", effective_current_date)
+    # print("views. dashboard", effective_current_date)
 
     initial_data = {
         'selected_brokers': selected_brokers,
@@ -99,7 +99,7 @@ def dashboard(request):
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
     # print("views. dashboard. 94", selected_brokers, user.custom_brokers)
 
-    print("views. dashboard. 99", financial_table_context)
+    # print("views. dashboard. 99", financial_table_context)
 
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
