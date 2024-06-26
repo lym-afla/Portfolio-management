@@ -502,7 +502,7 @@ function processFXDates(dates, totalFXTransactions) {
                     currentTransactionIndex++;
                     $('#currentTransactionIndex').text(currentTransactionIndex);
                     const progressPercentage = (currentTransactionIndex / totalFXTransactions) * 100;
-                    console.log(currentTransactionIndex, totalFXTransactionsj, progressPercentage);
+                    console.log(currentTransactionIndex, totalFXTransactions, progressPercentage);
                     $('.progress-bar').css('width', progressPercentage + '%').attr('aria-valuenow', progressPercentage);
 
                     processFXNextDate();

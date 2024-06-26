@@ -96,29 +96,31 @@ class FX(models.Model):
         # Extract source and target currencies
         currency_pairs = [(field.name[:3], field.name[3:]) for field in fx_variables]
 
+        # Create or get the fx_instance once before the loop
+        try:
+            fx_instance, created = cls.objects.get_or_create(date=date, investor=investor)
+        except IntegrityError:
+            fx_instance = cls.objects.filter(date=date, investor=investor).first()
+
         for source, target in currency_pairs:
             # Check if an FX rate exists for the date and currency pair
-            existing_rate = cls.objects.filter(date=date).values(f'{source}{target}').first()
+            existing_rate = getattr(fx_instance, f'{source}{target}', None)
 
-            if existing_rate is None or existing_rate[f'{source}{target}'] is None:
+            if existing_rate is None:
                 # Get the FX rate for the date
                 rate_data = update_FX_from_Yahoo(source, target, date)
-                print(rate_data)
+                # print(rate_data)
 
                 if rate_data is not None:
-                    # Update or create an FX instance with the new rate
+                    # Update the fx_instance with the new rate
                     print("FX model, update FX. line 109", rate_data['requested_date'], rate_data['exchange_rate'])
-                    try:
-                        fx_instance = cls(date=rate_data['requested_date'], investor=investor)
-                    except IntegrityError:
-                        fx_instance, created = cls.objects.get_or_create(date=rate_data['requested_date'], investor=investor)
                     setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
-                    fx_instance.save()
                     print(f'{source}{target} for {rate_data["requested_date"]} is updated')
                 else:
                     raise Exception(f'{source}{target} for {rate_data["requested_date"]} is NOT updated. Yahoo Finance is not responding correctly')
-            # else:
-                # print(f'{source}{target} for {date} already exists')
+
+        # Save the fx_instance once after updating all currency pairs
+        fx_instance.save()
 
 
 # Brokers
