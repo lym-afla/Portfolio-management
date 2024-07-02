@@ -82,6 +82,7 @@ def dashboard(request):
 
     # Add percentage breakdowns
     calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
+    analysis = currency_format_dict_values(analysis, currency_target, number_of_digits)
 
     print("views. dashboard. Time taken for summary dict calcs", time.time() - start_t)
 
@@ -100,18 +101,15 @@ def dashboard(request):
     start_t = time.time()
 
     chart_settings = request.session['chart_settings']
-    # chart_settings['To'] = effective_current_date
     chart_settings['To'] = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
     if from_date == '1900-01-01':
         from_date = Transactions.objects.filter(investor=user, broker__in=selected_brokers).order_by('date').first().date
-    # print(f"views.dashboard. Line 65. From date: {from_date}")
     chart_settings['From'] = from_date
-    # print(f"dashboard.views line 86. chart_settings['From']: {chart_settings['From']}")
-    analysis = currency_format_dict_values(analysis, currency_target, number_of_digits)
-    chart_data = get_chart_data(user.id, selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
+    # chart_data = get_chart_data(user.id, selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
 
     # Add the "Currency" key to the dictionary
+    chart_data = {}
     chart_data["currency"] = currency_target + "k"
 
     # Now convert the dictionary to a JSON string

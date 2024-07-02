@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const timelineForm = document.getElementById('chartCustomTimeline');
     timelineForm.addEventListener('submit', handleCustomTimeline);
 
+    updateChart(NAVBarChart);
+
     // Handle breakdown change
     const breakdownForm = document.getElementById('selectChartBreakdown');
     breakdownForm.addEventListener('change', async function() {
