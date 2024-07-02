@@ -28,5 +28,6 @@ urlpatterns = [
     path('process_import_transactions/', views.process_import_transactions, name='process_import_transactions'),
     path('prices/update_fx_dates/', views.get_update_fx_dates, name='update_fx_dates'),
     path('prices/update_fx/', views.update_FX, name='update_fx'),
+    path('update_broker_performance/', views.update_broker_performance, name='update_broker_performance'),
     
 ]

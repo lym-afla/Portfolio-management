@@ -1,6 +1,6 @@
-from decimal import ROUND_DOWN, Decimal
 from django import forms
 from common.models import Assets, Brokers, Prices, Transactions
+from constants import CURRENCY_CHOICES
 
 class TransactionForm(forms.ModelForm):
     class Meta:
@@ -143,3 +143,31 @@ class SecurityForm(forms.ModelForm):
         # # If instance exists, pre-select the current brokers
         if self.instance.pk:
             self.fields['custom_brokers'].initial = [broker.id for broker in self.instance.brokers.all()]
+
+
+EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (('All', 'All Currencies'),)
+
+class BrokerPerformanceForm(forms.Form):
+
+    brokers = forms.ModelMultipleChoiceField(
+        queryset=Brokers.objects.all(),
+        widget=forms.SelectMultiple(
+            attrs={
+                'class': 'selectpicker show-tick',
+                'data-actions-box': 'true',
+                'data-width': '100%',
+                'title': 'Choose broker',
+                'data-selected-text-format': 'count',
+            })
+    )
+    currency = forms.ChoiceField(
+        choices=EXTENDED_CURRENCY_CHOICES,
+        widget=forms.Select(
+            attrs={'class': 'form-select'}
+        )
+    )
+
+    def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
+        super().__init__(*args, **kwargs)
+        self.fields['brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]

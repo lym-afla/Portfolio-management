@@ -51,8 +51,8 @@
                         <img src="{% static 'icons/list.svg' %}" alt="Bootstrap" class="nav-menu-icon" title="Expand menu" height="37.5px" width="37.5px" onclick="actionNav()">
                         <hr>
                         <ul class="nav nav-pills flex-column mb-auto">
-                            <li {% if request.path == '/dashboard/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
-                                <a href="{% url 'dashboard:dashboard' %}">
+                            <li {% if request.path == '/summary/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                                <a href="{% url 'summary_view' %}">
                                     <img src="{% static 'icons/database.svg' %}" alt="Bootstrap" class="nav-icon" title="Database" height="30px" width="30px">
                                 </a>
                             </li>
@@ -97,7 +97,7 @@
                     <hr>
                     <ul class="nav nav-pills flex-column mb-auto">
                         <li>
-                            <a href="{% url 'dashboard:dashboard' %}" class="nav-link {% if request.path == '/dashboard/' %}active{% else %}link-dark{% endif %}">[summary]</a>
+                            <a href="{% url 'summary_view' %}" class="nav-link {% if request.path == '/summary/' %}active{% else %}link-dark{% endif %}">Summary</a>
                         </li>
                         <hr>
                         <li>

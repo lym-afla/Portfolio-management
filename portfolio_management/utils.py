@@ -1,21 +1,26 @@
 from collections import defaultdict
 from decimal import ROUND_DOWN, Decimal
 
-from common.models import Brokers, Assets, FX, Prices, Transactions
+from django.db import IntegrityError, transaction
+
+from common.models import AnnualPerformance, Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, F
 from pyxirr import xirr
 import pandas as pd
 import time
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import logging
 
 from users.models import CustomUser
 
+logger = logging.getLogger(__name__)
+
 # Define the effective 'current' date for the application
-effective_current_date = date.today()
+# effective_current_date = date.today()
 
 # Define custom selected brokers for the application
-selected_brokers = [2]
+# selected_brokers = [2]
 
 # Portfolio at [table_date] - assets with non zero positions
 # func.date used for correct query when transaction is at [table_date] (removes time (HH:MM:SS) effectively)
@@ -151,10 +156,15 @@ def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_
         # print("utils. 150", start_portfolio_value, transactions)
         
         # Not relevant for short positions
-        first_transaction = transactions.order_by('date').first().quantity or 0
-        if (start_portfolio_value < 0) or (start_portfolio_value == 0 and first_transaction < 0):
-            # print("Short position")
-            return 'N/R'
+        if asset_id is not None:
+            first_transaction = transactions.order_by('date').first()
+            if first_transaction is not None:
+                first_transaction = first_transaction.quantity
+            else:
+                first_transaction = 0
+            if (start_portfolio_value < 0) or (start_portfolio_value == 0 and first_transaction < 0):
+                # print("Short position")
+                return 'N/R'
 
         cash_flows.insert(0, -start_portfolio_value)
         transaction_dates.insert(0, initial_value_date)
@@ -332,8 +342,8 @@ def currency_format_dict_values(data, currency, digits):
             # Recursively format nested dictionaries
             formatted_data[key] = currency_format_dict_values(value, currency, digits)
         elif isinstance(value, Decimal):
-            if 'percentage' in key:
-                formatted_data[key] = format_percentage(value)
+            if 'percentage' in str(key):
+                formatted_data[key] = format_percentage(value, 1)
             else:
                 # Apply the currency_format function to Decimal values
                 formatted_data[key] = currency_format(value, currency, digits)
@@ -366,23 +376,37 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
         # print(f"utils.py. Line 312. From date: {from_date}")
 
     dates = chart_dates(from_date, to_date, frequency)
-        # Create an empty data dictionary
-    
+        
     chart_data = {
         'labels': chart_labels(dates, frequency),
         'datasets': [],
         'currency': currency + 'k',
     }
 
+    previous_date = None
+    NAV_previous_date = 0
+
     for d in dates:
         IRR = Irr(user_id, d, currency, None, brokers)
-        if breakdown == 'No breakdown':
+        IRR_rolling = Irr(user_id, d, currency, None, brokers, previous_date)
+        if breakdown in 'No breakdown':
             NAV = NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000
             if len(chart_data['datasets']) == 0:
                 chart_data['datasets'].append({
                     'label': 'IRR (RHS)',
                     'data': [IRR],
                     'backgroundColor': 'rgb(0, 0, 0)',
+                    'type': 'line',
+                    'yAxisID': 'y1',
+                    'order': 0,
+                    'datalabels': {
+                        'display': 'true'
+                    }
+                })
+                chart_data['datasets'].append({
+                    'label': 'Rolling IRR (RHS)',
+                    'data': [IRR_rolling],
+                    # 'backgroundColor': 'rgb(120, 120, 50)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -403,7 +427,80 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 })
             else:
                 chart_data['datasets'][0]['data'].append(IRR)
-                chart_data['datasets'][1]['data'].append(NAV)
+                chart_data['datasets'][1]['data'].append(IRR_rolling)
+                chart_data['datasets'][2]['data'].append(NAV)
+        elif breakdown == 'Contributions':
+            NAV = Decimal(NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000)
+            if previous_date is not None:
+                contributions = Transactions.objects.filter(investor__id=user_id, broker__in=brokers, date__gt=previous_date, date__lte=d, type__in=['Cash in', 'Cash out']).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
+                contributions = Decimal(contributions) / 1000
+            else:
+                contributions = Transactions.objects.filter(investor__id=user_id, broker__in=brokers, date__lte=d, type__in=['Cash in', 'Cash out']).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
+                contributions = Decimal(contributions) / 1000
+            return_amount = NAV - NAV_previous_date - contributions
+            if len(chart_data['datasets']) == 0:
+                chart_data['datasets'].append({
+                    'label': 'IRR (RHS)',
+                    'data': [IRR],
+                    'backgroundColor': 'rgb(0, 0, 0)',
+                    'type': 'line',
+                    'yAxisID': 'y1',
+                    'order': 0,
+                    'datalabels': {
+                        'display': 'true'
+                    }
+                })
+                chart_data['datasets'].append({
+                    'label': 'Rolling IRR (RHS)',
+                    'data': [IRR_rolling],
+                    # 'backgroundColor': 'rgb(120, 120, 50)',
+                    'type': 'line',
+                    'yAxisID': 'y1',
+                    'order': 0,
+                    'datalabels': {
+                        'display': 'true'
+                    }
+                })
+                chart_data['datasets'].append({
+                    'label': 'BoP NAV',
+                    'data': [NAV_previous_date],
+                    'backgroundColor': 'rgb(255, 0, 0)',
+                    'stack': 'combined',
+                    'type': 'bar',
+                    'yAxisID': 'y',
+                    'datalabels': {
+                        'display': 'true'
+                    }
+                })
+                chart_data['datasets'].append({
+                    'label': 'Contributions',
+                    'data': [contributions],
+                    'backgroundColor': 'rgb(0, 128, 0)',
+                    'stack': 'combined',
+                    'type': 'bar',
+                    'yAxisID': 'y',
+                    'datalabels': {
+                        'display': 'true'
+                    }
+                })
+                chart_data['datasets'].append({
+                    'label': 'Return',
+                    'data': [return_amount],
+                    'backgroundColor': 'rgb(0, 0, 255)',
+                    'stack': 'combined',
+                    'type': 'bar',
+                    'yAxisID': 'y',
+                    'datalabels': {
+                        'display': 'true'
+                    }
+                })
+            else:
+                chart_data['datasets'][0]['data'].append(IRR)
+                chart_data['datasets'][1]['data'].append(IRR_rolling)
+                chart_data['datasets'][2]['data'].append(NAV_previous_date)
+                chart_data['datasets'][3]['data'].append(contributions)
+                chart_data['datasets'][4]['data'].append(return_amount)
+            NAV_previous_date = NAV
         else:
             NAV = NAV_at_date(user_id, brokers, d, currency, [breakdown])[breakdown]
             if len(chart_data['datasets']) == 0:
@@ -415,8 +512,17 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                     'yAxisID': 'y1',
                     'order': 0,
                 })
+                chart_data['datasets'].append({
+                    'label': 'Rolling IRR (RHS)',
+                    'data': [IRR_rolling],
+                    # 'backgroundColor': 'rgb(120, 120, 50)',
+                    'type': 'line',
+                    'yAxisID': 'y1',
+                    'order': 0,
+                })
             else:
                 chart_data['datasets'][0]['data'].append(IRR)
+                chart_data['datasets'][1]['data'].append(IRR_rolling)
                 
             for key, value in NAV.items():
                 index = next((index for (index, item) in enumerate(chart_data['datasets']) if item["label"] == key), None)
@@ -436,6 +542,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                     })
                 else:
                     chart_data['datasets'][index]['data'].append(value / 1000)
+        
+        previous_date = d - timedelta(days=1)
 
     # print("utils. 437", chart_data)
                     
@@ -1033,6 +1141,41 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
 
     return transactions
 
+
+def import_FX_from_csv(file_path):
+    # Read the CSV file
+    df = pd.read_csv(file_path)
+
+    # Convert the 'date' column to datetime format with the specified format
+    df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
+
+    # Iterate through the DataFrame and update the FX model
+    for index, row in df.iterrows():
+        date = pd.to_datetime(row['date']).date()
+        investor_id = row['investor_id']
+        # print(date)
+        
+        # Prepare the data for the FX model
+        fx_data = {
+            'date': date,
+            'investor_id': investor_id,
+            'USDEUR': row['USDEUR'] if not pd.isna(row['USDEUR']) else None,
+            'CHFGBP': row['CHFGBP'] if not pd.isna(row['CHFGBP']) else None,
+            'RUBUSD': row['RUBUSD'] if not pd.isna(row['RUBUSD']) else None,
+            'PLNUSD': row['PLNUSD'] if not pd.isna(row['PLNUSD']) else None,
+            'USDGBP': row['USDGBP'] if not pd.isna(row['USDGBP']) else None,
+        }
+        
+        # Update or create the FX entry
+        try:
+            fx_instance, created = FX.objects.update_or_create(
+                date=fx_data['date'], investor_id=fx_data['investor_id'],
+                defaults=fx_data
+            )
+            print(f"{'Created' if created else 'Updated'} FX for date {date} and investor {investor_id}")
+        except IntegrityError as e:
+            print(f"Error updating FX for date {date} and investor {investor_id}: {e}")
+
 def get_last_exit_date_for_brokers(selected_brokers, date):
     """
     Calculate the last date after which all activities ended and no asset was opened for the selected brokers.
@@ -1051,6 +1194,9 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
     # Step 2: If positions for all securities at the current date are zero, find the latest transaction date
     latest_transaction_date = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=date).order_by('-date').values_list('date', flat=True).first()
+    
+    if latest_transaction_date is None:
+        return date
     
     return latest_transaction_date
 
@@ -1249,7 +1395,7 @@ def summary_over_time_old(user, effective_date, selected_brokers, currency_targe
 
     return context
 
-def summary_over_time(user, effective_date, selected_brokers, currency_target, number_of_digits):
+def summary_over_time_old(user, effective_date, selected_brokers, currency_target):
     start_time = time.time()
     start_t = time.time()
 
@@ -1286,6 +1432,7 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
     # Batch query for transactions
     start_t = time.time()
     transactions = Transactions.objects.filter(
+        investor=user,
         broker_id__in=selected_brokers,
         date__year__in=years
     ).values('cash_flow', 'type', 'commission', 'date', 'currency')
@@ -1298,13 +1445,13 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
         lambda row: FX.get_rate(row['currency'], currency_target, row['date'])['FX'], axis=1
     )
     
-    print("1301. Time taken for getting and preparint transactoins:", time.time() - start_t)
+    print("1301. Time taken for getting and preparing transactions:", time.time() - start_t)
 
     # Fetch all assets once
     assets = Assets.objects.filter(investor=user, brokers__id__in=selected_brokers)
 
     # Initialize BoP NAV
-    bop_nav = 0
+    bop_nav = Decimal(0)
 
     for year in years:
         start_y = time.time()
@@ -1335,9 +1482,9 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
         print(f"1335. Time taken for calculating invested and cash_out for {year}:", time.time() - start_t)
 
         # Calculate Price change, Capital distribution, Commission, and Tax
-        realized_gl = 0
-        unrealized_gl = 0
-        capital_distribution = 0
+        realized_gl = Decimal(0)
+        unrealized_gl = Decimal(0)
+        capital_distribution = Decimal(0)
 
         start_t = time.time()
         for asset in assets:
@@ -1389,11 +1536,11 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
     start_t = time.time()
     current_year = effective_date.year
     for line_name, line_data in lines.items():
-        line_data["data"]["YTD"] = line_data["data"].get(current_year, 0)
-        line_data["data"]["All-time"] = 0
+        line_data["data"]["YTD"] = line_data["data"].get(current_year, Decimal(0))
+        line_data["data"]["All-time"] = Decimal(0)
 
         if line_name == 'TSR':
-            line_data["data"]["All-time"] = format_percentage(Irr(user.id, effective_date, currency_target, broker_id_list=selected_brokers), digits=1)
+            line_data["data"]["All-time"] = Irr(user.id, effective_date, currency_target, broker_id_list=selected_brokers)
 
         if line_name == 'EoP NAV':
             line_data["data"]["All-time"] = line_data["data"]["YTD"]
@@ -1402,10 +1549,10 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
             if isinstance(year, int) and line_name not in ["EoP NAV", "TSR", "BoP NAV"]:
                 line_data["data"]["All-time"] += value
 
-            if line_name == 'TSR':
-                line_data["data"][year] = format_percentage(line_data["data"][year], digits=1)
-            else:
-                line_data["data"][year] = currency_format(line_data["data"][year], currency_target, number_of_digits)
+            # if line_name == 'TSR':
+            #     line_data["data"][year] = format_percentage(line_data["data"][year], digits=1)
+            # else:
+            #     line_data["data"][year] = currency_format(line_data["data"][year], currency_target, number_of_digits)
     print("1409. Time taken for calculating All-time and formatting:", time.time() - start_t)
 
     context = {
@@ -1417,3 +1564,291 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target, n
 
     return context
 
+def summary_over_time(user, effective_date, selected_brokers, currency_target):
+    start_time = time.time()
+
+    # Determine the starting year
+    first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=effective_date).order_by('date').first()
+    if not first_transaction:
+        return {"years": [], "lines": []}
+    
+    start_year = first_transaction.date.year
+    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_date)
+    last_year = last_exit_date.year if last_exit_date else effective_date.year
+    years = list(range(start_year, last_year + 1))
+
+    line_names = [
+        "BoP NAV", "Invested", "Cash out", "Price change", "Capital distribution",
+        "Commission", "Tax", "FX", "EoP NAV", "TSR"
+    ]
+    
+    lines = {name: {"name": name, "data": {}} for name in line_names}
+
+    # Fetch stored data
+    stored_data = AnnualPerformance.objects.filter(
+        investor=user,
+        broker__in=selected_brokers,
+        year__in=years,
+        currency=currency_target,
+    ).values()
+
+    # Process stored data
+    for entry in stored_data:
+        year = entry['year']
+        for line_name in line_names:
+            db_field_name = line_name.lower().replace(' ', '_')
+            lines[line_name]['data'][year] = entry[db_field_name]
+
+    # Calculate YTD and All-time
+    current_year = effective_date.year
+    for line_name, line_data in lines.items():
+        line_data["data"]["YTD"] = line_data["data"].get(current_year, Decimal(0))
+        line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if isinstance(year, int))
+
+    # if 'TSR' in lines:
+    lines['TSR']["data"]["All-time"] = Irr(user.id, effective_date, currency_target, broker_id_list=selected_brokers)
+    
+    lines['BoP NAV']['data']['All-time'] = Decimal(0)
+
+    # if 'EoP NAV' in lines:
+    lines['EoP NAV']["data"]["All-time"] = lines['EoP NAV']["data"].get(current_year, Decimal(0))
+
+    context = {
+        "years": years,
+        "lines": list(lines.values()),
+    }
+
+    print("Total time for summary performance calculation taken:", time.time() - start_time)
+
+    return context
+
+def summary_data(user, effective_date, brokers, currency_target, number_of_digits):
+    summary_context = {
+        'years': [],  # List of years for which data is displayed
+        'lines': []   # List of data lines for each broker
+    }
+    
+    # Determine the starting year
+    first_transaction = Transactions.objects.filter(broker_id__in=brokers, date__lte=effective_date).order_by('date').first()
+    if not first_transaction:
+        return {"years": [], "lines": []}
+    
+    start_year = first_transaction.date.year
+
+    # Determine the ending year
+    last_exit_date = get_last_exit_date_for_brokers(brokers, effective_date)
+    last_year = last_exit_date.year if last_exit_date else effective_date.year - 1
+
+    years = list(range(start_year, last_year + 1))
+    
+    for broker in brokers:
+        line_data = {}
+        line_data['name'] = broker.name
+        line_data['data'] = {}
+
+        bop_nav = Decimal(0)
+        broker_assets = Assets.objects.filter(investor=user, brokers=broker)
+        
+        for year in years:
+            # Calculate metrics for each year
+            
+            end_of_year_date = date(year, 12, 31)
+            start_of_year_date = date(year, 1, 1)
+
+            # BoP NAV: EoP NAV of previous year or 0
+            if year != start_year:
+                bop_nav = eop_nav
+            
+            # Cash-in/(out): Sum of cash flows for 'Cash in' and 'Cash out' transactions
+            cash_in_out = Transactions.objects.filter(
+                investor=user,
+                broker=broker,
+                date__year=year,
+                type__in=['Cash in', 'Cash out']
+            ).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
+            
+            # Return: Sum of price changes, capital distributions, commissions, and taxes
+            realized_gl = 0
+            unrealized_gl = 0
+            capital_distribution = 0
+            for asset in broker_assets:
+                asset_realized_gl = asset.realized_gain_loss(end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+                realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
+                unrealized_gl += asset.unrealized_gain_loss(end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+                capital_distribution += asset.get_capital_distribution(end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+            commissions = Transactions.objects.filter(
+                investor=user,
+                broker=broker,
+                date__year=year,
+                type='Commission'
+            ).aggregate(Sum('commission'))['commission__sum'] or 0
+            commissions = Transactions.objects.filter(
+                investor=user,
+                broker=broker,
+                date__year=year,
+                type='Tax'
+            ).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
+            return_value = round(realized_gl + unrealized_gl + capital_distribution + commissions, 2)
+            
+            # EoP NAV: Net Asset Value at the end of the year
+            eop_nav = round(NAV_at_date(user.id, [broker.id], end_of_year_date, currency_target)['Total NAV'], 2)
+
+            # FX: Difference between EoP NAV and BoP NAV, Cash-in/out, and Return
+            fx_value = round(eop_nav - bop_nav - cash_in_out - return_value, 2)
+            
+            # TSR: IRR for the corresponding year
+            tsr_value = Irr(user.id, end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+            
+            # Fee per AuM: Commissions divided by average NAV
+            fee_per_aum = 0  # Placeholder, replace with actual logic
+            
+            # Assign calculated values to line_data for the current year
+            line_data['data'][year] = {
+                'BoP NAV': Decimal(bop_nav),
+                'Cash-in/out': cash_in_out,
+                'Return': return_value,
+                'FX': fx_value,
+                'TSR percentage': Decimal(tsr_value), # Added 'percentage' to properly format
+                'EoP NAV': Decimal(eop_nav),
+                'Commissions': Decimal(commissions),
+                'Fee per AuM (percentage)': Decimal(fee_per_aum)
+            }
+        
+            line_data['data'][year] = currency_format_dict_values(line_data['data'][year], currency_target, number_of_digits)
+
+        # Add YTD and All-time totals (if needed)
+        line_data['data']['YTD'] = {}  # Calculate YTD totals based on available data
+        line_data['data']['All-time'] = {}  # Calculate All-time totals based on available data
+        
+        summary_context['lines'].append(line_data)
+    
+    summary_context['years'] = years  # Assign the list of years to the context
+    
+    return summary_context
+
+def save_or_update_annual_broker_performance(user, effective_date, selected_brokers, currency_target):
+
+    try:
+        # Determine the starting year
+        first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=effective_date).order_by('date').first()
+        if not first_transaction:
+            logger.info(f"No transactions found for investor {user.id} and brokers {selected_brokers}")
+            return
+        
+        start_year = first_transaction.date.year
+
+        # Determine the ending year
+        last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_date)
+        last_year = last_exit_date.year if last_exit_date else effective_date.year - 1
+
+        years = list(range(start_year, last_year + 1))
+
+        # Batch query for transactions
+        transactions = Transactions.objects.filter(
+            investor=user,
+            broker_id__in=selected_brokers,
+            date__year__in=years
+        ).values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
+
+        transactions_df = pd.DataFrame(list(transactions))
+        if transactions_df.empty:
+            logger.info(f"No transactions found for investor {user.id} and brokers {selected_brokers}")
+            return
+        
+        transactions_df['year'] = transactions_df['date'].apply(lambda x: x.year)
+        
+        # Add FX rate to transactions DataFrame
+        transactions_df['fx_rate'] = transactions_df.apply(
+            lambda row: FX.get_rate(row['currency'], currency_target, row['date'])['FX'], axis=1
+        )
+        
+        brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
+        assets = Assets.objects.filter(investor=user, brokers__id__in=selected_brokers)
+
+        for broker in brokers:
+            broker_transactions = transactions_df[transactions_df['broker_id'] == broker.id]
+            if broker_transactions.empty:
+                logger.info(f"No transactions found for investor {user.id} and broker {broker.id}")
+                continue
+        
+            broker_assets = assets.filter(brokers=broker)
+            bop_nav = Decimal(0)
+
+            for year in years:
+                with transaction.atomic():
+                    end_of_year_date = date(year, 12, 31)
+                    start_of_year_date = date(year, 1, 1)
+                    
+                    year_transactions = broker_transactions[broker_transactions['year'] == year]
+                    
+                    # Calculate BoP NAV
+                    if year != start_year:
+                        bop_nav = eop_nav
+
+                    # Calculate Invested and Cash-out
+                    invested = round((year_transactions[year_transactions['type'] == 'Cash in']['cash_flow'] * 
+                                year_transactions[year_transactions['type'] == 'Cash in']['fx_rate']).sum(), 2)
+                    cash_out = round((year_transactions[year_transactions['type'] == 'Cash out']['cash_flow'] * 
+                                year_transactions[year_transactions['type'] == 'Cash out']['fx_rate']).sum(), 2)
+
+                    # Calculate Price change, Capital distribution, Commission, and Tax
+                    realized_gl = Decimal(0)
+                    unrealized_gl = Decimal(0)
+                    capital_distribution = Decimal(0)
+
+                    for asset in broker_assets:
+                        asset_realized_gl = asset.realized_gain_loss(end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+                        realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
+                        unrealized_gl += asset.unrealized_gain_loss(end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+                        capital_distribution += asset.get_capital_distribution(end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+
+                    price_change = realized_gl + unrealized_gl
+                    
+                    commission = round((year_transactions['commission'] * 
+                                                        year_transactions['fx_rate']).sum(), 2)
+                    tax = round((year_transactions[year_transactions['type'] == 'Tax']['cash_flow'] * 
+                                                year_transactions[year_transactions['type'] == 'Tax']['fx_rate']).sum(), 2)
+
+                    # Calculate EoP NAV
+                    eop_nav = NAV_at_date(user.id, [broker.id], end_of_year_date, currency_target)['Total NAV']
+
+                    # Calculate TSR
+                    tsr = Irr(user.id, end_of_year_date, currency_target, broker_id_list=[broker.id], start_date=start_of_year_date)
+
+                    # Calculate FX impact
+                    components_sum = (
+                        bop_nav + 
+                        invested + 
+                        cash_out + 
+                        price_change + 
+                        capital_distribution + 
+                        commission + 
+                        tax
+                    )
+                    fx_effect = eop_nav - components_sum
+
+                    performance, created = AnnualPerformance.objects.update_or_create(
+                        investor=user,
+                        broker=broker,
+                        year=year,
+                        currency=currency_target,
+                        defaults={
+                            'bop_nav': bop_nav,
+                            'invested': invested,
+                            'cash_out': cash_out,
+                            'price_change': price_change,
+                            'capital_distribution': capital_distribution,
+                            'commission': commission,
+                            'tax': tax,
+                            'fx': fx_effect,
+                            'eop_nav': eop_nav,
+                            'tsr': tsr,
+                        }
+                    )
+                    logger.info(f"Updated performance for investor {user.id}, broker {broker.id}, year {year}")
+
+    except Exception as e:
+        logger.error(f"Error updating annual performance: {str(e)}")
+        raise
+
+    logger.info(f"Completed updating annual performance for investor {user.id}")

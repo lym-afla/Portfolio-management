@@ -2,7 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from common.models import Assets, Brokers
 from common.forms import DashboardForm
-from utils import calculate_closed_table_output, selected_brokers, effective_current_date
+from utils import calculate_closed_table_output
 
 @login_required
 def closed_positions(request):

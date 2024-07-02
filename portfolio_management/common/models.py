@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import IntegrityError, models
 from django.db.models import F, Sum
 import networkx as nx
@@ -53,27 +54,72 @@ class FX(models.Model):
             for element in pairs_list:
                 if i_source in element and i_target in element:
                     if element.find(i_source) == 0:
-                        try:
-                            fx_call = cls.objects.filter(
-                                date__lte=date,
-                                **{f'{i_source}{i_target}__isnull': False}
-                            ).values(
-                                'date', quote=F(f'{i_source}{i_target}')
-                            ).order_by("-date").first()
-                        except:
-                            raise ValueError
-                        fx_rate *= fx_call['quote']
+                        field_name = f'{i_source}{i_target}'
+                        multiplier = Decimal('1')
                     else:
-                        try:
-                            fx_call = cls.objects.filter(
-                                date__lte=date,
-                                **{f'{i_target}{i_source}__isnull': False}
-                            ).values(
-                                'date', quote=F(f'{i_target}{i_source}')
-                            ).order_by("-date").first()
-                        except:
-                            raise ValueError
-                        fx_rate /= fx_call['quote']
+                        field_name = f'{i_target}{i_source}'
+                        multiplier = Decimal('-1')
+                    
+                    fx_call = cls.objects.filter(
+                        date__lte=date,
+                        **{f'{field_name}__isnull': False}
+                    ).values(
+                        'date', quote=F(field_name)
+                    ).order_by("-date").first()
+                    
+                    if fx_call is None or fx_call['quote'] is None:
+                        fx_call = cls.objects.filter(
+                            date__gte=date,
+                            **{f'{field_name}__isnull': False}
+                        ).values(
+                            'date', quote=F(field_name)
+                        ).order_by("date").first()
+                        if fx_call is None or fx_call['quote'] is None:
+                            raise ValueError(f"No FX rate found for {field_name} after before {date}")
+                    
+                    quote = Decimal(str(fx_call['quote']))
+                    if multiplier == Decimal('1'):
+                        fx_rate *= quote
+                    else:
+                        fx_rate /= quote
+                    #     try:
+                    #         fx_call = cls.objects.filter(
+                    #             date__lte=date,
+                    #             **{f'{i_source}{i_target}__isnull': False}
+                    #         ).values(
+                    #             'date', quote=F(f'{i_source}{i_target}')
+                    #         ).order_by("-date").first()
+                    #     except:
+                    #         raise ValueError
+                    #     try:
+                    #         fx_rate *= fx_call['quote']
+                    #     except:
+                    #         fx_rate *= cls.objects.filter(
+                    #             date__lte=date,
+                    #             **{f'{i_source}{i_target}__isnull': False}
+                    #         ).values(
+                    #             'date', quote=F(f'{i_source}{i_target}')
+                    #         ).order_by("date").first()
+                    # else:
+                    #     try:
+                    #         fx_call = cls.objects.filter(
+                    #             date__lte=date,
+                    #             **{f'{i_target}{i_source}__isnull': False}
+                    #         ).values(
+                    #             'date', quote=F(f'{i_target}{i_source}')
+                    #         ).order_by("-date").first()
+                    #         # print("models. 74", source, target, date, fx_call)
+                    #     except:
+                    #         raise ValueError
+                    #     try:
+                    #         fx_rate /= fx_call['quote']
+                    #     except:
+                    #         fx_rate /= cls.objects.filter(
+                    #             date__gte=date,
+                    #             **{f'{i_target}{i_source}__isnull': False}
+                    #         ).values(
+                    #             'date', quote=F(f'{i_target}{i_source}')
+                    #         ).order_by("date").first()
                     dates_list.append(fx_call['date'])
                     dates_async = (dates_list[0] != fx_call['date']) or dates_async
                     break
@@ -571,3 +617,24 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
 
     # If no data is found after max_attempts, return None or an appropriate error message
     return None
+
+
+# Model to store the annual performance data
+class AnnualPerformance(models.Model):
+    investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE)
+    year = models.IntegerField()
+    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
+    bop_nav = models.DecimalField(max_digits=20, decimal_places=2)
+    invested = models.DecimalField(max_digits=20, decimal_places=2)
+    cash_out = models.DecimalField(max_digits=20, decimal_places=2)
+    price_change = models.DecimalField(max_digits=20, decimal_places=2)
+    capital_distribution = models.DecimalField(max_digits=20, decimal_places=2)
+    commission = models.DecimalField(max_digits=20, decimal_places=2)
+    tax = models.DecimalField(max_digits=20, decimal_places=2)
+    fx = models.DecimalField(max_digits=20, decimal_places=2)
+    eop_nav = models.DecimalField(max_digits=20, decimal_places=2)
+    tsr = models.DecimalField(max_digits=10, decimal_places=6)
+
+    class Meta:
+        unique_together = ('investor', 'broker', 'year', 'currency')

@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from dashboard import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,4 +27,5 @@ urlpatterns = [
     path('closed-positions/', include('closed_positions.urls', namespace='closed_positions')),
     path('transactions/', include('transactions.urls', namespace='transactions')),
     path('database/', include('database.urls', namespace='database')),
+    path('summary/', views.summary_view, name='summary_view')
 ]

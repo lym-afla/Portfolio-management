@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
 from common.forms import DashboardForm
-from utils import currency_format, effective_current_date, selected_brokers
+from utils import currency_format
 
 @login_required
 def transactions(request):

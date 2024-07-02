@@ -1,14 +1,18 @@
 from datetime import datetime
+import time
 import json
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import Brokers, Transactions, FX
 from common.forms import DashboardForm
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, summary_over_time
+from database.forms import BrokerPerformanceForm
+from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, summary_data, summary_over_time
 
 @login_required
 def dashboard(request):
+    start_time = time.time()
+    start_t = time.time()
 
     user = request.user
     
@@ -17,7 +21,7 @@ def dashboard(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    use_default_currency = user.use_default_currency_where_relevant
+    # use_default_currency = user.use_default_currency_where_relevant
     selected_brokers = user.custom_brokers
 
     sidebar_padding = 0
@@ -37,7 +41,13 @@ def dashboard(request):
     }
     dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
+    print("views. dashboard. Time taken for preparatory calcs", time.time() - start_t)
+
+    start_t = time.time()
     analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    print("views. dashboard. Time taken for NAV at date calc", time.time() - start_t)
+
+    start_t = time.time()
 
     summary = {}
     summary['NAV'] = analysis['Total NAV']
@@ -66,7 +76,6 @@ def dashboard(request):
     summary['NAV'] = currency_format(summary['NAV'], currency_target, number_of_digits)
     summary['Invested'] = currency_format(summary['Invested'], currency_target, number_of_digits)
     summary['Cash-out'] = currency_format(summary['Cash-out'], currency_target, number_of_digits)
-    
 
     # Convert Python object to JSON string to be recognizable by Chart.js
     json_analysis = json.dumps(analysis, default=decimal_default)
@@ -74,8 +83,22 @@ def dashboard(request):
     # Add percentage breakdowns
     calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
 
-    financial_table_context = summary_over_time(user, effective_current_date, selected_brokers, currency_target, number_of_digits)
-    
+    print("views. dashboard. Time taken for summary dict calcs", time.time() - start_t)
+
+    start_t = time.time()
+
+    financial_table_context = summary_over_time(user, effective_current_date, selected_brokers, currency_target)
+    # Formatting outputs
+    for index in range(len(financial_table_context['lines'])):
+        if financial_table_context['lines'][index]['name'] == 'TSR':
+            for k, v in financial_table_context['lines'][index]['data'].items():
+                financial_table_context['lines'][index]['data'][k] = format_percentage(v, digits=1)
+        else:
+            financial_table_context['lines'][index] = currency_format_dict_values(financial_table_context['lines'][index], currency_target, number_of_digits)
+    print("views. dashboard. Time taken for summary table calcs", time.time() - start_t)
+
+    start_t = time.time()
+
     chart_settings = request.session['chart_settings']
     # chart_settings['To'] = effective_current_date
     chart_settings['To'] = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
@@ -94,12 +117,13 @@ def dashboard(request):
     # Now convert the dictionary to a JSON string
     chart_dataset = json.dumps(chart_data, default=decimal_default)
 
-    # selected_brokers = [{'id': broker.id, 'name': broker.name} for broker in brokers]
+    print("views. dashboard. Time taken for chart data calcs", time.time() - start_t)
 
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
-    # print("views. dashboard. 94", selected_brokers, user.custom_brokers)
 
-    # print("views. dashboard. 99", financial_table_context)
+    formBrokerUpdate = BrokerPerformanceForm(investor=user)
+
+    print("Total time taken:", time.time() - start_time)
 
     return render(request, 'dashboard.html', {
         'sidebar_width': sidebar_width,
@@ -117,6 +141,7 @@ def dashboard(request):
         'buttons': buttons,
         'lines': financial_table_context['lines'],
         'years': financial_table_context['years'],
+        'formBrokerUpdate': formBrokerUpdate,
     })
 
 def nav_chart_data_request(request):
@@ -137,3 +162,54 @@ def nav_chart_data_request(request):
         return JsonResponse(chart_data)
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+
+def summary_view(request):
+    user = request.user
+    
+    # global selected_brokers
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    
+    currency_target = user.default_currency
+    number_of_digits = user.digits
+    selected_brokers = user.custom_brokers
+
+    sidebar_padding = 0
+    sidebar_width = 0
+
+    sidebar_width = request.GET.get("width")
+    sidebar_padding = request.GET.get("padding")
+
+    # print("views. dashboard", effective_current_date)
+
+    initial_data = {
+        'selected_brokers': selected_brokers,
+        'default_currency': currency_target,
+        'table_date': effective_current_date,
+        'digits': number_of_digits
+    }
+    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+
+    user_brokers = Brokers.objects.filter(investor=user)
+    public_brokers = user_brokers.filter(securities__restricted=False).distinct()
+    restricted_brokers = user_brokers.filter(securities__restricted=True).distinct()
+
+    public_markets_context = summary_data(user, effective_current_date, public_brokers, currency_target, number_of_digits)
+    restricted_investments_context = summary_data(user, effective_current_date, restricted_brokers, currency_target, number_of_digits)
+
+    buttons = ['settings']
+
+    context = {
+        'sidebar_width': sidebar_width,
+        'sidebar_padding': sidebar_padding,
+        'currency': currency_target,
+        'table_date': effective_current_date,
+        'brokers': Brokers.objects.filter(investor=user).all(),
+        'selectedBrokers': selected_brokers,
+        'dashboardForm': dashboard_form,
+        'buttons': buttons,
+        'public_markets_context': public_markets_context,
+        'restricted_investments_context': restricted_investments_context
+    }
+
+    return render(request, 'summary.html', context)

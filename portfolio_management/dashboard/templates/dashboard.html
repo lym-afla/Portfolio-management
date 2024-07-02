@@ -30,6 +30,32 @@
 
     <script>
         $(document).ready(function() {
+            $('#updateBrokerPerformanceDatabase').click(function() {
+                console.log('update-broker-performance-database button clicked');
+                $('#updateBrokerPerformanceDatabaseModal').modal('show');
+            });
+        
+            $(document).on('submit', '#brokerPerformanceForm', function(event) {
+                event.preventDefault();
+                $.ajax({
+                    type: 'POST',
+                    url: "{% url 'database:update_broker_performance' %}",
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        if (response.success) {
+                            $('#updateBrokerPerformanceDatabaseModal').modal('hide');
+                            // Reload the summary-over-time table or update it dynamically
+                            // $('#table-summary-over-time').load(location.href + " #table-summary-over-time > *");
+                            location.reload();
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+
+    {% comment %} <script>
+        $(document).ready(function() {
             var table = $('#financialSummaryTable').DataTable({
                 "scrollX": true,
                 "paging": false,
@@ -40,7 +66,7 @@
             // Scroll to the far right
             $('.dataTables_scrollBody').scrollLeft($('.dataTables_scrollBody')[0].scrollWidth);
         });
-        </script>
+        </script> {% endcomment %}
 
 {% endblock script %}
 
@@ -286,6 +312,37 @@
             <hr>
             <div class="row">
                 <div class="summary-over-time-wrapper">
+                    <button type="button" class="btn btn-secondary" id="updateBrokerPerformanceDatabase">Update database</button>
+                    
+                    <!-- Update Database Modal -->
+                    <div class="modal fade" id="updateBrokerPerformanceDatabaseModal" tabindex="-1" role="dialog" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Update Broker Performance</h5>
+                                </div>
+                                <form method="post" id="brokerPerformanceForm">
+                                    <div class="modal-body">
+                                        {% csrf_token %}
+                                        {% for field in formBrokerUpdate %}
+                                            <div class="mb-3 row">
+                                                <label for="{{ field.id_for_label }}" class="col-md-4 col-form-label">{{ field.label }}</label>
+                                                <div class="col-md-8">
+                                                    {{ field }}
+                                                    <div class="invalid-feedback" id="{{ field.auto_id }}_error"></div> <!-- Error message container -->
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="submit" class="btn btn-primary">Save</button>
+                                        <button type="button" class="btn btn-secondary" id="updateBrokerPerformanceDatabaseModalCancel" data-bs-dismiss="modal">Close</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
                     <table class="table table-hover table-striped align-middle summary-over-time-table" id="table-summary-over-time">
                         <thead>
                             <tr>
@@ -308,16 +365,6 @@
                                     <td class="highlight-column {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data.YTD }}</td>
                                     <td class="highlight-column fw-bold {% if line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:'All-time' }}</td>
                                 </tr>
-                                {% comment %} {% if line.has_percentage %}
-                                    <tr>
-                                        <td class="fixed-column"></td>
-                                        {% for year in years %}
-                                            <td class="fst-italic">{{ line.percentage|get_item:year }}</td>
-                                        {% endfor %}
-                                        <td class="highlight-column">{{ line.percentage.YTD }}</td>
-                                        <td class="highlight-column fw-bold fst-italic">{{ line.percentage|get_item:'All-time' }}%</td>
-                                    </tr>
-                                {% endif %} {% endcomment %}
                             {% endfor %}
                         </tbody>
                     </table>
@@ -337,6 +384,7 @@
                         <option value="Asset class" {% if chart_settings.breakdown == 'Asset class' %} selected="selected" {% endif %}>Asset class</option>
                         <option value="Currency" {% if chart_settings.breakdown == 'Currency' %} selected="selected" {% endif %}>Currency</option>
                         <option value="No breakdown" {% if chart_settings.breakdown == 'No breakdown' %} selected="selected" {% endif %}>No breakdown</option>
+                        <option value="Contributions" {% if chart_settings.breakdown == 'Contributions' %} selected="selected" {% endif %}>Value contributions</option>
                     </select>
                 </div>
 
@@ -406,7 +454,7 @@
                                 
                                     <div class="modal-footer d-flex justify-content-center">
                                         <button type="submit" class="btn btn-secondary">Confirm</button>
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type=-"button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                     </div>
                                 </form>
                             </div>
@@ -462,7 +510,7 @@
                                     format: {
                                         style: 'percent'
                                     },
-                                    // Format secondary Y-axis to show percentage with 1 decimal point
+                                    // Format secondary Y-axis to show percentage with 0 decimal point
                                     callback: value => (value * 100).toFixed(0) + '%'
                                 },
                                 grid: {
@@ -478,7 +526,7 @@
                                 formatter: (value, context) => {
 
                                     // Skip the dataset if its label is "IRR"
-                                    if (context.chart.data.datasets[context.datasetIndex].label === "IRR (RHS)") {
+                                    if (context.chart.data.datasets[context.datasetIndex].label === "Rolling IRR (RHS)" || context.chart.data.datasets[context.datasetIndex].label === "IRR (RHS)") {
                                         return (context.dataset.data[context.dataIndex] * 100).toFixed(0) + '%';
                                     }
                                     
@@ -491,7 +539,7 @@
                                     const dataArray = [];
                                     context.chart.data.datasets.forEach((dataset) => {
                                         // Check if the dataset label is not "IRR"
-                                        if (dataset.label !== "IRR (RHS)" && dataset.data[context.dataIndex] !== undefined) {
+                                        if (dataset.label !== "IRR (RHS)" && dataset.label !== "Rolling IRR (RHS)" && dataset.data[context.dataIndex] !== undefined) {
                                             dataArray.push(parseFloat(dataset.data[context.dataIndex]));
                                         }
                                     });
@@ -512,7 +560,7 @@
                             tooltip: {
                                 callbacks: {
                                     label: function(tooltipItem, data) {
-                                        if (tooltipItem.datasetIndex != 0) {
+                                        if (tooltipItem.datasetIndex != 0 || tooltipItem.datasetIndex != 1) {
                                             return Math.round(tooltipItem.raw * Math.pow(10, 1)) / Math.pow(10, 1);
                                         } else {
                                             return (tooltipItem.raw * 100).toFixed(1) + '%' 

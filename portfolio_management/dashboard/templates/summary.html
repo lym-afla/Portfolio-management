@@ -1,0 +1,255 @@
+{% extends "layout.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block script %}
+    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script>
+    <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/fixedcolumns/4.0.1/js/dataTables.fixedColumns.min.js"></script>
+    <script>
+        {% comment %} $(document).ready(function() {
+            // Initialize DataTable for Public Markets table
+            var publicTable = $('#table-public-markets').DataTable({
+                scrollX: true,
+                scrollCollapse: true,
+                paging: false,
+                fixedColumns: {
+                    leftColumns: 1
+                },
+                order: []
+            });
+
+            // Move scroll bar to the far right for Public Markets table
+            $('#table-public-markets').parent().scrollLeft($('#table-public-markets').parent()[0].scrollWidth);
+
+            // Initialize DataTable for Restricted Investments table
+            var restrictedTable = $('#table-restricted-investments').DataTable({
+                scrollX: true,
+                scrollCollapse: true,
+                paging: false,
+                fixedColumns: {
+                    leftColumns: 1
+                },
+                order: []
+            });
+
+            // Move scroll bar to the far right for Restricted Investments table
+            $('#table-restricted-investments').parent().scrollLeft($('#table-restricted-investments').parent()[0].scrollWidth);
+            
+        }); {% endcomment %}
+
+        {% comment %} $(document).ready(function() {
+            $('.table-responsive').scroll(function() {
+                var scrollLeft = $(this).scrollLeft();
+                $(this).find('.fixed-column').css('left', scrollLeft);
+            });
+        }); {% endcomment %}
+
+    </script>
+
+    <style>
+
+        .table-responsive {
+            position: absolute;
+            white-space: nowrap;
+            width: 99%; /* Ensure the table-responsive container takes the full width */
+            padding-right: 15px;
+        }
+        
+        .fixed-column {
+            position: sticky;
+            left: 0;
+            background-color: white;
+            z-index: 2;
+        }
+
+    </style>
+
+{% endblock script %}
+
+{% block title %}
+    Summary view
+{% endblock title %}
+
+{% block main_page_title %}
+    <h2>Summary statistics</h2>
+{% endblock main_page_title %}
+
+{% block content %}
+    <div class="content-header">
+        {% include "snippets/buttons-settings-header.html" with buttons=buttons %}
+    </div>
+
+    <div class="content-body">
+        <h5>Public Markets</h5>
+        <hr>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle summary-over-time-table" id="table-public-markets">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="fixed-column"></th>
+                        {% for year in public_markets_context.years %}
+                            <th colspan="8" class="colspan text-center">{{ year }}</th>
+                            <th rowspan="2"></th>
+                        {% endfor %}
+                        <th colspan="8" class="highlight-column colspan text-center">YTD</th>
+                        <th rowspan="2"></th>
+                        <th colspan="8" class="highlight-column colspan text-center">All-time</th>
+                    </tr>
+                    <tr>
+                        {% for year in public_markets_context.years %}
+                            <th class="text-center">BoP NAV</th>
+                            <th class="text-center">Cash-in/(out)</th>
+                            <th class="text-center">Return</th>
+                            <th class="text-center">FX</th>
+                            <th class="text-center">TSR</th>
+                            <th class="text-center">EoP NAV</th>
+                            <th class="text-center">Commissions</th>
+                            <th class="text-center">Fee per AuM</th>
+                        {% endfor %}
+                        <th class="text-center">BoP NAV</th>
+                        <th class="text-center">Cash-in/(out)</th>
+                        <th class="text-center">Return</th>
+                        <th class="text-center">FX</th>
+                        <th class="text-center">TSR</th>
+                        <th class="text-center">EoP NAV</th>
+                        <th class="text-center">Commissions</th>
+                        <th class="text-center">Fee per AuM</th>
+                        <th class="text-center">BoP NAV</th>
+                        <th class="text-center">Cash-in/(out)</th>
+                        <th class="text-center">Return</th>
+                        <th class="text-center">FX</th>
+                        <th class="text-center">TSR</th>
+                        <th class="text-center">EoP NAV</th>
+                        <th class="text-center">Commissions</th>
+                        <th class="text-center">Fee per AuM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in public_markets_context.lines %}
+                        <tr>
+                            <td class="fixed-column">{{ line.name }}</td>
+                            {% for year in public_markets_context.years %}
+                                {% with line.data|get_item:year as year_data %}
+                                    <td class="text-center">{{ year_data|get_item:"BoP NAV" }}</td>
+                                    <td class="text-center">{{ year_data|get_item:"Cash-in/out" }}</td>
+                                    <td class="text-center">{{ year_data.Return }}</td>
+                                    <td class="text-center">{{ year_data.FX }}</td>
+                                    <td class="text-center fst-italic">{{ year_data|get_item:"TSR percentage" }}</td>
+                                    <td class="text-center">{{ year_data|get_item:"EoP NAV" }}</td>
+                                    <td class="text-center">{{ year_data.Commissions }}</td>
+                                    <td class="text-center">{{ year_data|get_item:"Fee per AuM (percentage)" }}</td>
+                                {% endwith %}
+                                <td></td>
+                            {% endfor %}
+                            {% with line.data.YTD as ytd_data %}
+                                <td class="highlight-column text-center">{{ ytd_data|get_item:"BoP NAV" }}</td>
+                                <td class="highlight-column text-center">{{ ytd_data|get_item:"Cash-in/out" }}</td>
+                                <td class="highlight-column text-center">{{ ytd_data.Return }}</td>
+                                <td class="highlight-column text-center">{{ ytd_data.FX }}</td>
+                                <td class="highlight-column text-center fst-italic">{{ ytd_data|get_item:"TSR percentage" }}</td>
+                                <td class="highlight-column text-center">{{ ytd_data|get_item:"EoP NAV" }}</td>
+                                <td class="highlight-column text-center">{{ ytd_data.Commissions }}</td>
+                                <td class="highlight-column text-center fst-italic">{{ ytd_data|get_item:"Fee per AuM (percentage)" }}</td>
+                            {% endwith %}
+                            <td></td>
+                            {% with line.data|get_item:'All-time' as all_time_data %}
+                                <td class="highlight-column text-center">{{ all_time_data|get_item:"BoP NAV" }}</td>
+                                <td class="highlight-column text-center">{{ all_time_data|get_item:"Cash-in/out" }}</td>
+                                <td class="highlight-column text-center">{{ all_time_data.Return }}</td>
+                                <td class="highlight-column text-center">{{ all_time_data.FX }}</td>
+                                <td class="highlight-column text-center fst-italic">{{ all_time_data|get_item:"TSR percentage" }}</td>
+                                <td class="highlight-column text-center">{{ all_time_data|get_item:"EoP NAV" }}</td>
+                                <td class="highlight-column text-center">{{ all_time_data.Commissions }}</td>
+                                <td class="highlight-column text-center fst-italic">{{ all_time_data|get_item:"Fee per AuM (percentage)" }}</td>
+                            {% endwith %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% comment %} <h2>Restricted Investments</h2>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle summary-over-time-table" id="table-restricted-investments">
+                <thead>
+                    <tr>
+                        <th class="fixed-column"></th>
+                        {% for year in restricted_investments_context.years %}
+                            <th colspan="8">{{ year }}</th>
+                        {% endfor %}
+                        <th colspan="8" class="highlight-column">YTD</th>
+                        <th colspan="8" class="highlight-column">All-time</th>
+                    </tr>
+                    <tr>
+                        {% for year in restricted_investments_context.years %}
+                            <th>BoP NAV</th>
+                            <th>Cash-in/out</th>
+                            <th>Return</th>
+                            <th>FX</th>
+                            <th>TSR</th>
+                            <th>EoP NAV</th>
+                            <th>Commissions</th>
+                            <th>Fee per AuM</th>
+                        {% endfor %}
+                        <th>BoP NAV</th>
+                        <th>Cash-in/(out)</th>
+                        <th>Return</th>
+                        <th>FX</th>
+                        <th>TSR</th>
+                        <th>EoP NAV</th>
+                        <th>Commissions</th>
+                        <th>Fee per AuM</th>
+                        <th>BoP NAV</th>
+                        <th>Cash-in/(out)</th>
+                        <th>Return</th>
+                        <th>FX</th>
+                        <th>TSR</th>
+                        <th>EoP NAV</th>
+                        <th>Commissions</th>
+                        <th>Fee per AuM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in restricted_investments_context.lines %}
+                        <tr>
+                            <td class="fixed-column">{{ line.name }}</td>
+                            {% for year in restricted_investments_context.years %}
+                                {% with line.data|get_item:year as year_data %}
+                                    <td>{{ year_data|get_item:"BoP NAV" }}</td>
+                                    <td>{{ year_data|get_item:"Cash-in/out" }}</td>
+                                    <td>{{ year_data.Return }}</td>
+                                    <td>{{ year_data.FX }}</td>
+                                    <td>{{ year_data|get_item:"TSR percentage" }}</td>
+                                    <td>{{ year_data|get_item:"EoP NAV" }}</td>
+                                    <td>{{ year_data.Commissions }}</td>
+                                    <td>{{ year_data|get_item:"Fee per AuM" }}</td>
+                                {% endwith %}
+                            {% endfor %}
+                            {% with line.data.YTD as ytd_data %}
+                                <td class="highlight-column">{{ ytd_data|get_item:"BoP NAV" }}</td>
+                                <td class="highlight-column">{{ ytd_data|get_item:"Cash-in/out" }}</td>
+                                <td class="highlight-column">{{ ytd_data.Return }}</td>
+                                <td class="highlight-column">{{ ytd_data.FX }}</td>
+                                <td class="highlight-column fst-italic">{{ ytd_data|get_item:"TSR percentage" }}</td>
+                                <td class="highlight-column">{{ ytd_data|get_item:"EoP NAV" }}</td>
+                                <td class="highlight-column">{{ ytd_data.Commissions }}</td>
+                                <td class="highlight-column fst-italic">{{ ytd_data|get_item:"Fee per AuM (percentage)" }}</td>
+                            {% endwith %}
+                            {% with line.data|get_item:'All-time' as all_time_data %}
+                                <td class="highlight-column">{{ all_time_data|get_item:"BoP NAV" }}</td>
+                                <td class="highlight-column">{{ all_time_data|get_item:"Cash-in/out" }}</td>
+                                <td class="highlight-column">{{ all_time_data.Return }}</td>
+                                <td class="highlight-column">{{ all_time_data.FX }}</td>
+                                <td class="highlight-column fst-italic">{{ all_time_data|get_item:"TSR percentage" }}</td>
+                                <td class="highlight-column">{{ all_time_data|get_item:"EoP NAV" }}</td>
+                                <td class="highlight-column">{{ all_time_data.Commissions }}</td>
+                                <td class="highlight-column fst-italic">{{ all_time_data|get_item:"Fee per AuM (percentage)" }}</td>
+                            {% endwith %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div> {% endcomment %}
+    </div>
+{% endblock content %}

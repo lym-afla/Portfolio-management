@@ -6,15 +6,13 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
-from django.db.models import Q
-
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
 from constants import CURRENCY_CHOICES
 
-from .forms import BrokerForm, PriceForm, SecurityForm, TransactionForm
-from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, effective_current_date, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions
+from .forms import BrokerForm, BrokerPerformanceForm, PriceForm, SecurityForm, TransactionForm
+from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
 
 @login_required
 def database_brokers(request):
@@ -23,6 +21,7 @@ def database_brokers(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -114,6 +113,8 @@ def database_brokers(request):
 def database_securities(request):
     
     user = request.user
+
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -494,3 +495,25 @@ def get_update_fx_dates(request):
         return JsonResponse({'success': True, 'dates': list(dates)})
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+def update_broker_performance(request):
+    if request.method == 'POST':
+        form = BrokerPerformanceForm(request.POST, investor=request.user)
+        if form.is_valid():
+            effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+            brokers = form.cleaned_data['brokers']
+            currency = form.cleaned_data['currency']
+            user = request.user
+            
+            selected_brokers = [broker.id for broker in brokers]
+            
+            if currency == 'All':
+                currencies = [choice[0] for choice in CURRENCY_CHOICES]
+                for curr in currencies:
+                    save_or_update_annual_broker_performance(user, effective_current_date, selected_brokers, curr)
+            else:
+                save_or_update_annual_broker_performance(user, effective_current_date, selected_brokers, currency)
+
+            return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
