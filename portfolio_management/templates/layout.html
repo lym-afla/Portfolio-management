@@ -44,50 +44,52 @@
 
     <body>
         
-        <div class="d-flex">
+        <div class="d-flex vh-100">
             {% if user.is_authenticated %}
                 <nav class="d-flex text-center">
                     <div class="d-flex flex-column flex-shrink-0 p-3 bg-light" id="sidebar">
                         <img src="{% static 'icons/list.svg' %}" alt="Bootstrap" class="nav-menu-icon" title="Expand menu" height="37.5px" width="37.5px" onclick="actionNav()">
                         <hr>
-                        <ul class="nav nav-pills flex-column mb-auto">
-                            <li {% if request.path == '/summary/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
-                                <a href="{% url 'summary_view' %}">
-                                    <img src="{% static 'icons/database.svg' %}" alt="Bootstrap" class="nav-icon" title="Database" height="30px" width="30px">
+                        <ul class="nav nav-pills flex-column mb-auto flex-grow-1">
+                            <li class="nav-item"{% if request.path == '/summary/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                                <a href="{% url 'summary_view' %}" aria-current="page">
+                                    <img src="{% static 'icons/database.svg' %}" alt="Summary" class="nav-icon" title="Summary" height="30px" width="30px">
                                 </a>
                             </li>
                             <hr>
-                            <li {% if request.path == '/dashboard/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/dashboard/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="{% url 'dashboard:dashboard' %}">
                                     <img src="{% static 'icons/briefcase.svg' %}" alt="Bootstrap" class="nav-icon" title="Dashboard" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li {% if request.path == '/open-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/open-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="{% url 'open_positions:open_positions' %}">
-                                    <img src="{% static 'icons/clipboard2-check.svg' %}" alt="Bootstrap" class="nav-icon" title="Open" height="30px" width="30px">
+                                    <img src="{% static 'icons/clipboard2-check.svg' %}" alt="Open positions" class="nav-icon" title="Open" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li {% if request.path == '/closed-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/closed-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href={% url 'closed_positions:closed_positions' %}>
-                                    <img src="{% static 'icons/clipboard2-x.svg' %}" alt="Bootstrap" class="nav-icon" title="Closed" height="30px" width="30px">
+                                    <img src="{% static 'icons/clipboard2-x.svg' %}" alt="Closed positions" class="nav-icon" title="Closed" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li {% if request.path == '/transactions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/transactions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href={% url 'transactions:transactions' %}>
-                                    <img src="{% static 'icons/arrow-left-right.svg' %}" alt="Bootstrap" class="nav-icon" title="Transactions" height="30px" width="30px">
+                                    <img src="{% static 'icons/arrow-left-right.svg' %}" alt="Transactions" class="nav-icon" title="Transactions" height="30px" width="30px">
                                 </a>
                             </li>
                             <hr>
-                            <li {% if request.path == '/database/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/database/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="#" onclick="toggleExtendedSidebar()">
-                                    <img src="{% static 'icons/database.svg' %}" alt="Bootstrap" class="nav-icon" title="Database" height="30px" width="30px">
+                                    <img src="{% static 'icons/database.svg' %}" alt="Database" class="nav-icon" title="Database" height="30px" width="30px">
                                 </a>
                             </li>
                         </ul>
                         <hr>
-                        <a href="{% url 'users:profile' %}">
-                            <img src="{% static 'icons/person-circle.svg' %}" alt="Bootstrap" class="nav-icon" title="Database" height="30px" width="30px">
-                        </a>
+                        <div class="mt-auto">
+                            <a href="{% url 'users:profile' %}">
+                                <img src="{% static 'icons/person-circle.svg' %}" alt="Profile" class="nav-icon" title="Profile" height="30px" width="30px">
+                            </a>
+                        </div>
                     </div>
                 </nav>
                 <div class="extended_sidebar d-flex flex-column bg-light" id="extendedSidebar" style="width: {{ sidebar_width }}px; padding-right: {{ sidebar_padding }}rem;">
@@ -95,7 +97,7 @@
                         <span class="d-flex nav-menu-icon fs-3">Menu</span>
                     </a>
                     <hr>
-                    <ul class="nav nav-pills flex-column mb-auto">
+                    <ul class="nav nav-pills flex-column mb-auto flex-grow-1">
                         <li>
                             <a href="{% url 'summary_view' %}" class="nav-link {% if request.path == '/summary/' %}active{% else %}link-dark{% endif %}">Summary</a>
                         </li>
@@ -139,15 +141,13 @@
                     </div>
                 </div>
             {% endif %}
-            <div class="right">
-                <div class="wrapper">                    
-                    {% if user.is_authenticated %} <main class="p-3"> {% endif %}
-                        {% block main_page_title %} {% endblock main_page_title %}
-                        <hr>
-                        
-                        {% block content %} {% endblock content %}
-                    {% if user.is_authenticated %} </main> {% endif %}
-                </div>
+            <div class="main-content flex-grow-1 d-flex flex-column overflow-hidden">
+                {% if user.is_authenticated %} <main class="flex-grow-1 overflow-auto p-3"> {% endif %}
+                    {% block main_page_title %} {% endblock main_page_title %}
+                    <hr>
+                    
+                    {% block content %} {% endblock content %}
+                {% if user.is_authenticated %} </main> {% endif %}
             </div>  
         </div>
 

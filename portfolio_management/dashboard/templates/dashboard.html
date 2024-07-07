@@ -350,7 +350,7 @@
                                 {% for year in years %}
                                     <th>{{ year }}</th>
                                 {% endfor %}
-                                <th class="highlight-column">YTD</th>
+                                <th class="highlight-column">{{ table_date|date:'Y' }}YTD</th>
                                 <th class="highlight-column">All-time</th>
                             </tr>
                         </thead>
