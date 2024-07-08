@@ -60,15 +60,15 @@ nav.d-flex.text-center {
     box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1);
 }
 
-.highlight-column {
+/* .highlight-column {
     background-color: #f8f9fa;
-}
+} */
 
 /* Ensure table headers stay fixed when scrolling vertically */
 .summary-over-time-table thead th {
     position: sticky;
     top: 0;
-    background-color: white;
+    /* background-color: white; */
     z-index: 3;
 }
 
@@ -370,16 +370,16 @@ h2 {
     white-space: nowrap;
 } */
 
-/*.summary-over-time-table thead th:last-child, 
+/* .summary-over-time-table thead th:last-child, 
  .summary-over-time-table tbody td:last-child, 
 .summary-over-time-table thead th:nth-last-child(2), 
 .summary-over-time-table tbody td:nth-last-child(2) {
     border-left: 2px solid #dee2e6;
 } */
 
-/* .summary-over-time-table .highlight-column {
+.summary-over-time-table .highlight-column {
     background-color: #f8f9fa;
-} */
+}
 
 /* .table-container {
     overflow-x: auto;

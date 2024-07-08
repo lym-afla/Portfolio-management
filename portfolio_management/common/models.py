@@ -622,7 +622,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
 # Model to store the annual performance data
 class AnnualPerformance(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE)
+    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, null=True, blank=True)
+    broker_group = models.CharField(max_length=100, null=True, blank=True)
     year = models.IntegerField()
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     bop_nav = models.DecimalField(max_digits=20, decimal_places=2)
@@ -635,6 +636,26 @@ class AnnualPerformance(models.Model):
     fx = models.DecimalField(max_digits=20, decimal_places=2)
     eop_nav = models.DecimalField(max_digits=20, decimal_places=2)
     tsr = models.DecimalField(max_digits=10, decimal_places=6)
+    restricted = models.BooleanField(default=False, null=True, blank=True)
 
     class Meta:
-        unique_together = ('investor', 'broker', 'year', 'currency')
+
+        # Add constraints
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(broker__isnull=False) | models.Q(broker_group__isnull=False),
+                name='either_broker_or_group'
+            ),
+            models.CheckConstraint(
+                check=~(models.Q(broker__isnull=False) & models.Q(broker_group__isnull=False)),
+                name='not_both_broker_and_group'
+            ),
+            models.UniqueConstraint(
+                fields=['investor', 'year', 'currency', 'restricted', 'broker'],
+                name='unique_investor_broker_year_currency'
+            ),
+            models.UniqueConstraint(
+                fields=['investor', 'year', 'currency', 'restricted', 'broker_group'],
+                name='unique_investor_broker_group_year_currency'
+            ),
+        ]

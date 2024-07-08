@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import logging
 
+from constants import BROKER_GROUPS
 from users.models import CustomUser
 
 logger = logging.getLogger(__name__)
@@ -1564,7 +1565,7 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
 #     return context
 
-def summary_over_time(user, effective_date, selected_brokers, currency_target):
+def dashboard_summary_over_time(user, effective_date, selected_brokers, currency_target):
     start_time = time.time()
 
     # Determine the starting year
@@ -1572,6 +1573,7 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target):
         investor=user,
         broker__in=selected_brokers,
         currency=currency_target,
+        restricted=None
     )
 
     first_entry = stored_data.order_by('year').first()
@@ -1614,9 +1616,7 @@ def summary_over_time(user, effective_date, selected_brokers, currency_target):
 
     for line_name, line_data in lines.items():
         # line_data["data"]["YTD"] = line_data["data"].get(current_year, Decimal(0))
-        print("utils. 1617", line_name, line_data)
         line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if year != "All-time")
-        print("utils. 1619", line_data["data"]["All-time"])
 
     lines['TSR']["data"]["All-time"] = Irr(user.id, effective_date, currency_target, broker_id_list=selected_brokers)
     lines['BoP NAV']['data']['All-time'] = Decimal(0)
@@ -1800,44 +1800,74 @@ def compile_summary_data(data, currency_target, number_of_digits):
 
     return formatted_data
 
-def save_or_update_annual_broker_performance(user, effective_date, selected_brokers, currency_target):
+def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None):
 
     try:
+        if isinstance(brokers_or_group, str):
+            # It's a group name
+            group_name = brokers_or_group
+            selected_brokers_ids = BROKER_GROUPS.get(group_name)
+            if not selected_brokers_ids:
+                raise ValueError(f"Invalid group name: {group_name}")
+        else:
+            # It's a list of broker IDs
+            selected_brokers_ids = brokers_or_group
+            group_name = None
+
+        print("utils. 1817", selected_brokers_ids)
+
         # Determine the starting year
-        first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=effective_date).order_by('date').first()
+        first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
         if not first_transaction:
-            logger.info(f"No transactions found for investor {user.id} and brokers {selected_brokers}")
+            logger.info(f"No transactions found for investor {user.id} and brokers/group {brokers_or_group}")
             return
         
         start_year = first_transaction.date.year
 
         # Determine the ending year
-        last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_date)
+        last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
         last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
-
         years = list(range(start_year, last_year + 1))
 
         for year in years:
             with transaction.atomic():
 
-                performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers, currency_target)
+                if group_name:
+                    performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+                    # Save group performance
+                    performance, created = AnnualPerformance.objects.update_or_create(
+                        investor=user,
+                        broker_group=group_name,
+                        year=year,
+                        currency=currency_target,
+                        restricted=is_restricted,
+                        defaults=performance_data
+                    )
+                    logger.info(f"Updated group performance for investor {user.id}, group {group_name}, year {year}")
+                else:
+                    # Save individual broker performances
+                    for broker_id in selected_brokers_ids:
+                        performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), [broker_id], currency_target, is_restricted)
+                        performance, created = AnnualPerformance.objects.update_or_create(
+                            investor=user,
+                            broker_id=broker_id,
+                            year=year,
+                            currency=currency_target,
+                            restricted=is_restricted,
+                            defaults=performance_data
+                        )
+                    logger.info(f"Updated individual performances for investor {user.id}, broker ids {selected_brokers_ids}, year {year}")
 
-                performance, created = AnnualPerformance.objects.update_or_create(
-                    investor=user,
-                    broker__in=selected_brokers,
-                    year=year,
-                    currency=currency_target,
-                    defaults=performance_data
-                )
-                logger.info(f"Updated performance for investor {user.id}, broker ids {selected_brokers}, year {year}")
-
+    except IntegrityError as e:
+        logger.error(f"Integrity error updating annual performance: {str(e)}")
+        raise
     except Exception as e:
         logger.error(f"Error updating annual performance: {str(e)}")
         raise
 
     logger.info(f"Completed updating annual performance for investor {user.id}")
 
-def calculate_performance(user, start_date, end_date, selected_brokers, currency_target):
+def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
     performance_data = {name: Decimal(0) for name in [
         "bop_nav", "invested", "cash_out", "price_change", "capital_distribution",
         "commission", "tax", "fx", "eop_nav", "tsr"
@@ -1846,11 +1876,15 @@ def calculate_performance(user, start_date, end_date, selected_brokers, currency
     # Calculate the performance values for each line
     transactions = Transactions.objects.filter(
         investor=user,
-        broker_id__in=selected_brokers,
-        # date__year=year
+        broker_id__in=selected_brokers_ids,
         date__gte=start_date,
         date__lte=end_date,
-    ).values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
+    )
+
+    if is_restricted is not None:
+        transactions = transactions.filter(security__restricted=is_restricted)
+
+    transactions = transactions.values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
 
     transactions_df = pd.DataFrame(list(transactions))
     if transactions_df.empty:
@@ -1860,8 +1894,7 @@ def calculate_performance(user, start_date, end_date, selected_brokers, currency
         lambda row: FX.get_rate(row['currency'], currency_target, row['date'])['FX'], axis=1
     )
 
-    brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
-    assets = Assets.objects.filter(investor=user, brokers__id__in=selected_brokers)
+    brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).all()
 
     for broker in brokers:
         broker_transactions = transactions_df[transactions_df['broker_id'] == broker.id]
@@ -1887,7 +1920,11 @@ def calculate_performance(user, start_date, end_date, selected_brokers, currency
         unrealized_gl = Decimal(0)
         capital_distribution = Decimal(0)
 
-        for asset in assets.filter(brokers=broker):
+        assets = Assets.objects.filter(investor=user, brokers=broker)
+        if is_restricted is not None:
+            assets = assets.filter(restricted=is_restricted)                                       
+
+        for asset in assets:
             asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
             realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
             unrealized_gl += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
@@ -1905,10 +1942,7 @@ def calculate_performance(user, start_date, end_date, selected_brokers, currency
 
         eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
         performance_data['eop_nav'] += eop_nav
-
-        tsr = Irr(user.id, end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
-        performance_data['tsr'] += tsr
-
+        
         components_sum = (
             performance_data['bop_nav'] + 
             performance_data['invested'] + 
@@ -1919,5 +1953,8 @@ def calculate_performance(user, start_date, end_date, selected_brokers, currency
             performance_data['tax']
         )
         performance_data['fx'] += eop_nav - components_sum
+
+    tsr = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
+    performance_data['tsr'] += tsr
 
     return performance_data

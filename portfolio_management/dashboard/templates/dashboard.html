@@ -47,10 +47,28 @@
                             // Reload the summary-over-time table or update it dynamically
                             // $('#table-summary-over-time').load(location.href + " #table-summary-over-time > *");
                             location.reload();
+                        } else {
+                            // Handle success response with error message
+                            showError(response.error || 'An unknown error occurred.');
                         }
+                    },
+                    error: function(xhr, status, error) {
+                        // Handle error response
+                        let errorMessage = xhr.responseJSON ? xhr.responseJSON.error : 'An unknown error occurred.';
+                        showError(errorMessage);
                     }
                 });
             });
+        
+            function showError(message) {
+                // Show error message using an alert or modal
+                let errorAlert = $('#errorAlert');
+                if (errorAlert.length === 0) {
+                    errorAlert = $('<div id="errorAlert" class="alert alert-danger" role="alert"></div>');
+                    $('#updateBrokerPerformanceDatabaseModal .modal-body').prepend(errorAlert);
+                }
+                errorAlert.text(message).show();
+            }
         });
     </script>
 
@@ -348,10 +366,10 @@
                             <tr>
                                 <th class="fixed-column"></th>
                                 {% for year in years %}
-                                    <th>{{ year }}</th>
+                                    <th class="text-center">{{ year }}</th>
                                 {% endfor %}
-                                <th class="highlight-column">{{ table_date|date:'Y' }}YTD</th>
-                                <th class="highlight-column">All-time</th>
+                                <th class="highlight-column text-center">{{ table_date|date:'Y' }}YTD</th>
+                                <th class="highlight-column text-center">All-time</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -360,10 +378,10 @@
                                     <td class="fixed-column 
                                         {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.name }}</td>
                                     {% for year in years %}
-                                        <td class="{% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:year }}</td>
+                                        <td class="text-center{% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:year }}</td>
                                     {% endfor %}
-                                    <td class="highlight-column {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data.YTD }}</td>
-                                    <td class="highlight-column fw-bold {% if line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:'All-time' }}</td>
+                                    <td class="highlight-column text-center {% if line.name == "BoP NAV" or line.name == "EoP NAV" %} fw-bold {% elif line.name == "TSR" %} fst-italic {% endif %}">{{ line.data.YTD }}</td>
+                                    <td class="highlight-column fw-bold text-center {% if line.name == "TSR" %} fst-italic {% endif %}">{{ line.data|get_item:'All-time' }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>

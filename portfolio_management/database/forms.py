@@ -166,6 +166,12 @@ class BrokerPerformanceForm(forms.Form):
             attrs={'class': 'form-select'}
         )
     )
+    is_restricted = forms.ChoiceField(
+        choices=(('None', 'All'), ('True', 'Restricted'), ('False', 'Not restricted')),
+        widget=forms.Select(
+            attrs={'class': 'form-select'}
+        )
+    )
 
     def __init__(self, *args, **kwargs):
         investor = kwargs.pop('investor', None)
