@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from common.models import Assets, Brokers
@@ -9,7 +10,7 @@ def closed_positions(request):
     
     user = request.user
 
-    effective_current_date = request.session['effective_current_date']
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
     currency_target = user.default_currency
     number_of_digits = user.digits

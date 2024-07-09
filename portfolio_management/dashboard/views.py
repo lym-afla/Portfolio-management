@@ -189,11 +189,8 @@ def summary_view(request):
     dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
     user_brokers = Brokers.objects.filter(investor=user)
-    public_brokers = user_brokers.filter(securities__restricted=False).distinct()
-    restricted_brokers = user_brokers.filter(securities__restricted=True).distinct()
 
-    public_markets_context = summary_data(user, effective_current_date, public_brokers, currency_target, number_of_digits)
-    restricted_investments_context = summary_data(user, effective_current_date, restricted_brokers, currency_target, number_of_digits)
+    contexts = summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
 
     buttons = ['settings']
 
@@ -206,8 +203,8 @@ def summary_view(request):
         'selectedBrokers': selected_brokers,
         'dashboardForm': dashboard_form,
         'buttons': buttons,
-        'public_markets_context': public_markets_context,
-        'restricted_investments_context': restricted_investments_context
+        'public_markets_context': contexts['public_markets_context'],
+        'restricted_investments_context': contexts['restricted_investments_context']
     }
 
     return render(request, 'summary.html', context)

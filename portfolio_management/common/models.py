@@ -176,6 +176,7 @@ class Brokers(models.Model):
     country = models.CharField(max_length=20)
     securities = models.ManyToManyField('Assets', related_name='brokers')
     comment = models.TextField(null=True, blank=True)
+    restricted = models.BooleanField(default=False, null=False, blank=False)
 
     # List of currencies used
     def get_currencies(self):

@@ -70,11 +70,12 @@ class TransactionForm(forms.ModelForm):
 class BrokerForm(forms.ModelForm):
     class Meta:
         model = Brokers
-        fields = ['name', 'country', 'comment']
+        fields = ['name', 'country', 'restricted', 'comment']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'country': forms.TextInput(attrs={'class': 'form-control'}),
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'restricted': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 class PriceForm(forms.ModelForm):
