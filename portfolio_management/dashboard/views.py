@@ -204,7 +204,8 @@ def summary_view(request):
         'dashboardForm': dashboard_form,
         'buttons': buttons,
         'public_markets_context': contexts['public_markets_context'],
-        'restricted_investments_context': contexts['restricted_investments_context']
+        'restricted_investments_context': contexts['restricted_investments_context'],
+        'total_context': contexts['total_context']
     }
 
     return render(request, 'summary.html', context)

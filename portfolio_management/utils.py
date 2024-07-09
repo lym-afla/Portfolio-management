@@ -1832,7 +1832,9 @@ def summary_data(user, effective_date, brokers_or_group, currency_target, number
         context = public_markets_context if not restricted else restricted_investments_context
         totals = public_totals if not restricted else restricted_totals
 
-        for broker in brokers:
+        brokers_subgroup = brokers.filter(restricted=restricted)
+
+        for broker in brokers_subgroup:
             line_data = {'name': broker.name, 'data': {}}
 
              # Initialize data for all years
@@ -1913,16 +1915,16 @@ def summary_data(user, effective_date, brokers_or_group, currency_target, number
 
             context['lines'].append(line_data)
 
-        # Add Totals line
+        # Add Sub-totals line
         sub_totals_line = {'name': 'Sub-total', 'data': {}}
         for year in ['YTD'] + years + ['All-time']:
             try:
                 if year == 'YTD':
-                    totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers], start_date=date(effective_date.year, 1, 1))
+                    totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers_subgroup], start_date=date(effective_date.year, 1, 1))
                 elif year == 'All-time':
-                    totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers])
+                    totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers_subgroup])
                 else:
-                    totals[year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers], start_date=date(year, 1, 1))
+                    totals[year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers_subgroup], start_date=date(year, 1, 1))
             except Exception as e:
                 print(f"Error calculating TSR for year {year}: {e}")
                 totals[year]['tsr'] = 'N/R'
@@ -1933,9 +1935,62 @@ def summary_data(user, effective_date, brokers_or_group, currency_target, number
 
         context['years'] = ['YTD'] + years[::-1] + ['All-time']
 
+    # Add Totals line
+    totals_line = {'name': 'TOTAL', 'data': {}}
+    for year in ['YTD'] + years + ['All-time']:
+        totals_line['data'][year] = {
+            'bop_nav': Decimal(0),
+            'invested': Decimal(0),
+            'cash_out': Decimal(0),
+            'price_change': Decimal(0),
+            'capital_distribution': Decimal(0),
+            'commission': Decimal(0),
+            'tax': Decimal(0),
+            'fx': Decimal(0),
+            'eop_nav': Decimal(0),
+            'tsr': Decimal(0)
+        }
+        
+        # Sum up values from both public markets and restricted investments contexts
+        for sub_total in [public_totals[year], restricted_totals[year]]:
+            for key, value in sub_total.items():
+                if key != 'tsr' and isinstance(value, Decimal):
+                    totals_line['data'][year][key] += value
+        
+        try:
+            if year == 'YTD':
+                totals_line['data'][year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers], start_date=date(effective_date.year, 1, 1))
+            elif year == 'All-time':
+                totals_line['data'][year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers])
+            else:
+                totals_line['data'][year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers], start_date=date(year, 1, 1))
+        except Exception as e:
+            print(f"Error calculating TSR for year {year}: {e}")
+            totals_line['data'][year]['tsr'] = 'N/R'
+
+        # Calculate fee per AUM
+        total_nav = totals_line['data'][year]['eop_nav']
+        total_commission = totals_line['data'][year]['commission']
+        if total_nav > 0:
+            fee_per_aum = -(total_commission / total_nav)  # as a percentage
+        else:
+            fee_per_aum = Decimal(0)
+        
+        totals_line['data'][year]['fee_per_aum'] = fee_per_aum
+        
+        # Compile and format the data
+        totals_line['data'][year] = compile_summary_data(totals_line['data'][year], currency_target, number_of_digits)
+    
+    # Create a new context for the total line
+    total_context = {
+        'years': ['YTD'] + years[::-1] + ['All-time'],
+        'line': totals_line
+    }
+
     return {
         "public_markets_context": public_markets_context,
-        "restricted_investments_context": restricted_investments_context
+        "restricted_investments_context": restricted_investments_context,
+        "total_context": total_context
     }
 
 def compile_summary_data(data, currency_target, number_of_digits):

@@ -85,7 +85,7 @@
                     {% endfor %}
                     <tr>
                         <td class="fixed-column fw-bold h6">Restricted Investments</td>
-                        {% for year in public_markets_context.years %}
+                        {% for year in restricted_investments_context.years %}
                             <td></td>
                             <td></td>
                             <td></td>
@@ -94,6 +94,40 @@
                             <td></td>
                             <td></td>
                             <td></td>
+                            {% if year != "All-time" %}<td></td>{% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% for line in restricted_investments_context.lines %}
+                        <tr>
+                            <td class="fixed-column{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ line.name }}</td>
+                            {% for year in public_markets_context.years %}
+                                {% with line.data|get_item:year as year_data %}
+                                    <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" or line.name == "TOTAL" %} fw-bold {% endif %}">{{ year_data|get_item:"BoP NAV" }}</td>
+                                    <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data|get_item:"Cash-in/out" }}</td>
+                                    <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data.Return }}</td>
+                                    <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data.FX }}</td>
+                                    <td class="text-center fst-italic {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data|get_item:"TSR percentage" }}</td>
+                                    <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data|get_item:"EoP NAV" }}</td>
+                                    <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data.Commission }}</td>
+                                    <td class="text-center fst-italic {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data|get_item:"Fee per AuM (percentage)" }}</td>
+                                {% endwith %}
+                                {% if year != "All-time" %}<td></td>{% endif %}
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    <tr>
+                        <td class="fixed-column fw-bold">TOTAL</td>
+                        {% for year in total_context.years %}
+                            {% with total_context.line.data|get_item:year as year_data %}
+                                <td class="text-center fw-bold {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data|get_item:"BoP NAV" }}</td>
+                                <td class="text-center fw-bold {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data|get_item:"Cash-in/out" }}</td>
+                                <td class="text-center fw-bold {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data.Return }}</td>
+                                <td class="text-center fw-bold {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data.FX }}</td>
+                                <td class="text-center fw-bold fst-italic {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data|get_item:"TSR percentage" }}</td>
+                                <td class="text-center fw-bold {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data|get_item:"EoP NAV" }}</td>
+                                <td class="text-center fw-bold {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data.Commission }}</td>
+                                <td class="text-center fw-bold fst-italic {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">{{ year_data|get_item:"Fee per AuM (percentage)" }}</td>
+                            {% endwith %}
                             {% if year != "All-time" %}<td></td>{% endif %}
                         {% endfor %}
                     </tr>
