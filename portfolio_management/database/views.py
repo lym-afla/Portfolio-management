@@ -141,6 +141,8 @@ def database_securities(request):
             security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
         
         security.open_position = currency_format(security.open_position, '', 0)
+
+        print("views. database", security)
         
         security.realised = currency_format(security.realized_gain_loss(effective_current_date)['all_time'], security.currency, number_of_digits)
         security.unrealised = currency_format(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)

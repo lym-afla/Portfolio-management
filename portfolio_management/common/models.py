@@ -419,7 +419,8 @@ class Assets(models.Model):
                 total_gl_before_current_position -= self.price_at_date(start_date, currency).price * self.position(start_date)
             else:
                 total_gl_before_current_position = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
-                total_gl_before_current_position = -total_gl_before_current_position - self.price_at_date(start_date).price * self.position(start_date)
+                if start_date is not None:
+                    total_gl_before_current_position = -total_gl_before_current_position - self.price_at_date(start_date).price * self.position(start_date)
 
         # Step 3: Determine whether it is a long or short position
         position_at_date = self.position(date)

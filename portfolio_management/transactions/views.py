@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
@@ -9,7 +10,7 @@ def transactions(request):
 
     user = request.user
 
-    global effective_current_date
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
 
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -21,7 +22,6 @@ def transactions(request):
 
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
-
 
     initial_data = {
         'selected_brokers': selected_brokers,
