@@ -1565,8 +1565,19 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
 #     return context
 
-def dashboard_summary_over_time(user, effective_date, selected_brokers, currency_target):
+def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency_target):
     start_time = time.time()
+
+    if isinstance(brokers_or_group, str):
+        # It's a group name
+        group_name = brokers_or_group
+        selected_brokers = BROKER_GROUPS.get(group_name)
+        if not selected_brokers:
+            raise ValueError(f"Invalid group name: {group_name}")
+    else:
+        # It's a list of broker IDs
+        selected_brokers = brokers_or_group
+        group_name = None
 
     # Determine the starting year
     stored_data = AnnualPerformance.objects.filter(
@@ -1631,139 +1642,139 @@ def dashboard_summary_over_time(user, effective_date, selected_brokers, currency
 
     return context
 
-def summary_data_old(user, effective_date, brokers, currency_target, number_of_digits):
-    summary_context = {
-        'years': [],  # List of years for which data is displayed
-        'lines': []   # List of data lines for each broker
-    }
+# def summary_data_old(user, effective_date, brokers, currency_target, number_of_digits):
+#     summary_context = {
+#         'years': [],  # List of years for which data is displayed
+#         'lines': []   # List of data lines for each broker
+#     }
     
-    # Determine the starting year
-    stored_data = AnnualPerformance.objects.filter(
-        investor=user,
-        broker__in=brokers,
-        currency=currency_target,
-    )
+#     # Determine the starting year
+#     stored_data = AnnualPerformance.objects.filter(
+#         investor=user,
+#         broker__in=brokers,
+#         currency=currency_target,
+#     )
 
-    first_entry = stored_data.order_by('year').first()
-    if not first_entry:
-        return {"years": [], "lines": []}
+#     first_entry = stored_data.order_by('year').first()
+#     if not first_entry:
+#         return {"years": [], "lines": []}
     
-    start_year = first_entry.year
+#     start_year = first_entry.year
 
-    # Determine the ending year
-    last_exit_date = get_last_exit_date_for_brokers(brokers, effective_date)
-    last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
+#     # Determine the ending year
+#     last_exit_date = get_last_exit_date_for_brokers(brokers, effective_date)
+#     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
 
-    years = list(range(start_year, last_year + 1))
+#     years = list(range(start_year, last_year + 1))
 
-    # Fetch stored data
-    stored_data = stored_data.filter(year__in=years).values()
+#     # Fetch stored data
+#     stored_data = stored_data.filter(year__in=years).values()
 
-    current_year = effective_date.year
+#     current_year = effective_date.year
 
-    # Initialize totals
-    totals = {year: {
-            'bop_nav': Decimal(0),
-            'invested': Decimal(0),
-            'cash_out': Decimal(0),
-            'price_change': Decimal(0),
-            'capital_distribution': Decimal(0),
-            'commission': Decimal(0),
-            'tax': Decimal(0),
-            'fx': Decimal(0),
-            'eop_nav': Decimal(0),
-            'tsr': Decimal(0)
-        } for year in ['YTD'] + years + ['All-time']}
+#     # Initialize totals
+#     totals = {year: {
+#             'bop_nav': Decimal(0),
+#             'invested': Decimal(0),
+#             'cash_out': Decimal(0),
+#             'price_change': Decimal(0),
+#             'capital_distribution': Decimal(0),
+#             'commission': Decimal(0),
+#             'tax': Decimal(0),
+#             'fx': Decimal(0),
+#             'eop_nav': Decimal(0),
+#             'tsr': Decimal(0)
+#         } for year in ['YTD'] + years + ['All-time']}
     
-    for broker in brokers:
-        line_data = {'name': broker.name, 'data': {}}
+#     for broker in brokers:
+#         line_data = {'name': broker.name, 'data': {}}
 
-        # Add YTD data
-        ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_date, [broker.id], currency_target)
-        compiled_ytd_data = compile_summary_data(ytd_data, currency_target, number_of_digits)
-        line_data['data']['YTD'] = compiled_ytd_data
+#         # Add YTD data
+#         ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_date, [broker.id], currency_target)
+#         compiled_ytd_data = compile_summary_data(ytd_data, currency_target, number_of_digits)
+#         line_data['data']['YTD'] = compiled_ytd_data
 
-        # Update totals for YTD
-        for key, value in ytd_data.items():
-            if isinstance(value, Decimal) and key != 'tsr':
-                totals['YTD'][key] += value
+#         # Update totals for YTD
+#         for key, value in ytd_data.items():
+#             if isinstance(value, Decimal) and key != 'tsr':
+#                 totals['YTD'][key] += value
         
-        # Initialize all-time data
-        all_time_data = {
-            'bop_nav': Decimal(0),
-            'invested': Decimal(0),
-            'cash_out': Decimal(0),
-            'price_change': Decimal(0),
-            'capital_distribution': Decimal(0),
-            'commission': Decimal(0),
-            'tax': Decimal(0),
-            'fx': Decimal(0),
-            'eop_nav': Decimal(0),
-            'tsr': Decimal(0)
-        }
+#         # Initialize all-time data
+#         all_time_data = {
+#             'bop_nav': Decimal(0),
+#             'invested': Decimal(0),
+#             'cash_out': Decimal(0),
+#             'price_change': Decimal(0),
+#             'capital_distribution': Decimal(0),
+#             'commission': Decimal(0),
+#             'tax': Decimal(0),
+#             'fx': Decimal(0),
+#             'eop_nav': Decimal(0),
+#             'tsr': Decimal(0)
+#         }
 
-        # Add stored data for each year
-        for entry in stored_data:
-            if entry['broker_id'] == broker.id:
-                year_data = {}
-                # print("utils. 1684", entry)
-                for key, value in entry.items():
-                    if key in ('id', 'broker_id', 'investor_id'):
-                        continue
-                    year_data[key] = value
-                # print("utils. 1692", year_data)
-                formatted_year_data = compile_summary_data(year_data, currency_target, number_of_digits)
-                line_data['data'][entry['year']] = formatted_year_data
+#         # Add stored data for each year
+#         for entry in stored_data:
+#             if entry['broker_id'] == broker.id:
+#                 year_data = {}
+#                 # print("utils. 1684", entry)
+#                 for key, value in entry.items():
+#                     if key in ('id', 'broker_id', 'investor_id'):
+#                         continue
+#                     year_data[key] = value
+#                 # print("utils. 1692", year_data)
+#                 formatted_year_data = compile_summary_data(year_data, currency_target, number_of_digits)
+#                 line_data['data'][entry['year']] = formatted_year_data
 
-                # Update totals for each year
-                for key, value in year_data.items():
-                    if isinstance(value, Decimal) and key != 'tsr':
-                        totals[entry['year']][key] += value
+#                 # Update totals for each year
+#                 for key, value in year_data.items():
+#                     if isinstance(value, Decimal) and key != 'tsr':
+#                         totals[entry['year']][key] += value
 
-                # Accumulate all-time data
-                for key in all_time_data.keys():
-                    if key not in ['bop_nav', 'eop_nav', 'tsr']:
-                        all_time_data[key] += year_data.get(key, Decimal(0))
+#                 # Accumulate all-time data
+#                 for key in all_time_data.keys():
+#                     if key not in ['bop_nav', 'eop_nav', 'tsr']:
+#                         all_time_data[key] += year_data.get(key, Decimal(0))
 
-        # Add YTD data
-        for key in all_time_data.keys():
-            if key not in ['bop_nav', 'eop_nav', 'tsr']:
-                all_time_data[key] += ytd_data.get(key, Decimal(0))
+#         # Add YTD data
+#         for key in all_time_data.keys():
+#             if key not in ['bop_nav', 'eop_nav', 'tsr']:
+#                 all_time_data[key] += ytd_data.get(key, Decimal(0))
 
-        # Add final year EoP NAV to all-time
-        all_time_data['eop_nav'] = ytd_data.get('eop_nav', Decimal(0))
+#         # Add final year EoP NAV to all-time
+#         all_time_data['eop_nav'] = ytd_data.get('eop_nav', Decimal(0))
 
-        # Add all-time TSR separately
-        all_time_data['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id])
-        # print("utils. 1703", all_time_data)
+#         # Add all-time TSR separately
+#         all_time_data['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id])
+#         # print("utils. 1703", all_time_data)
 
-        # Format all-time data
-        formatted_all_time_data = compile_summary_data(all_time_data, currency_target, number_of_digits)
-        line_data['data']['All-time'] = formatted_all_time_data
-        # print("utils. 1707", line_data['data']['All-time'])
+#         # Format all-time data
+#         formatted_all_time_data = compile_summary_data(all_time_data, currency_target, number_of_digits)
+#         line_data['data']['All-time'] = formatted_all_time_data
+#         # print("utils. 1707", line_data['data']['All-time'])
 
-        # Update totals for All-time
-        for key, value in all_time_data.items():
-            if isinstance(value, Decimal) and key != 'tsr':
-                totals['All-time'][key] += value
+#         # Update totals for All-time
+#         for key, value in all_time_data.items():
+#             if isinstance(value, Decimal) and key != 'tsr':
+#                 totals['All-time'][key] += value
 
-        summary_context['lines'].append(line_data)
+#         summary_context['lines'].append(line_data)
 
-    # Add Totals line
-    totals_line = {'name': 'TOTAL', 'data': {}}
-    for year in ['YTD'] + years + ['All-time']:
-        if year == 'YTD':
-            totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers], start_date = date(effective_date.year, 1, 1))
-        elif year == 'All-time':
-            totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers])
-        else:
-            totals[year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers], start_date = date(year, 1, 1))
-        totals_line['data'][year] = compile_summary_data(totals[year], currency_target, number_of_digits)
-    summary_context['lines'].append(totals_line)
+#     # Add Totals line
+#     totals_line = {'name': 'TOTAL', 'data': {}}
+#     for year in ['YTD'] + years + ['All-time']:
+#         if year == 'YTD':
+#             totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers], start_date = date(effective_date.year, 1, 1))
+#         elif year == 'All-time':
+#             totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers])
+#         else:
+#             totals[year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers], start_date = date(year, 1, 1))
+#         totals_line['data'][year] = compile_summary_data(totals[year], currency_target, number_of_digits)
+#     summary_context['lines'].append(totals_line)
 
-    summary_context['years'] = ['YTD'] + years[::-1] + ['All-time']
+#     summary_context['years'] = ['YTD'] + years[::-1] + ['All-time']
     
-    return summary_context
+#     return summary_context
 
 def summary_data(user, effective_date, brokers_or_group, currency_target, number_of_digits):
     def initialize_context():
@@ -1872,7 +1883,8 @@ def summary_data(user, effective_date, brokers_or_group, currency_target, number
             # Add stored data for each year
             for entry in stored_data:
                 if entry['broker_id'] == broker.id and entry['restricted'] == restricted:
-                    year_data = {k: v for k, v in entry.items() if k not in ('id', 'broker_id', 'investor_id')}
+                    year_data = {k: v for k, v in entry.items() if k not in ('id', 'broker_id', 'investor_id', 'broker_group')}
+                    print("utils. 1887", entry)
                     formatted_year_data = compile_summary_data(year_data, currency_target, number_of_digits)
                     line_data['data'][entry['year']] = formatted_year_data
 
@@ -2109,7 +2121,15 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     )
 
     if is_restricted is not None:
-        transactions = transactions.filter(security__restricted=is_restricted)
+        # Filter for transactions related to securities
+        security_transactions = transactions.filter(security__isnull=False, security__restricted=is_restricted)
+        # Include all transactions not related to specific securities
+        non_security_transactions = transactions.filter(security__isnull=True)
+        # Combine both querysets
+        transactions = security_transactions | non_security_transactions
+
+    else:
+        transactions = transactions
 
     transactions = transactions.values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
 
