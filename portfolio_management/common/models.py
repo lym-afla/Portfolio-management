@@ -234,7 +234,7 @@ class Assets(models.Model):
         if broker_id_list is not None:
             query = query.filter(broker_id__in=broker_id_list)
         total_quantity = query.aggregate(total=models.Sum('quantity'))['total']
-        return Decimal(round(total_quantity, 6)) if total_quantity else Decimal(0)
+        return round(Decimal(total_quantity), 6) if total_quantity else Decimal(0)
 
     # The very first investment date
     def investment_date(self, broker_id_list=None):
@@ -456,8 +456,8 @@ class Assets(models.Model):
         # print("models. line 456", self.name, realized_gain_loss_for_current_position, total_gl_before_current_position)
 
         return {
-            "current_position": Decimal(round(realized_gain_loss_for_current_position, 2)),
-            "all_time": Decimal(round(total_gl_before_current_position + realized_gain_loss_for_current_position, 2))
+            "current_position": round(Decimal(realized_gain_loss_for_current_position), 2),
+            "all_time": round(Decimal(total_gl_before_current_position + realized_gain_loss_for_current_position), 2)
         }
     
     def unrealized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
@@ -488,7 +488,7 @@ class Assets(models.Model):
             if fx_rate:
                 unrealized_gain_loss += (current_price - buy_in_price) * fx_rate * (current_position)
         
-        return Decimal(round(unrealized_gain_loss, 2))
+        return round(Decimal(unrealized_gain_loss), 2)
     
     def get_capital_distribution(self, date, currency=None, broker_id_list=None, start_date=None):
         """
@@ -512,7 +512,7 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(dividend.currency, currency, dividend.date)['FX']
                     if fx_rate:
                         total_dividends += dividend.cash_flow * fx_rate
-            return Decimal(round(total_dividends, 2))
+            return round(Decimal(total_dividends), 2)
         else:
             return Decimal(0)
         
@@ -537,7 +537,7 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(commission.currency, currency, commission.date)['FX']
                     if fx_rate:
                         total_commission += commission.commission * fx_rate
-            return Decimal(round(total_commission, 2))
+            return round(Decimal(total_commission), 2)
         else:
             return Decimal(0)
 

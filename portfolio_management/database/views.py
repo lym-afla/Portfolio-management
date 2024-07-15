@@ -509,11 +509,13 @@ def update_broker_performance(request):
 
             # Convert is_restricted string to appropriate value
             if is_restricted_str == 'None':
-                is_restricted = None  # This will be used to indicate both restricted and unrestricted
+                is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
             elif is_restricted_str == 'True':
-                is_restricted = True
+                is_restricted_list = [True]
             elif is_restricted_str == 'False':
-                is_restricted = False
+                is_restricted_list = [False]
+            elif is_restricted_str == 'All':
+                is_restricted_list = [None, True, False]
             else:
                 return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
             
@@ -523,12 +525,13 @@ def update_broker_performance(request):
             try:
                 with transaction.atomic():
                     for broker_id in selected_brokers:
-                        if currency == 'All':
-                            currencies = [choice[0] for choice in CURRENCY_CHOICES]
-                            for curr in currencies:
-                                save_or_update_annual_broker_performance(user, effective_current_date, [broker_id], curr, is_restricted)
-                        else:
-                            save_or_update_annual_broker_performance(user, effective_current_date, [broker_id], currency, is_restricted)
+                        for is_restricted in is_restricted_list:
+                            if currency == 'All':
+                                currencies = [choice[0] for choice in CURRENCY_CHOICES]
+                                for curr in currencies:
+                                    save_or_update_annual_broker_performance(user, effective_current_date, [broker_id], curr, is_restricted)
+                            else:
+                                save_or_update_annual_broker_performance(user, effective_current_date, [broker_id], currency, is_restricted)
 
                 return JsonResponse({'success': True})
 

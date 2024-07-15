@@ -5,22 +5,59 @@
 {% block script %}
 
     <!-- Script from DataTables -->
-    <script>
+    {% comment %} <script>
         $(document).ready(function () {
             $('#table-open').DataTable( {
-                // Make the default sorting by column 4 (DATE) and do not show sorting for selected columns
-                "autoWidth": false,
-                "ordering": false,
+                searching: true,
+                paging: true,
+                pageLength: 50,
+                lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+                autoWidth: false,
+                ordering: false,
+                // Bootstrap styling
+                dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
+                     '<"row"<"col-sm-12"tr>>' +
+                     '<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
                 //columnDefs: [
                   //  { orderable: false,} // targets: [2, 3, 5, 7, 8, 14, 17, 20] }
                 //],
-                {% comment %} order: [[4, 'asc']], {% endcomment %}
-                dom: 'rt<"bottom"<"row"<"col-md-4"l><"col-md-4 text-center"f><"col-md-4 text-right"p>>>',
-                {% comment %} "dom": "<'row'<tr>>" +
-                            "<'row'<'col-md-3'l><'col-md-4'f><'col-md-5'p>>", {% endcomment %}
-                "pageLength": 25 
+                //order: [[4, 'asc']],
+                //dom: 'rt<"bottom"<"row"<"col-md-4"l><"col-md-4 text-center"f><"col-md-4 text-right"p>>>',
+                //"dom": "<'row'<tr>>" +
+                //            "<'row'<'col-md-3'l><'col-md-4'f><'col-md-5'p>>",
+                
             });
         });
+
+    </script> {% endcomment %}
+
+    {% comment %} <script>
+
+        $(document).ready(function () {
+        
+            $('#table-open').DataTable( {
+                searching: true,
+                paging: true,
+                pageLength: 25,
+                autoWidth: false,
+                ordering: false,
+                lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+                columnDefs: [
+                    { orderable: false}
+                ],
+                // Bootstrap styling
+                dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>' +
+                     '<"row"<"col-sm-12"tr>>' +
+                     '<"row"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                language: {
+                    search: "_INPUT_",
+                    searchPlaceholder: "Search records"
+                }
+            });
+        
+        }); {% endcomment %}
+
+        <script src="{% static 'js/open-positions.js' %}"></script>
 
     </script>
 
@@ -62,8 +99,30 @@
     </div>
 
     <div class="content-body">
+        
+        <div class="row mb-2">
+            <div class="col-3">
+                <h6 for="openTableYearSelector" class="form-label">Year</h6>
+                <select class="form-select" name="openTableYearSelector" id="openTableYearSelector">
+                    {% for year in open_table_years %}
+                        <option value="{{ year }}">{{ year }}</option>
+                    {% endfor %}
+                    <option value="All-time" selected>All-time</option>
+                    <option value="YTD">YTD</option>
+                </select>
+            </div>
+            <div class="col-3">
+                {% comment %} <h6 class="form-label">Cash balance</h6> {% endcomment %}
+                {% comment %} ADD TABLE WITH CASH BALANCES HERE {% endcomment %}
+            </div>
+        </div>
+        <hr>
 
         <table id="table-open" class="table table-hover table-striped align-middle">
+            <div id="loadingIndicatorOpenTable">
+                <div class="spinner"></div>
+                <p>Updating...</p>
+            </div>
             <thead>
                 <tr>
                     <th class="text-start" rowspan="3">Type</th>
@@ -105,7 +164,7 @@
                 </tr>
             </thead>
             <tbody>
-            {% for asset in portfolio_open %}    
+            {% comment %} {% for asset in portfolio_open %}    
                 <tr>
                     <td class="text-start">{{ asset.type }}</td>
                     <td class="text-start">{{ asset.name }}</td>
@@ -131,20 +190,11 @@
                     <td class="text-center">{{ asset.total_return_amount }}</td>
                     <td class="text-center fst-italic">{{ asset.total_return_percentage }}</td>
                     <td class="text-center fst-italic">{{ asset.irr }}</td>
-                    {% comment %} <td class="text-end" width="10%">
-                        <!-- Button trigger modal -->
-                        <button type="button" class="btn btn-secondary" id="table-button-buy" data-bs-toggle="modal" data-bs-target="#Addnewtransaction" onclick="fillTransactionForm(this)">
-                            Buy
-                        </button>
-                        <button type="button" class="btn btn-danger" id="table-button-sell" data-bs-toggle="modal" data-bs-target="#Addnewtransaction" onclick="fillTransactionForm(this)">
-                            Sell
-                        </button>
-                    </td> {% endcomment %}
                 </tr>
-            {% endfor %}
+            {% endfor %} {% endcomment %}
             </tbody>
             <tfoot>
-                <tr>
+                {% comment %} <tr>
                     <td class="border-0 fw-bold" colspan="2">TOTAL</td>
                     <td class="border-0"></td>
                     <td class="border-0"></td>
@@ -168,7 +218,7 @@
                     <td class="text-center border-0 fw-bold">{{ portfolio_open_totals|get_item:"total_return_amount" }}</td>
                     <td class="text-center border-0 fw-bold fst-italic">{{ portfolio_open_totals|get_item:"total_return_percentage" }}</td>
                     <td class="text-center border-0 fw-bold fst-italic">[CALCULATE]</td>
-                </tr>
+                </tr> {% endcomment %}
             </tfoot>
         </table>
     </div>

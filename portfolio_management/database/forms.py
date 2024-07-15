@@ -171,7 +171,7 @@ class BrokerPerformanceForm(forms.Form):
         )
     )
     is_restricted = forms.ChoiceField(
-        choices=(('None', 'All'), ('True', 'Restricted'), ('False', 'Not restricted')),
+        choices=(('All', 'All'), ('None', 'No flag'), ('True', 'Restricted'), ('False', 'Not restricted')),
         widget=forms.Select(
             attrs={'class': 'form-select'}
         )

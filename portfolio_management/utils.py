@@ -1,5 +1,5 @@
 from collections import defaultdict
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal
 from functools import lru_cache
 
 from django.db import IntegrityError, transaction
@@ -48,7 +48,7 @@ def merge_dictionaries(dict_1, dict_2):
 def calculate_security_nav(item, date, currency):
     current_quote = item.price_at_date(date)
     # return round(current_quote.price * FX.get_rate(item.currency.upper(), currency, current_quote.date)['FX'] * item.position(date), 2)
-    return (current_quote.price * get_fx_rate(item.currency.upper(), currency, current_quote.date) * item.position(date)).quantize(Decimal('0.01'))
+    return round(Decimal(current_quote.price * get_fx_rate(item.currency.upper(), currency, current_quote.date) * item.position(date)), 2)
 
 def update_analysis(analysis, key, value, date=None, currency=None, desired_currency=None):
     if currency and date and desired_currency:
@@ -373,7 +373,7 @@ def calculate_percentage_shares(data_dict, selected_keys):
         data_dict[percentage_key] = {}
         for key, value in data_dict[category].items():
             try:
-                data_dict[percentage_key][key] = str((value / total * 100).quantize(Decimal('0.1'))) + '%'
+                data_dict[percentage_key][key] = str(round(Decimal(value / total * 100), 1)) + '%'
             except ZeroDivisionError:
                 data_dict[percentage_key][key] = '–'
 
@@ -618,12 +618,12 @@ def create_price_table(security_type, user):
 
     return table
 
-def calculate_open_table_output(user_id, portfolio, date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits):
+def calculate_open_table_output(user_id, portfolio, end_date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits, start_date=None):
     
     # if portfolio is None:
     #     return None, None
     # else:
-    portfolio_NAV = NAV_at_date(user_id, selected_brokers, date, currency_target)['Total NAV']
+    portfolio_NAV = NAV_at_date(user_id, selected_brokers, end_date, currency_target)['Total NAV']
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     portfolio_open_totals = {}
@@ -632,25 +632,29 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
     
         currency_used = None if use_default_currency else currency_target
 
-        asset.current_position = asset.position(date, selected_brokers)
+        asset.current_position = asset.position(end_date, selected_brokers)
 
         if asset.current_position == 0:
             print("The position is zero. The asset is not in the portfolio.")
             return None
 
-        asset.entry_price = asset.calculate_buy_in_price(date, currency_used, selected_brokers)
+        position_entry_date = asset.entry_dates(end_date, selected_brokers)[-1]
+        if 'investment_date' in categories:
+            asset.investment_date = position_entry_date
+
+        if start_date is None:
+            start_date = position_entry_date
+            
+        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, start_date)
         asset.entry_value = asset.entry_price * asset.current_position
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
-        entry_date = asset.entry_dates(date, selected_brokers)[-1]
+        
         # print(f'utils.py. LIne 508. Entry date: {entry_date}')
         
-        if 'investment_date' in categories:
-            asset.investment_date = entry_date
-        
         if 'current_value' in categories:
-            asset.current_price = asset.price_at_date(date, currency_used).price
+            asset.current_price = asset.price_at_date(end_date, currency_used).price
             asset.current_value = asset.current_price * asset.current_position
-            asset.share_of_portfolio = asset.price_at_date(date, currency_used).price * asset.current_position / portfolio_NAV
+            asset.share_of_portfolio = asset.price_at_date(end_date, currency_used).price * asset.current_position / portfolio_NAV
             
             # Formatting
             asset.current_price = currency_format(asset.current_price, asset.currency if use_default_currency else currency_target, number_of_digits)
@@ -658,25 +662,25 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
             asset.share_of_portfolio = format_percentage(asset.share_of_portfolio)
         
         if 'realized_gl' in categories:
-            asset.realized_gl = asset.realized_gain_loss(date, currency_used, selected_brokers)['current_position']
+            asset.realized_gl = asset.realized_gain_loss(end_date, currency_used, selected_brokers, start_date)['current_position']
         else:
             asset.realized_gl = 0
 
         if 'unrealized_gl' in categories:
-            asset.unrealized_gl = asset.unrealized_gain_loss(date, currency_used, selected_brokers)
+            asset.unrealized_gl = asset.unrealized_gain_loss(end_date, currency_used, selected_brokers, start_date)
         else:
             asset.unrealized_gl = 0
         
         asset.price_change_percentage = (asset.realized_gl + asset.unrealized_gl) / asset.entry_value if asset.entry_value > 0 else 'N/R'
         
         if 'capital_distribution' in categories:
-            asset.capital_distribution = asset.get_capital_distribution(date, currency_used, selected_brokers, entry_date)
+            asset.capital_distribution = asset.get_capital_distribution(end_date, currency_used, selected_brokers, start_date)
             asset.capital_distribution_percentage = asset.capital_distribution / asset.entry_value if asset.entry_value > 0 else 'N/R'
         else:
             asset.capital_distribution = 0
 
         if 'commission' in categories:
-            asset.commission = asset.get_commission(date, currency_used, selected_brokers, entry_date)
+            asset.commission = asset.get_commission(end_date, currency_used, selected_brokers, start_date)
             asset.commission_percentage = asset.commission / asset.entry_value if asset.entry_value > 0 else 'N/R'
         else:
             asset.commission = 0
@@ -686,32 +690,35 @@ def calculate_open_table_output(user_id, portfolio, date, categories, use_defaul
         
         # Calculate IRR for security
         currency_used = asset.currency if use_default_currency else currency_target
-        asset.irr = format_percentage(Irr(user_id, date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date))
+        asset.irr = format_percentage(Irr(user_id, end_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=start_date))
         
         # Calculating totals
-        for key in (list(set(totals) & set(categories)) + ['entry_value', 'total_return_amount']):
+        for key in (['entry_value', 'total_return_amount'] + list(set(totals) & set(categories))):
 
             if not use_default_currency:
                 addition = getattr(asset, key)
             else:
                 if key == 'entry_value':
-                    addition = asset.calculate_buy_in_price(date, currency_target, selected_brokers) * asset.current_position
-                elif key == 'current_value':
-                    addition = asset.price_at_date(date, currency_target).price * asset.current_position
-                elif key == 'realized_gl':
-                    addition = asset.realized_gain_loss(date, currency_target, selected_brokers)['current_position']
-                elif key == 'unrealized_gl':
-                    addition = asset.unrealized_gain_loss(date, currency_target, selected_brokers)
-                elif key == 'capital_distribution':
-                    addition = asset.get_capital_distribution(date, currency_target, selected_brokers, entry_date)
-                elif key == 'commission':
-                    addition = asset.get_commission(date, currency_target, selected_brokers, entry_date)
+                    addition = asset.entry_value
                 elif key == 'total_return_amount':
-                    addition = asset.realized_gain_loss(date, currency_target, selected_brokers)['current_position'] + \
-                        asset.unrealized_gain_loss(date, currency_target, selected_brokers) + \
-                        asset.get_capital_distribution(date, currency_target, selected_brokers, entry_date) + \
-                        asset.get_commission(date, currency_target, selected_brokers, entry_date)
-                    # print("Line 636", addition)
+                    asset.realized_gl = asset.realized_gain_loss(end_date, currency_target, selected_brokers, start_date)['current_position']
+                    asset.unrealized_gl = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, start_date)
+                    asset.capital_distribution = asset.get_capital_distribution(end_date, currency_target, selected_brokers, start_date)
+                    asset.commission = asset.get_commission(end_date, currency_target, selected_brokers, start_date)
+                    
+                    addition = asset.realized_gl + asset.unrealized_gl + asset.capital_distribution + asset.commission
+                    # print("Line 709", addition)
+                elif key == 'current_value':
+                    addition = asset.price_at_date(end_date, currency_target).price * asset.current_position
+                elif key == 'realized_gl':
+                    addition = asset.realized_gain_loss(end_date, currency_target, selected_brokers, start_date)['current_position']
+                elif key == 'unrealized_gl':
+                    addition = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, start_date)
+                elif key == 'capital_distribution':
+                    addition = asset.get_capital_distribution(end_date, currency_target, selected_brokers, start_date)
+                elif key == 'commission':
+                    addition = asset.get_commission(end_date, currency_target, selected_brokers, start_date)
+                
                 else:
                     # print(use_default_currency, key)
                     addition = None
@@ -1025,6 +1032,11 @@ def parse_excel_file_transactions(file, currency, broker_id):
     transactions = []
     i = 0
 
+    quantity_field = Transactions._meta.get_field('quantity')
+    quantity_decimal_places = quantity_field.decimal_places
+    price_field = Transactions._meta.get_field('price')
+    price_decimal_places = price_field.decimal_places
+
     while i < len(df.columns):
         if pd.notna(df.iloc[1, i]):
             security_name = df.iloc[1, i]
@@ -1038,22 +1050,20 @@ def parse_excel_file_transactions(file, currency, broker_id):
                     continue
 
                 date = df.iloc[row, i].strftime("%Y-%m-%d")
-                price = Decimal(df.iloc[row, i + 1]).quantize(Decimal(10) ** -4, rounding=ROUND_DOWN)
-                quantity = Decimal(df.iloc[row, i + 2]).quantize(Decimal(10) ** -4, rounding=ROUND_DOWN) if not pd.isna(df.iloc[row, i + 2]) else None
+                price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places)
+                quantity = round(Decimal(df.iloc[row, i + 2]), quantity_decimal_places) if not pd.isna(df.iloc[row, i + 2]) else None
                 
-                print("utils. 1047. Price: ", price, "Quantity: ", quantity)
+                # # Validate the quantity
+                # quantity_field = Transactions._meta.get_field('quantity')
+                # decimal_places = quantity_field.decimal_places
+                # # If the number of decimal places exceeds the allowed decimal places,
+                # # round the quantity to the allowed number of decimal places
+                # if quantity is not None:
+                #     if int(quantity.as_tuple().exponent) < -decimal_places:
+                #         quantity = quantity.quantize(Decimal(10) ** -decimal_places, rounding=ROUND_DOWN)
 
-                # Validate the quantity
-                quantity_field = Transactions._meta.get_field('quantity')
-                decimal_places = quantity_field.decimal_places
-                # If the number of decimal places exceeds the allowed decimal places,
-                # round the quantity to the allowed number of decimal places
-                if quantity is not None:
-                    if int(quantity.as_tuple().exponent) < -decimal_places:
-                        quantity = quantity.quantize(Decimal(10) ** -decimal_places, rounding=ROUND_DOWN)
-
-                dividend = Decimal(df.iloc[row, i + 3]) if not pd.isna(df.iloc[row, i + 3]) else None
-                commission = Decimal(df.iloc[row, i + 4]) if not pd.isna(df.iloc[row, i + 4]) else None
+                dividend = round(Decimal(df.iloc[row, i + 3]), 2) if not pd.isna(df.iloc[row, i + 3]) else None
+                commission = round(Decimal(df.iloc[row, i + 4]), 2) if not pd.isna(df.iloc[row, i + 4]) else None
 
                 if quantity is None and dividend is None and commission is None:
                     print("utils. 1059. Skipping row for: ", security_name)
@@ -1135,7 +1145,7 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                         'date': date,
                         'type': transaction_type,
                         'currency': currency,
-                        'cash_flow': Decimal(cash_investment).quantize(Decimal(10) ** -2, rounding=ROUND_DOWN),
+                        'cash_flow': round(Decimal(cash_investment), 2),
                         'commission': None,
                         'tax': None,
                     }
@@ -1148,7 +1158,7 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                     'type': 'Broker commission',
                     'currency': currency,
                     'cash_flow': None,
-                    'commission': Decimal(commission).quantize(Decimal(10) ** -2, rounding=ROUND_DOWN),
+                    'commission': round(Decimal(commission), 2),
                     'tax': None,
                 }
                 transactions.append(transaction_data)
@@ -1161,7 +1171,7 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                     'currency': currency,
                     'cash_flow': None,
                     'commission': None,
-                    'tax': Decimal(tax).quantize(Decimal(10) ** -2, rounding=ROUND_DOWN),
+                    'tax': round(Decimal(tax), 2),
                 }
                 transactions.append(transaction_data)
 
@@ -2077,7 +2087,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
             selected_brokers_ids = brokers_or_group
             group_name = None
 
-        print("utils. 1817", selected_brokers_ids)
+        print("utils. 2083", selected_brokers_ids, is_restricted)
 
         # Determine the starting year
         first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()

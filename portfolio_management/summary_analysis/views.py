@@ -115,12 +115,13 @@ def exposure_table_update(request):
         
         # Calculate values
         asset.current_position = asset.position(end_date, broker_ids)
-        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_target, broker_ids, start_date)
-        cost = (asset.entry_price * asset.current_position).quantize(Decimal('0.01'))
+        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_target, broker_ids, start_date) or Decimal(0)
+        print("views. summary. 119", asset.name, ": ", "entry_price: ", asset.entry_price, "current_position: ", asset.current_position)
+        cost = round(asset.entry_price * asset.current_position, 2)
         print("views. summary. 120", asset.name, ": ", cost, "entry_price: ", asset.entry_price, "current_position: ", asset.current_position)
 
-        asset.current_price = Decimal(asset.price_at_date(end_date, currency_target).price)
-        market_value = Decimal(round(asset.current_price * asset.current_position, 2))
+        asset.current_price = Decimal(getattr(asset.price_at_date(end_date, currency_target), 'price', 0))
+        market_value = round(asset.current_price * asset.current_position, 2)
         
         unrealized = asset.unrealized_gain_loss(end_date, currency_target, broker_ids, start_date)
 
@@ -144,23 +145,6 @@ def exposure_table_update(request):
             totals[cat]['realized'] += realized
             totals[cat]['capital_distribution'] += capital_distribution
             totals[cat]['commission'] += commission
-            
-        # # Update consolidated data
-        # data['Consolidated'][asset_category]['cost'] += cost
-        # data['Consolidated'][asset_category]['unrealized'] += unrealized
-        # data['Consolidated'][asset_category]['market_value'] += market_value
-        # data['Consolidated'][asset_category]['realized'] += realized
-        # data['Consolidated'][asset_category]['capital_distribution'] += capital_distribution
-        # data['Consolidated'][asset_category]['commission'] += commission
-
-        # # Update restricted/unrestricted data
-        # category = 'Restricted' if asset.restricted else 'Unrestricted'
-        # data[category][asset_category]['cost'] += cost
-        # data[category][asset_category]['unrealized'] += unrealized
-        # data[category][asset_category]['market_value'] += market_value
-        # data[category][asset_category]['realized'] += realized
-        # data[category][asset_category]['capital_distribution'] += capital_distribution
-        # data[category][asset_category]['commission'] += commission
 
     # Calculate cash for all brokers
     brokers = Brokers.objects.filter(investor=user)
