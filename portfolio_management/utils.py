@@ -1,5 +1,6 @@
 from collections import defaultdict
-from decimal import ROUND_DOWN, Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal
+from functools import lru_cache
 
 from django.db import IntegrityError, transaction
 
@@ -46,11 +47,13 @@ def merge_dictionaries(dict_1, dict_2):
 
 def calculate_security_nav(item, date, currency):
     current_quote = item.price_at_date(date)
-    return round(current_quote.price * FX.get_rate(item.currency.upper(), currency, current_quote.date)['FX'] * item.position(date), 2)
+    # return round(current_quote.price * FX.get_rate(item.currency.upper(), currency, current_quote.date)['FX'] * item.position(date), 2)
+    return (current_quote.price * get_fx_rate(item.currency.upper(), currency, current_quote.date) * item.position(date)).quantize(Decimal('0.01'))
 
 def update_analysis(analysis, key, value, date=None, currency=None, desired_currency=None):
     if currency and date and desired_currency:
-        value = round(value * FX.get_rate(currency, desired_currency, date)['FX'], 2)
+        # value = round(value * FX.get_rate(currency, desired_currency, date)['FX'], 2)
+        value = round(value * get_fx_rate(currency, desired_currency, date), 2)
     
     if key not in analysis:
         analysis[key] = value
@@ -106,7 +109,8 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
 
     cash = 0
     for currency, balance in cash_balance.items():
-        converted_cash = round(balance * FX.get_rate(currency, target_currency, date)['FX'], 2)
+        # converted_cash = round(balance * FX.get_rate(currency, target_currency, date)['FX'], 2)
+        converted_cash = round(balance * get_fx_rate(currency, target_currency, date), 2)
         cash += converted_cash
         update_analysis(analysis['Currency'], currency, converted_cash)
 
@@ -183,7 +187,8 @@ def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_
             cash_flow = transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
             
         if currency is not None:
-            fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
+            # fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
+            fx_rate = get_fx_rate(transaction.currency.upper(), currency, transaction.date)
         else:
             fx_rate = 1
         cash_flows.append(round(cash_flow * fx_rate, 2))
@@ -328,12 +333,15 @@ def currency_format(value, currency, digits):
             cur = '₽'
         case default:
             cur = currency.upper()
-    if value < 0:
-        return f"({cur}{-value:,.{int(digits)}f})"
-    elif value == 0:
-        return "–"
-    else:
-        return f"{cur}{value:,.{int(digits)}f}"
+    try:
+        if value < 0:
+            return f"({cur}{-value:,.{int(digits)}f})"
+        elif value == 0:
+            return "–"
+        elif value > 0:
+            return f"{cur}{value:,.{int(digits)}f}"
+    except:
+        return cur
     
 # Format dictionaries as strings with currency formatting
 def currency_format_dict_values(data, currency, digits):
@@ -784,7 +792,8 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
                 if currency_used is None:
                     fx_rate = 1
                 else:
-                    fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
+                    # fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
+                    fx_rate = get_fx_rate(transaction.currency, currency_used, transaction.date)
                 total_value += transaction.price * abs(transaction.quantity) * fx_rate
                 total_quantity += abs(transaction.quantity)
                 if asset.id == 8:
@@ -798,7 +807,8 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
                 if currency_used is None:
                     fx_rate = 1
                 else:
-                    fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
+                    # fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
+                    fx_rate = get_fx_rate(transaction.currency, currency_used, transaction.date)
                 total_value += transaction.price * abs(transaction.quantity) * fx_rate
                 total_quantity += abs(transaction.quantity)
             position['exit_price'] = total_value / total_quantity if total_quantity else Decimal(0)
@@ -810,7 +820,8 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
                 total_gl = 0
                 if currency_used is not None:
                     for transaction in position_transactions:
-                        fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
+                        # fx_rate = FX.get_rate(transaction.currency, currency_used, transaction.date)['FX']
+                        fx_rate = get_fx_rate(transaction.currency, currency_used, transaction.date)
                         if fx_rate:
                             total_gl -= transaction.price * transaction.quantity * fx_rate
                 else:
@@ -855,6 +866,7 @@ def calculate_closed_table_output(user_id, portfolio, date, categories, use_defa
                         total_gl = 0
                         for transaction in position_transactions:
                             fx_rate = FX.get_rate(transaction.currency, currency_target, transaction.date)['FX']
+                            fx_rate = get_fx_rate(transaction.currency, currency_target, transaction.date)
                             if fx_rate:
                                 total_gl -= transaction.price * transaction.quantity * fx_rate
                         addition = total_gl
@@ -1026,26 +1038,36 @@ def parse_excel_file_transactions(file, currency, broker_id):
                     continue
 
                 date = df.iloc[row, i].strftime("%Y-%m-%d")
-                price = df.iloc[row, i + 1]
-                quantity = Decimal(df.iloc[row, i + 2])
+                price = Decimal(df.iloc[row, i + 1]).quantize(Decimal(10) ** -4, rounding=ROUND_DOWN)
+                quantity = Decimal(df.iloc[row, i + 2]).quantize(Decimal(10) ** -4, rounding=ROUND_DOWN) if not pd.isna(df.iloc[row, i + 2]) else None
+                
+                print("utils. 1047. Price: ", price, "Quantity: ", quantity)
 
                 # Validate the quantity
                 quantity_field = Transactions._meta.get_field('quantity')
                 decimal_places = quantity_field.decimal_places
                 # If the number of decimal places exceeds the allowed decimal places,
                 # round the quantity to the allowed number of decimal places
-                if quantity.as_tuple().exponent < -decimal_places:
-                    quantity = quantity.quantize(Decimal(10) ** -decimal_places, rounding=ROUND_DOWN)
+                if quantity is not None:
+                    if int(quantity.as_tuple().exponent) < -decimal_places:
+                        quantity = quantity.quantize(Decimal(10) ** -decimal_places, rounding=ROUND_DOWN)
 
-                dividend = df.iloc[row, i + 3] if not pd.isna(df.iloc[row, i + 3]) else None
-                commission = df.iloc[row, i + 4] if not pd.isna(df.iloc[row, i + 4]) else None
+                dividend = Decimal(df.iloc[row, i + 3]) if not pd.isna(df.iloc[row, i + 3]) else None
+                commission = Decimal(df.iloc[row, i + 4]) if not pd.isna(df.iloc[row, i + 4]) else None
 
-                if quantity > 0:
+                if quantity is None and dividend is None and commission is None:
+                    print("utils. 1059. Skipping row for: ", security_name)
+                    continue
+
+                if quantity is not None:
+                    if quantity > 0:
                         transaction_type = 'Buy'
-                elif quantity < 0:
-                    transaction_type = 'Sell'
+                    elif quantity < 0:
+                        transaction_type = 'Sell'
+                    else:
+                        transaction_type = 'Dividend'
                 else:
-                    transaction_type = 'Dividend'
+                    transaction_type = None
 
                 transaction_data = {
                     'broker': broker_id,
@@ -1096,7 +1118,10 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
             # for inv_col, currency in currency_columns.items():
             cash_investment = row['Инвестиции']
             commission = row['Комиссия']
-            tax = row['Tax']
+            if 'Tax' in row:
+                tax = row['Tax']
+            else:
+                tax = None
 
             if pd.notna(cash_investment):
                 # Determine the type of transaction based on cash_investment
@@ -1110,7 +1135,7 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                         'date': date,
                         'type': transaction_type,
                         'currency': currency,
-                        'cash_flow': round(cash_investment, 2),
+                        'cash_flow': Decimal(cash_investment).quantize(Decimal(10) ** -2, rounding=ROUND_DOWN),
                         'commission': None,
                         'tax': None,
                     }
@@ -1123,12 +1148,12 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                     'type': 'Broker commission',
                     'currency': currency,
                     'cash_flow': None,
-                    'commission': round(commission, 2),
+                    'commission': Decimal(commission).quantize(Decimal(10) ** -2, rounding=ROUND_DOWN),
                     'tax': None,
                 }
                 transactions.append(transaction_data)
             
-            if pd.notna(tax):
+            if tax is not None and pd.notna(tax):
                 transaction_data = {
                     'broker': broker_id,
                     'date': date,
@@ -1136,7 +1161,7 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
                     'currency': currency,
                     'cash_flow': None,
                     'commission': None,
-                    'tax': round(tax, 2),
+                    'tax': Decimal(tax).quantize(Decimal(10) ** -2, rounding=ROUND_DOWN),
                 }
                 transactions.append(transaction_data)
 
@@ -1776,7 +1801,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     
 #     return summary_context
 
-def summary_data(user, effective_date, brokers_or_group, currency_target, number_of_digits):
+def brokers_summary_data(user, effective_date, brokers_or_group, currency_target, number_of_digits):
     def initialize_context():
         return {
             'years': [],
@@ -1884,7 +1909,6 @@ def summary_data(user, effective_date, brokers_or_group, currency_target, number
             for entry in stored_data:
                 if entry['broker_id'] == broker.id and entry['restricted'] == restricted:
                     year_data = {k: v for k, v in entry.items() if k not in ('id', 'broker_id', 'investor_id', 'broker_group')}
-                    print("utils. 1887", entry)
                     formatted_year_data = compile_summary_data(year_data, currency_target, number_of_digits)
                     line_data['data'][entry['year']] = formatted_year_data
 
@@ -1930,16 +1954,16 @@ def summary_data(user, effective_date, brokers_or_group, currency_target, number
         # Add Sub-totals line
         sub_totals_line = {'name': 'Sub-total', 'data': {}}
         for year in ['YTD'] + years + ['All-time']:
-            try:
-                if year == 'YTD':
-                    totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers_subgroup], start_date=date(effective_date.year, 1, 1))
-                elif year == 'All-time':
-                    totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers_subgroup])
-                else:
-                    totals[year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers_subgroup], start_date=date(year, 1, 1))
-            except Exception as e:
-                print(f"Error calculating TSR for year {year}: {e}")
-                totals[year]['tsr'] = 'N/R'
+            # try:
+            if year == 'YTD':
+                totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers_subgroup], start_date=date(effective_date.year, 1, 1))
+            elif year == 'All-time':
+                totals[year]['tsr'] = Irr(user.id, effective_date, currency_target, broker_id_list=[broker.id for broker in brokers_subgroup])
+            else:
+                totals[year]['tsr'] = Irr(user.id, date(year, 12, 31), currency_target, broker_id_list=[broker.id for broker in brokers_subgroup], start_date=date(year, 1, 1))
+            # except Exception as e:
+            #     print(f"Error calculating TSR for year {year}: {e}")
+            #     totals[year]['tsr'] = 'N/R'
 
             sub_totals_line['data'][year] = compile_summary_data(totals[year], currency_target, number_of_digits)
         
@@ -2138,7 +2162,8 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
         return performance_data
 
     transactions_df['fx_rate'] = transactions_df.apply(
-        lambda row: FX.get_rate(row['currency'], currency_target, row['date'])['FX'], axis=1
+        # lambda row: FX.get_rate(row['currency'], currency_target, row['date'])['FX'], axis=1
+        lambda row: get_fx_rate(row['currency'], currency_target, row['date']), axis=1
     )
 
     brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).all()
@@ -2205,3 +2230,7 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     performance_data['tsr'] += tsr
 
     return performance_data
+
+@lru_cache(maxsize=None)
+def get_fx_rate(currency, target_currency, date):
+    return FX.get_rate(currency, target_currency, date)['FX']

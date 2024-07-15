@@ -141,8 +141,6 @@ def database_securities(request):
             security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
         
         security.open_position = currency_format(security.open_position, '', 0)
-
-        print("views. database", security)
         
         security.realised = currency_format(security.realized_gain_loss(effective_current_date)['all_time'], security.currency, number_of_digits)
         security.unrealised = currency_format(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)
@@ -272,7 +270,7 @@ def add_security(request):
 
         if form.is_valid():
             isin = form.cleaned_data['ISIN']
-            broker = form.cleaned_data['broker']
+            brokers = form.cleaned_data['custom_brokers']
             
             # Check if the security already exists
             try:
@@ -285,14 +283,16 @@ def add_security(request):
                 # new_security = True
 
             # Attach the security to the broker
-            broker.securities.add(security)
+            for broker_id in brokers:
+                    broker = Brokers.objects.get(id=broker_id)
+                    broker.securities.add(security)
             
-            security = form.save(commit=False)  # Don't save to the database yet
-            security.investor = request.user     # Set the investor field
-            broker = form.cleaned_data['broker']
-            security.save()
+            # security = form.save(commit=False)  # Don't save to the database yet
+            # security.investor = request.user     # Set the investor field
+            # broker = form.cleaned_data['broker']
+            # security.save()
 
-            broker.securities.add(security)
+            # broker.securities.add(security)
 
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
@@ -324,7 +324,6 @@ def edit_item(request, model_class, form_class, item_id, type):
             # Handle attaching security to broker
             if type == 'security':
                 brokers = form.cleaned_data['custom_brokers']
-                print(brokers)
                 for broker_id in brokers:
                     broker = Brokers.objects.get(id=broker_id)
                     broker.securities.add(item)
@@ -393,7 +392,6 @@ def import_transactions(request):
                 
         elif import_type == 'cash':
             transactions = parse_broker_cash_flows(file, currency, broker_id)
-            print("views. database. 363", transactions)
 
         return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each, 'skip_existing': skip_existing})
 
@@ -443,7 +441,7 @@ def process_import_transactions(request):
             filter_kwargs['commission'] = commission
 
         existing_transactions = Transactions.objects.filter(**filter_kwargs)
-        # print("views. database. line 403", existing_transactions)
+        # print("views. database. line 445", existing_transactions)
 
         # If there are any matching transactions, return 'check_required'
         if existing_transactions.exists():
@@ -477,7 +475,7 @@ def process_import_transactions(request):
 
             return JsonResponse({'status': 'success'})
         else:
-            print("Form errors. database. 398", form.errors)
+            print("Form errors. database. 479", form.errors)
             return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)

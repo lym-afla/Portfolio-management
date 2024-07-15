@@ -98,7 +98,7 @@ class PriceForm(forms.ModelForm):
 class SecurityForm(forms.ModelForm):
 
     # broker = forms.ModelChoiceField(
-    #     queryset=None,  # Remove queryset definition here
+    #     queryset=Brokers.objects.none(),  # Use a default empty queryset
     #     widget=forms.Select(attrs={'class': 'form-select'}),
     #     required=True,
     #     label="Broker"
@@ -140,6 +140,9 @@ class SecurityForm(forms.ModelForm):
         
         # Filter brokers based on the investor
         self.fields['custom_brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+        
+        # Set choices dynamically for broker field
+        # self.fields['broker'].queryset = Brokers.objects.filter(investor=investor).order_by('name')
 
         # # If instance exists, pre-select the current brokers
         if self.instance.pk:

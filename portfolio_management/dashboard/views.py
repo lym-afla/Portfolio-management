@@ -4,10 +4,10 @@ import json
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from common.models import Brokers, Transactions, FX
+from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm
 from database.forms import BrokerPerformanceForm
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, summary_data, dashboard_summary_over_time
+from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, brokers_summary_data, dashboard_summary_over_time
 
 @login_required
 def dashboard(request):
@@ -16,7 +16,6 @@ def dashboard(request):
 
     user = request.user
     
-    # global selected_brokers
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
     currency_target = user.default_currency
@@ -89,6 +88,7 @@ def dashboard(request):
     start_t = time.time()
 
     financial_table_context = dashboard_summary_over_time(user, effective_current_date, selected_brokers, currency_target)
+    print("views. dashboard. 91", financial_table_context)
     # Formatting outputs
     for index in range(len(financial_table_context['lines'])):
         if financial_table_context['lines'][index]['name'] == 'TSR':
@@ -97,6 +97,7 @@ def dashboard(request):
         else:
             financial_table_context['lines'][index] = currency_format_dict_values(financial_table_context['lines'][index], currency_target, number_of_digits)
     print("views. dashboard. Time taken for summary table calcs", time.time() - start_t)
+    print("views. dashboard. 100", financial_table_context)
 
     start_t = time.time()
 
@@ -162,50 +163,62 @@ def nav_chart_data_request(request):
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
 
-def summary_view(request):
-    user = request.user
+# def summary_view(request):
+#     user = request.user
     
-    # global selected_brokers
-    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+#     # global selected_brokers
+#     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
-    currency_target = user.default_currency
-    number_of_digits = user.digits
-    selected_brokers = user.custom_brokers
+#     currency_target = user.default_currency
+#     number_of_digits = user.digits
+#     selected_brokers = user.custom_brokers
 
-    sidebar_padding = 0
-    sidebar_width = 0
+#     sidebar_padding = 0
+#     sidebar_width = 0
 
-    sidebar_width = request.GET.get("width")
-    sidebar_padding = request.GET.get("padding")
+#     sidebar_width = request.GET.get("width")
+#     sidebar_padding = request.GET.get("padding")
 
-    # print("views. dashboard", effective_current_date)
+#     # print("views. dashboard", effective_current_date)
 
-    initial_data = {
-        'selected_brokers': selected_brokers,
-        'default_currency': currency_target,
-        'table_date': effective_current_date,
-        'digits': number_of_digits
-    }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+#     initial_data = {
+#         'selected_brokers': selected_brokers,
+#         'default_currency': currency_target,
+#         'table_date': effective_current_date,
+#         'digits': number_of_digits
+#     }
+#     dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
-    user_brokers = Brokers.objects.filter(investor=user)
+#     user_brokers = Brokers.objects.filter(investor=user)
 
-    contexts = summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
+#     broker_table_contexts = brokers_summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
 
-    buttons = ['settings']
+#     # exposure_table_contexts = exposure_summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
 
-    context = {
-        'sidebar_width': sidebar_width,
-        'sidebar_padding': sidebar_padding,
-        'currency': currency_target,
-        'table_date': effective_current_date,
-        'brokers': Brokers.objects.filter(investor=user).all(),
-        'selectedBrokers': selected_brokers,
-        'dashboardForm': dashboard_form,
-        'buttons': buttons,
-        'public_markets_context': contexts['public_markets_context'],
-        'restricted_investments_context': contexts['restricted_investments_context'],
-        'total_context': contexts['total_context']
-    }
+#     first_year = AnnualPerformance.objects.filter(
+#         investor=user,
+#         broker__in=user_brokers
+#     ).order_by('year').first().year
+#     last_exit_date = get_last_exit_date_for_brokers([broker.id for broker in user_brokers], effective_current_date)
+#     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
-    return render(request, 'summary.html', context)
+#     exposure_table_years = list(range(first_year, last_year + 1))
+
+#     buttons = ['settings']
+
+#     context = {
+#         'sidebar_width': sidebar_width,
+#         'sidebar_padding': sidebar_padding,
+#         'currency': currency_format('', currency_target, 0),
+#         'table_date': effective_current_date,
+#         'brokers': Brokers.objects.filter(investor=user).all(),
+#         'selectedBrokers': selected_brokers,
+#         'dashboardForm': dashboard_form,
+#         'buttons': buttons,
+#         'unrestricted_investments_context': broker_table_contexts['public_markets_context'],
+#         'restricted_investments_context': broker_table_contexts['restricted_investments_context'],
+#         'total_context': broker_table_contexts['total_context'],
+#         'exposure_table_years': exposure_table_years
+#     }
+
+#     return render(request, 'summary.html', context)

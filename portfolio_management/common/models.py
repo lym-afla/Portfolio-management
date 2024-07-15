@@ -200,7 +200,7 @@ class Brokers(models.Model):
                     )
                 )
             )['balance']
-            balance[cur] = query or 0
+            balance[cur] = Decimal(round(query, 2)) if query else Decimal(0)
         return balance
     
     def __str__(self):
@@ -211,7 +211,7 @@ class Assets(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='assets')
     type = models.CharField(max_length=15, choices=ASSET_TYPE_CHOICES, null=False)
     ISIN = models.CharField(max_length=12)
-    name = models.CharField(max_length=30, null=False)
+    name = models.CharField(max_length=50, null=False)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default='Equity')
     restricted = models.BooleanField(default=False, null=False)
@@ -233,8 +233,8 @@ class Assets(models.Model):
         # print(f"models.py. line 134. {query}")
         if broker_id_list is not None:
             query = query.filter(broker_id__in=broker_id_list)
-        total_quantity = round(query.aggregate(total=models.Sum('quantity'))['total'], 6)
-        return total_quantity or 0
+        total_quantity = query.aggregate(total=models.Sum('quantity'))['total']
+        return Decimal(round(total_quantity, 6)) if total_quantity else Decimal(0)
 
     # The very first investment date
     def investment_date(self, broker_id_list=None):
@@ -300,77 +300,78 @@ class Assets(models.Model):
             float: The calculated buy-in price. Returns None if an error occurs.
         """
         
-        try:
+        # try:
 
-            is_long_position = None
+        is_long_position = None
 
-            transactions = self.transactions.filter(
-                quantity__isnull=False,  # Filter out transactions where quantity is not empty
-                date__lte=date
-            ).values('price', 'quantity', 'date', 'currency')
+        transactions = self.transactions.filter(
+            quantity__isnull=False,  # Filter out transactions where quantity is not empty
+            date__lte=date
+        ).values('price', 'quantity', 'date', 'currency')
 
-            if broker_id_list is not None:
-                transactions = transactions.filter(broker_id__in=broker_id_list) 
-            
-            if not transactions:
-                return None
+        if broker_id_list is not None:
+            transactions = transactions.filter(broker_id__in=broker_id_list) 
+        
+        if not transactions:
+            return None
 
-            # Step 2: Get latest entry date
-            entry_date = self.entry_dates(date, broker_id_list)[-1]
+        # Step 2: Get latest entry date
+        entry_date = self.entry_dates(date, broker_id_list)[-1]
 
-            if start_date and start_date > entry_date:
-                entry_date = start_date
+        if start_date and start_date > entry_date:
+            entry_date = start_date
 
-                transactions = transactions.filter(date__gte=entry_date)
-                position = self.position(entry_date, broker_id_list)
-                if position != 0:
-                    transactions = list(transactions) + [{
-                        'price': self.price_at_date(entry_date).price,
-                        'quantity': position,
-                        'date': entry_date,
-                        'currency': self.currency,
-                    }]
-                    is_long_position = position > 0
-            else:
-                transactions = transactions.filter(date__gte=entry_date)
+            transactions = transactions.filter(date__gte=entry_date)
+            position = self.position(entry_date, broker_id_list)
+            if position != 0:
+                transactions = list(transactions) + [{
+                    'price': self.price_at_date(entry_date).price,
+                    'quantity': position,
+                    'date': entry_date,
+                    'currency': self.currency,
+                }]
+                is_long_position = position > 0
+        else:
+            transactions = transactions.filter(date__gte=entry_date)
 
-            if is_long_position is None:
-                first_transaction = transactions.order_by('date').first()
+        if is_long_position is None:
+            first_transaction = transactions.order_by('date').first()
+            if first_transaction:
                 is_long_position = first_transaction['quantity'] > 0
 
-            # Step 3: Amend the calculation method. For every entry transaction buy-in price is the weighted average of previous buy-in price and price for the current transaction.
-            value_entry = 0
-            quantity_entry = 0
+        # Step 3: Amend the calculation method. For every entry transaction buy-in price is the weighted average of previous buy-in price and price for the current transaction.
+        value_entry = Decimal(0)
+        quantity_entry = Decimal(0)
+        previous_entry_price = Decimal(0)
 
-            for transaction in transactions:
+        for transaction in transactions:
+            
+            if currency is not None:
+                fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+            else:
+                fx_rate = 1
+
+            if fx_rate:
+                current_price = transaction['price'] * fx_rate
+                weight_current = transaction['quantity']
+
+                # Calculate entry price
+                previous_entry_price = value_entry / quantity_entry if quantity_entry != 0 else 0
+                weight_entry_previous = quantity_entry
+                # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
+                entry_price = current_price if (is_long_position and transaction['quantity'] > 0) or (not is_long_position and transaction['quantity'] < 0) else previous_entry_price
                 
-                if currency is not None:
-                    fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+                if (weight_entry_previous + weight_current) == 0:
+                    entry_price = previous_entry_price
                 else:
-                    fx_rate = 1
+                    entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
+                quantity_entry += transaction['quantity']
+                value_entry = entry_price * quantity_entry
+        return Decimal(value_entry / quantity_entry) if quantity_entry else previous_entry_price
 
-                if fx_rate:
-                    current_price = transaction['price'] * fx_rate
-                    weight_current = transaction['quantity']
-
-                    # Calculate entry price
-                    previous_entry_price = value_entry / quantity_entry if quantity_entry else 0
-                    weight_entry_previous = quantity_entry
-                    # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
-                    entry_price = current_price if (is_long_position and transaction['quantity'] > 0) or (not is_long_position and transaction['quantity'] < 0) else previous_entry_price
-                    
-                    if (weight_entry_previous + weight_current) == 0:
-                        entry_price = previous_entry_price
-                    else:
-                        entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
-                    quantity_entry += transaction['quantity']
-                    value_entry = entry_price * quantity_entry
-
-            return value_entry / quantity_entry if quantity_entry else previous_entry_price
-
-        except Exception as e:
-            print(f"Error: {e}")
-            return None
+        # except Exception as e:
+        #     print(f"Error when calculating buy-in price for {self.name}: {e}")
+        #     return None
 
     def realized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
         """
@@ -416,11 +417,12 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
                     if fx_rate:
                         total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
-                total_gl_before_current_position -= self.price_at_date(start_date, currency).price * self.position(start_date)
+                if start_date is not None:
+                    total_gl_before_current_position -= self.price_at_date(start_date, currency).price * self.position(start_date)
             else:
                 total_gl_before_current_position = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
                 if start_date is not None:
-                    total_gl_before_current_position = -total_gl_before_current_position - self.price_at_date(start_date).price * self.position(start_date)
+                    total_gl_before_current_position -= self.price_at_date(start_date).price * self.position(start_date)
 
         # Step 3: Determine whether it is a long or short position
         position_at_date = self.position(date)
@@ -450,10 +452,12 @@ class Assets(models.Model):
                 else:
                     print("WARNING: Buy-in price is not available")
                     return None
+                
+        # print("models. line 456", self.name, realized_gain_loss_for_current_position, total_gl_before_current_position)
 
         return {
-            "current_position": round(realized_gain_loss_for_current_position, 2),
-            "all_time": round(total_gl_before_current_position + realized_gain_loss_for_current_position, 2)
+            "current_position": Decimal(round(realized_gain_loss_for_current_position, 2)),
+            "all_time": Decimal(round(total_gl_before_current_position + realized_gain_loss_for_current_position, 2))
         }
     
     def unrealized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
@@ -484,7 +488,7 @@ class Assets(models.Model):
             if fx_rate:
                 unrealized_gain_loss += (current_price - buy_in_price) * fx_rate * (current_position)
         
-        return round(unrealized_gain_loss, 2)
+        return Decimal(round(unrealized_gain_loss, 2))
     
     def get_capital_distribution(self, date, currency=None, broker_id_list=None, start_date=None):
         """
@@ -508,9 +512,9 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(dividend.currency, currency, dividend.date)['FX']
                     if fx_rate:
                         total_dividends += dividend.cash_flow * fx_rate
-            return round(total_dividends, 2)
+            return Decimal(round(total_dividends, 2))
         else:
-            return 0
+            return Decimal(0)
         
     def get_commission(self, date, currency=None, broker_id_list=None, start_date=None):
         """
@@ -533,9 +537,9 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(commission.currency, currency, commission.date)['FX']
                     if fx_rate:
                         total_commission += commission.commission * fx_rate
-            return round(total_commission, 2)
+            return Decimal(round(total_commission, 2))
         else:
-            return 0
+            return Decimal(0)
 
     def __str__(self):
         return self.name  # Define how the broker is represented as a string
@@ -549,7 +553,7 @@ class Transactions(models.Model):
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
     date = models.DateField(null=False)
     quantity = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    price = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)

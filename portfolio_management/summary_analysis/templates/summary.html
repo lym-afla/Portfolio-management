@@ -7,6 +7,8 @@
     <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script>
     <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/fixedcolumns/4.0.1/js/dataTables.fixedColumns.min.js"></script>
 
+    <script src="{% static 'js/summary.js' %}"></script>
+
 {% endblock script %}
 
 {% block title %}
@@ -30,7 +32,7 @@
                 <thead>
                     <tr>
                         <th rowspan="2" class="fixed-column"></th>
-                        {% for year in public_markets_context.years %}
+                        {% for year in unrestricted_investments_context.years %}
                             <th colspan="8" class="colspan text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">
                                 {% if year == "YTD" %}{{ table_date|date:'Y' }}{% endif %}{{ year }}
                             </th>
@@ -38,7 +40,7 @@
                         {% endfor %}
                     </tr>
                     <tr>
-                        {% for year in public_markets_context.years %}
+                        {% for year in unrestricted_investments_context.years %}
                             <th class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">BoP NAV</th>
                             <th class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">Cash-in/(out)</th>
                             <th class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}">Return</th>
@@ -53,7 +55,7 @@
                 <tbody>
                     <tr>
                         <td class="fixed-column fw-bold h6">Public markets</td>
-                        {% for year in public_markets_context.years %}
+                        {% for year in unrestricted_investments_context.years %}
                             <td></td>
                             <td></td>
                             <td></td>
@@ -65,10 +67,10 @@
                             {% if year != "All-time" %}<td></td>{% endif %}
                         {% endfor %}
                     </tr>
-                    {% for line in public_markets_context.lines %}
+                    {% for line in unrestricted_investments_context.lines %}
                         <tr>
                             <td class="fixed-column{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ line.name }}</td>
-                            {% for year in public_markets_context.years %}
+                            {% for year in unrestricted_investments_context.years %}
                                 {% with line.data|get_item:year as year_data %}
                                     <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" or line.name == "TOTAL" %} fw-bold {% endif %}">{{ year_data|get_item:"BoP NAV" }}</td>
                                     <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data|get_item:"Cash-in/out" }}</td>
@@ -100,7 +102,7 @@
                     {% for line in restricted_investments_context.lines %}
                         <tr>
                             <td class="fixed-column{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ line.name }}</td>
-                            {% for year in public_markets_context.years %}
+                            {% for year in unrestricted_investments_context.years %}
                                 {% with line.data|get_item:year as year_data %}
                                     <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" or line.name == "TOTAL" %} fw-bold {% endif %}">{{ year_data|get_item:"BoP NAV" }}</td>
                                     <td class="text-center {% if year == "YTD" or year == "All-time" %}highlight-column{% endif %}{% if line.name == "Sub-total" %} fw-bold {% endif %}">{{ year_data|get_item:"Cash-in/out" }}</td>
@@ -134,5 +136,56 @@
                 </tbody>
             </table>
         </div>
+
+        <h5 class="mt-5">Portfolio breakdown</h5>
+        <hr>
+        <div class="row mb-2">
+            <div class="col-3">
+                <h6 for="exposureTableYear" class="form-label">Year</h6>
+                <select class="form-select" name="exposureTable" id="exposureTableYear">
+                    {% for year in exposure_table_years %}
+                        <option value="{{ year }}">{{ year }}</option>
+                    {% endfor %}
+                    <option value="All-time">All-time</option>
+                    <option value="YTD" selected>YTD</option>
+                </select>
+            </div>
+        </div>
+        <div class="table-container">
+            <div id="loadingIndicatorExposureTable">
+                <div class="spinner"></div>
+                <p>Updating...</p>
+            </div>
+            <table class="table table-hover align-middle summary-over-time-table" id="table-portfolio-breakdown">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="fixed-column">Asset Class</th>
+                        <th rowspan="2" class="text-center">Cost</th>
+                        <th colspan="2" class="text-center">Unrealized</th>
+                        <th rowspan="2" class="text-center">Market value</th>
+                        <th rowspan="2" class="fst-italic text-center">% of portfolio</th>
+                        <th colspan="2" class="text-center">Realized</th>
+                        <th colspan="2" class="text-center">Capital distribution</th>
+                        <th colspan="2" class="text-center">Commission</th>
+                        <th colspan="2" class="text-center">Total</th>
+                    </tr>
+                    <tr>
+                        <th class="text-center">({{ currency }})</th>
+                        <th class="fst-italic text-center">(%)</th>
+                        <th class="text-center">({{ currency }})</th>
+                        <th class="fst-italic text-center">(%)</th>
+                        <th class="text-center">({{ currency }})</th>
+                        <th class="fst-italic text-center">(%)</th>
+                        <th class="text-center">({{ currency }})</th>
+                        <th class="fst-italic text-center">(%)</th>
+                        <th class="text-center">({{ currency }})</th>
+                        <th class="fst-italic text-center">(%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+
     </div>
 {% endblock content %}

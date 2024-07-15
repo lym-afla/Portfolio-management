@@ -52,7 +52,7 @@
                         <hr>
                         <ul class="nav nav-pills flex-column mb-auto flex-grow-1">
                             <li class="nav-item"{% if request.path == '/summary/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
-                                <a href="{% url 'summary_view' %}" aria-current="page">
+                                <a href="{% url 'summary_analysis:summary_view' %}" aria-current="page">
                                     <img src="{% static 'icons/database.svg' %}" alt="Summary" class="nav-icon" title="Summary" height="30px" width="30px">
                                 </a>
                             </li>
@@ -99,7 +99,7 @@
                     <hr>
                     <ul class="nav nav-pills flex-column mb-auto flex-grow-1">
                         <li>
-                            <a href="{% url 'summary_view' %}" class="nav-link {% if request.path == '/summary/' %}active{% else %}link-dark{% endif %}">Summary</a>
+                            <a href="{% url 'summary_analysis:summary_view' %}" class="nav-link {% if request.path == '/summary/' %}active{% else %}link-dark{% endif %}">Summary</a>
                         </li>
                         <hr>
                         <li>

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'closed_positions',
     'transactions',
     'database',
+    'summary_analysis',
 
     'django.contrib.admin',
     'django.contrib.auth',

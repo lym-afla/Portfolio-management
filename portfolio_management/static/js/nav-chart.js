@@ -71,7 +71,6 @@ async function updateChart(chart) {
 
     // Show loading indicator
     document.getElementById('loadingIndicatorNAVChart').style.display = 'flex';
-    // document.getElementById('NAVBarChart').style.display = 'none';
 
     const frequency = document.querySelector('input[name="chartFrequency"]:checked').value;
     const from = document.getElementById("chartDateFrom").value;
@@ -81,7 +80,6 @@ async function updateChart(chart) {
 
     // Hide loading indicator and show chart
     document.getElementById('loadingIndicatorNAVChart').style.display = 'none';
-    // document.getElementById('NAVBarChart').style.display = 'block';
 
     chart.data.labels = chartData.labels;
     chart.data.datasets = chartData.datasets;

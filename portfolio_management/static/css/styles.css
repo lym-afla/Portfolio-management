@@ -40,6 +40,7 @@ nav.d-flex.text-center {
     overflow-x: auto;
     margin-bottom: 1rem;
     max-width: 100%;
+    position: relative;
 }
 
 .summary-over-time-table {
@@ -262,20 +263,28 @@ h2 {
     left: 0;
 }
 
-#loadingIndicatorNAVChart {
+#loadingIndicatorNAVChart, #loadingIndicatorExposureTable {
     display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* transform: translate(-50%, -50%); */
     z-index: 1000; /* Ensure it's above other content */
     background-color: rgba(255, 255, 255, 0.8); /* Optional: Add a semi-transparent background */
     padding: 20px;
     border-radius: 10px;
 }
+
+#loadingIndicatorExposureTable.show {
+    display: flex; /* show when.show class is added */
+  }
+
+
 
 #nav-chart {
     position: relative;

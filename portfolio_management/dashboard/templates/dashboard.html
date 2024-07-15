@@ -7,7 +7,7 @@
     <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
     <script type="text/javascript" language="javascript" src="https://cdn.datatables.net/1.12.1/js/dataTables.bootstrap5.min.js"></script>
 
-    {% comment %} <script src="{% static 'js/dashboard.js' %}"></script> {% endcomment %}
+    <script src="{% static 'js/dashboard.js' %}"></script>
     {% comment %} <script src="{% static 'js/transaction-form.js' %}"></script> {% endcomment %}
     <script src="{% static 'js/nav-chart.js' %}"></script>
 
@@ -29,7 +29,7 @@
     </script>
 
     <script>
-        $(document).ready(function() {
+        {% comment %} $(document).ready(function() {
             $('#updateBrokerPerformanceDatabase').click(function() {
                 console.log('update-broker-performance-database button clicked');
                 $('#updateBrokerPerformanceDatabaseModal').modal('show');
@@ -69,22 +69,8 @@
                 }
                 errorAlert.text(message).show();
             }
-        });
+        }); {% endcomment %}
     </script>
-
-    {% comment %} <script>
-        $(document).ready(function() {
-            var table = $('#financialSummaryTable').DataTable({
-                "scrollX": true,
-                "paging": false,
-                "searching": false,
-                "info": false
-            });
-        
-            // Scroll to the far right
-            $('.dataTables_scrollBody').scrollLeft($('.dataTables_scrollBody')[0].scrollWidth);
-        });
-        </script> {% endcomment %}
 
 {% endblock script %}
 
