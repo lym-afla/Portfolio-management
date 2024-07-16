@@ -1,0 +1,28 @@
+{% for asset in portfolio_open %}    
+    <tr>
+        <td class="text-start">{{ asset.type }}</td>
+        <td class="text-start">{{ asset.name }}</td>
+        <td class="text-center">{{ asset.currency | upper }}</td>
+        <td class="text-center">{{ asset.current_position }}</td>
+        <td class="text-center text-nowrap">{{ asset.investment_date|date:'j-M-y' }}</td>
+        <td class="text-center">{{ asset.entry_price }}</td>
+        <td class="text-center">{{ asset.entry_value }}</td>
+        <td></td>
+        <td class="text-center">{{ asset.current_price }}</td>
+        <td class="text-center">{{ asset.current_value }}</td>
+        <td class="text-center fst-italic">{{ asset.share_of_portfolio }}</td>
+        <td class="text-center">{{ asset.realized_gl }}</td>
+        <td class="text-center">{{ asset.unrealized_gl }}</td>
+        <td class="text-center fst-italic">{{ asset.price_change_percentage }}</td>
+        <td></td>
+        <td class="text-center">{{ asset.capital_distribution }}</td>
+        <td class="text-center fst-italic">{{ asset.capital_distribution_percentage }}</td>
+        <td></td>
+        <td class="text-center">{{ asset.commission }}</td>
+        <td class="text-center fst-italic">{{ asset.commission_percentage }}</td>
+        <td></td>
+        <td class="text-center">{{ asset.total_return_amount }}</td>
+        <td class="text-center fst-italic">{{ asset.total_return_percentage }}</td>
+        <td class="text-center fst-italic">{{ asset.irr }}</td>
+    </tr>
+{% endfor %}

@@ -4,13 +4,13 @@ from django.db.models import Sum
 from django.db.models.functions import Abs
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from common.models import Brokers, Assets, Transactions
 from common.forms import DashboardForm
 from constants import TOLERANCE
 from utils import calculate_open_table_output, currency_format, get_last_exit_date_for_brokers
 
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
 
 import json
 
@@ -90,7 +90,7 @@ def open_positions(request):
 
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
     
-    return render(request, 'open-positions.html', {
+    return render(request, 'open_positions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
         # 'portfolio_open': portfolio_open,
@@ -109,7 +109,6 @@ def open_positions(request):
 def update_open_positions_table(request):
     data = json.loads(request.body)
     timespan = data.get('timespan')
-    # broker_id = data.get('broker_id')
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
@@ -157,48 +156,35 @@ def update_open_positions_table(request):
                                                                    currency_target,
                                                                    selected_brokers,
                                                                    number_of_digits,
-                                                                   start_date
+                                                                   start_date=None
                                                                    )
-    # Convert the portfolio_open to a list of dictionaries for JSON serialization
-    portfolio_open_data = []
-    for asset in portfolio_open:
-        asset_data = {
-            'id': asset.id,
-            'investment_date': asset.investment_date,
-            'current_value': asset.current_value,
-            'realized_gl': asset.realized_gl,
-            'unrealized_gl': asset.unrealized_gl,
-            'capital_distribution': asset.capital_distribution,
-            'commission': asset.commission,
-            'entry_value': asset.entry_value,
-            'current_position': asset.current_position,
-            'entry_price': asset.entry_price,
-            'current_price': asset.current_price,
-            'share_of_portfolio': asset.share_of_portfolio,
-            'price_change_percentage': asset.price_change_percentage,
-            'capital_distribution_percentage': asset.capital_distribution_percentage,
-            'commission_percentage': asset.commission_percentage,
-            'total_return_amount': asset.total_return_amount,
-            'total_return_percentage': asset.total_return_percentage,
-            'irr': asset.irr,
-        }
-        portfolio_open_data.append(asset_data)
 
-    print("views. open positions. 187", portfolio_open_data, portfolio_open_totals)
+    context = {
+        'portfolio_open': portfolio_open,
+        'portfolio_open_totals': portfolio_open_totals,
+        'currency': currency_target,
+        'number_of_digits': number_of_digits,
+    }
+
+    tbody_html = render_to_string('open_positions_tbody.html', context)
+    tfoot_html = render_to_string('open_positions_tfoot.html', context)
+
+    print("views. open. 172", tbody_html)
+    cash_balances = get_cash_balances(user, timespan, effective_current_date)
 
     return JsonResponse({
         'ok': True,
-        'data': portfolio_open_data,
-        'totals': portfolio_open_totals
+        'tbody': tbody_html,
+        'tfoot': tfoot_html,
+        'cash_balances': cash_balances
     })
 
-@require_POST
-def get_cash_balances(request):
-    data = json.loads(request.body)
-    timespan = data.get('timespan')
+def get_cash_balances(user, timespan, effective_current_date):
+    # data = json.loads(request.body)
+    # timespan = data.get('timespan')
     
-    user = request.user
-    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    # user = request.user
+    # effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     selected_brokers = user.custom_brokers
     
     # Process the data based on the timespan
@@ -230,7 +216,9 @@ def get_cash_balances(request):
     # Convert Decimal objects to strings for JSON serialization
     serializable_balances = {currency_format('', currency, 0): str(balance) for currency, balance in aggregated_balances.items()}
 
-    return JsonResponse({
-        'ok': True,
-        'cash_balances': serializable_balances
-    })
+    return serializable_balances
+
+    # return JsonResponse({
+    #     'ok': True,
+    #     'cash_balances': serializable_balances
+    # })
