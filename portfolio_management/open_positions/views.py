@@ -156,7 +156,7 @@ def update_open_positions_table(request):
                                                                    currency_target,
                                                                    selected_brokers,
                                                                    number_of_digits,
-                                                                   start_date=None
+                                                                   start_date
                                                                    )
 
     context = {
@@ -169,7 +169,6 @@ def update_open_positions_table(request):
     tbody_html = render_to_string('open_positions_tbody.html', context)
     tfoot_html = render_to_string('open_positions_tfoot.html', context)
 
-    print("views. open. 172", tbody_html)
     cash_balances = get_cash_balances(user, timespan, effective_current_date)
 
     return JsonResponse({

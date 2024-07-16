@@ -45,6 +45,8 @@ $(document).ready(function() {
                     console.log(response.tbody);
                     // openPositionsTable.rows.add($(response.tbody)).draw();
                     updateCashBalances(response.cash_balances);
+
+                    // openPositionsTable.draw();
                 }
             },
             error: function(xhr, status, error) {
