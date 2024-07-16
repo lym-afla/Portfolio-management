@@ -48,9 +48,9 @@ def transactions(request):
         transaction.balances = {}
         for currency in currencies:
             if transaction.currency == currency:
-                balance[currency] = balance.get(currency,0) - round(Decimal((transaction.price or 0)) * Decimal((transaction.quantity or 0)) \
-                    + Decimal((transaction.cash_flow or 0)) \
-                        + Decimal((transaction.commission or 0)), 2)
+                balance[currency] = balance.get(currency,0) - round(Decimal(transaction.price or 0) * Decimal(transaction.quantity or 0) \
+                    - Decimal(transaction.cash_flow or 0) \
+                        - Decimal(transaction.commission or 0), 2)
             else:
                 balance[currency] = balance.get(currency,0)
             transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)

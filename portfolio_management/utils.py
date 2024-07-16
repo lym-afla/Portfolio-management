@@ -645,16 +645,18 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
         if start_date is None:
             start_date = position_entry_date
             
-        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, start_date)
-        asset.entry_value = asset.entry_price * asset.current_position
+        asset.entry_price = xx = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, start_date)
+        asset.entry_value = round(asset.entry_price * asset.current_position, 2)
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
         
         # print(f'utils.py. LIne 508. Entry date: {entry_date}')
         
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(end_date, currency_used).price
-            asset.current_value = asset.current_price * asset.current_position
+            asset.current_value = round(asset.current_price * asset.current_position, 2)
             asset.share_of_portfolio = asset.price_at_date(end_date, currency_used).price * asset.current_position / portfolio_NAV
+
+            print("utils. 659", asset.current_position, xx, asset.current_price, asset.entry_value, asset.current_value)
             
             # Formatting
             asset.current_price = currency_format(asset.current_price, asset.currency if use_default_currency else currency_target, number_of_digits)
@@ -978,7 +980,7 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                 entry_quantity += abs(transaction.quantity)
 
             position['entry_price'] = entry_value / entry_quantity if entry_quantity else Decimal(0)
-            position['entry_value'] = entry_value
+            position['entry_value'] = round(Decimal(entry_value), 2)
 
             # Calculate exit value and quantity
             exit_value = Decimal(0)
@@ -989,9 +991,9 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                 exit_quantity += abs(transaction.quantity)
 
             position['exit_price'] = exit_value / exit_quantity if exit_quantity else Decimal(0)
-            position['exit_value'] = exit_value
+            position['exit_value'] = round(Decimal(exit_value), 2)
 
-            print("utils. 994", entry_value, exit_value, entry_quantity, exit_quantity)
+            # print("utils. 994", entry_value, exit_value, entry_quantity, exit_quantity)
 
             # Calculate realized gain/loss
             if 'realized_gl' in categories:

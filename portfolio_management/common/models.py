@@ -372,7 +372,7 @@ class Assets(models.Model):
                     entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
                 quantity_entry += transaction['quantity']
                 value_entry = entry_price * quantity_entry
-        return Decimal(value_entry / quantity_entry) if quantity_entry else previous_entry_price
+        return round(Decimal(value_entry / quantity_entry), 6) if quantity_entry else previous_entry_price
 
         # except Exception as e:
         #     print(f"Error when calculating buy-in price for {self.name}: {e}")
