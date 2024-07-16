@@ -43,42 +43,6 @@ def open_positions(request):
     }
     dashboard_form = DashboardForm(instance=user, initial=initial_data)
 
-    # Portfolio at [date] - assets with non zero positions
-    # portfolio_open = Assets.objects.filter(
-    #     investor=user,
-    #     transactions__date__lte=effective_current_date,
-    #     transactions__broker_id__in=selected_brokers
-    # ).prefetch_related(
-    #     'transactions'
-    # ).annotate(
-    #     total_quantity=Sum('transactions__quantity')
-    # ).exclude(total_quantity=0)
-
-    # portfolio_open = Assets.objects.filter(
-    #     investor=user,
-    #     transactions__date__lte=effective_current_date,
-    #     transactions__broker_id__in=selected_brokers
-    # ).prefetch_related(
-    #     'transactions'
-    # ).annotate(
-    #     abs_total_quantity=Abs(Sum('transactions__quantity'))
-    # ).exclude(
-    #     abs_total_quantity__lt=TOLERANCE
-    # )
-
-    # print(f"open_positions.views. line 48. Portfolio_open: {portfolio_open}")
-
-    # categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
-
-    # portfolio_open, portfolio_open_totals = calculate_open_table_output(user.id, portfolio_open,
-    #                                                                effective_current_date,
-    #                                                                categories,
-    #                                                                use_default_currency,
-    #                                                                currency_target,
-    #                                                                selected_brokers,
-    #                                                                number_of_digits
-    #                                                                )
-
     first_year = Transactions.objects.filter(
         investor=user,
         broker__in=selected_brokers
@@ -93,8 +57,6 @@ def open_positions(request):
     return render(request, 'open_positions.html', {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
-        # 'portfolio_open': portfolio_open,
-        # 'portfolio_open_totals': portfolio_open_totals,
         'brokers': user_brokers,
         'currency': currency_target,
         'table_date': effective_current_date,
@@ -146,6 +108,8 @@ def update_open_positions_table(request):
     ).exclude(
         abs_total_quantity__lt=TOLERANCE
     )
+
+    print("views. open. 150", portfolio_open)
     
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id
@@ -162,8 +126,6 @@ def update_open_positions_table(request):
     context = {
         'portfolio_open': portfolio_open,
         'portfolio_open_totals': portfolio_open_totals,
-        'currency': currency_target,
-        'number_of_digits': number_of_digits,
     }
 
     tbody_html = render_to_string('open_positions_tbody.html', context)
@@ -179,11 +141,7 @@ def update_open_positions_table(request):
     })
 
 def get_cash_balances(user, timespan, effective_current_date):
-    # data = json.loads(request.body)
-    # timespan = data.get('timespan')
-    
-    # user = request.user
-    # effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+
     selected_brokers = user.custom_brokers
     
     # Process the data based on the timespan
@@ -212,12 +170,8 @@ def get_cash_balances(user, timespan, effective_current_date):
         except Brokers.DoesNotExist:
             continue  # Skip brokers that do not exist for the user
 
+    number_of_digits = user.digits
     # Convert Decimal objects to strings for JSON serialization
-    serializable_balances = {currency_format('', currency, 0): str(balance) for currency, balance in aggregated_balances.items()}
+    serializable_balances = {currency_format('', currency, 0): currency_format(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
 
     return serializable_balances
-
-    # return JsonResponse({
-    #     'ok': True,
-    #     'cash_balances': serializable_balances
-    # })

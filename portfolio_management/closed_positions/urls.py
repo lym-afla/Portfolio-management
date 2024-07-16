@@ -7,4 +7,5 @@ urlpatterns = [
     path('', views.closed_positions, name='closed_positions'),
 
     # API methods
+    path('update_table/', views.update_closed_positions_table, name='update_closed_positions_table'),
 ]

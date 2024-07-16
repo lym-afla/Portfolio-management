@@ -1,0 +1,26 @@
+{% for position in portfolio_closed %}    
+    <tr>
+        <td class="text-start">{{ position.type }}</td>
+        <td class="text-start">{{ position.name }}</td>
+        <td class="text-center">{{ position.currency | upper }}</td>
+        <td class="text-center">{{ position.max_position }}</td>
+        <td class="text-center">{{ position.investment_date|date:'j-M-y' }}</td>
+        <td class="text-center">{{ position.entry_price }}</td>
+        <td></td>
+        <td class="text-center">{{ position.exit_date|date:'j-M-y' }}</td>
+        <td class="text-center">{{ position.exit_price }}</td>
+        <td></td>
+        <td class="text-center">{{ position.realized_gl }}</td>
+        <td class="text-center fst-italic">{{ position.price_change_percentage }}</td>
+        <td></td>
+        <td class="text-center">{{ position.capital_distribution }}</td>
+        <td class="text-center fst-italic">{{ position.capital_distribution_percentage }}</td>
+        <td></td>
+        <td class="text-center">{{ position.commission }}</td>
+        <td class="text-center fst-italic">{{ position.commission_percentage }}</td>
+        <td></td>
+        <td class="text-center">{{ position.total_return_amount }}</td>
+        <td class="text-center fst-italic">{{ position.total_return_percentage }}</td>
+        <td class="text-center fst-italic">{{ position.irr }}</td>
+    </tr>
+{% endfor %}

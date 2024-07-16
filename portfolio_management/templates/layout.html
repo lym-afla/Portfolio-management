@@ -71,12 +71,12 @@
                                     <img src="{% static 'icons/briefcase.svg' %}" alt="Bootstrap" class="nav-icon" title="Dashboard" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li class="nav-item"{% if request.path == '/open-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/open_positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href="{% url 'open_positions:open_positions' %}">
                                     <img src="{% static 'icons/clipboard2-check.svg' %}" alt="Open positions" class="nav-icon" title="Open" height="30px" width="30px">
                                 </a>
                             </li>
-                            <li class="nav-item"{% if request.path == '/closed-positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
+                            <li class="nav-item"{% if request.path == '/closed_positions/' %} style="background-color: #e9ecef; border-radius: 0.5rem" {% endif %}>
                                 <a href={% url 'closed_positions:closed_positions' %}>
                                     <img src="{% static 'icons/clipboard2-x.svg' %}" alt="Closed positions" class="nav-icon" title="Closed" height="30px" width="30px">
                                 </a>
@@ -115,10 +115,10 @@
                             <a href="{% url 'dashboard:dashboard' %}" class="nav-link {% if request.path == '/dashboard/' %}active{% else %}link-dark{% endif %}">Dashboard</a>
                         </li>
                         <li>
-                            <a href="{% url 'open_positions:open_positions' %}" class="nav-link {% if request.path == '/open-positions/' %}active{% else %}link-dark{% endif %}">Open</a>
+                            <a href="{% url 'open_positions:open_positions' %}" class="nav-link {% if request.path == '/open_positions/' %}active{% else %}link-dark{% endif %}">Open</a>
                         </li>
                         <li>
-                            <a href="{% url 'closed_positions:closed_positions' %}" class="nav-link {% if request.path == '/closed-positions/' %}active{% else %}link-dark{% endif %}">Closed</a>
+                            <a href="{% url 'closed_positions:closed_positions' %}" class="nav-link {% if request.path == '/closed_positions/' %}active{% else %}link-dark{% endif %}">Closed</a>
                         </li>
                         <li>
                             <a href="{% url 'transactions:transactions' %}" class="nav-link {% if request.path == '/transactions/' %}active{% else %}link-dark{% endif %}">Transactions</a>

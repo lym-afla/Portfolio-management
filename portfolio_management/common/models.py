@@ -265,18 +265,23 @@ class Assets(models.Model):
 
         return entry_dates
 
-    def exit_dates(self, date, broker_id_list=None):
+    def exit_dates(self, end_date, broker_id_list=None, start_date=None):
         """
         Returns a list of dates when the position changes from non-zero to 0.
         """
-        transactions = self.transactions.filter(date__lte=date, quantity__isnull=False)
+        transactions = self.transactions.filter(date__lte=end_date, quantity__isnull=False)
         if broker_id_list is not None:
             transactions = transactions.filter(broker_id__in=broker_id_list)
+        if start_date is not None:
+            transactions = transactions.filter(date__gte=start_date)
         
         transactions = transactions.order_by('date')
 
         exit_dates = []
-        position = 0
+        if start_date is not None:
+            position = self.position(start_date, broker_id_list)
+        else:
+            position = 0
 
         for transaction in transactions:
             new_position = position + transaction.quantity
@@ -565,7 +570,7 @@ class Transactions(models.Model):
 class Prices(models.Model):
     date = models.DateField(null=False)
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name='prices')
-    price = models.DecimalField(max_digits=10, decimal_places=2, null=False)
+    price = models.DecimalField(max_digits=15, decimal_places=6, null=False)
 
     def __str__(self):
         return f"{self.security.name} is at {self.price} on {self.date}"

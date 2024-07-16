@@ -7,6 +7,9 @@ $(document).ready(function() {
 
     $(document).on('submit', '#brokerPerformanceForm', function(event) {
         event.preventDefault();
+
+        showSpinner();
+
         $.ajax({
             type: 'POST',
             url: "/database/update_broker_performance/",
@@ -20,6 +23,7 @@ $(document).ready(function() {
                 } else {
                     // Handle success response with error message
                     showError(response.error || 'An unknown error occurred.');
+                    hideSpinner();
                 }
             },
             error: function(xhr, status, error) {

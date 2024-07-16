@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
@@ -47,16 +48,16 @@ def transactions(request):
         transaction.balances = {}
         for currency in currencies:
             if transaction.currency == currency:
-                balance[currency] = balance.get(currency,0) - (transaction.price or 0) * (transaction.quantity or 0) \
-                    + (transaction.cash_flow or 0) \
-                        + (transaction.commission or 0)
+                balance[currency] = balance.get(currency,0) - round(Decimal((transaction.price or 0)) * Decimal((transaction.quantity or 0)) \
+                    + Decimal((transaction.cash_flow or 0)) \
+                        + Decimal((transaction.commission or 0)), 2)
             else:
                 balance[currency] = balance.get(currency,0)
             transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
 
         # Prepare data for passing to the front-end
         if transaction.quantity:
-            transaction.value = currency_format(-transaction.quantity * transaction.price + (transaction.commission or 0), transaction.currency, number_of_digits)
+            transaction.value = currency_format(-round(Decimal(transaction.quantity * transaction.price), 2) + (transaction.commission or 0), transaction.currency, number_of_digits)
             transaction.quantity = abs(round(transaction.quantity, 0))
         if transaction.cash_flow:
             transaction.cash_flow = currency_format(transaction.cash_flow, transaction.currency, number_of_digits)
