@@ -88,7 +88,6 @@ def dashboard(request):
     start_t = time.time()
 
     financial_table_context = dashboard_summary_over_time(user, effective_current_date, selected_brokers, currency_target)
-    print("views. dashboard. 91", financial_table_context)
     # Formatting outputs
     for index in range(len(financial_table_context['lines'])):
         if financial_table_context['lines'][index]['name'] == 'TSR':
@@ -97,7 +96,6 @@ def dashboard(request):
         else:
             financial_table_context['lines'][index] = currency_format_dict_values(financial_table_context['lines'][index], currency_target, number_of_digits)
     print("views. dashboard. Time taken for summary table calcs", time.time() - start_t)
-    print("views. dashboard. 100", financial_table_context)
 
     start_t = time.time()
 
