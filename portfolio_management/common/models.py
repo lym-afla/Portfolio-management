@@ -188,19 +188,26 @@ class Brokers(models.Model):
     # Cash balance at date
     def balance(self, date):
         balance = {}
-        for cur in self.get_currencies():
-            query = self.transactions.filter(broker_id=self.id, currency=cur, date__lte=date).aggregate(
-                balance=models.Sum(
-                    models.Case(
-                        models.When(quantity__isnull=False, then=-1*models.F('quantity')*models.F('price')),
-                        models.When(cash_flow__isnull=False, then=models.F('cash_flow')),
-                        models.When(commission__isnull=False, then=models.F('commission')),
-                        default=0,
-                        output_field=models.DecimalField()
-                    )
-                )
-            )['balance']
-            balance[cur] = Decimal(round(query, 2)) if query else Decimal(0)
+        # for cur in self.get_currencies():
+        #     query = self.transactions.filter(broker_id=self.id, currency=cur, date__lte=date).aggregate(
+        #         balance=models.Sum(
+        #             models.Case(
+        #                 models.When(quantity__isnull=False, then=-1*models.F('quantity')*models.F('price')),
+        #                 models.When(cash_flow__isnull=False, then=models.F('cash_flow')),
+        #                 models.When(commission__isnull=False, then=models.F('commission')),
+        #                 default=0,
+        #                 output_field=models.DecimalField()
+        #             )
+        #         )
+        #     )['balance']
+        #     balance[cur] = round(Decimal(query), 2) if query else Decimal(0)
+
+        # This approach in order to match how balances are calculated in 'transactions' app after each transaction
+        transactions = self.transactions.filter(date__lte=date)
+        for transaction in transactions:
+            balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - round(Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
+            - Decimal(transaction.cash_flow or 0) \
+                - Decimal(transaction.commission or 0)), 2)
         return balance
     
     def __str__(self):
