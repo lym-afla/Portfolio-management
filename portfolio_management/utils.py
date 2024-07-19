@@ -86,6 +86,8 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
         current_value = round(security.position(date, broker_ids) * security.price_at_date(date, target_currency).price, 2)
         # current_value = calculate_security_nav(security, date, target_currency)
 
+        print("utils. 89", security.name, current_value)
+
         if 'Broker' in breakdown:
             for broker in get_brokers_for_security(user_id, security.id):
                 update_analysis(analysis['Broker'], broker.name, current_value)
@@ -645,19 +647,19 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
         if start_date is None:
             start_date = position_entry_date
             
-        asset.entry_price = xx = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, start_date)
+        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, start_date)
         asset.entry_value = round(asset.entry_price * asset.current_position, 2)
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
-        
+
         # print(f'utils.py. LIne 508. Entry date: {entry_date}')
         
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(end_date, currency_used).price
             asset.current_value = round(asset.current_price * asset.current_position, 2)
             asset.share_of_portfolio = asset.price_at_date(end_date, currency_used).price * asset.current_position / portfolio_NAV
-
-            print("utils. 659", asset.current_position, xx, asset.current_price, asset.entry_value, asset.current_value)
             
+            print("utils. 654", asset.name, asset.current_value)
+
             # Formatting
             asset.current_price = currency_format(asset.current_price, asset.currency if use_default_currency else currency_target, number_of_digits)
             asset.current_value = currency_format(asset.current_value, asset.currency if use_default_currency else currency_target, number_of_digits)
@@ -2365,8 +2367,83 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     tsr = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
     performance_data['tsr'] += tsr
 
+    # Solve FX not zero due to rounding
+    performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
+
     return performance_data
 
 @lru_cache(maxsize=None)
 def get_fx_rate(currency, target_currency, date):
     return FX.get_rate(currency, target_currency, date)['FX']
+
+def end_of_year_price_correction(user, year, broker_name, target_nav, asset_name):
+    
+    target_nav = round(Decimal(target_nav), 2)
+    
+    # Get the broker
+    try:
+        broker = Brokers.objects.get(name=broker_name)
+    except Brokers.DoesNotExist:
+        return {"error": f"Broker {broker_name} does not exist."}
+
+    # Get the asset
+    try:
+        asset = Assets.objects.get(name=asset_name)
+    except Assets.DoesNotExist:
+        return {"error": f"Asset {asset_name} does not exist."}
+
+    # Calculate end of year date
+    end_of_year_date = datetime.date(year, 12, 31)
+
+    # Fetch NAV at the end of the year
+    nav_at_end_of_year = NAV_at_date(user.id, [broker.id], end_of_year_date, asset.currency, [])['Total NAV']
+    if nav_at_end_of_year is None:
+        return {"error": f"No NAV found for broker {broker_name} at the end of {year}."}
+
+    # Fetch asset price and position at the end of the year
+    price_at_end_of_year = asset.price_at_date(end_of_year_date)
+    if not price_at_end_of_year:
+        return {"error": f"No price found for asset {asset_name} at the end of {year}."}
+
+    position_at_end_of_year = asset.position(end_of_year_date, [broker.id])
+
+    # Calculate new price
+    old_price = price_at_end_of_year.price
+    new_price = old_price + ((target_nav - nav_at_end_of_year) / position_at_end_of_year)
+
+    # Display information
+    old_asset_value = round(Decimal(old_price * position_at_end_of_year), 2)
+    new_asset_value = round(Decimal(new_price * position_at_end_of_year), 2)
+
+    result = {
+        "old_price": old_price,
+        "new_price": new_price,
+        "old_asset_value": old_asset_value,
+        "new_asset_value": new_asset_value,
+        "old_nav": nav_at_end_of_year,
+        "target_nav": target_nav
+    }
+
+    print(f"Old Price: {result['old_price']}, New Price: {result['new_price']}")
+    print(f"Old Asset Value: {result['old_asset_value']}, New Asset Value: {result['new_asset_value']}")
+    print(f"Old NAV: {result['old_nav']}, Target NAV: {result['target_nav']}")
+
+    # Ask for confirmation
+    confirm = input("Do you want to update the price? (yes/no): ")
+
+    if confirm.lower() == 'yes':
+        # Update the price
+        price_instance, created = Prices.objects.get_or_create(
+            security=asset, date=end_of_year_date,
+            defaults={'price': new_price}
+        )
+        if not created:
+            price_instance.price = new_price
+            price_instance.save()
+
+        result["status"] = "Price updated successfully."
+        print("New price is:", price_instance.price)
+    else:
+        result["status"] = "Price update canceled."
+
+    return result

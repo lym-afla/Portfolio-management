@@ -46,7 +46,7 @@
                     </button>
                     <select class="form-select" id="brokerSelect" aria-label="Select Broker">
                         {% for broker in brokers %}
-                            <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
+                            <option value="{{ broker.id }}" {% if broker.id|stringformat:"d" in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
                         {% endfor %}
                     </select>
                     <button class="btn btn-outline-secondary" id="nextBroker">
@@ -72,10 +72,10 @@
                         <option value="{{ year }}">{{ year }}</option>
                     {% endfor %}
                     <option value="All-time" selected>All-time</option>
-                    <option value="YTD">YTD</option>
+                    <option value="YTD">{{ table_date|date:"Y" }}YTD</option>
                 </select>
             </div>
-            <div class="col-1">
+            <div class="col-1 text-center">
                 <div class="vr h-100"></div>
             </div>
         </div>

@@ -93,7 +93,7 @@
                     </button>
                     <select class="form-select" id="brokerSelect" aria-label="Select Broker">
                         {% for broker in brokers %}
-                            <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
+                            <option value="{{ broker.id }}" {% if broker.id|stringformat:"d" in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
                         {% endfor %}
                     </select>
                     <button class="btn btn-outline-secondary" id="nextBroker">

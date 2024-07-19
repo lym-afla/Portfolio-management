@@ -96,8 +96,8 @@ def update_open_positions_table(request):
         transactions__broker_id__in=selected_brokers
     )
 
-    if start_date is not None:
-        portfolio_open = portfolio_open.filter(transactions__date__gte=start_date)
+    # if start_date is not None:
+    #     portfolio_open = portfolio_open.filter(transactions__date__gte=start_date)
 
     portfolio_open = portfolio_open.filter(
         transactions__date__lte=end_date,
@@ -108,8 +108,6 @@ def update_open_positions_table(request):
     ).exclude(
         abs_total_quantity__lt=TOLERANCE
     )
-
-    print("views. open. 150", portfolio_open)
     
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id
