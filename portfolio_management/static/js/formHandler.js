@@ -539,7 +539,7 @@ function updateDataForBroker() {
         success: function(response) {
             if (response.ok) {
                 // hideSpinner();
-                updateBrokerHeader();
+                // updateBrokerHeader();
                 window.location.reload(); // Reload the page upon successful update
             } else {
                 console.error('Failed to update data for broker');
@@ -558,6 +558,7 @@ function switchBroker(direction) {
     const newIndex = currentIndex + direction;
 
     if (newIndex >= 0 && newIndex < $('#brokerSelect')[0].options.length) {
+        updateBrokerHeader();
         $('#brokerSelect')[0].selectedIndex = newIndex;
         updateDataForBroker();
     }
