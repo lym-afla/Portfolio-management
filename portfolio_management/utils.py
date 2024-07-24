@@ -797,7 +797,8 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
             }
 
             # Use start_date as entry_date if provided, otherwise use the asset's first entry date
-            entry_date = start_date if start_date else asset.entry_dates(exit_date, selected_brokers)[-1]
+            first_entry_date = asset.entry_dates(exit_date, selected_brokers)[-1]
+            entry_date = start_date if start_date and start_date >= first_entry_date else first_entry_date
             position['investment_date'] = entry_date
 
             asset_transactions = asset.transactions.filter(
@@ -820,8 +821,8 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
 
             # Calculate entry value and quantity
             if start_date is not None:
-                entry_quantity = asset.position(start_date, selected_brokers)
-                entry_value = asset.price_at_date(start_date, currency_used).price * entry_quantity
+                entry_quantity = asset.position(entry_date - timedelta(days=1), selected_brokers)
+                entry_value = asset.price_at_date(entry_date - timedelta(days=1), currency_used).price * entry_quantity
             else:
                 entry_value = Decimal(0)
                 entry_quantity = Decimal(0)
@@ -900,8 +901,6 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
         if 'commission' in categories:
             portfolio_closed_totals['commission_percentage'] = portfolio_closed_totals['commission'] / portfolio_closed_totals['entry_value']
         portfolio_closed_totals['total_return_percentage'] = portfolio_closed_totals['total_return_amount'] / abs(portfolio_closed_totals['entry_value'])
-
-    portfolio_closed_totals['irr'] = format_percentage(Irr(user_id, exit_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date), number_of_digits)
 
     # Format portfolio totals
     portfolio_closed_totals = currency_format_dict_values(portfolio_closed_totals, currency_target, number_of_digits)
@@ -1157,7 +1156,62 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
 
     return transactions
 
+def import_asset_prices_from_csv(file_path, investor_id):
+    # Read the CSV file
+    df = pd.read_csv(file_path)
 
+    # Convert the 'date' column to datetime format
+    df['date'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
+
+    # Get column names (asset names) excluding 'date'
+    asset_names = [col for col in df.columns if col != 'date']
+    print(asset_names)
+
+    # Create a dictionary to store asset_name to asset_id mapping
+    asset_name_to_id = {}
+
+    # Check if assets exist for the investor and create the mapping
+    for asset_name in asset_names:
+        try:
+            asset = Assets.objects.get(investor_id=investor_id, name=asset_name)
+            asset_name_to_id[asset_name] = asset.id
+        except Assets.DoesNotExist:
+            print(f"Warning: Asset '{asset_name}' not found for investor {investor_id}")
+
+    # Iterate through the DataFrame
+    for index, row in df.iterrows():
+        date = row['date'].date()
+        
+        # Iterate through each asset column
+        for asset_name in asset_names:
+            price = row[asset_name]
+            
+            if pd.isna(price):
+                continue
+            
+            asset_id = asset_name_to_id.get(asset_name)
+            if asset_id is None:
+                continue  # We've already printed a warning, so just skip this asset
+
+            price_data = {
+                'date': date,
+                'security_id': asset_id,
+                'price': Decimal(str(price)),
+            }
+
+            # print(price_data)
+
+            # Update or create the Price entry
+            try:
+                price_instance, created = Prices.objects.update_or_create(
+                    date=price_data['date'], 
+                    security_id=price_data['security_id'],
+                    defaults=price_data
+                )
+                print(f"{'Created' if created else 'Updated'} price for asset {asset_name} on date {date}")
+            except IntegrityError as e:
+                print(f"Error updating price for asset {asset_name} on date {date}: {e}")
+                
 def import_FX_from_csv(file_path):
     # Read the CSV file
     df = pd.read_csv(file_path)
@@ -2120,7 +2174,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
 
     logger.info(f"Completed updating annual performance for investor {user.id}")
 
-def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
+def calculate_performance_OLD(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
     performance_data = {name: Decimal(0) for name in [
         "bop_nav", "invested", "cash_out", "price_change", "capital_distribution",
         "commission", "tax", "fx", "eop_nav", "tsr"
@@ -2148,11 +2202,10 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     transactions = transactions.values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
 
     transactions_df = pd.DataFrame(list(transactions))
-    if transactions_df.empty:
-        return performance_data
+    # if transactions_df.empty:
+    #     return performance_data
 
     transactions_df['fx_rate'] = transactions_df.apply(
-        # lambda row: FX.get_rate(row['currency'], currency_target, row['date'])['FX'], axis=1
         lambda row: get_fx_rate(row['currency'], currency_target, row['date']), axis=1
     )
 
@@ -2221,6 +2274,82 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     performance_data['tsr'] = tsr
 
     # Solve FX not zero due to rounding
+    performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
+
+    return performance_data
+
+def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
+    performance_data = {name: Decimal(0) for name in [
+        "bop_nav", "invested", "cash_out", "price_change", "capital_distribution",
+        "commission", "tax", "fx", "eop_nav", "tsr"
+    ]}
+
+    brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).all()
+
+    for broker in brokers:
+        # Calculate BOP NAV
+        bop_nav = AnnualPerformance.objects.filter(
+            investor=user, broker=broker, year=start_date.year - 1, currency=currency_target
+        ).values('eop_nav').first()
+        
+        if not bop_nav:
+            bop_nav = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
+        else:
+            bop_nav = bop_nav['eop_nav']
+        
+        performance_data['bop_nav'] += bop_nav
+
+        # Filter transactions
+        transactions = Transactions.objects.filter(
+            investor=user,
+            broker_id=broker.id,
+            date__gte=start_date,
+            date__lte=end_date,
+        )
+
+        if is_restricted is not None:
+            transactions = (transactions.filter(security__isnull=False, security__restricted=is_restricted) |
+                            transactions.filter(security__isnull=True))
+
+        transactions_df = pd.DataFrame(list(transactions.values('cash_flow', 'type', 'commission', 'date', 'currency')))
+
+        if not transactions_df.empty:
+            transactions_df['fx_rate'] = transactions_df.apply(
+                lambda row: get_fx_rate(row['currency'], currency_target, row['date']), axis=1
+            )
+
+            # Calculate transaction-based metrics
+            performance_data['invested'] += round((transactions_df[transactions_df['type'] == 'Cash in']['cash_flow'] * 
+                                                   transactions_df[transactions_df['type'] == 'Cash in']['fx_rate']).sum(), 2)
+            performance_data['cash_out'] += round((transactions_df[transactions_df['type'] == 'Cash out']['cash_flow'] * 
+                                                   transactions_df[transactions_df['type'] == 'Cash out']['fx_rate']).sum(), 2)
+            performance_data['commission'] += round((transactions_df['commission'] * transactions_df['fx_rate']).sum(), 2)
+            performance_data['tax'] += round((transactions_df[transactions_df['type'] == 'Tax']['cash_flow'] * 
+                                              transactions_df[transactions_df['type'] == 'Tax']['fx_rate']).sum(), 2)
+
+        # Calculate asset-based metrics
+        assets = Assets.objects.filter(investor=user, brokers=broker)
+        if is_restricted is not None:
+            assets = assets.filter(restricted=is_restricted)
+
+        for asset in assets:
+            asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['price_change'] += asset_realized_gl["all_time"] if asset_realized_gl else 0
+            performance_data['price_change'] += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+
+        # Calculate EOP NAV
+        eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
+        performance_data['eop_nav'] += eop_nav
+
+        # Calculate FX impact
+        components_sum = sum(performance_data[key] for key in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax'])
+        performance_data['fx'] += eop_nav - components_sum
+
+    # Calculate TSR
+    performance_data['tsr'] = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
+
+    # Adjust FX for rounding errors
     performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
 
     return performance_data
