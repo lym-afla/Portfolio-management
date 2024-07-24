@@ -82,50 +82,12 @@ class FX(models.Model):
                         fx_rate *= quote
                     else:
                         fx_rate /= quote
-                    #     try:
-                    #         fx_call = cls.objects.filter(
-                    #             date__lte=date,
-                    #             **{f'{i_source}{i_target}__isnull': False}
-                    #         ).values(
-                    #             'date', quote=F(f'{i_source}{i_target}')
-                    #         ).order_by("-date").first()
-                    #     except:
-                    #         raise ValueError
-                    #     try:
-                    #         fx_rate *= fx_call['quote']
-                    #     except:
-                    #         fx_rate *= cls.objects.filter(
-                    #             date__lte=date,
-                    #             **{f'{i_source}{i_target}__isnull': False}
-                    #         ).values(
-                    #             'date', quote=F(f'{i_source}{i_target}')
-                    #         ).order_by("date").first()
-                    # else:
-                    #     try:
-                    #         fx_call = cls.objects.filter(
-                    #             date__lte=date,
-                    #             **{f'{i_target}{i_source}__isnull': False}
-                    #         ).values(
-                    #             'date', quote=F(f'{i_target}{i_source}')
-                    #         ).order_by("-date").first()
-                    #         # print("models. 74", source, target, date, fx_call)
-                    #     except:
-                    #         raise ValueError
-                    #     try:
-                    #         fx_rate /= fx_call['quote']
-                    #     except:
-                    #         fx_rate /= cls.objects.filter(
-                    #             date__gte=date,
-                    #             **{f'{i_target}{i_source}__isnull': False}
-                    #         ).values(
-                    #             'date', quote=F(f'{i_target}{i_source}')
-                    #         ).order_by("date").first()
                     dates_list.append(fx_call['date'])
                     dates_async = (dates_list[0] != fx_call['date']) or dates_async
                     break
         
         # The target is to multiply when using, not divide
-        fx_rate = round(1 / fx_rate, 6)
+        fx_rate = round(Decimal(1 / fx_rate), 6)
                 
         return {
             'FX': fx_rate,
@@ -188,19 +150,17 @@ class Brokers(models.Model):
     # Cash balance at date
     def balance(self, date):
         balance = {}
-        for cur in self.get_currencies():
-            query = self.transactions.filter(broker_id=self.id, currency=cur, date__lte=date).aggregate(
-                balance=models.Sum(
-                    models.Case(
-                        models.When(quantity__isnull=False, then=-1*models.F('quantity')*models.F('price')),
-                        models.When(cash_flow__isnull=False, then=models.F('cash_flow')),
-                        models.When(commission__isnull=False, then=models.F('commission')),
-                        default=0,
-                        output_field=models.DecimalField()
-                    )
-                )
-            )['balance']
-            balance[cur] = Decimal(round(query, 2)) if query else Decimal(0)
+
+        # This approach in order to match how balances are calculated in 'transactions' app after each transaction
+        transactions = self.transactions.filter(date__lte=date)
+        for transaction in transactions:
+            balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
+            - Decimal(transaction.cash_flow or 0) \
+                - Decimal(transaction.commission or 0))
+            
+        for key, value in balance.items():
+            balance[key] = round(Decimal(value), 2)
+
         return balance
     
     def __str__(self):
@@ -329,12 +289,12 @@ class Assets(models.Model):
             transactions = transactions.filter(date__gte=entry_date)
             position = self.position(entry_date, broker_id_list)
             if position != 0:
-                transactions = list(transactions) + [{
+                transactions = [{
                     'price': self.price_at_date(entry_date).price,
                     'quantity': position,
                     'date': entry_date,
                     'currency': self.currency,
-                }]
+                }] + list(transactions)
                 is_long_position = position > 0
         else:
             transactions = transactions.filter(date__gte=entry_date)

@@ -161,6 +161,6 @@ def update_data_for_broker(request):
         
     return JsonResponse({'ok': False, 'error': 'Invalid request method'})
 
-    # Redirect to the same page to refresh it
-    return redirect(request.META.get('HTTP_REFERER'))
+    # # Redirect to the same page to refresh it
+    # return redirect(request.META.get('HTTP_REFERER'))
 

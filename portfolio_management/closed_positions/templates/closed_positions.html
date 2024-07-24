@@ -37,26 +37,7 @@
 
 {% block content %}
 
-    <div class="container-fluid">
-        <div class="row">
-            <div class="col">
-                <div class="input-group">
-                    <button class="btn btn-outline-secondary" id="prevBroker">
-                        <i class="bi bi-arrow-left"></i> <!-- Bootstrap icon for left arrow -->
-                    </button>
-                    <select class="form-select" id="brokerSelect" aria-label="Select Broker">
-                        {% for broker in brokers %}
-                            <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary" id="nextBroker">
-                        <i class="bi bi-arrow-right"></i> <!-- Bootstrap icon for right arrow -->
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <hr>
+    {% include "snippets/broker_selection_header.html" %}
 
     <div class="content-header">
         {% include "snippets/buttons-settings-header.html" %}
@@ -71,11 +52,12 @@
                     {% for year in closed_table_years %}
                         <option value="{{ year }}">{{ year }}</option>
                     {% endfor %}
+                    <hr>
                     <option value="All-time" selected>All-time</option>
-                    <option value="YTD">YTD</option>
+                    <option value="YTD">{{ table_date|date:"Y" }}YTD</option>
                 </select>
             </div>
-            <div class="col-1">
+            <div class="col-1 text-center">
                 <div class="vr h-100"></div>
             </div>
         </div>
@@ -111,9 +93,9 @@
                     </tr>
                     <tr>
                         <th class="text-center">Date</th>
-                        <th class="text-center">Price</th>
+                        <th class="text-center">Value</th>
                         <th class="text-center">Date</th>
-                        <th class="text-center">Price</th>
+                        <th class="text-center">Value</th>
                         <th class="text-center">Amount</th>
                         <th class="text-center">%</th>
                         <th class="text-center">Amount</th>

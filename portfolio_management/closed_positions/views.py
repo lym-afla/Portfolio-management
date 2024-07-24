@@ -65,11 +65,19 @@ def closed_positions(request):
     first_year = Transactions.objects.filter(
         investor=user,
         broker__in=selected_brokers
-    ).order_by('date').first().date.year
+    ).order_by('date').first()
+    
+    # Addressing empty broker
+    if first_year:
+        first_year = first_year.date.year
+
     last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
-    closed_table_years = list(range(first_year, last_year + 1))
+    if first_year is not None:
+        closed_table_years = list(range(first_year, last_year + 1))
+    else:
+        closed_table_years = []
     
     return render(request, 'closed_positions.html', {
         'sidebar_width': sidebar_width,

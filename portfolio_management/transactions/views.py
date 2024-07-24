@@ -46,18 +46,28 @@ def transactions(request):
     for transaction in transactions:
         # transaction.balances = [0 for _ in range(len(currencies))]
         transaction.balances = {}
-        for currency in currencies:
-            if transaction.currency == currency:
-                balance[currency] = balance.get(currency,0) - round(Decimal(transaction.price or 0) * Decimal(transaction.quantity or 0) \
-                    - Decimal(transaction.cash_flow or 0) \
-                        - Decimal(transaction.commission or 0), 2)
-            else:
-                balance[currency] = balance.get(currency,0)
-            transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
+        # for currency in currencies:
+        #     if transaction.currency == currency:
+        #         balance[currency] = balance.get(currency, Decimal(0)) - round(Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
+        #             - Decimal(transaction.cash_flow or 0) \
+        #                 - Decimal(transaction.commission or 0)), 2)
+        #     else:
+        #         balance[currency] = balance.get(currency, Decimal(0))
+        #     transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
+
+        # for currency in currencies:
+        #     if transaction.currency == currency:
+        balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
+            - Decimal(transaction.cash_flow or 0) \
+                - Decimal(transaction.commission or 0))
+            # else:
+            #     balance[transaction.currency] = balance.get(transaction.currency, Decimal(0))
+        transaction.balances[transaction.currency] = currency_format(balance[transaction.currency], transaction.currency, number_of_digits)
 
         # Prepare data for passing to the front-end
         if transaction.quantity:
             transaction.value = currency_format(-round(Decimal(transaction.quantity * transaction.price), 2) + (transaction.commission or 0), transaction.currency, number_of_digits)
+            transaction.price = currency_format(transaction.price, transaction.currency, number_of_digits)
             transaction.quantity = abs(round(transaction.quantity, 0))
         if transaction.cash_flow:
             transaction.cash_flow = currency_format(transaction.cash_flow, transaction.currency, number_of_digits)

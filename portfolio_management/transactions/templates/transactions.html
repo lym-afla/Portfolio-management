@@ -36,26 +36,7 @@
 
 {% block content %}
 
-    <div class="container-fluid">
-        <div class="row">
-            <div class="col">
-                <div class="input-group">
-                    <button class="btn btn-outline-secondary" id="prevBroker">
-                        <i class="bi bi-arrow-left"></i> <!-- Bootstrap icon for left arrow -->
-                    </button>
-                    <select class="form-select" id="brokerSelect" aria-label="Select Broker">
-                        {% for broker in brokers %}
-                            <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-outline-secondary" id="nextBroker">
-                        <i class="bi bi-arrow-right"></i> <!-- Bootstrap icon for right arrow -->
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <hr>
+    {% include "snippets/broker_selection_header.html" %}
 
     <div class="content-header">
         {% include "snippets/buttons-settings-header.html" with type="transaction" %}

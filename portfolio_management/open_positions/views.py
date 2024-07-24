@@ -33,7 +33,7 @@ def open_positions(request):
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
 
-    print("views. open positions. 30", effective_current_date)
+    print("views. open positions. 30", effective_current_date, selected_brokers)
 
     initial_data = {
         'selected_brokers': selected_brokers,
@@ -46,11 +46,19 @@ def open_positions(request):
     first_year = Transactions.objects.filter(
         investor=user,
         broker__in=selected_brokers
-    ).order_by('date').first().date.year
+    ).order_by('date').first()
+    
+    # Addressing empty broker
+    if first_year:
+        first_year = first_year.date.year
+
     last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
-    open_table_years = list(range(first_year, last_year + 1))
+    if first_year is not None:
+        open_table_years = list(range(first_year, last_year + 1))
+    else:
+        open_table_years = []
 
     buttons = ['transaction', 'broker', 'price', 'security', 'settings']
     
@@ -96,8 +104,8 @@ def update_open_positions_table(request):
         transactions__broker_id__in=selected_brokers
     )
 
-    if start_date is not None:
-        portfolio_open = portfolio_open.filter(transactions__date__gte=start_date)
+    # if start_date is not None:
+    #     portfolio_open = portfolio_open.filter(transactions__date__gte=start_date)
 
     portfolio_open = portfolio_open.filter(
         transactions__date__lte=end_date,
@@ -108,8 +116,6 @@ def update_open_positions_table(request):
     ).exclude(
         abs_total_quantity__lt=TOLERANCE
     )
-
-    print("views. open. 150", portfolio_open)
     
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id
@@ -171,6 +177,7 @@ def get_cash_balances(user, timespan, effective_current_date):
             continue  # Skip brokers that do not exist for the user
 
     number_of_digits = user.digits
+    
     # Convert Decimal objects to strings for JSON serialization
     serializable_balances = {currency_format('', currency, 0): currency_format(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
 
