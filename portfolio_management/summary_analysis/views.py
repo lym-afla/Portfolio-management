@@ -6,7 +6,7 @@ from django.shortcuts import render
 
 from common.forms import DashboardForm
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-from utils import brokers_summary_data, currency_format, format_percentage, get_fx_rate, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids, brokers_summary_data, currency_format, format_percentage, get_fx_rate, get_last_exit_date_for_brokers
 
 
 def summary_view(request):
@@ -17,7 +17,7 @@ def summary_view(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = user.custom_brokers
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -58,7 +58,7 @@ def summary_view(request):
         'currency': currency_format('', currency_target, 0),
         'table_date': effective_current_date,
         'brokers': Brokers.objects.filter(investor=user).all(),
-        'selectedBrokers': selected_brokers,
+        'selectedBrokers': user.custom_brokers,
         'dashboardForm': dashboard_form,
         'buttons': buttons,
         'unrestricted_investments_context': broker_table_contexts['public_markets_context'],

@@ -772,7 +772,11 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
             portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return_amount'] / abs(portfolio_open_totals['entry_value'])
     
     portfolio_open_totals['cash'] = portfolio_cash
-    portfolio_open_totals['cash_share_of_portfolio'] = format_percentage(portfolio_cash / portfolio_NAV)
+    if portfolio_NAV == 0:
+            portfolio_open_totals['cash_share_of_portfolio'] = 'N/A'
+    else:
+        portfolio_open_totals['cash_share_of_portfolio'] = format_percentage(portfolio_cash / portfolio_NAV)
+    # portfolio_open_totals['cash_share_of_portfolio'] = format_percentage(portfolio_cash / portfolio_NAV)
     
     # Format totals
     portfolio_open_totals = currency_format_dict_values(portfolio_open_totals, currency_target, number_of_digits)
@@ -1211,7 +1215,7 @@ def import_asset_prices_from_csv(file_path, investor_id):
                 print(f"{'Created' if created else 'Updated'} price for asset {asset_name} on date {date}")
             except IntegrityError as e:
                 print(f"Error updating price for asset {asset_name} on date {date}: {e}")
-                
+
 def import_FX_from_csv(file_path):
     # Read the CSV file
     df = pd.read_csv(file_path)
@@ -1634,8 +1638,37 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
 #     return context
 
-def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency_target):
-    start_time = time.time()
+def broker_group_to_ids(brokers_or_group, user):
+    if isinstance(brokers_or_group, str):
+        if brokers_or_group == 'All brokers':
+            # Return all broker IDs for the user
+            return list(Brokers.objects.filter(investor=user).values_list('id', flat=True))
+        elif brokers_or_group in BROKER_GROUPS:
+            # It's a group name
+            selected_brokers = BROKER_GROUPS.get(brokers_or_group)
+            
+            # Filter the group's broker IDs to only include those belonging to the user
+            user_brokers = set(Brokers.objects.filter(investor=user).values_list('id', flat=True))
+            selected_brokers = list(set(selected_brokers) & user_brokers)
+        else:
+            # It might be an individual broker name
+            try:
+                broker = Brokers.objects.get(investor=user, name=brokers_or_group)
+                selected_brokers = [broker.id]
+            except Brokers.DoesNotExist:
+                raise ValueError(f"Invalid broker or group name: {brokers_or_group}")
+    else:
+        # It's a list of broker IDs
+        selected_brokers = brokers_or_group
+        
+        # Ensure all provided broker IDs belong to the user
+        user_brokers = set(Brokers.objects.filter(investor=user).values_list('id', flat=True))
+        if not set(selected_brokers).issubset(user_brokers):
+            raise ValueError("Some of the provided broker IDs do not belong to the user")
+    
+    return selected_brokers
+
+def broker_group_to_simplified(brokers_or_group):
 
     if isinstance(brokers_or_group, str):
         # It's a group name
@@ -1646,7 +1679,27 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     else:
         # It's a list of broker IDs
         selected_brokers = brokers_or_group
-        group_name = None
+
+    return selected_brokers
+
+def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency_target):
+    start_time = time.time()
+
+    print("utils. 1665", brokers_or_group, type(brokers_or_group))
+
+    # selected_brokers = broker_group_to_ids(brokers_or_group, user)
+    selected_brokers = broker_group_to_ids(brokers_or_group, user)
+
+    # if isinstance(brokers_or_group, str):
+    #     # It's a group name
+    #     group_name = brokers_or_group
+    #     selected_brokers = BROKER_GROUPS.get(group_name)
+    #     if not selected_brokers:
+    #         raise ValueError(f"Invalid group name: {group_name}")
+    # else:
+    #     # It's a list of broker IDs
+    #     selected_brokers = brokers_or_group
+    #     group_name = None
 
     # Determine the starting year
     stored_data = AnnualPerformance.objects.filter(

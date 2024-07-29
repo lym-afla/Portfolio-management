@@ -535,7 +535,7 @@ function updateDataForBroker() {
             'X-CSRFToken': getCookie('csrftoken')  // Add CSRF token to headers
         },
         contentType: 'application/json',
-        data: JSON.stringify({ broker_name: selectedBroker }),
+        data: JSON.stringify({ broker_or_group_name: selectedBroker }),
         success: function(response) {
             if (response.ok) {
                 // hideSpinner();

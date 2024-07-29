@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, Transactions
 from common.forms import DashboardForm
-from utils import currency_format
+from utils import broker_group_to_ids, currency_format
 
 @login_required
 def transactions(request):
@@ -15,7 +15,7 @@ def transactions(request):
 
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = user.custom_brokers
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -86,7 +86,7 @@ def transactions(request):
         'currency': currency_target,
         'table_date': effective_current_date,
         'number_of_digits': number_of_digits,
-        'selectedBrokers': selected_brokers,
+        'selectedBrokers': user.custom_brokers,
         'dashboardForm': dashboard_form,
         'buttons': buttons,
     })

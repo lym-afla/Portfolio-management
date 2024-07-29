@@ -1,17 +1,45 @@
 from django import forms
 from common.models import Brokers
+from constants import BROKER_GROUPS
 from users.models import CustomUser
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+class GroupedSelect(forms.Select):
+    def optgroups(self, name, value, attrs=None):
+        groups = []
+        has_selected = False
+
+        for index, (group_name, group_choices) in enumerate(self.choices):
+            if group_choices == '__SEPARATOR__':
+                continue
+            subgroup = []
+            for option_value, option_label in group_choices:
+                selected = self.check_selected(option_value, value)
+                if selected:
+                    has_selected = True
+                selected = has_selected and option_value in value
+                subgroup.append(self.create_option(name, option_value, option_label, selected, index, attrs=attrs))
+            groups.append((group_name, subgroup, index))
+
+        return groups
+
+    # def render_options(self, *args):
+    #     output = super().render_options(*args)
+    #     return output.replace('&lt;hr&gt;', '<hr>')
+    
+    def check_selected(self, option_value, value):
+        if isinstance(value, (list, tuple)):
+            return option_value in value
+        return option_value == value
+    
 class DashboardForm(forms.ModelForm):
-    # selected_brokers = forms.ModelMultipleChoiceField(
-    #     queryset=Brokers.objects.none(),
-    #     widget=forms.SelectMultiple(attrs={'class': 'selectpicker show-tick', 'data-actions-box': 'true', 'data-width': '100%', 'title': 'Choose broker', 'data-selected-text-format': 'count', 'id': 'inputBrokers'}),
-    #     label='Brokers'
-    # )
 
     custom_brokers = forms.ChoiceField(
         choices=[],
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'inputDashboardBrokers'}),
+        widget=GroupedSelect(attrs={'class': 'form-select', 'id': 'inputDashboardBrokers'}),
         label='Brokers',
     )
 
@@ -41,7 +69,41 @@ class DashboardForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Retrieve the currency choices from the model and exclude the empty option
         self.fields['default_currency'].choices = [(choice[0], choice[0]) for choice in CustomUser._meta.get_field('default_currency').choices if choice[0]]
+
+        # Initialize broker choices
+        broker_choices = [
+            ('General', (('All brokers', 'All brokers'),)),
+            ('__SEPARATOR__', '__SEPARATOR__'),
+        ]
+        
         if user is not None:
             brokers = Brokers.objects.filter(investor=user).order_by('name')
-            self.fields['custom_brokers'].choices = [(broker.pk, broker.name) for broker in brokers]
-            self.fields['custom_brokers'].initial = user.custom_brokers
+            user_brokers = [(broker.name, broker.name) for broker in brokers]
+            if user_brokers:
+                broker_choices.append(('Your Brokers', tuple(user_brokers)))
+                broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+        
+        # Add BROKER_GROUPS keys
+        broker_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
+
+        self.fields['custom_brokers'].choices = broker_choices
+        
+        if user is not None:
+            initial_value = user.custom_brokers
+            logger.debug(f"Setting initial value for custom_brokers: {initial_value}")
+            logger.debug(f"Available choices: {[choice for group, choices in broker_choices for choice in choices if choices != '__SEPARATOR__']}")
+            
+            # Check if the initial value is in the choices
+            all_choices = [choice[0] for group, choices in broker_choices for choice in choices if choices != '__SEPARATOR__']
+            if initial_value in all_choices:
+                self.fields['custom_brokers'].initial = initial_value
+            else:
+                logger.warning(f"Initial value '{initial_value}' not found in choices. Defaulting to 'All'.")
+                self.fields['custom_brokers'].initial = 'All'
+            
+            logger.debug(f"Final initial value: {self.fields['custom_brokers'].initial}")
+
+    def clean_custom_brokers(self):
+        value = self.cleaned_data['custom_brokers']
+        logger.debug(f"Cleaned value for custom_brokers: {value}")
+        return value

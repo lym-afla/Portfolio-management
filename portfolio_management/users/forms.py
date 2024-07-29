@@ -2,8 +2,9 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 
-from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from constants import BROKER_GROUPS, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from common.models import Brokers
+from common.forms import GroupedSelect
 from users.models import CustomUser
 
 class SignUpForm(UserCreationForm):
@@ -78,7 +79,7 @@ class UserSettingsForm(forms.ModelForm):
 
     custom_brokers = forms.ChoiceField(
         choices=[],
-        widget=forms.Select(attrs={'class': 'form-select'}),
+        widget=GroupedSelect(attrs={'class': 'form-select'}),
         label='Brokers',
     )
     
@@ -97,9 +98,25 @@ class UserSettingsForm(forms.ModelForm):
         user = kwargs.get('instance')
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
+        # Initialize broker choices
+        broker_choices = [
+            ('General', (('All brokers', 'All brokers'),)),
+            ('__SEPARATOR__', '__SEPARATOR__'),
+        ]
+        
         if user is not None:
             brokers = Brokers.objects.filter(investor=user).order_by('name')
-            self.fields['custom_brokers'].choices = [(broker.pk, broker.name) for broker in brokers]
+            user_brokers = [(broker.name, broker.name) for broker in brokers]
+            if user_brokers:
+                broker_choices.append(('Your Brokers', tuple(user_brokers)))
+                broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+        
+        # Add BROKER_GROUPS keys
+        broker_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
+
+        self.fields['custom_brokers'].choices = broker_choices
+        
+        if user is not None:
             self.fields['custom_brokers'].initial = user.custom_brokers
 
     def clean_digits(self):
