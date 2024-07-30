@@ -1,6 +1,7 @@
 from django import forms
 from common.models import Assets, Brokers, Prices, Transactions
-from constants import CURRENCY_CHOICES
+from constants import BROKER_GROUPS, CURRENCY_CHOICES
+from common.forms import GroupedSelect
 
 class TransactionForm(forms.ModelForm):
     class Meta:
@@ -153,16 +154,21 @@ EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (('All', 'All Currencies'),)
 
 class BrokerPerformanceForm(forms.Form):
 
-    brokers = forms.ModelMultipleChoiceField(
-        queryset=Brokers.objects.all(),
-        widget=forms.SelectMultiple(
-            attrs={
-                'class': 'selectpicker show-tick',
-                'data-actions-box': 'true',
-                'data-width': '100%',
-                'title': 'Choose broker',
-                'data-selected-text-format': 'count',
-            })
+    # brokers = forms.ModelMultipleChoiceField(
+    #     queryset=Brokers.objects.all(),
+    #     widget=forms.SelectMultiple(
+    #         attrs={
+    #             'class': 'selectpicker show-tick',
+    #             'data-actions-box': 'true',
+    #             'data-width': '100%',
+    #             'title': 'Choose broker',
+    #             'data-selected-text-format': 'count',
+    #         })
+    # )
+    broker_or_group = forms.ChoiceField(
+        choices=[],
+        widget=GroupedSelect(attrs={'class': 'form-select'}),
+        label='Brokers',
     )
     currency = forms.ChoiceField(
         choices=EXTENDED_CURRENCY_CHOICES,
@@ -180,4 +186,23 @@ class BrokerPerformanceForm(forms.Form):
     def __init__(self, *args, **kwargs):
         investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
-        self.fields['brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+
+        # self.fields['brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+
+        # Initialize broker choices
+        broker_or_group_choices = [
+            ('General', (('All brokers', 'All brokers'),)),
+            ('__SEPARATOR__', '__SEPARATOR__'),
+        ]
+        
+        if investor is not None:
+            brokers = Brokers.objects.filter(investor=investor).order_by('name')
+            user_brokers = [(broker.name, broker.name) for broker in brokers]
+            if user_brokers:
+                broker_or_group_choices.append(('Your Brokers', tuple(user_brokers)))
+                broker_or_group_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+        
+        # Add BROKER_GROUPS keys
+        broker_or_group_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
+
+        self.fields['broker_or_group'].choices = broker_or_group_choices

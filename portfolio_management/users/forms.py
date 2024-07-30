@@ -79,7 +79,7 @@ class UserSettingsForm(forms.ModelForm):
 
     custom_brokers = forms.ChoiceField(
         choices=[],
-        widget=GroupedSelect(attrs={'class': 'form-select'}),
+        widget=GroupedSelect(attrs={'class': 'form-select', 'id': 'inputBrokers'}),
         label='Brokers',
     )
     

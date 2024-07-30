@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm
 from database.forms import BrokerPerformanceForm
-from utils import NAV_at_date, Irr, broker_group_to_ids, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, brokers_summary_data, dashboard_summary_over_time
+from utils import NAV_at_date, Irr, broker_group_to_ids, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
 
 @login_required
 def dashboard(request):
@@ -89,7 +89,7 @@ def dashboard(request):
     
     print("views. dashboard. 102", selected_brokers, type(selected_brokers), summary['IRR'])
 
-    financial_table_context = dashboard_summary_over_time(user, effective_current_date, selected_brokers, currency_target)
+    financial_table_context = dashboard_summary_over_time(user, effective_current_date, user.custom_brokers, currency_target)
     # Formatting outputs
     for index in range(len(financial_table_context['lines'])):
         if financial_table_context['lines'][index]['name'] == 'TSR':

@@ -1685,7 +1685,7 @@ def broker_group_to_simplified(brokers_or_group):
 def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency_target):
     start_time = time.time()
 
-    print("utils. 1665", brokers_or_group, type(brokers_or_group))
+    # print("utils. 1665", brokers_or_group, type(brokers_or_group))
 
     # selected_brokers = broker_group_to_ids(brokers_or_group, user)
     selected_brokers = broker_group_to_ids(brokers_or_group, user)
@@ -1704,7 +1704,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     # Determine the starting year
     stored_data = AnnualPerformance.objects.filter(
         investor=user,
-        broker__in=selected_brokers,
+        broker_group=brokers_or_group,
         currency=currency_target,
         restricted=None
     )
@@ -2163,18 +2163,21 @@ def compile_summary_data(data, currency_target, number_of_digits):
 def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None):
 
     try:
-        if isinstance(brokers_or_group, str):
-            # It's a group name
-            group_name = brokers_or_group
-            selected_brokers_ids = BROKER_GROUPS.get(group_name)
-            if not selected_brokers_ids:
-                raise ValueError(f"Invalid group name: {group_name}")
-        else:
-            # It's a list of broker IDs
-            selected_brokers_ids = brokers_or_group
-            group_name = None
 
-        print("utils. 2083", selected_brokers_ids, is_restricted)
+        selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
+
+        # if isinstance(brokers_or_group, str):
+        #     # It's a group name
+        #     group_name = brokers_or_group
+        #     selected_brokers_ids = BROKER_GROUPS.get(group_name)
+        #     if not selected_brokers_ids:
+        #         raise ValueError(f"Invalid group name: {group_name}")
+        # else:
+        #     # It's a list of broker IDs
+        #     selected_brokers_ids = brokers_or_group
+        #     group_name = None
+
+        # print("utils. 2083", selected_brokers_ids, is_restricted)
 
         # Determine the starting year
         first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
@@ -2192,31 +2195,43 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
         for year in years:
             with transaction.atomic():
 
-                if group_name:
-                    performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
-                    # Save group performance
-                    performance, created = AnnualPerformance.objects.update_or_create(
-                        investor=user,
-                        broker_group=group_name,
-                        year=year,
-                        currency=currency_target,
-                        restricted=is_restricted,
-                        defaults=performance_data
-                    )
-                    logger.info(f"Updated group performance for investor {user.id}, group {group_name}, year {year}")
-                else:
-                    # Save individual broker performances
-                    for broker_id in selected_brokers_ids:
-                        performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), [broker_id], currency_target, is_restricted)
-                        performance, created = AnnualPerformance.objects.update_or_create(
-                            investor=user,
-                            broker_id=broker_id,
-                            year=year,
-                            currency=currency_target,
-                            restricted=is_restricted,
-                            defaults=performance_data
-                        )
-                    logger.info(f"Updated individual performances for investor {user.id}, broker ids {selected_brokers_ids}, year {year}")
+                performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+                # Save group performance
+                performance, created = AnnualPerformance.objects.update_or_create(
+                    investor=user,
+                    broker_group=brokers_or_group,
+                    year=year,
+                    currency=currency_target,
+                    restricted=is_restricted,
+                    defaults=performance_data
+                )
+                logger.info(f"Updated group performance for investor {user.id}, group {brokers_or_group}, year {year}, currency {currency_target}, restricted {is_restricted}")
+
+                # if group_name:
+                #     performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+                #     # Save group performance
+                #     performance, created = AnnualPerformance.objects.update_or_create(
+                #         investor=user,
+                #         broker_group=group_name,
+                #         year=year,
+                #         currency=currency_target,
+                #         restricted=is_restricted,
+                #         defaults=performance_data
+                #     )
+                #     logger.info(f"Updated group performance for investor {user.id}, group {group_name}, year {year}")
+                # else:
+                #     # Save individual broker performances
+                #     for broker_id in selected_brokers_ids:
+                #         performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), [broker_id], currency_target, is_restricted)
+                #         performance, created = AnnualPerformance.objects.update_or_create(
+                #             investor=user,
+                #             broker_id=broker_id,
+                #             year=year,
+                #             currency=currency_target,
+                #             restricted=is_restricted,
+                #             defaults=performance_data
+                #         )
+                #     logger.info(f"Updated individual performances for investor {user.id}, broker ids {selected_brokers_ids}, year {year}")
 
     except IntegrityError as e:
         logger.error(f"Integrity error updating annual performance: {str(e)}")
@@ -2395,9 +2410,9 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
         eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
         performance_data['eop_nav'] += eop_nav
 
-        # Calculate FX impact
-        components_sum = sum(performance_data[key] for key in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax'])
-        performance_data['fx'] += eop_nav - components_sum
+    # Calculate FX impact
+    components_sum = sum(performance_data[key] for key in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax'])
+    performance_data['fx'] += performance_data['eop_nav'] - components_sum
 
     # Calculate TSR
     performance_data['tsr'] = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
