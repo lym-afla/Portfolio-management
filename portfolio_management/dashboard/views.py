@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm
 from database.forms import BrokerPerformanceForm
-from utils import NAV_at_date, Irr, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, brokers_summary_data, dashboard_summary_over_time
+from utils import NAV_at_date, Irr, broker_group_to_ids, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
 
 @login_required
 def dashboard(request):
@@ -21,11 +21,11 @@ def dashboard(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     # use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = user.custom_brokers
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
-    brokers = Brokers.objects.filter(id__in=selected_brokers, investor=user).all()
+    brokers = Brokers.objects.filter(investor=user, id__in=selected_brokers).all()
 
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
@@ -86,8 +86,10 @@ def dashboard(request):
     print("views. dashboard. Time taken for summary dict calcs", time.time() - start_t)
 
     start_t = time.time()
+    
+    print("views. dashboard. 102", selected_brokers, type(selected_brokers), summary['IRR'])
 
-    financial_table_context = dashboard_summary_over_time(user, effective_current_date, selected_brokers, currency_target)
+    financial_table_context = dashboard_summary_over_time(user, effective_current_date, user.custom_brokers, currency_target)
     # Formatting outputs
     for index in range(len(financial_table_context['lines'])):
         if financial_table_context['lines'][index]['name'] == 'TSR':
@@ -130,7 +132,7 @@ def dashboard(request):
         'currency': currency_target,
         'table_date': effective_current_date,
         'brokers': Brokers.objects.filter(investor=user).all(),
-        'selectedBrokers': selected_brokers,
+        'selectedBrokers': user.custom_brokers,
         'summary': summary,
         'chart_settings': chart_settings,
         'chartDataset': chart_dataset,
@@ -144,7 +146,8 @@ def dashboard(request):
 def nav_chart_data_request(request):
 
     # global selected_brokers
-    selected_brokers = request.user.custom_brokers
+    user = request.user
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     if request.method == 'GET':
         frequency = request.GET.get('frequency')

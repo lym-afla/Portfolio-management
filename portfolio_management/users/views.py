@@ -5,6 +5,7 @@ from django.views import generic
 
 from common.forms import DashboardForm
 from common.models import Brokers
+from utils import broker_group_to_ids
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -52,6 +53,7 @@ def profile(request):
         settings_form = UserSettingsForm(request.POST, instance=user)
         if settings_form.is_valid():
             settings_form.save()
+            # print("users. 56", settings_form)
 
             # After saving, update the session data
             request.session['chart_settings'] = {
@@ -70,6 +72,7 @@ def profile(request):
             return JsonResponse({'errors': settings_form.errors}, status=400)
     else:
         settings_form = UserSettingsForm(instance=user)
+        print(f"DEBUG: user.custom_brokers in GET request = {user.custom_brokers}")
         
     user_info = [
         {"label": "Username", "value": user.username},
@@ -117,17 +120,16 @@ def update_from_dashboard_form(request):
         if dashboard_form.is_valid():
             # Process the form data
             request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date'].isoformat()
-            # request.session['effective_current_date'] = effective_current_date.strftime('%Y-%m-%d')
-            print("views. users. 120", request.session['effective_current_date'])
             
             # Save new parameters to user setting
             user.default_currency = dashboard_form.cleaned_data['default_currency']
             user.digits = dashboard_form.cleaned_data['digits']
-            selected_broker_ids = [dashboard_form.cleaned_data['custom_brokers']]
+            # selected_broker_ids = [dashboard_form.cleaned_data['custom_brokers']]
+            # print("users. 128", selected_broker_ids, type(selected_broker_ids))
             # broker_name = dashboard_form.cleaned_data['custom_brokers']
             # print("users. views. 126", broker_name)
             # selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
-            user.custom_brokers = selected_broker_ids
+            user.custom_brokers = dashboard_form.cleaned_data['custom_brokers']
             user.save()
             # Redirect to the same page to refresh it
             return redirect(request.META.get('HTTP_REFERER'))
@@ -142,16 +144,24 @@ def update_data_for_broker(request):
             user = request.user
 
             data = json.loads(request.body.decode('utf-8'))
-            broker_name = data.get('broker_name')
+            broker_or_group_name = data.get('broker_or_group_name')
 
-            print("users. 139", broker_name, data)
-            if broker_name:
+            print("users. 139", broker_or_group_name, data)
+            if broker_or_group_name:
 
-                selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
-                print("users. 140", selected_broker_ids)
-                if selected_broker_ids is not None and len(selected_broker_ids) > 0:
-                    user.custom_brokers = selected_broker_ids
-                    user.save()
+                user.custom_brokers = broker_or_group_name
+                # user.custom_brokers = selected_broker_ids
+
+                # if broker_name == 'All brokers':
+                #     # selected_broker_ids = 'All'
+                #     user.custom_brokers = Brokers.objects.filter(investor=user).values_list('id', flat=True)
+                # else:
+                #     selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
+                # # print("users. 140", selected_broker_ids)
+                # # if selected_broker_ids is not None and len(selected_broker_ids) > 0:
+                #     user.custom_brokers = selected_broker_ids
+                
+                user.save()
 
                 return JsonResponse({'ok': True})
             else:

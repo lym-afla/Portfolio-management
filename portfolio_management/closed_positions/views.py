@@ -7,7 +7,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from common.models import Assets, Brokers, Transactions
 from common.forms import DashboardForm
-from utils import calculate_closed_table_output, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids, calculate_closed_table_output, get_last_exit_date_for_brokers
 
 @login_required
 def closed_positions(request):
@@ -19,7 +19,7 @@ def closed_positions(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = user.custom_brokers
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -88,7 +88,7 @@ def closed_positions(request):
         'currency': currency_target,
         'table_date': effective_current_date,
         'number_of_digits': number_of_digits,
-        'selectedBrokers': selected_brokers,
+        'selectedBrokers': user.custom_brokers,
         'dashboardForm': dashboard_form,
         'buttons': buttons,
         'closed_table_years': closed_table_years,
@@ -105,7 +105,7 @@ def update_closed_positions_table(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = user.custom_brokers
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     # Process the data based on the timespan
     if timespan == 'YTD':

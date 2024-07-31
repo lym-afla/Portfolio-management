@@ -7,8 +7,10 @@
                 </button>
                 <select class="form-select" id="brokerSelect" aria-label="Select Broker">
                     {% for broker in brokers %}
-                        <option value="{{ broker.id }}" {% if broker.id in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
+                        <option value="{{ broker.id }}" {% if broker.name in selectedBrokers %}selected{% endif %}>{{ broker.name }}</option>
                     {% endfor %}
+                    <hr>
+                    <option class="mt-2 mb-2" value="all" {% if 'All brokers' in selectedBrokers %}selected{% endif %}>All brokers</option>
                 </select>
                 <button class="btn btn-outline-secondary" id="nextBroker">
                     <i class="bi bi-arrow-right"></i> <!-- Bootstrap icon for right arrow -->

@@ -125,7 +125,8 @@ class FX(models.Model):
                     setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
                     print(f'{source}{target} for {rate_data["requested_date"]} is updated')
                 else:
-                    raise Exception(f'{source}{target} for {rate_data["requested_date"]} is NOT updated. Yahoo Finance is not responding correctly')
+                    print(f'{source}{target} for {date} is NOT updated. Yahoo Finance is not responding correctly')
+                    continue
 
         # Save the fx_instance once after updating all currency pairs
         fx_instance.save()
