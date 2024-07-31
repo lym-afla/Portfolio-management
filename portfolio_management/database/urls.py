@@ -21,7 +21,7 @@ urlpatterns = [
     path('delete_transaction/<int:item_id>/', views.delete_item, {'model_class': Transactions}, name='delete_transaction'),
     path('edit_security/<int:item_id>/', views.edit_item, {'model_class': Assets, 'form_class': SecurityForm, 'type': 'security'}, name='edit_security'),
     path('delete_security/<int:item_id>/', views.delete_item, {'model_class': Assets}, name='delete_security'),
-    path('edit_price/<int:item_id>/', views.edit_item, {'model_class': Prices, 'form_class': PriceForm, 'type': 'price  '}, name='edit_price'),
+    path('edit_price/<int:item_id>/', views.edit_item, {'model_class': Prices, 'form_class': PriceForm, 'type': 'price'}, name='edit_price'),
     path('delete_price/<int:item_id>/', views.delete_item, {'model_class': Prices}, name='delete_price'),
     path('import_transactions_form/', views.import_transactions_form, name='import_transactions_form'),
     path('import_transactions/', views.import_transactions, name='import_transactions'),
@@ -29,5 +29,7 @@ urlpatterns = [
     path('prices/update_fx_dates/', views.get_update_fx_dates, name='update_fx_dates'),
     path('prices/update_fx/', views.update_FX, name='update_fx'),
     path('update_broker_performance/', views.update_broker_performance, name='update_broker_performance'),
+    path('get_price_data_for_table/', views.get_price_data_for_table, name='get_price_data_for_table'),
+    # path('edit_price/<int:item_id>/', views.edit_price, name='edit_price'),
     
 ]

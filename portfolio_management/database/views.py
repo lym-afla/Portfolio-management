@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import json
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -7,10 +8,11 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
+from django.db.models import Q
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
-from constants import CURRENCY_CHOICES
+from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES
 
 from .forms import BrokerForm, BrokerPerformanceForm, PriceForm, SecurityForm, TransactionForm
 from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
@@ -158,7 +160,7 @@ def database_securities(request):
     })
 
 @login_required
-def database_prices(request):
+def database_prices_old(request):
     
     user = request.user
 
@@ -187,6 +189,57 @@ def database_prices(request):
         'bond': bond,
         'buttons': buttons,
     })
+
+@login_required
+def database_prices(request):
+    
+    asset_types = dict(ASSET_TYPE_CHOICES)
+    securities = Assets.objects.filter(investor=request.user)
+    
+    return render(request, 'prices.html', {
+        'asset_types': asset_types,
+        'securities': securities,
+    })
+
+@login_required
+def get_price_data_for_table(request):
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    asset_types = request.GET.getlist('asset_types[]')
+    securities = request.GET.getlist('securities[]')
+    
+    query = Q(security__investor=request.user)
+    if start_date:
+        query &= Q(date__gte=start_date)
+    if end_date:
+        query &= Q(date__lte=end_date)
+    if asset_types:
+        query &= Q(security__type__in=asset_types)
+    if securities:
+        query &= Q(security__id__in=securities)
+    
+    price_data = Prices.objects.filter(query).select_related('security')
+    
+    data = []
+    for pd in price_data:
+        fx_data = FX.get_rate(pd.security.currency, 'USD', pd.date)
+        usd_price = pd.price * Decimal(str(fx_data['FX']))
+        data.append({
+            'id': pd.id,
+            'date': pd.date,
+            'security': pd.security.name,
+            'asset_type': pd.security.get_type_display(),
+            'currency': pd.security.currency,
+            'price': float(pd.price),
+            'usd_price': float(usd_price),
+            'fx_rate': float(fx_data['FX']),
+        })
+    
+    return JsonResponse({'data': data})
+
+# @login_required
+# def edit_price(request, item_id):
+#     return edit_item(request, Prices, PriceForm, item_id, 'price')
 
 def add_transaction(request):
     if request.method == 'POST':
