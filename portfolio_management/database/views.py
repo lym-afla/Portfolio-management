@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-import json
+import logging
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -14,8 +14,10 @@ from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES
 
-from .forms import BrokerForm, BrokerPerformanceForm, PriceForm, SecurityForm, TransactionForm
-from utils import Irr, NAV_at_date, create_price_table, currency_format_dict_values, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
+from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, SecurityForm, TransactionForm
+from utils import Irr, NAV_at_date, currency_format_dict_values, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
+
+logger = logging.getLogger(__name__)
 
 @login_required
 def database_brokers(request):
@@ -159,36 +161,36 @@ def database_securities(request):
         'buttons': buttons,
     })
 
-@login_required
-def database_prices_old(request):
+# @login_required
+# def database_prices_old(request):
     
-    user = request.user
+#     user = request.user
 
-    sidebar_padding = 0
-    sidebar_width = 0
+#     sidebar_padding = 0
+#     sidebar_width = 0
 
-    sidebar_width = request.GET.get("width")
-    sidebar_padding = request.GET.get("padding")
+#     sidebar_width = request.GET.get("width")
+#     sidebar_padding = request.GET.get("padding")
 
-    # Calculate price data
-    fx_data = FX.objects.filter(investor=user).order_by('date').all()
-    ETF = create_price_table('ETF', user)
-    mutual_fund = create_price_table('Mutual fund', user)
-    stock = create_price_table('Stock', user)
-    bond = create_price_table('Bond', user)
+#     # Calculate price data
+#     fx_data = FX.objects.filter(investor=user).order_by('date').all()
+#     ETF = create_price_table('ETF', user)
+#     mutual_fund = create_price_table('Mutual fund', user)
+#     stock = create_price_table('Stock', user)
+#     bond = create_price_table('Bond', user)
 
-    buttons = ['price', 'update_FX', 'edit', 'delete']
+#     buttons = ['price', 'update_FX', 'edit', 'delete']
 
-    return render(request, 'prices.html', {
-        'sidebar_width': sidebar_width,
-        'sidebar_padding': sidebar_padding,
-        'fxData': fx_data,
-        'ETF': ETF,
-        'mutualFund': mutual_fund,
-        'stock': stock,
-        'bond': bond,
-        'buttons': buttons,
-    })
+#     return render(request, 'prices.html', {
+#         'sidebar_width': sidebar_width,
+#         'sidebar_padding': sidebar_padding,
+#         'fxData': fx_data,
+#         'ETF': ETF,
+#         'mutualFund': mutual_fund,
+#         'stock': stock,
+#         'bond': bond,
+#         'buttons': buttons,
+#     })
 
 @login_required
 def database_prices(request):
@@ -222,8 +224,8 @@ def get_price_data_for_table(request):
     
     data = []
     for pd in price_data:
-        fx_data = FX.get_rate(pd.security.currency, 'USD', pd.date)
-        usd_price = pd.price * Decimal(str(fx_data['FX']))
+        # fx_data = FX.get_rate(pd.security.currency, 'USD', pd.date)
+        # usd_price = pd.price * Decimal(str(fx_data['FX']))
         data.append({
             'id': pd.id,
             'date': pd.date,
@@ -231,15 +233,11 @@ def get_price_data_for_table(request):
             'asset_type': pd.security.get_type_display(),
             'currency': pd.security.currency,
             'price': float(pd.price),
-            'usd_price': float(usd_price),
-            'fx_rate': float(fx_data['FX']),
+            # 'usd_price': float(usd_price),
+            # 'fx_rate': float(fx_data['FX']),
         })
     
     return JsonResponse({'data': data})
-
-# @login_required
-# def edit_price(request, item_id):
-#     return edit_item(request, Prices, PriceForm, item_id, 'price')
 
 def add_transaction(request):
     if request.method == 'POST':
@@ -254,12 +252,14 @@ def add_transaction(request):
             # When adding new transaction update FX rates from Yahoo
             FX.update_fx_rate(transaction.date, request.user)
 
-            price_instance = Prices(
-                date=transaction.date,
-                security=transaction.security,
-                price=transaction.price,
-            )
-            price_instance.save()
+            # Save price to the database if it is a transaction with price assigned
+            if transaction.price is not None:
+                price_instance = Prices(
+                    date=transaction.date,
+                    security=transaction.security,
+                    price=transaction.price,
+                )
+                price_instance.save()
             
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
@@ -274,7 +274,89 @@ def add_transaction(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = TransactionForm(investor=request.user)
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Transaction', 'action_url': 'database:add_transaction'}, request)
+        form_html = render_to_string(
+            'snippets/handle_database_item.html',
+            {
+                'form': form,
+                'type': 'Transaction',
+                'action_url': 'database:add_transaction',
+                'modal_title': 'Add New Transaction',
+                'modal_id': 'addTransactionModal'
+            },
+            request
+        )
+    return JsonResponse({'form_html': form_html})
+
+def add_fx_transaction(request):
+    if request.method == 'POST':
+        form = FXTransactionForm(request.POST, investor=request.user)
+        import_flag = request.POST.get('importing', False)
+
+        if form.is_valid():
+            fx_transaction = form.save(commit=False)
+            fx_transaction.investor = request.user
+            fx_transaction.save()
+
+            # Save or update corresponding FX instance
+            fx_date = fx_transaction.date
+            from_currency = fx_transaction.from_currency
+            to_currency = fx_transaction.to_currency
+            exchange_rate = fx_transaction.exchange_rate
+
+            fx_instance, created = FX.objects.get_or_create(
+                date=fx_date,
+                investor=request.user,
+                defaults={}
+            )
+
+            # Determine the correct field to update
+            currency_pair = f"{from_currency}{to_currency}"
+            reverse_pair = f"{to_currency}{from_currency}"
+
+            pairs_list = [field.name for field in FX._meta.get_fields() if (field.name != 'date' and field.name != 'id')]
+
+            if currency_pair in pairs_list:
+                current_rate = getattr(fx_instance, currency_pair)
+                if current_rate is None:
+                    setattr(fx_instance, currency_pair, exchange_rate)
+                    fx_instance.save()
+                else:
+                    logger.info(f"Existing FX rate found for {currency_pair} on {fx_date}. Keeping existing rate.")
+            elif reverse_pair in pairs_list:
+                current_rate = getattr(fx_instance, reverse_pair)
+                if current_rate is None:
+                    setattr(fx_instance, reverse_pair, Decimal('1') / exchange_rate)
+                    fx_instance.save()
+                else:
+                    logger.info(f"Existing FX rate found for {currency_pair} on {fx_date}. Keeping existing rate.")
+            else:
+                # If neither pair exists, log this or handle it differently
+                print(f"Warning: No matching field for currency pair {currency_pair}")
+        
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                # If it's an AJAX request, return a JSON response with success and redirect_url
+                if import_flag:
+                    return JsonResponse({'status': 'import_success'})
+                else:
+                    return JsonResponse({'success': True, 'redirect_url': reverse('transactions:transactions')})
+            else:
+                # If it's not an AJAX request, redirect to a URL
+                return redirect('transactions:transactions')
+        else:
+            return JsonResponse(form.errors, status=400)
+    else:
+        form = FXTransactionForm(investor=request.user)
+        form_html = render_to_string(
+            'snippets/handle_database_item.html',
+            {
+                'form': form,
+                'type': 'FXTransaction',
+                'action_url': 'database:add_fx_transaction',
+                'modal_title': 'Add New FX Transaction',
+                'modal_id': 'addFXTransactionModal'
+            },
+            request
+        )
     return JsonResponse({'form_html': form_html})
 
 @login_required
@@ -295,7 +377,17 @@ def add_broker(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = BrokerForm()
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Broker', 'action_url': 'database:add_broker'}, request)
+        form_html = render_to_string(
+            'snippets/handle_database_item.html',
+            {
+                'form': form,
+                'type': 'Broker',
+                'action_url': 'database:add_broker',
+                'modal_title': 'Add New Broker',
+                'modal_id': 'addBrokerModal'
+            },
+            request
+        )
     return JsonResponse({'form_html': form_html})
 
 def add_price(request):
@@ -313,7 +405,17 @@ def add_price(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = PriceForm(investor=request.user)
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Price', 'action_url': 'database:add_price'}, request)
+        form_html = render_to_string(
+            'snippets/handle_database_item.html',
+            {
+                'form': form,
+                'type': 'Price',
+                'action_url': 'database:add_price',
+                'modal_title': 'Add Price',
+                'modal_id': 'addPriceModal'
+            },
+            request
+        )
     return JsonResponse({'form_html': form_html})
 
 def add_security(request):
@@ -339,13 +441,6 @@ def add_security(request):
             for broker_id in brokers:
                     broker = Brokers.objects.get(id=broker_id)
                     broker.securities.add(security)
-            
-            # security = form.save(commit=False)  # Don't save to the database yet
-            # security.investor = request.user     # Set the investor field
-            # broker = form.cleaned_data['broker']
-            # security.save()
-
-            # broker.securities.add(security)
 
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
@@ -360,7 +455,17 @@ def add_security(request):
             return JsonResponse({'errors': form.errors}, status=400)
     else:
         form = SecurityForm(investor=request.user)
-        form_html = render_to_string('snippets/add_database_item.html', {'form': form, 'type': 'Security', 'action_url': 'database:add_security'}, request)
+        form_html = render_to_string(
+            'snippets/handle_database_item.html',
+            {
+                'form': form,
+                'type': 'Security',
+                'action_url': 'database:add_security',
+                'modal_title': 'Add Security',
+                'modal_id': 'addSecurityModal'
+            },
+            request
+        )
     return JsonResponse({'form_html': form_html})
 
 @login_required
@@ -394,14 +499,17 @@ def edit_item(request, model_class, form_class, item_id, type):
     else:
         form = form_class(instance=item, investor=request.user)
         form_html = render_to_string(
-            'snippets/add_database_item.html',
+            'snippets/handle_database_item.html',
             {
                 'form': form,
                 'type': model_class.__name__,
-                'action_url': reverse(f'database:edit_{type}', args=[item_id])
+                'action_url': reverse(f'database:edit_{type}', args=[item_id]),
+                'modal_title': f'Edit {type.capitalize()}',
+                'modal_id': 'editPriceModal'
             },
             request
         )
+
         return JsonResponse({'form_html': form_html})
     
 @login_required
@@ -466,7 +574,7 @@ def process_import_transactions(request):
         cash_flow = to_decimal(request.POST.get('dividend'))
         commission = to_decimal(request.POST.get('commission'))
             
-        if quantity is not None:
+        if quantity is not None or request.POST.get('type') == 'Dividend':
             try:
                 security = Assets.objects.get(name=request.POST.get('security_name'))
             except Assets.DoesNotExist:

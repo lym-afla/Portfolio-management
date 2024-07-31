@@ -31,7 +31,7 @@
 {% endblock title %}
 
 {% block main_page_title %}
-    <h2>Transactions — <span id="brokerNameHeader"></h2>
+    <h2>Transactions — <span id="brokerNameHeader"></span></h2>
 {% endblock main_page_title %}
 
 {% block content %}
@@ -78,6 +78,11 @@
                         {% elif transaction.type == 'Close' %}
                             {{ transaction.quantity }} of {{ transaction.security.name }}
                         {% elif transaction.type == 'Broker commission' %}
+                        {% elif transaction.type == 'Tax' %}
+                        {% elif transaction.type == 'FX' %}
+                            {% comment %} {{ transaction.from_currency }}{{ transaction.from_amount }} to {{ transaction.to_currency }}{{ transaction.to_amount }} {% endcomment %}
+                            : {{ transaction.from_currency }} to {{ transaction.to_currency }} @ {{ transaction.exchange_rate }}
+                            <span class="small text-muted"> || Fee: {{ transaction.commission }}</span>
                         {% else %}
                             {{ transaction.quantity }}
                             @ {{ transaction.price }} of {{ transaction.security.name }}
@@ -88,13 +93,17 @@
                     {% for cur in currencies %}
                         <td class="text-center">
                             {% if transaction.currency == cur %}
-                                {% if transaction.type == 'Dividend' or 'Cash' in transaction.type %}
+                                {% if transaction.type == 'Dividend' or transaction.type == 'Tax' or 'Cash' in transaction.type %}
                                     {{ transaction.cash_flow }}
                                 {% elif transaction.type == 'Broker commission' %}
                                     ({{ transaction.commission }})
                                 {% else %}
                                     {{ transaction.value }}
                                 {% endif %}
+                            {% elif transaction.from_currency == cur %}
+                                {{ transaction.from_amount }}
+                            {% elif transaction.to_currency == cur %}
+                                {{ transaction.to_amount }}
                             {% else %}
                                 –
                             {% endif %}

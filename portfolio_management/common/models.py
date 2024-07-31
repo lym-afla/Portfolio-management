@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.db import IntegrityError, models
 from django.db.models import F, Sum
+from django.core.exceptions import ValidationError
 import networkx as nx
 from datetime import timedelta
 import requests
@@ -116,15 +117,15 @@ class FX(models.Model):
 
             if existing_rate is None:
                 # Get the FX rate for the date
-                rate_data = update_FX_from_Yahoo(source, target, date)
-                # print(rate_data)
+                try:
+                    rate_data = update_FX_from_Yahoo(source, target, date)
 
-                if rate_data is not None:
-                    # Update the fx_instance with the new rate
-                    print("FX model, update FX. line 109", rate_data['requested_date'], rate_data['exchange_rate'])
-                    setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
-                    print(f'{source}{target} for {rate_data["requested_date"]} is updated')
-                else:
+                    if rate_data is not None:
+                        # Update the fx_instance with the new rate
+                        print("FX model, update FX. line 125", rate_data['requested_date'], rate_data['exchange_rate'])
+                        setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
+                        print(f'{source}{target} for {rate_data["requested_date"]} is updated')
+                except:
                     print(f'{source}{target} for {date} is NOT updated. Yahoo Finance is not responding correctly')
                     continue
 
@@ -158,6 +159,15 @@ class Brokers(models.Model):
             balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
             - Decimal(transaction.cash_flow or 0) \
                 - Decimal(transaction.commission or 0))
+            
+        # Calculate balance from FX transactions
+        fx_transactions = self.fx_transactions.filter(date__lte=date)
+        for fx_transaction in fx_transactions:
+            balance[fx_transaction.from_currency] = balance.get(fx_transaction.from_currency, Decimal(0)) - fx_transaction.from_amount
+            balance[fx_transaction.to_currency] = balance.get(fx_transaction.to_currency, Decimal(0)) + fx_transaction.to_amount
+            if fx_transaction.commission:
+                commission_currency = fx_transaction.from_currency  # Assume commission is in the source currency
+                balance[commission_currency] = balance.get(commission_currency, Decimal(0)) - fx_transaction.commission
             
         for key, value in balance.items():
             balance[key] = round(Decimal(value), 2)
@@ -524,6 +534,11 @@ class Transactions(models.Model):
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
 
+    # def save(self, *args, **kwargs):
+    #     super().save(*args, **kwargs)
+    #     # Update broker balance after each transaction
+    #     self.broker.balance(self.date)
+
     def __str__(self):
         return f"{self.type} || {self.date}"
 
@@ -535,6 +550,16 @@ class Prices(models.Model):
 
     def __str__(self):
         return f"{self.security.name} is at {self.price} on {self.date}"
+
+    class Meta:
+
+        # Add constraints
+        constraints = [
+            models.UniqueConstraint(
+                fields=['date', 'security', 'price'],
+                name='unique_security_price_entry'
+            ),
+        ]
     
 
 
@@ -631,3 +656,23 @@ class AnnualPerformance(models.Model):
                 name='unique_investor_broker_group_year_currency'
             ),
         ]
+
+class FXTransaction(models.Model):
+    investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='fx_transactions')
+    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='fx_transactions')
+    date = models.DateField(null=False)
+    from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
+    to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
+    from_amount = models.DecimalField(max_digits=15, decimal_places=6, null=False)
+    to_amount = models.DecimalField(max_digits=15, decimal_places=6, null=False)
+    exchange_rate = models.DecimalField(max_digits=15, decimal_places=6, null=False, blank=True)
+    commission = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
+    comment = models.TextField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.exchange_rate:
+            self.exchange_rate = self.from_amount / self.to_amount
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"FX: {self.from_currency} to {self.to_currency} on {self.date}"

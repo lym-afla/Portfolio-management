@@ -46,22 +46,16 @@
                     <th>Asset Type</th>
                     <th>Currency</th>
                     <th>Price</th>
-                    <th>USD Price</th>
-                    <th>FX Rate</th>
+                    {% comment %} <th>USD Price</th>
+                    <th>FX Rate</th> {% endcomment %}
                     <th>Actions</th>
                 </tr>
             </thead>
         </table>
     </div>
 
-    <!-- Edit Price Modal -->
-    <div id="editPriceModal" class="modal fade" tabindex="-1" role="dialog">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <!-- Modal content will be loaded here -->
-            </div>
-        </div>
-    </div>
+    <!-- Edit Price Modal Placeholder -->
+    <div id="editPriceModalContainer"></div>
 {% endblock content %}
 
 {% block script %}
@@ -90,12 +84,12 @@
                         }
                         return data;
                     }},
-                    {data: 'usd_price', render: function(data, type, row) {
+                    {% comment %} {data: 'usd_price', render: function(data, type, row) {
                         return data.toFixed(2);
                     }},
                     {data: 'fx_rate', render: function(data, type, row) {
                         return data.toFixed(4);
-                    }},
+                    }}, {% endcomment %}
                     {data: null, render: function(data, type, row) {
                         return '<button class="btn btn-sm btn-primary edit-btn" data-id="' + row.id + '">Edit</button>';
                     }}
@@ -108,19 +102,24 @@
 
             $('#price_data_table').on('click', '.edit-btn', function() {
                 var id = $(this).data('id');
+                console.log('Edit button clicked for id:', id);
                 $.ajax({
                     url: "{% url 'database:edit_price' 0 %}".replace('0', id),
                     type: 'GET',
                     success: function(response) {
-                        $('#editPriceModal .modal-content').html(response.form_html);
+                        console.log('AJAX request successful');
+                        $('#editPriceModalContainer').html(response.form_html);
+                        console.log('Modal content updated');
                         $('#editPriceModal').modal('show');
+                        console.log('Modal show triggered');
                     },
-                    error: function() {
+                    error: function(xhr, status, error) {
+                        console.error('AJAX request failed:', status, error);
                         alert('Error loading edit form');
                     }
                 });
             });
-
+        
             $(document).on('submit', '#editPriceModal form', function(e) {
                 e.preventDefault();
                 var form = $(this);

@@ -12,6 +12,7 @@ urlpatterns = [
 
     # API methods
     path('add-transaction/', views.add_transaction, name='add_transaction'),
+    path('add_fx_transaction/', views.add_fx_transaction, name='add_fx_transaction'),
     path('add-broker/', views.add_broker, name='add_broker'),
     path('add-price/', views.add_price, name='add_price'),
     path('add-security/', views.add_security, name='add_security'),

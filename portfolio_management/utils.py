@@ -1033,7 +1033,7 @@ def parse_excel_file_transactions(file, currency, broker_id):
                     continue
 
                 date = df.iloc[row, i].strftime("%Y-%m-%d")
-                price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places)
+                price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places) if not pd.isna(df.iloc[row, i + 1]) else None
                 quantity = round(Decimal(df.iloc[row, i + 2]), quantity_decimal_places) if not pd.isna(df.iloc[row, i + 2]) else None
                 
                 # # Validate the quantity
@@ -1057,10 +1057,10 @@ def parse_excel_file_transactions(file, currency, broker_id):
                         transaction_type = 'Buy'
                     elif quantity < 0:
                         transaction_type = 'Sell'
-                    else:
-                        transaction_type = 'Dividend'
-                else:
-                    transaction_type = None
+                    # else:
+                    #     transaction_type = 'Dividend'
+                elif dividend is not None:
+                    transaction_type = 'Dividend'
 
                 transaction_data = {
                     'broker': broker_id,
@@ -2166,19 +2166,6 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
 
         selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
 
-        # if isinstance(brokers_or_group, str):
-        #     # It's a group name
-        #     group_name = brokers_or_group
-        #     selected_brokers_ids = BROKER_GROUPS.get(group_name)
-        #     if not selected_brokers_ids:
-        #         raise ValueError(f"Invalid group name: {group_name}")
-        # else:
-        #     # It's a list of broker IDs
-        #     selected_brokers_ids = brokers_or_group
-        #     group_name = None
-
-        # print("utils. 2083", selected_brokers_ids, is_restricted)
-
         # Determine the starting year
         first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
         if not first_transaction:
@@ -2205,33 +2192,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
                     restricted=is_restricted,
                     defaults=performance_data
                 )
-                logger.info(f"Updated group performance for investor {user.id}, group {brokers_or_group}, year {year}, currency {currency_target}, restricted {is_restricted}")
-
-                # if group_name:
-                #     performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
-                #     # Save group performance
-                #     performance, created = AnnualPerformance.objects.update_or_create(
-                #         investor=user,
-                #         broker_group=group_name,
-                #         year=year,
-                #         currency=currency_target,
-                #         restricted=is_restricted,
-                #         defaults=performance_data
-                #     )
-                #     logger.info(f"Updated group performance for investor {user.id}, group {group_name}, year {year}")
-                # else:
-                #     # Save individual broker performances
-                #     for broker_id in selected_brokers_ids:
-                #         performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), [broker_id], currency_target, is_restricted)
-                #         performance, created = AnnualPerformance.objects.update_or_create(
-                #             investor=user,
-                #             broker_id=broker_id,
-                #             year=year,
-                #             currency=currency_target,
-                #             restricted=is_restricted,
-                #             defaults=performance_data
-                #         )
-                #     logger.info(f"Updated individual performances for investor {user.id}, broker ids {selected_brokers_ids}, year {year}")
+                logger.info(f"Updated group performance for investor: {user.id}, group: {brokers_or_group}, year: {year}, currency: {currency_target}, restricted: {is_restricted}")
 
     except IntegrityError as e:
         logger.error(f"Integrity error updating annual performance: {str(e)}")
@@ -2240,7 +2201,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
         logger.error(f"Error updating annual performance: {str(e)}")
         raise
 
-    logger.info(f"Completed updating annual performance for investor {user.id}")
+    logger.info(f"Completed updating annual performance for investor: {user.id}, currency: {currency_target}, restricted: {is_restricted}")
 
 def calculate_performance_OLD(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
     performance_data = {name: Decimal(0) for name in [

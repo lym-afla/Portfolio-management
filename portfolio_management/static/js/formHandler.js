@@ -1,5 +1,10 @@
 let stopProcess = false; // Moved outside to a wider scope
 
+// $(document).on('click', '[data-type]', function() {
+//     var type = $(this).data('type');
+//     loadForm(type);
+// });
+
 $(document).ready(function () {
 
     updateBrokerHeader();
@@ -92,19 +97,18 @@ function hideSpinner() {
 
 // Function to load the form into the modal
 function loadForm(type, itemId = null, element = null, confirm_each = false, processTransactionAction = null) {
-    var containerMap = {
+    const containerMap = {
         transaction: '#transactionFormModalContainer',
         broker: '#brokerFormModalContainer',
         price: '#priceFormModalContainer',
-        security: '#securityFormModalContainer'
+        security: '#securityFormModalContainer',
+        fx_transaction: '#fxTransactionFormModalContainer'
     };
-    var url = itemId ? `/database/edit_${type}/${itemId}/` : urls[type];
+    const url = itemId ? `/database/edit_${type}/${itemId}/` : urls[type];
     var container = containerMap[type];
 
-    $.ajax({
-        url: url,
-        method: 'GET',
-        success: function (data) {
+    $.get(url)
+        .done(function(data) {
             $(container).html(data.form_html); // Load form HTML into the container
             var form = $(container).find('form');
             form.attr('data-type', type); // Set the form's type
@@ -150,9 +154,65 @@ function loadForm(type, itemId = null, element = null, confirm_each = false, pro
                 if (processTransactionAction) {
                     processTransactionAction('skip', confirm_each);
                 }
-            });
-        }
-    });
+            })
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            console.error("Error loading form:", textStatus, errorThrown);
+        });
+
+
+    // $.ajax({
+    //     url: url,
+    //     method: 'GET',
+    //     success: function (data) {
+    //         $(container).html(data.form_html); // Load form HTML into the container
+    //         var form = $(container).find('form');
+    //         form.attr('data-type', type); // Set the form's type
+    //         form.attr('data-item-id', itemId); // Set the form's item ID if editing
+            
+    //         // Set pre-filled data
+    //         if (element) {
+    //             form.attr('data-importing', 'True');
+    //             if (type === 'security') {
+    //                 form.find('#id_name').val(element.name);
+    //                 form.find('#id_isin').val(element.isin);
+    //                 form.find('#id_currency').val(element.currency);
+    //             } else if (type === 'transaction') {
+    //                 console.log(element.date, element.type, element);
+    //                 form.find('#id_date').val(element.date);
+    //                 form.find('#id_price').val(element.price);
+    //                 form.find('#id_type').val(element.type);
+    //                 form.find('#id_currency').val(element.currency);
+    //                 form.find('#id_quantity').val(element.quantity);
+    //                 form.find('#id_cash_flow').val(element.dividend);
+    //                 form.find('#id_commission').val(element.commission);
+
+    //                 // Find the option element with the matching security name and update its text
+    //                 var securitySelect = form.find('#id_security');
+    //                 var option = securitySelect.find('option').filter(function() {
+    //                     return $(this).text() === element.security_name;
+    //                 });
+    //                 option.prop('selected', true);
+    //             }
+    //         }
+            
+    //         $('.selectpicker').selectpicker();
+
+    //         $(container).find('.modal').modal('show'); // Show the modal
+    //         attachFormSubmitHandler(form);
+
+    //         type = type.charAt(0).toUpperCase() + type.slice(1);
+
+    //         // Attach event listener to cancel button
+    //         type = type.charAt(0).toUpperCase() + type.slice(1);
+    //         $(`#add${type}ModalCancel`).off('click').on('click', function() {
+    //             console.log('cancel clicked');
+    //             if (processTransactionAction) {
+    //                 processTransactionAction('skip', confirm_each);
+    //             }
+    //         });
+    //     }
+    // });
 }
 
 // Function to handle form submission
@@ -411,7 +471,6 @@ function processTransactions(transactions, confirm_each, skip_existing) {
                     } 
                 },
                 error: function (xhr) {
-                    console.log(xhr.responseText);
                     var errors = xhr.responseText.errors;
                     showErrors(errors);
                 }

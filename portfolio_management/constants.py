@@ -3,6 +3,7 @@ CURRENCY_CHOICES = (
     ('EUR', '€'),
     ('GBP', '£'),
     ('RUB', '₽'),
+    ('CHF', 'SF')
 )
 
 TRANSACTION_TYPE_CHOICES = (

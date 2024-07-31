@@ -90,18 +90,14 @@ class DashboardForm(forms.ModelForm):
         
         if user is not None:
             initial_value = user.custom_brokers
-            logger.debug(f"Setting initial value for custom_brokers: {initial_value}")
-            logger.debug(f"Available choices: {[choice for group, choices in broker_choices for choice in choices if choices != '__SEPARATOR__']}")
             
             # Check if the initial value is in the choices
             all_choices = [choice[0] for group, choices in broker_choices for choice in choices if choices != '__SEPARATOR__']
             if initial_value in all_choices:
                 self.fields['custom_brokers'].initial = initial_value
             else:
-                logger.warning(f"Initial value '{initial_value}' not found in choices. Defaulting to 'All'.")
+                logger.warning(f"Dashboard form. Initial value '{initial_value}' not found in choices. Defaulting to 'All'.")
                 self.fields['custom_brokers'].initial = 'All'
-            
-            logger.debug(f"Final initial value: {self.fields['custom_brokers'].initial}")
 
     def clean_custom_brokers(self):
         value = self.cleaned_data['custom_brokers']

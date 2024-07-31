@@ -1,5 +1,5 @@
 from django import forms
-from common.models import Assets, Brokers, Prices, Transactions
+from common.models import Assets, Brokers, FXTransaction, Prices, Transactions
 from constants import BROKER_GROUPS, CURRENCY_CHOICES
 from common.forms import GroupedSelect
 
@@ -33,10 +33,6 @@ class TransactionForm(forms.ModelForm):
             self.fields['security'].choices = security_choices
         else:
             self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.order_by('name').all()]
-            # security_choices = []
-
-        # self.fields['broker'].choices = broker_choices
-        # self.fields['security'].choices = security_choices
 
         self.fields['type'].choices = [(choice[0], choice[0]) for choice in Transactions._meta.get_field('type').choices if choice[0]]
 
@@ -54,7 +50,7 @@ class TransactionForm(forms.ModelForm):
         if cash_flow is not None and transaction_type == 'Cash in' and cash_flow <= 0:
             self.add_error('cash_flow', 'Cash flow must be positive for cash-in transactions.')
         
-        if price is not None and price <= 0:
+        if price is not None and price < 0:
             self.add_error('price', 'Price must be positive.')
         
         if transaction_type == 'Buy' and quantity is not None and quantity <= 0:
@@ -206,3 +202,39 @@ class BrokerPerformanceForm(forms.Form):
         broker_or_group_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
 
         self.fields['broker_or_group'].choices = broker_or_group_choices
+
+class FXTransactionForm(forms.ModelForm):
+    class Meta:
+        model = FXTransaction
+        fields = ['broker', 'date', 'from_currency', 'to_currency', 'from_amount', 'to_amount', 'commission', 'comment']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'broker': forms.Select(attrs={'class': 'form-select', 'data-live-search': 'true'}),
+            'from_currency': forms.Select(attrs={'class': 'form-select'}),
+            'to_currency': forms.Select(attrs={'class': 'form-select'}),
+            'from_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'to_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            # 'exchange_rate': forms.NumberInput(attrs={'class': 'form-control'}),
+            'commission': forms.NumberInput(attrs={'class': 'form-control'}),
+            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
+        super().__init__(*args, **kwargs)
+        # Set choices dynamically for broker, security, and type fields
+        if investor is not None:
+            self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        from_amount = cleaned_data.get('from_amount')
+        to_amount = cleaned_data.get('to_amount')
+        exchange_rate = cleaned_data.get('exchange_rate')
+
+        if from_amount and to_amount and exchange_rate:
+            calculated_rate = from_amount / to_amount
+            if abs(calculated_rate - exchange_rate) > 0.0001:
+                raise forms.ValidationError("Exchange rate does not match the provided amounts.")
+
+        return cleaned_data

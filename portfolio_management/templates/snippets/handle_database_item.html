@@ -1,10 +1,9 @@
 <!-- add_database_item.html -->
-<div class="modal fade" id="add{{ type }}Modal" tabindex="-1" aria-labelledby="add{{ type }}ModalLabel" aria-hidden="true">
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="add{{ type }}ModalLabel">Add New {{ type }}</h5>
-                {% comment %} <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button> {% endcomment %}
+                <h5 class="modal-title" id="{{ modal_id }}Label">{{ modal_title }}</h5>
             </div>
             <form method="post" action="{{ action_url }}">
                 <div class="modal-body">
