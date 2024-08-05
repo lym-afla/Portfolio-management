@@ -666,6 +666,7 @@ def update_broker_performance(request):
             broker_or_group = form.cleaned_data['broker_or_group']
             currency = form.cleaned_data['currency']
             is_restricted_str = form.cleaned_data['is_restricted']
+            skip_existing_years = form.cleaned_data['skip_existing_years']  # Read the checkbox value
             user = request.user
 
             # Convert is_restricted string to appropriate value
@@ -680,9 +681,6 @@ def update_broker_performance(request):
             else:
                 return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
             
-            # selected_brokers = [broker.id for broker in brokers]
-            # print("views. database. 521", brokers, selected_brokers
-            
             try:
                 with transaction.atomic():
                     # for broker_id in selected_brokers:
@@ -690,9 +688,9 @@ def update_broker_performance(request):
                         if currency == 'All':
                             currencies = [choice[0] for choice in CURRENCY_CHOICES]
                             for curr in currencies:
-                                save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted)
+                                save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years)
                         else:
-                            save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, currency, is_restricted)
+                            save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, currency, is_restricted, skip_existing_years)
 
                 return JsonResponse({'success': True})
 

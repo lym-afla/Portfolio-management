@@ -155,17 +155,6 @@ EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (('All', 'All Currencies'),)
 
 class BrokerPerformanceForm(forms.Form):
 
-    # brokers = forms.ModelMultipleChoiceField(
-    #     queryset=Brokers.objects.all(),
-    #     widget=forms.SelectMultiple(
-    #         attrs={
-    #             'class': 'selectpicker show-tick',
-    #             'data-actions-box': 'true',
-    #             'data-width': '100%',
-    #             'title': 'Choose broker',
-    #             'data-selected-text-format': 'count',
-    #         })
-    # )
     broker_or_group = forms.ChoiceField(
         choices=[],
         widget=GroupedSelect(attrs={'class': 'form-select'}),
@@ -182,6 +171,11 @@ class BrokerPerformanceForm(forms.Form):
         widget=forms.Select(
             attrs={'class': 'form-select'}
         )
+    )
+    skip_existing_years = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='Skip existing calculated years'
     )
 
     def __init__(self, *args, **kwargs):

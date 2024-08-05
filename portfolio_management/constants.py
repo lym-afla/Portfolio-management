@@ -3,17 +3,27 @@ CURRENCY_CHOICES = (
     ('EUR', '€'),
     ('GBP', '£'),
     ('RUB', '₽'),
-    ('CHF', 'SF')
+    ('CHF', '₣')
 )
 
+TRANSACTION_TYPE_CASH_IN = 'Cash in'
+TRANSACTION_TYPE_CASH_OUT = 'Cash out'
+TRANSACTION_TYPE_BUY = 'Buy'
+TRANSACTION_TYPE_SELL = 'Sell'
+TRANSACTION_TYPE_DIVIDEND = 'Dividend'
+TRANSACTION_TYPE_BROKER_COMMISSION = 'Broker commission'
+TRANSACTION_TYPE_TAX = 'Tax'
+TRANSACTION_TYPE_INTEREST_INCOME = 'Interest income'
+
 TRANSACTION_TYPE_CHOICES = (
-    ('Cash in', 'Cash in'),
-    ('Cash out', 'Cash out'),
-    ('Buy', 'Buy'),
-    ('Sell', 'Sell'),
-    ('Dividend', 'Dividend'),
-    ('Broker commission', 'Broker commission'),
-    ('Tax', 'Tax'),
+    (TRANSACTION_TYPE_CASH_IN, 'Cash in'),
+    (TRANSACTION_TYPE_CASH_OUT, 'Cash out'),
+    (TRANSACTION_TYPE_BUY, 'Buy'),
+    (TRANSACTION_TYPE_SELL, 'Sell'),
+    (TRANSACTION_TYPE_DIVIDEND, 'Dividend'),
+    (TRANSACTION_TYPE_BROKER_COMMISSION, 'Broker commission'),
+    (TRANSACTION_TYPE_TAX, 'Tax'),
+    (TRANSACTION_TYPE_INTEREST_INCOME, 'Interest income'),
 )
 
 NAV_BARCHART_CHOICES = (
