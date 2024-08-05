@@ -136,7 +136,7 @@ class FX(models.Model):
 # Brokers
 class Brokers(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='brokers')
-    name = models.CharField(max_length=20, null=False)
+    name = models.CharField(max_length=30, null=False)
     country = models.CharField(max_length=20)
     securities = models.ManyToManyField('Assets', related_name='brokers')
     comment = models.TextField(null=True, blank=True)
@@ -388,17 +388,18 @@ class Assets(models.Model):
             if broker_id_list is not None:
                 transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
             
-            if currency is not None:
-                for transaction in transactions_before_entry:
-                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
-                    if fx_rate:
-                        total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
-                if start_date is not None:
-                    total_gl_before_current_position -= self.price_at_date(start_date, currency).price * self.position(start_date)
-            else:
-                total_gl_before_current_position = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
-                if start_date is not None:
-                    total_gl_before_current_position -= self.price_at_date(start_date).price * self.position(start_date)
+            if len(transactions_before_entry) != 0:
+                if currency is not None:
+                    for transaction in transactions_before_entry:
+                        fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
+                        if fx_rate:
+                            total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
+                    if start_date is not None:
+                        total_gl_before_current_position -= self.price_at_date(start_date, currency).price * self.position(start_date)
+                else:
+                    total_gl_before_current_position = transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
+                    if start_date is not None:
+                        total_gl_before_current_position -= self.price_at_date(start_date).price * self.position(start_date)
 
         # Step 3: Determine whether it is a long or short position
         position_at_date = self.position(date)
@@ -453,17 +454,23 @@ class Assets(models.Model):
         unrealized_gain_loss = 0
 
         current_position = self.position(date, broker_id_list)
-        current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
+
+        # current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
         
-        buy_in_price = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list, start_date=start_date)
+        # buy_in_price = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list, start_date=start_date)
+        # if buy_in_price is not None:
+        #     if currency is not None:
+        #         fx_rate = FX.get_rate(self.currency, currency, date)['FX']
+        #     else:
+        #         fx_rate = 1
+        #     if fx_rate:
+        #         unrealized_gain_loss += (current_price - buy_in_price) * fx_rate * (current_position)
+        
+        current_price = self.price_at_date(date, currency).price if self.price_at_date(date) else 0
+        buy_in_price = self.calculate_buy_in_price(date, currency, broker_id_list, start_date)
         if buy_in_price is not None:
-            if currency is not None:
-                fx_rate = FX.get_rate(self.currency, currency, date)['FX']
-            else:
-                fx_rate = 1
-            if fx_rate:
-                unrealized_gain_loss += (current_price - buy_in_price) * fx_rate * (current_position)
-        
+            unrealized_gain_loss = (current_price - buy_in_price) * current_position
+
         return round(Decimal(unrealized_gain_loss), 2)
     
     def get_capital_distribution(self, date, currency=None, broker_id_list=None, start_date=None):
@@ -632,7 +639,7 @@ class AnnualPerformance(models.Model):
     tax = models.DecimalField(max_digits=20, decimal_places=2)
     fx = models.DecimalField(max_digits=20, decimal_places=2)
     eop_nav = models.DecimalField(max_digits=20, decimal_places=2)
-    tsr = models.DecimalField(max_digits=10, decimal_places=6)
+    tsr = models.CharField(max_length=10) # Can be non numeric
     restricted = models.BooleanField(default=False, null=True, blank=True)
 
     class Meta:

@@ -116,9 +116,7 @@ def exposure_table_update(request):
         # Calculate values
         asset.current_position = asset.position(end_date, broker_ids)
         asset.entry_price = asset.calculate_buy_in_price(end_date, currency_target, broker_ids, start_date) or Decimal(0)
-        print("views. summary. 119", asset.name, ": ", "entry_price: ", asset.entry_price, "current_position: ", asset.current_position)
         cost = round(asset.entry_price * asset.current_position, 2)
-        print("views. summary. 120", asset.name, ": ", cost, "entry_price: ", asset.entry_price, "current_position: ", asset.current_position)
 
         asset.current_price = Decimal(getattr(asset.price_at_date(end_date, currency_target), 'price', 0))
         market_value = round(asset.current_price * asset.current_position, 2)

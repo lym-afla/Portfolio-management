@@ -24,7 +24,6 @@ $(document).ready(function() {
                         $('#table-open').DataTable().clear().destroy();
                     }
 
-
                     // Update the table HTML
                     $('#table-open tbody').html(response.tbody);
                     $('#table-open tfoot').html(response.tfoot);

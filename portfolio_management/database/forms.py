@@ -75,6 +75,11 @@ class BrokerForm(forms.ModelForm):
             'restricted': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
+    # Included this for generic 'edit' framework to work properly
+    def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
+        super().__init__(*args, **kwargs)
+
 class PriceForm(forms.ModelForm):
     class Meta:
         model = Prices

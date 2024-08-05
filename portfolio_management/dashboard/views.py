@@ -86,8 +86,6 @@ def dashboard(request):
     print("views. dashboard. Time taken for summary dict calcs", time.time() - start_t)
 
     start_t = time.time()
-    
-    print("views. dashboard. 102", selected_brokers, type(selected_brokers), summary['IRR'])
 
     financial_table_context = dashboard_summary_over_time(user, effective_current_date, user.custom_brokers, currency_target)
     # Formatting outputs

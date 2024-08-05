@@ -429,7 +429,7 @@ def add_security(request):
             
             # Check if the security already exists
             try:
-                security = Assets.objects.get(ISIN=isin)
+                security = Assets.objects.get(ISIN=isin, investor=request.user)
                 # new_security = False
             except Assets.DoesNotExist:
                 security = form.save(commit=False)  # Create new security instance
@@ -439,8 +439,8 @@ def add_security(request):
 
             # Attach the security to the broker
             for broker_id in brokers:
-                    broker = Brokers.objects.get(id=broker_id)
-                    broker.securities.add(security)
+                broker = Brokers.objects.get(id=broker_id, investor=request.user)
+                broker.securities.add(security)
 
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
@@ -576,7 +576,7 @@ def process_import_transactions(request):
             
         if quantity is not None or request.POST.get('type') == 'Dividend':
             try:
-                security = Assets.objects.get(name=request.POST.get('security_name'))
+                security = Assets.objects.get(name=request.POST.get('security_name'), investor=request.user)
             except Assets.DoesNotExist:
                 return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
         else:
@@ -681,7 +681,7 @@ def update_broker_performance(request):
                 return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
             
             # selected_brokers = [broker.id for broker in brokers]
-            # print("views. database. 521", brokers, selected_brokers)
+            # print("views. database. 521", brokers, selected_brokers
             
             try:
                 with transaction.atomic():

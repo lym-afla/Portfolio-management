@@ -196,7 +196,7 @@ def Irr(user_id, date, currency=None, asset_id=None, broker_id_list=None, start_
         # print(f"utils.py. line 127. Transaction details: {transaction.quantity}")
         if transaction.type == 'Cash in' or transaction.type == 'Cash out':
             cash_flow = -1 * transaction.cash_flow
-        elif transaction.type == 'Broker commission':
+        elif transaction.type == 'Broker commission' or transaction.type == 'Tax':
             cash_flow = Decimal(0) # Do not account for pay-outs elsewhere
         else:
             cash_flow = transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
@@ -331,7 +331,7 @@ def format_percentage(value, digits=0):
         else:
             return f"{float(value * 100):.{int(digits)}f}%"
     except (TypeError, ValueError):
-        # If the value cannot be converted to float, return 'NA'
+        # If the value cannot be converted to float, return itself
         return value
     
 
@@ -640,6 +640,10 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     portfolio_open_totals = {}
+
+    portfolio_open_totals['all_assets_share_of_portfolio_percentage'] = Decimal(0) 
+
+    total_irr_start_date = start_date # Not to be overwritten by asset start date if start date is not defined
     
     for asset in portfolio:
     
@@ -662,18 +666,15 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
         asset.entry_value = round(asset.entry_price * asset.current_position, 2)
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
 
-        # print(f'utils.py. LIne 508. Entry date: {entry_date}')
-        
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(end_date, currency_used).price
             asset.current_value = round(asset.current_price * asset.current_position, 2)
-            asset.share_of_portfolio = asset.price_at_date(end_date, currency_used).price * asset.current_position / portfolio_NAV
-            
-            # print("utils. 654", asset.name, asset.current_value)
+            asset.share_of_portfolio = asset.current_price * asset.current_position / portfolio_NAV
 
+            portfolio_open_totals['all_assets_share_of_portfolio_percentage'] += asset.share_of_portfolio
+            
             # Formatting
             asset.current_price = currency_format(asset.current_price, asset.currency if use_default_currency else currency_target, number_of_digits)
-            asset.current_value = currency_format(asset.current_value, asset.currency if use_default_currency else currency_target, number_of_digits)
             asset.share_of_portfolio = format_percentage(asset.share_of_portfolio)
         
         if 'realized_gl' in categories:
@@ -722,7 +723,6 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
                     asset.commission = asset.get_commission(end_date, currency_target, selected_brokers, start_date)
                     
                     addition = asset.realized_gl + asset.unrealized_gl + asset.capital_distribution + asset.commission
-                    # print("Line 709", addition)
                 elif key == 'current_value':
                     addition = asset.price_at_date(end_date, currency_target).price * asset.current_position
                 elif key == 'realized_gl':
@@ -733,23 +733,16 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
                     addition = asset.get_capital_distribution(end_date, currency_target, selected_brokers, start_date)
                 elif key == 'commission':
                     addition = asset.get_commission(end_date, currency_target, selected_brokers, start_date)
-                
                 else:
-                    # print(use_default_currency, key)
-                    addition = None
-                    
-            try:
-                if key != 'current_value':
-                    portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + addition
-                else:
-                    portfolio_open_totals[key] = portfolio_NAV
-            except:
-                portfolio_open_totals[key] = portfolio_open_totals.get(key, 0)
+                    addition = Decimal(0)
+
+            portfolio_open_totals[key] = portfolio_open_totals.get(key, 0) + addition
 
         # Formatting for correct representation
         asset.current_position = currency_format(asset.current_position, '', 0)
         
         asset.entry_value = currency_format(asset.entry_value, currency_used, number_of_digits)
+        asset.current_value = currency_format(asset.current_value, currency_used, number_of_digits)
         
         asset.realized_gl = currency_format(asset.realized_gl, currency_used, number_of_digits)
 
@@ -772,13 +765,17 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
             portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return_amount'] / abs(portfolio_open_totals['entry_value'])
     
     portfolio_open_totals['cash'] = portfolio_cash
+    portfolio_open_totals['total_nav'] = portfolio_NAV
+    portfolio_open_totals['irr'] = format_percentage(Irr(user_id, end_date, currency_target, asset_id=None, broker_id_list=selected_brokers, start_date=total_irr_start_date))
+
     if portfolio_NAV == 0:
             portfolio_open_totals['cash_share_of_portfolio'] = 'N/A'
+            portfolio_open_totals['all_assets_share_of_portfolio_percentage'] = 'N/A'
     else:
         portfolio_open_totals['cash_share_of_portfolio'] = format_percentage(portfolio_cash / portfolio_NAV)
-    # portfolio_open_totals['cash_share_of_portfolio'] = format_percentage(portfolio_cash / portfolio_NAV)
     
     # Format totals
+    portfolio_open_totals['all_assets_share_of_portfolio_percentage'] = format_percentage(portfolio_open_totals['all_assets_share_of_portfolio_percentage'])
     portfolio_open_totals = currency_format_dict_values(portfolio_open_totals, currency_target, number_of_digits)
 
     return portfolio, portfolio_open_totals
@@ -1035,15 +1032,6 @@ def parse_excel_file_transactions(file, currency, broker_id):
                 date = df.iloc[row, i].strftime("%Y-%m-%d")
                 price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places) if not pd.isna(df.iloc[row, i + 1]) else None
                 quantity = round(Decimal(df.iloc[row, i + 2]), quantity_decimal_places) if not pd.isna(df.iloc[row, i + 2]) else None
-                
-                # # Validate the quantity
-                # quantity_field = Transactions._meta.get_field('quantity')
-                # decimal_places = quantity_field.decimal_places
-                # # If the number of decimal places exceeds the allowed decimal places,
-                # # round the quantity to the allowed number of decimal places
-                # if quantity is not None:
-                #     if int(quantity.as_tuple().exponent) < -decimal_places:
-                #         quantity = quantity.quantize(Decimal(10) ** -decimal_places, rounding=ROUND_DOWN)
 
                 dividend = round(Decimal(df.iloc[row, i + 3]), 2) if not pd.isna(df.iloc[row, i + 3]) else None
                 commission = round(Decimal(df.iloc[row, i + 4]), 2) if not pd.isna(df.iloc[row, i + 4]) else None
@@ -1089,18 +1077,6 @@ def parse_broker_cash_flows(excel_file, currency, broker_id):
 
     # Initialize an empty list to hold transaction data
     transactions = []
-
-    # Identify columns related to 'Инвестиции' and their corresponding currencies by processing columns in reverse order
-    # currency_columns = {}
-    # current_currency = None
-    # for col in reversed(df.columns):
-    #     if 'Cash' in col:
-    #         current_currency = col.split('(')[-1].split(')')[0]
-    #         if current_currency == '£':
-    #             current_currency = 'GBP'
-    #     elif 'Инвестиции' in col and current_currency:
-    #         currency_columns[col] = current_currency
-    #         current_currency = None
 
     # Iterate over each row in the DataFrame
     for index, row in df.iterrows():
@@ -1207,12 +1183,16 @@ def import_asset_prices_from_csv(file_path, investor_id):
 
             # Update or create the Price entry
             try:
-                price_instance, created = Prices.objects.update_or_create(
+                price_instance, created = Prices.objects.get_or_create(
                     date=price_data['date'], 
                     security_id=price_data['security_id'],
                     defaults=price_data
                 )
-                print(f"{'Created' if created else 'Updated'} price for asset {asset_name} on date {date}")
+                if created:
+                    price_instance.save()
+                    print(f"Created price for asset {asset_name} on date {date}")
+                else:
+                    print(f"Price for {asset_name} on {date} already exists")
             except IntegrityError as e:
                 print(f"Error updating price for asset {asset_name} on date {date}: {e}")
 
@@ -2162,44 +2142,45 @@ def compile_summary_data(data, currency_target, number_of_digits):
 
 def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None):
 
-    try:
+    # try:
 
-        selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
+    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
 
-        # Determine the starting year
-        first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
-        if not first_transaction:
-            logger.info(f"No transactions found for investor {user.id} and brokers/group {brokers_or_group}")
-            return
-        
-        start_year = first_transaction.date.year
+    # Determine the starting year
+    first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
+    if not first_transaction:
+        logger.info(f"No transactions found for investor {user.id} and brokers/group {brokers_or_group}")
+        return
+    
+    start_year = first_transaction.date.year
 
-        # Determine the ending year
-        last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
-        last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
-        years = list(range(start_year, last_year + 1))
+    # Determine the ending year
+    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
+    years = list(range(start_year, last_year + 1))
 
-        for year in years:
-            with transaction.atomic():
+    for year in years:
+        with transaction.atomic():
 
-                performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
-                # Save group performance
-                performance, created = AnnualPerformance.objects.update_or_create(
-                    investor=user,
-                    broker_group=brokers_or_group,
-                    year=year,
-                    currency=currency_target,
-                    restricted=is_restricted,
-                    defaults=performance_data
-                )
-                logger.info(f"Updated group performance for investor: {user.id}, group: {brokers_or_group}, year: {year}, currency: {currency_target}, restricted: {is_restricted}")
+            performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+            
+            # Save group performance
+            performance, created = AnnualPerformance.objects.update_or_create(
+                investor=user,
+                broker_group=brokers_or_group,
+                year=year,
+                currency=currency_target,
+                restricted=is_restricted,
+                defaults=performance_data
+            )
+            logger.info(f"Updated group performance for investor: {user.id}, group: {brokers_or_group}, year: {year}, currency: {currency_target}, restricted: {is_restricted}")
 
-    except IntegrityError as e:
-        logger.error(f"Integrity error updating annual performance: {str(e)}")
-        raise
-    except Exception as e:
-        logger.error(f"Error updating annual performance: {str(e)}")
-        raise
+    # except IntegrityError as e:
+    #     logger.error(f"Save_or_update_annual_broker_performance. Integrity error updating annual performance: {str(e)}")
+    #     raise
+    # except Exception as e:
+    #     logger.error(f"Error updating annual performance: {str(e)}")
+    #     raise
 
     logger.info(f"Completed updating annual performance for investor: {user.id}, currency: {currency_target}, restricted: {is_restricted}")
 
@@ -2355,7 +2336,7 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
             performance_data['commission'] += round((transactions_df['commission'] * transactions_df['fx_rate']).sum(), 2)
             performance_data['tax'] += round((transactions_df[transactions_df['type'] == 'Tax']['cash_flow'] * 
                                               transactions_df[transactions_df['type'] == 'Tax']['fx_rate']).sum(), 2)
-
+        
         # Calculate asset-based metrics
         assets = Assets.objects.filter(investor=user, brokers=broker)
         if is_restricted is not None:
@@ -2376,7 +2357,7 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     performance_data['fx'] += performance_data['eop_nav'] - components_sum
 
     # Calculate TSR
-    performance_data['tsr'] = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
+    performance_data['tsr'] = format_percentage(Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date), digits=1)
 
     # Adjust FX for rounding errors
     performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']

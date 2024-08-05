@@ -116,7 +116,7 @@ def update_open_positions_table(request):
     ).exclude(
         abs_total_quantity__lt=TOLERANCE
     )
-    
+
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id
     portfolio_open, portfolio_open_totals = calculate_open_table_output(user.id, portfolio_open,
