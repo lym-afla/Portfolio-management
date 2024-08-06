@@ -237,3 +237,40 @@ class FXTransactionForm(forms.ModelForm):
                 raise forms.ValidationError("Exchange rate does not match the provided amounts.")
 
         return cleaned_data
+
+class PriceImportForm(forms.Form):
+    securities = forms.ModelMultipleChoiceField(
+        queryset=Assets.objects.all(),
+        required=False,
+        widget=forms.SelectMultiple(attrs={'class': 'form-control selectpicker', 'data-live-search': 'true'})
+    )
+    broker = forms.ModelChoiceField(
+        queryset=Brokers.objects.all(),
+        required=False,
+        empty_label="Select Broker",
+        widget=forms.Select(attrs={'class': 'form-control selectpicker', 'data-live-search': 'true'})
+    )
+    start_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
+    )
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
+    )
+    frequency = forms.ChoiceField(
+        required=False,
+        choices=[('monthly', 'Monthly'), ('quarterly', 'Quarterly'), ('annually', 'Annually')],
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    single_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
+    )
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if user:
+            self.fields['securities'].queryset = Assets.objects.filter(investor=user)
+            self.fields['broker'].queryset = Brokers.objects.filter(investor=user)

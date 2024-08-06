@@ -1,20 +1,28 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
+from dateutil.relativedelta import relativedelta
 from decimal import Decimal, InvalidOperation
+import json
 import logging
 from django.db import IntegrityError, transaction
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
-from django.db.models import Q
+from django.db.models import Q, F
+import pandas as pd
+import requests
+from fake_useragent import UserAgent
+from io import StringIO
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
-from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES
+from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 
-from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, SecurityForm, TransactionForm
+from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
 from utils import Irr, NAV_at_date, currency_format_dict_values, currency_format, format_percentage, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
 
 logger = logging.getLogger(__name__)
@@ -195,12 +203,18 @@ def database_securities(request):
 @login_required
 def database_prices(request):
     
+    user = request.user
+
     asset_types = dict(ASSET_TYPE_CHOICES)
-    securities = Assets.objects.filter(investor=request.user)
+    securities = Assets.objects.filter(investor=user).order_by('name')
+    brokers = Brokers.objects.filter(investor=user).order_by('name')
+    import_form = PriceImportForm(user=user)
     
     return render(request, 'prices.html', {
         'asset_types': asset_types,
         'securities': securities,
+        'brokers': brokers,
+        'importForm': import_form,
     })
 
 @login_required
@@ -209,6 +223,16 @@ def get_price_data_for_table(request):
     end_date = request.GET.get('end_date')
     asset_types = request.GET.getlist('asset_types[]')
     securities = request.GET.getlist('securities[]')
+
+    draw = int(request.GET.get('draw', 1))
+    start = int(request.GET.get('start', 0))
+    length = int(request.GET.get('length', 10))
+
+    # Handle ordering
+    order_column = int(request.GET.get('order[0][column]', 0))
+    order_dir = request.GET.get('order[0][dir]', 'desc')
+    columns = ['date', 'security__name', 'security__type', 'security__currency', 'price']
+    order_by = F(columns[order_column]).desc(nulls_last=True) if order_dir == 'desc' else F(columns[order_column]).asc(nulls_last=True)
     
     query = Q(security__investor=request.user)
     if start_date:
@@ -220,12 +244,12 @@ def get_price_data_for_table(request):
     if securities:
         query &= Q(security__id__in=securities)
     
-    price_data = Prices.objects.filter(query).select_related('security')
+    total_records = Prices.objects.filter(query).count()
+    price_data = Prices.objects.filter(query).select_related('security').order_by(order_by)[start:start+length]
     
     data = []
     for pd in price_data:
-        # fx_data = FX.get_rate(pd.security.currency, 'USD', pd.date)
-        # usd_price = pd.price * Decimal(str(fx_data['FX']))
+
         data.append({
             'id': pd.id,
             'date': pd.date,
@@ -233,11 +257,14 @@ def get_price_data_for_table(request):
             'asset_type': pd.security.get_type_display(),
             'currency': pd.security.currency,
             'price': float(pd.price),
-            # 'usd_price': float(usd_price),
-            # 'fx_rate': float(fx_data['FX']),
         })
     
-    return JsonResponse({'data': data})
+    return JsonResponse({
+        'draw': draw,
+        'recordsTotal': total_records,
+        'recordsFiltered': total_records,
+        'data': data
+    })
 
 def add_transaction(request):
     if request.method == 'POST':
@@ -700,3 +727,142 @@ def update_broker_performance(request):
                 return JsonResponse({'error': str(e)}, status=500)
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+def import_prices(request):
+
+    if request.method == 'POST':
+        form = PriceImportForm(request.POST, user=request.user)
+        if form.is_valid():
+            securities = form.cleaned_data.get('securities')
+            broker = form.cleaned_data.get('broker')
+            start_date = form.cleaned_data.get('start_date')
+            end_date = form.cleaned_data.get('end_date')
+            frequency = form.cleaned_data.get('frequency')
+            single_date = form.cleaned_data.get('single_date')
+
+            if single_date:
+                dates = [single_date]
+            else:
+                dates = generate_dates(start_date, end_date, frequency)
+
+            if broker:
+                # Get all securities for the broker
+                all_securities = broker.securities.filter(investor=request.user)
+
+                # Convert single_date to effective_current_date
+                effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+                
+                # Filter securities based on non-zero position for the effective date
+                securities = [
+                    security for security in all_securities
+                    if security.position(effective_current_date) > 0
+                ]
+
+                # securities = broker.securities.filter(
+                #     position__gt=0,
+                #     investor=request.user
+                # ).values_list('id', flat=True)
+
+            try:
+                with transaction.atomic():
+                    results = []
+                    for security in securities:
+                        try:
+                            security = Assets.objects.get(id=security.id, investor=request.user)
+                            result = import_security_prices_from_ft(security, dates)
+                            results.append(result)
+                        except ObjectDoesNotExist:
+                            results.append(f"Security with ID {security.id} not found")
+                        except Exception as e:
+                            results.append(f"Error updating prices for security {security.id}: {str(e)}")
+
+                return JsonResponse({'status': 'success', 'message': 'Prices updated', 'details': results})
+            except Exception as e:
+                return JsonResponse({'status': 'error', 'message': str(e)})
+        else:
+            print("views. database. 771", form.errors)
+            return JsonResponse({'status': 'error', 'message': 'Invalid form data', 'errors': form.errors})
+
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+
+def generate_dates(start, end, frequency):
+    dates = []
+    current = start.replace(day=1) - timedelta(days=1) + relativedelta(months=1)  # Last day of the month
+    while current <= end:
+        dates.append(current)
+        if frequency == 'monthly':
+            current += relativedelta(months=1)
+        elif frequency == 'quarterly':
+            current += relativedelta(months=3)
+        elif frequency == 'annually':
+            current += relativedelta(years=1)
+    return dates
+
+def import_security_prices_from_ft(security, dates):
+    # url = f'https://markets.ft.com/data/funds/tearsheet/historical?s={security.ISIN}:{security.currency}'
+    url = security.update_link
+    user_agent = UserAgent().random
+    headers = {'User-Agent': user_agent}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return f"Error fetching data for {security.name}: {str(e)}"
+    
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    elem = soup.find('section', {'class': 'mod-tearsheet-add-to-watchlist'})
+    if elem and 'data-mod-config' in elem.attrs:
+        data = json.loads(elem['data-mod-config'])
+        xid = data['xid']
+
+        updated_dates = []
+        skipped_dates = []
+        for date in dates:
+            
+            # Check if a price already exists for this date
+            if Prices.objects.filter(security=security, date=date).exists():
+                skipped_dates.append(date.strftime('%Y-%m-%d'))
+                continue
+
+            end_date = date.strftime('%Y/%m/%d')
+            start_date = (date - timedelta(days=7)).strftime('%Y/%m/%d')
+
+            try:
+                r = requests.get(
+                    f'https://markets.ft.com/data/equities/ajax/get-historical-prices?startDate={start_date}&endDate={end_date}&symbol={xid}',
+                    headers=headers,
+                    timeout=10
+                )
+                r.raise_for_status()
+                data = r.json()
+            except requests.RequestException as e:
+                return f"Error fetching historical data for {security.name}: {str(e)}"
+
+            try:
+                df = pd.read_html(StringIO('<table>' + data['html'] + '</table>'))[0]
+                df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+                df['Date'] = pd.to_datetime(df['Date'].apply(lambda x: x.split(',')[-2][1:] + x.split(',')[-1]))
+
+                # Convert 'date' to pandas Timestamp for comparison
+                date_as_timestamp = pd.Timestamp(date)
+
+                df = df[df['Date'] <= date_as_timestamp]
+
+                if not df.empty:
+                    latest_price = df.iloc[0]['Close']
+                    if security.name in MUTUAL_FUNDS_IN_PENCES:
+                        latest_price = latest_price / 100
+                    Prices.objects.create(security=security, date=date, price=latest_price)
+                    updated_dates.append(date.strftime('%Y-%m-%d'))
+            except Exception as e:
+                return f"Error processing data for {security.name}: {str(e)}"
+
+        result = f"Updated prices for {security.name} on dates: {', '.join(updated_dates)}"
+        if skipped_dates:
+            result += f"\nSkipped existing prices for dates: {', '.join(skipped_dates)}"
+        return result
+
+    else:
+        return f"No data found for {security.name}"

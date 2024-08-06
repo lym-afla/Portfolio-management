@@ -187,6 +187,7 @@ class Assets(models.Model):
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default='Equity')
     restricted = models.BooleanField(default=False, null=False)
     comment = models.TextField(null=True, blank=True)
+    update_link = models.URLField(null=True, blank=True)
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):

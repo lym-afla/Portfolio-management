@@ -54,3 +54,8 @@ BROKER_GROUPS = {
     'UK': [3, 6],
     # Add other groups as needed
 }
+
+# Names of mutual funds that are kept in FT database in pences, so need to be divided by 100
+MUTUAL_FUNDS_IN_PENCES = [
+    'Fidelity Index US Fund P Accumulation',
+]
