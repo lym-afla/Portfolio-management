@@ -272,5 +272,5 @@ class PriceImportForm(forms.Form):
         user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         if user:
-            self.fields['securities'].queryset = Assets.objects.filter(investor=user)
-            self.fields['broker'].queryset = Brokers.objects.filter(investor=user)
+            self.fields['securities'].queryset = Assets.objects.filter(investor=user).order_by('name')
+            self.fields['broker'].queryset = Brokers.objects.filter(investor=user).order_by('name')

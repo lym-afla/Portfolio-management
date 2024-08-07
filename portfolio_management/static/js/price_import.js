@@ -7,59 +7,83 @@ $(document).ready(function() {
     $('#submitImportPrices').on('click', function() {
         var formData = new FormData($('#importPricesForm')[0]);
 
-        showSpinner();
+        $('#importPricesModal').modal('hide');
 
-        $.ajax({
-            url: 'import_prices/',
-            type: 'POST',
-            data: formData,
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken') // Add CSRF token to headers
-            },
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                // Clear previous errors
-                $('.error-message').html('');
+        $('#importProgressModal').modal('show');
+        $('#importProgressBar').css('width', '0%').attr('aria-valuenow', 0).text('0%');
+        $('#importStatus').text('Initializing import...');
 
-                hideSpinner();
-
-                if (response.status === 'success') {
-
-                    // Populate modal body with response details
-                    var detailsHtml = '<ul>';
-                    response.details.forEach(function(detail) {
-                        detailsHtml += '<li>' + detail + '</li>';
-                    });
-                    detailsHtml += '</ul>';
-
-                    $('#successModal .modal-body').html(detailsHtml);
-                    $('#successModal .btn-primary').attr('href', 'your_link_here'); // Set the link if needed
-
-                    $('#importPricesModal').modal('hide');
-
-                    // Show success modal
-                    $('#successModal').modal('show');
-
-                    // alert('Prices imported successfully!');
-                    // console.log(response.details);
-                    // $('#importPricesModal').modal('hide');
-                    // Refresh the price data table
-                    $('#price_data_table').DataTable().ajax.reload();
-                } else {
-                    // Display form errors
-                    $.each(response.errors, function(fieldName, errorMessages) {
-                        $('#error_' + fieldName).html(errorMessages.join('<br>'));
-                    });
-                    alert('Error updating prices: ' + response.message);
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', 'import_prices/', true);
+        xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
+        xhr.onprogress = function(e) {
+            var lines = e.target.responseText.split('\n');
+            var lastLine = lines[lines.length - 2]; // Last complete line
+            if (lastLine) {
+                var data = JSON.parse(lastLine);
+                if (data.status === 'progress') {
+                    $('#importProgressBar').css('width', data.progress + '%').attr('aria-valuenow', data.progress).text(Math.round(data.progress) + '%');
+                    $('#importStatus').text(`Importing ${data.security_name} for date ${data.date} (${data.current}/${data.total})`);
+                } else if (data.status === 'success') {
+                    $('#importProgressModal').modal('hide');
+                    handleImportSuccess(data);
+                } else if (data.status === 'error') {
+                    $('#importProgressModal').modal('hide');
+                    handleImportError(data.message);
                 }
-            },
-            error: function(xhr, status, error) {
-                hideSpinner();
-                alert('Error updating prices: ' + error);
             }
-        });
+        };
+        xhr.onerror = function() {
+            $('#importProgressModal').modal('hide');
+            handleImportError('An error occurred during the import process.');
+        };
+        xhr.send(formData);
     });
+
+    function handleImportSuccess(response) {
+        let resultsHtml = '<h4>Import results</h4>';
+
+        // Add summary of import parameters
+        resultsHtml += '<div class="alert alert-info">';
+        resultsHtml += `<p><strong>Import Summary:</strong></p>`;
+        resultsHtml += `<p>Date Range: ${response.start_date} to ${response.end_date}</p>`;
+        resultsHtml += `<p>Frequency: ${response.frequency}</p>`;
+        resultsHtml += `<p>Total Dates: ${response.total_dates}</p>`;
+        resultsHtml += '</div>';
+
+        resultsHtml += '<table class="table table-striped">';
+        resultsHtml += '<thead><tr><th>Security</th><th>Updated Dates</th><th>Skipped Dates</th><th>Errors</th></tr></thead>';
+        resultsHtml += '<tbody>';
+
+        if (Array.isArray(response.details)) {
+            response.details.forEach(function(detail) {
+                resultsHtml += '<tr>';
+                resultsHtml += `<td>${detail.security_name || 'N/A'}</td>`;
+                resultsHtml += `<td>${detail.updated_dates.length}</td>`;
+                resultsHtml += `<td>${detail.skipped_dates.length}</td>`;
+                resultsHtml += `<td>${formatErrors(detail.errors)}</td>`;
+                resultsHtml += '</tr>';
+            });
+        } else {
+            resultsHtml += '<tr><td colspan="4">No details provided</td></tr>';
+        }
+
+        resultsHtml += '</tbody></table>';
+
+        $('#successModal .modal-body').html(resultsHtml);
+        $('#successModal .modal-title').text('Price Import Results');
+        $('#successModal .modal-footer a.btn-primary').hide();
+        $('#successModal').modal('show');
+        
+        $('#price_data_table').DataTable().ajax.reload();
+    }
+
+    function handleImportError(errorMessage) {
+        $('#successModal .modal-body').html('<div class="alert alert-danger">' + errorMessage + '</div>');
+        $('#successModal .modal-title').text('Import error');
+        $('#successModal .modal-footer a.btn-primary').hide();
+        $('#successModal').modal('show');
+    }
 
     // Toggle between securities and broker selection
     $('#id_securities, #id_broker').on('change', function() {
@@ -96,4 +120,25 @@ $(document).ready(function() {
             frequency.prop('disabled', false);
         }
     });
+
+    // Helper functions
+    function formatDates(dates) {
+        if (!Array.isArray(dates) || dates.length === 0) return 'None';
+        return '<ul class="list-unstyled mb-0">' + 
+               dates.map(date => `<li>• ${formatDate(date)}</li>`).join('') + 
+               '</ul>';
+    }
+    
+    function formatErrors(errors) {
+        if (!Array.isArray(errors) || errors.length === 0) return 'None';
+        return '<ul class="list-unstyled mb-0 text-danger">' + 
+               errors.map(error => `<li>• ${error}</li>`).join('') + 
+               '</ul>';
+    }
+
+    function formatDate(dateString) {
+        if (!dateString) return 'Invalid date';
+        const options = { year: 'numeric', month: 'short', day: 'numeric' };
+        return new Date(dateString).toLocaleDateString(undefined, options);
+    }
 });

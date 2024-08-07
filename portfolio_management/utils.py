@@ -2,6 +2,7 @@ from collections import defaultdict
 from decimal import Decimal
 from functools import lru_cache
 import sys
+import json
 
 from django.db import IntegrityError, transaction
 
@@ -2145,13 +2146,12 @@ def compile_summary_data(data, currency_target, number_of_digits):
     return formatted_data
 
 def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
-
     selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
 
     # Determine the starting year
     first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
     if not first_transaction:
-        logger.info(f"No transactions found for investor {user.id} and brokers/group {brokers_or_group}")
+        yield json.dumps({'status': 'error', 'message': 'No transactions found'}) + '\n'
         return
     
     start_year = first_transaction.date.year
@@ -2161,28 +2161,33 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
-    for year in years:
-        
+    total_years = len(years)
+    for i, year in enumerate(years, 1):
         if skip_existing_years and AnnualPerformance.objects.filter(investor=user, broker_group=brokers_or_group, year=year, currency=currency_target, restricted=is_restricted).exists():
-            logger.info(f"Skipping existing year {year} for investor: {user.id}, group: {brokers_or_group}, currency: {currency_target}, restricted: {is_restricted}")
             continue
 
-        with transaction.atomic():
+        try:
+            with transaction.atomic():
+                performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+                
+                performance, created = AnnualPerformance.objects.update_or_create(
+                    investor=user,
+                    broker_group=brokers_or_group,
+                    year=year,
+                    currency=currency_target,
+                    restricted=is_restricted,
+                    defaults=performance_data
+                )
 
-            performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
-            
-            # Save group performance
-            performance, created = AnnualPerformance.objects.update_or_create(
-                investor=user,
-                broker_group=brokers_or_group,
-                year=year,
-                currency=currency_target,
-                restricted=is_restricted,
-                defaults=performance_data
-            )
-            logger.info(f"Updated group performance for investor: {user.id}, group: {brokers_or_group}, year: {year}, currency: {currency_target}, restricted: {is_restricted}")
-
-    logger.info(f"Completed updating annual performance for investor: {user.id}, currency: {currency_target}, restricted: {is_restricted}")
+            yield json.dumps({
+                'status': 'progress',
+                'current': i,
+                'total': total_years,
+                'progress': (i / total_years) * 100,
+                'year': year
+            }) + '\n'
+        except Exception as e:
+            yield json.dumps({'status': 'error', 'message': f"Error processing year {year}: {str(e)}"}) + '\n'
 
 # def calculate_performance_OLD(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
 #     performance_data = {name: Decimal(0) for name in [

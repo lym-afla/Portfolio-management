@@ -412,3 +412,14 @@ h2 {
 .highlight-column {
     background-color: #f8f9fa;
 } */
+
+/* New styles for the progress bar */
+.progress {
+  height: 25px;
+  margin-top: 10px;
+}
+
+.progress-bar {
+  line-height: 25px;
+  font-size: 14px;
+}

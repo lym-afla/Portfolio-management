@@ -10,15 +10,7 @@
 {% block content %}
     <div class="container-fluid">
         <div class="row mb-3">
-            <div class="col-md-3">
-                <label for="start_date">Start Date:</label>
-                <input type="date" id="start_date" class="form-control">
-            </div>
-            <div class="col-md-3">
-                <label for="end_date">End Date:</label>
-                <input type="date" id="end_date" class="form-control">
-            </div>
-            <div class="col-md-3">
+            <div class="col">
                 <label for="asset_types">Asset Types:</label>
                 <select id="asset_types" class="form-control selectpicker" multiple data-live-search="true">
                     {% for key, value in asset_types.items %}
@@ -26,13 +18,30 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col">
+                <label for="brokers">Brokers:</label>
+                <select id="brokers" class="form-control selectpicker" data-live-search="true">
+                    <option value="">All Brokers</option>
+                    {% for broker in brokers %}
+                        <option value="{{ broker.id }}">{{ broker.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col">
                 <label for="securities">Securities:</label>
                 <select id="securities" class="form-control selectpicker" multiple data-live-search="true">
                     {% for security in securities %}
                         <option value="{{ security.id }}">{{ security.name }}</option>
                     {% endfor %}
                 </select>
+            </div>
+            <div class="col">
+                <label for="start_date">Start Date:</label>
+                <input type="date" id="start_date" class="form-control">
+            </div>
+            <div class="col">
+                <label for="end_date">End Date:</label>
+                <input type="date" id="end_date" class="form-control">
             </div>
         </div>
         
@@ -85,6 +94,24 @@
             </div>
         </div>
     </div>
+
+    <!-- Import Progress Modal -->
+    <div class="modal fade" id="importProgressModal" tabindex="-1" aria-labelledby="importProgressModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importProgressModalLabel">Importing Prices</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="importStatus">Initializing import...</p>
+                    <div class="progress">
+                        <div id="importProgressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
 {% endblock content %}
 
 {% block script %}
@@ -105,6 +132,7 @@
                         d.end_date = $('#end_date').val();
                         d.asset_types = $('#asset_types').val();
                         d.securities = $('#securities').val();
+                        d.search_value = d.search.value;
                     }
                 },
                 columns: [
@@ -119,10 +147,45 @@
                         return data;
                     }},
                     {data: null, orderable: false, render: function(data, type, row) {
-                        return '<button class="btn btn-sm btn-primary edit-btn" data-id="' + row.id + '">Edit</button>';
+                        return '<div class="d-flex">' +
+                               '<button class="btn btn-sm btn-primary edit-btn me-1" data-id="' + row.id + '">Edit</button>' +
+                               '<button class="btn btn-sm btn-danger delete-btn" data-id="' + row.id + '">Delete</button>' +
+                               '</div>';
                     }}
                 ],
                 order: [[0, 'desc']]  // Default sort by date descending
+            });
+
+            // Add event listener for broker selection
+            $('#brokers').change(function() {
+                var selectedBrokerId = $(this).val();
+                var $securitiesSelect = $('#securities');
+                
+                if (selectedBrokerId) {
+                    // If a broker is selected, filter securities
+                    $.ajax({
+                        url: '{% url "database:get_broker_securities" %}',
+                        data: {
+                            'broker_id': selectedBrokerId
+                        },
+                        dataType: 'json',
+                        success: function(data) {
+                            $securitiesSelect.find('option').each(function() {
+                                var $option = $(this);
+                                if (data.securities.includes(parseInt($option.val()))) {
+                                    $option.prop('selected', true);
+                                } else {
+                                    $option.prop('selected', false);
+                                }
+                            });
+                            $securitiesSelect.selectpicker('refresh');
+                        }
+                    });
+                } else {
+                    // If "All Brokers" is selected, deselect all securities
+                    $securitiesSelect.find('option').prop('selected', false);
+                    $securitiesSelect.selectpicker('refresh');
+                }
             });
 
             $('#apply_filters').click(function() {
@@ -147,6 +210,30 @@
                         alert('Error loading edit form');
                     }
                 });
+            });
+
+            // Add event listener for delete button
+            $('#price_data_table').on('click', '.delete-btn', function() {
+                var id = $(this).data('id');
+                if (confirm('Are you sure you want to delete this price entry?')) {
+                    $.ajax({
+                        url: "{% url 'database:delete_price' 0 %}".replace('0', id),
+                        type: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                table.ajax.reload();
+                            } else {
+                                alert('Error deleting price: ' + response.error);
+                            }
+                        },
+                        error: function() {
+                            alert('Error deleting price');
+                        }
+                    });
+                }
             });
         
             $(document).on('submit', '#editPriceModal form', function(e) {
