@@ -1,19 +1,22 @@
 from collections import defaultdict
 from decimal import Decimal
 from functools import lru_cache
+import sys
+import json
 
 from django.db import IntegrityError, transaction
 
 from common.models import AnnualPerformance, Brokers, Assets, FX, Prices, Transactions
-from django.db.models import Sum, F
+from django.db.models import Sum, Q
 from pyxirr import xirr
 import pandas as pd
 import time
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import logging
+from fuzzywuzzy import process
 
-from constants import BROKER_GROUPS
+import constants
 from users.models import CustomUser
 
 logger = logging.getLogger(__name__)
@@ -346,6 +349,8 @@ def currency_format(value, currency, digits):
             cur = '£'
         case 'RUB':            
             cur = '₽'
+        case 'CHF':            
+            cur = '₣'
         case default:
             cur = currency.upper()
     try:
@@ -1623,9 +1628,9 @@ def broker_group_to_ids(brokers_or_group, user):
         if brokers_or_group == 'All brokers':
             # Return all broker IDs for the user
             return list(Brokers.objects.filter(investor=user).values_list('id', flat=True))
-        elif brokers_or_group in BROKER_GROUPS:
+        elif brokers_or_group in constants.BROKER_GROUPS:
             # It's a group name
-            selected_brokers = BROKER_GROUPS.get(brokers_or_group)
+            selected_brokers = constants.BROKER_GROUPS.get(brokers_or_group)
             
             # Filter the group's broker IDs to only include those belonging to the user
             user_brokers = set(Brokers.objects.filter(investor=user).values_list('id', flat=True))
@@ -1653,7 +1658,7 @@ def broker_group_to_simplified(brokers_or_group):
     if isinstance(brokers_or_group, str):
         # It's a group name
         group_name = brokers_or_group
-        selected_brokers = BROKER_GROUPS.get(group_name)
+        selected_brokers = constants.BROKER_GROUPS.get(group_name)
         if not selected_brokers:
             raise ValueError(f"Invalid group name: {group_name}")
     else:
@@ -1673,7 +1678,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     # if isinstance(brokers_or_group, str):
     #     # It's a group name
     #     group_name = brokers_or_group
-    #     selected_brokers = BROKER_GROUPS.get(group_name)
+    #     selected_brokers = constants.BROKER_GROUPS.get(group_name)
     #     if not selected_brokers:
     #         raise ValueError(f"Invalid group name: {group_name}")
     # else:
@@ -1902,7 +1907,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
     if isinstance(brokers_or_group, str):
         # It's a group name
         group_name = brokers_or_group
-        selected_brokers_ids = BROKER_GROUPS.get(group_name)
+        selected_brokers_ids = constants.BROKER_GROUPS.get(group_name)
         if not selected_brokers_ids:
             raise ValueError(f"Invalid group name: {group_name}")
     else:
@@ -2140,16 +2145,13 @@ def compile_summary_data(data, currency_target, number_of_digits):
 
     return formatted_data
 
-def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None):
-
-    # try:
-
+def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
     selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
 
     # Determine the starting year
     first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
     if not first_transaction:
-        logger.info(f"No transactions found for investor {user.id} and brokers/group {brokers_or_group}")
+        yield json.dumps({'status': 'error', 'message': 'No transactions found'}) + '\n'
         return
     
     start_year = first_transaction.date.year
@@ -2159,134 +2161,137 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
-    for year in years:
-        with transaction.atomic():
-
-            performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
-            
-            # Save group performance
-            performance, created = AnnualPerformance.objects.update_or_create(
-                investor=user,
-                broker_group=brokers_or_group,
-                year=year,
-                currency=currency_target,
-                restricted=is_restricted,
-                defaults=performance_data
-            )
-            logger.info(f"Updated group performance for investor: {user.id}, group: {brokers_or_group}, year: {year}, currency: {currency_target}, restricted: {is_restricted}")
-
-    # except IntegrityError as e:
-    #     logger.error(f"Save_or_update_annual_broker_performance. Integrity error updating annual performance: {str(e)}")
-    #     raise
-    # except Exception as e:
-    #     logger.error(f"Error updating annual performance: {str(e)}")
-    #     raise
-
-    logger.info(f"Completed updating annual performance for investor: {user.id}, currency: {currency_target}, restricted: {is_restricted}")
-
-def calculate_performance_OLD(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
-    performance_data = {name: Decimal(0) for name in [
-        "bop_nav", "invested", "cash_out", "price_change", "capital_distribution",
-        "commission", "tax", "fx", "eop_nav", "tsr"
-    ]}
-
-    # Calculate the performance values for each line
-    transactions = Transactions.objects.filter(
-        investor=user,
-        broker_id__in=selected_brokers_ids,
-        date__gte=start_date,
-        date__lte=end_date,
-    )
-
-    if is_restricted is not None:
-        # Filter for transactions related to securities
-        security_transactions = transactions.filter(security__isnull=False, security__restricted=is_restricted)
-        # Include all transactions not related to specific securities
-        non_security_transactions = transactions.filter(security__isnull=True)
-        # Combine both querysets
-        transactions = security_transactions | non_security_transactions
-
-    else:
-        transactions = transactions
-
-    transactions = transactions.values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
-
-    transactions_df = pd.DataFrame(list(transactions))
-    # if transactions_df.empty:
-    #     return performance_data
-
-    transactions_df['fx_rate'] = transactions_df.apply(
-        lambda row: get_fx_rate(row['currency'], currency_target, row['date']), axis=1
-    )
-
-    brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).all()
-
-    for broker in brokers:
-        broker_transactions = transactions_df[transactions_df['broker_id'] == broker.id]
-        if broker_transactions.empty:
+    total_years = len(years)
+    for i, year in enumerate(years, 1):
+        if skip_existing_years and AnnualPerformance.objects.filter(investor=user, broker_group=brokers_or_group, year=year, currency=currency_target, restricted=is_restricted).exists():
             continue
 
-        bop_nav = AnnualPerformance.objects.filter(investor=user, broker=broker, year=start_date.year - 1, currency=currency_target)
-        if len(bop_nav) == 0:
-            bop_nav = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
-        else:
-            bop_nav = bop_nav.values('eop_nav')[0]['eop_nav']
-        performance_data['bop_nav'] += bop_nav
+        try:
+            with transaction.atomic():
+                performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+                
+                performance, created = AnnualPerformance.objects.update_or_create(
+                    investor=user,
+                    broker_group=brokers_or_group,
+                    year=year,
+                    currency=currency_target,
+                    restricted=is_restricted,
+                    defaults=performance_data
+                )
 
-        invested = round((broker_transactions[broker_transactions['type'] == 'Cash in']['cash_flow'] * 
-                          broker_transactions[broker_transactions['type'] == 'Cash in']['fx_rate']).sum(), 2)
-        performance_data['invested'] += invested
+            yield json.dumps({
+                'status': 'progress',
+                'current': i,
+                'total': total_years,
+                'progress': (i / total_years) * 100,
+                'year': year
+            }) + '\n'
+        except Exception as e:
+            yield json.dumps({'status': 'error', 'message': f"Error processing year {year}: {str(e)}"}) + '\n'
 
-        cash_out = round((broker_transactions[broker_transactions['type'] == 'Cash out']['cash_flow'] * 
-                          broker_transactions[broker_transactions['type'] == 'Cash out']['fx_rate']).sum(), 2)
-        performance_data['cash_out'] += cash_out
+# def calculate_performance_OLD(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
+#     performance_data = {name: Decimal(0) for name in [
+#         "bop_nav", "invested", "cash_out", "price_change", "capital_distribution",
+#         "commission", "tax", "fx", "eop_nav", "tsr"
+#     ]}
 
-        realized_gl = Decimal(0)
-        unrealized_gl = Decimal(0)
-        capital_distribution = Decimal(0)
+#     # Calculate the performance values for each line
+#     transactions = Transactions.objects.filter(
+#         investor=user,
+#         broker_id__in=selected_brokers_ids,
+#         date__gte=start_date,
+#         date__lte=end_date,
+#     )
 
-        assets = Assets.objects.filter(investor=user, brokers=broker)
-        if is_restricted is not None:
-            assets = assets.filter(restricted=is_restricted)                                       
+#     if is_restricted is not None:
+#         # Filter for transactions related to securities
+#         security_transactions = transactions.filter(security__isnull=False, security__restricted=is_restricted)
+#         # Include all transactions not related to specific securities
+#         non_security_transactions = transactions.filter(security__isnull=True)
+#         # Combine both querysets
+#         transactions = security_transactions | non_security_transactions
 
-        for asset in assets:
-            asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
-            realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
-            unrealized_gl += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
-            capital_distribution += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+#     else:
+#         transactions = transactions
 
-        performance_data['price_change'] += realized_gl + unrealized_gl
-        performance_data['capital_distribution'] += capital_distribution
+#     transactions = transactions.values('cash_flow', 'type', 'commission', 'date', 'currency', 'broker_id')
 
-        commission = round((broker_transactions['commission'] * broker_transactions['fx_rate']).sum(), 2)
-        performance_data['commission'] += commission
+#     transactions_df = pd.DataFrame(list(transactions))
+#     # if transactions_df.empty:
+#     #     return performance_data
 
-        tax = round((broker_transactions[broker_transactions['type'] == 'Tax']['cash_flow'] * 
-                     broker_transactions[broker_transactions['type'] == 'Tax']['fx_rate']).sum(), 2)
-        performance_data['tax'] += tax
+#     transactions_df['fx_rate'] = transactions_df.apply(
+#         lambda row: get_fx_rate(row['currency'], currency_target, row['date']), axis=1
+#     )
 
-        eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
-        performance_data['eop_nav'] += eop_nav
+#     brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).all()
+
+#     for broker in brokers:
+#         broker_transactions = transactions_df[transactions_df['broker_id'] == broker.id]
+#         if broker_transactions.empty:
+#             continue
+
+#         bop_nav = AnnualPerformance.objects.filter(investor=user, broker=broker, year=start_date.year - 1, currency=currency_target)
+#         if len(bop_nav) == 0:
+#             bop_nav = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
+#         else:
+#             bop_nav = bop_nav.values('eop_nav')[0]['eop_nav']
+#         performance_data['bop_nav'] += bop_nav
+
+#         invested = round((broker_transactions[broker_transactions['type'] == 'Cash in']['cash_flow'] * 
+#                           broker_transactions[broker_transactions['type'] == 'Cash in']['fx_rate']).sum(), 2)
+#         performance_data['invested'] += invested
+
+#         cash_out = round((broker_transactions[broker_transactions['type'] == 'Cash out']['cash_flow'] * 
+#                           broker_transactions[broker_transactions['type'] == 'Cash out']['fx_rate']).sum(), 2)
+#         performance_data['cash_out'] += cash_out
+
+#         realized_gl = Decimal(0)
+#         unrealized_gl = Decimal(0)
+#         capital_distribution = Decimal(0)
+
+#         assets = Assets.objects.filter(investor=user, brokers=broker)
+#         if is_restricted is not None:
+#             assets = assets.filter(restricted=is_restricted)                                       
+
+#         for asset in assets:
+#             asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+#             realized_gl += asset_realized_gl["all_time"] if asset_realized_gl else 0
+#             unrealized_gl += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+#             capital_distribution += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+
+#         performance_data['price_change'] += realized_gl + unrealized_gl
+#         performance_data['capital_distribution'] += capital_distribution
+
+#         commission = round((broker_transactions['commission'] * broker_transactions['fx_rate']).sum(), 2)
+#         performance_data['commission'] += commission
+
+#         tax = round((broker_transactions[broker_transactions['type'] == 'Tax']['cash_flow'] * 
+#                      broker_transactions[broker_transactions['type'] == 'Tax']['fx_rate']).sum(), 2)
+#         performance_data['tax'] += tax
+
+#         eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
+#         performance_data['eop_nav'] += eop_nav
         
-        components_sum = (
-            performance_data['bop_nav'] + 
-            performance_data['invested'] + 
-            performance_data['cash_out'] + 
-            performance_data['price_change'] + 
-            performance_data['capital_distribution'] + 
-            performance_data['commission'] + 
-            performance_data['tax']
-        )
-        performance_data['fx'] += eop_nav - components_sum
+#         components_sum = (
+#             performance_data['bop_nav'] + 
+#             performance_data['invested'] + 
+#             performance_data['cash_out'] + 
+#             performance_data['price_change'] + 
+#             performance_data['capital_distribution'] + 
+#             performance_data['commission'] + 
+#             performance_data['tax']
+#         )
+#         performance_data['fx'] += eop_nav - components_sum
 
-    tsr = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
-    # print("utils. 2366", tsr)
-    performance_data['tsr'] = tsr
+#     tsr = Irr(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date)
+#     # print("utils. 2366", tsr)
+#     performance_data['tsr'] = tsr
 
-    # Solve FX not zero due to rounding
-    performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
+#     # Solve FX not zero due to rounding
+#     performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
 
-    return performance_data
+#     return performance_data
 
 def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
     performance_data = {name: Decimal(0) for name in [
@@ -2317,10 +2322,34 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
             date__lte=end_date,
         )
 
-        if is_restricted is not None:
-            transactions = (transactions.filter(security__isnull=False, security__restricted=is_restricted) |
-                            transactions.filter(security__isnull=True))
+        # if is_restricted is not None:
+        #     transactions = (transactions.filter(security__isnull=False, security__restricted=is_restricted) |
+        #                     transactions.filter(security__isnull=True))
+            
+        # if is_restricted is True:
+        #     if broker.restricted is False:
+        #         transactions = transactions.filter(security__isnull=False, security__restricted=is_restricted)
+        # elif is_restricted is False:
+        #     if broker.restricted is False:
+        #         transactions = transactions.filter(security__isnull=False, security__restricted=is_restricted)
 
+        # if is_restricted is not None and broker.restricted is False:
+        #     transactions = transactions.filter(security__isnull=False, security__restricted=is_restricted)
+
+        if is_restricted is None:
+            # No filter needed if is_restricted is None
+            pass
+        elif is_restricted is True:
+            if broker.restricted is False:
+                transactions = transactions.filter(security__isnull=False, security__restricted=True)
+        elif is_restricted is False:
+            if broker.restricted is True:
+                transactions = transactions.none()  # Use an empty QuerySet
+            else:
+                transactions = (transactions.filter(security__isnull=False, security__restricted=False) |
+                                transactions.filter(security__isnull=True))
+
+        
         transactions_df = pd.DataFrame(list(transactions.values('cash_flow', 'type', 'commission', 'date', 'currency')))
 
         if not transactions_df.empty:
@@ -2439,3 +2468,193 @@ def end_of_year_price_correction(user, year, broker_name, target_nav, asset_name
         result["status"] = "Price update canceled."
 
     return result
+
+def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
+    df = pd.read_excel(file, header=3)
+    transactions = []
+    security_cache = {}
+    skipped_count = 0
+
+    broker = Brokers.objects.get(id=broker_id)
+    investor = CustomUser.objects.get(id=investor_id)
+
+    quantity_field = Transactions._meta.get_field('quantity')
+    quantity_decimal_places = quantity_field.decimal_places
+    # price_field = Transactions._meta.get_field('price')
+    price_decimal_places = 5
+
+    def find_or_prompt_security(stock_description, investor, broker, security_cache):
+
+        # Check if we have a cached mapping
+        if stock_description in security_cache:
+            return security_cache[stock_description]
+        
+        def find_best_matching_security(description):
+            securities = Assets.objects.filter(
+                Q(investor=investor) & Q(brokers=broker)
+            )
+            security_names = [security.name for security in securities]
+            best_match = process.extractOne(description, security_names, score_cutoff=60)
+            
+            if best_match:
+                match_name, match_score = best_match
+                print(f"Potential match found: '{match_name}' (Similarity: {match_score}%)")
+                sys.stdout.flush()
+                user_confirm = input(f"Do you agree with this match for '{description}'? (yes/no/skip/exit): ").lower()
+                
+                if user_confirm == 'yes':
+                    matched_security = securities.get(name=match_name)
+                    security_cache[stock_description] = matched_security  # Update cache
+                    print(f"Match confirmed and cached for future use.")
+                    return matched_security
+                elif user_confirm == 'exit':
+                    raise KeyboardInterrupt("User requested to exit")
+                elif user_confirm == 'skip':
+                    print("Skipping this transaction.")
+                    security_cache[stock_description] = None  # Cache the skip decision
+                    return None
+                else:
+                    print("Match rejected.")
+                    return None
+            return None
+
+        security = find_best_matching_security(stock_description)
+        
+        if security is None:
+            print(f"No matching security found for '{stock_description}'.")
+            sys.stdout.flush()  # Ensure print is displayed
+            user_input = input("Please enter the correct security name, 'skip' to skip this transaction, or 'exit' to stop processing: ")
+            
+            if user_input.lower() == 'exit':
+                raise KeyboardInterrupt("User requested to exit")
+            elif user_input.lower() == 'skip':
+                print("Skipping this transaction.")
+                security_cache[stock_description] = None
+            elif user_input:
+                # Check for an exact match with the user input
+                try:
+                    security = Assets.objects.get(
+                        Q(investor=investor) & Q(brokers=broker) & Q(name__iexact=user_input)
+                    )
+                    print(f"Security '{security.name}' found and selected.")
+                     # Cache the user-defined mapping
+                    security_cache[stock_description] = security
+                except Assets.DoesNotExist:
+                    print(f"No exact match found for '{user_input}'. This transaction will be skipped.")
+                    security_cache[stock_description] = None
+            else:
+                print("No security name provided. This transaction will be skipped.")
+                security_cache[stock_description] = None
+
+        return security
+    
+    def transaction_exists(transaction_data):
+        return Transactions.objects.filter(
+            Q(investor=transaction_data['investor']) &
+            Q(broker=transaction_data['broker']) &
+            Q(security=transaction_data.get('security')) &
+            Q(currency=transaction_data['currency']) &
+            Q(type=transaction_data['type']) &
+            Q(date=transaction_data['date']) &
+            Q(quantity=transaction_data.get('quantity')) &
+            Q(price=transaction_data.get('price')) &
+            Q(cash_flow=transaction_data.get('cash_flow')) &
+            Q(commission=transaction_data.get('commission'))
+            ).exists()
+
+    for index, row in df.iterrows():
+        
+        date_str = row['Date']
+
+        # Check if there is any data in the current row
+        if pd.notna(date_str):
+            date = datetime.strptime(date_str, '%d-%b-%Y').date()
+            description = row['Description']
+            stock_description = row['Stock Description']
+            price = row['Price']
+            debit = row['Debit']
+            credit = row['Credit']
+
+            if description == '* BALANCE B/F *' or description == 'Cash Transfers ISA':
+                print(f'Skipped: {description}')
+                continue
+
+            elif "Gross interest" in description:
+                transaction_data = {
+                    'investor': investor,
+                    'broker': broker,
+                    'currency': currency,
+                    'type': constants.TRANSACTION_TYPE_INTEREST_INCOME,
+                    'date': date,
+                    'cash_flow': round(Decimal(str(credit)), 2),
+                }
+
+            elif description == 'Funds Platform Fee':
+                transaction_data = {
+                    'investor': investor,
+                    'broker': broker,
+                    'currency': currency,
+                    'type': constants.TRANSACTION_TYPE_BROKER_COMMISSION,
+                    'date': date,
+                    'commission': round(-Decimal(str(debit)), 2),
+                }
+
+            elif description == 'Stocks & Shares Subs' or 'ISA Subscription' in description:
+                transaction_data = {
+                    'investor': investor,
+                    'broker': broker,
+                    'currency': currency,
+                    'type': constants.TRANSACTION_TYPE_CASH_IN,
+                    'date': date,
+                    'cash_flow': Decimal(str(credit)),
+                }
+
+            elif pd.notna(stock_description):
+
+                security = find_or_prompt_security(stock_description, investor, broker, security_cache)
+                if security is None:
+                    continue # Skip this transaction
+
+                transaction_type = constants.TRANSACTION_TYPE_BUY if debit > 0 else constants.TRANSACTION_TYPE_SELL
+                price = round(Decimal(str(price)), price_decimal_places)
+                if transaction_type == constants.TRANSACTION_TYPE_BUY:
+                    quantity = round(Decimal(str(debit)) / price, quantity_decimal_places)
+                else:
+                    quantity = round(-Decimal(str(credit)) / price, quantity_decimal_places)
+
+                transaction_data = {
+                    'investor': investor,
+                    'broker': broker,
+                    'security': security,
+                    'currency': currency,
+                    'type': transaction_type,
+                    'date': date,
+                    'quantity': quantity,
+                    'price': price,
+                }
+
+            else:
+                print(f'Skipped: {description}')
+                continue  # Skip if not a recognized transaction type
+
+            if transaction_exists(transaction_data):
+                print(f"Skipping existing transaction: {transaction_data}")
+                skipped_count += 1
+                continue
+
+            transactions.append(transaction_data)
+
+    print(f"\nProcessed {len(transactions)} transactions.")
+    print(f"Skipped {skipped_count} existing transactions.")
+
+    if transactions:
+        save_choice = input(f"Do you want to save these transactions for {broker.name}? (yes/no): ").lower()
+        if save_choice == 'yes':
+            Transactions.objects.bulk_create([Transactions(**data) for data in transactions])
+            print("Transactions saved to the database.")
+        else:
+            print("Transactions were not saved to the database.")
+    else:
+        print("No transactions to save.")
+
+    return transactions

@@ -8,34 +8,57 @@ $(document).ready(function() {
     $(document).on('submit', '#brokerPerformanceForm', function(event) {
         event.preventDefault();
 
-        showSpinner();
+        // Hide the form modal
+        $('#updateBrokerPerformanceDatabaseModal').modal('hide');
 
-        $.ajax({
-            type: 'POST',
-            url: "/database/update_broker_performance/",
-            data: $(this).serialize(),
-            success: function(response) {
-                if (response.success) {
-                    $('#updateBrokerPerformanceDatabaseModal').modal('hide');
-                    // Reload the summary-over-time table or update it dynamically
-                    // $('#table-summary-over-time').load(location.href + " #table-summary-over-time > *");
+        // Show progress modal
+        $('#updateProgressModal').modal('show');
+        $('#updateProgressBar').css('width', '0%').attr('aria-valuenow', 0).text('0%');
+        $('#updateStatus').text('Initializing update...');
+
+        var formData = new FormData(this);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', "/database/update_broker_performance/", true);
+        xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
+        xhr.onprogress = function(e) {
+            console.log('Progress event received');
+            var lines = e.target.responseText.split('\n');
+            var lastLine = lines[lines.length - 2]; // Last complete line
+            if (lastLine) {
+                console.log('Last line:', lastLine);
+                var data = JSON.parse(lastLine);
+                if (data.status === 'progress') {
+                    $('#updateProgressBar').css('width', data.progress + '%').attr('aria-valuenow', data.progress).text(Math.round(data.progress) + '%');
+                    $('#updateStatus').text(`Updating ${data.year} – ${data.currency} (Restricted: ${data.is_restricted}) (${data.current}/${data.total})`);
+                } else if (data.status === 'complete') {
+                    console.log('Update complete');
+                    $('#updateProgressModal').modal('hide');
                     location.reload();
-                } else {
-                    // Handle success response with error message
-                    showError(response.error || 'An unknown error occurred.');
-                    hideSpinner();
+                } else if (data.status === 'error') {
+                    console.error('Error:', data.message);
+                    showError(data.message);
+                    $('#updateProgressModal').modal('hide');
                 }
-            },
-            error: function(xhr, status, error) {
-                // Handle error response
-                let errorMessage = xhr.responseJSON ? xhr.responseJSON.error : 'An unknown error occurred.';
-                showError(errorMessage);
             }
-        });
+        };
+        xhr.onerror = function() {
+            console.error('XHR error');
+            $('#updateProgressModal').modal('hide');
+            showError('An error occurred during the update process.');
+        };
+        xhr.onload = function() {
+            console.log('XHR loaded');
+            if (xhr.status !== 200) {
+                console.error('XHR status:', xhr.status);
+                showError('An error occurred during the update process.');
+            }
+        };
+        xhr.send(formData);
+        console.log('XHR sent');
     });
 
     function showError(message) {
-        // Show error message using an alert or modal
         let errorAlert = $('#errorAlert');
         if (errorAlert.length === 0) {
             errorAlert = $('<div id="errorAlert" class="alert alert-danger" role="alert"></div>');
@@ -43,4 +66,5 @@ $(document).ready(function() {
         }
         errorAlert.text(message).show();
     }
+
 });

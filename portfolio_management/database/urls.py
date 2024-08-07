@@ -31,6 +31,7 @@ urlpatterns = [
     path('prices/update_fx/', views.update_FX, name='update_fx'),
     path('update_broker_performance/', views.update_broker_performance, name='update_broker_performance'),
     path('get_price_data_for_table/', views.get_price_data_for_table, name='get_price_data_for_table'),
-    # path('edit_price/<int:item_id>/', views.edit_price, name='edit_price'),
+    path('prices/import_prices/', views.import_prices, name='import_prices'),
+    path('get_broker_securities/', views.get_broker_securities, name='get_broker_securities'),
     
 ]

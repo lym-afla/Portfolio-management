@@ -156,6 +156,12 @@
                     <hr>
                     
                     {% block content %} {% endblock content %}
+
+                    <div class="loading-overlay" id="loadingOverlay">
+                        <div class="spinner"></div>
+                        <p>Loading...</p>
+                    </div>
+                    
                 {% if user.is_authenticated %} </main> {% endif %}
             </div>  
         </div>
