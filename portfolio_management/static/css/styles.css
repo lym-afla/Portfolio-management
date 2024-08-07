@@ -423,3 +423,7 @@ h2 {
   line-height: 25px;
   font-size: 14px;
 }
+
+.progress-bar-initial {
+    width: 0%;
+  }
