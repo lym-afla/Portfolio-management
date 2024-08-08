@@ -159,66 +159,14 @@ function loadForm(type, itemId = null, element = null, confirm_each = false, pro
         .fail(function(jqXHR, textStatus, errorThrown) {
             console.error("Error loading form:", textStatus, errorThrown);
         });
-
-
-    // $.ajax({
-    //     url: url,
-    //     method: 'GET',
-    //     success: function (data) {
-    //         $(container).html(data.form_html); // Load form HTML into the container
-    //         var form = $(container).find('form');
-    //         form.attr('data-type', type); // Set the form's type
-    //         form.attr('data-item-id', itemId); // Set the form's item ID if editing
-            
-    //         // Set pre-filled data
-    //         if (element) {
-    //             form.attr('data-importing', 'True');
-    //             if (type === 'security') {
-    //                 form.find('#id_name').val(element.name);
-    //                 form.find('#id_isin').val(element.isin);
-    //                 form.find('#id_currency').val(element.currency);
-    //             } else if (type === 'transaction') {
-    //                 console.log(element.date, element.type, element);
-    //                 form.find('#id_date').val(element.date);
-    //                 form.find('#id_price').val(element.price);
-    //                 form.find('#id_type').val(element.type);
-    //                 form.find('#id_currency').val(element.currency);
-    //                 form.find('#id_quantity').val(element.quantity);
-    //                 form.find('#id_cash_flow').val(element.dividend);
-    //                 form.find('#id_commission').val(element.commission);
-
-    //                 // Find the option element with the matching security name and update its text
-    //                 var securitySelect = form.find('#id_security');
-    //                 var option = securitySelect.find('option').filter(function() {
-    //                     return $(this).text() === element.security_name;
-    //                 });
-    //                 option.prop('selected', true);
-    //             }
-    //         }
-            
-    //         $('.selectpicker').selectpicker();
-
-    //         $(container).find('.modal').modal('show'); // Show the modal
-    //         attachFormSubmitHandler(form);
-
-    //         type = type.charAt(0).toUpperCase() + type.slice(1);
-
-    //         // Attach event listener to cancel button
-    //         type = type.charAt(0).toUpperCase() + type.slice(1);
-    //         $(`#add${type}ModalCancel`).off('click').on('click', function() {
-    //             console.log('cancel clicked');
-    //             if (processTransactionAction) {
-    //                 processTransactionAction('skip', confirm_each);
-    //             }
-    //         });
-    //     }
-    // });
 }
 
 // Function to handle form submission
 function attachFormSubmitHandler(form) {
     form.off('submit').on('submit', function (e) {
-        e.preventDefault();
+        e.preventDefault(); // Prevent default form submission
+        console.log('Form submission intercepted'); // Debugging log
+
         var type = form.attr('data-type');
         var itemId = form.attr('data-item-id');
         var actionUrl = itemId ? `/database/edit_${type}/${itemId}/` : urls[type];
@@ -239,22 +187,27 @@ function attachFormSubmitHandler(form) {
                 'X-CSRFToken': getCookie('csrftoken') // Add CSRF token to headers
             },
             success: function (response) {
+                console.log('AJAX response:', response); // Log the response
                 if (response.status === 'import_success') {
                     console.log("Import Success");
                     form.closest('.modal').modal('hide');
                     $('#importForm').trigger('submit'); // Continue importing
-                } else if (response.redirect_url) { // Check if the response contains a redirect URL
-                    // If a redirect URL is provided, redirect the user
-                    window.location.href = response.redirect_url;
+                } else if (response.status === 'success') {
+                    console.log('Showing success modal'); // Log the success status
+                    form.closest('.modal').modal('hide');
+                    showSuccessModal('Success', 'Security added successfully.', response.redirect_url);
+                } else if (response.status === 'error') {
+                    console.log('Form error:', response.message); // Log the error message
+                    form.closest('.modal').modal('hide');
+                    showErrorModal('Error', response.message, response.errors);
+                } else if (response.status === 'exists') {
+                    console.log('Security already exists'); // Log the exists status
+                    form.closest('.modal').modal('hide');
+                    showErrorModal('Error', 'Security already exists.');
                 } else {
-                    // If no redirect URL is provided, close the modal or perform other actions
                     form.closest('.modal').modal('hide');
                     location.reload();
                 }
-
-                // if (confirm_each && processTransactionAction) {
-                //     processTransactionAction('skip', confirm_each); // Go to the next transaction if form is closed
-                // }
             },
             error: function (xhr) {
                 var errors = xhr.responseJSON;
@@ -269,6 +222,33 @@ function attachFormSubmitHandler(form) {
             }
         });
     });
+}
+
+function showSuccessModal(title, message, redirectUrl = null) {
+    $('#successModalLabel').text(title);
+    $('#successModal .modal-body').text(message);
+    if (redirectUrl) {
+        $('#successModal .btn-primary').show().attr('href', redirectUrl).text('Go to Security');
+    } else {
+        $('#successModal .btn-primary').hide();
+    }
+    $('#successModal').modal('show');
+}
+
+function showErrorModal(title, message, errors = null) {
+    $('#errorModalLabel').text(title);
+    $('#errorModalBody').html('<p>' + message + '</p>');
+    if (errors) {
+        var errorList = '<ul>';
+        $.each(errors, function (field, messages) {
+            $.each(messages, function (index, error) {
+                errorList += '<li>' + error + '</li>';
+            });
+        });
+        errorList += '</ul>';
+        $('#errorModalBody').append(errorList);
+    }
+    $('#errorModal').modal('show');
 }
 
 // Handle Edit Click
@@ -306,23 +286,6 @@ function confirmDelete(type, itemId) {
         }
     });
 }
-
-// // Function to get CSRF token from cookie
-// function getCookie(name) {
-//     var cookieValue = null;
-//     if (document.cookie && document.cookie !== '') {
-//         var cookies = document.cookie.split(';');
-//         for (var i = 0; i < cookies.length; i++) {
-//             var cookie = cookies[i].trim();
-//             // Does this cookie string begin with the name we want?
-//             if (cookie.substring(0, name.length + 1) === (name + '=')) {
-//                 cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-//                 break;
-//             }
-//         }
-//     }
-//     return cookieValue;
-// }
 
 function attachImportHandler(form) {
     form.off('submit').on('submit', function (e) {

@@ -46,6 +46,8 @@ ASSET_TYPE_CHOICES = (
 EXPOSURE_CHOICES = (
     ('Equity', 'Equity'),
     ('FI', 'Fixed income'),
+    ('FX', 'Forex'),
+    ('Commodity', 'Commodity'),
 )
 
 TOLERANCE = 1e-7

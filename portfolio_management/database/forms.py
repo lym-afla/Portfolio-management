@@ -99,13 +99,6 @@ class PriceForm(forms.ModelForm):
 
 class SecurityForm(forms.ModelForm):
 
-    # broker = forms.ModelChoiceField(
-    #     queryset=Brokers.objects.none(),  # Use a default empty queryset
-    #     widget=forms.Select(attrs={'class': 'form-select'}),
-    #     required=True,
-    #     label="Broker"
-    # )
-
     custom_brokers = forms.MultipleChoiceField(
         choices=[],  # We'll set choices in the __init__ method
         widget=forms.SelectMultiple(
@@ -115,7 +108,6 @@ class SecurityForm(forms.ModelForm):
                 'data-width': '100%',
                 'title': 'Choose broker',
                 'data-selected-text-format': 'count',
-                # 'id': 'inputBrokers'
             }
         ),
         label='Brokers'
@@ -123,7 +115,7 @@ class SecurityForm(forms.ModelForm):
 
     class Meta:
         model = Assets
-        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'comment']
+        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'data_source', 'yahoo_symbol', 'update_link', 'comment']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'ISIN': forms.TextInput(attrs={'class': 'form-control'}),
@@ -132,6 +124,9 @@ class SecurityForm(forms.ModelForm):
             'exposure': forms.Select(attrs={'class': 'form-select'}),
             'restricted': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'data_source': forms.Select(attrs={'class': 'form-select'}),
+            'yahoo_symbol': forms.TextInput(attrs={'class': 'form-control'}),
+            'update_link': forms.URLInput(attrs={'class': 'form-control'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -143,12 +138,27 @@ class SecurityForm(forms.ModelForm):
         # Filter brokers based on the investor
         self.fields['custom_brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
         
-        # Set choices dynamically for broker field
-        # self.fields['broker'].queryset = Brokers.objects.filter(investor=investor).order_by('name')
+        # self.fields['data_source'].widget = forms.Select(choices=Assets.DATA_SOURCE_CHOICES)
+        self.fields['data_source'].choices = [('', 'None')] + Assets.DATA_SOURCE_CHOICES
+        self.fields['yahoo_symbol'].required = False
+        self.fields['update_link'].required = False
 
-        # # If instance exists, pre-select the current brokers
+        # If instance exists, pre-select the current brokers
         if self.instance.pk:
             self.fields['custom_brokers'].initial = [broker.id for broker in self.instance.brokers.all()]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data_source = cleaned_data.get('data_source')
+        yahoo_symbol = cleaned_data.get('yahoo_symbol')
+        update_link = cleaned_data.get('update_link')
+
+        if data_source == 'YAHOO' and not yahoo_symbol:
+            self.add_error('yahoo_symbol', 'Yahoo symbol is required for Yahoo Finance data source.')
+        elif data_source == 'FT' and not update_link:
+            self.add_error('update_link', 'Update link is required for Financial Times data source.')
+
+        return cleaned_data
 
 
 EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (('All', 'All Currencies'),)

@@ -4,7 +4,6 @@ from dateutil.relativedelta import relativedelta
 from decimal import Decimal, InvalidOperation
 import json
 import logging
-from django.db import IntegrityError, transaction
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,8 +14,11 @@ from django.views.decorators.http import require_http_methods
 from django.db.models import Q, F
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 from fake_useragent import UserAgent
 from io import StringIO
+
+import yfinance as yf
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
 from common.forms import DashboardForm
@@ -434,12 +436,11 @@ def add_security(request):
             # Check if the security already exists
             try:
                 security = Assets.objects.get(ISIN=isin, investor=request.user)
-                # new_security = False
+                return JsonResponse({'status': 'exists', 'message': 'Security already exists.'})
             except Assets.DoesNotExist:
                 security = form.save(commit=False)  # Create new security instance
                 security.investor = request.user
                 security.save()
-                # new_security = True
 
             # Attach the security to the broker
             for broker_id in brokers:
@@ -449,14 +450,14 @@ def add_security(request):
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 # If it's an AJAX request, return a JSON response with success and redirect_url
                 if import_flag:
-                    return JsonResponse({'status': 'success'})
+                    return JsonResponse({'status': 'success', 'message': 'Security added successfully.'})
                 else:
-                    return JsonResponse({'success': True, 'redirect_url': reverse('database:securities')})
+                    return JsonResponse({'status': 'success', 'message': 'Security added successfully.', 'redirect_url': reverse('database:securities')})
             else:
                 # If it's not an AJAX request, redirect to a URL
                 return redirect('database:securities')
         else:
-            return JsonResponse({'errors': form.errors}, status=400)
+            return JsonResponse({'status': 'error', 'message': 'Form is invalid.', 'errors': form.errors}, status=400)
     else:
         form = SecurityForm(investor=request.user)
         form_html = render_to_string(
@@ -775,6 +776,29 @@ def import_prices(request):
                 for i, security in enumerate(securities, 1):
                     try:
                         security = Assets.objects.get(id=security.id, investor=request.user)
+                        
+                        if security.data_source == 'FT' and security.update_link:
+                            price_generator = import_security_prices_from_ft(security, dates)
+                        elif security.data_source == 'YAHOO' and security.yahoo_symbol:
+                            price_generator = import_security_prices_from_yahoo(security, dates)
+                        else:
+                            error_message = f"No valid data source or update information for {security.name}"
+                            results.append({
+                                "security_name": security.name,
+                                "status": "skipped",
+                                "message": error_message
+                            })
+                            yield json.dumps({
+                                'status': 'error',
+                                'current': current_operation,
+                                'total': total_operations,
+                                'progress': (current_operation / total_operations) * 100,
+                                'security_name': security.name,
+                                'message': error_message
+                            }) + '\n'
+                            current_operation += len(dates)  # Skip all dates for this security
+                            continue
+
                         security_result = {
                             "security_name": security.name,
                             "updated_dates": [],
@@ -782,7 +806,7 @@ def import_prices(request):
                             "errors": []
                         }
 
-                        for result in import_security_prices_from_ft(security, dates):
+                        for result in price_generator:
                             current_operation += 1
                             progress = (current_operation / total_operations) * 100
 
@@ -806,14 +830,32 @@ def import_prices(request):
                         results.append(security_result)
 
                     except ObjectDoesNotExist:
-                        results.append(f"Security with ID {security.id} not found")
+                        error_message = f"Security with ID {security.id} not found"
+                        results.append(error_message)
+                        yield json.dumps({
+                            'status': 'error',
+                            'current': current_operation,
+                            'total': total_operations,
+                            'progress': (current_operation / total_operations) * 100,
+                            'message': error_message
+                        }) + '\n'
+                        current_operation += len(dates)  # Skip all dates for this security
                     except Exception as e:
-                        results.append(f"Error updating prices for security {security.id}: {str(e)}")
+                        error_message = f"Error updating prices for security {security.id}: {str(e)}"
+                        results.append(error_message)
+                        yield json.dumps({
+                            'status': 'error',
+                            'current': current_operation,
+                            'total': total_operations,
+                            'progress': (current_operation / total_operations) * 100,
+                            'message': error_message
+                        }) + '\n'
+                        current_operation += len(dates)  # Skip all dates for this security
 
                 # Send final response
                 yield json.dumps({
-                    'status': 'success',
-                    'message': 'Prices updated',
+                    'status': 'complete',
+                    'message': 'Price import process completed',
                     'details': results,
                     'start_date': start_date.strftime('%Y-%m-%d'),
                     'end_date': end_date.strftime('%Y-%m-%d'),
@@ -924,6 +966,64 @@ def import_security_prices_from_ft(security, dates):
             "status": "error",
             "message": f"No data found for {security.name}"
         }
+
+def import_security_prices_from_yahoo(security, dates):
+    if not security.yahoo_symbol:
+        yield {
+            "security_name": security.name,
+            "status": "error",
+            "message": f"No Yahoo Finance symbol specified for {security.name}"
+        }
+        return
+
+    ticker = yf.Ticker(security.yahoo_symbol)
+
+    for date in dates:
+        result = {
+            "security_name": security.name,
+            "date": date.strftime('%Y-%m-%d'),
+            "status": "skipped"
+        }
+
+        # Check if a price already exists for this date
+        if Prices.objects.filter(security=security, date=date).exists():
+            yield result
+            continue
+
+        end_date = (date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        start_date = (date - pd.Timedelta(days=6)).strftime('%Y-%m-%d')
+
+        try:
+            # Set auto_adjust to False to get unadjusted close prices
+            history = ticker.history(start=start_date, end=end_date, auto_adjust=False)
+
+            if not history.empty:
+                # Use 'Close' for unadjusted close price
+                latest_price = history.iloc[-1]['Close']
+                Prices.objects.create(security=security, date=date, price=latest_price)
+                result["status"] = "updated"
+            else:
+                result["status"] = "error"
+                result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
+        except RequestException as e:
+            logger.error(f"Network error while fetching data for {security.name}: {str(e)}")
+            result["status"] = "error"
+            result["message"] = f"Network error: {str(e)}"
+        except yf.YFinanceException as e:
+            logger.error(f"YFinance error for {security.name}: {str(e)}")
+            result["status"] = "error"
+            result["message"] = f"YFinance error: {str(e)}"
+        except pd.errors.EmptyDataError:
+            logger.error(f"Empty data received for {security.name}")
+            result["status"] = "error"
+            result["message"] = "Empty data received from Yahoo Finance"
+        except Exception as e:
+            logger.exception(f"Unexpected error processing data for {security.name}")
+            result["status"] = "error"
+            result["message"] = f"Unexpected error: {str(e)}"
+
+        yield result
+
     
 def get_broker_securities(request):
     broker_id = request.GET.get('broker_id')

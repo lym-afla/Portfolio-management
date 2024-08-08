@@ -187,7 +187,14 @@ class Assets(models.Model):
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default='Equity')
     restricted = models.BooleanField(default=False, null=False)
     comment = models.TextField(null=True, blank=True)
-    update_link = models.URLField(null=True, blank=True)
+    DATA_SOURCE_CHOICES = [
+        ('FT', 'Financial Times'),
+        ('YAHOO', 'Yahoo Finance'),
+        # Add more sources as needed
+    ]
+    data_source = models.CharField(max_length=10, choices=[('', 'None')] + DATA_SOURCE_CHOICES, blank=True, null=True)
+    update_link = models.URLField(null=True, blank=True) # For FT
+    yahoo_symbol = models.CharField(max_length=50, blank=True, null=True)  # For Yahoo Finance symbol
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
@@ -455,17 +462,6 @@ class Assets(models.Model):
         unrealized_gain_loss = 0
 
         current_position = self.position(date, broker_id_list)
-
-        # current_price = self.price_at_date(date).price if self.price_at_date(date) else 0
-        
-        # buy_in_price = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list, start_date=start_date)
-        # if buy_in_price is not None:
-        #     if currency is not None:
-        #         fx_rate = FX.get_rate(self.currency, currency, date)['FX']
-        #     else:
-        #         fx_rate = 1
-        #     if fx_rate:
-        #         unrealized_gain_loss += (current_price - buy_in_price) * fx_rate * (current_position)
         
         current_price = self.price_at_date(date, currency).price if self.price_at_date(date) else 0
         buy_in_price = self.calculate_buy_in_price(date, currency, broker_id_list, start_date)

@@ -5,6 +5,7 @@ import sys
 import json
 
 from django.db import IntegrityError, transaction
+import numpy as np
 
 from common.models import AnnualPerformance, Brokers, Assets, FX, Prices, Transactions
 from django.db.models import Sum, Q
@@ -101,6 +102,7 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
     # print(f"utils.py, line 68 {portfolio}. Date: {date}")
 
     for security in portfolio:
+        print("utils. 105", security.name, security.price_at_date(date, target_currency))
         current_value = Decimal(security.position(date, broker_ids) * security.price_at_date(date, target_currency).price)
         # current_value = calculate_security_nav(security, date, target_currency)
 
@@ -245,37 +247,43 @@ def calculate_portfolio_value(user_id, date, currency=None, asset_id=None, broke
 
 # Collect chart dates 
 def chart_dates(start_date, end_date, freq):
-
     # Create matching table for pandas
     frequency = {
-        'D': 'B',
-        'W': 'W',
+        'D': 'D',
+        'W': 'W-SAT',
         'M': 'ME',
         'Q': 'QE',
         'Y': 'YE'
     }
 
     # Convert the start_date and end_date strings to date objects
-    if type(start_date) == str:
+    if isinstance(start_date, str):
         start_date = date.fromisoformat(start_date)
-    if type(end_date) == str:
+    if isinstance(end_date, str):
         end_date = date.fromisoformat(end_date)
 
-    # If the frequency is yearly, adjust the end_date to the end of the current year
-    if freq == 'Y':
-        end_date = end_date.replace(month=12, day=31)
-        start_date = start_date.replace(month=1, day=1)
-        # Keep one year if start and end within one calendar year
-        if end_date.year - start_date.year != 0:
-            start_date = date(start_date.year + 1, 1, 1)
-
-    if freq == 'M':
-        # Adjust the end_date to the end of the month
-        end_date = end_date + relativedelta(months = 1)
-        start_date = start_date + relativedelta(months = 1)
+    # Adjust start_date to the last day of the respective period
+    if freq == 'W':
+        start_date = start_date + timedelta(days=(5 - start_date.weekday() + 7) % 7)
+    elif freq == 'M':
+        start_date = (start_date.replace(day=1) + relativedelta(months=1, days=-1))
+    elif freq == 'Q':
+        start_date = (start_date.replace(day=1, month=((start_date.month - 1) // 3 * 3 + 3)) + relativedelta(days=-1))
+    elif freq == 'Y':
+        start_date = start_date.replace(month=12, day=31)
 
     # Get list of dates from pandas
-    return pd.date_range(start_date, end_date, freq=frequency[freq]).date
+    date_range = pd.date_range(start=start_date, end=end_date, freq=frequency[freq]).date
+
+    # Handle case where end_date is before or equal to start_date
+    if len(date_range) == 0:
+        return np.array([min(start_date, end_date)])
+
+    # Ensure the last date is included
+    if date_range[-1] != end_date:
+        date_range = np.append(date_range, end_date)
+
+    return date_range
 
 # Create labels according to dates
 def chart_labels(dates, frequency):
@@ -424,7 +432,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'IRR (RHS)',
                     'data': [IRR],
-                    'backgroundColor': 'rgb(0, 0, 0)',
+                    'backgroundColor': 'rgba(75, 192, 192, 1)',  # Teal
+                    'borderColor': 'rgba(75, 192, 192, 1)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -435,7 +444,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'Rolling IRR (RHS)',
                     'data': [IRR_rolling],
-                    # 'backgroundColor': 'rgb(120, 120, 50)',
+                    'backgroundColor': 'rgba(153, 102, 255, 1)',  # Purple
+                    'borderColor': 'rgba(153, 102, 255, 1)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -461,7 +471,7 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
         elif breakdown == 'Contributions':
             NAV = Decimal(NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000)
             if previous_date is not None:
-                contributions = Transactions.objects.filter(investor__id=user_id, broker__in=brokers, date__gt=previous_date, date__lte=d, type__in=['Cash in', 'Cash out']).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
+                contributions = Transactions.objects.filter(investor__id=user_id, broker__in=brokers, date__gte=previous_date, date__lte=d, type__in=['Cash in', 'Cash out']).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
                 contributions = Decimal(contributions) / 1000
             else:
                 contributions = Transactions.objects.filter(investor__id=user_id, broker__in=brokers, date__lte=d, type__in=['Cash in', 'Cash out']).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
@@ -471,7 +481,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'IRR (RHS)',
                     'data': [IRR],
-                    'backgroundColor': 'rgb(0, 0, 0)',
+                    'backgroundColor': 'rgba(75, 192, 192, 1)',  # Teal
+                    'borderColor': 'rgba(75, 192, 192, 1)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -482,7 +493,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'Rolling IRR (RHS)',
                     'data': [IRR_rolling],
-                    # 'backgroundColor': 'rgb(120, 120, 50)',
+                    'backgroundColor': 'rgba(153, 102, 255, 1)',  # Purple
+                    'borderColor': 'rgba(153, 102, 255, 1)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -493,7 +505,7 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'BoP NAV',
                     'data': [NAV_previous_date],
-                    'backgroundColor': 'rgb(255, 0, 0)',
+                    'backgroundColor': 'rgba(54, 162, 235, 0.7)',  # Light Blue
                     'stack': 'combined',
                     'type': 'bar',
                     'yAxisID': 'y',
@@ -504,7 +516,7 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'Contributions',
                     'data': [contributions],
-                    'backgroundColor': 'rgb(0, 128, 0)',
+                    'backgroundColor': 'rgba(255, 206, 86, 0.7)',  # Yellow
                     'stack': 'combined',
                     'type': 'bar',
                     'yAxisID': 'y',
@@ -515,7 +527,7 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'Return',
                     'data': [return_amount],
-                    'backgroundColor': 'rgb(0, 0, 255)',
+                    'backgroundColor': 'rgba(75, 192, 192, 0.7)',  # Light Teal
                     'stack': 'combined',
                     'type': 'bar',
                     'yAxisID': 'y',
@@ -536,7 +548,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'IRR (RHS)',
                     'data': [IRR],
-                    'backgroundColor': 'rgb(0, 0, 0)',
+                    'backgroundColor': 'rgba(75, 192, 192, 1)',  # Teal
+                    'borderColor': 'rgba(75, 192, 192, 1)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -544,7 +557,8 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 chart_data['datasets'].append({
                     'label': 'Rolling IRR (RHS)',
                     'data': [IRR_rolling],
-                    # 'backgroundColor': 'rgb(120, 120, 50)',
+                    'backgroundColor': 'rgba(153, 102, 255, 1)',  # Purple
+                    'borderColor': 'rgba(153, 102, 255, 1)',
                     'type': 'line',
                     'yAxisID': 'y1',
                     'order': 0,
@@ -572,7 +586,7 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
                 else:
                     chart_data['datasets'][index]['data'].append(value / 1000)
         
-        previous_date = d - timedelta(days=1)
+        previous_date = d + timedelta(days=1)
 
     # print("utils. 437", chart_data)
                     
@@ -913,103 +927,103 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
 
     return closed_positions, portfolio_closed_totals
 
-def update_fx_database(investor):
+# def update_fx_database(investor):
 
-    # Get the specific investor
-    investor_instance = CustomUser.objects.get(id=investor.id)
+#     # Get the specific investor
+#     investor_instance = CustomUser.objects.get(id=investor.id)
 
-    # Scan Transaction instances in the database to collect dates
-    transaction_dates = investor_instance.transactions.values_list('date', flat=True)
+#     # Scan Transaction instances in the database to collect dates
+#     transaction_dates = investor_instance.transactions.values_list('date', flat=True)
     
-    count = 0
-    for date in transaction_dates:
-        count += 1
-        print(f'{count} of {len(transaction_dates)}')
-        FX.update_fx_rate(date, investor)
+#     count = 0
+#     for date in transaction_dates:
+#         count += 1
+#         print(f'{count} of {len(transaction_dates)}')
+#         FX.update_fx_rate(date, investor)
 
 # THIS IT NOT USED (?!)
-def import_transactions_from_file(file, user, broker, currency, confirm_each):
+# def import_transactions_from_file(file, user, broker, currency, confirm_each):
     
-    df = pd.read_excel(file, header=None)
-    transactions = []
-    i = 0
+#     df = pd.read_excel(file, header=None)
+#     transactions = []
+#     i = 0
 
-    while i < len(df.columns):
-        if pd.notna(df.iloc[1, i]):
-            security_name = df.iloc[1, i]
-            isin = df.iloc[2, i]
+#     while i < len(df.columns):
+#         if pd.notna(df.iloc[1, i]):
+#             security_name = df.iloc[1, i]
+#             isin = df.iloc[2, i]
             
-            security = Assets.objects.filter(name=security_name, ISIN=isin).first()
+#             security = Assets.objects.filter(name=security_name, ISIN=isin).first()
 
-            if not security:
-                # If the security does not exist, return a response to open the form
-                return {
-                        'status': 'missing_security',
-                        'security': {
-                            'name': security_name,
-                            'isin': isin,
-                            'currency': currency,
-                        }
-                    }
+#             if not security:
+#                 # If the security does not exist, return a response to open the form
+#                 return {
+#                         'status': 'missing_security',
+#                         'security': {
+#                             'name': security_name,
+#                             'isin': isin,
+#                             'currency': currency,
+#                         }
+#                     }
 
-            # Process transactions...
-            transactions_start = df[df.iloc[:, i] == 'Дата'].index[0] + 1
+#             # Process transactions...
+#             transactions_start = df[df.iloc[:, i] == 'Дата'].index[0] + 1
 
-            for row in range(transactions_start, len(df)):
-                if pd.isna(df.iloc[row, i]):
-                    break
+#             for row in range(transactions_start, len(df)):
+#                 if pd.isna(df.iloc[row, i]):
+#                     break
 
-                date = df.iloc[row, i]
+#                 date = df.iloc[row, i]
 
-                price = df.iloc[row, i + 1]
-                quantity = df.iloc[row, i + 2]
-                dividend = df.iloc[row, i + 3] if not pd.isna(df.iloc[row, i + 3]) else None
-                commission = df.iloc[row, i + 4] if not pd.isna(df.iloc[row, i + 4]) else None
+#                 price = df.iloc[row, i + 1]
+#                 quantity = df.iloc[row, i + 2]
+#                 dividend = df.iloc[row, i + 3] if not pd.isna(df.iloc[row, i + 3]) else None
+#                 commission = df.iloc[row, i + 4] if not pd.isna(df.iloc[row, i + 4]) else None
 
-                transaction_data = {
-                    'security_name': security_name,
-                    'isin': isin,
-                    'date': date,
-                    'price': price,
-                    'quantity': quantity,
-                    'dividend': dividend,
-                    'commission': commission,
-                }
+#                 transaction_data = {
+#                     'security_name': security_name,
+#                     'isin': isin,
+#                     'date': date,
+#                     'price': price,
+#                     'quantity': quantity,
+#                     'dividend': dividend,
+#                     'commission': commission,
+#                 }
 
-                if confirm_each:
-                    transactions.append(transaction_data)
-                else:
-                    if quantity > 0:
-                        transaction_type = 'Buy'
-                    elif quantity < 0:
-                        transaction_type = 'Sell'
-                    else:
-                        transaction_type = 'Dividend'
+#                 if confirm_each:
+#                     transactions.append(transaction_data)
+#                 else:
+#                     if quantity > 0:
+#                         transaction_type = 'Buy'
+#                     elif quantity < 0:
+#                         transaction_type = 'Sell'
+#                     else:
+#                         transaction_type = 'Dividend'
                     
-                    Transactions.objects.create(
-                        investor=user,
-                        broker=broker,
-                        security=security,
-                        currency=currency,
-                        type=transaction_type,
-                        date=date,
-                        quantity=quantity,
-                        price=price,
-                        cash_flow=dividend,
-                        commission=commission,
-                    )
+#                     Transactions.objects.create(
+#                         investor=user,
+#                         broker=broker,
+#                         security=security,
+#                         currency=currency,
+#                         type=transaction_type,
+#                         date=date,
+#                         quantity=quantity,
+#                         price=price,
+#                         cash_flow=dividend,
+#                         commission=commission,
+#                     )
 
-            i += 1
-            while i < len(df.columns) and pd.isna(df.iloc[1, i]):
-                i += 1
-        else:
-            i += 1
+#             i += 1
+#             while i < len(df.columns) and pd.isna(df.iloc[1, i]):
+#                 i += 1
+#         else:
+#             i += 1
 
-    # Return transactions list for further processing if needed
-    return {
-        'status': 'success',
-        'transactions': transactions
-    }
+#     # Return transactions list for further processing if needed
+#     return {
+#         'status': 'success',
+#         'transactions': transactions
+#     }
 
 def parse_excel_file_transactions(file, currency, broker_id):
     df = pd.read_excel(file, header=None)
