@@ -17,24 +17,17 @@ $(document).ready(function() {
                 'X-CSRFToken': getCookie('csrftoken')
             },
             success: function(response) {
-                if (response.ok) {
-                    // openPositionsTable.clear();
-                    // Clear the existing data
-                    if ($.fn.DataTable.isDataTable('#table-open')) {
-                        $('#table-open').DataTable().clear().destroy();
-                    }
+                // Clear the existing DataTable if it exists
+                if ($.fn.DataTable.isDataTable('#table-open')) {
+                    $('#table-open').DataTable().destroy();
+                }
 
+                if (response.ok) {
                     // Update the table HTML
                     $('#table-open tbody').html(response.tbody);
                     $('#table-open tfoot').html(response.tfoot);
                     
-                    // console.log(response.tbody);
-                    // openPositionsTable.rows.add($(response.tbody)).draw();
-
-                    // Initialize or reinitialize DataTables
-                    if ($.fn.DataTable.isDataTable('#table-open')) {
-                        $('#table-open').DataTable().destroy();
-                    }
+                    // Reinitialize DataTables
                     $('#table-open').DataTable({
                         searching: true,
                         paging: true,
@@ -57,10 +50,22 @@ $(document).ready(function() {
                     
                     updateCashBalances(response.cash_balances);
 
+                } else {
+                    // Handle the case when no open positions are found
+                    $('#table-open tbody').html('<tr><td colspan="100%" class="text-center">' + response.message + '</td></tr>');
+                    $('#table-open tfoot').empty();
+                    updateCashBalances({});
                 }
             },
             error: function(xhr, status, error) {
                 console.error("An error occurred: " + error);
+                // Clear the existing DataTable if it exists
+                if ($.fn.DataTable.isDataTable('#table-open')) {
+                    $('#table-open').DataTable().destroy();
+                }
+                $('#table-open tbody').html('<tr><td colspan="100%" class="text-center">An error occurred while fetching data.</td></tr>');
+                $('#table-open tfoot').empty();
+                updateCashBalances({});
             },
             complete: function() {
                 $('#loadingIndicatorOpenTable').removeClass('d-flex').addClass('d-none');

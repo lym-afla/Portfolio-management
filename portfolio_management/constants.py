@@ -60,4 +60,5 @@ BROKER_GROUPS = {
 # Names of mutual funds that are kept in FT database in pences, so need to be divided by 100
 MUTUAL_FUNDS_IN_PENCES = [
     'Fidelity Index US Fund P Accumulation',
+    'BlackRock Corporate Bond',
 ]

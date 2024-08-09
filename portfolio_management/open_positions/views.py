@@ -117,6 +117,8 @@ def update_open_positions_table(request):
         abs_total_quantity__lt=TOLERANCE
     )
 
+    print("views. 120", start_date)
+
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id
     portfolio_open, portfolio_open_totals = calculate_open_table_output(user.id, portfolio_open,
@@ -128,6 +130,12 @@ def update_open_positions_table(request):
                                                                    number_of_digits,
                                                                    start_date
                                                                    )
+
+    if not portfolio_open:
+        return JsonResponse({
+            'ok': False,
+            'message': 'No open positions found for the selected criteria.'
+        })
 
     context = {
         'portfolio_open': portfolio_open,

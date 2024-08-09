@@ -102,7 +102,7 @@ def NAV_at_date(user_id, broker_ids, date, target_currency, breakdown=['Asset ty
     # print(f"utils.py, line 68 {portfolio}. Date: {date}")
 
     for security in portfolio:
-        print("utils. 105", security.name, security.price_at_date(date, target_currency))
+        # print("utils. 105", security.name, security.position(date, broker_ids), security.price_at_date(date, target_currency))
         current_value = Decimal(security.position(date, broker_ids) * security.price_at_date(date, target_currency).price)
         # current_value = calculate_security_nav(security, date, target_currency)
 
@@ -658,9 +658,10 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
     portfolio_cash = calculate_portfolio_cash(user_id, selected_brokers, end_date, currency_target)
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
-    portfolio_open_totals = {}
-
-    portfolio_open_totals['all_assets_share_of_portfolio_percentage'] = Decimal(0) 
+    portfolio_open = []
+    portfolio_open_totals = {
+        'all_assets_share_of_portfolio_percentage': Decimal(0)
+    }
 
     total_irr_start_date = start_date # Not to be overwritten by asset start date if start date is not defined
     
@@ -671,20 +672,21 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
         asset.current_position = asset.position(end_date, selected_brokers)
 
         if asset.current_position == 0:
-            print("The position is zero. The asset is not in the portfolio.")
-            return None
+            print(f"The position is zero for {asset.name}. Skipping this asset.")
+            continue
 
         position_entry_date = asset.entry_dates(end_date, selected_brokers)[-1]
         if 'investment_date' in categories:
             asset.investment_date = position_entry_date
 
-        if start_date is None:
-            start_date = position_entry_date
+        # Use a separate variable for each asset's start date
+        asset_start_date = start_date if start_date is not None else position_entry_date
             
-        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, start_date)
+        asset.entry_price = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, asset_start_date)
+        
         asset.entry_value = round(asset.entry_price * asset.current_position, 2)
         asset.entry_price = currency_format(asset.entry_price, asset.currency if use_default_currency else currency_target, number_of_digits)
-
+        
         if 'current_value' in categories:
             asset.current_price = asset.price_at_date(end_date, currency_used).price
             asset.current_value = round(asset.current_price * asset.current_position, 2)
@@ -697,25 +699,25 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
             asset.share_of_portfolio = format_percentage(asset.share_of_portfolio)
         
         if 'realized_gl' in categories:
-            asset.realized_gl = asset.realized_gain_loss(end_date, currency_used, selected_brokers, start_date)['current_position']
+            asset.realized_gl = asset.realized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)['current_position']
         else:
             asset.realized_gl = 0
 
         if 'unrealized_gl' in categories:
-            asset.unrealized_gl = asset.unrealized_gain_loss(end_date, currency_used, selected_brokers, start_date)
+            asset.unrealized_gl = asset.unrealized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)
         else:
             asset.unrealized_gl = 0
         
         asset.price_change_percentage = (asset.realized_gl + asset.unrealized_gl) / asset.entry_value if asset.entry_value > 0 else 'N/R'
         
         if 'capital_distribution' in categories:
-            asset.capital_distribution = asset.get_capital_distribution(end_date, currency_used, selected_brokers, start_date)
+            asset.capital_distribution = asset.get_capital_distribution(end_date, currency_used, selected_brokers, asset_start_date)
             asset.capital_distribution_percentage = asset.capital_distribution / asset.entry_value if asset.entry_value > 0 else 'N/R'
         else:
             asset.capital_distribution = 0
 
         if 'commission' in categories:
-            asset.commission = asset.get_commission(end_date, currency_used, selected_brokers, start_date)
+            asset.commission = asset.get_commission(end_date, currency_used, selected_brokers, asset_start_date)
             asset.commission_percentage = asset.commission / asset.entry_value if asset.entry_value > 0 else 'N/R'
         else:
             asset.commission = 0
@@ -725,7 +727,7 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
         
         # Calculate IRR for security
         currency_used = asset.currency if use_default_currency else currency_target
-        asset.irr = format_percentage(Irr(user_id, end_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=start_date))
+        asset.irr = format_percentage(Irr(user_id, end_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=asset_start_date))
         
         # Calculating totals
         for key in (['entry_value', 'total_return_amount'] + list(set(totals) & set(categories))):
@@ -736,22 +738,22 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
                 if key == 'entry_value':
                     addition = asset.entry_value
                 elif key == 'total_return_amount':
-                    asset.realized_gl = asset.realized_gain_loss(end_date, currency_target, selected_brokers, start_date)['current_position']
-                    asset.unrealized_gl = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, start_date)
-                    asset.capital_distribution = asset.get_capital_distribution(end_date, currency_target, selected_brokers, start_date)
-                    asset.commission = asset.get_commission(end_date, currency_target, selected_brokers, start_date)
+                    asset.realized_gl = asset.realized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['current_position']
+                    asset.unrealized_gl = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)
+                    asset.capital_distribution = asset.get_capital_distribution(end_date, currency_target, selected_brokers, asset_start_date)
+                    asset.commission = asset.get_commission(end_date, currency_target, selected_brokers, asset_start_date)
                     
                     addition = asset.realized_gl + asset.unrealized_gl + asset.capital_distribution + asset.commission
                 elif key == 'current_value':
                     addition = asset.price_at_date(end_date, currency_target).price * asset.current_position
                 elif key == 'realized_gl':
-                    addition = asset.realized_gain_loss(end_date, currency_target, selected_brokers, start_date)['current_position']
+                    addition = asset.realized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['current_position']
                 elif key == 'unrealized_gl':
-                    addition = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, start_date)
+                    addition = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)
                 elif key == 'capital_distribution':
-                    addition = asset.get_capital_distribution(end_date, currency_target, selected_brokers, start_date)
+                    addition = asset.get_capital_distribution(end_date, currency_target, selected_brokers, asset_start_date)
                 elif key == 'commission':
-                    addition = asset.get_commission(end_date, currency_target, selected_brokers, start_date)
+                    addition = asset.get_commission(end_date, currency_target, selected_brokers, asset_start_date)
                 else:
                     addition = Decimal(0)
 
@@ -773,6 +775,8 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
         asset.commission_percentage = format_percentage(asset.commission_percentage)
         asset.total_return_amount = currency_format(asset.total_return_amount, currency_used, number_of_digits)
         asset.total_return_percentage = format_percentage(asset.total_return_percentage)
+
+        portfolio_open.append(asset)
 
     if 'entry_value' in portfolio_open_totals.keys():
         if portfolio_open_totals['entry_value'] != 0:    
@@ -797,7 +801,7 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
     portfolio_open_totals['all_assets_share_of_portfolio_percentage'] = format_percentage(portfolio_open_totals['all_assets_share_of_portfolio_percentage'])
     portfolio_open_totals = currency_format_dict_values(portfolio_open_totals, currency_target, number_of_digits)
 
-    return portfolio, portfolio_open_totals
+    return portfolio_open, portfolio_open_totals
 
 def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits, start_date=None):
         
