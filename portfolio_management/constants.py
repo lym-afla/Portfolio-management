@@ -61,4 +61,12 @@ BROKER_GROUPS = {
 MUTUAL_FUNDS_IN_PENCES = [
     'Fidelity Index US Fund P Accumulation',
     'BlackRock Corporate Bond',
+    'Fidelity Index Europe ex UK',
+    'Baillie Gifford High Yield Bond',
+    'Legal & General Multi-Index',
+    'Barings Europe Select Trust',
+    'Legal & General Global Technology Index',
+    'Fidelity Index Emerging Markets',
+    'Rathbone Ethical Bond',
+
 ]

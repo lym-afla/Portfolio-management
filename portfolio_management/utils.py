@@ -803,14 +803,20 @@ def calculate_open_table_output(user_id, portfolio, end_date, categories, use_de
 
     return portfolio_open, portfolio_open_totals
 
+from django.db.models import Max
+from decimal import Decimal
+from datetime import timedelta
+
 def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_default_currency, currency_target, selected_brokers, number_of_digits, start_date=None):
-        
     closed_positions = []
     totals = ['entry_value', 'current_value', 'realized_gl', 'capital_distribution', 'commission']
     portfolio_closed_totals = {}
     
     for asset in portfolio:
-        for exit_date in asset.exit_dates(end_date, selected_brokers, start_date):
+        exit_dates = list(asset.exit_dates(end_date, selected_brokers, start_date))
+        entry_dates = list(asset.entry_dates(end_date, selected_brokers))
+        
+        for i, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
             
             position = {
@@ -820,10 +826,13 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                 'currency': asset.currency
             }
 
-            # Use start_date as entry_date if provided, otherwise use the asset's first entry date
+            # Determine entry_date
             first_entry_date = asset.entry_dates(exit_date, selected_brokers)[-1]
             entry_date = start_date if start_date and start_date >= first_entry_date else first_entry_date
             position['investment_date'] = entry_date
+
+            # Determine next_entry_date (or end_date if there's no next entry)
+            next_entry_date = entry_dates[entry_dates.index(entry_date) + 1] if entry_date in entry_dates and entry_dates.index(entry_date) < len(entry_dates) - 1 else end_date
 
             asset_transactions = asset.transactions.filter(
                 investor__id=user_id,
@@ -856,21 +865,15 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                 entry_value += transaction.price * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
-            # position['entry_price'] = entry_value / entry_quantity if entry_quantity else Decimal(0)
             position['entry_value'] = round(Decimal(entry_value), 2)
 
             # Calculate exit value and quantity
             exit_value = Decimal(0)
-            # exit_quantity = Decimal(0)
             for transaction in exit_transactions:
                 fx_rate = get_fx_rate(transaction.currency, currency_used, transaction.date) if currency_used else 1
                 exit_value += transaction.price * abs(transaction.quantity) * fx_rate
-                # exit_quantity += abs(transaction.quantity)
 
-            # position['exit_price'] = exit_value / exit_quantity if exit_quantity else Decimal(0)
             position['exit_value'] = round(Decimal(exit_value), 2)
-
-            # print("utils. 994", entry_value, exit_value, entry_quantity, exit_quantity)
 
             # Calculate realized gain/loss
             if 'realized_gl' in categories:
@@ -880,9 +883,13 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
 
             position['price_change_percentage'] = (position['realized_gl']) / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
 
-            # Calculate other metrics
+            # Calculate capital distribution including dividends after exit_date but before next_entry_date
             if 'capital_distribution' in categories:
-                position['capital_distribution'] = round(asset.get_capital_distribution(exit_date, currency_used, selected_brokers, entry_date), 2)
+                position['capital_distribution'] = round(
+                    asset.get_capital_distribution(exit_date, currency_used, selected_brokers, entry_date) +
+                    asset.get_capital_distribution(next_entry_date, currency_used, selected_brokers, exit_date + timedelta(days=1)),
+                    2
+                )
                 position['capital_distribution_percentage'] = Decimal(position['capital_distribution'] / position['entry_value']) if position['entry_value'] > 0 else 'N/R'
             else:
                 position['capital_distribution'] = 0
@@ -910,10 +917,6 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                         position[key] = format_percentage(position[key], number_of_digits)
                     else:
                         position[key] = currency_format(position[key], currency_used, number_of_digits)        
-
-            # Formatting for correct representation
-            # position['entry_price'] = currency_format(position['entry_price'], currency_used, number_of_digits)
-            # position['exit_price'] = currency_format(position['exit_price'], currency_used, number_of_digits)
 
             closed_positions.append(position)
 
