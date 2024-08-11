@@ -276,15 +276,12 @@ class Assets(models.Model):
         Returns:
             float: The calculated buy-in price. Returns None if an error occurs.
         """
-        
-        # try:
-
         is_long_position = None
 
         transactions = self.transactions.filter(
-            quantity__isnull=False,  # Filter out transactions where quantity is not empty
+            quantity__isnull=False,
             date__lte=date
-        ).values('price', 'quantity', 'date', 'currency')
+        ).order_by('date')  # Order transactions by date
 
         if broker_id_list is not None:
             transactions = transactions.filter(broker_id__in=broker_id_list) 
@@ -292,58 +289,61 @@ class Assets(models.Model):
         if not transactions:
             return None
 
-        # Step 2: Get latest entry date
-        entry_date = self.entry_dates(date, broker_id_list)[-1]
+        # Get latest entry date
+        entry_dates = self.entry_dates(date, broker_id_list)
+        if not entry_dates:
+            return None
+        entry_date = entry_dates[-1]
 
         if start_date and start_date > entry_date:
+            # Add artificial transaction at start_date
+            position = self.position(start_date, broker_id_list)
+            if position != 0:
+                price_at_start = self.price_at_date(start_date)
+                if price_at_start:
+                    artificial_transaction = {
+                        'date': start_date,
+                        'quantity': position,
+                        'price': price_at_start.price,
+                        'currency': self.currency
+                    }
+                    transactions = list(transactions.filter(date__gte=start_date))
+                    transactions.insert(0, type('obj', (object,), artificial_transaction))
+                    is_long_position = position > 0
             entry_date = start_date
 
-            transactions = transactions.filter(date__gte=entry_date)
-            position = self.position(entry_date, broker_id_list)
-            if position != 0:
-                transactions = [{
-                    'price': self.price_at_date(entry_date).price,
-                    'quantity': position,
-                    'date': entry_date,
-                    'currency': self.currency,
-                }] + list(transactions)
-                is_long_position = position > 0
-        else:
-            transactions = transactions.filter(date__gte=entry_date)
+        transactions = [t for t in transactions if t.date >= entry_date]
 
-        if is_long_position is None:
-            first_transaction = transactions.order_by('date').first()
-            if first_transaction:
-                is_long_position = first_transaction['quantity'] > 0
+        if is_long_position is None and transactions:
+            is_long_position = transactions[0].quantity > 0
 
-        # Step 3: Amend the calculation method. For every entry transaction buy-in price is the weighted average of previous buy-in price and price for the current transaction.
+        # Calculate the buy-in price
         value_entry = Decimal(0)
         quantity_entry = Decimal(0)
         previous_entry_price = Decimal(0)
 
         for transaction in transactions:
-            
             if currency is not None:
-                fx_rate = FX.get_rate(transaction['currency'], currency, transaction['date'])['FX']
+                fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
             else:
-                fx_rate = 1
+                fx_rate = Decimal(1)
 
-            if fx_rate:
-                current_price = transaction['price'] * fx_rate
-                weight_current = transaction['quantity']
+            current_price = transaction.price * fx_rate
+            weight_current = transaction.quantity
 
-                # Calculate entry price
-                previous_entry_price = value_entry / quantity_entry if quantity_entry != 0 else 0
-                weight_entry_previous = quantity_entry
-                # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
-                entry_price = current_price if (is_long_position and transaction['quantity'] > 0) or (not is_long_position and transaction['quantity'] < 0) else previous_entry_price
-                
-                if (weight_entry_previous + weight_current) == 0:
-                    entry_price = previous_entry_price
-                else:
-                    entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
-                quantity_entry += transaction['quantity']
-                value_entry = entry_price * quantity_entry
+            # Calculate entry price
+            previous_entry_price = value_entry / quantity_entry if quantity_entry != 0 else Decimal(0)
+            weight_entry_previous = quantity_entry
+            # If it's a long position and the quantity is positive, or if it's a short position and the quantity is negative, use the current price. Otherwise, use the previous buy-in price.
+            entry_price = current_price if (is_long_position and transaction.quantity > 0) or (not is_long_position and transaction.quantity < 0) else previous_entry_price
+            
+            if (weight_entry_previous + weight_current) == 0:
+                entry_price = previous_entry_price
+            else:
+                entry_price = (previous_entry_price * weight_entry_previous + entry_price * weight_current) / (weight_entry_previous + weight_current)
+            quantity_entry += transaction.quantity
+            value_entry = entry_price * quantity_entry
+
         return round(Decimal(value_entry / quantity_entry), 6) if quantity_entry else previous_entry_price
 
         # except Exception as e:
