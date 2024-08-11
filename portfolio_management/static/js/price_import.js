@@ -10,7 +10,7 @@ $(document).ready(function() {
         $('#importPricesModal').modal('hide');
 
         $('#importProgressModal').modal('show');
-        $('#importProgressBar').css('width', '0%').attr('aria-valuenow', 0).text('0%');
+        updateProgressBar(0);
         $('#importStatus').text('Initializing import...');
 
         var xhr = new XMLHttpRequest();
@@ -18,19 +18,33 @@ $(document).ready(function() {
         xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
         xhr.onprogress = function(e) {
             var lines = e.target.responseText.split('\n');
-            var lastLine = lines[lines.length - 2]; // Last complete line
-            if (lastLine) {
-                var data = JSON.parse(lastLine);
-                if (data.status === 'progress') {
-                    $('#importProgressBar').css('width', data.progress + '%').attr('aria-valuenow', data.progress).text(Math.round(data.progress) + '%');
-                    $('#importStatus').text(`Importing ${data.security_name} for date ${data.date} (${data.current}/${data.total})`);
-                } else if (data.status === 'success') {
-                    $('#importProgressModal').modal('hide');
-                    handleImportSuccess(data);
-                } else if (data.status === 'error') {
-                    $('#importProgressModal').modal('hide');
-                    handleImportError(data.message);
+            lines.forEach(function(line) {
+                if (line) {
+                    try {
+                        var data = JSON.parse(line);
+                        if (data.status === 'progress' || data.status === 'error') {
+                            updateProgressBar(data.progress);
+                            $('#importStatus').text(data.status === 'progress' 
+                                ? `Importing ${data.security_name} for date ${data.date} (${data.current}/${data.total})`
+                                : `Error: ${data.message}`
+                            );
+                        } else if (data.status === 'success' || data.status === 'complete') {
+                            console.log("Hiding progress modal");
+                            setTimeout(function() {
+                                $('#importProgressModal').modal('hide');
+                                handleImportSuccess(data);
+                            }, 100);
+                        }
+                    } catch (error) {
+                        console.error('Error parsing JSON:', error);
+                    }
                 }
+            });
+        };
+        xhr.onload = function() {
+            if (xhr.status !== 200) {
+                $('#importProgressModal').modal('hide');
+                handleImportError('An error occurred during the import process.');
             }
         };
         xhr.onerror = function() {
@@ -39,6 +53,13 @@ $(document).ready(function() {
         };
         xhr.send(formData);
     });
+
+    function updateProgressBar(progress) {
+        progress = Math.round(progress);
+        $('#importProgressBar').css('width', progress + '%')
+                               .attr('aria-valuenow', progress)
+                               .text(progress + '%');
+    }
 
     function handleImportSuccess(response) {
         let resultsHtml = '<h4>Import results</h4>';
@@ -51,26 +72,58 @@ $(document).ready(function() {
         resultsHtml += `<p>Total Dates: ${response.total_dates}</p>`;
         resultsHtml += '</div>';
 
+        // Table for successfully processed securities
+        resultsHtml += '<h5>Processed Securities</h5>';
         resultsHtml += '<table class="table table-striped">';
         resultsHtml += '<thead><tr><th>Security</th><th>Updated Dates</th><th>Skipped Dates</th><th>Errors</th></tr></thead>';
         resultsHtml += '<tbody>';
 
+        // Table for skipped securities
+        let skippedSecuritiesHtml = '<h5>Skipped Securities</h5>';
+        skippedSecuritiesHtml += '<table class="table table-striped">';
+        skippedSecuritiesHtml += '<thead><tr><th>Security</th><th>Reason</th></tr></thead>';
+        skippedSecuritiesHtml += '<tbody>';
+
+        let hasProcessedSecurities = false;
+        let hasSkippedSecurities = false;
+
         if (Array.isArray(response.details)) {
             response.details.forEach(function(detail) {
-                resultsHtml += '<tr>';
-                resultsHtml += `<td>${detail.security_name || 'N/A'}</td>`;
-                resultsHtml += `<td>${detail.updated_dates.length}</td>`;
-                resultsHtml += `<td>${detail.skipped_dates.length}</td>`;
-                resultsHtml += `<td>${formatErrors(detail.errors)}</td>`;
-                resultsHtml += '</tr>';
+                if (detail.status === 'skipped') {
+                    hasSkippedSecurities = true;
+                    skippedSecuritiesHtml += '<tr>';
+                    skippedSecuritiesHtml += `<td>${detail.security_name || 'N/A'}</td>`;
+                    skippedSecuritiesHtml += `<td>${detail.message || 'Unknown reason'}</td>`;
+                    skippedSecuritiesHtml += '</tr>';
+                } else {
+                    hasProcessedSecurities = true;
+                    resultsHtml += '<tr>';
+                    resultsHtml += `<td>${detail.security_name || 'N/A'}</td>`;
+                    resultsHtml += `<td>${Array.isArray(detail.updated_dates) ? detail.updated_dates.length : 'N/A'}</td>`;
+                    resultsHtml += `<td>${Array.isArray(detail.skipped_dates) ? detail.skipped_dates.length : 'N/A'}</td>`;
+                    resultsHtml += `<td>${formatErrors(detail.errors)}</td>`;
+                    resultsHtml += '</tr>';
+                }
             });
         } else {
             resultsHtml += '<tr><td colspan="4">No details provided</td></tr>';
         }
 
         resultsHtml += '</tbody></table>';
+        skippedSecuritiesHtml += '</tbody></table>';
 
-        $('#successModal .modal-body').html(resultsHtml);
+        // Only add the processed securities table if there are any
+        if (hasProcessedSecurities) {
+            $('#successModal .modal-body').html(resultsHtml);
+        } else {
+            $('#successModal .modal-body').html('<p>No securities were processed.</p>');
+        }
+
+        // Add the skipped securities table if there are any
+        if (hasSkippedSecurities) {
+            $('#successModal .modal-body').append(skippedSecuritiesHtml);
+        }
+
         $('#successModal .modal-title').text('Price Import Results');
         $('#successModal .modal-footer a.btn-primary').hide();
         $('#successModal').modal('show');

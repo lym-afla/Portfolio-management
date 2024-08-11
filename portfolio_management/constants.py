@@ -46,6 +46,8 @@ ASSET_TYPE_CHOICES = (
 EXPOSURE_CHOICES = (
     ('Equity', 'Equity'),
     ('FI', 'Fixed income'),
+    ('FX', 'Forex'),
+    ('Commodity', 'Commodity'),
 )
 
 TOLERANCE = 1e-7
@@ -58,4 +60,13 @@ BROKER_GROUPS = {
 # Names of mutual funds that are kept in FT database in pences, so need to be divided by 100
 MUTUAL_FUNDS_IN_PENCES = [
     'Fidelity Index US Fund P Accumulation',
+    'BlackRock Corporate Bond',
+    'Fidelity Index Europe ex UK',
+    'Baillie Gifford High Yield Bond',
+    'Legal & General Multi-Index',
+    'Barings Europe Select Trust',
+    'Legal & General Global Technology Index',
+    'Fidelity Index Emerging Markets',
+    'Rathbone Ethical Bond',
+
 ]
