@@ -174,3 +174,144 @@ def update_data_for_broker(request):
     # # Redirect to the same page to refresh it
     # return redirect(request.META.get('HTTP_REFERER'))
 
+from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.authtoken.models import Token
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+from .serializers import UserSerializer
+from django.contrib.auth import authenticate, get_user_model, logout
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class CustomObtainAuthToken(ObtainAuthToken):
+    def post(self, request, *args, **kwargs):
+        logger.info(f"Received login request data: {request.data}")
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        logger.info(f"Attempting to authenticate user: {username}")
+        
+        # Check if user exists
+        User = get_user_model()
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            logger.error(f"User does not exist: {username}")
+            return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Attempt authentication
+        if user.check_password(password):
+            logger.info(f"User authenticated successfully: {user}")
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user_id': user.pk,
+                'email': user.email
+            })
+        else:
+            logger.error(f"Incorrect password for user: {username}")
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+
+class RegisterView(APIView):
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def edit_profile_api(request):
+    user = request.user
+    profile_form = UserProfileForm(request.data, instance=user)
+    if profile_form.is_valid():
+        profile_form.save()
+        return Response({'success': True})
+    return Response({
+        'success': False,
+        'errors': profile_form.errors
+    }, status=400)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile_api(request):
+    user = request.user
+    user_info = [
+        {"label": "Username", "value": user.username},
+        {"label": "First Name", "value": user.first_name},
+        {"label": "Last Name", "value": user.last_name},
+        {"label": "Email", "value": user.email},
+    ]
+    return Response({'user_info': user_info})
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def user_settings_api(request):
+    user = request.user
+    if request.method == 'POST':
+        settings_form = UserSettingsForm(request.data, instance=user)
+        if settings_form.is_valid():
+            settings_form.save()
+            return Response({'success': True})
+        return Response({
+            'success': False,
+            'errors': settings_form.errors
+        }, status=400)
+    else:
+        settings = {
+            'default_currency': user.default_currency,
+            'use_default_currency_where_relevant': user.use_default_currency_where_relevant,
+            'chart_frequency': user.chart_frequency,
+            'chart_timeline': user.chart_timeline,
+            'NAV_barchart_default_breakdown': user.NAV_barchart_default_breakdown,
+            'digits': user.digits,
+            'custom_brokers': user.custom_brokers,
+        }
+        return Response(settings)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_settings_choices_api(request):
+    form = UserSettingsForm(instance=request.user)
+    choices = {
+        'currency_choices': form.fields['default_currency'].choices,
+        'frequency_choices': form.fields['chart_frequency'].choices,
+        'timeline_choices': form.fields['chart_timeline'].choices,
+        'nav_breakdown_choices': form.fields['NAV_barchart_default_breakdown'].choices,
+        'broker_choices': form.fields['custom_brokers'].choices,
+    }
+    return Response(choices)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_api(request):
+    user = request.user
+    old_password = request.data.get('old_password')
+    new_password1 = request.data.get('new_password1')
+    new_password2 = request.data.get('new_password2')
+
+    if not user.check_password(old_password):
+        return Response({'error': 'Incorrect old password'}, status=400)
+
+    if new_password1 != new_password2:
+        return Response({'error': 'New passwords do not match'}, status=400)
+
+    user.set_password(new_password1)
+    user.save()
+    return Response({'success': True})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_api(request):
+    logout(request)
+    return Response({'success': True})

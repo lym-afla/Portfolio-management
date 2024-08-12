@@ -42,6 +42,10 @@ INSTALLED_APPS = [
     'database',
     'summary_analysis',
 
+    'rest_framework',
+    'corsheaders',
+    'rest_framework.authtoken',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -60,6 +64,11 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     'portfolio_management.middleware.InitializeEffectiveDateMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
 ]
 
 ROOT_URLCONF = 'portfolio_management.urls'
@@ -172,3 +181,9 @@ LOGGING = {
         # Add other third-party libraries as needed
     },
 }
+
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8080']
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]

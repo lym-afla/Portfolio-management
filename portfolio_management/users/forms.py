@@ -71,11 +71,6 @@ class UserSettingsForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Default NAV timeline breakdown'
     )
-    # custom_brokers = forms.MultipleChoiceField(
-    #     choices=[],
-    #     widget=forms.SelectMultiple(attrs={'class': 'selectpicker show-tick', 'data-actions-box': 'true', 'data-width': '100%', 'title': 'Choose broker', 'data-selected-text-format': 'count', 'id': 'inputBrokers'}),
-    #     label='Brokers'
-    # )
 
     custom_brokers = forms.ChoiceField(
         choices=[],
@@ -97,8 +92,12 @@ class UserSettingsForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         user = kwargs.get('instance')
         super().__init__(*args, **kwargs)
-        # Set choices dynamically for broker, security, and type fields
-        # Initialize broker choices
+        self.fields['custom_brokers'].choices = self.get_broker_choices(user)
+        
+        if user is not None:
+            self.fields['custom_brokers'].initial = user.custom_brokers
+
+    def get_broker_choices(self, user):
         broker_choices = [
             ('General', (('All brokers', 'All brokers'),)),
             ('__SEPARATOR__', '__SEPARATOR__'),
@@ -111,13 +110,8 @@ class UserSettingsForm(forms.ModelForm):
                 broker_choices.append(('Your Brokers', tuple(user_brokers)))
                 broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
         
-        # Add BROKER_GROUPS keys
         broker_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
-
-        self.fields['custom_brokers'].choices = broker_choices
-        
-        if user is not None:
-            self.fields['custom_brokers'].initial = user.custom_brokers
+        return broker_choices
 
     def clean_digits(self):
         digits = self.cleaned_data.get('digits')

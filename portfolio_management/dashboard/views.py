@@ -145,6 +145,7 @@ def nav_chart_data_request(request):
 
     # global selected_brokers
     user = request.user
+    print("views. dashboard. 148", user)
     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
     if request.method == 'GET':
@@ -161,63 +162,17 @@ def nav_chart_data_request(request):
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
+@login_required
+def dashboard_summary_api(request):
+    user = request.user
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    currency_target = user.default_currency
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
-# def summary_view(request):
-#     user = request.user
+    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
     
-#     # global selected_brokers
-#     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-    
-#     currency_target = user.default_currency
-#     number_of_digits = user.digits
-#     selected_brokers = user.custom_brokers
-
-#     sidebar_padding = 0
-#     sidebar_width = 0
-
-#     sidebar_width = request.GET.get("width")
-#     sidebar_padding = request.GET.get("padding")
-
-#     # print("views. dashboard", effective_current_date)
-
-#     initial_data = {
-#         'selected_brokers': selected_brokers,
-#         'default_currency': currency_target,
-#         'table_date': effective_current_date,
-#         'digits': number_of_digits
-#     }
-#     dashboard_form = DashboardForm(instance=user, initial=initial_data)
-
-#     user_brokers = Brokers.objects.filter(investor=user)
-
-#     broker_table_contexts = brokers_summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
-
-#     # exposure_table_contexts = exposure_summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
-
-#     first_year = AnnualPerformance.objects.filter(
-#         investor=user,
-#         broker__in=user_brokers
-#     ).order_by('year').first().year
-#     last_exit_date = get_last_exit_date_for_brokers([broker.id for broker in user_brokers], effective_current_date)
-#     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
-
-#     exposure_table_years = list(range(first_year, last_year + 1))
-
-#     buttons = ['settings']
-
-#     context = {
-#         'sidebar_width': sidebar_width,
-#         'sidebar_padding': sidebar_padding,
-#         'currency': currency_format('', currency_target, 0),
-#         'table_date': effective_current_date,
-#         'brokers': Brokers.objects.filter(investor=user).all(),
-#         'selectedBrokers': selected_brokers,
-#         'dashboardForm': dashboard_form,
-#         'buttons': buttons,
-#         'unrestricted_investments_context': broker_table_contexts['public_markets_context'],
-#         'restricted_investments_context': broker_table_contexts['restricted_investments_context'],
-#         'total_context': broker_table_contexts['total_context'],
-#         'exposure_table_years': exposure_table_years
-#     }
-
-#     return render(request, 'summary.html', context)
+    summary_data = {
+        'totalValue': currency_format(analysis['Total NAV'], currency_target, user.digits),
+        'change': format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
+    }
+    return JsonResponse(summary_data)
