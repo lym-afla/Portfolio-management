@@ -24,27 +24,34 @@
 </template>
 
 <script>
+import { ref } from 'vue'
+
 export default {
-  data() {
-    return {
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-    }
-  },
-  methods: {
-    submitForm() {
-      if (this.password !== this.confirmPassword) {
+  setup(props, { emit }) {
+    const username = ref('')
+    const email = ref('')
+    const password = ref('')
+    const confirmPassword = ref('')
+
+    const submitForm = () => {
+      if (password.value !== confirmPassword.value) {
         console.error('Passwords do not match')
         return
       }
-      this.$emit('register', {
-        username: this.username,
-        email: this.email,
-        password: this.password,
+      emit('register', {
+        username: username.value,
+        email: email.value,
+        password: password.value,
       })
-    },
-  },
+    }
+
+    return {
+      username,
+      email,
+      password,
+      confirmPassword,
+      submitForm
+    }
+  }
 }
 </script>

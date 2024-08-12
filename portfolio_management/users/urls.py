@@ -24,4 +24,5 @@ urlpatterns = [
 
     path('api/login/', CustomObtainAuthToken.as_view(), name='api_login'),
     path('api/register/', RegisterView.as_view(), name='api_register'),
+    path('api/verify-token/', views.verify_token_api, name='api_verify_token'),
 ]
