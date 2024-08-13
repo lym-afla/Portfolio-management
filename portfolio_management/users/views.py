@@ -4,8 +4,6 @@ from django.urls import reverse_lazy
 from django.views import generic
 
 from common.forms import DashboardForm
-from common.models import Brokers
-from utils import broker_group_to_ids
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -184,6 +182,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from .serializers import UserSerializer
 from django.contrib.auth import authenticate, get_user_model, logout
+from django.core.exceptions import ValidationError
+from django.contrib.auth.password_validation import validate_password
 
 import logging
 
@@ -192,23 +192,10 @@ logger = logging.getLogger(__name__)
 
 class CustomObtainAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
-        logger.info(f"Received login request data: {request.data}")
-        username = request.data.get('username')
-        password = request.data.get('password')
-        
-        logger.info(f"Attempting to authenticate user: {username}")
-        
-        # Check if user exists
-        User = get_user_model()
-        try:
-            user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            logger.error(f"User does not exist: {username}")
-            return Response({'error': 'User does not exist'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Attempt authentication
-        if user.check_password(password):
-            logger.info(f"User authenticated successfully: {user}")
+        serializer = self.serializer_class(data=request.data,
+                                           context={'request': request})
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
             token, created = Token.objects.get_or_create(user=user)
             return Response({
                 'token': token.key,
@@ -216,8 +203,32 @@ class CustomObtainAuthToken(ObtainAuthToken):
                 'email': user.email
             })
         else:
-            logger.error(f"Incorrect password for user: {username}")
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+            errors = {}
+            username = request.data.get('username')
+            password = request.data.get('password')
+
+            if not username:
+                errors['username'] = ['This field is required.']
+            if not password:
+                errors['password'] = ['This field is required.']
+
+            if username and password:
+                user = authenticate(username=username, password=password)
+                if user is None:
+                    errors['non_field_errors'] = ['Unable to log in with provided credentials.']
+                else:
+                    # If authentication succeeded but serializer is invalid,
+                    # there might be other issues (e.g., account inactive)
+                    print(f"Serializer errors: {serializer.errors}")  # Add this line
+                    errors.update(serializer.errors)
+
+            # Validate password complexity
+            try:
+                validate_password(password)
+            except ValidationError as e:
+                errors['password'] = list(e.messages)
+
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RegisterView(APIView):
     def post(self, request):
@@ -315,3 +326,8 @@ def change_password_api(request):
 def logout_api(request):
     logout(request)
     return Response({'success': True})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verify_token_api(request):
+    return Response({'valid': True})

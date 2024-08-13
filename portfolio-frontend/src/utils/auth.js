@@ -7,8 +7,13 @@ export const checkAuth = async () => {
   }
 
   try {
-    // Make a request to a protected endpoint to verify the token
-    await axios.get('/users/api/verify-token/');
+    // Set the token in the Authorization header
+    await axios.get('/users/api/verify-token/', {
+      headers: {
+        'Authorization': `Token ${token}`
+      }
+    });
+    // If the request is successful (doesn't throw an error), return true
     return true;
   } catch (error) {
     console.error('Token verification failed:', error);
