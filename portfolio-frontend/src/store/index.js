@@ -4,7 +4,8 @@ import axios from 'axios'
 export default createStore({
   state: {
     token: localStorage.getItem('token') || null,
-    user: null
+    user: null,
+    pageTitle: ''
   },
   mutations: {
     setToken(state, token) {
@@ -16,6 +17,9 @@ export default createStore({
     logout(state) {
       state.token = null
       state.user = null
+    },
+    setPageTitle(state, title) {
+      state.pageTitle = title
     }
   },
   actions: {
@@ -26,28 +30,47 @@ export default createStore({
         localStorage.setItem('token', token)
         commit('setToken', token)
         commit('setUser', response.data)
-        return true
+        return { success: true }
       } catch (error) {
         console.error('Login failed', error)
-        return false
+        return { success: false, error: error.response ? error.response.data : 'Login failed' }
       }
     },
-    logout({ commit }) {
-      localStorage.removeItem('token')
-      commit('logout')
-    },
-    async register({ commit }, credentials) {
+    async logout({ commit }) {
       try {
-        const response = await axios.post('/users/api/register/', credentials)
-        const token = response.data.token
-        localStorage.setItem('token', token)
-        commit('setToken', token)
-        commit('setUser', response.data)
-        return true
+        await axios.post('/users/api/logout/');
+        localStorage.removeItem('token');
+        commit('logout');
+        return { success: true };
+      } catch (error) {
+        console.error('Logout failed:', error);
+        localStorage.removeItem('token');
+        commit('logout');
+        return { success: false, error: 'Logout failed' };
+      }
+    },
+    async register(_, credentials) {
+      try {
+        await axios.post('/users/api/register/', credentials)
+        return { success: true, message: 'Registration successful. Please log in.' }
       } catch (error) {
         console.error('Registration failed', error)
-        return false
+        return { success: false, error: error.response ? error.response.data : 'Registration failed' }
       }
+    },
+    async deleteAccount({ commit }) {
+      try {
+        await axios.delete('/users/api/delete-account/')
+        localStorage.removeItem('token')
+        commit('logout')
+        return { success: true, message: 'Account successfully deleted.' }
+      } catch (error) {
+        console.error('Account deletion failed', error)
+        return { success: false, error: error.response ? error.response.data : 'Account deletion failed' }
+      }
+    },
+    updatePageTitle({ commit }, title) {
+      commit('setPageTitle', title)
     }
   },
   getters: {

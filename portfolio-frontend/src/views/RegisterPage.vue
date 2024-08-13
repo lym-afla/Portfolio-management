@@ -5,7 +5,11 @@
         <v-card class="pa-4">
           <v-card-title class="headline">Register</v-card-title>
           <v-card-text>
-            <RegisterForm @register="handleRegister" :loading="loading" :error="error" />
+            <RegisterForm 
+              ref="registerForm"
+              @register="handleRegister" 
+              :loading="loading" 
+            />
           </v-card-text>
           <v-card-actions>
             <v-spacer></v-spacer>
@@ -14,13 +18,29 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- Success Dialog -->
+    <v-dialog v-model="showSuccessDialog" max-width="400">
+      <v-card>
+        <v-card-title class="headline">Registration Successful</v-card-title>
+        <v-card-text>
+          {{ successMessage }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" text @click="redirectToLogin">
+            Go to Login
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { useStore } from 'vuex'
+import { register } from '@/services/api'
 import RegisterForm from '@/components/RegisterForm.vue'
 
 export default {
@@ -29,30 +49,56 @@ export default {
     RegisterForm
   },
   setup() {
-    const error = ref('')
     const loading = ref(false)
+    const successMessage = ref('')
+    const showSuccessDialog = ref(false)
     const router = useRouter()
-    const store = useStore()
+    const registerForm = ref(null)
 
     const handleRegister = async (credentials) => {
       loading.value = true
-      error.value = ''
 
       try {
-        const success = await store.dispatch('register', credentials)
-        if (success) {
-          router.push('/dashboard')
-        } else {
-          error.value = 'Registration failed. Please try again.'
-        }
+        await register(credentials.username, credentials.email, credentials.password)
+        successMessage.value = 'Registration successful. You can now log in to your account.'
+        showSuccessDialog.value = true
       } catch (err) {
-        error.value = 'An error occurred during registration.'
+        console.error('Registration error:', err)
+        if (typeof err === 'object' && err !== null) {
+          if (err.non_field_errors) {
+            registerForm.value.setErrors({ general: err.non_field_errors })
+          } else {
+            registerForm.value.setErrors(err)
+          }
+        } else {
+          registerForm.value.setErrors({ general: 'An error occurred during registration.' })
+        }
       } finally {
         loading.value = false
       }
     }
 
-    return { error, loading, handleRegister }
+    const redirectToLogin = () => {
+      router.push('/login')
+    }
+
+    onBeforeUnmount(() => {
+      if (registerForm.value) {
+        registerForm.value.setErrors({})
+      }
+    })
+
+    return { 
+      loading, 
+      handleRegister, 
+      registerForm, 
+      successMessage, 
+      showSuccessDialog, 
+      redirectToLogin 
+    }
+  },
+  mounted() {
+    this.$emit('update-page-title', ''); // Clear the page title for register page
   }
 }
 </script>

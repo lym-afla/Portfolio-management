@@ -189,6 +189,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+class RegisterView(APIView):
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CustomObtainAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
@@ -213,31 +220,30 @@ class CustomObtainAuthToken(ObtainAuthToken):
                 errors['password'] = ['This field is required.']
 
             if username and password:
-                user = authenticate(username=username, password=password)
-                if user is None:
-                    errors['non_field_errors'] = ['Unable to log in with provided credentials.']
-                else:
-                    # If authentication succeeded but serializer is invalid,
-                    # there might be other issues (e.g., account inactive)
-                    print(f"Serializer errors: {serializer.errors}")  # Add this line
-                    errors.update(serializer.errors)
+                User = get_user_model()
+                try:
+                    user = User.objects.get(username=username)
+                    if not user.check_password(password):
+                        errors['password'] = ['Incorrect password.']
+                except User.DoesNotExist:
+                    errors['username'] = ['User with this username does not exist.']
 
-            # Validate password complexity
-            try:
-                validate_password(password)
-            except ValidationError as e:
-                errors['password'] = list(e.messages)
+            # Validate password complexity only if a password is provided
+            if password:
+                try:
+                    validate_password(password)
+                except ValidationError as e:
+                    errors['password'] = list(e.messages)
 
             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
-class RegisterView(APIView):
-    def post(self, request):
-        serializer = UserSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return Response({"message": "Account successfully deleted"}, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -331,3 +337,4 @@ def logout_api(request):
 @permission_classes([IsAuthenticated])
 def verify_token_api(request):
     return Response({'valid': True})
+

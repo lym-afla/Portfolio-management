@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { ref } from 'vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
@@ -7,6 +8,9 @@ import ProfileLayout from '../components/ProfileLayout.vue'
 import Profile from '../components/Profile.vue'
 import ProfileEdit from '../components/ProfileEdit.vue'
 import ProfileSettings from '../components/ProfileSettings.vue'
+import ClosedPositionsPage from '../views/ClosedPositionsPage.vue'
+
+export const loading = ref(true)
 
 const routes = [
   {
@@ -31,6 +35,12 @@ const routes = [
     path: '/open-positions',
     name: 'OpenPositions',
     component: OpenPositionsPage,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/closed-positions',
+    name: 'ClosedPositions',
+    component: ClosedPositionsPage,
     meta: { requiresAuth: true }
   },
   {
@@ -90,15 +100,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const isAuthenticated = !!localStorage.getItem('token');
-  
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    next('/login');
-  } else if (to.path === '/login' && isAuthenticated) {
-    next('/dashboard');
-  } else {
-    next();
-  }
+  loading.value = true
+  next()
 })
 
 export default router

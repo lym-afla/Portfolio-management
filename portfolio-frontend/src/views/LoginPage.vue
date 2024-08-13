@@ -22,9 +22,9 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { login } from '@/services/api'
 import LoginForm from '@/components/LoginForm.vue'
 
 export default {
@@ -42,10 +42,10 @@ export default {
       loading.value = true
 
       try {
-        const response = await axios.post('/users/api/login/', credentials)
-        console.log('Login response:', response.data)
-        if (response.data.token) {
-          localStorage.setItem('token', response.data.token)
+        const response = await login(credentials.username, credentials.password)
+        console.log('Login response:', response)
+        if (response.token) {
+          localStorage.setItem('token', response.token)
           router.push('/dashboard')
         } else {
           console.log('Login failed, no token received')
@@ -53,15 +53,11 @@ export default {
         }
       } catch (err) {
         console.error('Login error:', err)
-        console.error('Error response:', err.response?.data)
-        if (err.response?.data?.non_field_errors) {
-          console.log('Non-field errors:', err.response.data.non_field_errors)
-          loginForm.value.setErrors(err.response.data.non_field_errors[0])
-        } else if (err.response?.data) {
-          console.log('Field errors:', err.response.data)
-          loginForm.value.setErrors(err.response.data)
+        if (typeof err === 'object' && err.non_field_errors) {
+          loginForm.value.setErrors(err.non_field_errors[0])
+        } else if (typeof err === 'object') {
+          loginForm.value.setErrors(err)
         } else {
-          console.log('Unknown error')
           loginForm.value.setErrors('An unknown error occurred. Please try again.')
         }
       } finally {
@@ -69,7 +65,16 @@ export default {
       }
     }
 
+    onBeforeUnmount(() => {
+      if (loginForm.value) {
+        loginForm.value.setErrors({})
+      }
+    })
+
     return { loading, handleLogin, loginForm }
+  },
+  mounted() {
+    this.$emit('update-page-title', ''); // Clear the page title for login page
   }
 }
 </script>

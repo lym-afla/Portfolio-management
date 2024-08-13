@@ -5,6 +5,7 @@
       label="Username"
       required
       :error-messages="fieldErrors.username"
+      @input="clearError('username')"
     ></v-text-field>
     <v-text-field
       v-model="password"
@@ -12,6 +13,7 @@
       type="password"
       required
       :error-messages="fieldErrors.password"
+      @input="clearError('password')"
     ></v-text-field>
     <v-btn type="submit" color="primary" block :loading="loading">Login</v-btn>
     <v-alert v-if="generalError" type="error" class="mt-3">{{ generalError }}</v-alert>
@@ -34,6 +36,11 @@ export default {
       password: [],
     })
     const generalError = ref('')
+
+    const clearError = (field) => {
+      fieldErrors[field] = []
+      generalError.value = ''
+    }
 
     const submitForm = () => {
       // Clear previous errors
@@ -71,7 +78,8 @@ export default {
       fieldErrors,
       generalError,
       submitForm,
-      setErrors
+      setErrors,
+      clearError
     }
   }
 }

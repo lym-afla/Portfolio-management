@@ -29,89 +29,198 @@
               label="Current Password"
               type="password"
               required
+              :disabled="isLoading"
+              :error-messages="passwordErrors.old_password"
+              @input="clearPasswordError('old_password')"
             ></v-text-field>
             <v-text-field
               v-model="passwordForm.new_password1"
               label="New Password"
               type="password"
               required
+              :disabled="isLoading"
+              :error-messages="passwordErrors.new_password1"
+              @input="clearPasswordError('new_password1')"
             ></v-text-field>
             <v-text-field
               v-model="passwordForm.new_password2"
               label="Confirm New Password"
               type="password"
               required
+              :disabled="isLoading"
+              :error-messages="passwordMismatchError"
+              @input="clearPasswordError('new_password2')"
             ></v-text-field>
-            <v-btn type="submit" color="primary">Change Password</v-btn>
+            <v-btn 
+              type="submit" 
+              color="primary" 
+              :loading="isLoading"
+              :disabled="isLoading"
+            >
+              Change Password
+            </v-btn>
           </v-form>
         </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" text @click="closeChangePasswordDialog">Close</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Success Snackbar -->
-    <v-snackbar v-model="snackbar" :timeout="3000" color="success">
-      {{ snackbarMessage }}
-      <template v-slot:actions>
-        <v-btn color="white" text @click="snackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
+    <!-- Success Dialog -->
+    <v-dialog v-model="successDialog" max-width="300">
+      <v-card>
+        <v-card-title class="text-h5 green--text">Success</v-card-title>
+        <v-card-text>{{ successMessage }}</v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="green" text @click="successDialog = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Error Dialog -->
+    <v-dialog v-model="errorDialog" max-width="300">
+      <v-card>
+        <v-card-title class="text-h5 red--text">Error</v-card-title>
+        <v-card-text>{{ errorMessage }}</v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="red" text @click="errorDialog = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
 <script>
 import axios from 'axios'
+import { ref, computed, reactive } from 'vue'
 
 export default {
-  data() {
+  setup() {
+    const userInfo = ref([])
+    const changePasswordDialog = ref(false)
+    const passwordForm = reactive({
+      old_password: '',
+      new_password1: '',
+      new_password2: '',
+    })
+    const passwordErrors = reactive({
+      old_password: [],
+      new_password1: [],
+      new_password2: [],
+    })
+    const isLoading = ref(false)
+    const successDialog = ref(false)
+    const errorDialog = ref(false)
+    const successMessage = ref('')
+    const errorMessage = ref('')
+
+    const passwordMismatchError = computed(() => {
+      return passwordForm.new_password1 !== passwordForm.new_password2 ? ['Passwords do not match'] : []
+    })
+
+    const clearPasswordError = (field) => {
+      passwordErrors[field] = []
+      errorMessage.value = ''
+    }
+
+    const showSuccessMessage = (message) => {
+      successMessage.value = message
+      successDialog.value = true
+    }
+
+    const showErrorMessage = (message) => {
+      errorMessage.value = message
+      errorDialog.value = true
+    }
+
+    const setPasswordErrors = (newErrors) => {
+      if (typeof newErrors === 'string') {
+        errorMessage.value = newErrors
+      } else if (typeof newErrors === 'object') {
+        Object.keys(newErrors).forEach(field => {
+          if (field in passwordErrors) {
+            passwordErrors[field] = Array.isArray(newErrors[field]) ? newErrors[field] : [newErrors[field]]
+          } else {
+            errorMessage.value = newErrors[field]
+          }
+        })
+      }
+    }
+
+    const changePassword = async () => {
+      if (passwordForm.new_password1 !== passwordForm.new_password2) {
+        passwordErrors.new_password2 = ['Passwords do not match']
+        return
+      }
+
+      isLoading.value = true
+      try {
+        await axios.post('/users/api/change-password/', passwordForm)
+        changePasswordDialog.value = false
+        showSuccessMessage('Password changed successfully')
+        Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
+        Object.keys(passwordErrors).forEach(key => passwordErrors[key] = [])
+      } catch (error) {
+        console.error('Error changing password:', error)
+        if (error.response && error.response.data) {
+          setPasswordErrors(error.response.data)
+        } else {
+          showErrorMessage('Failed to change password. Please try again.')
+        }
+      } finally {
+        isLoading.value = false
+      }
+    }
+
+    const closeChangePasswordDialog = () => {
+      changePasswordDialog.value = false
+      Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
+      Object.keys(passwordErrors).forEach(key => passwordErrors[key] = [])
+    }
+
+    const fetchUserDetails = async () => {
+      try {
+        const response = await axios.get('/users/api/profile/')
+        userInfo.value = response.data.user_info
+      } catch (error) {
+        console.error('Error fetching user details:', error)
+        showErrorMessage('Failed to fetch user details')
+      }
+    }
+
+    const editProfile = () => {
+      // Implement edit profile functionality
+    }
+
+    const showChangePasswordDialog = () => {
+      changePasswordDialog.value = true
+    }
+
     return {
-      userInfo: [],
-      changePasswordDialog: false,
-      passwordForm: {
-        old_password: '',
-        new_password1: '',
-        new_password2: '',
-      },
-      snackbar: false,
-      snackbarMessage: '',
+      userInfo,
+      changePasswordDialog,
+      passwordForm,
+      passwordErrors,
+      isLoading,
+      successDialog,
+      errorDialog,
+      successMessage,
+      errorMessage,
+      passwordMismatchError,
+      clearPasswordError,
+      changePassword,
+      closeChangePasswordDialog,
+      fetchUserDetails,
+      editProfile,
+      showChangePasswordDialog,
     }
   },
   mounted() {
     this.fetchUserDetails()
-  },
-  methods: {
-    async fetchUserDetails() {
-      try {
-        const response = await axios.get('/users/api/profile/')
-        this.userInfo = response.data.user_info
-      } catch (error) {
-        console.error('Error fetching user details:', error)
-      }
-    },
-    editProfile() {
-      this.$router.push('/profile/edit')
-    },
-    showChangePasswordDialog() {
-      this.changePasswordDialog = true
-    },
-    async changePassword() {
-      try {
-        await axios.post('/users/api/change-password/', this.passwordForm)
-        this.changePasswordDialog = false
-        this.showSuccessMessage('Password changed successfully')
-        this.passwordForm = { old_password: '', new_password1: '', new_password2: '' }
-      } catch (error) {
-        console.error('Error changing password:', error)
-        this.showErrorMessage('Failed to change password. Please try again.')
-      }
-    },
-    showSuccessMessage(message) {
-      this.snackbarMessage = message
-      this.snackbar = true
-    },
-    showErrorMessage(message) {
-      this.snackbarMessage = message
-      this.snackbar = true
-    },
   },
 }
 </script>

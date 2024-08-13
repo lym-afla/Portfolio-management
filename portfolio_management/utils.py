@@ -1262,10 +1262,15 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
     Args:
         selected_brokers (list): List of broker IDs to include in the calculation.
+        date (date or str): The current date to use as a reference.
 
     Returns:
         date: The last date after which all activities ended and no asset was opened for the selected brokers.
     """
+    # Ensure date is a date object
+    if isinstance(date, str):
+        date = datetime.strptime(date, '%Y-%m-%d').date()
+
     # Step 1: Check the position of each security at the current date
     for broker in Brokers.objects.filter(id__in=selected_brokers):
         for security in broker.securities.all():

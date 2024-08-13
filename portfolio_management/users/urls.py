@@ -1,12 +1,12 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
-from .views import SignUpView, CustomObtainAuthToken, RegisterView
+# from .views import SignUpView, CustomObtainAuthToken, RegisterView
 from . import views
 
 app_name = 'users' # Optional, but useful for namespacing
 
 urlpatterns = [
-    path('signup/', SignUpView.as_view(), name='signup'),
+    path('signup/', views.SignUpView.as_view(), name='signup'),
     path('profile/', views.profile, name='profile'),
     path('edit_profile/', views.edit_profile, name='edit_profile'),
     path('login/', views.user_login, name='login'),
@@ -22,7 +22,8 @@ urlpatterns = [
     path('api/change-password/', views.change_password_api, name='api_change_password'),
     path('api/logout/', views.logout_api, name='api_logout'),
 
-    path('api/login/', CustomObtainAuthToken.as_view(), name='api_login'),
-    path('api/register/', RegisterView.as_view(), name='api_register'),
+    path('api/login/', views.CustomObtainAuthToken.as_view(), name='api_login'),
+    path('api/register/', views.RegisterView.as_view(), name='api_register'),
     path('api/verify-token/', views.verify_token_api, name='api_verify_token'),
+    path('api/delete-account/', views.DeleteAccountView.as_view(), name='api_delete_account'),
 ]
