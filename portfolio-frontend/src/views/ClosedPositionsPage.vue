@@ -47,14 +47,10 @@
           :items="closedPositions"
           :loading="tableLoading"
           :search="search"
-          :items-per-page="itemsPerPage"
-          :page="currentPage"
-          :items-length="totalItems"
-          @update:options="handleTableOptionsUpdate"
+          :items-per-page="-1"
           class="elevation-1"
           density="compact"
           :sort-by="sortBy"
-          :server-items-length="totalItems"
           must-sort
         >
           <template #top>
@@ -91,6 +87,7 @@
                 hide-details
                 class="mr-2"
                 style="max-width: 150px;"
+                @update:model-value="handleItemsPerPageChange"
               ></v-select>
               <v-text class="text-caption mr-4">
                 {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }}
@@ -100,6 +97,7 @@
                 :length="pageCount"
                 :total-visible="7"
                 rounded="circle"
+                @update:model-value="handlePageChange"
               ></v-pagination>
             </div>
           </template>
@@ -245,19 +243,16 @@ export default {
       );
     });
     
-    const handleTableOptionsUpdate = (options) => {
-      if (options.page !== currentPage.value) {
-        currentPage.value = options.page
-      }
-      if (options.itemsPerPage !== itemsPerPage.value) {
-        itemsPerPage.value = options.itemsPerPage
-      }
-      if (JSON.stringify(options.sortBy) !== JSON.stringify(sortBy.value)) {
-        sortBy.value = options.sortBy.map(sort => ({
-          key: sort.key,
-          order: sort.order
-        }))
-      }
+    const handlePageChange = (newPage) => {
+      console.log('Page changed to:', newPage)
+      currentPage.value = newPage
+      fetchClosedPositions()
+    }
+
+    const handleItemsPerPageChange = (newItemsPerPage) => {
+      console.log('Items per page changed to:', newItemsPerPage)
+      itemsPerPage.value = newItemsPerPage
+      currentPage.value = 1 // Reset to first page when changing items per page
       fetchClosedPositions()
     }
 
@@ -327,13 +322,14 @@ export default {
       itemsPerPageOptions,
       currentPage,
       sortBy,
-      handleTableOptionsUpdate,
+      handlePageChange,
       pageCount,
       totalItems,
       formatDate,
       percentageColumns,
       loading: computed(() => store.state.loading),
       error: computed(() => store.state.error),
+      handleItemsPerPageChange,
     }
   },
 }
