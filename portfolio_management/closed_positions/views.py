@@ -161,23 +161,24 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q, F, ExpressionWrapper, FloatField, Case, When, Value
 
-from rest_framework.pagination import PageNumberPagination
-from django.db.models import Q
+import logging
+import re
 
-# class ClosedPositionsPagination(PageNumberPagination):
-#     page_size_query_param = 'items_per_page'
-#     max_page_size = 100
+logger = logging.getLogger(__name__)
 
-class ClosedPositionsPagination(PageNumberPagination):
-    page_size_query_param = 'items_per_page'
-    max_page_size = 100
+import re
 
-    def get_paginated_response(self, data):
-        return Response({
-            'total_items': self.page.paginator.count if hasattr(self, 'page') else len(data),
-            'results': data
-        })
+def convert_to_number(value):
+    if isinstance(value, str):
+        # Remove currency symbol, commas, and parentheses, then convert to float
+        value = re.sub(r'[£,()]', '', value)
+        return float(value) if value else 0
+    elif isinstance(value, (int, float)):
+        return value
+    return 0  # Default value for non-numeric types
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -185,9 +186,12 @@ class ClosedPositionsPagination(PageNumberPagination):
 def get_closed_positions_table_api(request):
     data = request.data
     timespan = data.get('timespan')
-    page = data.get('page', 1)
-    items_per_page = data.get('items_per_page', 25)
+    page = int(data.get('page', 1))
+    items_per_page = int(data.get('items_per_page', 25))
     search = data.get('search', '')
+    sort_by = data.get('sort_by', [])
+
+    logger.debug(f"Received sorting parameters: sort_by={sort_by}")
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
@@ -230,24 +234,42 @@ def get_closed_positions_table_api(request):
         currency_target, selected_brokers, number_of_digits, start_date
     )
 
-    paginator = ClosedPositionsPagination()
-    paginator.page_size = items_per_page
-    page_result = paginator.paginate_queryset(portfolio_closed, request)
+    ### Need to work on sorting function. As data is in string format with currencies, etc. and sometimes dates and strings
 
-    if page_result is not None:
-        serialized_data = paginator.get_paginated_response(page_result)
-        serialized_data = serialized_data.data  # Extract the data from the Response object
-    else:
-        serialized_data = {
-            'total_items': len(portfolio_closed),
-            'results': portfolio_closed
-        }
+    if sort_by:
+        def sort_key(item):
+            return [
+                (convert_to_number(item.get(sort['key'], 0)) if sort['key'] not in ['investment_date', 'exit_date'] else item.get(sort['key'], datetime.min.date()),
+                 -1 if sort['order'] == 'desc' else 1)
+                for sort in sort_by
+            ]
 
-    return Response({
-        'portfolio_closed': serialized_data['results'],
+        portfolio_closed = sorted(portfolio_closed, key=sort_key)
+
+    logger.debug(f"Sort by: {sort_by}")
+    logger.debug(f"Portfolio closed after sorting (first 5): {portfolio_closed[:5]}")
+    logger.debug(f"Portfolio closed after sorting (last 5): {portfolio_closed[-5:]}")
+
+    # Apply pagination
+    paginator = Paginator(portfolio_closed, items_per_page)
+    try:
+        paginated_portfolio_closed = paginator.page(page)
+    except PageNotAnInteger:
+        paginated_portfolio_closed = paginator.page(1)
+    except EmptyPage:
+        paginated_portfolio_closed = paginator.page(paginator.num_pages)
+
+    response_data = {
+        'portfolio_closed': list(paginated_portfolio_closed),
         'portfolio_closed_totals': portfolio_closed_totals,
-        'total_items': serialized_data['total_items']
-    })
+        'total_items': paginator.count,
+        'current_page': page,
+        'total_pages': paginator.num_pages,
+    }
+
+    logger.debug(f"Response data: {response_data}")
+
+    return Response(response_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

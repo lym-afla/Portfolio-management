@@ -178,6 +178,12 @@ LOGGING = {
             'level': 'WARNING',  # Change this to 'INFO' or 'ERROR' as needed
             'propagate': False,
         },
+        # Add this new logger for your application
+        'closed_positions': {  # Use the name of your app
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         # Add other third-party libraries as needed
     },
 }

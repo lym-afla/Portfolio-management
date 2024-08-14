@@ -16,7 +16,6 @@
           item-title="text"
           item-value="value"
           label="Year"
-          @update:model-value="handleYearChange"
           density="compact"
         >
           <template #item="{ props, item }">
@@ -55,7 +54,8 @@
           class="elevation-1"
           density="compact"
           :sort-by="sortBy"
-          @update:sort-by="updateSort"
+          :server-items-length="totalItems"
+          must-sort
         >
           <template #top>
             <v-toolbar flat>
@@ -81,7 +81,6 @@
           </template>
 
           <template #bottom>
-            <v-divider></v-divider>
             <div class="d-flex align-center justify-space-between pa-4">
               <v-select
                 v-model="itemsPerPage"
@@ -92,8 +91,10 @@
                 hide-details
                 class="mr-2"
                 style="max-width: 150px;"
-                @update:model-value="handleItemsPerPageChange"
               ></v-select>
+              <v-text class="text-caption mr-4">
+                {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }}
+              </v-text>
               <v-pagination
                 v-model="currentPage"
                 :length="pageCount"
@@ -243,29 +244,32 @@ export default {
           : header
       );
     });
-
+    
     const handleTableOptionsUpdate = (options) => {
-      currentPage.value = options.page;
-      itemsPerPage.value = options.itemsPerPage;
-      sortBy.value = options.sortBy;
-      search.value = options.search;
-      fetchClosedPositions();
-    };
-
-    const handleItemsPerPageChange = (newItemsPerPage) => {
-      itemsPerPage.value = newItemsPerPage;
-      currentPage.value = 1; // Reset to first page when changing items per page
-    };
+      if (options.page !== currentPage.value) {
+        currentPage.value = options.page
+      }
+      if (options.itemsPerPage !== itemsPerPage.value) {
+        itemsPerPage.value = options.itemsPerPage
+      }
+      if (JSON.stringify(options.sortBy) !== JSON.stringify(sortBy.value)) {
+        sortBy.value = options.sortBy.map(sort => ({
+          key: sort.key,
+          order: sort.order
+        }))
+      }
+      fetchClosedPositions()
+    }
 
     const fetchClosedPositions = async () => {
       tableLoading.value = true
-      store.dispatch('setLoading', true)
       try {
         const data = await getClosedPositions(
           selectedYear.value,
           currentPage.value,
           itemsPerPage.value,
-          search.value
+          search.value,
+          sortBy.value
         )
         closedPositions.value = data.portfolio_closed
         totals.value = data.portfolio_closed_totals
@@ -275,50 +279,30 @@ export default {
         console.error('Error in fetchClosedPositions:', error)
       } finally {
         tableLoading.value = false
-        store.dispatch('setLoading', false)
       }
     }
+
+    watch(
+      [
+        () => store.state.dataRefreshTrigger,
+        selectedYear,
+        search,
+      ],
+      () => {
+        currentPage.value = 1
+        fetchClosedPositions()
+      },
+      { deep: true }
+    )
 
     const fetchYearOptions = async () => {
-      store.dispatch('setLoading', true)
       try {
         const years = await getYearOptions()
-        yearOptions.value = years.map((year) => {
-          if (typeof year === 'string') {
-            return { text: year, value: year }
-          }
-          return year // For divider and special options
-        })
+        yearOptions.value = years
       } catch (error) {
         store.dispatch('setError', error)
-      } finally {
-        store.dispatch('setLoading', false)
       }
     }
-
-    const handleYearChange = (newValue) => {
-      selectedYear.value = newValue
-      fetchClosedPositions()
-    }
-
-    const updateSort = (newSortBy) => {
-      sortBy.value = newSortBy
-    }
-
-    watch([sortBy, closedPositions], () => {
-      if (sortBy.value.length > 0) {
-        const { key, order } = sortBy.value[0]
-        closedPositions.value.sort((a, b) => {
-          if (a[key] < b[key]) return order === 'asc' ? -1 : 1
-          if (a[key] > b[key]) return order === 'asc' ? 1 : -1
-          return 0
-        })
-      }
-    })
-
-    watch([selectedYear, currentPage, itemsPerPage, search], fetchClosedPositions);
-
-    watch(() => store.state.dataRefreshTrigger, fetchClosedPositions)
 
     onMounted(() => {
       fetchYearOptions()
@@ -335,24 +319,21 @@ export default {
       totals,
       tableLoading,
       headers,
+      flattenedHeaders,
       selectedYear,
       yearOptions,
-      handleYearChange,
       search,
       itemsPerPage,
       itemsPerPageOptions,
       currentPage,
       sortBy,
-      updateSort,
-      flattenedHeaders,
+      handleTableOptionsUpdate,
+      pageCount,
+      totalItems,
       formatDate,
       percentageColumns,
       loading: computed(() => store.state.loading),
       error: computed(() => store.state.error),
-      handleTableOptionsUpdate,
-      handleItemsPerPageChange,
-      pageCount,
-      totalItems,
     }
   },
 }

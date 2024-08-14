@@ -357,6 +357,18 @@ def currency_format(value=None, currency=None, digits=2):
 
     # Get the currency symbol
     symbol = get_currency_symbol(currency.upper(), locale='en_US')
+    
+    # If the symbol is the same as the currency code, it means the currency was not recognized
+    if symbol == currency.upper():
+        # Handle specific cases for currencies not recognized by get_currency_symbol
+        if currency.upper() in dict(constants.CURRENCY_CHOICES):
+            symbol = dict(constants.CURRENCY_CHOICES)[currency.upper()]
+        else:
+            # For any other unrecognized currency, use the currency code as the symbol
+            symbol = currency.upper()
+    
+    # Uncomment the following line to debug:
+    # print(f"Currency: {currency}, Symbol: {symbol}")
 
     # If no value is provided, return only the symbol
     if value is None:

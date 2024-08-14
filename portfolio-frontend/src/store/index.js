@@ -1,5 +1,5 @@
 import { createStore } from 'vuex'
-import axios from 'axios'
+import * as api from '@/services/api'
 
 export default createStore({
   state: {
@@ -41,48 +41,48 @@ export default createStore({
   actions: {
     async login({ commit }, credentials) {
       try {
-        const response = await axios.post('/users/api/login/', credentials)
-        const token = response.data.token
+        const response = await api.login(credentials.username, credentials.password)
+        const token = response.token
         localStorage.setItem('token', token)
         commit('setToken', token)
-        commit('setUser', response.data)
+        commit('setUser', response)
         return { success: true }
       } catch (error) {
         console.error('Login failed', error)
-        return { success: false, error: error.response ? error.response.data : 'Login failed' }
+        return { success: false, error: error }
       }
     },
     async logout({ commit }) {
       try {
-        await axios.post('/users/api/logout/');
-        localStorage.removeItem('token');
-        commit('logout');
-        return { success: true };
+        await api.logout()
+        localStorage.removeItem('token')
+        commit('logout')
+        return { success: true }
       } catch (error) {
-        console.error('Logout failed:', error);
-        localStorage.removeItem('token');
-        commit('logout');
-        return { success: false, error: 'Logout failed' };
+        console.error('Logout failed:', error)
+        localStorage.removeItem('token')
+        commit('logout')
+        return { success: false, error: 'Logout failed' }
       }
     },
     async register(_, credentials) {
       try {
-        await axios.post('/users/api/register/', credentials)
+        await api.register(credentials.username, credentials.email, credentials.password)
         return { success: true, message: 'Registration successful. Please log in.' }
       } catch (error) {
         console.error('Registration failed', error)
-        return { success: false, error: error.response ? error.response.data : 'Registration failed' }
+        return { success: false, error: error }
       }
     },
     async deleteAccount({ commit }) {
       try {
-        await axios.delete('/users/api/delete-account/')
+        await api.deleteAccount()
         localStorage.removeItem('token')
         commit('logout')
         return { success: true, message: 'Account successfully deleted.' }
       } catch (error) {
         console.error('Account deletion failed', error)
-        return { success: false, error: error.response ? error.response.data : 'Account deletion failed' }
+        return { success: false, error: error }
       }
     },
     updatePageTitle({ commit }, title) {
@@ -94,11 +94,33 @@ export default createStore({
     setError({ commit }, error) {
       commit('setError', error)
     },
-    setCustomBrokers({ commit }, brokers) {
-      commit('SET_CUSTOM_BROKERS', brokers)
+    async setCustomBrokers({ commit }) {
+      try {
+        const brokers = await api.getBrokers()
+        commit('SET_CUSTOM_BROKERS', brokers)
+      } catch (error) {
+        console.error('Failed to fetch brokers', error)
+        commit('setError', 'Failed to fetch brokers')
+      }
     },
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
+    },
+    async changePassword(_, passwordData) {
+      try {
+        return await api.changeUserPassword(passwordData)
+      } catch (error) {
+        console.error('Password change failed', error)
+        throw error
+      }
+    },
+    async fetchUserProfile() {
+      try {
+        return await api.getUserProfile()
+      } catch (error) {
+        console.error('Fetching user profile failed', error)
+        throw error
+      }
     },
   },
   getters: {

@@ -4,10 +4,10 @@ import DashboardPage from '../views/DashboardPage.vue'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
-import ProfileLayout from '../components/ProfileLayout.vue'
-import Profile from '../components/Profile.vue'
-import ProfileEdit from '../components/ProfileEdit.vue'
-import ProfileSettings from '../components/ProfileSettings.vue'
+import ProfileLayout from '../views/profile/ProfileLayout.vue'
+import ProfilePage from '../views/profile/ProfilePage.vue'
+import ProfileEdit from '../views/profile/ProfileEdit.vue'
+import ProfileSettings from '../views/profile/ProfileSettings.vue'
 import ClosedPositionsPage from '../views/ClosedPositionsPage.vue'
 
 export const loading = ref(true)
@@ -51,7 +51,7 @@ const routes = [
       {
         path: '',
         name: 'Profile',
-        component: Profile
+        component: ProfilePage
       },
       {
         path: 'edit',

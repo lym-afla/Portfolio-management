@@ -3,7 +3,7 @@ CURRENCY_CHOICES = (
     ('EUR', '€'),
     ('GBP', '£'),
     ('RUB', '₽'),
-    ('CHF', '₣')
+    ('CHF', 'Fr')
 )
 
 TRANSACTION_TYPE_CASH_IN = 'Cash in'

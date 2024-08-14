@@ -13,5 +13,5 @@ urlpatterns = [
     path('database/', include('database.urls', namespace='database')),
     path('summary/', include('summary_analysis.urls', namespace='summary_analysis')),
 
-    path('api/', include('portfolio_management.api_urls')),
+    # path('api/', include('portfolio_management.api_urls')),
 ]
