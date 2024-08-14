@@ -1134,18 +1134,20 @@ def calculate_closed_table_output_for_api(user_id, portfolio, end_date, categori
     portfolio_closed_totals = {}
     
     for asset in portfolio:
+
+        position = {
+                'type': asset.type,
+                'name': asset.name,
+                'currency': currency_format(None, asset.currency)
+            }
+        
         exit_dates = list(asset.exit_dates(end_date, selected_brokers, start_date))
         entry_dates = list(asset.entry_dates(end_date, selected_brokers))
         
         for i, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
             
-            position = {
-                'type': asset.type,
-                'name': asset.name,
-                'exit_date': exit_date,
-                'currency': currency_format(None, asset.currency)
-            }
+            position['exit_date'] = exit_date
 
             # Determine entry_date
             first_entry_date = asset.entry_dates(exit_date, selected_brokers)[-1]

@@ -325,6 +325,15 @@ export default {
       }
     }
 
+    const fetchYearOptions = async () => {
+      try {
+        const years = await getYearOptions()
+        yearOptions.value = years
+      } catch (error) {
+        store.dispatch('setError', error)
+      }
+    }
+
     watch(
       [
         () => store.state.dataRefreshTrigger,
@@ -342,14 +351,9 @@ export default {
       console.log('closedPositions updated:', newValue.slice(0, 5))
     }, { deep: true })
 
-    const fetchYearOptions = async () => {
-      try {
-        const years = await getYearOptions()
-        yearOptions.value = years
-      } catch (error) {
-        store.dispatch('setError', error)
-      }
-    }
+    watch(() => store.state.selectedBroker, () => {
+      fetchYearOptions()
+    })
 
     onMounted(() => {
       fetchYearOptions()
