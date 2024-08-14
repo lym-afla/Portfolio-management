@@ -54,4 +54,4 @@ Thumbs.db
 *.tmp
 *.temp
 
-.vue-cli-service/
+.vue-cli-service/portfolio_management/db.sqlite3
