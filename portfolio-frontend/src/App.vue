@@ -15,6 +15,11 @@
                 <v-divider class="mb-4"></v-divider>
               </v-col>
             </v-row>
+            <v-row>
+              <v-col>
+                <BrokerSelection v-if="!isProfilePage" />
+              </v-col>
+            </v-row>
             <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
         </v-main>
@@ -29,22 +34,29 @@
 </template>
 
 <script>
-import { provide, ref, onMounted, watch } from 'vue'
+import { provide, ref, onMounted, watch, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
+import BrokerSelection from './components/BrokerSelection.vue'
 import { checkAuth } from './utils/auth'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 export default {
   name: 'App',
   components: {
     Navigation,
+    BrokerSelection,
   },
   setup() {
     const router = useRouter();
+    const route = useRoute();
     const user = ref(null);
     const isAuthenticated = ref(false);
     const layoutLoading = ref(true);
     const pageTitle = ref('');
+
+    const isProfilePage = computed(() => {
+      return route.path.startsWith('/profile');
+    });
 
     const setUser = (userData) => {
       user.value = userData
@@ -104,7 +116,8 @@ export default {
       layoutLoading, 
       pageTitle, 
       handleLogout, 
-      updatePageTitle, 
+      updatePageTitle,
+      isProfilePage,
     };
   },
 }

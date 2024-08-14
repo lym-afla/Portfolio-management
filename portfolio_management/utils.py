@@ -17,6 +17,8 @@ from dateutil.relativedelta import relativedelta
 import logging
 from fuzzywuzzy import process
 
+from babel.numbers import get_currency_symbol
+
 import constants
 from users.models import CustomUser
 
@@ -344,32 +346,32 @@ def format_percentage(value, digits=0):
     except (TypeError, ValueError):
         # If the value cannot be converted to float, return itself
         return value
-    
 
-def currency_format(value, currency, digits):
-    """Format value as CUR."""
-    match currency.upper():
-        case 'USD':
-            cur = '$'
-        case 'EUR':
-            cur = '€'
-        case 'GBP':
-            cur = '£'
-        case 'RUB':            
-            cur = '₽'
-        case 'CHF':            
-            cur = '₣'
-        case default:
-            cur = currency.upper()
+def currency_format(value=None, currency=None, digits=2):
+    """
+    Format value as currency or return currency symbol.
+    If only currency is provided, return the currency symbol.
+    """
+    if currency is None:
+        return ""
+
+    # Get the currency symbol
+    symbol = get_currency_symbol(currency.upper(), locale='en_US')
+
+    # If no value is provided, return only the symbol
+    if value is None:
+        return symbol
+
     try:
+        value = Decimal(value)
         if value < 0:
-            return f"({cur}{-value:,.{int(digits)}f})"
-        elif round(value, digits) == Decimal(0):
+            return f"({symbol}{abs(value):,.{digits}f})"
+        elif value == 0:
             return "–"
-        elif value > 0:
-            return f"{cur}{value:,.{int(digits)}f}"
+        else:
+            return f"{symbol}{value:,.{digits}f}"
     except:
-        return cur
+        return symbol
     
 # Format dictionaries as strings with currency formatting
 def currency_format_dict_values(data, currency, digits):
@@ -823,7 +825,7 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                 'type': asset.type,
                 'name': asset.name,
                 'exit_date': exit_date,
-                'currency': asset.currency
+                'currency': currency_format(None, asset.currency)
             }
 
             # Determine entry_date
@@ -1675,7 +1677,7 @@ def broker_group_to_ids(brokers_or_group, user):
         # Ensure all provided broker IDs belong to the user
         user_brokers = set(Brokers.objects.filter(investor=user).values_list('id', flat=True))
         if not set(selected_brokers).issubset(user_brokers):
-            raise ValueError("Some of the provided broker IDs do not belong to the user")
+            print("Some of the provided broker IDs do not belong to the user")
     
     return selected_brokers
 

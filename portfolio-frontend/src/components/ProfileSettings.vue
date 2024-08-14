@@ -13,7 +13,13 @@
           :items="currencyChoices"
           label="Default currency"
           :error-messages="fieldErrors.default_currency"
-        ></v-select>
+        >
+          <template v-slot:item="{ item, props }">
+            <v-list-item v-bind="props" :title="null">
+              {{ item.title }}
+            </v-list-item>
+          </template>
+        </v-select>
         
         <v-checkbox
           v-model="settingsForm.use_default_currency_where_relevant"
@@ -26,21 +32,39 @@
           :items="frequencyChoices"
           label="Chart frequency"
           :error-messages="fieldErrors.chart_frequency"
-        ></v-select>
+        >
+          <template v-slot:item="{ item, props }">
+            <v-list-item v-bind="props" :title="null">
+              {{ item.title }}
+            </v-list-item>
+          </template>
+        </v-select>
         
         <v-select
           v-model="settingsForm.chart_timeline"
           :items="timelineChoices"
           label="Chart timeline"
           :error-messages="fieldErrors.chart_timeline"
-        ></v-select>
+        >
+          <template v-slot:item="{ item, props }">
+            <v-list-item v-bind="props" :title="null">
+              {{ item.title }}
+            </v-list-item>
+          </template>
+        </v-select>
         
         <v-select
           v-model="settingsForm.NAV_barchart_default_breakdown"
           :items="navBreakdownChoices"
           label="Default NAV timeline breakdown"
           :error-messages="fieldErrors.NAV_barchart_default_breakdown"
-        ></v-select>
+        >
+          <template v-slot:item="{ item, props }">
+            <v-list-item v-bind="props" :title="null">
+              {{ item.title }}
+            </v-list-item>
+          </template>
+        </v-select>
         
         <v-text-field
           v-model.number="settingsForm.digits"
@@ -57,11 +81,13 @@
           :error-messages="fieldErrors.custom_brokers"
         >
           <template v-slot:item="{ item, props }">
-            <v-list-item v-if="item.raw.type === 'option'" v-bind="props">
+            <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
               {{ item.title }}
             </v-list-item>
             <v-divider v-else-if="item.raw.type === 'divider'" />
-            <v-list-subheader v-else-if="item.raw.type === 'header'">{{ item.title }}</v-list-subheader>
+            <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
+              {{ item.title }}
+            </v-list-subheader>
           </template>
         </v-select>
         
@@ -83,6 +109,7 @@
 
 <script>
 import axios from 'axios'
+import { formatBrokerChoices } from '@/utils/brokerUtils'
 
 export default {
   data() {
@@ -147,48 +174,13 @@ export default {
       this.frequencyChoices = this.formatChoices(response.data.frequency_choices);
       this.timelineChoices = this.formatChoices(response.data.timeline_choices);
       this.navBreakdownChoices = this.formatChoices(response.data.nav_breakdown_choices);
-      this.brokerChoices = this.formatBrokerChoices(response.data.broker_choices);
+      this.brokerChoices = formatBrokerChoices(response.data.broker_choices);
     },
     formatChoices(choices) {
       return choices.map(choice => ({
         value: choice[0],
         title: choice[1]
       }));
-    },
-    formatBrokerChoices(choices) {
-      const uniqueOptions = new Set();
-      return choices.flatMap(group => {
-        if (group[0] === '__SEPARATOR__') {
-          return { type: 'divider' }
-        }
-        if (Array.isArray(group[1])) {
-          return [
-            { title: group[0], type: 'header' },
-            ...group[1].map(choice => {
-              const option = {
-                title: choice[1],
-                value: choice[0],
-                type: 'option'
-              };
-              if (!uniqueOptions.has(option.value)) {
-                uniqueOptions.add(option.value);
-                return option;
-              }
-              return null;
-            }).filter(Boolean)
-          ]
-        }
-        const option = {
-          title: group[1],
-          value: group[0],
-          type: 'option'
-        };
-        if (!uniqueOptions.has(option.value)) {
-          uniqueOptions.add(option.value);
-          return option;
-        }
-        return null;
-      }).filter(Boolean);
     },
     async saveSettings() {
       try {
@@ -231,3 +223,14 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.custom-subheader {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #000000;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background-color: #F5F5F5;
+}
+</style>

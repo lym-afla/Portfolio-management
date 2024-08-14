@@ -5,7 +5,11 @@ export default createStore({
   state: {
     token: localStorage.getItem('token') || null,
     user: null,
-    pageTitle: ''
+    pageTitle: '',
+    loading: false,
+    error: null,
+    customBrokers: null,
+    dataRefreshTrigger: 0,
   },
   mutations: {
     setToken(state, token) {
@@ -20,7 +24,19 @@ export default createStore({
     },
     setPageTitle(state, title) {
       state.pageTitle = title
-    }
+    },
+    setLoading(state, isLoading) {
+      state.loading = isLoading
+    },
+    setError(state, error) {
+      state.error = error
+    },
+    SET_CUSTOM_BROKERS(state, brokers) {
+      state.customBrokers = brokers
+    },
+    INCREMENT_DATA_REFRESH_TRIGGER(state) {
+      state.dataRefreshTrigger += 1
+    },
   },
   actions: {
     async login({ commit }, credentials) {
@@ -71,7 +87,19 @@ export default createStore({
     },
     updatePageTitle({ commit }, title) {
       commit('setPageTitle', title)
-    }
+    },
+    setLoading({ commit }, isLoading) {
+      commit('setLoading', isLoading)
+    },
+    setError({ commit }, error) {
+      commit('setError', error)
+    },
+    setCustomBrokers({ commit }, brokers) {
+      commit('SET_CUSTOM_BROKERS', brokers)
+    },
+    triggerDataRefresh({ commit }) {
+      commit('INCREMENT_DATA_REFRESH_TRIGGER')
+    },
   },
   getters: {
     isAuthenticated: state => !!state.token

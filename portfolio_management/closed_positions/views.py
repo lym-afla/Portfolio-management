@@ -162,13 +162,32 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.views.decorators.csrf import ensure_csrf_cookie
 
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Q
+
+# class ClosedPositionsPagination(PageNumberPagination):
+#     page_size_query_param = 'items_per_page'
+#     max_page_size = 100
+
+class ClosedPositionsPagination(PageNumberPagination):
+    page_size_query_param = 'items_per_page'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            'total_items': self.page.paginator.count if hasattr(self, 'page') else len(data),
+            'results': data
+        })
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @ensure_csrf_cookie
 def get_closed_positions_table_api(request):
     data = request.data
     timespan = data.get('timespan')
-    print("views. closed. 171", timespan)
+    page = data.get('page', 1)
+    items_per_page = data.get('items_per_page', 25)
+    search = data.get('search', '')
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
@@ -195,6 +214,9 @@ def get_closed_positions_table_api(request):
         transactions__quantity__isnull=False
     ).distinct()
 
+    if search:
+        assets = assets.filter(Q(name__icontains=search) | Q(type__icontains=search))
+
     portfolio_closed = []
 
     for asset in assets:
@@ -208,9 +230,23 @@ def get_closed_positions_table_api(request):
         currency_target, selected_brokers, number_of_digits, start_date
     )
 
+    paginator = ClosedPositionsPagination()
+    paginator.page_size = items_per_page
+    page_result = paginator.paginate_queryset(portfolio_closed, request)
+
+    if page_result is not None:
+        serialized_data = paginator.get_paginated_response(page_result)
+        serialized_data = serialized_data.data  # Extract the data from the Response object
+    else:
+        serialized_data = {
+            'total_items': len(portfolio_closed),
+            'results': portfolio_closed
+        }
+
     return Response({
-        'portfolio_closed': portfolio_closed,
+        'portfolio_closed': serialized_data['results'],
         'portfolio_closed_totals': portfolio_closed_totals,
+        'total_items': serialized_data['total_items']
     })
 
 @api_view(['GET'])

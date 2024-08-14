@@ -4,6 +4,8 @@ from django.urls import reverse_lazy
 from django.views import generic
 
 from common.forms import DashboardForm
+from common.models import Brokers
+from constants import BROKER_GROUPS, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -279,6 +281,7 @@ def user_settings_api(request):
         settings_form = UserSettingsForm(request.data, instance=user)
         if settings_form.is_valid():
             settings_form.save()
+            print("views. users. 284", settings_form)
             return Response({'success': True})
         return Response({
             'success': False,
@@ -299,13 +302,14 @@ def user_settings_api(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_settings_choices_api(request):
-    form = UserSettingsForm(instance=request.user)
+    user = request.user
+    form = UserSettingsForm(instance=user)
     choices = {
-        'currency_choices': form.fields['default_currency'].choices,
-        'frequency_choices': form.fields['chart_frequency'].choices,
-        'timeline_choices': form.fields['chart_timeline'].choices,
-        'nav_breakdown_choices': form.fields['NAV_barchart_default_breakdown'].choices,
-        'broker_choices': form.fields['custom_brokers'].choices,
+        'currency_choices': CURRENCY_CHOICES,
+        'frequency_choices': UserSettingsForm.FREQUENCY_CHOICES,
+        'timeline_choices': UserSettingsForm.TIMELINE_CHOICES,
+        'nav_breakdown_choices': NAV_BARCHART_CHOICES,
+        'broker_choices': form.get_broker_choices(user),
     }
     return Response(choices)
 
@@ -338,3 +342,27 @@ def logout_api(request):
 def verify_token_api(request):
     return Response({'valid': True})
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_brokers_api(request):
+    user = request.user
+    form = UserSettingsForm(instance=user)
+    broker_choices = form.get_broker_choices(user)
+    
+    return Response({
+        'options': broker_choices,
+        'custom_brokers': user.custom_brokers
+    })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_user_broker_api(request):
+    user = request.user
+    broker_or_group_name = request.data.get('broker_or_group_name')
+    
+    if broker_or_group_name:
+        user.custom_brokers = broker_or_group_name
+        user.save()
+        return Response({'ok': True})
+    else:
+        return Response({'ok': False, 'error': 'Broker or group name not provided'}, status=400)

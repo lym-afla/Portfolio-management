@@ -26,4 +26,7 @@ urlpatterns = [
     path('api/register/', views.RegisterView.as_view(), name='api_register'),
     path('api/verify-token/', views.verify_token_api, name='api_verify_token'),
     path('api/delete-account/', views.DeleteAccountView.as_view(), name='api_delete_account'),
+
+    path('api/get_brokers/', views.get_brokers_api, name='get_brokers_api'),
+    path('api/update_user_broker/', views.update_user_broker_api, name='update_user_broker_api'),
 ]

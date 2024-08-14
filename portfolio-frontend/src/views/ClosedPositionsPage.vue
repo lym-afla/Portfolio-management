@@ -49,6 +49,9 @@
           :loading="tableLoading"
           :search="search"
           :items-per-page="itemsPerPage"
+          :page="currentPage"
+          :items-length="totalItems"
+          @update:options="handleTableOptionsUpdate"
           class="elevation-1"
           density="compact"
           :sort-by="sortBy"
@@ -61,7 +64,7 @@
           </template>
 
           <template #[`item.currency`]="{ item }">
-            {{ currencySymbol(item.currency) }}
+            {{ item.currency }}
           </template>
           
           <template #[`item.investment_date`]="{ item }">
@@ -73,20 +76,31 @@
           </template>
           
           <template v-for="key in percentageColumns" :key="key" #[`item.${key}`]="{ item }">
-            <span class="font-italic">{{ item[key] }}</span>
+            <span v-if="item && item[key] !== undefined" class="font-italic">{{ item[key] }}</span>
+            <span v-else>-</span>
           </template>
 
           <template #bottom>
             <v-divider></v-divider>
-            <v-row class="mt-2">
-              <v-col cols="12">
-                <v-data-table-footer
-                  :pagination="pagination"
-                  :items-per-page-options="itemsPerPageOptions"
-                  @update:options="updateOptions"
-                ></v-data-table-footer>
-              </v-col>
-            </v-row>
+            <div class="d-flex align-center justify-space-between pa-4">
+              <v-select
+                v-model="itemsPerPage"
+                :items="itemsPerPageOptions"
+                label="Rows per page"
+                density="compact"
+                variant="outlined"
+                hide-details
+                class="mr-2"
+                style="max-width: 150px;"
+                @update:model-value="handleItemsPerPageChange"
+              ></v-select>
+              <v-pagination
+                v-model="currentPage"
+                :length="pageCount"
+                :total-visible="7"
+                rounded="circle"
+              ></v-pagination>
+            </div>
           </template>
 
           <template #tfoot>
@@ -97,7 +111,7 @@
                     TOTAL
                   </template>
                   <template v-else-if="header.key === 'currency'">
-                    {{ currencySymbol(totals[header.key]) }}
+                    {{ totals[header.key] }}
                   </template>
                   <template v-else-if="['investment_date', 'exit_date'].includes(header.key)">
                     {{ formatDate(totals[header.key]) }}
@@ -120,44 +134,27 @@
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
-import { format, parseISO } from 'date-fns'
+import { useStore } from 'vuex'
+import { getClosedPositions, getYearOptions } from '@/services/api'
+import { formatDate } from '@/utils/formatters'
 
 export default {
   name: 'ClosedPositions',
   emits: ['update-page-title'],
   setup(props, { emit }) {
+    const store = useStore()
     const closedPositions = ref([])
     const totals = ref({})
-    const loading = ref(true)
     const tableLoading = ref(true)
-    const selectedYear = ref('YTD')
+    const selectedYear = ref('All-time')
     const yearOptions = ref([])
     const search = ref('')
     const itemsPerPage = ref(25)
     const itemsPerPageOptions = [10, 25, 50, 100]
-    const pagination = ref({})
+    const currentPage = ref(1)
+    const totalItems = ref(0)
+    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
     const sortBy = ref([])
-
-    const currencyMap = {
-      'USD': '$',
-      'EUR': '€',
-      'GBP': '£',
-      'RUB': '₽',
-      'CHF': '₣'
-    }
-
-    const currencySymbol = (code) => currencyMap[code] || code
-
-    const formatDate = (dateString) => {
-      if (!dateString) return ''
-      try {
-        return format(parseISO(dateString), 'd-MMM-yy')
-      } catch (error) {
-        console.error('Error formatting date:', error)
-        return dateString
-      }
-    }
 
     const percentageColumns = [
       'price_change_percentage',
@@ -247,53 +244,61 @@ export default {
       );
     });
 
-    const updateOptions = (newOptions) => {
-      pagination.value = newOptions
-    }
+    const handleTableOptionsUpdate = (options) => {
+      currentPage.value = options.page;
+      itemsPerPage.value = options.itemsPerPage;
+      sortBy.value = options.sortBy;
+      search.value = options.search;
+      fetchClosedPositions();
+    };
+
+    const handleItemsPerPageChange = (newItemsPerPage) => {
+      itemsPerPage.value = newItemsPerPage;
+      currentPage.value = 1; // Reset to first page when changing items per page
+    };
 
     const fetchClosedPositions = async () => {
       tableLoading.value = true
+      store.dispatch('setLoading', true)
       try {
-        const response = await axios.post(
-          '/closed_positions/api/get_closed_positions_table/',
-          {
-            timespan: selectedYear.value,
-          }
+        const data = await getClosedPositions(
+          selectedYear.value,
+          currentPage.value,
+          itemsPerPage.value,
+          search.value
         )
-        closedPositions.value = response.data.portfolio_closed
-        totals.value = response.data.portfolio_closed_totals
+        closedPositions.value = data.portfolio_closed
+        totals.value = data.portfolio_closed_totals
+        totalItems.value = data.total_items
       } catch (error) {
-        console.error('Error fetching closed positions:', error)
+        store.dispatch('setError', error)
+        console.error('Error in fetchClosedPositions:', error)
       } finally {
         tableLoading.value = false
+        store.dispatch('setLoading', false)
       }
     }
 
-    const handleYearChange = (newValue) => {
-      selectedYear.value = newValue
-      fetchClosedPositions()
-    }
-
     const fetchYearOptions = async () => {
+      store.dispatch('setLoading', true)
       try {
-        const response = await axios.get(
-          '/closed_positions/api/get_year_options/'
-        )
-        yearOptions.value = response.data.closed_table_years.map((year) => {
+        const years = await getYearOptions()
+        yearOptions.value = years.map((year) => {
           if (typeof year === 'string') {
             return { text: year, value: year }
           }
           return year // For divider and special options
         })
       } catch (error) {
-        console.error('Error fetching year options:', error)
+        store.dispatch('setError', error)
+      } finally {
+        store.dispatch('setLoading', false)
       }
     }
 
-    const fetchData = async () => {
-      loading.value = true
-      await Promise.all([fetchYearOptions(), fetchClosedPositions()])
-      loading.value = false
+    const handleYearChange = (newValue) => {
+      selectedYear.value = newValue
+      fetchClosedPositions()
     }
 
     const updateSort = (newSortBy) => {
@@ -311,8 +316,13 @@ export default {
       }
     })
 
+    watch([selectedYear, currentPage, itemsPerPage, search], fetchClosedPositions);
+
+    watch(() => store.state.dataRefreshTrigger, fetchClosedPositions)
+
     onMounted(() => {
-      fetchData()
+      fetchYearOptions()
+      fetchClosedPositions()
       emit('update-page-title', 'Closed Positions')
     })
 
@@ -323,7 +333,6 @@ export default {
     return {
       closedPositions,
       totals,
-      loading,
       tableLoading,
       headers,
       selectedYear,
@@ -332,14 +341,18 @@ export default {
       search,
       itemsPerPage,
       itemsPerPageOptions,
-      pagination,
-      updateOptions,
+      currentPage,
       sortBy,
       updateSort,
       flattenedHeaders,
-      currencySymbol,
       formatDate,
       percentageColumns,
+      loading: computed(() => store.state.loading),
+      error: computed(() => store.state.error),
+      handleTableOptionsUpdate,
+      handleItemsPerPageChange,
+      pageCount,
+      totalItems,
     }
   },
 }
