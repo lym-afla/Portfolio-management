@@ -236,6 +236,8 @@ def get_closed_positions_table_api(request):
 
     ### Need to work on sorting function. As data is in string format with currencies, etc. and sometimes dates and strings
 
+    logger.debug(f"Portfolio closed before sorting (first 5): {[item['name'] for item in portfolio_closed[:5]]}")
+
     if sort_by:
         def sort_key(item):
             return [
@@ -247,8 +249,7 @@ def get_closed_positions_table_api(request):
         portfolio_closed = sorted(portfolio_closed, key=sort_key)
 
     logger.debug(f"Sort by: {sort_by}")
-    logger.debug(f"Portfolio closed after sorting (first 5): {portfolio_closed[:5]}")
-    logger.debug(f"Portfolio closed after sorting (last 5): {portfolio_closed[-5:]}")
+    logger.debug(f"Portfolio closed after sorting (first 5): {[item['name'] for item in portfolio_closed[:5]]}")
 
     # Apply pagination
     paginator = Paginator(portfolio_closed, items_per_page)
