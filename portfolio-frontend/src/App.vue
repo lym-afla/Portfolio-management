@@ -9,18 +9,14 @@
         <Navigation @logout="handleLogout" />
         <v-main>
           <v-container fluid>
-            <v-row v-if="pageTitle">
-              <v-col>
-                <h2 class="text-h4 mb-4">{{ pageTitle }}</h2>
-                <v-divider class="mb-4"></v-divider>
-              </v-col>
-            </v-row>
             <v-row>
-              <v-col>
-                <BrokerSelection v-if="!isProfilePage" />
+              <v-col cols="12" class="px-4">
+                <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
+                <v-divider v-if="pageTitle" class="mb-2"></v-divider>
+                <BrokerSelection v-if="!isProfilePage" class="mb-4" />
+                <router-view @update-page-title="updatePageTitle"></router-view>
               </v-col>
             </v-row>
-            <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
         </v-main>
       </template>

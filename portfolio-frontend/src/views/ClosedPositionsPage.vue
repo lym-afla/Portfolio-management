@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid>
+  <v-container fluid class="pa-0">
     <v-overlay :model-value="loading" class="align-center justify-center">
       <v-progress-circular
         color="primary"
@@ -8,7 +8,7 @@
       ></v-progress-circular>
     </v-overlay>
 
-    <v-row>
+    <v-row >
       <v-col cols="12" md="3" lg="2">
         <v-select
           v-model="selectedYear"
@@ -28,7 +28,7 @@
           </template>
         </v-select>
       </v-col>
-      <v-col cols="12" md="3" lg="4">
+      <!-- <v-col cols="12" md="3" lg="4">
         <v-text-field
           v-model="search"
           append-icon="mdi-magnify"
@@ -37,10 +37,10 @@
           hide-details
           density="compact"
         ></v-text-field>
-      </v-col>
+      </v-col> -->
     </v-row>
 
-    <v-row>
+    <v-row no-gutters>
       <v-col cols="12">
         <v-data-table
           :headers="headers"
@@ -63,8 +63,33 @@
           </template>
           
           <template #top>
-            <v-toolbar flat>
-              <v-toolbar-title>Closed Positions</v-toolbar-title>
+            <v-toolbar flat class="bg-grey-lighten-4">
+              <v-col cols="12" md="4" lg="4">
+                <v-text-field
+                  v-model="search"
+                  append-icon="mdi-magnify"
+                  label="Search"
+                  single-line
+                  hide-details
+                  density="compact"
+                  bg-color="white"
+                  class="rounded-lg"
+                ></v-text-field>
+              </v-col>
+              <v-spacer></v-spacer>
+              <v-col cols="auto">
+                <v-select
+                  v-model="itemsPerPage"
+                  :items="itemsPerPageOptions"
+                  label="Rows per page"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  class="mr-2 rows-per-page-select"
+                  @update:model-value="handleItemsPerPageChange"
+                  bg-color="white"
+                ></v-select>
+              </v-col>
             </v-toolbar>
           </template>      
 
@@ -87,19 +112,8 @@
 
           <template #bottom>
             <div class="d-flex align-center justify-space-between pa-4">
-              <v-select
-                v-model="itemsPerPage"
-                :items="itemsPerPageOptions"
-                label="Rows per page"
-                density="compact"
-                variant="outlined"
-                hide-details
-                class="mr-2"
-                style="max-width: 150px;"
-                @update:model-value="handleItemsPerPageChange"
-              ></v-select>
               <v-text class="text-caption mr-4">
-                {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }}
+                Showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }} entries
               </v-text>
               <v-pagination
                 v-model="currentPage"
@@ -434,5 +448,14 @@ export default {
 
 .v-data-table :deep(.font-italic) {
   font-style: italic;
+}
+
+.v-toolbar {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.rows-per-page-select {
+  min-width: 180px;
+  max-width: 200px;
 }
 </style>
