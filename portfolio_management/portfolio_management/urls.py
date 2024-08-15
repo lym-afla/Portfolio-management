@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
-from dashboard import views
+from common import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -13,5 +13,6 @@ urlpatterns = [
     path('database/', include('database.urls', namespace='database')),
     path('summary/', include('summary_analysis.urls', namespace='summary_analysis')),
 
-    # path('api/', include('portfolio_management.api_urls')),
+    # APIs not related to any specific app
+    path('api/get_year_options/', views.get_year_options_api, name='get_year_options_api'),
 ]

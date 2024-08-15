@@ -45,8 +45,8 @@ export const getClosedPositions = async (timespan, page, itemsPerPage, search = 
 
 export const getYearOptions = async () => {
   try {
-    const response = await axios.get(`${API_URL}/closed_positions/api/get_year_options/`)
-    return response.data.closed_table_years
+    const response = await axios.get(`${API_URL}/api/get_year_options/`)
+    return response.data.table_years
   } catch (error) {
     throw error.response ? error.response.data : error.message
   }
@@ -101,6 +101,31 @@ export const deleteAccount = async () => {
   try {
     const response = await axios.delete(`${API_URL}/users/api/delete-account/`)
     return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getOpenPositions = async (timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  try {
+    const response = await axios.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
+      timespan,
+      page,
+      items_per_page: itemsPerPage,
+      search,
+      sort_by: sortBy
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching open positions:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getOpenPositionsYearOptions = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/open_positions/api/get_year_options/`)
+    return response.data.open_table_years
   } catch (error) {
     throw error.response ? error.response.data : error.message
   }

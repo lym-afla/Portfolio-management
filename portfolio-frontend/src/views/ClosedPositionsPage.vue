@@ -8,7 +8,7 @@
       ></v-progress-circular>
     </v-overlay>
 
-    <v-row >
+    <v-row>
       <v-col cols="12" md="3" lg="2">
         <v-select
           v-model="selectedYear"
@@ -28,16 +28,6 @@
           </template>
         </v-select>
       </v-col>
-      <!-- <v-col cols="12" md="3" lg="4">
-        <v-text-field
-          v-model="search"
-          append-icon="mdi-magnify"
-          label="Search"
-          single-line
-          hide-details
-          density="compact"
-        ></v-text-field>
-      </v-col> -->
     </v-row>
 
     <v-row no-gutters>

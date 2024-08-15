@@ -190,3 +190,117 @@ def get_cash_balances(user, timespan, effective_current_date):
     serializable_balances = {currency_format('', currency, 0): currency_format(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
 
     return serializable_balances
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q, Sum
+from django.db.models.functions import Abs
+from datetime import date, datetime
+from common.models import Assets, Brokers
+from constants import TOLERANCE
+from utils import broker_group_to_ids, calculate_open_table_output, format_value, get_sort_value
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@ensure_csrf_cookie
+def get_open_positions_table_api(request):
+    data = request.data
+    timespan = data.get('timespan')
+    page = int(data.get('page', 1))
+    items_per_page = int(data.get('items_per_page', 25))
+    search = data.get('search', '')
+    sort_by = data.get('sort_by', {})
+
+    user = request.user
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    
+    currency_target = user.default_currency
+    number_of_digits = user.digits
+    use_default_currency = user.use_default_currency_where_relevant
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+
+    # Process the data based on the timespan
+    if timespan == 'YTD':
+        start_date = date(effective_current_date.year, 1, 1)
+        end_date = effective_current_date
+    elif timespan == 'All-time':
+        start_date = None
+        end_date = effective_current_date
+    else:
+        start_date = date(int(timespan), 1, 1)
+        end_date = date(int(timespan), 12, 31)
+
+    portfolio_open = Assets.objects.filter(
+        investor=user,
+        transactions__broker_id__in=selected_brokers
+    )
+
+    portfolio_open = portfolio_open.filter(
+        transactions__date__lte=end_date,
+    ).prefetch_related(
+        'transactions'
+    ).annotate(
+        abs_total_quantity=Abs(Sum('transactions__quantity'))
+    ).exclude(
+        abs_total_quantity__lt=TOLERANCE
+    )
+
+    if search:
+        portfolio_open = portfolio_open.filter(Q(name__icontains=search) | Q(type__icontains=search))
+
+    categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
+    
+    portfolio_open, portfolio_open_totals = calculate_open_table_output(
+        user.id, portfolio_open, end_date, categories, use_default_currency,
+        currency_target, selected_brokers, number_of_digits, start_date
+    )
+
+    if sort_by:
+        key = sort_by.get('key')
+        order = sort_by.get('order')
+        
+        if key:
+            logger.debug(f"Before sorting: {[(item['name'], item.get(key)) for item in portfolio_open[:5]]}")
+            reverse = order == 'desc'
+            portfolio_open.sort(key=lambda x: get_sort_value(x, key), reverse=reverse)
+            logger.debug(f"After sorting: {[(item['name'], item.get(key)) for item in portfolio_open[:5]]}")
+    else:
+        # Default sorting
+        portfolio_open.sort(key=lambda x: get_sort_value(x, 'investment_date'), reverse=True)
+
+    # Apply pagination
+    paginator = Paginator(portfolio_open, items_per_page)
+    try:
+        paginated_portfolio_open = paginator.page(page)
+    except PageNotAnInteger:
+        paginated_portfolio_open = paginator.page(1)
+    except EmptyPage:
+        paginated_portfolio_open = paginator.page(paginator.num_pages)
+
+    # Format data after sorting and pagination
+    formatted_portfolio_open = [
+        {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
+        for position in paginated_portfolio_open
+    ]
+    
+    formatted_totals = {
+        k: format_value(v, k, currency_target, number_of_digits)
+        for k, v in portfolio_open_totals.items()
+    }
+    
+    response_data = {
+        'portfolio_open': formatted_portfolio_open,
+        'portfolio_open_totals': formatted_totals,
+        'total_items': paginator.count,
+        'current_page': page,
+        'total_pages': paginator.num_pages,
+    }
+
+    return Response(response_data)
