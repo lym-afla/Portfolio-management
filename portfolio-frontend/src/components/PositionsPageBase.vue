@@ -30,6 +30,8 @@
       </v-col>
     </v-row>
 
+    <slot name="above-table"></slot>
+
     <v-row no-gutters>
       <v-col cols="12">
         <v-data-table
@@ -38,7 +40,7 @@
           :loading="tableLoading"
           :search="search"
           :items-per-page="-1"
-          class="elevation-1"
+          class="elevation-1 nowrap-table"
           density="compact"
           :sort-by="sortBy"
           @update:sort-by="handleSortChange"
@@ -52,7 +54,7 @@
           </template>
 
           <template #top>
-            <v-toolbar flat class="bg-grey-lighten-4">
+            <v-toolbar flat class="bg-grey-lighten-4 border-b">
               <v-col cols="12" md="4" lg="4">
                 <v-text-field
                   v-model="search"
@@ -98,22 +100,6 @@
                 @update:model-value="handlePageChange"
               ></v-pagination>
             </div>
-          </template>
-
-          <template #tfoot>
-            <tfoot>
-              <tr class="font-weight-bold">
-                <td
-                  v-for="header in flattenedHeaders"
-                  :key="header.key"
-                  :class="header.align"
-                >
-                  <slot :name="`tfoot-${header.key}`" :header="header">
-                    {{ totals[header.key] }}
-                  </slot>
-                </td>
-              </tr>
-            </tfoot>
           </template>
         </v-data-table>
       </v-col>
@@ -178,7 +164,8 @@ export default {
           sortBy.value[0] || {}
         )
         positions.value = data.positions
-        totals.value = data.totals
+        // Handle total rows in respective pages, as have different totals for each page
+        // totals.value = data.totals
         totalItems.value = data.total_items
       } catch (error) {
         store.dispatch('setError', error)
@@ -272,6 +259,13 @@ export default {
 </script>
 
 <style scoped>
+.nowrap-table :deep(td) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* font-size: small; */
+}
+
 .rows-per-page-select {
   min-width: 180px;
   max-width: 200px;

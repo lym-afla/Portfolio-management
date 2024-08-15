@@ -229,10 +229,8 @@ def get_closed_positions_table_api(request):
         order = sort_by.get('order')
         
         if key:
-            logger.debug(f"Before sorting: {[(item['name'], item.get(key)) for item in portfolio_closed[:5]]}")
             reverse = order == 'desc'
             portfolio_closed.sort(key=lambda x: get_sort_value(x, key), reverse=reverse)
-            logger.debug(f"After sorting: {[(item['name'], item.get(key)) for item in portfolio_closed[:5]]}")
     else:
         # Default sorting
         portfolio_closed.sort(key=lambda x: get_sort_value(x, 'exit_date'), reverse=True)
@@ -245,6 +243,8 @@ def get_closed_positions_table_api(request):
         paginated_portfolio_closed = paginator.page(1)
     except EmptyPage:
         paginated_portfolio_closed = paginator.page(paginator.num_pages)
+
+    print("closed_positions. 247", paginated_portfolio_closed, type(paginated_portfolio_closed))
 
     # Format data after sorting and pagination
     formatted_portfolio_closed = [
@@ -267,43 +267,43 @@ def get_closed_positions_table_api(request):
 
     return Response(response_data)
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-@ensure_csrf_cookie
-def get_year_options_api(request):
-    user = request.user
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
-    effective_current_date_str = request.session.get('effective_current_date')
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# @ensure_csrf_cookie
+# def get_year_options_api(request):
+#     user = request.user
+#     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+#     effective_current_date_str = request.session.get('effective_current_date')
     
-    # Convert effective_current_date from string to date object
-    effective_current_date = datetime.strptime(effective_current_date_str, '%Y-%m-%d').date() if effective_current_date_str else datetime.now().date()
+#     # Convert effective_current_date from string to date object
+#     effective_current_date = datetime.strptime(effective_current_date_str, '%Y-%m-%d').date() if effective_current_date_str else datetime.now().date()
 
-    first_year = Transactions.objects.filter(
-        investor=user,
-        broker__in=selected_brokers
-    ).order_by('date').first()
+#     first_year = Transactions.objects.filter(
+#         investor=user,
+#         broker__in=selected_brokers
+#     ).order_by('date').first()
     
-    if first_year:
-        first_year = first_year.date.year
+#     if first_year:
+#         first_year = first_year.date.year
 
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
-    last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
+#     last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
+#     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
-    if first_year is not None:
-        closed_table_years = list(range(first_year, last_year + 1))
-    else:
-        closed_table_years = []
+#     if first_year is not None:
+#         closed_table_years = list(range(first_year, last_year + 1))
+#     else:
+#         closed_table_years = []
 
-    # Convert years to strings
-    closed_table_years = [{'text': str(year), 'value': str(year)} for year in closed_table_years]
+#     # Convert years to strings
+#     closed_table_years = [{'text': str(year), 'value': str(year)} for year in closed_table_years]
 
-    # Add special options with a divider
-    closed_table_years.extend([
-        {'divider': True},
-        {'text': 'All-time', 'value': 'All-time'},
-        {'text': f'{effective_current_date.year}YTD', 'value': 'YTD'}
-    ])
+#     # Add special options with a divider
+#     closed_table_years.extend([
+#         {'divider': True},
+#         {'text': 'All-time', 'value': 'All-time'},
+#         {'text': f'{effective_current_date.year}YTD', 'value': 'YTD'}
+#     ])
 
-    return Response({
-        'closed_table_years': closed_table_years,
-    })
+#     return Response({
+#         'closed_table_years': closed_table_years,
+#     })

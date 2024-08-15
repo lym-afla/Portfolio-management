@@ -3,8 +3,10 @@ import os
 import sys
 
 def transfer_db(direction):
-    project_db = 'db.sqlite3'
+    project_db = os.path.join(os.getcwd(), 'db.sqlite3')
     local_folder = r'C:\Users\yl\OneDrive\Personal\Web development\Portfolio management database'
+    if not os.path.exists(local_folder):
+        local_folder = r'C:\Users\fyl\OneDrive\Personal\Web development\Portfolio management database'
     local_db = os.path.join(local_folder, 'db.sqlite3')
 
     if direction == 'export':
