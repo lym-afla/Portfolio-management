@@ -59,7 +59,7 @@
         >
           <template #header="{ header }">
             <span>{{ header.value }}</span>
-            <v-icon v-if="header.sortable" size="small" class="ml-1">{{ getSortIcon(header.value) }}</v-icon>
+            <v-icon v-if="header.sortable" size="small" class="ml-1">{{ getSortIcon(header.key) }}</v-icon>
           </template>
           
           <template #top>
@@ -112,9 +112,9 @@
 
           <template #bottom>
             <div class="d-flex align-center justify-space-between pa-4">
-              <v-text class="text-caption mr-4">
+              <span class="text-caption mr-4">
                 Showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }} entries
-              </v-text>
+              </span>
               <v-pagination
                 v-model="currentPage"
                 :length="pageCount"
@@ -176,7 +176,7 @@ export default {
     const currentPage = ref(1)
     const totalItems = ref(0)
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
-    const sortBy = ref([])
+    const sortBy = ref([])  // Keep this as an array for Vuetify compatibility
     
     console.log('Initial sortBy:', sortBy.value)
 
@@ -198,7 +198,7 @@ export default {
         },
         { title: 'Name', key: 'name', align: 'start', sortable: true },
         { title: 'Currency', key: 'currency', align: 'center', sortable: true },
-        { title: 'Max position', key: 'max_position', align: 'center', sortable: true },
+        // { title: 'Max position', key: 'max_position', align: 'center', sortable: true },
         {
           title: 'Entry',
           key: 'entry',
@@ -292,28 +292,35 @@ export default {
       console.log('Header clicked:', column)
       if (!column.sortable) return
       
-      const currentSort = sortBy.value.find(s => s.key === column.key)
+      const currentSort = sortBy.value
       let newOrder = 'asc'
       
-      if (currentSort) {
+      if (currentSort && currentSort.key === column.key) {
         newOrder = currentSort.order === 'asc' ? 'desc' : 'asc'
       }
       
       console.log('New sort order:', newOrder)
-      handleSortChange([{ key: column.key, order: newOrder }])
+      handleSortChange({ key: column.key, order: newOrder })
     }
 
     const handleSortChange = async (newSortBy) => {
       console.log('Sort changed:', newSortBy)
-      sortBy.value = newSortBy
+      if (Array.isArray(newSortBy) && newSortBy.length > 0) {
+        sortBy.value = [newSortBy[0]]  // Keep only the first sort criterion
+      } else if (typeof newSortBy === 'object' && newSortBy !== null) {
+        sortBy.value = [newSortBy]  // Wrap the object in an array
+      } else {
+        sortBy.value = []  // Reset to empty array if invalid input
+      }
       console.log('Updated sortBy:', sortBy.value)
       currentPage.value = 1 // Reset to first page when changing sort
       await fetchClosedPositions()
     }
 
     const getSortIcon = (key) => {
-      const sort = sortBy.value.find(sort => sort.key === key)
-      return !sort ? 'mdi-sort' : (sort.order === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending')
+      const sort = sortBy.value[0]
+      return !sort || sort.key !== key ? 'mdi-sort' : 
+             (sort.order === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending')
     }
 
     const fetchClosedPositions = async () => {
@@ -325,7 +332,7 @@ export default {
           currentPage.value,
           itemsPerPage.value,
           search.value,
-          sortBy.value
+          sortBy.value[0] || {}  // Send the first (and only) sort criterion, or an empty object if none
         )
         console.log('Received data:', data.portfolio_closed.slice(0, 5)) // Log first 5 items
         closedPositions.value = data.portfolio_closed

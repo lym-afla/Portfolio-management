@@ -1,5 +1,5 @@
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 import sys
 import json
@@ -597,6 +597,26 @@ def calculate_percentage_shares(data_dict, selected_keys):
                 data_dict[percentage_key][key] = str(round(Decimal(value / total * 100), 1)) + '%'
             except ZeroDivisionError:
                 data_dict[percentage_key][key] = '–'
+
+
+# Get sort value for sorting
+def get_sort_value(item, key):
+    value = item.get(key)
+    logger.debug(f"get_sort_value: key={key}, original_value={value}")
+    
+    if value == 'N/R':
+        return Decimal('-Infinity')
+    elif 'date' in key:
+        return value if isinstance(value, (date, datetime)) else datetime.min
+    elif isinstance(value, (int, float, Decimal)):
+        return Decimal(value)
+    elif isinstance(value, str):
+        try:
+            return Decimal(value.replace(',', ''))
+        except InvalidOperation:
+            return value.lower()
+    else:
+        return str(value).lower()
 
 def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, breakdown):
     

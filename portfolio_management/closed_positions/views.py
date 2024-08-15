@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 import json
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -7,7 +8,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from common.models import Assets, Brokers, Transactions
 from common.forms import DashboardForm
-from utils import broker_group_to_ids, calculate_closed_table_output, calculate_closed_table_output_for_api, format_value, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids, calculate_closed_table_output, calculate_closed_table_output_for_api, format_value, get_last_exit_date_for_brokers, get_sort_value
 
 @login_required
 def closed_positions(request):
@@ -162,24 +163,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.db.models import Q, F, ExpressionWrapper, FloatField, Case, When, Value
-from decimal import Decimal
+from django.db.models import Q
 
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
-import re
-
-def convert_to_number(value):
-    if isinstance(value, str):
-        # Remove currency symbol, commas, and parentheses, then convert to float
-        value = re.sub(r'[£,()]', '', value)
-        return float(value) if value else 0
-    elif isinstance(value, (int, float)):
-        return value
-    return 0  # Default value for non-numeric types
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -190,7 +179,7 @@ def get_closed_positions_table_api(request):
     page = int(data.get('page', 1))
     items_per_page = int(data.get('items_per_page', 25))
     search = data.get('search', '')
-    sort_by = data.get('sort_by', [])
+    sort_by = data.get('sort_by', {})  # Expect a single object now
 
     logger.debug(f"Received sorting parameters: sort_by={sort_by}")
 
@@ -235,35 +224,18 @@ def get_closed_positions_table_api(request):
         currency_target, selected_brokers, start_date
     )
 
-    ### Need to work on sorting function. As data is in string format with currencies, etc. and sometimes dates and strings
-
-    logger.debug(f"Portfolio closed before sorting (first 5): {[item['name'] for item in portfolio_closed[:5]]}")
-
-    # Sorting function
-    def get_sort_value(item, key):
-        value = item.get(key)
-        if value == 'N/R':
-            return float('-inf')
-        elif 'date' in key:
-            return value if isinstance(value, (date, datetime)) else datetime.min
-        elif isinstance(value, (int, float, Decimal, str)):
-            return value
-        else:
-            # For any other type, convert to string for consistent sorting
-            return str(value).lower()
-
-    def sort_key(item):
-        return [
-            (get_sort_value(item, sort_by['key']),
-             -1 if sort_by['order'] == 'desc' else 1)
-            for sort_by in sort_by
-        ]
-    
     if sort_by:
-        portfolio_closed = sorted(portfolio_closed, key=sort_key)
-    
-    logger.debug(f"Sort by: {sort_by}")
-    logger.debug(f"Portfolio closed after sorting (first 5): {[item['name'] for item in portfolio_closed[:5]]}")
+        key = sort_by.get('key')
+        order = sort_by.get('order')
+        
+        if key:
+            logger.debug(f"Before sorting: {[(item['name'], item.get(key)) for item in portfolio_closed[:5]]}")
+            reverse = order == 'desc'
+            portfolio_closed.sort(key=lambda x: get_sort_value(x, key), reverse=reverse)
+            logger.debug(f"After sorting: {[(item['name'], item.get(key)) for item in portfolio_closed[:5]]}")
+    else:
+        # Default sorting
+        portfolio_closed.sort(key=lambda x: get_sort_value(x, 'exit_date'), reverse=True)
 
     # Apply pagination
     paginator = Paginator(portfolio_closed, items_per_page)
@@ -292,8 +264,6 @@ def get_closed_positions_table_api(request):
         'current_page': page,
         'total_pages': paginator.num_pages,
     }
-
-    # logger.debug(f"Response data: {response_data}")
 
     return Response(response_data)
 

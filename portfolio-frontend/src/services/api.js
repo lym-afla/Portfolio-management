@@ -20,14 +20,14 @@ export const register = async (username, email, password) => {
   }
 }
 
-export const getClosedPositions = async (timespan, page, itemsPerPage, search = '', sortBy = []) => {
+export const getClosedPositions = async (timespan, page, itemsPerPage, search = '', sortBy = {}) => {
   try {
     const response = await axios.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
       timespan,
       page,
       items_per_page: itemsPerPage,
       search,
-      sort_by: sortBy.map(sort => ({ key: sort.key, order: sort.order }))
+      sort_by: sortBy  // This will be a single object or an empty object
     })
     console.log('API request payload:', { timespan, page, items_per_page: itemsPerPage, search, sort_by: sortBy })
     console.log('API response:', response.data)
