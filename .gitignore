@@ -20,6 +20,8 @@ portfolio_management/transactions/migrations/__pycache__/
 portfolio_management/database/__pycache__/
 portfolio_management/database/migrations/__pycache__/
 
+# Database
+portfolio_management/db.sqlite3
 
 # Ignore Python bytecode
 __pycache__/
@@ -60,3 +62,4 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
+
