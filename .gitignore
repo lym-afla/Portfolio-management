@@ -21,6 +21,13 @@ portfolio_management/database/__pycache__/
 portfolio_management/database/migrations/__pycache__/
 
 
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+
+# Ignore local environment files
+.env
+
 .DS_Store
 node_modules/
 /dist/
@@ -53,5 +60,3 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
-
-.vue-cli-service/

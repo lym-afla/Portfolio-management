@@ -28,7 +28,7 @@
           </template>
         </v-select>
       </v-col>
-      <v-col cols="12" md="3" lg="2">
+      <v-col cols="12" md="3" lg="4">
         <v-text-field
           v-model="search"
           append-icon="mdi-magnify"
@@ -51,17 +51,26 @@
           class="elevation-1"
           density="compact"
           :sort-by="sortBy"
+          @update:sort-by="handleSortChange"
+          :server-items-length="totalItems"
+          :items-length="totalItems"
           must-sort
+          disable-sort
         >
+          <template #header="{ header }">
+            <span>{{ header.value }}</span>
+            <v-icon v-if="header.sortable" size="small" class="ml-1">{{ getSortIcon(header.value) }}</v-icon>
+          </template>
+          
           <template #top>
             <v-toolbar flat>
               <v-toolbar-title>Closed Positions</v-toolbar-title>
             </v-toolbar>
-          </template>
+          </template>      
 
-          <template #[`item.currency`]="{ item }">
+          <!-- <template #[`item.currency`]="{ item }">
             {{ item.currency }}
-          </template>
+          </template> -->
           
           <template #[`item.investment_date`]="{ item }">
             {{ formatDate(item.investment_date) }}
@@ -154,6 +163,8 @@ export default {
     const totalItems = ref(0)
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
     const sortBy = ref([])
+    
+    console.log('Initial sortBy:', sortBy.value)
 
     const percentageColumns = [
       'price_change_percentage',
@@ -163,78 +174,85 @@ export default {
       'irr'
     ]
 
-    const headers = computed(() => [
-      {
-        title: 'Type',
-        key: 'type',
-        align: 'start',
-      },
-      { title: 'Name', key: 'name', align: 'start' },
-      { title: 'Currency', key: 'currency', align: 'center' },
-      { title: 'Max position', key: 'max_position', align: 'center' },
-      {
-        title: 'Entry',
-        key: 'entry',
-        align: 'center',
-        sortable: false,
-        children: [
-          { title: 'Date', key: 'investment_date', align: 'center' },
-          { title: 'Value', key: 'entry_value', align: 'center' },
-        ],
-      },
-      {
-        title: 'Exit',
-        key: 'exit',
-        align: 'center',
-        sortable: false,
-        children: [
-          { title: 'Date', key: 'exit_date', align: 'center' },
-          { title: 'Value', key: 'exit_value', align: 'center' },
-        ],
-      },
-      {
-        title: 'Realized gain/(loss)',
-        key: 'realized',
-        align: 'center',
-        sortable: false,
-        children: [
-          { title: 'Amount', key: 'realized_gl', align: 'center' },
-          { title: '%', key: 'price_change_percentage', align: 'center', class: 'font-italic' },
-        ],
-      },
-      {
-        title: 'Capital distribution',
-        key: 'capital',
-        align: 'center',
-        sortable: false,
-        children: [
-          { title: 'Amount', key: 'capital_distribution', align: 'center' },
-          { title: '%', key: 'capital_distribution_percentage', align: 'center', class: 'font-italic' },
-        ],
-      },
-      {
-        title: 'Commission',
-        key: 'commission',
-        align: 'center',
-        sortable: false,
-        children: [
-          { title: 'Amount', key: 'commission', align: 'center' },
-          { title: '%', key: 'commission_percentage', align: 'center', class: 'font-italic' },
-        ],
-      },
-      {
-        title: 'Total return',
-        key: 'total',
-        align: 'center',
-        sortable: false,
-        children: [
-          { title: 'Amount', key: 'total_return_amount', align: 'center' },
-          { title: '%', key: 'total_return_percentage', align: 'center', class: 'font-italic' },
-          { title: 'IRR', key: 'irr', align: 'center', class: 'font-italic' },
-        ],
-      },
-    ])
-
+    const headers = computed(() => {
+      const generatedHeaders = [
+        {
+          title: 'Type',
+          key: 'type',
+          align: 'start',
+          sortable: true,
+        },
+        { title: 'Name', key: 'name', align: 'start', sortable: true },
+        { title: 'Currency', key: 'currency', align: 'center', sortable: true },
+        { title: 'Max position', key: 'max_position', align: 'center', sortable: true },
+        {
+          title: 'Entry',
+          key: 'entry',
+          align: 'center',
+          sortable: false,
+          children: [
+            { title: 'Date', key: 'investment_date', align: 'center', sortable: true },
+            { title: 'Value', key: 'entry_value', align: 'center', sortable: true },
+          ],
+        },
+        {
+          title: 'Exit',
+          key: 'exit',
+          align: 'center',
+          sortable: false,
+          children: [
+            { title: 'Date', key: 'exit_date', align: 'center', sortable: true },
+            { title: 'Value', key: 'exit_value', align: 'center', sortable: true },
+          ],
+        },
+        {
+          title: 'Realized gain/(loss)',
+          key: 'realized',
+          align: 'center',
+          sortable: false,
+          children: [
+            { title: 'Amount', key: 'realized_gl', align: 'center', sortable: true },
+            { title: '%', key: 'price_change_percentage', align: 'center', class: 'font-italic', sortable: true },
+          ],
+        },
+        {
+          title: 'Capital distribution',
+          key: 'capital',
+          align: 'center',
+          sortable: false,
+          children: [
+            { title: 'Amount', key: 'capital_distribution', align: 'center', sortable: true },
+            { title: '%', key: 'capital_distribution_percentage', align: 'center', class: 'font-italic', sortable: true },
+          ],
+        },
+        {
+          title: 'Commission',
+          key: 'commission',
+          align: 'center',
+          sortable: false,
+          children: [
+            { title: 'Amount', key: 'commission', align: 'center', sortable: true },
+            { title: '%', key: 'commission_percentage', align: 'center', class: 'font-italic', sortable: true },
+          ],
+        },
+        {
+          title: 'Total return',
+          key: 'total',
+          align: 'center',
+          sortable: false,
+          children: [
+            { title: 'Amount', key: 'total_return_amount', align: 'center', sortable: true },
+            { title: '%', key: 'total_return_percentage', align: 'center', class: 'font-italic', sortable: true },
+            { title: 'IRR', key: 'irr', align: 'center', class: 'font-italic', sortable: true },
+          ],
+        },
+      ]
+      return generatedHeaders.map(header => ({
+        ...header,
+        title: header.sortable ? header.title : header.title,
+      }))
+    })
+    
     const flattenedHeaders = computed(() => {
       return headers.value.flatMap(header => 
         header.children 
@@ -256,9 +274,38 @@ export default {
       fetchClosedPositions()
     }
 
+    const handleHeaderClick = (column) => {
+      console.log('Header clicked:', column)
+      if (!column.sortable) return
+      
+      const currentSort = sortBy.value.find(s => s.key === column.key)
+      let newOrder = 'asc'
+      
+      if (currentSort) {
+        newOrder = currentSort.order === 'asc' ? 'desc' : 'asc'
+      }
+      
+      console.log('New sort order:', newOrder)
+      handleSortChange([{ key: column.key, order: newOrder }])
+    }
+
+    const handleSortChange = async (newSortBy) => {
+      console.log('Sort changed:', newSortBy)
+      sortBy.value = newSortBy
+      console.log('Updated sortBy:', sortBy.value)
+      currentPage.value = 1 // Reset to first page when changing sort
+      await fetchClosedPositions()
+    }
+
+    const getSortIcon = (key) => {
+      const sort = sortBy.value.find(sort => sort.key === key)
+      return !sort ? 'mdi-sort' : (sort.order === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending')
+    }
+
     const fetchClosedPositions = async () => {
       tableLoading.value = true
       try {
+        console.log('Fetching closed positions with sort:', sortBy.value)
         const data = await getClosedPositions(
           selectedYear.value,
           currentPage.value,
@@ -266,6 +313,7 @@ export default {
           search.value,
           sortBy.value
         )
+        console.log('Received data:', data.portfolio_closed.slice(0, 5)) // Log first 5 items
         closedPositions.value = data.portfolio_closed
         totals.value = data.portfolio_closed_totals
         totalItems.value = data.total_items
@@ -274,6 +322,15 @@ export default {
         console.error('Error in fetchClosedPositions:', error)
       } finally {
         tableLoading.value = false
+      }
+    }
+
+    const fetchYearOptions = async () => {
+      try {
+        const years = await getYearOptions()
+        yearOptions.value = years
+      } catch (error) {
+        store.dispatch('setError', error)
       }
     }
 
@@ -290,14 +347,13 @@ export default {
       { deep: true }
     )
 
-    const fetchYearOptions = async () => {
-      try {
-        const years = await getYearOptions()
-        yearOptions.value = years
-      } catch (error) {
-        store.dispatch('setError', error)
-      }
-    }
+    watch(closedPositions, (newValue) => {
+      console.log('closedPositions updated:', newValue.slice(0, 5))
+    }, { deep: true })
+
+    watch(() => store.state.selectedBroker, () => {
+      fetchYearOptions()
+    })
 
     onMounted(() => {
       fetchYearOptions()
@@ -330,6 +386,9 @@ export default {
       loading: computed(() => store.state.loading),
       error: computed(() => store.state.error),
       handleItemsPerPageChange,
+      handleSortChange,
+      getSortIcon,
+      handleHeaderClick,
     }
   },
 }

@@ -7,7 +7,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from common.models import Assets, Brokers, Transactions
 from common.forms import DashboardForm
-from utils import broker_group_to_ids, calculate_closed_table_output, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids, calculate_closed_table_output, calculate_closed_table_output_for_api, format_value, get_last_exit_date_for_brokers
 
 @login_required
 def closed_positions(request):
@@ -163,6 +163,7 @@ from rest_framework.response import Response
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q, F, ExpressionWrapper, FloatField, Case, When, Value
+from decimal import Decimal
 
 import logging
 import re
@@ -229,25 +230,38 @@ def get_closed_positions_table_api(request):
     
     categories = ['investment_date', 'exit_date', 'realized_gl', 'capital_distribution', 'commission']
 
-    portfolio_closed, portfolio_closed_totals = calculate_closed_table_output(
+    portfolio_closed, portfolio_closed_totals = calculate_closed_table_output_for_api(
         user.id, portfolio_closed, end_date, categories, use_default_currency,
-        currency_target, selected_brokers, number_of_digits, start_date
+        currency_target, selected_brokers, start_date
     )
 
     ### Need to work on sorting function. As data is in string format with currencies, etc. and sometimes dates and strings
 
     logger.debug(f"Portfolio closed before sorting (first 5): {[item['name'] for item in portfolio_closed[:5]]}")
 
+    # Sorting function
+    def get_sort_value(item, key):
+        value = item.get(key)
+        if value == 'N/R':
+            return float('-inf')
+        elif 'date' in key:
+            return value if isinstance(value, (date, datetime)) else datetime.min
+        elif isinstance(value, (int, float, Decimal, str)):
+            return value
+        else:
+            # For any other type, convert to string for consistent sorting
+            return str(value).lower()
+
+    def sort_key(item):
+        return [
+            (get_sort_value(item, sort_by['key']),
+             -1 if sort_by['order'] == 'desc' else 1)
+            for sort_by in sort_by
+        ]
+    
     if sort_by:
-        def sort_key(item):
-            return [
-                (convert_to_number(item.get(sort['key'], 0)) if sort['key'] not in ['investment_date', 'exit_date'] else item.get(sort['key'], datetime.min.date()),
-                 -1 if sort['order'] == 'desc' else 1)
-                for sort in sort_by
-            ]
-
         portfolio_closed = sorted(portfolio_closed, key=sort_key)
-
+    
     logger.debug(f"Sort by: {sort_by}")
     logger.debug(f"Portfolio closed after sorting (first 5): {[item['name'] for item in portfolio_closed[:5]]}")
 
@@ -260,15 +274,26 @@ def get_closed_positions_table_api(request):
     except EmptyPage:
         paginated_portfolio_closed = paginator.page(paginator.num_pages)
 
+    # Format data after sorting and pagination
+    formatted_portfolio_closed = [
+        {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
+        for position in paginated_portfolio_closed
+    ]
+    
+    formatted_totals = {
+        k: format_value(v, k, currency_target, number_of_digits)
+        for k, v in portfolio_closed_totals.items()
+    }
+    
     response_data = {
-        'portfolio_closed': list(paginated_portfolio_closed),
-        'portfolio_closed_totals': portfolio_closed_totals,
+        'portfolio_closed': formatted_portfolio_closed,
+        'portfolio_closed_totals': formatted_totals,
         'total_items': paginator.count,
         'current_page': page,
         'total_pages': paginator.num_pages,
     }
 
-    logger.debug(f"Response data: {response_data}")
+    # logger.debug(f"Response data: {response_data}")
 
     return Response(response_data)
 

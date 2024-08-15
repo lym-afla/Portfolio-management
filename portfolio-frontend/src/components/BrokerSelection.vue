@@ -50,7 +50,7 @@
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
-import { getBrokers, updateUserBroker } from '@/services/api'
+import { getBrokerChoices, updateUserBroker } from '@/services/api'
 import { formatBrokerChoices } from '@/utils/brokerUtils'
 
 export default {
@@ -74,13 +74,9 @@ export default {
 
     const fetchBrokers = async () => {
       try {
-        console.log('Fetching brokers...')
-        const data = await getBrokers()
-        console.log('Raw data from API:', data)
+        const data = await getBrokerChoices()
         brokerOptions.value = formatBrokerChoices(data.options)
         selectedBroker.value = data.custom_brokers
-        console.log('Broker options set:', brokerOptions.value)
-        console.log('Selected broker set:', selectedBroker.value)
       } catch (error) {
         console.error('Error fetching brokers:', error)
       }
@@ -91,9 +87,11 @@ export default {
       if (typeof newValue === 'object' && newValue !== null) {
         selectedBroker.value = newValue.value
         await updateDataForBroker(newValue.value)
+        store.dispatch('updateSelectedBroker', newValue)
       } else {
         selectedBroker.value = newValue
         await updateDataForBroker(newValue)
+        store.dispatch('updateSelectedBroker', newValue)
       }
     }
 

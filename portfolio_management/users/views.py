@@ -344,7 +344,7 @@ def verify_token_api(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_brokers_api(request):
+def get_broker_choices_api(request):
     user = request.user
     form = UserSettingsForm(instance=user)
     broker_choices = form.get_broker_choices(user)

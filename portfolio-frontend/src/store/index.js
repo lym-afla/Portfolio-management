@@ -8,8 +8,9 @@ export default createStore({
     pageTitle: '',
     loading: false,
     error: null,
-    customBrokers: null,
+    customBrokerSelection: null,
     dataRefreshTrigger: 0,
+    selectedBroker: null,
   },
   mutations: {
     setToken(state, token) {
@@ -31,11 +32,14 @@ export default createStore({
     setError(state, error) {
       state.error = error
     },
-    SET_CUSTOM_BROKERS(state, brokers) {
-      state.customBrokers = brokers
+    SET_CUSTOM_BROKER_SELECTION(state, broker_choices) {
+      state.customBrokerSelection = broker_choices
     },
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
+    },
+    SET_SELECTED_BROKER(state, broker) {
+      state.selectedBroker = broker
     },
   },
   actions: {
@@ -96,12 +100,15 @@ export default createStore({
     },
     async setCustomBrokers({ commit }) {
       try {
-        const brokers = await api.getBrokers()
-        commit('SET_CUSTOM_BROKERS', brokers)
+        const broker_choices = await api.getBrokerChoices()
+        commit('SET_CUSTOM_BROKER_SELECTION', broker_choices)
       } catch (error) {
         console.error('Failed to fetch brokers', error)
         commit('setError', 'Failed to fetch brokers')
       }
+    },
+    updateSelectedBroker({ commit }, broker) {
+      commit('SET_SELECTED_BROKER', broker)
     },
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')

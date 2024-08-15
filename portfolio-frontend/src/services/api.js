@@ -52,9 +52,9 @@ export const getYearOptions = async () => {
   }
 }
 
-export const getBrokers = async () => {
+export const getBrokerChoices = async () => {
   try {
-    const response = await axios.get(`${API_URL}/users/api/get_brokers/`)
+    const response = await axios.get(`${API_URL}/users/api/get_broker_choices/`)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
