@@ -52,6 +52,9 @@ EXPOSURE_CHOICES = (
 
 TOLERANCE = 1e-7
 
+YTD = 'YTD'
+ALL_TIME = 'All-time'
+
 BROKER_GROUPS = {
     'UK': [3, 6],
     # Add other groups as needed

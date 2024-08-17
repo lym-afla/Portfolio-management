@@ -101,6 +101,22 @@
               ></v-pagination>
             </div>
           </template>
+
+          <template #tfoot>
+            <tfoot>
+              <tr class="font-weight-bold">
+                <td
+                  v-for="header in flattenedHeaders"
+                  :key="header.key"
+                  :class="header.align"
+                >
+                  <slot :name="`tfoot-${header.key}`" :header="header">
+                    {{ totals[header.key] }}
+                  </slot>
+                </td>
+              </tr>
+            </tfoot>
+          </template>
         </v-data-table>
       </v-col>
     </v-row>
@@ -164,8 +180,7 @@ export default {
           sortBy.value[0] || {}
         )
         positions.value = data.positions
-        // Handle total rows in respective pages, as have different totals for each page
-        // totals.value = data.totals
+        totals.value = data.totals
         totalItems.value = data.total_items
       } catch (error) {
         store.dispatch('setError', error)

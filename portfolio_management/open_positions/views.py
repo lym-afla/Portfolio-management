@@ -8,7 +8,8 @@ from django.template.loader import render_to_string
 from common.models import Brokers, Assets, Transactions
 from common.forms import DashboardForm
 from constants import TOLERANCE
-from utils import broker_group_to_ids, calculate_open_table_output, currency_format, get_last_exit_date_for_brokers, get_positions_table_api
+from core.positions_utils import get_positions_table_api
+from utils import broker_group_to_ids, calculate_open_table_output, currency_format_old_structure, get_last_exit_date_for_brokers
 
 from django.views.decorators.http import require_POST
 
@@ -187,7 +188,7 @@ def get_cash_balances(user, timespan, effective_current_date):
     number_of_digits = user.digits
     
     # Convert Decimal objects to strings for JSON serialization
-    serializable_balances = {currency_format('', currency, 0): currency_format(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
+    serializable_balances = {currency_format_old_structure('', currency, 0): currency_format_old_structure(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
 
     return serializable_balances
 

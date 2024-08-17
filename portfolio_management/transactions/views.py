@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm
-from utils import broker_group_to_ids, currency_format
+from utils import broker_group_to_ids, currency_format_old_structure
 
 @login_required
 def transactions(request):
@@ -72,17 +72,17 @@ def transactions(request):
                 # else:
                 #     balance[currency] = balance.get(currency, Decimal(0))
             for currency in currencies:
-                transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
+                transaction.balances[currency] = currency_format_old_structure(balance[currency], currency, number_of_digits)
 
             # Prepare data for passing to the front-end
             if transaction.quantity:
-                transaction.value = currency_format(-round(Decimal(transaction.quantity * transaction.price), 2) + (transaction.commission or 0), transaction.currency, number_of_digits)
-                transaction.price = currency_format(transaction.price, transaction.currency, number_of_digits)
+                transaction.value = currency_format_old_structure(-round(Decimal(transaction.quantity * transaction.price), 2) + (transaction.commission or 0), transaction.currency, number_of_digits)
+                transaction.price = currency_format_old_structure(transaction.price, transaction.currency, number_of_digits)
                 transaction.quantity = abs(round(transaction.quantity, 0))
             if transaction.cash_flow:
-                transaction.cash_flow = currency_format(transaction.cash_flow, transaction.currency, number_of_digits)
+                transaction.cash_flow = currency_format_old_structure(transaction.cash_flow, transaction.currency, number_of_digits)
             if transaction.commission:
-                transaction.commission = currency_format(-transaction.commission, transaction.currency, number_of_digits)
+                transaction.commission = currency_format_old_structure(-transaction.commission, transaction.currency, number_of_digits)
            
         elif isinstance(transaction, FXTransaction):
             # FX transaction
@@ -95,13 +95,13 @@ def transactions(request):
                 balance[transaction.from_currency] -= transaction.commission
 
             for currency in currencies:
-                transaction.balances[currency] = currency_format(balance[currency], currency, number_of_digits)
+                transaction.balances[currency] = currency_format_old_structure(balance[currency], currency, number_of_digits)
 
             # Prepare FX transaction data for front-end
-            transaction.from_amount = currency_format(-transaction.from_amount, transaction.from_currency, number_of_digits)
-            transaction.to_amount = currency_format(transaction.to_amount, transaction.to_currency, number_of_digits)
+            transaction.from_amount = currency_format_old_structure(-transaction.from_amount, transaction.from_currency, number_of_digits)
+            transaction.to_amount = currency_format_old_structure(transaction.to_amount, transaction.to_currency, number_of_digits)
             if transaction.commission:
-                transaction.commission = currency_format(-transaction.commission, transaction.from_currency, number_of_digits)
+                transaction.commission = currency_format_old_structure(-transaction.commission, transaction.from_currency, number_of_digits)
 
         transaction.date = str(transaction.date.strftime('%d-%b-%y'))
                 
