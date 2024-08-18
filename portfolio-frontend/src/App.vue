@@ -8,12 +8,17 @@
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
         <v-main>
-          <v-container fluid>
-            <v-row>
+          <v-container fluid class="pa-0 mt-2">
+            <v-row no-gutters>
               <v-col cols="12" class="px-4">
                 <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
                 <v-divider v-if="pageTitle" class="mb-2"></v-divider>
-                <BrokerSelection v-if="!isProfilePage" class="mb-4" />
+                <div v-if="!isProfilePage" class="d-flex align-center mb-4">
+                  <BrokerSelection class="flex-grow-1" />
+                  <v-divider vertical class="mx-2" />
+                  <SettingsDialog />
+                </div>
+                <v-divider v-if="!isProfilePage" class="mb-4"></v-divider>
                 <router-view @update-page-title="updatePageTitle"></router-view>
               </v-col>
             </v-row>
@@ -33,6 +38,7 @@
 import { provide, ref, onMounted, watch, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
 import BrokerSelection from './components/BrokerSelection.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import { checkAuth } from './utils/auth'
 import { useRouter, useRoute } from 'vue-router'
 
@@ -41,6 +47,7 @@ export default {
   components: {
     Navigation,
     BrokerSelection,
+    SettingsDialog,
   },
   setup() {
     const router = useRouter();
@@ -121,9 +128,16 @@ export default {
 
 
 <style>
+html {
+  overflow-y: scroll;
+}
 
-html, body {
-  overflow-y: auto;
+body {
+  overflow-x: hidden;
+}
+
+.v-application {
+  overflow-x: hidden;
 }
 
 .v-data-table th {
@@ -132,7 +146,7 @@ html, body {
 
 .v-data-table th.v-data-table__th {
   vertical-align: bottom !important;
-  padding-bottom: 8px !important; /* Add space from bottom border */
+  padding-bottom: 8px !important;
   white-space: normal;
   hyphens: auto;
 }
@@ -142,4 +156,7 @@ html, body {
   hyphens: auto;
 }
 
+.v-dialog {
+  overflow-y: visible;
+}
 </style>

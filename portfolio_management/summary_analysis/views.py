@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.http import JsonResponse
 from django.shortcuts import render
 
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
 from utils import broker_group_to_ids, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers
 
@@ -33,7 +33,7 @@ def summary_view(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     user_brokers = Brokers.objects.filter(investor=user)
 

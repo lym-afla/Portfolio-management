@@ -79,9 +79,45 @@ export const getUserProfile = async () => {
   }
 }
 
-export const changeUserPassword = async (passwordData) => {
+export const editUserProfile = async (profileData) => {
+  try {
+    const response = await axios.post(`${API_URL}/users/api/profile/edit/`, profileData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const changePassword = async (passwordData) => {
   try {
     const response = await axios.post(`${API_URL}/users/api/change-password/`, passwordData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getUserSettings = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/users/api/settings/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateUserSettings = async (settings) => {
+  try {
+    const response = await axios.post(`${API_URL}/users/api/settings/`, settings)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSettingsChoices = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/users/api/settings/choices/`)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -128,5 +164,26 @@ export const getOpenPositionsYearOptions = async () => {
     return response.data.open_table_years
   } catch (error) {
     throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getDashboardSettings = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/users/api/dashboard-settings/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateDashboardSettings = async (settings) => {
+  try {
+    const response = await axios.post(`${API_URL}/users/api/update-settings-from-dashboard/`, settings)
+    return response.data
+  } catch (error) {
+    if (error.response && error.response.data) {
+      return error.response.data
+    }
+    throw error
   }
 }

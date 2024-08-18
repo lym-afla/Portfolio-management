@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from common.models import Brokers, Assets, Transactions
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from constants import TOLERANCE
 from core.positions_utils import get_positions_table_api
 from utils import broker_group_to_ids, calculate_open_table_output, currency_format_old_structure, get_last_exit_date_for_brokers
@@ -42,7 +42,7 @@ def open_positions(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     first_year = Transactions.objects.filter(
         investor=user,

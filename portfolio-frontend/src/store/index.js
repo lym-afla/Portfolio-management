@@ -41,6 +41,9 @@ export default createStore({
     SET_SELECTED_BROKER(state, broker) {
       state.selectedBroker = broker
     },
+    SET_USER_SETTINGS(state, settings) {
+      state.userSettings = { ...state.userSettings, ...settings }
+    },
   },
   actions: {
     async login({ commit }, credentials) {
@@ -112,22 +115,7 @@ export default createStore({
     },
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
-    },
-    async changePassword(_, passwordData) {
-      try {
-        return await api.changeUserPassword(passwordData)
-      } catch (error) {
-        console.error('Password change failed', error)
-        throw error
-      }
-    },
-    async fetchUserProfile() {
-      try {
-        return await api.getUserProfile()
-      } catch (error) {
-        console.error('Fetching user profile failed', error)
-        throw error
-      }
+      console.log('Data refresh triggered')
     },
   },
   getters: {

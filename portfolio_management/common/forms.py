@@ -35,7 +35,7 @@ class GroupedSelect(forms.Select):
             return option_value in value
         return option_value == value
     
-class DashboardForm(forms.ModelForm):
+class DashboardForm_old_setup(forms.ModelForm):
 
     custom_brokers = forms.ChoiceField(
         choices=[],
@@ -103,3 +103,26 @@ class DashboardForm(forms.ModelForm):
         value = self.cleaned_data['custom_brokers']
         logger.debug(f"Cleaned value for custom_brokers: {value}")
         return value
+
+
+class DashboardForm(forms.ModelForm):
+    table_date = forms.DateField(
+        widget=forms.DateInput(attrs={'class': 'form-control', 'id': 'inputTableDate', 'type': 'date'}),
+        label='Date'
+    )
+
+    class Meta:
+        model = CustomUser
+        fields = ['default_currency', 'table_date', 'digits']
+        labels = {
+            'default_currency': 'Currency',
+            'digits': 'Number of digits',
+        }
+        widgets = {
+            'default_currency': forms.Select(attrs={'class': 'form-select', 'id': 'inputCurrency'}),
+            'digits': forms.NumberInput(attrs={'class': 'form-control', 'id': 'numberOfDigits'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['default_currency'].choices = [(choice[0], f"{choice[1]} ({choice[0]})") for choice in CustomUser._meta.get_field('default_currency').choices if choice[0]]

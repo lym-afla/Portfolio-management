@@ -43,7 +43,6 @@
         </div>
       </v-card-text>
     </v-card>
-    <v-divider class="mt-2"></v-divider>
   </div>
 </template>
 

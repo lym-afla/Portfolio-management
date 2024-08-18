@@ -108,7 +108,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { getUserSettings, updateUserSettings, getSettingsChoices } from '@/services/api'
 import { formatBrokerChoices } from '@/utils/brokerUtils'
 
 export default {
@@ -165,16 +165,16 @@ export default {
       }
     },
     async fetchSettings() {
-      const response = await axios.get('/users/api/settings/');
-      this.settingsForm = response.data;
+      const response = await getUserSettings();
+      this.settingsForm = response;
     },
     async fetchChoices() {
-      const response = await axios.get('/users/api/settings/choices/');
-      this.currencyChoices = this.formatChoices(response.data.currency_choices);
-      this.frequencyChoices = this.formatChoices(response.data.frequency_choices);
-      this.timelineChoices = this.formatChoices(response.data.timeline_choices);
-      this.navBreakdownChoices = this.formatChoices(response.data.nav_breakdown_choices);
-      this.brokerChoices = formatBrokerChoices(response.data.broker_choices);
+      const response = await getSettingsChoices();
+      this.currencyChoices = this.formatChoices(response.currency_choices);
+      this.frequencyChoices = this.formatChoices(response.frequency_choices);
+      this.timelineChoices = this.formatChoices(response.timeline_choices);
+      this.navBreakdownChoices = this.formatChoices(response.nav_breakdown_choices);
+      this.brokerChoices = formatBrokerChoices(response.broker_choices);
     },
     formatChoices(choices) {
       return choices.map(choice => ({
@@ -185,8 +185,8 @@ export default {
     async saveSettings() {
       try {
         console.log('Sending settings:', this.settingsForm);
-        const response = await axios.post('/users/api/settings/', this.settingsForm);
-        console.log('Settings saved successfully:', response.data);
+        const response = await updateUserSettings(this.settingsForm);
+        console.log('Settings saved successfully:', response);
         this.showSuccessMessage('Settings saved successfully');
         this.clearFieldErrors();
       } catch (error) {

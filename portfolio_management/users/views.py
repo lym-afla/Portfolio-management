@@ -1,9 +1,10 @@
+from datetime import datetime
 import json
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
 
-from common.forms import DashboardForm
+from common.forms import DashboardForm, DashboardForm_old_setup
 from common.models import Brokers
 from constants import BROKER_GROUPS, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
@@ -116,7 +117,7 @@ def update_from_dashboard_form(request):
 
     # In case settings at the top menu are changed
     if request.method == "POST":
-        dashboard_form = DashboardForm(request.POST, instance=user)
+        dashboard_form = DashboardForm_old_setup(request.POST, instance=user)
         if dashboard_form.is_valid():
             # Process the form data
             request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date'].isoformat()
@@ -124,11 +125,6 @@ def update_from_dashboard_form(request):
             # Save new parameters to user setting
             user.default_currency = dashboard_form.cleaned_data['default_currency']
             user.digits = dashboard_form.cleaned_data['digits']
-            # selected_broker_ids = [dashboard_form.cleaned_data['custom_brokers']]
-            # print("users. 128", selected_broker_ids, type(selected_broker_ids))
-            # broker_name = dashboard_form.cleaned_data['custom_brokers']
-            # print("users. views. 126", broker_name)
-            # selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
             user.custom_brokers = dashboard_form.cleaned_data['custom_brokers']
             user.save()
             # Redirect to the same page to refresh it
@@ -366,3 +362,49 @@ def update_user_broker_api(request):
         return Response({'ok': True})
     else:
         return Response({'ok': False, 'error': 'Broker or group name not provided'}, status=400)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_user_settings_from_dashboard(request):
+    user = request.user
+    form = DashboardForm(request.data, instance=user)
+    
+    if form.is_valid():
+        form.save()
+        request.session['effective_current_date'] = form.cleaned_data['table_date'].isoformat()
+        
+        return Response({
+            'success': True,
+            'message': 'Settings updated successfully',
+            'data': {
+                'default_currency': user.default_currency,
+                'table_date': request.session['effective_current_date'],
+                'digits': user.digits,
+            }
+        })
+    else:
+        return Response({
+            'success': False,
+            'errors': form.errors
+        }, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_dashboard_settings(request):
+    user = request.user
+    effective_current_date = request.session.get('effective_current_date', datetime.now().date().isoformat())
+    
+    initial_data = {
+        'default_currency': user.default_currency,
+        'table_date': effective_current_date,
+        'digits': user.digits
+    }
+    
+    form = DashboardForm(instance=user, initial=initial_data)
+    
+    return Response({
+        'default_currency': form['default_currency'].value(),
+        'table_date': form['table_date'].value(),
+        'digits': form['digits'].value(),
+        'currency_choices': [{'text': choice[1], 'value': choice[0]} for choice in form.fields['default_currency'].choices],
+    })

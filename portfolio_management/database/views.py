@@ -21,7 +21,7 @@ from io import StringIO
 import yfinance as yf
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 
 from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
@@ -50,7 +50,7 @@ def database_brokers(request):
 
     if request.method == "POST":
 
-        dashboard_form = DashboardForm(request.POST, instance=user)
+        dashboard_form = DashboardForm_old_setup(request.POST, instance=user)
 
         if dashboard_form.is_valid():
             # Process the form data
@@ -66,7 +66,7 @@ def database_brokers(request):
                 'default_currency': currency_target,
                 'digits': number_of_digits
             }
-        dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+        dashboard_form = DashboardForm_old_setup(instance=request.user, initial=initial_data)
 
     totals = ['no_of_securities', 'NAV']
     broker_totals = {}        

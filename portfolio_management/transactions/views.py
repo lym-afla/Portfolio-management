@@ -5,7 +5,7 @@ from operator import attrgetter
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, FXTransaction, Transactions
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from utils import broker_group_to_ids, currency_format_old_structure
 
 @login_required
@@ -32,7 +32,7 @@ def transactions(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     currencies = set()
     for broker in brokers:

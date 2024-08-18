@@ -7,7 +7,7 @@ from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from common.models import Assets, Brokers, Transactions
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from core.positions_utils import get_positions_table_api
 from utils import broker_group_to_ids, calculate_closed_table_output, get_last_exit_date_for_brokers
 
@@ -36,7 +36,7 @@ def closed_positions(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=request.user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=request.user, initial=initial_data)
 
     # assets = Assets.objects.filter(
     #     investor=user,

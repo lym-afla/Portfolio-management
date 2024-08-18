@@ -5,7 +5,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import AnnualPerformance, Brokers, Transactions, FX
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from database.forms import BrokerPerformanceForm
 from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids, calculate_from_date, calculate_percentage_shares, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
 
@@ -38,7 +38,7 @@ def dashboard(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     print("views. dashboard. Time taken for preparatory calcs", time.time() - start_t)
 

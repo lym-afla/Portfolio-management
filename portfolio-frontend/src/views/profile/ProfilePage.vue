@@ -95,13 +95,12 @@
 </template>
 
 <script>
-import { ref, computed, reactive } from 'vue'
-import { useStore } from 'vuex'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getUserProfile, changePassword as apiChangePassword } from '@/services/api'
 
 export default {
   setup() {
-    const store = useStore()
     const router = useRouter()
     const userInfo = ref([])
     const changePasswordDialog = ref(false)
@@ -162,7 +161,7 @@ export default {
 
       isLoading.value = true
       try {
-        await store.dispatch('changePassword', passwordForm)
+        await apiChangePassword(passwordForm)
         changePasswordDialog.value = false
         showSuccessMessage('Password changed successfully')
         Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
@@ -188,7 +187,7 @@ export default {
     const fetchUserDetails = async () => {
       try {
         console.log('Fetching user profile...')
-        const response = await store.dispatch('fetchUserProfile')
+        const response = await getUserProfile()
         console.log('Received response:', response)
         if (response && response.user_info) {
           userInfo.value = response.user_info
@@ -209,6 +208,8 @@ export default {
     const showChangePasswordDialog = () => {
       changePasswordDialog.value = true
     }
+
+    onMounted(fetchUserDetails)
 
     return {
       userInfo,
