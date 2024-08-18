@@ -119,8 +119,27 @@ export default {
 }
 </script>
 
+
 <style>
+
 html, body {
   overflow-y: auto;
 }
+
+.v-data-table th {
+  font-weight: bold !important;
+}
+
+.v-data-table th.v-data-table__th {
+  vertical-align: bottom !important;
+  padding-bottom: 8px !important; /* Add space from bottom border */
+  white-space: normal;
+  hyphens: auto;
+}
+
+.v-data-table td {
+  white-space: normal;
+  hyphens: auto;
+}
+
 </style>

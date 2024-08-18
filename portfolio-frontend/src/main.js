@@ -8,6 +8,7 @@ import App from './App.vue'
 import router from './router'
 import store from './store'
 import axios from 'axios'
+import './assets/fonts.css'
 
 axios.defaults.xsrfCookieName = 'csrftoken'
 axios.defaults.xsrfHeaderName = 'X-CSRFToken'
@@ -42,6 +43,17 @@ const vuetify = createVuetify({
   directives,
   icons: {
     defaultSet: 'mdi',
+  },
+  theme: {
+    defaultTheme: 'light',
+    themes: {
+      light: {
+        dark: false,
+        variables: {
+          fontFamily: 'var(--system-font)',
+        },
+      },
+    },
   },
 })
 

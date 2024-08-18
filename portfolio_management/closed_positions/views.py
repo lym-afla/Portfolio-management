@@ -8,7 +8,8 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 from common.models import Assets, Brokers, Transactions
 from common.forms import DashboardForm
-from utils import broker_group_to_ids, calculate_closed_table_output, calculate_closed_table_output_for_api, format_value, get_last_exit_date_for_brokers, get_sort_value
+from core.positions_utils import get_positions_table_api
+from utils import broker_group_to_ids, calculate_closed_table_output, get_last_exit_date_for_brokers
 
 @login_required
 def closed_positions(request):
@@ -170,140 +171,144 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# @ensure_csrf_cookie
+# def get_closed_positions_table_api(request):
+#     data = request.data
+#     timespan = data.get('timespan')
+#     page = int(data.get('page', 1))
+#     items_per_page = int(data.get('items_per_page', 25))
+#     search = data.get('search', '')
+#     sort_by = data.get('sort_by', {})  # Expect a single object now
+
+#     logger.debug(f"Received sorting parameters: sort_by={sort_by}")
+
+#     user = request.user
+#     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+#     currency_target = user.default_currency
+#     number_of_digits = user.digits
+#     use_default_currency = user.use_default_currency_where_relevant
+#     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+
+#     # Process the data based on the timespan
+#     if timespan == 'YTD':
+#         start_date = date(effective_current_date.year, 1, 1)
+#         end_date = effective_current_date
+#     elif timespan == 'All-time':
+#         start_date = None
+#         end_date = effective_current_date
+#     else:
+#         start_date = date(int(timespan), 1, 1)
+#         end_date = date(int(timespan), 12, 31)
+
+#     assets = Assets.objects.filter(
+#         investor=user,
+#         transactions__date__lte=end_date,
+#         transactions__broker_id__in=selected_brokers,
+#         transactions__quantity__isnull=False
+#     ).distinct()
+
+#     if search:
+#         assets = assets.filter(Q(name__icontains=search) | Q(type__icontains=search))
+
+#     portfolio_closed = []
+
+#     for asset in assets:
+#         if len(asset.exit_dates(end_date)) != 0:
+#             portfolio_closed.append(asset)
+    
+#     categories = ['investment_date', 'exit_date', 'realized_gl', 'capital_distribution', 'commission']
+
+#     portfolio_closed, portfolio_closed_totals = calculate_closed_table_output_for_api(
+#         user.id, portfolio_closed, end_date, categories, use_default_currency,
+#         currency_target, selected_brokers, start_date
+#     )
+
+#     if sort_by:
+#         key = sort_by.get('key')
+#         order = sort_by.get('order')
+        
+#         if key:
+#             reverse = order == 'desc'
+#             portfolio_closed.sort(key=lambda x: get_sort_value(x, key), reverse=reverse)
+#     else:
+#         # Default sorting
+#         portfolio_closed.sort(key=lambda x: get_sort_value(x, 'exit_date'), reverse=True)
+
+#     # Apply pagination
+#     paginator = Paginator(portfolio_closed, items_per_page)
+#     try:
+#         paginated_portfolio_closed = paginator.page(page)
+#     except PageNotAnInteger:
+#         paginated_portfolio_closed = paginator.page(1)
+#     except EmptyPage:
+#         paginated_portfolio_closed = paginator.page(paginator.num_pages)
+
+#     # Format data after sorting and pagination
+#     formatted_portfolio_closed = [
+#         {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
+#         for position in paginated_portfolio_closed
+#     ]
+    
+#     formatted_totals = {
+#         k: format_value(v, k, currency_target, number_of_digits)
+#         for k, v in portfolio_closed_totals.items()
+#     }
+    
+#     response_data = {
+#         'portfolio_closed': formatted_portfolio_closed,
+#         'portfolio_closed_totals': formatted_totals,
+#         'total_items': paginator.count,
+#         'current_page': page,
+#         'total_pages': paginator.num_pages,
+#     }
+
+#     return Response(response_data)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @ensure_csrf_cookie
 def get_closed_positions_table_api(request):
-    data = request.data
-    timespan = data.get('timespan')
-    page = int(data.get('page', 1))
-    items_per_page = int(data.get('items_per_page', 25))
-    search = data.get('search', '')
-    sort_by = data.get('sort_by', {})  # Expect a single object now
+    return Response(get_positions_table_api(request, is_closed=True))
 
-    logger.debug(f"Received sorting parameters: sort_by={sort_by}")
-
-    user = request.user
-    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-    currency_target = user.default_currency
-    number_of_digits = user.digits
-    use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
-
-    # Process the data based on the timespan
-    if timespan == 'YTD':
-        start_date = date(effective_current_date.year, 1, 1)
-        end_date = effective_current_date
-    elif timespan == 'All-time':
-        start_date = None
-        end_date = effective_current_date
-    else:
-        start_date = date(int(timespan), 1, 1)
-        end_date = date(int(timespan), 12, 31)
-
-    assets = Assets.objects.filter(
-        investor=user,
-        transactions__date__lte=end_date,
-        transactions__broker_id__in=selected_brokers,
-        transactions__quantity__isnull=False
-    ).distinct()
-
-    if search:
-        assets = assets.filter(Q(name__icontains=search) | Q(type__icontains=search))
-
-    portfolio_closed = []
-
-    for asset in assets:
-        if len(asset.exit_dates(end_date)) != 0:
-            portfolio_closed.append(asset)
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# @ensure_csrf_cookie
+# def get_year_options_api(request):
+#     user = request.user
+#     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+#     effective_current_date_str = request.session.get('effective_current_date')
     
-    categories = ['investment_date', 'exit_date', 'realized_gl', 'capital_distribution', 'commission']
+#     # Convert effective_current_date from string to date object
+#     effective_current_date = datetime.strptime(effective_current_date_str, '%Y-%m-%d').date() if effective_current_date_str else datetime.now().date()
 
-    portfolio_closed, portfolio_closed_totals = calculate_closed_table_output_for_api(
-        user.id, portfolio_closed, end_date, categories, use_default_currency,
-        currency_target, selected_brokers, start_date
-    )
-
-    if sort_by:
-        key = sort_by.get('key')
-        order = sort_by.get('order')
-        
-        if key:
-            logger.debug(f"Before sorting: {[(item['name'], item.get(key)) for item in portfolio_closed[:5]]}")
-            reverse = order == 'desc'
-            portfolio_closed.sort(key=lambda x: get_sort_value(x, key), reverse=reverse)
-            logger.debug(f"After sorting: {[(item['name'], item.get(key)) for item in portfolio_closed[:5]]}")
-    else:
-        # Default sorting
-        portfolio_closed.sort(key=lambda x: get_sort_value(x, 'exit_date'), reverse=True)
-
-    # Apply pagination
-    paginator = Paginator(portfolio_closed, items_per_page)
-    try:
-        paginated_portfolio_closed = paginator.page(page)
-    except PageNotAnInteger:
-        paginated_portfolio_closed = paginator.page(1)
-    except EmptyPage:
-        paginated_portfolio_closed = paginator.page(paginator.num_pages)
-
-    # Format data after sorting and pagination
-    formatted_portfolio_closed = [
-        {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
-        for position in paginated_portfolio_closed
-    ]
+#     first_year = Transactions.objects.filter(
+#         investor=user,
+#         broker__in=selected_brokers
+#     ).order_by('date').first()
     
-    formatted_totals = {
-        k: format_value(v, k, currency_target, number_of_digits)
-        for k, v in portfolio_closed_totals.items()
-    }
-    
-    response_data = {
-        'portfolio_closed': formatted_portfolio_closed,
-        'portfolio_closed_totals': formatted_totals,
-        'total_items': paginator.count,
-        'current_page': page,
-        'total_pages': paginator.num_pages,
-    }
+#     if first_year:
+#         first_year = first_year.date.year
 
-    return Response(response_data)
+#     last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
+#     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-@ensure_csrf_cookie
-def get_year_options_api(request):
-    user = request.user
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
-    effective_current_date_str = request.session.get('effective_current_date')
-    
-    # Convert effective_current_date from string to date object
-    effective_current_date = datetime.strptime(effective_current_date_str, '%Y-%m-%d').date() if effective_current_date_str else datetime.now().date()
+#     if first_year is not None:
+#         closed_table_years = list(range(first_year, last_year + 1))
+#     else:
+#         closed_table_years = []
 
-    first_year = Transactions.objects.filter(
-        investor=user,
-        broker__in=selected_brokers
-    ).order_by('date').first()
-    
-    if first_year:
-        first_year = first_year.date.year
+#     # Convert years to strings
+#     closed_table_years = [{'text': str(year), 'value': str(year)} for year in closed_table_years]
 
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
-    last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
+#     # Add special options with a divider
+#     closed_table_years.extend([
+#         {'divider': True},
+#         {'text': 'All-time', 'value': 'All-time'},
+#         {'text': f'{effective_current_date.year}YTD', 'value': 'YTD'}
+#     ])
 
-    if first_year is not None:
-        closed_table_years = list(range(first_year, last_year + 1))
-    else:
-        closed_table_years = []
-
-    # Convert years to strings
-    closed_table_years = [{'text': str(year), 'value': str(year)} for year in closed_table_years]
-
-    # Add special options with a divider
-    closed_table_years.extend([
-        {'divider': True},
-        {'text': 'All-time', 'value': 'All-time'},
-        {'text': f'{effective_current_date.year}YTD', 'value': 'YTD'}
-    ])
-
-    return Response({
-        'closed_table_years': closed_table_years,
-    })
+#     return Response({
+#         'closed_table_years': closed_table_years,
+#     })

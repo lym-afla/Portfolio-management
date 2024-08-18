@@ -25,7 +25,7 @@ from common.forms import DashboardForm
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 
 from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
-from utils import Irr, NAV_at_date, broker_group_to_ids, currency_format_dict_values, currency_format, format_percentage, get_last_exit_date_for_brokers, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
+from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def database_brokers(request):
             if security.position(effective_current_date, [broker.id]) != 0:
                 broker.no_of_securities += 1
 
-        broker.NAV = NAV_at_date(user.id, [broker.id], effective_current_date, currency_target, [])['Total NAV']
+        broker.NAV = NAV_at_date_old_structure(user.id, [broker.id], effective_current_date, currency_target, [])['Total NAV']
 
         try:
             broker.first_investment = Transactions.objects.\
@@ -96,21 +96,21 @@ def database_brokers(request):
 
         broker.cash = broker.balance(effective_current_date)
     
-        broker.irr = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id]))
+        broker.irr = format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id]))
 
         # Calculating totals
         for key in totals:
             broker_totals[key] = broker_totals.get(key, 0) + getattr(broker, key)
 
         # Prepare outputs for the front-end
-        broker.NAV = currency_format(broker.NAV, currency_target, number_of_digits)
+        broker.NAV = currency_format_old_structure(broker.NAV, currency_target, number_of_digits)
         for currency, value in broker.cash.items():
-            broker.cash[currency] = currency_format(value, currency, number_of_digits)
+            broker.cash[currency] = currency_format_old_structure(value, currency, number_of_digits)
     
         # print(f"database. views.py. line 88. {broker.name}")
     
     broker_totals = currency_format_dict_values(broker_totals, currency_target, number_of_digits)
-    broker_totals['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id for broker in brokers]))
+    broker_totals['IRR'] = format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id for broker in brokers]))
 
     buttons = ['broker', 'edit', 'delete']
 
@@ -151,14 +151,14 @@ def database_securities(request):
         
         security.open_position = security.position(effective_current_date)
         if security.price_at_date(effective_current_date) is not None:
-            security.current_value = currency_format(security.open_position * security.price_at_date(effective_current_date).price or 0, security.currency, number_of_digits)
-            security.irr = format_percentage(Irr(user.id, effective_current_date, security.currency, asset_id=security.id))
+            security.current_value = currency_format_old_structure(security.open_position * security.price_at_date(effective_current_date).price or 0, security.currency, number_of_digits)
+            security.irr = format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, security.currency, asset_id=security.id))
         
-        security.open_position = currency_format(security.open_position, '', 0)
+        security.open_position = currency_format_old_structure(security.open_position, '', 0)
         
-        security.realised = currency_format(security.realized_gain_loss(effective_current_date)['all_time'], security.currency, number_of_digits)
-        security.unrealised = currency_format(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)
-        security.capital_distribution = currency_format(security.get_capital_distribution(effective_current_date), security.currency, number_of_digits)
+        security.realised = currency_format_old_structure(security.realized_gain_loss(effective_current_date)['all_time'], security.currency, number_of_digits)
+        security.unrealised = currency_format_old_structure(security.unrealized_gain_loss(effective_current_date), security.currency, number_of_digits)
+        security.capital_distribution = currency_format_old_structure(security.get_capital_distribution(effective_current_date), security.currency, number_of_digits)
         
 
     buttons = ['security', 'edit', 'delete']        
