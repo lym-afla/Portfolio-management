@@ -5,27 +5,25 @@
     page-title="Open Positions"
   >
     <template #above-table>
-      <v-row class="mb-4">
-        <v-col cols="12" md="9" offset-md="3">
-          <h6 class="text-h6 mb-2">Cash Balances</h6>
+      <v-card class="mb-4">
+        <v-card-title class="text-h6">Cash Balances</v-card-title>
+        <v-card-text>
           <v-table density="compact">
             <thead>
               <tr>
-                <th v-for="(balance, currency) in cashBalances" :key="currency" class="text-center">
-                  {{ currency }}
-                </th>
+                <th class="text-left">Currency</th>
+                <th class="text-right">Balance</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td v-for="(balance, currency) in cashBalances" :key="currency" class="text-center">
-                  {{ balance }}
-                </td>
+              <tr v-for="(balance, currency) in cashBalances" :key="currency">
+                <td class="text-left">{{ currency }}</td>
+                <td class="text-right">{{ balance }}</td>
               </tr>
             </tbody>
           </v-table>
-        </v-col>
-      </v-row>
+        </v-card-text>
+      </v-card>
     </template>
 
     <template #[`item.investment_date`]="{ item }">
@@ -226,7 +224,7 @@ export default {
     const fetchOpenPositions = async (timespan, page, itemsPerPage, search, sortBy) => {
       const data = await getOpenPositions(timespan, page, itemsPerPage, search, sortBy)
       totals.value = data.portfolio_open_totals
-      cashBalances.value = data.cash_balances // Assuming the API now returns cash balances
+      cashBalances.value = data.cash_balances
       return {
         positions: data.portfolio_open,
         total_items: data.total_items,
@@ -271,3 +269,10 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.v-card-title {
+  font-size: 1rem !important;
+}
+
+</style>

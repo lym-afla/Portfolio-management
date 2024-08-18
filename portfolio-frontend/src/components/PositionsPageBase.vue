@@ -8,28 +8,6 @@
       ></v-progress-circular>
     </v-overlay>
 
-    <v-row>
-      <v-col cols="12" md="3" lg="2">
-        <v-select
-          v-model="selectedYear"
-          :items="yearOptions"
-          item-title="text"
-          item-value="value"
-          label="Year"
-          density="compact"
-        >
-          <template #item="{ props, item }">
-            <v-list-item
-              v-if="!item.raw.divider"
-              v-bind="props"
-              :title="item.title"
-            ></v-list-item>
-            <v-divider v-else class="my-2"></v-divider>
-          </template>
-        </v-select>
-      </v-col>
-    </v-row>
-
     <slot name="above-table"></slot>
 
     <v-row no-gutters>
@@ -39,7 +17,7 @@
           :items="positions"
           :loading="tableLoading"
           :search="search"
-          :items-per-page="-1"
+          :items-per-page="itemsPerPage"
           class="elevation-1 nowrap-table"
           density="compact"
           :sort-by="sortBy"
@@ -55,7 +33,24 @@
 
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b">
-              <v-col cols="12" md="4" lg="4">
+              <v-col cols="12" sm="3" md="2" lg="2">
+                <v-select
+                  v-model="selectedYear"
+                  :items="yearOptions"
+                  item-title="text"
+                  item-value="value"
+                  label="Year"
+                  density="compact"
+                  hide-details
+                  class="mr-2"
+                >
+                  <template #item="{ props, item }">
+                    <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
+                    <v-divider v-else class="my-2"></v-divider>
+                  </template>
+                </v-select>
+              </v-col>
+              <v-col cols="12" sm="6" md="7" lg="8">
                 <v-text-field
                   v-model="search"
                   append-icon="mdi-magnify"
@@ -68,7 +63,7 @@
                 ></v-text-field>
               </v-col>
               <v-spacer></v-spacer>
-              <v-col cols="auto">
+              <v-col cols="12" sm="3" md="3" lg="2">
                 <v-select
                   v-model="itemsPerPage"
                   :items="itemsPerPageOptions"
