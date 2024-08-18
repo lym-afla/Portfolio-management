@@ -187,3 +187,8 @@ export const updateDashboardSettings = async (settings) => {
     throw error
   }
 }
+
+export const getEffectiveCurrentDate = async () => {
+  const response = await axios.get(`${API_URL}/api/effective-current-date/`)
+  return response.data
+}

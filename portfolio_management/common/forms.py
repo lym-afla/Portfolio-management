@@ -107,20 +107,16 @@ class DashboardForm_old_setup(forms.ModelForm):
 
 class DashboardForm(forms.ModelForm):
     table_date = forms.DateField(
-        widget=forms.DateInput(attrs={'class': 'form-control', 'id': 'inputTableDate', 'type': 'date'}),
+        widget=forms.DateInput(attrs={'type': 'date'}),
         label='Date'
     )
 
     class Meta:
         model = CustomUser
-        fields = ['default_currency', 'table_date', 'digits']
+        fields = ['default_currency', 'digits']
         labels = {
             'default_currency': 'Currency',
             'digits': 'Number of digits',
-        }
-        widgets = {
-            'default_currency': forms.Select(attrs={'class': 'form-select', 'id': 'inputCurrency'}),
-            'digits': forms.NumberInput(attrs={'class': 'form-control', 'id': 'numberOfDigits'}),
         }
 
     def __init__(self, *args, **kwargs):

@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+from django import forms
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
@@ -392,19 +393,43 @@ def update_user_settings_from_dashboard(request):
 @permission_classes([IsAuthenticated])
 def get_dashboard_settings(request):
     user = request.user
-    effective_current_date = request.session.get('effective_current_date', datetime.now().date().isoformat())
+    form = DashboardForm(instance=user)
     
-    initial_data = {
-        'default_currency': user.default_currency,
-        'table_date': effective_current_date,
-        'digits': user.digits
+    form_fields = []
+    for field_name, field in form.fields.items():
+        field_data = {
+            'name': field_name,
+            'label': field.label,
+            'type': 'text',  # default type
+        }
+        
+        if isinstance(field, forms.DateField):
+            field_data['type'] = 'date'
+        elif isinstance(field, forms.IntegerField):
+            field_data['type'] = 'number'
+        elif isinstance(field, forms.ChoiceField):
+            field_data['type'] = 'select'
+            field_data['choices'] = [{'text': choice[1], 'value': choice[0]} for choice in field.choices]
+        
+        form_fields.append(field_data)
+    
+    data = {
+        'form_fields': form_fields,
     }
     
-    form = DashboardForm(instance=user, initial=initial_data)
+    # Add current values
+    for field in form_fields:
+        if field['name'] == 'table_date':
+            # Use the session value or current date for table_date
+            data[field['name']] = request.session.get('effective_current_date', datetime.now().date().isoformat())
+        elif field['type'] == 'select':
+            current_value = getattr(user, field['name'])
+            choices_dict = {choice['value']: choice['text'] for choice in field['choices']}
+            data[field['name']] = {
+                'value': current_value,
+                'text': choices_dict.get(current_value, current_value)  # Fallback to the value if text is not found
+            }
+        else:
+            data[field['name']] = getattr(user, field['name'])
     
-    return Response({
-        'default_currency': form['default_currency'].value(),
-        'table_date': form['table_date'].value(),
-        'digits': form['digits'].value(),
-        'currency_choices': [{'text': choice[1], 'value': choice[0]} for choice in form.fields['default_currency'].choices],
-    })
+    return Response(data)

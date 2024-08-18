@@ -11,29 +11,26 @@
         </v-card-title>
         <v-card-text>
           <v-form @submit.prevent="saveSettings" ref="form">
-            <v-select
-              v-model="formData.default_currency"
-              :items="currencyChoices"
-              item-title="text"
-              item-value="value"
-              label="Currency"
-              :error-messages="errors.default_currency"
-              :disabled="isUpdating"
-            ></v-select>
-            <v-text-field
-              v-model.number="formData.digits"
-              label="Number of Digits"
-              type="number"
-              :error-messages="errors.digits"
-              :disabled="isUpdating"
-            ></v-text-field>
-            <v-text-field
-              v-model="formData.table_date"
-              label="Date"
-              type="date"
-              :error-messages="errors.table_date"
-              :disabled="isUpdating"
-            ></v-text-field>
+            <template v-for="field in formFields" :key="field.name">
+              <v-select
+                v-if="field.type === 'select'"
+                v-model="formData[field.name]"
+                :items="field.choices"
+                item-title="text"
+                item-value="value"
+                :label="field.label"
+                :error-messages="errors[field.name]"
+                :disabled="isUpdating"
+              ></v-select>
+              <v-text-field
+                v-else
+                v-model="formData[field.name]"
+                :label="field.label"
+                :type="field.type"
+                :error-messages="errors[field.name]"
+                :disabled="isUpdating"
+              ></v-text-field>
+            </template>
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -51,28 +48,29 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { getDashboardSettings, updateDashboardSettings } from '@/services/api'
+import { useStore } from 'vuex'
 
 export default {
   setup() {
+    const store = useStore()
     const dialog = ref(false)
     const form = ref(null)
     const errors = ref({})
-    const currencyChoices = ref([])
     const isUpdating = ref(false)
-
-    const formData = reactive({
-      default_currency: '',
-      digits: 0,
-      table_date: '',
-    })
+    const formFields = ref([])
+    const formData = reactive({})
 
     const fetchSettingsData = async () => {
       try {
         const response = await getDashboardSettings()
-        formData.default_currency = response.default_currency
-        formData.digits = response.digits
-        formData.table_date = response.table_date
-        currencyChoices.value = response.currency_choices
+        formFields.value = response.form_fields
+        formFields.value.forEach(field => {
+          if (field.type === 'select') {
+            formData[field.name] = response[field.name].value
+          } else {
+            formData[field.name] = response[field.name]
+          }
+        })
       } catch (error) {
         console.error('Failed to fetch settings data:', error)
       }
@@ -98,6 +96,7 @@ export default {
         isUpdating.value = true
         const response = await updateDashboardSettings(formData)
         if (response.success) {
+          store.dispatch('updateEffectiveCurrentDate', formData.table_date)
           closeDialog()
           window.location.reload()
         } else {
@@ -130,7 +129,7 @@ export default {
     return {
       dialog,
       formData,
-      currencyChoices,
+      formFields,
       form,
       errors,
       openDialog,

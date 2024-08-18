@@ -92,6 +92,11 @@
       <v-divider></v-divider>
       <v-list density="compact" nav>
         <v-list-item
+          prepend-icon="mdi-calendar"
+          :title="effectiveCurrentDate || 'No date set'"
+          value="effective-date"
+        ></v-list-item>
+        <v-list-item
           prepend-icon="mdi-account-circle"
           title="Profile"
           value="profile"
@@ -112,13 +117,19 @@
 </template>
 
 <script>
+import { mapState, mapActions } from 'vuex'
+
 export default {
   data: () => ({
     drawer: true,
     extended: false,
     databaseExpanded: false,
   }),
+  computed: {
+    ...mapState(['effectiveCurrentDate']),
+  },
   methods: {
+    ...mapActions(['fetchEffectiveCurrentDate']),
     toggleExtended() {
       this.extended = !this.extended
     },
@@ -135,5 +146,8 @@ export default {
       }
     },
   },
+  mounted() {
+    this.fetchEffectiveCurrentDate()
+  }
 }
 </script>

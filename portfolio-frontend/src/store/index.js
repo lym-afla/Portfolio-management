@@ -11,6 +11,7 @@ export default createStore({
     customBrokerSelection: null,
     dataRefreshTrigger: 0,
     selectedBroker: null,
+    effectiveCurrentDate: null,
   },
   mutations: {
     setToken(state, token) {
@@ -43,6 +44,9 @@ export default createStore({
     },
     SET_USER_SETTINGS(state, settings) {
       state.userSettings = { ...state.userSettings, ...settings }
+    },
+    SET_EFFECTIVE_CURRENT_DATE(state, date) {
+      state.effectiveCurrentDate = date
     },
   },
   actions: {
@@ -117,8 +121,20 @@ export default createStore({
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
       console.log('Data refresh triggered')
     },
+    async fetchEffectiveCurrentDate({ commit }) {
+      try {
+        const response = await api.getEffectiveCurrentDate()
+        commit('SET_EFFECTIVE_CURRENT_DATE', response.effective_current_date)
+      } catch (error) {
+        console.error('Failed to fetch effective current date', error)
+      }
+    },
+    updateEffectiveCurrentDate({ commit }, date) {
+      commit('SET_EFFECTIVE_CURRENT_DATE', date)
+    },
   },
   getters: {
-    isAuthenticated: state => !!state.token
+    isAuthenticated: state => !!state.token,
+    effectiveCurrentDate: state => state.effectiveCurrentDate,
   }
 })

@@ -46,3 +46,11 @@ def get_year_options_api(request):
     return Response({
         'table_years': table_years,
     })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_effective_current_date(request):
+    effective_current_date = request.session.get('effective_current_date', datetime.now().date().isoformat())
+    return Response({
+        'effective_current_date': effective_current_date
+    })

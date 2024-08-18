@@ -15,4 +15,6 @@ urlpatterns = [
 
     # APIs not related to any specific app
     path('api/get_year_options/', views.get_year_options_api, name='get_year_options_api'),
+    path('api/effective-current-date/', views.get_effective_current_date, name='get_effective_current_date'),
+
 ]
