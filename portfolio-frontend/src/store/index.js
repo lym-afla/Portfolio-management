@@ -13,7 +13,12 @@ export default createStore({
     dataRefreshTrigger: 0,
     selectedBroker: null,
     effectiveCurrentDate: null,
-
+    selectedYear: 'All-time',
+    currentPage: 1,
+    itemsPerPage: 25,
+    itemsPerPageOptions: [10, 25, 50, 100],
+    search: '',
+    sortBy: {},
   },
   mutations: {
     setToken(state, token) {
@@ -52,6 +57,24 @@ export default createStore({
     },
     SET_EFFECTIVE_CURRENT_DATE(state, date) {
       state.effectiveCurrentDate = date
+    },
+    SET_SELECTED_YEAR(state, year) {
+      state.selectedYear = year
+    },
+    SET_ITEMS_PER_PAGE_OPTIONS(state, options) {
+      state.itemsPerPageOptions = options
+    },
+    SET_CURRENT_PAGE(state, page) {
+      state.currentPage = page
+    },
+    SET_ITEMS_PER_PAGE(state, itemsPerPage) {
+      state.itemsPerPage = itemsPerPage
+    },
+    SET_SEARCH(state, search) {
+      state.search = search
+    },
+    SET_SORT_BY(state, sortBy) {
+      state.sortBy = sortBy
     },
   },
   actions: {
@@ -136,6 +159,24 @@ export default createStore({
     },
     updateEffectiveCurrentDate({ commit }, date) {
       commit('SET_EFFECTIVE_CURRENT_DATE', date)
+    },
+    updateSelectedYear({ commit }, year) {
+      commit('SET_SELECTED_YEAR', year)
+    },
+    updateItemsPerPageOptions({ commit }, options) {
+      commit('SET_ITEMS_PER_PAGE_OPTIONS', options)
+    },
+    updateCurrentPage({ commit }, page) {
+      commit('SET_CURRENT_PAGE', page)
+    },
+    updateItemsPerPage({ commit }, itemsPerPage) {
+      commit('SET_ITEMS_PER_PAGE', itemsPerPage)
+    },
+    updateSearch({ commit }, search) {
+      commit('SET_SEARCH', search)
+    },
+    updateSortBy({ commit }, sortBy) {
+      commit('SET_SORT_BY', sortBy)
     },
   },
   getters: {

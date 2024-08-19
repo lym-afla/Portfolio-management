@@ -44,11 +44,10 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getClosedPositions } from '@/services/api'
 import { formatDate } from '@/utils/formatters'
-import { useStore } from 'vuex'
 
 export default {
   name: 'ClosedPositions',
@@ -56,14 +55,12 @@ export default {
     PositionsPageBase,
   },
   setup() {
-    const store = useStore()
     const totals = ref({})
 
     const headers = ref([
       { title: 'Type', key: 'type', align: 'start', sortable: true },
       { title: 'Name', key: 'name', align: 'start', sortable: true },
       { title: 'Currency', key: 'currency', align: 'center', sortable: true },
-      // { title: 'Max position', key: 'max_position', align: 'center', sortable: true },
       {
         title: 'Entry',
         key: 'entry',
@@ -135,8 +132,21 @@ export default {
       'irr'
     ]
 
-    const fetchClosedPositions = async (timespan, page, itemsPerPage, search, sortBy) => {
-      const data = await getClosedPositions(timespan, page, itemsPerPage, search, sortBy)
+    const fetchClosedPositions = async ({ timespan, page, itemsPerPage, search, sortBy }) => {
+      console.log('[ClosedPositionsPage] fetchClosedPositions called with:', {
+        timespan,
+        page,
+        itemsPerPage,
+        search,
+        sortBy
+      });
+      const data = await getClosedPositions(
+        timespan,
+        page,
+        itemsPerPage,
+        search,
+        sortBy
+      )
       totals.value = data.portfolio_closed_totals
       return {
         positions: data.portfolio_closed,
@@ -151,13 +161,6 @@ export default {
           : header
       );
     });
-
-    const refreshData = () => {
-      // Implement your refresh logic here
-      // This might involve calling fetchClosedPositions again
-    }
-
-    watch(() => store.state.dataRefreshTrigger, refreshData)
 
     return {
       headers,

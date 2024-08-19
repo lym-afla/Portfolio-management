@@ -123,6 +123,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useStore } from 'vuex'
 import { formatDate } from '@/utils/formatters'
 import { getYearOptions } from '@/services/api'
+import { debounce } from 'lodash'
 
 export default {
   name: 'PositionsPageBase',
@@ -146,12 +147,7 @@ export default {
     const positions = ref([])
     const totals = ref({})
     const tableLoading = ref(true)
-    const selectedYear = ref('All-time')
     const yearOptions = ref([])
-    const search = ref('')
-    const itemsPerPage = ref(25)
-    const itemsPerPageOptions = [10, 25, 50, 100]
-    const currentPage = ref(1)
     const totalItems = ref(0)
     const pageCount = computed(() =>
       Math.ceil(totalItems.value / itemsPerPage.value)
@@ -164,17 +160,57 @@ export default {
       )
     })
 
+    const selectedYear = computed({
+      get: () => store.state.selectedYear,
+      set: (value) => store.dispatch('updateSelectedYear', value)
+    })
+
+    const itemsPerPageOptions = computed({
+      get: () => store.state.itemsPerPageOptions,
+      set: (value) => store.dispatch('updateItemsPerPageOptions', value)
+    })
+
+    const currentPage = computed({
+      get: () => store.state.currentPage,
+      set: (value) => store.dispatch('updateCurrentPage', value)
+    })
+
+    const itemsPerPage = computed({
+      get: () => store.state.itemsPerPage,
+      set: (value) => store.dispatch('updateItemsPerPage', value)
+    })
+
+    const localSearch = ref(store.state.search)
+
+    const debouncedUpdateSearch = debounce((value) => {
+      store.dispatch('updateSearch', value)
+    }, 500)
+
+    const search = computed({
+      get: () => localSearch.value,
+      set: (value) => {
+        localSearch.value = value
+        debouncedUpdateSearch(value)
+      }
+    })
+
     const fetchData = async () => {
       tableLoading.value = true
       try {
-        console.log('[PositionsPageBase]. fetchData called with:', { selectedYear, currentPage, itemsPerPage, search, sortBy });
-        const data = await props.fetchPositions(
-          selectedYear.value,
-          currentPage.value,
-          itemsPerPage.value,
-          search.value,
-          sortBy.value[0] || {}
-        )
+        console.log('[PositionsPageBase] fetchData called with:', {
+          selectedYear: selectedYear.value,
+          currentPage: currentPage.value,
+          itemsPerPage: itemsPerPage.value,
+          search: search.value,
+          sortBy: sortBy.value
+        });
+        const data = await props.fetchPositions({
+          timespan: selectedYear.value,
+          page: currentPage.value,
+          itemsPerPage: itemsPerPage.value,
+          search: search.value,
+          sortBy: sortBy.value[0] || {}
+        })
         positions.value = data.positions
         totals.value = data.totals
         totalItems.value = data.total_items
@@ -196,13 +232,13 @@ export default {
     }
 
     const handlePageChange = (newPage) => {
-      currentPage.value = newPage
+      store.dispatch('updateCurrentPage', newPage)
       fetchData()
     }
 
     const handleItemsPerPageChange = (newItemsPerPage) => {
-      itemsPerPage.value = newItemsPerPage
-      currentPage.value = 1
+      store.dispatch('updateItemsPerPage', newItemsPerPage)
+      store.dispatch('updateCurrentPage', 1)
       fetchData()
     }
 
@@ -214,33 +250,47 @@ export default {
       } else {
         sortBy.value = []
       }
-      currentPage.value = 1
+      store.dispatch('updateCurrentPage', 1)
+      await refreshData()
+    }
+
+    const refreshData = async () => {
+      const payload = store.state.dataRefreshPayload
+      if (payload) {
+        store.dispatch('updateSelectedYear', payload.timespan)
+        store.dispatch('updateCurrentPage', payload.page)
+        store.dispatch('updateItemsPerPage', payload.itemsPerPage)
+        store.dispatch('updateSearch', payload.search)
+        store.dispatch('updateSortBy', payload.sortBy)
+      }
       await fetchData()
     }
 
-    const refreshData = () => {
-      const payload = store.state.dataRefreshPayload
-      if (payload) {
-        selectedYear.value = payload.timespan
-        currentPage.value = payload.page
-        itemsPerPage.value = payload.itemsPerPage
-        search.value = payload.search
-        sortBy.value = payload.sortBy
-      }
-      fetchData()
-    }
-
-    watch(() => store.state.dataRefreshTrigger, refreshData)
-
+    // This code sets up a watcher that observes changes to the following:
+    // 1. The `dataRefreshTrigger` state in the Vuex store.
+    // 2. The `selectedYear` variable.
+    // 3. The `search` variable.
+    // 
+    // When any of these values change, the watcher triggers the following actions:
+    // 1. It dispatches an action to update the `currentPage` state in the Vuex store to 1.
+    // 2. It calls the `fetchData` function to refetch the data based on the new state.
+    // 
+    // The `{ deep: true }` option is used to enable deep watching, which means the watcher will also trigger if any nested properties of the observed objects change.
     watch(
-      [() => store.state.dataRefreshTrigger, selectedYear, search],
+      [
+        () => store.state.dataRefreshTrigger,
+        () => store.state.selectedYear,
+        () => store.state.search
+      ],
       () => {
-        currentPage.value = 1
-        fetchData()
+        store.dispatch('updateCurrentPage', 1)
+        refreshData()
       },
       { deep: true }
     )
 
+    // This watch is used to update the year options when the selected broker changes.
+    // Data refresh is handled in BrokerSelection.vue, dispatching the dataRefreshTrigger action.
     watch(
       () => store.state.selectedBroker,
       () => {

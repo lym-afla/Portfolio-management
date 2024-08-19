@@ -99,13 +99,19 @@ export default {
         if (response.success) {
           console.log('Settings updated successfully:', response.data)
           store.dispatch('updateEffectiveCurrentDate', formData.table_date)
+          
+          // Get the current state from the store
+          const currentState = store.state
+          
+          // Dispatch triggerDataRefresh with current state values
           store.dispatch('triggerDataRefresh', {
-            timespan: formData.table_date,
-            page: 1,
-            itemsPerPage: 25,
-            search: '',
-            sortBy: {}
+            timespan: currentState.selectedYear || 'All-time',
+            page: currentState.currentPage || 1,
+            itemsPerPage: currentState.itemsPerPage || 25,
+            search: currentState.search || '',
+            sortBy: currentState.sortBy || {}
           })
+          
           closeDialog()
         } else {
           handleErrors(response.errors)

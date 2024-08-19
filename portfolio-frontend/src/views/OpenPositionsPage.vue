@@ -124,11 +124,11 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'  
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getOpenPositions } from '@/services/api'
 import { formatDate } from '@/utils/formatters'
-import { useStore } from 'vuex'
+
 
 export default {
   name: 'OpenPositions',
@@ -136,7 +136,7 @@ export default {
     PositionsPageBase,
   },
   setup() {
-    const store = useStore()
+
     const totals = ref({})
     const cashBalances = ref({})
 
@@ -223,13 +223,26 @@ export default {
       'all_assets_share_of_portfolio_percentage'
     ]
 
-    const fetchOpenPositions = async (timespan, page, itemsPerPage, search, sortBy) => {
-      console.log('[OpenPositionsPage] fetchOpenPositions called with:', { timespan, page, itemsPerPage, search, sortBy });
-      const data = await getOpenPositions(timespan, page, itemsPerPage, search, sortBy)
+    const fetchOpenPositions = async ({ timespan, page, itemsPerPage, search, sortBy }) => {
+      console.log('[OpenPositionsPage] fetchOpenPositions called with:', {
+        timespan,
+        page,
+        itemsPerPage,
+        search,
+        sortBy
+      });
+      const data = await getOpenPositions(
+        timespan,
+        page,
+        itemsPerPage,
+        search,
+        sortBy
+      )
       totals.value = data.portfolio_open_totals
       cashBalances.value = data.cash_balances
       return {
         positions: data.portfolio_open,
+        totals: data.portfolio_open_totals,
         total_items: data.total_items,
       }
     }
@@ -257,12 +270,6 @@ export default {
       if (level === 1 && !header.children[0].children) return 1
       return 1
     }
-
-    const refreshData = () => {
-      fetchOpenPositions()
-    }
-
-    watch(() => store.state.dataRefreshTrigger, refreshData)
 
     return {
       headers,
