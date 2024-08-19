@@ -32,6 +32,7 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    print("positions_utils. 35", effective_current_date)
 
     currency_target = user.default_currency
     number_of_digits = user.digits

@@ -160,7 +160,8 @@ LOGGING = {
     },
     'root': {
         'handlers': ['console'],
-        'level': 'INFO',
+        'level': 'DEBUG',
+        'propagate': False,
     },
     'loggers': {
         'yfinance': {

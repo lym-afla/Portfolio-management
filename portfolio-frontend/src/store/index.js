@@ -9,9 +9,11 @@ export default createStore({
     loading: false,
     error: null,
     customBrokerSelection: null,
+    dataRefreshPayload: null,
     dataRefreshTrigger: 0,
     selectedBroker: null,
     effectiveCurrentDate: null,
+
   },
   mutations: {
     setToken(state, token) {
@@ -35,6 +37,9 @@ export default createStore({
     },
     SET_CUSTOM_BROKER_SELECTION(state, broker_choices) {
       state.customBrokerSelection = broker_choices
+    },
+    SET_DATA_REFRESH_PAYLOAD(state, payload) {
+      state.dataRefreshPayload = payload
     },
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
@@ -117,9 +122,9 @@ export default createStore({
     updateSelectedBroker({ commit }, broker) {
       commit('SET_SELECTED_BROKER', broker)
     },
-    triggerDataRefresh({ commit }) {
+    triggerDataRefresh({ commit }, payload) {
+      commit('SET_DATA_REFRESH_PAYLOAD', payload)
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
-      console.log('Data refresh triggered')
     },
     async fetchEffectiveCurrentDate({ commit }) {
       try {

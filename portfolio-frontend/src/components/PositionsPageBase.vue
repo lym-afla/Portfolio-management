@@ -167,6 +167,7 @@ export default {
     const fetchData = async () => {
       tableLoading.value = true
       try {
+        console.log('[PositionsPageBase]. fetchData called with:', { selectedYear, currentPage, itemsPerPage, search, sortBy });
         const data = await props.fetchPositions(
           selectedYear.value,
           currentPage.value,
@@ -216,6 +217,20 @@ export default {
       currentPage.value = 1
       await fetchData()
     }
+
+    const refreshData = () => {
+      const payload = store.state.dataRefreshPayload
+      if (payload) {
+        selectedYear.value = payload.timespan
+        currentPage.value = payload.page
+        itemsPerPage.value = payload.itemsPerPage
+        search.value = payload.search
+        sortBy.value = payload.sortBy
+      }
+      fetchData()
+    }
+
+    watch(() => store.state.dataRefreshTrigger, refreshData)
 
     watch(
       [() => store.state.dataRefreshTrigger, selectedYear, search],

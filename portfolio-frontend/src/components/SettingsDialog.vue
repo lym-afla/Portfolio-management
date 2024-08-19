@@ -94,11 +94,19 @@ export default {
       try {
         clearErrors()
         isUpdating.value = true
+        console.log('[SettingsDialog] Sending formData:', formData)
         const response = await updateDashboardSettings(formData)
         if (response.success) {
+          console.log('Settings updated successfully:', response.data)
           store.dispatch('updateEffectiveCurrentDate', formData.table_date)
+          store.dispatch('triggerDataRefresh', {
+            timespan: formData.table_date,
+            page: 1,
+            itemsPerPage: 25,
+            search: '',
+            sortBy: {}
+          })
           closeDialog()
-          window.location.reload()
         } else {
           handleErrors(response.errors)
         }

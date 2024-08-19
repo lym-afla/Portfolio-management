@@ -44,10 +44,11 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getClosedPositions } from '@/services/api'
 import { formatDate } from '@/utils/formatters'
+import { useStore } from 'vuex'
 
 export default {
   name: 'ClosedPositions',
@@ -55,6 +56,7 @@ export default {
     PositionsPageBase,
   },
   setup() {
+    const store = useStore()
     const totals = ref({})
 
     const headers = ref([
@@ -149,6 +151,13 @@ export default {
           : header
       );
     });
+
+    const refreshData = () => {
+      // Implement your refresh logic here
+      // This might involve calling fetchClosedPositions again
+    }
+
+    watch(() => store.state.dataRefreshTrigger, refreshData)
 
     return {
       headers,

@@ -1,9 +1,9 @@
-from datetime import datetime
 import json
 from django import forms
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
+from django.utils import timezone
 
 from common.forms import DashboardForm, DashboardForm_old_setup
 from common.models import Brokers
@@ -367,12 +367,16 @@ def update_user_broker_api(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_user_settings_from_dashboard(request):
+    logger.info(f"Received data: {request.data}")
     user = request.user
     form = DashboardForm(request.data, instance=user)
     
     if form.is_valid():
         form.save()
-        request.session['effective_current_date'] = form.cleaned_data['table_date'].isoformat()
+        table_date = form.cleaned_data['table_date']
+        request.session['effective_current_date'] = table_date.isoformat()
+        
+        logger.info(f"Updated effective_current_date for user {user.id}: {request.session['effective_current_date']}")
         
         return Response({
             'success': True,
@@ -384,6 +388,7 @@ def update_user_settings_from_dashboard(request):
             }
         })
     else:
+        logger.error(f"Form validation failed for user {user.id}: {form.errors}")
         return Response({
             'success': False,
             'errors': form.errors
@@ -421,7 +426,7 @@ def get_dashboard_settings(request):
     for field in form_fields:
         if field['name'] == 'table_date':
             # Use the session value or current date for table_date
-            data[field['name']] = request.session.get('effective_current_date', datetime.now().date().isoformat())
+            data[field['name']] = request.session.get('effective_current_date', timezone.now().date().isoformat())
         elif field['type'] == 'select':
             current_value = getattr(user, field['name'])
             choices_dict = {choice['value']: choice['text'] for choice in field['choices']}

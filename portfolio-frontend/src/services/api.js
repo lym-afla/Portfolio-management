@@ -45,7 +45,7 @@ export const getClosedPositions = async (timespan, page, itemsPerPage, search = 
 
 export const getYearOptions = async () => {
   try {
-    const response = await axios.get(`${API_URL}/api/get_year_options/`)
+    const response = await axios.get(`${API_URL}/api/get-year-options/`)
     return response.data.table_years
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -143,6 +143,7 @@ export const deleteAccount = async () => {
 }
 
 export const getOpenPositions = async (timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('[api.js] getOpenPositions called with:', { timespan, page, itemsPerPage, search, sortBy });
   try {
     const response = await axios.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
       timespan,
@@ -158,14 +159,14 @@ export const getOpenPositions = async (timespan, page, itemsPerPage, search = ''
   }
 }
 
-export const getOpenPositionsYearOptions = async () => {
-  try {
-    const response = await axios.get(`${API_URL}/open_positions/api/get_year_options/`)
-    return response.data.open_table_years
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
+// export const getOpenPositionsYearOptions = async () => {
+//   try {
+//     const response = await axios.get(`${API_URL}/open_positions/api/get-year-options/`)
+//     return response.data.open_table_years
+//   } catch (error) {
+//     throw error.response ? error.response.data : error.message
+//   }
+// }
 
 export const getDashboardSettings = async () => {
   try {
@@ -178,7 +179,9 @@ export const getDashboardSettings = async () => {
 
 export const updateDashboardSettings = async (settings) => {
   try {
+    console.log('Sending settings to API:', settings)  // Add this line
     const response = await axios.post(`${API_URL}/users/api/update-settings-from-dashboard/`, settings)
+    console.log('API response:', response.data)  // Add this line
     return response.data
   } catch (error) {
     if (error.response && error.response.data) {
