@@ -201,4 +201,5 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 @permission_classes([IsAuthenticated])
 @ensure_csrf_cookie
 def get_open_positions_table_api(request):
+    print("views. open positions. 204", request.session['effective_current_date'], request.user.username)
     return Response(get_positions_table_api(request, is_closed=False))

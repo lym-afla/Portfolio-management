@@ -179,9 +179,11 @@ export const getDashboardSettings = async () => {
 
 export const updateDashboardSettings = async (settings) => {
   try {
-    console.log('Sending settings to API:', settings)  // Add this line
-    const response = await axios.post(`${API_URL}/users/api/update-settings-from-dashboard/`, settings)
-    console.log('API response:', response.data)  // Add this line
+    console.log('Sending settings to API:', settings)
+    const response = await axios.post(`${API_URL}/users/api/update-settings-from-dashboard/`, settings, {
+      withCredentials: true
+    })
+    console.log('API response:', response.data)
     return response.data
   } catch (error) {
     if (error.response && error.response.data) {

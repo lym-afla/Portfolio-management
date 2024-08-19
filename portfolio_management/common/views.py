@@ -13,6 +13,7 @@ def get_year_options_api(request):
     user = request.user
     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
     effective_current_date_str = request.session.get('effective_current_date')
+    print(f"views. common. 16. Effective current date from session: {effective_current_date_str}")
     
     # Convert effective_current_date from string to date object
     effective_current_date = datetime.strptime(effective_current_date_str, '%Y-%m-%d').date() if effective_current_date_str else datetime.now().date()

@@ -63,6 +63,7 @@ export default {
     const fetchSettingsData = async () => {
       try {
         const response = await getDashboardSettings()
+        console.log('[SettingsDialog] Getting dashboard settings:', response)
         formFields.value = response.form_fields
         formFields.value.forEach(field => {
           if (field.type === 'select') {
@@ -97,12 +98,12 @@ export default {
         console.log('[SettingsDialog] Sending formData:', formData)
         const response = await updateDashboardSettings(formData)
         if (response.success) {
-          console.log('Settings updated successfully:', response.data)
+          console.log('Settings updated successfully:', response.data,)
           store.dispatch('updateEffectiveCurrentDate', formData.table_date)
           
           // Get the current state from the store
           const currentState = store.state
-          
+          console.log('[SettingsDialog] Current state:', currentState)
           // Dispatch triggerDataRefresh with current state values
           store.dispatch('triggerDataRefresh', {
             timespan: currentState.selectedYear || 'All-time',

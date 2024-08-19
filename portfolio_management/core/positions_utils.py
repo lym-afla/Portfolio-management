@@ -30,9 +30,11 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     search = data.get('search', '')
     sort_by = data.get('sort_by', {})
 
+    print("positions_utils. 33", request.session['effective_current_date'])
+
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-    print("positions_utils. 35", effective_current_date)
+    print("positions_utils. 37", effective_current_date)
 
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -93,10 +95,10 @@ def _sort_portfolio(portfolio: List[Dict[str, Any]], sort_by: Optional[Dict[str,
         
         if key:
             reverse = order == 'desc'
-            portfolio.sort(key=lambda x: get_sort_value(x, key), reverse=reverse)
+            portfolio.sort(key=lambda x: _get_sort_value(x, key), reverse=reverse)
     else:
         # Default sorting
-        portfolio.sort(key=lambda x: get_sort_value(x, 'exit_date' if 'exit_date' in x else 'investment_date'), reverse=True)
+        portfolio.sort(key=lambda x: _get_sort_value(x, 'exit_date' if 'exit_date' in x else 'investment_date'), reverse=True)
     return portfolio
 
 def _get_cash_balances_for_api(user: CustomUser, timespan: str, target_date: date) -> Dict[str, str]:
@@ -129,7 +131,7 @@ def _get_cash_balances_for_api(user: CustomUser, timespan: str, target_date: dat
         for currency, balance in aggregated_balances.items()
     }
 
-def get_sort_value(item: Dict[str, Any], key: str) -> Union[Decimal, date, datetime, str]:
+def _get_sort_value(item: Dict[str, Any], key: str) -> Union[Decimal, date, datetime, str]:
     """
     Get a comparable value for sorting based on the item and key.
 

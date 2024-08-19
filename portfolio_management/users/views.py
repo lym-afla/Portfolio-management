@@ -364,8 +364,11 @@ def update_user_broker_api(request):
     else:
         return Response({'ok': False, 'error': 'Broker or group name not provided'}, status=400)
 
+from django.views.decorators.csrf import ensure_csrf_cookie
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@ensure_csrf_cookie
 def update_user_settings_from_dashboard(request):
     logger.info(f"Received data: {request.data}")
     user = request.user
@@ -375,9 +378,15 @@ def update_user_settings_from_dashboard(request):
         form.save()
         table_date = form.cleaned_data['table_date']
         request.session['effective_current_date'] = table_date.isoformat()
+        # request.session.modified = True
+        print(f"Settings updated. New date: {table_date} for {request.user.username}")
         
         logger.info(f"Updated effective_current_date for user {user.id}: {request.session['effective_current_date']}")
         
+        logger.info(f"Session before save: {dict(request.session)}")
+        request.session.save()
+        logger.info(f"Session after save: {dict(request.session)} for {request.user.username}")
+
         return Response({
             'success': True,
             'message': 'Settings updated successfully',
@@ -426,7 +435,7 @@ def get_dashboard_settings(request):
     for field in form_fields:
         if field['name'] == 'table_date':
             # Use the session value or current date for table_date
-            data[field['name']] = request.session.get('effective_current_date', timezone.now().date().isoformat())
+            data[field['name']] = request.session.get('effective_current_date')#, timezone.now().date().isoformat())
         elif field['type'] == 'select':
             current_value = getattr(user, field['name'])
             choices_dict = {choice['value']: choice['text'] for choice in field['choices']}
@@ -436,5 +445,9 @@ def get_dashboard_settings(request):
             }
         else:
             data[field['name']] = getattr(user, field['name'])
+
+    print("views. users. 449", data)
+    print(data['table_date'])
+    print(request.session.get('effective_current_date'))
     
     return Response(data)
