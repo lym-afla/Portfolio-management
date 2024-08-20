@@ -34,7 +34,7 @@ def open_positions(request):
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
 
-    print("views. open positions. 30", effective_current_date, selected_brokers)
+    print("views. open positions. 37. Effective current date:", effective_current_date, selected_brokers)
 
     initial_data = {
         'selected_brokers': selected_brokers,
@@ -118,7 +118,7 @@ def update_open_positions_table(request):
         abs_total_quantity__lt=TOLERANCE
     )
 
-    print("views. 120", start_date)
+    print("views. 120. Start date:", start_date)
 
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id

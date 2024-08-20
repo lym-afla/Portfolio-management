@@ -1,5 +1,5 @@
 # myapp/middleware.py
-from datetime import date, datetime
+from datetime import date
 
 class InitializeEffectiveDateMiddleware:
     def __init__(self, get_response):
