@@ -159,15 +159,6 @@ export const getOpenPositions = async (timespan, page, itemsPerPage, search = ''
   }
 }
 
-// export const getOpenPositionsYearOptions = async () => {
-//   try {
-//     const response = await axios.get(`${API_URL}/open_positions/api/get-year-options/`)
-//     return response.data.open_table_years
-//   } catch (error) {
-//     throw error.response ? error.response.data : error.message
-//   }
-// }
-
 export const getDashboardSettings = async () => {
   try {
     const response = await axios.get(`${API_URL}/users/api/dashboard-settings/`)
