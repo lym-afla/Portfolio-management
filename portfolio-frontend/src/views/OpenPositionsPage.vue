@@ -92,10 +92,10 @@
                 Total for assets
               </td>
               <td v-else-if="totals[header.key] === undefined" class="text-center"></td>
-              <td v-else-if="percentageColumns.includes(header.key)" class="text-center font-italic font-weight-bold">
+              <td v-else-if="percentageColumns.includes(header.key) && header.key !== 'irr'" class="text-center font-italic font-weight-bold">
                 {{ totals[header.key] }}
               </td>
-              <td v-else-if="totals[header.key] !== undefined" class="text-center">
+              <td v-else-if="totals[header.key] !== undefined && header.key !== 'irr'" class="text-center">
                 {{ totals[header.key] }}
               </td>
               <td v-else></td>

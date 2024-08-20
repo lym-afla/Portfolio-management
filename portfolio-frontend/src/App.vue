@@ -41,6 +41,7 @@ import BrokerSelection from './components/BrokerSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { checkAuth } from './utils/auth'
 import { useRouter, useRoute } from 'vue-router'
+// import { useStore } from 'vuex'
 
 export default {
   name: 'App',
@@ -50,78 +51,60 @@ export default {
     SettingsDialog,
   },
   setup() {
-    const router = useRouter();
-    const route = useRoute();
-    const user = ref(null);
-    const isAuthenticated = ref(false);
-    const layoutLoading = ref(true);
-    const pageTitle = ref('');
+    // const store = useStore()
+    const router = useRouter()
+    const route = useRoute()
+    const user = ref(null)
+    const isAuthenticated = ref(false)
+    const layoutLoading = ref(true)
+    const pageTitle = ref('')
 
     const isProfilePage = computed(() => {
-      return route.path.startsWith('/profile');
-    });
+      return route.path.startsWith('/profile')
+    })
 
     const setUser = (userData) => {
       user.value = userData
     }
 
     const updateAuthStatus = async () => {
-      layoutLoading.value = true;
-      isAuthenticated.value = await checkAuth();
-      if (!isAuthenticated.value && router.currentRoute.value.meta.requiresAuth) {
-        router.push('/login');
+      layoutLoading.value = true
+      isAuthenticated.value = await checkAuth()
+      if (!isAuthenticated.value && route.meta.requiresAuth) {
+        router.push('/login')
       }
-      layoutLoading.value = false;
-    };
+      layoutLoading.value = false
+    }
 
     const handleLogout = () => {
-      setUser(null);
-      isAuthenticated.value = false;
-      router.push('/login');
-    };
+      setUser(null)
+      isAuthenticated.value = false
+      router.push('/login')
+    }
 
     const updatePageTitle = (title) => {
-      pageTitle.value = title;
-    };
+      pageTitle.value = title
+    }
 
-    onMounted(async () => {
-      await updateAuthStatus();
-    });
+    onMounted(updateAuthStatus)
 
-    watch(() => router.currentRoute.value, async () => {
-      layoutLoading.value = true;
-      await updateAuthStatus();
-    });
-
-    // Reset page title when authentication status changes
-    watch(() => isAuthenticated.value, (newValue) => {
-      if (!newValue) {
-        pageTitle.value = '';
-      }
-    });
-
-    // Reset page title on route change for non-authenticated routes
-    watch(() => router.currentRoute.value.path, () => {
-      if (!isAuthenticated.value) {
-        pageTitle.value = '';
-      }
-    });
+    watch(() => route.fullPath, updateAuthStatus)
 
     provide('user', user)
     provide('setUser', setUser)
     provide('isAuthenticated', isAuthenticated)
 
-    return { 
-      user, 
-      setUser, 
-      router, 
-      isAuthenticated, 
-      layoutLoading, 
-      pageTitle, 
-      handleLogout, 
+    return {
+      user,
+      setUser,
+      router,
+      isAuthenticated,
+      layoutLoading,
+      pageTitle,
+      handleLogout,
       updatePageTitle,
       isProfilePage,
-    };
+    }
   },
 }
 </script>

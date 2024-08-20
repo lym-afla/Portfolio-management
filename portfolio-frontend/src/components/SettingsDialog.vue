@@ -98,20 +98,21 @@ export default {
         console.log('[SettingsDialog] Sending formData:', formData)
         const response = await updateDashboardSettings(formData)
         if (response.success) {
-          console.log('Settings updated successfully:', response.data,)
-          store.dispatch('updateEffectiveCurrentDate', formData.table_date)
+          console.log('Settings updated successfully:', response.data)
+          store.dispatch('updateEffectiveCurrentDate', response.data.table_date)
           
           // Get the current state from the store
           const currentState = store.state
           console.log('[SettingsDialog] Current state:', currentState)
-          // Dispatch triggerDataRefresh with current state values
-          store.dispatch('triggerDataRefresh', {
-            timespan: currentState.selectedYear || 'All-time',
-            page: currentState.currentPage || 1,
-            itemsPerPage: currentState.itemsPerPage || 25,
-            search: currentState.search || '',
-            sortBy: currentState.sortBy || {}
+          // Update table settings and trigger data refresh
+          store.dispatch('updateTableSettings', {
+            timespan: currentState.tableSettings.timespan,
+            page: currentState.tableSettings.page,
+            itemsPerPage: currentState.tableSettings.itemsPerPage,
+            search: currentState.tableSettings.search,
+            sortBy: currentState.tableSettings.sortBy
           })
+          store.dispatch('triggerDataRefresh')
           
           closeDialog()
         } else {

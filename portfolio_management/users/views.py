@@ -384,7 +384,7 @@ def update_user_settings_from_dashboard(request):
         logger.info(f"Updated effective_current_date for user {user.id}: {request.session['effective_current_date']}")
         
         logger.info(f"Session before save: {dict(request.session)}")
-        request.session.save()
+        # request.session.save()
         logger.info(f"Session after save: {dict(request.session)} for {request.user.username}")
 
         return Response({

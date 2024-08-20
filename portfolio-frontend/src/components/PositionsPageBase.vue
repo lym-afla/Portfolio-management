@@ -35,7 +35,7 @@
             <v-toolbar flat class="bg-grey-lighten-4 border-b">
               <v-col cols="12" sm="3" md="2" lg="2">
                 <v-select
-                  v-model="selectedYear"
+                  v-model="timespan"
                   :items="yearOptions"
                   item-title="text"
                   item-value="value"
@@ -149,10 +149,38 @@ export default {
     const tableLoading = ref(true)
     const yearOptions = ref([])
     const totalItems = ref(0)
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
-    const sortBy = ref([])
+
+    const tableSettings = computed(() => store.state.tableSettings)
+
+    const timespan = computed({
+      get: () => tableSettings.value.timespan,
+      set: (value) => store.dispatch('updateTableSettings', { timespan: value })
+    })
+
+    const itemsPerPage = computed({
+      get: () => tableSettings.value.itemsPerPage,
+      set: (value) => store.dispatch('updateTableSettings', { itemsPerPage: value })
+    })
+
+    const currentPage = computed({
+      get: () => tableSettings.value.page,
+      set: (value) => store.dispatch('updateTableSettings', { page: value })
+    })
+
+    const sortBy = computed({
+      get: () => tableSettings.value.sortBy,
+      set: (value) => store.dispatch('updateTableSettings', { sortBy: value })
+    })
+
+    const search = computed({
+      get: () => tableSettings.value.search,
+      set: debounce((value) => {
+        store.dispatch('updateTableSettings', { search: value })
+        fetchData()
+      }, 500)
+    })
+
+    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
 
     const flattenedHeaders = computed(() => {
       return props.headers.flatMap((header) =>
@@ -160,52 +188,18 @@ export default {
       )
     })
 
-    const selectedYear = computed({
-      get: () => store.state.selectedYear,
-      set: (value) => store.dispatch('updateSelectedYear', value)
-    })
-
-    const itemsPerPageOptions = computed({
-      get: () => store.state.itemsPerPageOptions,
-      set: (value) => store.dispatch('updateItemsPerPageOptions', value)
-    })
-
-    const currentPage = computed({
-      get: () => store.state.currentPage,
-      set: (value) => store.dispatch('updateCurrentPage', value)
-    })
-
-    const itemsPerPage = computed({
-      get: () => store.state.itemsPerPage,
-      set: (value) => store.dispatch('updateItemsPerPage', value)
-    })
-
-    const localSearch = ref(store.state.search)
-
-    const debouncedUpdateSearch = debounce((value) => {
-      store.dispatch('updateSearch', value)
-    }, 500)
-
-    const search = computed({
-      get: () => localSearch.value,
-      set: (value) => {
-        localSearch.value = value
-        debouncedUpdateSearch(value)
-      }
-    })
-
     const fetchData = async () => {
       tableLoading.value = true
       try {
         console.log('[PositionsPageBase] fetchData called with:', {
-          selectedYear: selectedYear.value,
+          timespan: timespan.value,
           currentPage: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
           sortBy: sortBy.value
         });
         const data = await props.fetchPositions({
-          timespan: selectedYear.value,
+          timespan: timespan.value,
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
@@ -219,6 +213,7 @@ export default {
         console.error('Error fetching positions:', error)
       } finally {
         tableLoading.value = false
+        console.log('[PositionsPageBase] Current state:', store.state)
       }
     }
 
@@ -232,13 +227,13 @@ export default {
     }
 
     const handlePageChange = (newPage) => {
-      store.dispatch('updateCurrentPage', newPage)
+      currentPage.value = newPage
       fetchData()
     }
 
     const handleItemsPerPageChange = (newItemsPerPage) => {
-      store.dispatch('updateItemsPerPage', newItemsPerPage)
-      store.dispatch('updateCurrentPage', 1)
+      itemsPerPage.value = newItemsPerPage
+      currentPage.value = 1
       fetchData()
     }
 
@@ -250,41 +245,18 @@ export default {
       } else {
         sortBy.value = []
       }
-      store.dispatch('updateCurrentPage', 1)
-      await refreshData()
+      currentPage.value = 1
+      fetchData()
     }
 
-    const refreshData = async () => {
-      const payload = store.state.dataRefreshPayload
-      if (payload) {
-        store.dispatch('updateSelectedYear', payload.timespan)
-        store.dispatch('updateCurrentPage', payload.page)
-        store.dispatch('updateItemsPerPage', payload.itemsPerPage)
-        store.dispatch('updateSearch', payload.search)
-        store.dispatch('updateSortBy', payload.sortBy)
-      }
-      await fetchData()
-    }
-
-    // This code sets up a watcher that observes changes to the following:
-    // 1. The `dataRefreshTrigger` state in the Vuex store.
-    // 2. The `selectedYear` variable.
-    // 3. The `search` variable.
-    // 
-    // When any of these values change, the watcher triggers the following actions:
-    // 1. It dispatches an action to update the `currentPage` state in the Vuex store to 1.
-    // 2. It calls the `fetchData` function to refetch the data based on the new state.
-    // 
-    // The `{ deep: true }` option is used to enable deep watching, which means the watcher will also trigger if any nested properties of the observed objects change.
     watch(
       [
         () => store.state.dataRefreshTrigger,
-        () => store.state.selectedYear,
-        () => store.state.search
+        timespan,
       ],
       () => {
-        store.dispatch('updateCurrentPage', 1)
-        refreshData()
+        currentPage.value = 1
+        fetchData()
       },
       { deep: true }
     )
@@ -295,6 +267,7 @@ export default {
       () => store.state.selectedBroker,
       () => {
         fetchYearOptions()
+        // fetchData()
       }
     )
 
@@ -312,11 +285,11 @@ export default {
       positions,
       totals,
       tableLoading,
-      selectedYear,
+      timespan,
       yearOptions,
       search,
       itemsPerPage,
-      itemsPerPageOptions,
+      itemsPerPageOptions: computed(() => store.state.itemsPerPageOptions),
       currentPage,
       sortBy,
       flattenedHeaders,

@@ -78,6 +78,7 @@ def calculate_closed_table_output_for_api(
         for i, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
             
+            # Has to be defined here to accomodate different closed positions of same asset as separate rows
             position = {
                 'type': asset.type,
                 'name': asset.name,
@@ -305,15 +306,22 @@ def calculate_open_table_output_for_api(
 
         open_positions.append(position)
 
-    if 'entry_value' in portfolio_open_totals:
-        if portfolio_open_totals['entry_value'] != 0:    
-            portfolio_open_totals['price_change_percentage'] = (portfolio_open_totals.get('realized_gl', Decimal(0)) + portfolio_open_totals.get('unrealized_gl', Decimal(0))) / abs(portfolio_open_totals['entry_value'])
-            if 'capital_distribution' in categories:
-                portfolio_open_totals['capital_distribution_percentage'] = portfolio_open_totals['capital_distribution'] / portfolio_open_totals['entry_value']
-            if 'commission' in categories:
-                portfolio_open_totals['commission_percentage'] = portfolio_open_totals['commission'] / portfolio_open_totals['entry_value']
-            portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return_amount'] / abs(portfolio_open_totals['entry_value'])
-    
+    if 'entry_value' in portfolio_open_totals and portfolio_open_totals['entry_value'] != 0:
+        abs_entry_value = abs(portfolio_open_totals['entry_value'])
+        portfolio_open_totals['price_change_percentage'] = (
+            portfolio_open_totals.get('realized_gl', Decimal(0)) +
+            portfolio_open_totals.get('unrealized_gl', Decimal(0))
+        ) / abs_entry_value
+        
+        if 'capital_distribution' in categories:
+            portfolio_open_totals['capital_distribution_percentage'] = portfolio_open_totals['capital_distribution'] / abs_entry_value
+        
+        if 'commission' in categories:
+            portfolio_open_totals['commission_percentage'] = portfolio_open_totals['commission'] / abs_entry_value
+        
+        portfolio_open_totals['total_return_percentage'] = portfolio_open_totals['total_return_amount'] / abs_entry_value
+        portfolio_open_totals['share_of_portfolio'] = portfolio_open_totals['current_value'] / portfolio_NAV
+
     portfolio_open_totals['cash'] = portfolio_cash
     portfolio_open_totals['total_nav'] = portfolio_NAV
     portfolio_open_totals['irr'] = IRR(user_id, end_date, currency_target, asset_id=None, broker_id_list=selected_brokers, start_date=total_irr_start_date)

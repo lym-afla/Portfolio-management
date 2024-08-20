@@ -9,16 +9,17 @@ export default createStore({
     loading: false,
     error: null,
     customBrokerSelection: null,
-    dataRefreshPayload: null,
     dataRefreshTrigger: 0,
     selectedBroker: null,
     effectiveCurrentDate: null,
-    selectedYear: 'All-time',
-    currentPage: 1,
-    itemsPerPage: 25,
+    tableSettings: {
+      timespan: 'All-time',
+      page: 1,
+      itemsPerPage: 25,
+      search: '',
+      sortBy: [],
+    },
     itemsPerPageOptions: [10, 25, 50, 100],
-    search: '',
-    sortBy: {},
   },
   mutations: {
     setToken(state, token) {
@@ -43,8 +44,8 @@ export default createStore({
     SET_CUSTOM_BROKER_SELECTION(state, broker_choices) {
       state.customBrokerSelection = broker_choices
     },
-    SET_DATA_REFRESH_PAYLOAD(state, payload) {
-      state.dataRefreshPayload = payload
+    SET_TABLE_SETTINGS(state, settings) {
+      state.tableSettings = { ...state.tableSettings, ...settings }
     },
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
@@ -57,24 +58,6 @@ export default createStore({
     },
     SET_EFFECTIVE_CURRENT_DATE(state, date) {
       state.effectiveCurrentDate = date
-    },
-    SET_SELECTED_YEAR(state, year) {
-      state.selectedYear = year
-    },
-    SET_ITEMS_PER_PAGE_OPTIONS(state, options) {
-      state.itemsPerPageOptions = options
-    },
-    SET_CURRENT_PAGE(state, page) {
-      state.currentPage = page
-    },
-    SET_ITEMS_PER_PAGE(state, itemsPerPage) {
-      state.itemsPerPage = itemsPerPage
-    },
-    SET_SEARCH(state, search) {
-      state.search = search
-    },
-    SET_SORT_BY(state, sortBy) {
-      state.sortBy = sortBy
     },
   },
   actions: {
@@ -145,8 +128,7 @@ export default createStore({
     updateSelectedBroker({ commit }, broker) {
       commit('SET_SELECTED_BROKER', broker)
     },
-    triggerDataRefresh({ commit }, payload) {
-      commit('SET_DATA_REFRESH_PAYLOAD', payload)
+    triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
     },
     async fetchEffectiveCurrentDate({ commit }) {
@@ -160,27 +142,13 @@ export default createStore({
     updateEffectiveCurrentDate({ commit }, date) {
       commit('SET_EFFECTIVE_CURRENT_DATE', date)
     },
-    updateSelectedYear({ commit }, year) {
-      commit('SET_SELECTED_YEAR', year)
-    },
-    updateItemsPerPageOptions({ commit }, options) {
-      commit('SET_ITEMS_PER_PAGE_OPTIONS', options)
-    },
-    updateCurrentPage({ commit }, page) {
-      commit('SET_CURRENT_PAGE', page)
-    },
-    updateItemsPerPage({ commit }, itemsPerPage) {
-      commit('SET_ITEMS_PER_PAGE', itemsPerPage)
-    },
-    updateSearch({ commit }, search) {
-      commit('SET_SEARCH', search)
-    },
-    updateSortBy({ commit }, sortBy) {
-      commit('SET_SORT_BY', sortBy)
+    updateTableSettings({ commit }, settings) {
+      commit('SET_TABLE_SETTINGS', settings)
     },
   },
   getters: {
     isAuthenticated: state => !!state.token,
     effectiveCurrentDate: state => state.effectiveCurrentDate,
+    tableSettings: state => state.tableSettings,
   }
 })

@@ -31,10 +31,10 @@ axios.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       // If we receive a 401 Unauthorized, clear the token and redirect to login
-      localStorage.removeItem('token');
-      router.push('/login');
+      store.commit('logout')
+      router.push('/login')
     }
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
 );
 

@@ -58,7 +58,8 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     formatted_totals = format_table_data(portfolio_totals, currency_target, number_of_digits)
 
     cash_balances = _get_cash_balances_for_api(user, timespan, effective_current_date) if not is_closed else None
-
+    print("positions_utils. 61", formatted_portfolio)
+    print("positions_utils. 62", formatted_totals)
     return {
         f'portfolio_{"closed" if is_closed else "open"}': formatted_portfolio,
         f'portfolio_{"closed" if is_closed else "open"}_totals': formatted_totals,
