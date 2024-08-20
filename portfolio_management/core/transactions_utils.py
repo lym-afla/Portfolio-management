@@ -18,6 +18,8 @@ def get_transactions_table_api(request):
     items_per_page = int(data.get('items_per_page', 25))
     search = data.get('search', '')
 
+    print(f"transaction_utils. 21. timespan: {timespan}, page: {page}, items_per_page: {items_per_page}, search: {search}")
+
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
 

@@ -9,12 +9,6 @@
         <v-card-title class="text-h6">Cash Balances</v-card-title>
         <v-card-text>
           <v-table density="compact">
-            <!-- <thead>
-              <tr>
-                <th class="text-left">Currency</th>
-                <th class="text-right">Balance</th>
-              </tr>
-            </thead> -->
             <tbody>
               <tr v-for="(balance, currency) in cashBalances" :key="currency">
                 <td class="text-left">{{ currency }}</td>

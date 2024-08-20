@@ -63,9 +63,21 @@ export const getClosedPositions = async (timespan, page, itemsPerPage, search = 
   }
 }
 
-export const getTransactionsTable = async (params) => {
-  const response = await axiosInstance.post('/transactions/api/get_transactions_table/', params)
-  return response.data
+export const getTransactions = async (timespan, page, itemsPerPage, search = '') => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/get_transactions_table/`, {
+      timespan,
+      page,
+      items_per_page: itemsPerPage,
+      search
+    })
+    console.log('API request payload for transactions:', { timespan, page, items_per_page: itemsPerPage, search })
+    console.log('API response for transactions:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching transactions:', error)
+    throw error
+  }
 }
 
 export const getYearOptions = async () => {
