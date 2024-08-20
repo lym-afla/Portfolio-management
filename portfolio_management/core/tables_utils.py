@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Union, Tuple, Optional
 from core.formatting_utils import currency_format
 from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
 
-def calculate_table_output(
+def calculate_positions_table_output(
     user_id: int,
     assets: List[Any],
     end_date: date,

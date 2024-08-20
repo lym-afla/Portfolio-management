@@ -7,4 +7,5 @@ urlpatterns = [
     path('', views.transactions, name='transactions'),
 
     # API methods
+    path('api/get_transactions_table/', views.compile_transactions_table_api, name='get_transactions_table_api'),
 ]

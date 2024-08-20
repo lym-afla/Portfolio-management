@@ -7,6 +7,10 @@ from django.contrib.auth.decorators import login_required
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
 from utils import broker_group_to_ids, currency_format_old_structure
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from core.transactions_utils import get_transactions_table_api
 
 @login_required
 def transactions(request):
@@ -120,3 +124,8 @@ def transactions(request):
         'dashboardForm': dashboard_form,
         'buttons': buttons,
     })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def compile_transactions_table_api(request):
+    return Response(get_transactions_table_api(request))

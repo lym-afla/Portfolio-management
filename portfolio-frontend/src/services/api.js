@@ -63,6 +63,11 @@ export const getClosedPositions = async (timespan, page, itemsPerPage, search = 
   }
 }
 
+export const getTransactionsTable = async (params) => {
+  const response = await axiosInstance.post('/transactions/api/get_transactions_table/', params)
+  return response.data
+}
+
 export const getYearOptions = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/api/get-year-options/`)

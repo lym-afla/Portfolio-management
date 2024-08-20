@@ -9,6 +9,7 @@ import ProfilePage from '../views/profile/ProfilePage.vue'
 import ProfileEdit from '../views/profile/ProfileEdit.vue'
 import ProfileSettings from '../views/profile/ProfileSettings.vue'
 import ClosedPositionsPage from '../views/ClosedPositionsPage.vue'
+import TransactionsPage from '../views/TransactionsPage.vue'
 
 export const loading = ref(true)
 
@@ -41,6 +42,12 @@ const routes = [
     path: '/closed-positions',
     name: 'ClosedPositions',
     component: ClosedPositionsPage,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/transactions',
+    name: 'Transactions',
+    component: TransactionsPage,
     meta: { requiresAuth: true }
   },
   {

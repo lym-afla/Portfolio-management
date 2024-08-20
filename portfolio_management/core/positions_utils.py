@@ -4,16 +4,19 @@ from collections import defaultdict
 from typing import Dict, List, Any, Optional, Union
 
 from django.http import HttpRequest
+from django.db.models import Q, Sum
+from django.db.models.functions import Abs
 
-from common.models import Brokers
+from common.models import Brokers, Assets
 from constants import ALL_TIME, YTD
 from users.models import CustomUser
-from .asset_utils import filter_assets
-from .tables_utils import calculate_table_output
+from .tables_utils import calculate_positions_table_output
 from .date_utils import get_date_range
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
 from .portfolio_utils import broker_group_to_ids
+
+from constants import TOLERANCE
 
 def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, Any]:
     """
@@ -43,10 +46,10 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
 
     start_date, end_date = get_date_range(timespan, effective_current_date)
 
-    assets = filter_assets(user, end_date, selected_brokers, is_closed, search)
+    assets = _filter_assets(user, end_date, selected_brokers, is_closed, search)
     categories = _get_categories(is_closed)
 
-    portfolio, portfolio_totals = calculate_table_output(
+    portfolio, portfolio_totals = calculate_positions_table_output(
         user.id, assets, end_date, categories, use_default_currency,
         currency_target, selected_brokers, start_date, is_closed
     )
@@ -155,3 +158,33 @@ def _get_sort_value(item: Dict[str, Any], key: str) -> Union[Decimal, date, date
             return value.lower()
     else:
         return str(value).lower()
+
+def _filter_assets(user, end_date, selected_brokers, is_closed: bool, search: str) -> List[Assets]:
+    """
+    Filter assets based on user, date, brokers, closed status, and search query.
+
+    :param user: The user whose assets to filter
+    :param end_date: The end date for transactions
+    :param selected_brokers: List of broker IDs to filter by
+    :param is_closed: Boolean indicating whether to filter for closed positions
+    :param search: Search string for asset name or type
+    :return: List of filtered Asset objects
+    """
+    assets = Assets.objects.filter(
+        investor=user,
+        transactions__date__lte=end_date,
+        transactions__broker_id__in=selected_brokers,
+        transactions__quantity__isnull=False
+    ).distinct()
+
+    if search:
+        assets = assets.filter(Q(name__icontains=search) | Q(type__icontains=search))
+
+    if is_closed:
+        return [asset for asset in assets if len(asset.exit_dates(end_date)) != 0]
+    else:
+        return assets.annotate(
+            abs_total_quantity=Abs(Sum('transactions__quantity'))
+        ).exclude(
+            abs_total_quantity__lt=TOLERANCE
+        )
