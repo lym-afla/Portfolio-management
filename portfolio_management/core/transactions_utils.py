@@ -7,7 +7,6 @@ from typing import List, Dict, Any
 from django.db.models import Q
 from common.models import Brokers, FXTransaction, Transactions
 from utils import broker_group_to_ids
-from .date_utils import get_date_range
 from .formatting_utils import format_table_data, currency_format
 from .pagination_utils import paginate_table
 
