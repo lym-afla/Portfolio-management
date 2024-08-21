@@ -59,8 +59,6 @@ def calculate_closed_table_output_for_api(
     portfolio_closed_totals = {}
     
     for asset in portfolio:
-
-        
         
         exit_dates = list(asset.exit_dates(end_date, selected_brokers, start_date))
         entry_dates = list(asset.entry_dates(end_date, selected_brokers))

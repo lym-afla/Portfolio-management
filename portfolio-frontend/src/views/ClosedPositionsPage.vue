@@ -14,7 +14,7 @@
     </template>
 
     <template #header="{ header }">
-      <span>{{ header.value }}</span>
+      <span>{{ header.value }} T {{ header.sortable }}</span>
       <v-icon v-if="header.sortable" size="small" class="ml-1">{{ getSortIcon(header.key) }}</v-icon>
     </template>
 
@@ -58,7 +58,7 @@ export default {
     const totals = ref({})
 
     const headers = ref([
-      { title: 'Type', key: 'type', align: 'start', sortable: true },
+      { title: 'Type', key: 'type', align: 'start', sortable: false },
       { title: 'Name', key: 'name', align: 'start', sortable: true },
       { title: 'Currency', key: 'currency', align: 'center', sortable: true },
       {

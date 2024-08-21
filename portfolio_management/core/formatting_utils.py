@@ -1,3 +1,4 @@
+import datetime
 from decimal import Decimal
 from typing import Union, Dict, List, Any
 from django.core.paginator import Page
@@ -33,7 +34,7 @@ def format_table_data(data: Union[List[Dict[str, Any]], Dict[str, Any], Page], c
     else:
         raise ValueError(f"Input data must be either a list of dictionaries, a single dictionary, or a Page object. We have got: {type(data)}")
 
-def format_value(value: Any, key: str, currency: str, digits: int) -> str:
+def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
     """
     Format a single value based on its key and type.
 
@@ -41,20 +42,22 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> str:
     :param key: Key associated with the value
     :param currency: Currency for formatting
     :param digits: Number of digits for rounding
-    :return: Formatted value as a string
+    :return: Formatted value
     """
     if value == NOT_RELEVANT:
         return value
-    if 'date' in key:
-        return value.strftime('%Y-%m-%d') if value else None
+    if isinstance(value, dict):
+        return {k: format_value(v, k, currency, digits) for k, v in value.items()}
+    if 'date' in key and isinstance(value, datetime.date):
+        return value.strftime('%d-%b-%y') if value else None
     elif 'percentage' in key or 'share' in key or 'irr' in key:
         return format_percentage(value, digits)
-    elif key == 'current_position':
+    elif key in ['current_position', 'quantity']:
         return f"{value:,.{digits}f}"
     elif isinstance(value, (Decimal, float, int)):
         return currency_format(value, currency, digits)
     else:
-        return str(value)
+        return value
 
 def currency_format(value: Union[Decimal, float, int, None] = None, currency: str = None, digits: int = 2) -> str:
     """

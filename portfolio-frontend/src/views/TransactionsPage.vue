@@ -19,6 +19,7 @@
           density="compact"
           :server-items-length="totalItems"
           :items-length="totalItems"
+          disable-sort
         >
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b">
@@ -55,22 +56,82 @@
             </v-toolbar>
           </template>
 
-          <!-- <template #headers>
+          <template #header>
             <tr>
-              <th></th>
-              <th class="text-start">Date</th>
-              <th class="text-start">Transaction</th>
-              <th class="text-center">Type</th>
-              <th class="text-center" :colspan="currencies.length">Cash flow</th>
-              <th></th>
-              <th class="text-center" :colspan="currencies.length">Balance</th>
-            </tr>
-            <tr>
-              <th v-for="header in flatHeaders" :key="header.key" class="text-center">
+              <th v-for="header in headers"
+              :key="header.key"
+              :colspan="header.children ? header.children.length : 1"
+              :rowspan="header.children ? 1 : 2"
+              :class="['text-' + header.align]">
                 {{ header.title }}
               </th>
             </tr>
-          </template> -->
+            <tr>
+              <template v-for="header in headers" :key="header.key">
+                <th v-for="subHeader in header.children" :key="subHeader.key" :class="['text-' + subHeader.align]">
+                  {{ subHeader.title }}
+                </th>
+              </template>
+            </tr>
+          </template>
+
+          <template #item="{ item }">
+            <tr>
+              <td>
+                <!-- <v-checkbox
+                  v-model="selectedItems"
+                  :value="item"
+                  hide-details
+                ></v-checkbox> -->
+              </td>
+              <td>{{ item.date }}</td>
+              <td class="text-start text-nowrap">
+                {{ item.type }}
+                <template v-if="item.type.includes('Cash') || item.type === 'Dividend'">
+                  {{ item.cash_flow }} {{ item.type === 'Dividend' ? `for ${item.security}` : '' }}
+                </template>
+                <template v-else-if="item.type === 'Close'">
+                  {{ item.quantity }} of {{ item.security }}
+                </template>
+                <template v-else-if="item.type === 'FX'">
+                  : {{ item.from_currency }} to {{ item.to_currency }} @ {{ item.exchange_rate }}
+                  <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
+                </template>
+                <template v-else-if="!['Broker commission', 'Tax', 'Interest income'].includes(item.type)">
+                  {{ item.quantity }}
+                  @ {{ item.price }} of {{ item.security }}
+                  <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
+                </template>
+              </td>
+              <td class="text-center">{{ item.type }}</td>
+              <td v-for="currency in currencies" :key="`cash_flow-${currency}`" class="text-center">
+                <template v-if="item.currency === currency">
+                  <template v-if="['Dividend', 'Tax'].includes(item.type) || item.type.includes('Interest') || item.type.includes('Cash')">
+                    {{ item.cash_flow }}
+                  </template>
+                  <template v-else-if="item.type === 'Broker commission'">
+                    ({{ item.commission }})
+                  </template>
+                  <template v-else>
+                    {{ item.value }}
+                  </template>
+                </template>
+                <template v-else-if="item.from_currency === currency">
+                  {{ item.from_amount }}
+                </template>
+                <template v-else-if="item.to_currency === currency">
+                  {{ item.to_amount }}
+                </template>
+                <template v-else>
+                  –
+                </template>
+              </td>
+              <td class="text-center"></td>
+              <td v-for="currency in currencies" :key="`balance-${currency}`" class="text-center">
+                {{ item.balances[currency] }}
+              </td>
+            </tr>
+          </template>
 
           <template #bottom>
             <div class="d-flex align-center justify-space-between pa-4">
@@ -160,7 +221,7 @@
 </template>
 
 <script>
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import { format, subMonths, subYears, startOfDay, parseISO } from 'date-fns'
 import { getTransactions } from '@/services/api'
@@ -178,8 +239,8 @@ export default {
     const dateTo = ref('')
     const loading = ref(false)
     const tableLoading = ref(false)
-    const transactions = ref([{ id: 1, name: 'Test Transaction' }])
-    const totalItems = ref(1)
+    const transactions = ref([])
+    const totalItems = ref(0)
     const search = ref('')
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
@@ -209,6 +270,39 @@ export default {
     ]
 
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const currencies = ref([])
+
+    const headers = computed(() => [
+      { title: '', key: 'actions', align: 'center', sortable: false },
+      { title: 'Date', key: 'date', align: 'start', sortable: true },
+      { title: 'Transaction', key: 'transaction', align: 'start', sortable: false },
+      { title: 'Type', key: 'type', align: 'center', sortable: false },
+      {
+        title: 'Cash flow',
+        key: 'cash_flow',
+        align: 'center',
+        sortable: false,
+        children: currencies.value.map(currency => ({
+          title: currency,
+          key: `cash_flow_${currency}`,
+          align: 'center',
+          sortable: false
+        })),
+      },
+      { title: '', key: 'spacer', align: 'center', sortable: false },
+      {
+        title: 'Balance',
+        key: 'balance',
+        align: 'center',
+        sortable: false,
+        children: currencies.value.map(currency => ({
+          title: currency,
+          key: `balance_${currency}`,
+          align: 'center',
+          sortable: false
+        })),
+      },
+    ])
 
     const openDateDialog = () => {
       dateDialog.value = true
@@ -253,28 +347,6 @@ export default {
       currentPage.value = newPage
       fetchTransactions()
     }
-
-    const currencies = ref([])
-
-    const headers = computed(() => [
-      { title: '', key: 'actions', sortable: false },
-      { title: 'Date', key: 'date', sortable: false },
-      { title: 'Transaction', key: 'transaction', sortable: false },
-      { title: 'Type', key: 'type', sortable: false },
-      ...currencies.value.map(currency => ({ title: currency, key: `cash_flow_${currency}`, sortable: false })),
-      { title: '', key: 'spacer', sortable: false },
-      ...currencies.value.map(currency => ({ title: currency, key: `balance_${currency}`, sortable: false })),
-    ])
-
-    const flatHeaders = computed(() => [
-      { title: '', key: 'actions' },
-      { title: 'Date', key: 'date' },
-      { title: 'Transaction', key: 'transaction' },
-      { title: 'Type', key: 'type' },
-      ...currencies.value.map(currency => ({ title: currency, key: `cash_flow_${currency}` })),
-      { title: '', key: 'spacer' },
-      ...currencies.value.map(currency => ({ title: currency, key: `balance_${currency}` })),
-    ])
 
     const fetchTransactions = async () => {
       tableLoading.value = true
@@ -353,6 +425,16 @@ export default {
       dateTo.value = formatDate(effectiveDate)
     }
 
+    const selectedItems = ref([])
+
+    watch(
+        () => store.state.dataRefreshTrigger,
+        () => {
+            fetchTransactions()
+        },
+        { deep: true }
+    )
+
     onMounted(() => {
       emit('update-page-title', 'Transactions')
       if (!effectiveCurrentDate.value) {
@@ -381,7 +463,6 @@ export default {
       pageCount,
       search,
       headers,
-      flatHeaders,
       currencies,
       openDateDialog,
       closeDateDialog,
@@ -397,6 +478,8 @@ export default {
       dateRangeOptions,
       handlePredefinedRange,
       effectiveCurrentDate,
+      formatDate,
+      selectedItems,
     }
   }
 }

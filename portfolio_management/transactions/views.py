@@ -110,6 +110,7 @@ def transactions(request):
         transaction.date = str(transaction.date.strftime('%d-%b-%y'))
                 
     buttons = ['transaction', 'fx_transaction', 'settings', 'import', 'edit', 'delete']
+    print("views. 113", [transaction.exchange_rate for transaction in all_transactions if transaction.type == 'FX'])
 
     return render(request, 'transactions.html', {
         'sidebar_width': sidebar_width,

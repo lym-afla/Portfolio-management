@@ -41,7 +41,7 @@ import BrokerSelection from './components/BrokerSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { checkAuth } from './utils/auth'
 import { useRouter, useRoute } from 'vue-router'
-// import { useStore } from 'vuex'
+import { useStore } from 'vuex'
 
 export default {
   name: 'App',
@@ -51,7 +51,7 @@ export default {
     SettingsDialog,
   },
   setup() {
-    // const store = useStore()
+    const store = useStore()
     const router = useRouter()
     const route = useRoute()
     const user = ref(null)
@@ -86,7 +86,10 @@ export default {
       pageTitle.value = title
     }
 
-    onMounted(updateAuthStatus)
+    onMounted(() => {
+      updateAuthStatus()
+      console.log('Is authenticated:', store.getters.isAuthenticated)
+    })
 
     watch(() => route.fullPath, updateAuthStatus)
 

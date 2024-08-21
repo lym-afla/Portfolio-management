@@ -16,8 +16,12 @@ axios.defaults.xsrfHeaderName = 'X-CSRFToken'
 axios.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+    console.log('Token from localStorage:', token);
     if (token) {
       config.headers['Authorization'] = `Token ${token}`;
+      console.log('Authorization header set:', config.headers['Authorization']);
+    } else {
+      console.log('No token found in localStorage');
     }
     return config;
   },
@@ -29,8 +33,9 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.log('Response error:', error.response);
     if (error.response && error.response.status === 401) {
-      // If we receive a 401 Unauthorized, clear the token and redirect to login
+      console.log('401 Unauthorized error detected');
       store.commit('logout')
       router.push('/login')
     }
