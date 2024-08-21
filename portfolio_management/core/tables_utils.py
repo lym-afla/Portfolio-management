@@ -17,18 +17,8 @@ def calculate_positions_table_output(
     is_closed: bool
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
-    Calculate table output for either closed or open positions.
+    Wrapper function to compile either closed or open positions.
 
-    :param user_id: The ID of the user
-    :param assets: List of asset objects
-    :param end_date: The end date for calculations
-    :param categories: List of categories to include in the output
-    :param use_default_currency: Whether to use the default currency
-    :param currency_target: The target currency for calculations
-    :param selected_brokers: List of selected broker IDs
-    :param start_date: The start date for calculations (optional)
-    :param is_closed: Whether to calculate for closed or open positions
-    :return: A tuple containing a list of respective positions and a dictionary of totals
     """
     if is_closed:
         return calculate_closed_table_output_for_api(

@@ -224,7 +224,7 @@ export default {
         itemsPerPage,
         search,
         sortBy
-      });
+      })
       const data = await getOpenPositions(
         timespan,
         page,

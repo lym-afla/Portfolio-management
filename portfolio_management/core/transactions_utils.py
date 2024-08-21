@@ -13,12 +13,13 @@ from .pagination_utils import paginate_table
 
 def get_transactions_table_api(request):
     data = request.data
-    timespan = data.get('timespan', '')
+    start_date = data.get('dateFrom', '')
+    end_date = data.get('dateTo', '')
     page = int(data.get('page', 1))
-    items_per_page = int(data.get('items_per_page', 25))
+    items_per_page = int(data.get('itemsPerPage', 25))
     search = data.get('search', '')
 
-    print(f"transaction_utils. 21. timespan: {timespan}, page: {page}, items_per_page: {items_per_page}, search: {search}")
+    print(f"transaction_utils. 21. date from: {start_date}, date to: {end_date}, page: {page}, items_per_page: {items_per_page}, search: {search}")
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
@@ -27,7 +28,7 @@ def get_transactions_table_api(request):
     number_of_digits = user.digits
     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
-    start_date, end_date = get_date_range(timespan, effective_current_date)
+    # start_date, end_date = get_date_range(timespan, effective_current_date)
 
     transactions = _filter_transactions(user, start_date, end_date, selected_brokers, search)
     
