@@ -40,16 +40,37 @@ export const register = async (username, email, password) => {
   }
 }
 
-export const getClosedPositions = async (timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+export const getOpenPositions = async (fromDate, toDate, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('[api.js] getOpenPositions called with:', { fromDate, toDate, timespan, page, itemsPerPage, search, sortBy });
   try {
-    const response = await axiosInstance.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
+    const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
+      fromDate,
+      toDate,
       timespan,
       page,
-      items_per_page: itemsPerPage,
+      itemsPerPage,
       search,
-      sort_by: sortBy  // This will be a single object or an empty object
+      sortBy
     })
-    console.log('API request payload:', { timespan, page, items_per_page: itemsPerPage, search, sort_by: sortBy })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching open positions:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getClosedPositions = async (fromDate, toDate, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
+      fromDate,
+      toDate,
+      timespan,
+      page,
+      itemsPerPage,
+      search,
+      sortBy  // This will be a single object or an empty object
+    })
+    console.log('API request payload:', { fromDate, toDate, timespan, page, itemsPerPage, search, sortBy })
     console.log('API response:', response.data)
     if (response.data && response.data.portfolio_closed && Array.isArray(response.data.portfolio_closed)) {
       return response.data
@@ -63,8 +84,8 @@ export const getClosedPositions = async (timespan, page, itemsPerPage, search = 
   }
 }
 
-export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, search = '') => {
-  console.log('API request payload for transactions:', { dateFrom, dateTo, page, itemsPerPage, search })
+export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('API request payload for transactions:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy })
   try {
     const response = await axiosInstance.post(`${API_URL}/transactions/api/get_transactions_table/`, {
       page,
@@ -72,6 +93,7 @@ export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, sear
       search,
       dateFrom,
       dateTo,
+      sortBy
     })
     console.log('API response for transactions:', response.data)
     return response.data
@@ -176,23 +198,6 @@ export const deleteAccount = async () => {
     const response = await axiosInstance.delete(`${API_URL}/users/api/delete-account/`)
     return response.data
   } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getOpenPositions = async (timespan, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('[api.js] getOpenPositions called with:', { timespan, page, itemsPerPage, search, sortBy });
-  try {
-    const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
-      timespan,
-      page,
-      items_per_page: itemsPerPage,
-      search,
-      sort_by: sortBy
-    })
-    return response.data
-  } catch (error) {
-    console.error('Error fetching open positions:', error)
     throw error.response ? error.response.data : error.message
   }
 }

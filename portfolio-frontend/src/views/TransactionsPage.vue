@@ -13,21 +13,21 @@
           :headers="headers"
           :items="transactions"
           :loading="tableLoading"
-          :search="search"
           :items-per-page="itemsPerPage"
           class="elevation-1 nowrap-table"
           density="compact"
+          :sort-by="sortBy"
+          @update:sort-by="handleSortChange"
           :server-items-length="totalItems"
           :items-length="totalItems"
           disable-sort
         >
           <template #top>
-            <v-toolbar flat class="bg-grey-lighten-4 border-b">
-              <v-btn icon elevation="2" @click="openDateDialog">
+            <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
+              <v-btn icon elevation="2" @click="openDateDialog" class="mr-4">
                 <v-icon>mdi-calendar</v-icon>
               </v-btn>
-              <!-- <v-divider vertical class="mx-2"></v-divider> -->
-              <v-col cols="12" sm="6" md="7" lg="8">
+              <v-col cols="12" sm="5" md="6" lg="7" class="px-2">
                 <v-text-field
                   v-model="search"
                   append-icon="mdi-magnify"
@@ -40,7 +40,7 @@
                 ></v-text-field>
               </v-col>
               <v-spacer></v-spacer>
-              <v-col cols="12" sm="3" md="3" lg="2">
+              <v-col cols="12" sm="4" md="3" lg="2" class="d-flex align-center justify-end px-2">
                 <v-select
                   v-model="itemsPerPage"
                   :items="itemsPerPageOptions"
@@ -48,7 +48,7 @@
                   density="compact"
                   variant="outlined"
                   hide-details
-                  class="mr-2 rows-per-page-select"
+                  class="rows-per-page-select"
                   @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
                 ></v-select>
@@ -162,9 +162,14 @@
           <v-select
             v-model="selectedDateRange"
             :items="dateRangeOptions"
-            label="Predefined Ranges"
+            label="Date Range"
             @update:model-value="handlePredefinedRange"
-          ></v-select>
+          >
+            <template v-slot:item="{ item, props }">
+              <v-divider v-if="item.raw.divider" class="my-2"></v-divider>
+              <v-list-item v-else v-bind="props"></v-list-item>
+            </template>
+          </v-select>
           <v-row>
             <v-col cols="2" class="d-flex justify-center pr-0 pl-0">
               <v-btn icon @click="openFromDatePicker">
@@ -223,8 +228,9 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
-import { format, subMonths, subYears, startOfDay, parseISO } from 'date-fns'
+import { format, subMonths, subYears, startOfDay, parseISO, startOfYear } from 'date-fns'
 import { getTransactions } from '@/services/api'
+import { debounce } from 'lodash'
 
 export default {
   name: "TransactionsPage",
@@ -241,35 +247,48 @@ export default {
     const tableLoading = ref(false)
     const transactions = ref([])
     const totalItems = ref(0)
-    const search = ref('')
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+
+    const tableSettings = computed(() => store.state.tableSettings)
+
   
     const currentPage = computed({
-      get: () => store.state.tableSettings.page,
+      get: () => tableSettings.value.page,
       set: (value) => store.dispatch('updateTableSettings', { page: value })
     })
 
     const itemsPerPage = computed({
-      get: () => store.state.tableSettings.itemsPerPage,
+      get: () => tableSettings.value.itemsPerPage,
       set: (value) => store.dispatch('updateTableSettings', { itemsPerPage: value })
+    })
+
+    const sortBy = computed({
+      get: () => tableSettings.value.sortBy,
+      set: (value) => store.dispatch('updateTableSettings', { sortBy: value })
     })
 
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
 
-    const selectedDateRange = ref('')
-    const dateRangeOptions = [
-      { title: 'Custom', value: 'custom' },
-      { title: 'Last 1 Month', value: 'last1m' },
-      { title: 'Last 3 Months', value: 'last3m' },
-      { title: 'Last 6 Months', value: 'last6m' },
-      { title: 'Last 12 Months', value: 'last12m' },
-      { title: 'Last 3 Years', value: 'last3y' },
-      { title: 'Last 5 Years', value: 'last5y' },
-      { title: 'All', value: 'all' },
-    ]
+    const selectedDateRange = ref('ytd') // Set YTD as default
 
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const dateRangeOptions = computed(() => {
+      const currentYear = new Date(effectiveCurrentDate.value).getFullYear()
+
+      return [
+        { title: `${currentYear}YTD`, value: 'ytd' },
+        { divider: true, value: 'divider' },
+        { title: 'Last 1 Month', value: 'last1m' },
+        { title: 'Last 3 Months', value: 'last3m' },
+        { title: 'Last 6 Months', value: 'last6m' },
+        { title: 'Last 12 Months', value: 'last12m' },
+        { title: 'Last 3 Years', value: 'last3y' },
+        { title: 'Last 5 Years', value: 'last5y' },
+        { title: 'All', value: 'all_time' },
+      ]
+    })
+
     const currencies = ref([])
 
     const headers = computed(() => [
@@ -348,6 +367,27 @@ export default {
       fetchTransactions()
     }
 
+    const handleSortChange = async (newSortBy) => {
+      if (Array.isArray(newSortBy) && newSortBy.length > 0) {
+        sortBy.value = [newSortBy[0]]
+      } else if (typeof newSortBy === 'object' && newSortBy !== null) {
+        sortBy.value = [newSortBy]
+      } else {
+        sortBy.value = []
+      }
+      currentPage.value = 1
+      fetchTransactions()
+    }
+
+    const search = computed({
+      get: () => tableSettings.value.search,
+      set: debounce((value) => {
+        store.dispatch('updateTableSettings', { search: value })
+        currentPage.value = 1
+        fetchTransactions()
+      }, 500)
+    })
+
     const fetchTransactions = async () => {
       tableLoading.value = true
       console.log('[TransactionsPage] fetchTransactions called with:', {
@@ -356,6 +396,7 @@ export default {
         currentPage: currentPage.value,
         itemsPerPage: itemsPerPage.value,
         search: search.value,
+        sortBy: sortBy.value[0] || {},
       })
       try {
         const response = await getTransactions(
@@ -364,10 +405,12 @@ export default {
           currentPage.value,
           itemsPerPage.value,
           search.value,
+          sortBy.value[0] || {}
         )
         transactions.value = response.transactions
         totalItems.value = response.total_items
         currencies.value = response.currencies || []
+        console.log('[TransactionsPage] Updated transactions:', transactions.value)
       } catch (error) {
         console.error('Error fetching transactions:', error)
       } finally {
@@ -396,6 +439,9 @@ export default {
       let fromDate
 
       switch (value) {
+        case 'ytd':
+          fromDate = startOfYear(effectiveDate)
+          break
         case 'last1m':
           fromDate = subMonths(effectiveDate, 1)
           break
@@ -414,14 +460,15 @@ export default {
         case 'last5y':
           fromDate = subYears(effectiveDate, 5)
           break
-        case 'all':
-          fromDate = new Date(0) // Beginning of time
+        case 'all_time':
+          // fromDate = new Date(0) // Beginning of time
+          fromDate = null
           break
         default:
           return // Do nothing for custom
       }
 
-      dateFrom.value = formatDate(startOfDay(fromDate))
+      dateFrom.value = fromDate ? formatDate(startOfDay(fromDate)) : null
       dateTo.value = formatDate(effectiveDate)
     }
 
@@ -435,12 +482,13 @@ export default {
         { deep: true }
     )
 
-    onMounted(() => {
+    onMounted(async () => {
       emit('update-page-title', 'Transactions')
       if (!effectiveCurrentDate.value) {
-        store.dispatch('fetchEffectiveCurrentDate')
+        await store.dispatch('fetchEffectiveCurrentDate')
       }
-      fetchTransactions()
+      handlePredefinedRange('ytd') // Apply YTD range by default
+      await fetchTransactions()
     })
 
     onUnmounted(() => {
@@ -461,6 +509,7 @@ export default {
       itemsPerPage,
       itemsPerPageOptions,
       pageCount,
+      sortBy,
       search,
       headers,
       currencies,
@@ -471,6 +520,7 @@ export default {
       applyDateRange,
       handleItemsPerPageChange,
       handlePageChange,
+      handleSortChange,
       fetchTransactions,
       closeFromDatePicker,
       closeToDatePicker,

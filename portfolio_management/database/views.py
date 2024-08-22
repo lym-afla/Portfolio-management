@@ -25,7 +25,7 @@ from common.forms import DashboardForm_old_setup
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 
 from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
-from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
+from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
 
 logger = logging.getLogger(__name__)
 
@@ -726,7 +726,7 @@ def update_broker_performance(request):
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
 def get_years_count(user, effective_date, brokers_or_group, currency_target, is_restricted):
-    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
+    selected_brokers_ids = broker_group_to_ids_old_approach(brokers_or_group, user)
     first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
     if not first_transaction:
         return 0

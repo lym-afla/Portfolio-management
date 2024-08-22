@@ -5,14 +5,6 @@
     page-title="Closed Positions"
   >
 
-    <template #[`item.investment_date`]="{ item }">
-      {{ formatDate(item.investment_date) }}
-    </template>
-
-    <template #[`item.exit_date`]="{ item }">
-      {{ formatDate(item.exit_date) }}
-    </template>
-
     <template #header="{ header }">
       <span>{{ header.value }} T {{ header.sortable }}</span>
       <v-icon v-if="header.sortable" size="small" class="ml-1">{{ getSortIcon(header.key) }}</v-icon>
@@ -47,7 +39,6 @@
 import { ref, computed } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getClosedPositions } from '@/services/api'
-import { formatDate } from '@/utils/formatters'
 
 export default {
   name: 'ClosedPositions',
@@ -132,8 +123,10 @@ export default {
       'irr'
     ]
 
-    const fetchClosedPositions = async ({ timespan, page, itemsPerPage, search, sortBy }) => {
+    const fetchClosedPositions = async ({ fromDate, toDate, timespan, page, itemsPerPage, search, sortBy }) => {
       console.log('[ClosedPositionsPage] fetchClosedPositions called with:', {
+        fromDate,
+        toDate,
         timespan,
         page,
         itemsPerPage,
@@ -141,6 +134,8 @@ export default {
         sortBy
       });
       const data = await getClosedPositions(
+        fromDate,
+        toDate,
         timespan,
         page,
         itemsPerPage,
@@ -166,7 +161,6 @@ export default {
       headers,
       percentageColumns,
       fetchClosedPositions,
-      formatDate,
       totals,
       flattenedHeaders,
     }

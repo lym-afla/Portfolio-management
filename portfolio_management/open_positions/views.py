@@ -9,7 +9,7 @@ from common.models import Brokers, Assets, Transactions
 from common.forms import DashboardForm_old_setup
 from constants import TOLERANCE
 from core.positions_utils import get_positions_table_api
-from utils import broker_group_to_ids, calculate_open_table_output, currency_format_old_structure, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids_old_approach, calculate_open_table_output, currency_format_old_structure, get_last_exit_date_for_brokers
 
 from django.views.decorators.http import require_POST
 
@@ -25,7 +25,7 @@ def open_positions(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -87,7 +87,7 @@ def update_open_positions_table(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     # Process the data based on the timespan
     if timespan == 'YTD':
@@ -157,7 +157,7 @@ def update_open_positions_table(request):
 
 def get_cash_balances(user, timespan, effective_current_date):
 
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
     
     # Process the data based on the timespan
     if timespan == 'YTD':

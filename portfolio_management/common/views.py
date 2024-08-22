@@ -3,7 +3,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.views.decorators.csrf import ensure_csrf_cookie
 from datetime import datetime
-from utils import broker_group_to_ids, get_last_exit_date_for_brokers
+from constants import YTD, ALL_TIME
+from utils import broker_group_to_ids_old_approach, get_last_exit_date_for_brokers
 from common.models import Transactions
 
 @api_view(['GET'])
@@ -11,7 +12,7 @@ from common.models import Transactions
 @ensure_csrf_cookie
 def get_year_options_api(request):
     user = request.user
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
     effective_current_date_str = request.session.get('effective_current_date')
     print(f"views. common. 16. Effective current date from session: {effective_current_date_str}")
     
@@ -40,8 +41,8 @@ def get_year_options_api(request):
     # Add special options with a divider
     table_years.extend([
         {'divider': True},
-        {'text': 'All-time', 'value': 'All-time'},
-        {'text': f'{effective_current_date.year}YTD', 'value': 'YTD'}
+        {'text': 'All-time', 'value': ALL_TIME},
+        {'text': f'{effective_current_date.year}YTD', 'value': YTD}
     ])
 
     return Response({

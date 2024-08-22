@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm_old_setup
 from database.forms import BrokerPerformanceForm
-from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids, calculate_from_date, calculate_percentage_shares, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
+from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids_old_approach, calculate_from_date, calculate_percentage_shares, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
 
 @login_required
 def dashboard(request):
@@ -21,7 +21,7 @@ def dashboard(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     # use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -146,7 +146,7 @@ def nav_chart_data_request(request):
     # global selected_brokers
     user = request.user
     print("views. dashboard. 148", user)
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     if request.method == 'GET':
         frequency = request.GET.get('frequency')
@@ -167,7 +167,7 @@ def dashboard_summary_api(request):
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     currency_target = user.default_currency
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     analysis = NAV_at_date_old_structure(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
     

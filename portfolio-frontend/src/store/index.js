@@ -13,7 +13,9 @@ export default createStore({
     selectedBroker: null,
     effectiveCurrentDate: null,
     tableSettings: {
-      timespan: 'All-time',
+      fromDate: null,
+      toDate: null,
+      timespan: '',
       page: 1,
       itemsPerPage: 25,
       search: '',

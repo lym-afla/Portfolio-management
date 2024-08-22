@@ -20,10 +20,6 @@
       </v-card>
     </template>
 
-    <template #[`item.investment_date`]="{ item }">
-      {{ formatDate(item.investment_date) }}
-    </template>
-
     <template #header>
       <thead>
         <tr>
@@ -121,7 +117,6 @@
 import { ref, computed } from 'vue'  
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getOpenPositions } from '@/services/api'
-import { formatDate } from '@/utils/formatters'
 
 
 export default {
@@ -217,8 +212,10 @@ export default {
       'all_assets_share_of_portfolio_percentage'
     ]
 
-    const fetchOpenPositions = async ({ timespan, page, itemsPerPage, search, sortBy }) => {
+    const fetchOpenPositions = async ({ fromDate, toDate, timespan, page, itemsPerPage, search, sortBy }) => {
       console.log('[OpenPositionsPage] fetchOpenPositions called with:', {
+        fromDate,
+        toDate,
         timespan,
         page,
         itemsPerPage,
@@ -226,6 +223,8 @@ export default {
         sortBy
       })
       const data = await getOpenPositions(
+        fromDate,
+        toDate,
         timespan,
         page,
         itemsPerPage,
@@ -269,7 +268,6 @@ export default {
       headers,
       percentageColumns,
       fetchOpenPositions,
-      formatDate,
       totals,
       flattenedHeaders,
       getColspan,

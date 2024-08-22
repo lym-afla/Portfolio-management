@@ -6,7 +6,7 @@ from django.shortcuts import render
 
 from common.forms import DashboardForm_old_setup
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-from utils import broker_group_to_ids, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids_old_approach, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers
 
 
 def summary_view(request):
@@ -17,7 +17,7 @@ def summary_view(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0

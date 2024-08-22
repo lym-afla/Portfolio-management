@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
-from utils import broker_group_to_ids, currency_format_old_structure
+from utils import broker_group_to_ids_old_approach, currency_format_old_structure
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -21,7 +21,7 @@ def transactions(request):
 
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0

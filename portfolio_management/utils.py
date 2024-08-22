@@ -1664,7 +1664,7 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
 
 #     return context
 
-def broker_group_to_ids(brokers_or_group, user):
+def broker_group_to_ids_old_approach(brokers_or_group, user):
     if isinstance(brokers_or_group, str):
         if brokers_or_group == 'All brokers':
             # Return all broker IDs for the user
@@ -1714,7 +1714,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     # print("utils. 1665", brokers_or_group, type(brokers_or_group))
 
     # selected_brokers = broker_group_to_ids(brokers_or_group, user)
-    selected_brokers = broker_group_to_ids(brokers_or_group, user)
+    selected_brokers = broker_group_to_ids_old_approach(brokers_or_group, user)
 
     # if isinstance(brokers_or_group, str):
     #     # It's a group name
@@ -2187,7 +2187,7 @@ def compile_summary_data(data, currency_target, number_of_digits):
     return formatted_data
 
 def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
-    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
+    selected_brokers_ids = broker_group_to_ids_old_approach(brokers_or_group, user)
 
     # Determine the starting year
     first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()

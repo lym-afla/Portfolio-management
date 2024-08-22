@@ -445,9 +445,5 @@ def get_dashboard_settings(request):
             }
         else:
             data[field['name']] = getattr(user, field['name'])
-
-    print("views. users. 449", data)
-    print(data['table_date'])
-    print(request.session.get('effective_current_date'))
     
     return Response(data)

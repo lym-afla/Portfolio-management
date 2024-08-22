@@ -1,5 +1,6 @@
 from datetime import timedelta, date
 from decimal import Decimal
+import time
 from typing import List, Dict, Any, Union, Tuple, Optional
 
 from core.formatting_utils import currency_format
@@ -195,6 +196,7 @@ def calculate_open_table_output_for_api(
     :param start_date: The start date for calculations (optional)
     :return: A tuple containing a list of open position dictionaries and a dictionary of totals
     """
+    start_time = time.time()  # Start timing the overall function
     portfolio_NAV = NAV_at_date(user_id, selected_brokers, end_date, currency_target)['Total NAV']
     portfolio_cash = calculate_portfolio_cash(user_id, selected_brokers, end_date, currency_target)
     
@@ -204,9 +206,10 @@ def calculate_open_table_output_for_api(
         'all_assets_share_of_portfolio_percentage': Decimal(0)
     }
 
-    total_irr_start_date = start_date # Not to be overwritten by asset start date if start date is not defined
+    total_irr_start_date = start_date  # Not to be overwritten by asset start date if start date is not defined
     
     for asset in portfolio:
+        asset_start_time = time.time()  # Start timing for each asset
         currency_used = None if use_default_currency else currency_target
 
         position = {
@@ -267,6 +270,10 @@ def calculate_open_table_output_for_api(
         # Calculate IRR for security
         currency_used = asset.currency if use_default_currency else currency_target
         position['irr'] = IRR(user_id, end_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=asset_start_date)
+
+        # Log time taken for processing the asset
+        asset_duration = time.time() - asset_start_time
+        print(f"Processing asset {asset.name} took {asset_duration:.4f} seconds.")
         
         # Calculating totals
         for key in (['entry_value', 'total_return_amount'] + list(set(totals) & set(categories))):
@@ -319,6 +326,9 @@ def calculate_open_table_output_for_api(
         portfolio_open_totals['all_assets_share_of_portfolio_percentage'] = 'N/A'
     else:
         portfolio_open_totals['cash_share_of_portfolio'] = portfolio_cash / portfolio_NAV
+
+    total_duration = time.time() - start_time
+    print(f"Total processing time for calculate_open_table_output_for_api: {total_duration:.4f} seconds.")
     
     return open_positions, portfolio_open_totals
 

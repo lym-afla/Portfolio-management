@@ -121,9 +121,9 @@
 <script>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useStore } from 'vuex'
-import { formatDate } from '@/utils/formatters'
 import { getYearOptions } from '@/services/api'
 import { debounce } from 'lodash'
+import { calculateDateRange } from '@/utils/dateUtils'
 
 export default {
   name: 'PositionsPageBase',
@@ -151,10 +151,21 @@ export default {
     const totalItems = ref(0)
 
     const tableSettings = computed(() => store.state.tableSettings)
+    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
 
     const timespan = computed({
       get: () => tableSettings.value.timespan,
-      set: (value) => store.dispatch('updateTableSettings', { timespan: value })
+      set: (value) => handleTimespanChange(value)
+    })
+
+    const fromDate = computed({
+      get: () => tableSettings.value.fromDate,
+      set: (value) => store.dispatch('updateTableSettings', { fromDate: value })
+    })
+
+    const toDate = computed({
+      get: () => tableSettings.value.toDate,
+      set: (value) => store.dispatch('updateTableSettings', { toDate: value })
     })
 
     const itemsPerPage = computed({
@@ -193,6 +204,8 @@ export default {
       try {
         console.log('[PositionsPageBase] fetchData called with:', {
           timespan: timespan.value,
+          fromDate: fromDate.value,
+          toDate: toDate.value,
           currentPage: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
@@ -200,6 +213,8 @@ export default {
         });
         const data = await props.fetchPositions({
           timespan: timespan.value,
+          fromDate: fromDate.value,
+          toDate: toDate.value,
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
@@ -249,11 +264,33 @@ export default {
       fetchData()
     }
 
+    const handleTimespanChange = async (value) => {
+      let currentDate = effectiveCurrentDate.value
+      
+      if (!currentDate) {
+        await store.dispatch('fetchEffectiveCurrentDate')
+        currentDate = store.state.effectiveCurrentDate
+      }
+
+      if (!currentDate) {
+        console.error('Failed to fetch effective current date')
+        return
+      }
+
+      const dateRange = calculateDateRange(value, currentDate)
+      if (!dateRange) return
+
+      store.dispatch('updateTableSettings', {
+        timespan: value,
+        fromDate: dateRange.fromDate,
+        toDate: dateRange.toDate
+      })
+
+      fetchData()
+    }
+
     watch(
-      [
-        () => store.state.dataRefreshTrigger,
-        timespan,
-      ],
+      [() => store.state.dataRefreshTrigger],
       () => {
         currentPage.value = 1
         fetchData()
@@ -267,14 +304,27 @@ export default {
       () => store.state.selectedBroker,
       () => {
         fetchYearOptions()
-        // fetchData()
       }
     )
 
-    onMounted(() => {
-      fetchYearOptions()
-      fetchData()
+    const initializeData = async () => {
       emit('update-page-title', props.pageTitle)
+      
+      // Fetch effective current date if not available
+      if (!effectiveCurrentDate.value) {
+        await store.dispatch('fetchEffectiveCurrentDate')
+      }
+
+      // Set initial timespan to 'ytd' and update fromDate and toDate
+      await handleTimespanChange('ytd')
+
+      // Fetch year options
+      await fetchYearOptions()
+
+    }
+
+    onMounted(() => {
+      initializeData()
     })
 
     onUnmounted(() => {
@@ -286,6 +336,8 @@ export default {
       totals,
       tableLoading,
       timespan,
+      fromDate,
+      toDate,
       yearOptions,
       search,
       itemsPerPage,
@@ -298,7 +350,7 @@ export default {
       handlePageChange,
       handleItemsPerPageChange,
       handleSortChange,
-      formatDate,
+      handleTimespanChange,
       loading: computed(() => store.state.loading),
       error: computed(() => store.state.error),
     }
