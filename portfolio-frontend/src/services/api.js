@@ -231,3 +231,30 @@ export const getEffectiveCurrentDate = async () => {
   const response = await axiosInstance.get(`${API_URL}/api/effective-current-date/`)
   return response.data
 }
+
+export const getAssetTypes = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/asset-types/`);
+    return response.data;
+  } catch (error) {
+    throw error.response ? error.response.data : error.message;
+  }
+};
+
+export const getBrokers = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/brokers/`);
+    return response.data;
+  } catch (error) {
+    throw error.response ? error.response.data : error.message;
+  }
+};
+
+export const getSecurities = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/securities/`);
+    return response.data;
+  } catch (error) {
+    throw error.response ? error.response.data : error.message;
+  }
+};

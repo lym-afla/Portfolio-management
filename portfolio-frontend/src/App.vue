@@ -13,12 +13,12 @@
               <v-col cols="12" class="px-4">
                 <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
                 <v-divider v-if="pageTitle" class="mb-2"></v-divider>
-                <div v-if="!isProfilePage" class="d-flex align-center mb-4">
+                <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-4">
                   <BrokerSelection class="flex-grow-1" />
                   <v-divider vertical class="mx-2" />
                   <SettingsDialog />
                 </div>
-                <v-divider v-if="!isProfilePage" class="mb-4"></v-divider>
+                <v-divider v-if="!isProfilePage && !isDatabasePage" class="mb-4"></v-divider>
                 <router-view @update-page-title="updatePageTitle"></router-view>
               </v-col>
             </v-row>
@@ -61,6 +61,10 @@ export default {
 
     const isProfilePage = computed(() => {
       return route.path.startsWith('/profile')
+    })
+
+    const isDatabasePage = computed(() => {
+      return route.path.startsWith('/database')
     })
 
     const setUser = (userData) => {
@@ -107,6 +111,7 @@ export default {
       handleLogout,
       updatePageTitle,
       isProfilePage,
+      isDatabasePage,
     }
   },
 }

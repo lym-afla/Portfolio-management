@@ -72,29 +72,29 @@ const routes = [
       }
     ]
   },
-  // {
-  //   path: '/database',
-  //   name: 'Database',
-  //   component: () => import('../views/DatabasePage.vue'),
-  //   meta: { requiresAuth: true },
-  //   children: [
-  //     {
-  //       path: 'brokers',
-  //       name: 'Brokers',
-  //       component: () => import('../views/database/BrokersPage.vue'),
-  //     },
-  //     {
-  //       path: 'securities',
-  //       name: 'Securities',
-  //       component: () => import('../views/database/SecuritiesPage.vue'),
-  //     },
-  //     {
-  //       path: 'prices',
-  //       name: 'Prices',
-  //       component: () => import('../views/database/PricesPage.vue'),
-  //     },
-  //   ]
-  // },
+  {
+    path: '/database',
+    name: 'Database',
+    component: () => import('../views/DatabasePage.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      // {
+      //   path: 'brokers',
+      //   name: 'Brokers',
+      //   component: () => import('../views/database/BrokersPage.vue'),
+      // },
+      // {
+      //   path: 'securities',
+      //   name: 'Securities',
+      //   component: () => import('../views/database/SecuritiesPage.vue'),
+      // },
+      {
+        path: 'prices',
+        name: 'Prices',
+        component: () => import('../views/database/PricesPage.vue'),
+      },
+    ]
+  },
   {
     path: '/',
     redirect: '/dashboard'
