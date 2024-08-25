@@ -1,11 +1,8 @@
 <template>
   <v-container fluid class="pa-0">
-    <v-progress-circular
-      v-if="loading"
-      color="primary"
-      indeterminate
-      size="64"
-    ></v-progress-circular>
+    <v-overlay :model-value="loading" class="align-center justify-center">
+      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+    </v-overlay>
 
     <v-row no-gutters>
       <v-col cols="12">
@@ -228,9 +225,9 @@
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
-import { format, subMonths, subYears, startOfDay, parseISO, startOfYear } from 'date-fns'
+import { format, parseISO, startOfYear, subMonths, subYears, startOfDay } from 'date-fns'
 import { getTransactions } from '@/services/api'
-import { debounce } from 'lodash'
+import { useTableSettings } from '@/composables/useTableSettings'
 
 export default {
   name: "TransactionsPage",
@@ -238,36 +235,29 @@ export default {
   setup(props, { emit }) {
     const store = useStore()
 
+    const {
+      dateFrom,
+      dateTo,
+      itemsPerPage,
+      currentPage,
+      sortBy,
+      search,
+      handlePageChange,
+      handleItemsPerPageChange,
+      handleSortChange      
+    } = useTableSettings()
+
     const dateDialog = ref(false)
     const fromDatePickerDialog = ref(false)
     const toDatePickerDialog = ref(false)
-    const dateFrom = ref('')
-    const dateTo = ref('')
     const loading = ref(false)
     const tableLoading = ref(false)
     const transactions = ref([])
     const totalItems = ref(0)
+    const currencies = ref([])
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
-
-    const tableSettings = computed(() => store.state.tableSettings)
-
-  
-    const currentPage = computed({
-      get: () => tableSettings.value.page,
-      set: (value) => store.dispatch('updateTableSettings', { page: value })
-    })
-
-    const itemsPerPage = computed({
-      get: () => tableSettings.value.itemsPerPage,
-      set: (value) => store.dispatch('updateTableSettings', { itemsPerPage: value })
-    })
-
-    const sortBy = computed({
-      get: () => tableSettings.value.sortBy,
-      set: (value) => store.dispatch('updateTableSettings', { sortBy: value })
-    })
 
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
 
@@ -275,7 +265,6 @@ export default {
 
     const dateRangeOptions = computed(() => {
       const currentYear = new Date(effectiveCurrentDate.value).getFullYear()
-
       return [
         { title: `${currentYear}YTD`, value: 'ytd' },
         { divider: true, value: 'divider' },
@@ -288,8 +277,6 @@ export default {
         { title: 'All', value: 'all_time' },
       ]
     })
-
-    const currencies = ref([])
 
     const headers = computed(() => [
       { title: '', key: 'actions', align: 'center', sortable: false },
@@ -348,45 +335,17 @@ export default {
       dateTo.value = formatDate(pickerDateTo)
       toDatePickerDialog.value = false
     }
-    
+
+    const isApplyingDateRange = ref(false)
+
     const applyDateRange = () => {
       console.log('Date range:', dateFrom.value, dateTo.value)
       console.log('Selected range:', selectedDateRange.value)
+      isApplyingDateRange.value = true
+      currentPage.value = 1
       closeDateDialog()
       fetchTransactions()
     }
-
-    const handleItemsPerPageChange = (newItemsPerPage) => {
-      itemsPerPage.value = newItemsPerPage
-      currentPage.value = 1
-      fetchTransactions()
-    }
-
-    const handlePageChange = (newPage) => {
-      currentPage.value = newPage
-      fetchTransactions()
-    }
-
-    const handleSortChange = async (newSortBy) => {
-      if (Array.isArray(newSortBy) && newSortBy.length > 0) {
-        sortBy.value = [newSortBy[0]]
-      } else if (typeof newSortBy === 'object' && newSortBy !== null) {
-        sortBy.value = [newSortBy]
-      } else {
-        sortBy.value = []
-      }
-      currentPage.value = 1
-      fetchTransactions()
-    }
-
-    const search = computed({
-      get: () => tableSettings.value.search,
-      set: debounce((value) => {
-        store.dispatch('updateTableSettings', { search: value })
-        currentPage.value = 1
-        fetchTransactions()
-      }, 500)
-    })
 
     const fetchTransactions = async () => {
       tableLoading.value = true
@@ -415,6 +374,7 @@ export default {
         console.error('Error fetching transactions:', error)
       } finally {
         tableLoading.value = false
+        isApplyingDateRange.value = false
       }
     }
 
@@ -472,14 +432,21 @@ export default {
       dateTo.value = formatDate(effectiveDate)
     }
 
-    const selectedItems = ref([])
-
     watch(
+      [
         () => store.state.dataRefreshTrigger,
-        () => {
-            fetchTransactions()
-        },
-        { deep: true }
+        itemsPerPage,
+        currentPage,
+        sortBy,
+        search
+      ],
+      () => {
+        if (!isApplyingDateRange.value) {
+          fetchTransactions()
+        }
+        isApplyingDateRange.value = false
+      },
+      { deep: true }
     )
 
     onMounted(async () => {
@@ -529,7 +496,6 @@ export default {
       handlePredefinedRange,
       effectiveCurrentDate,
       formatDate,
-      selectedItems,
     }
   }
 }

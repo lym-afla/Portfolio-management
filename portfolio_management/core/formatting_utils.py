@@ -48,12 +48,14 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
         return value
     if isinstance(value, dict):
         return {k: format_value(v, k, currency, digits) for k, v in value.items()}
-    if 'date' in key and isinstance(value, datetime.date):
+    if 'date' in key or key == 'first_investment' and isinstance(value, datetime.date):
         return value.strftime('%d-%b-%y') if value else None
     elif 'percentage' in key or 'share' in key or 'irr' in key:
         return format_percentage(value, digits)
-    elif key in ['current_position', 'quantity']:
+    elif key in ['current_position', 'open_position', 'quantity']:
         return f"{value:,.{digits}f}"
+    elif key in ['id', 'no_of_securities']:
+        return value
     elif isinstance(value, (Decimal, float, int)):
         return currency_format(value, currency, digits)
     else:

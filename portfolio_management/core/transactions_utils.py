@@ -13,12 +13,15 @@ from .pagination_utils import paginate_table
 
 def get_transactions_table_api(request):
     data = request.data
-    start_date = data.get('dateFrom', None) 
-    end_date = data.get('dateTo', None)
+    start_date = datetime.strptime(data.get('dateFrom', None), '%Y-%m-%d').date() if data.get('dateFrom') else None
+    end_date = datetime.strptime(data.get('dateTo', None), '%Y-%m-%d').date() if data.get('dateTo') else None
     page = int(data.get('page', 1))
     items_per_page = int(data.get('itemsPerPage', 25))
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
+
+    print("transactions_utils. 43", start_date, end_date, page, items_per_page, search, sort_by)
+    print(data.items())
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()

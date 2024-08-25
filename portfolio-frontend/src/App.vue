@@ -8,20 +8,16 @@
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
         <v-main>
-          <v-container fluid class="pa-0 mt-2">
-            <v-row no-gutters>
-              <v-col cols="12" class="px-4">
-                <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
-                <v-divider v-if="pageTitle" class="mb-2"></v-divider>
-                <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-4">
-                  <BrokerSelection class="flex-grow-1" />
-                  <v-divider vertical class="mx-2" />
-                  <SettingsDialog />
-                </div>
-                <v-divider v-if="!isProfilePage && !isDatabasePage" class="mb-4"></v-divider>
-                <router-view @update-page-title="updatePageTitle"></router-view>
-              </v-col>
-            </v-row>
+          <v-container fluid class="pa-4">
+            <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
+            <v-divider v-if="pageTitle" class="mb-2"></v-divider>
+            <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-4">
+              <BrokerSelection class="flex-grow-1" />
+              <v-divider vertical class="mx-2" />
+              <SettingsDialog />
+            </div>
+            <v-divider v-if="!isProfilePage && !isDatabasePage" class="mb-4"></v-divider>
+            <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
         </v-main>
       </template>
@@ -31,6 +27,25 @@
         </v-main>
       </template>
     </template>
+
+    <!-- Global Error Snackbar -->
+    <v-snackbar
+      v-model="errorSnackbar"
+      :timeout="5000"
+      color="error"
+      top
+    >
+      {{ errorMessage }}
+      <template v-slot:actions>
+        <v-btn
+          color="white"
+          text
+          @click="errorSnackbar = false"
+        >
+          Close
+        </v-btn>
+      </template>
+    </v-snackbar>
   </v-app>
 </template>
 
@@ -101,6 +116,16 @@ export default {
     provide('setUser', setUser)
     provide('isAuthenticated', isAuthenticated)
 
+    const errorSnackbar = ref(false)
+    const errorMessage = ref('')
+
+    const showError = (message) => {
+      errorMessage.value = message
+      errorSnackbar.value = true
+    }
+
+    provide('showError', showError)
+
     return {
       user,
       setUser,
@@ -112,6 +137,8 @@ export default {
       updatePageTitle,
       isProfilePage,
       isDatabasePage,
+      errorSnackbar,
+      errorMessage,
     }
   },
 }

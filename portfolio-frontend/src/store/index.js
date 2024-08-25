@@ -1,5 +1,6 @@
 import { createStore } from 'vuex'
 import * as api from '@/services/api'
+import axios from 'axios'
 
 export default createStore({
   state: {
@@ -13,8 +14,8 @@ export default createStore({
     selectedBroker: null,
     effectiveCurrentDate: null,
     tableSettings: {
-      fromDate: null,
-      toDate: null,
+      dateFrom: null,
+      dateTo: null,
       timespan: '',
       page: 1,
       itemsPerPage: 25,
@@ -26,6 +27,13 @@ export default createStore({
   mutations: {
     setToken(state, token) {
       state.token = token
+      localStorage.setItem('token', token)
+      axios.defaults.headers.common['Authorization'] = `Token ${token}`
+    },
+    clearToken(state) {
+      state.token = null
+      localStorage.removeItem('token')
+      delete axios.defaults.headers.common['Authorization']
     },
     setUser(state, user) {
       state.user = user
@@ -67,7 +75,6 @@ export default createStore({
       try {
         const response = await api.login(credentials.username, credentials.password)
         const token = response.token
-        localStorage.setItem('token', token)
         commit('setToken', token)
         commit('setUser', response)
         return { success: true }
@@ -79,12 +86,12 @@ export default createStore({
     async logout({ commit }) {
       try {
         await api.logout()
-        localStorage.removeItem('token')
+        commit('clearToken')
         commit('logout')
         return { success: true }
       } catch (error) {
         console.error('Logout failed:', error)
-        localStorage.removeItem('token')
+        commit('clearToken')
         commit('logout')
         return { success: false, error: 'Logout failed' }
       }

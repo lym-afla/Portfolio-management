@@ -112,8 +112,8 @@ export default {
           // Update table settings and trigger data refresh
           store.dispatch('updateTableSettings', {
             timespan: currentState.tableSettings.timespan,
-            fromDate: dateRange.fromDate,
-            toDate: dateRange.toDate,
+            dateFrom: dateRange.dateFrom,
+            dateTo: dateRange.dateTo,
             page: currentState.tableSettings.page,
             itemsPerPage: currentState.tableSettings.itemsPerPage,
             search: currentState.tableSettings.search,

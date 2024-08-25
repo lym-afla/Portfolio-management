@@ -33,12 +33,15 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
 
     data = request.data
     timespan = data.get('timespan', '')
-    start_date = data.get('fromDate', None)
-    end_date = data.get('toDate', None)
-    page = int(data.get('page', 1))
-    items_per_page = int(data.get('items_per_page', 25))
+    start_date = datetime.strptime(data.get('dateFrom', None), '%Y-%m-%d').date() if data.get('dateFrom') else None
+    end_date = datetime.strptime(data.get('dateTo', None), '%Y-%m-%d').date() if data.get('dateTo') else None
+    page = int(data.get('page'))
+    items_per_page = int(data.get('itemsPerPage', 25))
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
+
+    print("positions_utils. 43", timespan, start_date, end_date, page, items_per_page, search, sort_by)
+    print(data.items())
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
@@ -57,8 +60,8 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
 
     print("positions_utils. 53", start_date, end_date)
 
-    start_date, end_date = get_date_range(timespan, effective_current_date)
-    print("positions_utils. 58", start_date, end_date)
+    # start_date, end_date = get_date_range(timespan, effective_current_date)
+    # print("positions_utils. 58", start_date, end_date)
 
     # Timing the asset filtering
     filter_start_time = time.time()

@@ -40,12 +40,12 @@ export const register = async (username, email, password) => {
   }
 }
 
-export const getOpenPositions = async (fromDate, toDate, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('[api.js] getOpenPositions called with:', { fromDate, toDate, timespan, page, itemsPerPage, search, sortBy });
+export const getOpenPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy });
   try {
     const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
-      fromDate,
-      toDate,
+      dateFrom,
+      dateTo,
       timespan,
       page,
       itemsPerPage,
@@ -59,18 +59,18 @@ export const getOpenPositions = async (fromDate, toDate, timespan, page, itemsPe
   }
 }
 
-export const getClosedPositions = async (fromDate, toDate, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+export const getClosedPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
   try {
     const response = await axiosInstance.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
-      fromDate,
-      toDate,
+      dateFrom,
+      dateTo,
       timespan,
       page,
       itemsPerPage,
       search,
       sortBy  // This will be a single object or an empty object
     })
-    console.log('API request payload:', { fromDate, toDate, timespan, page, itemsPerPage, search, sortBy })
+    console.log('API request payload:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy })
     console.log('API response:', response.data)
     if (response.data && response.data.portfolio_closed && Array.isArray(response.data.portfolio_closed)) {
       return response.data
@@ -234,27 +234,116 @@ export const getEffectiveCurrentDate = async () => {
 
 export const getAssetTypes = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/asset-types/`);
-    return response.data;
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-asset-types/`)
+    return response.data
   } catch (error) {
-    throw error.response ? error.response.data : error.message;
+    throw error.response ? error.response.data : error.message
   }
-};
+}
 
 export const getBrokers = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/brokers/`);
-    return response.data;
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-brokers/`)
+    return response.data
   } catch (error) {
-    throw error.response ? error.response.data : error.message;
+    throw error.response ? error.response.data : error.message
   }
-};
+}
 
-export const getSecurities = async () => {
+export const getSecurities = async (assetTypes = [], brokerId = null) => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/securities/`);
-    return response.data;
+    const params = new URLSearchParams()
+    if (assetTypes.length > 0) {
+      params.append('asset_types', assetTypes.join(','))
+    }
+    if (brokerId) {
+      params.append('broker_id', brokerId)
+    }
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-securities/`, { params })
+    return response.data
   } catch (error) {
-    throw error.response ? error.response.data : error.message;
+    throw error.response ? error.response.data : error.message
   }
-};
+}
+
+export const getPrices = async (params) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/get-prices-table/`, params)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching prices:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getBrokersForDatabase = async (params) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/get-brokers-for-database/`, params)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const createBroker = async (brokerData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/create-broker/`, brokerData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateBroker = async (brokerId, brokerData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/update-broker/${brokerId}/`, brokerData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteBroker = async (brokerId) => {
+  try {
+    const response = await axiosInstance.delete(`${API_URL}/database/api/delete-broker/${brokerId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSecuritiesForDatabase = async (params) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/get-securities-for-database/`, params)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const createSecurity = async (securityData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/create-security/`, securityData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateSecurity = async (securityId, securityData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/update-security/${securityId}/`, securityData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteSecurity = async (securityId) => {
+  try {
+    const response = await axiosInstance.delete(`${API_URL}/database/api/delete-security/${securityId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}

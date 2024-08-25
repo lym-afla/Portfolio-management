@@ -122,8 +122,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useStore } from 'vuex'
 import { getYearOptions } from '@/services/api'
-import { debounce } from 'lodash'
-import { calculateDateRange } from '@/utils/dateUtils'
+import { useTableSettings } from '@/composables/useTableSettings'
 
 export default {
   name: 'PositionsPageBase',
@@ -150,46 +149,19 @@ export default {
     const yearOptions = ref([])
     const totalItems = ref(0)
 
-    const tableSettings = computed(() => store.state.tableSettings)
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
-
-    const timespan = computed({
-      get: () => tableSettings.value.timespan,
-      set: (value) => handleTimespanChange(value)
-    })
-
-    const fromDate = computed({
-      get: () => tableSettings.value.fromDate,
-      set: (value) => store.dispatch('updateTableSettings', { fromDate: value })
-    })
-
-    const toDate = computed({
-      get: () => tableSettings.value.toDate,
-      set: (value) => store.dispatch('updateTableSettings', { toDate: value })
-    })
-
-    const itemsPerPage = computed({
-      get: () => tableSettings.value.itemsPerPage,
-      set: (value) => store.dispatch('updateTableSettings', { itemsPerPage: value })
-    })
-
-    const currentPage = computed({
-      get: () => tableSettings.value.page,
-      set: (value) => store.dispatch('updateTableSettings', { page: value })
-    })
-
-    const sortBy = computed({
-      get: () => tableSettings.value.sortBy,
-      set: (value) => store.dispatch('updateTableSettings', { sortBy: value })
-    })
-
-    const search = computed({
-      get: () => tableSettings.value.search,
-      set: debounce((value) => {
-        store.dispatch('updateTableSettings', { search: value })
-        fetchData()
-      }, 500)
-    })
+    const {
+      timespan,
+      dateFrom,
+      dateTo,
+      itemsPerPage,
+      currentPage,
+      sortBy,
+      search,
+      handlePageChange,
+      handleItemsPerPageChange,
+      handleSortChange,
+      handleTimespanChange,
+    } = useTableSettings()
 
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
 
@@ -204,8 +176,8 @@ export default {
       try {
         console.log('[PositionsPageBase] fetchData called with:', {
           timespan: timespan.value,
-          fromDate: fromDate.value,
-          toDate: toDate.value,
+          dateFrom: dateFrom.value,
+          dateTo: dateTo.value,
           currentPage: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
@@ -213,8 +185,8 @@ export default {
         });
         const data = await props.fetchPositions({
           timespan: timespan.value,
-          fromDate: fromDate.value,
-          toDate: toDate.value,
+          dateFrom: dateFrom.value,
+          dateTo: dateTo.value,
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
@@ -241,58 +213,18 @@ export default {
       }
     }
 
-    const handlePageChange = (newPage) => {
-      currentPage.value = newPage
-      fetchData()
-    }
-
-    const handleItemsPerPageChange = (newItemsPerPage) => {
-      itemsPerPage.value = newItemsPerPage
-      currentPage.value = 1
-      fetchData()
-    }
-
-    const handleSortChange = async (newSortBy) => {
-      if (Array.isArray(newSortBy) && newSortBy.length > 0) {
-        sortBy.value = [newSortBy[0]]
-      } else if (typeof newSortBy === 'object' && newSortBy !== null) {
-        sortBy.value = [newSortBy]
-      } else {
-        sortBy.value = []
-      }
-      currentPage.value = 1
-      fetchData()
-    }
-
-    const handleTimespanChange = async (value) => {
-      let currentDate = effectiveCurrentDate.value
-      
-      if (!currentDate) {
-        await store.dispatch('fetchEffectiveCurrentDate')
-        currentDate = store.state.effectiveCurrentDate
-      }
-
-      if (!currentDate) {
-        console.error('Failed to fetch effective current date')
-        return
-      }
-
-      const dateRange = calculateDateRange(value, currentDate)
-      if (!dateRange) return
-
-      store.dispatch('updateTableSettings', {
-        timespan: value,
-        fromDate: dateRange.fromDate,
-        toDate: dateRange.toDate
-      })
-
-      fetchData()
-    }
-
     watch(
-      [() => store.state.dataRefreshTrigger],
+      [
+        () => store.state.dataRefreshTrigger,
+        search,
+        itemsPerPage,
+        currentPage,
+        sortBy,
+        timespan,
+        dateFrom,
+        dateTo
+      ],
       () => {
-        currentPage.value = 1
         fetchData()
       },
       { deep: true }
@@ -310,17 +242,15 @@ export default {
     const initializeData = async () => {
       emit('update-page-title', props.pageTitle)
       
-      // Fetch effective current date if not available
-      if (!effectiveCurrentDate.value) {
+      if (!store.state.effectiveCurrentDate) {
         await store.dispatch('fetchEffectiveCurrentDate')
       }
 
-      // Set initial timespan to 'ytd' and update fromDate and toDate
+      // Set initial timespan to 'ytd' and update dateFrom and dateTo
       await handleTimespanChange('ytd')
 
       // Fetch year options
       await fetchYearOptions()
-
     }
 
     onMounted(() => {
@@ -331,13 +261,28 @@ export default {
       emit('update-page-title', '')
     })
 
+    // const handlePageChangeWrapper = (newPage) => {
+    //   handlePageChange(newPage)
+    //   fetchData()
+    // }
+
+    // const handleItemsPerPageChangeWrapper = (newItemsPerPage) => {
+    //   handleItemsPerPageChange(newItemsPerPage)
+    //   fetchData()
+    // }
+
+    // const handleSortChangeWrapper = (newSortBy) => {
+    //   handleSortChange(newSortBy)
+    //   fetchData()
+    // }
+
     return {
       positions,
       totals,
       tableLoading,
       timespan,
-      fromDate,
-      toDate,
+      dateFrom,
+      dateTo,
       yearOptions,
       search,
       itemsPerPage,
@@ -347,8 +292,11 @@ export default {
       flattenedHeaders,
       totalItems,
       pageCount,
+      // handlePageChange: handlePageChangeWrapper,
       handlePageChange,
+      // handleItemsPerPageChange: handleItemsPerPageChangeWrapper,
       handleItemsPerPageChange,
+      // handleSortChange: handleSortChangeWrapper,
       handleSortChange,
       handleTimespanChange,
       loading: computed(() => store.state.loading),
@@ -357,13 +305,11 @@ export default {
   },
 }
 </script>
-
 <style scoped>
 .nowrap-table :deep(td) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* font-size: small; */
 }
 
 .rows-per-page-select {
