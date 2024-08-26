@@ -26,7 +26,7 @@ def get_brokers_table_api(request):
     paginated_brokers, pagination_data = paginate_table(brokers_data, page, items_per_page)
     formatted_brokers = format_table_data(paginated_brokers, currency_target, number_of_digits)
 
-    totals = _calculate_totals(brokers_data, user, effective_current_date, currency_target, number_of_digits)
+    totals = _calculate_totals(brokers_data, user, effective_current_date, currency_target)
     totals = format_table_data(totals, currency_target, number_of_digits)
 
     return {

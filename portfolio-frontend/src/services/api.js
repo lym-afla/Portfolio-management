@@ -347,3 +347,41 @@ export const deleteSecurity = async (securityId) => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+export const getDashboardData = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-dashboard-data/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getNAVChartData = async (params) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-nav-chart`, { params })
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSummaryData = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching summary data:', error)
+    throw error
+  }
+}
+
+export const getBreakdownData = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-breakdown/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching breakdown data:', error)
+    throw error
+  }
+}

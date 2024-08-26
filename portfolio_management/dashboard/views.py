@@ -20,22 +20,16 @@ def dashboard(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    # use_default_currency = user.use_default_currency_where_relevant
     selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
-    sidebar_padding = 0
-    sidebar_width = 0
+    sidebar_padding = request.GET.get("padding", 0)
+    sidebar_width = request.GET.get("width", 0)
     brokers = Brokers.objects.filter(investor=user, id__in=selected_brokers).all()
-
-    sidebar_width = request.GET.get("width")
-    sidebar_padding = request.GET.get("padding")
-
-    # print("views. dashboard", effective_current_date)
 
     initial_data = {
         'selected_brokers': selected_brokers,
         'default_currency': currency_target,
-        'table_date': effective_current_date,
+        'table_date': effective_current_date.strftime('%Y-%m-%d'),  # Convert date to string
         'digits': number_of_digits
     }
     dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
@@ -68,7 +62,7 @@ def dashboard(request):
     
     try:
         summary['Return'] = format_percentage_old_structure((summary['NAV'] - summary['Cash-out']) / summary['Invested'] - 1, digits=1)
-    except:
+    except ZeroDivisionError:
         summary['Return'] = '–'
     
     # Convert data to string representation to feed the page
@@ -100,11 +94,11 @@ def dashboard(request):
     start_t = time.time()
 
     chart_settings = request.session['chart_settings']
-    chart_settings['To'] = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
+    chart_settings['To'] = get_last_exit_date_for_brokers(selected_brokers, effective_current_date).strftime('%Y-%m-%d')
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
     if from_date == '1900-01-01':
         from_date = Transactions.objects.filter(investor=user, broker__in=selected_brokers).order_by('date').first().date
-    chart_settings['From'] = from_date
+    chart_settings['From'] = from_date.strftime('%Y-%m-%d')
     # chart_data = get_chart_data(user.id, selected_brokers, chart_settings['frequency'], chart_settings['From'], chart_settings['To'], currency_target, chart_settings['breakdown'])
 
     # Add the "Currency" key to the dictionary

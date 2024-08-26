@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { ref } from 'vue'
-import DashboardPage from '../views/DashboardPage.vue'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
@@ -14,6 +13,7 @@ import DatabasePage from '../views/DatabasePage.vue'
 import PricesPage from '../views/database/PricesPage.vue'
 import BrokersPage from '../views/database/BrokersPage.vue'
 import SecuritiesPage from '../views/database/SecuritiesPage.vue'
+import DashboardPage from '../views/DashboardPage.vue'
 
 export const loading = ref(true)
 
