@@ -8,6 +8,15 @@ from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm_old_setup
 from database.forms import BrokerPerformanceForm
 from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids_old_approach, calculate_from_date, calculate_percentage_shares, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
+from django.core.cache import cache
+from core.dashboard_utils import get_dashboard_summary, get_dashboard_nav_breakdown
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+import logging
+from celery.result import AsyncResult
+
+logger = logging.getLogger(__name__)
 
 @login_required
 def dashboard(request):
@@ -170,3 +179,21 @@ def dashboard_summary_api(request):
         'change': format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
     }
     return JsonResponse(summary_data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_dashboard_summary_api(request):
+    user = request.user
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    
+    summary = get_dashboard_summary(user, effective_current_date)
+    return Response(summary)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_dashboard_breakdown_api(request):
+    user = request.user
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    
+    breakdown = get_dashboard_nav_breakdown(user, effective_current_date)
+    return Response(breakdown)

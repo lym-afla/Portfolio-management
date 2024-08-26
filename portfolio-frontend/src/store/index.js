@@ -60,9 +60,9 @@ export default createStore({
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
     },
-    SET_SELECTED_BROKER(state, broker) {
-      state.selectedBroker = broker
-    },
+    // SET_SELECTED_BROKER(state, broker) {
+    //   state.selectedBroker = broker
+    // },
     SET_USER_SETTINGS(state, settings) {
       state.userSettings = { ...state.userSettings, ...settings }
     },
@@ -134,9 +134,9 @@ export default createStore({
         commit('setError', 'Failed to fetch brokers')
       }
     },
-    updateSelectedBroker({ commit }, broker) {
-      commit('SET_SELECTED_BROKER', broker)
-    },
+    // updateSelectedBroker({ commit }, broker) {
+    //   commit('SET_SELECTED_BROKER', broker)
+    // },
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
     },

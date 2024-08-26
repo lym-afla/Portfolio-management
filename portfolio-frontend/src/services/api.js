@@ -348,24 +348,6 @@ export const deleteSecurity = async (securityId) => {
   }
 }
 
-export const getDashboardData = async () => {
-  try {
-    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-dashboard-data/`)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getNAVChartData = async (params) => {
-  try {
-    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-nav-chart`, { params })
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
-
 export const getSummaryData = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
@@ -376,12 +358,42 @@ export const getSummaryData = async () => {
   }
 }
 
-export const getBreakdownData = async () => {
+export const getDashboardBreakdown = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-breakdown/`)
     return response.data
   } catch (error) {
     console.error('Error fetching breakdown data:', error)
+    throw error
+  }
+}
+
+export const getSummaryOverTimeData = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary-over-time/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching summary over time data:', error)
+    throw error
+  }
+}
+
+export const getNAVChartData = async (params) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-nav-chart`, { params })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching NAV chart data:', error)
+    throw error
+  }
+}
+
+export const getDashboardSummary = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching dashboard summary:', error)
     throw error
   }
 }

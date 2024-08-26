@@ -3,25 +3,44 @@ import { inject } from 'vue'
 export function useErrorHandler() {
   const showError = inject('showError')
 
+  const extractErrorMessage = (htmlContent) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, 'text/html');
+    const summaryElement = doc.querySelector('#summary');
+    if (summaryElement) {
+      const h1 = summaryElement.querySelector('h1');
+      const requestURL = summaryElement.querySelector('tr:nth-child(2) td');
+      if (h1 && requestURL) {
+        return `${h1.textContent.trim()} - ${requestURL.textContent.trim()}`;
+      }
+    }
+    return 'An unexpected error occurred.';
+  }
+
   const handleApiError = (error) => {
+    let errorMessage = 'An unexpected error occurred.'
+
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      if (error.response.data && error.response.data.errors) {
-        // If the server sends detailed error messages
-        const errorMessages = Object.values(error.response.data.errors).flat()
-        showError(errorMessages.join(' '))
+      if (error.response.status === 404) {
+        errorMessage = extractErrorMessage(error.response.data);
+      } else if (error.response.data && error.response.data.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error.response.data && typeof error.response.data === 'string') {
+        errorMessage = error.response.data
       } else {
-        showError(`Error: ${error.response.status} - ${error.response.statusText}`)
+        errorMessage = `Error ${error.response.status}: ${error.response.statusText}`
       }
     } else if (error.request) {
       // The request was made but no response was received
-      showError('No response from server. Please check your internet connection.')
+      errorMessage = 'No response from server. Please check your internet connection.'
     } else {
       // Something happened in setting up the request that triggered an Error
-      showError('An error occurred while processing your request.')
+      errorMessage = error.message || 'An error occurred while processing your request.'
     }
+
     console.error('API Error:', error)
+    showError(errorMessage)
+    return errorMessage
   }
 
   return {

@@ -8,4 +8,8 @@ urlpatterns = [
 
     # API methods
     path('get_nav_chart_data', views.nav_chart_data_request, name='nav_chart_data_request'),
+
+    # New API methods
+    path('api/get-summary/', views.get_dashboard_summary_api, name='get_dashboard_summary_api'),
+    path('api/get-breakdown/', views.get_dashboard_breakdown_api, name='get_dashboard_breakdown_api'),
 ]

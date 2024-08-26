@@ -8,7 +8,7 @@
             v-model="selectedBreakdown"
             :items="breakdownOptions"
             label="Breakdown by"
-            @change="updateChart"
+            @update:model-value="updateChart"
           ></v-select>
         </v-col>
         <v-col cols="12" sm="4">
@@ -22,31 +22,34 @@
           <v-menu
             v-model="menu"
             :close-on-content-click="false"
-            :nudge-right="40"
             transition="scale-transition"
             offset-y
             min-width="auto"
           >
-            <template v-slot:activator="{ on, attrs }">
+            <template v-slot:activator="{ props }">
               <v-text-field
                 v-model="dateRangeText"
                 label="Date range"
                 prepend-icon="mdi-calendar"
                 readonly
-                v-bind="attrs"
-                v-on="on"
+                v-bind="props"
               ></v-text-field>
             </template>
             <v-date-picker
               v-model="dateRange"
               range
-              @change="updateChart"
+              @update:model-value="updateChart"
             ></v-date-picker>
           </v-menu>
         </v-col>
       </v-row>
+      <v-progress-circular
+        v-if="loading"
+        indeterminate
+        color="primary"
+      ></v-progress-circular>
       <Line
-        v-if="chartData.datasets && chartData.datasets.length > 0"
+        v-else-if="chartData.datasets && chartData.datasets.length > 0"
         :data="chartData"
         :options="chartOptions"
       />
@@ -56,71 +59,58 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { Line } from 'vue-chartjs'
-import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale } from 'chart.js'
-
-ChartJS.register(Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale)
+import { useNAVChartData } from '@/composables/useNAVChartData'
+import { chartOptions } from '@/config/chartConfig'
+import { getNAVChartData } from '@/services/api'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'NAVChart',
   components: { Line },
-  props: {
-    initialData: {
-      type: Object,
-      default: () => ({ labels: [], datasets: [] })
-    }
-  },
   emits: ['update-chart'],
   setup(props, { emit }) {
+    const { chartData, updateChartData } = useNAVChartData()
+    const { handleApiError } = useErrorHandler()
+
     const selectedBreakdown = ref('currency')
     const selectedFrequency = ref('M')
     const dateRange = ref([])
-    const menu = ref(false)
+    const loading = ref(false)
     const breakdownOptions = ['currency', 'broker', 'account', 'asset_class', 'region']
 
-    const chartData = ref(props.initialData)
-    const chartOptions = {
-      responsive: false,
-      maintainAspectRatio: false,
-      scales: {
-        y: {
-          beginAtZero: false
+    const fetchChartData = async () => {
+      loading.value = true
+      try {
+        const params = {
+          frequency: selectedFrequency.value,
+          from: dateRange.value[0],
+          to: dateRange.value[1],
+          breakdown: selectedBreakdown.value
         }
+        const data = await getNAVChartData(params)
+        updateChartData(data)
+        emit('update-chart', data)
+      } catch (error) {
+        handleApiError(error)
+      } finally {
+        loading.value = false
       }
     }
 
-    const dateRangeText = computed(() => {
-      return dateRange.value.join(' - ')
-    })
+    onMounted(fetchChartData)
 
-    const updateChart = () => {
-      emit('update-chart', {
-        frequency: selectedFrequency.value,
-        from: dateRange.value[0],
-        to: dateRange.value[1],
-        breakdown: selectedBreakdown.value
-      })
-    }
-
-    watch([selectedBreakdown, selectedFrequency, dateRange], updateChart)
-
-    onMounted(() => {
-      if (props.initialData && props.initialData.labels && props.initialData.datasets) {
-        chartData.value = props.initialData
-      }
-    })
+    watch([selectedBreakdown, selectedFrequency, dateRange], fetchChartData)
 
     return {
+      chartData,
       selectedBreakdown,
       selectedFrequency,
       dateRange,
-      menu,
+      loading,
       breakdownOptions,
-      dateRangeText,
-      chartData,
-      chartOptions,
-      updateChart
+      chartOptions
     }
   }
 }

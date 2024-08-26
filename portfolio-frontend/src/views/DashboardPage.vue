@@ -3,21 +3,21 @@
     <v-row class="equal-height-row">
       <v-col cols="12" md="3">
         <v-skeleton-loader v-if="loading.summary" type="card" class="h-100" />
-        <SummaryCard v-else :summary="summary" :currency="currency" class="h-100" />
+        <SummaryCard v-else-if="!error.summary" :summary="summary" :currency="currency" class="h-100" />
+        <v-alert v-else type="error" class="h-100">{{ error.summary }}</v-alert>
       </v-col>
       <v-col cols="12" md="9">
         <v-row class="equal-height-row h-100">
-          <v-col cols="12" md="4">
+          <v-col v-for="(chart, index) in chartTypes" :key="index" cols="12" md="4">
             <v-skeleton-loader v-if="loading.breakdownCharts" type="card" class="h-100" />
-            <BreakdownChart v-else title="Asset Type" :data="breakdownData.assetType" class="h-100" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-skeleton-loader v-if="loading.breakdownCharts" type="card" class="h-100" />
-            <BreakdownChart v-else title="Asset Class" :data="breakdownData.assetClass" class="h-100" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-skeleton-loader v-if="loading.breakdownCharts" type="card" class="h-100" />
-            <BreakdownChart v-else title="Currency" :data="breakdownData.currency" class="h-100" />
+            <BreakdownChart 
+              v-else-if="!error.breakdownCharts" 
+              :title="chartTitles[chart]" 
+              :data="breakdownData[chart]" 
+              :currency="currency"
+              class="h-100" 
+            />
+            <v-alert v-else type="error" class="h-100">{{ error.breakdownCharts }}</v-alert>
           </v-col>
         </v-row>
       </v-col>
@@ -27,10 +27,12 @@
       <v-col cols="12">
         <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
         <SummaryOverTimeTable
+          v-else-if="!error.summaryOverTime"
           :lines="summaryOverTimeData.lines"
           :years="summaryOverTimeData.years"
           :currentYear="summaryOverTimeData.currentYear"
         />
+        <v-alert v-else type="error">{{ error.summaryOverTime }}</v-alert>
       </v-col>
     </v-row>
 
@@ -38,22 +40,24 @@
       <v-col cols="12">
         <v-skeleton-loader v-if="loading.navChart" type="card" />
         <NAVChart 
-          v-else
-          :initialData="navChartData" 
+          v-else-if="!error.navChart"
+          @update-chart="handleNAVChartUpdate"
         />
+        <v-alert v-else type="error">{{ error.navChart }}</v-alert>
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, inject, watch } from 'vue'
+import { useStore } from 'vuex'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
 import NAVChart from '@/components/dashboard/NAVChart.vue'
-import { getSummaryData, getBreakdownData } from '@/services/api'
-import { mockDashboardData } from '@/mockData'
+import { getDashboardSummary, getDashboardBreakdown } from '@/services/api'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'DashboardPage',
@@ -65,6 +69,9 @@ export default {
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
+    const store = useStore()
+    const { handleApiError } = useErrorHandler()
+    const clearErrors = inject('clearErrors')
     const summary = ref({})
     const currency = ref('USD')
     const breakdownData = ref({
@@ -72,38 +79,122 @@ export default {
       assetClass: {},
       currency: {},
     })
-    const summaryOverTimeData = ref(mockDashboardData.summaryOverTimeData)
-    const navChartData = ref(mockDashboardData.navChartData)
+    const totalNAV = ref('')
+    const summaryOverTimeData = ref({})
+    const navChartData = ref({})
+
+    const chartTypes = ['assetType', 'assetClass', 'currency']
+    const chartTitles = {
+      assetType: 'Asset Type',
+      assetClass: 'Asset Class',
+      currency: 'Currency',
+    }
 
     const loading = ref({
       summary: true,
       breakdownCharts: true,
+      summaryOverTime: true,
+      navChart: true,
+    })
+
+    const error = ref({
+      summary: null,
+      breakdownCharts: null,
+      summaryOverTime: null,
+      navChart: null,
     })
 
     const fetchSummaryData = async () => {
       try {
-        const data = await getSummaryData()
+        clearErrors()
+        loading.value.summary = true
+        console.log('Fetching dashboard summary...')
+        const data = await getDashboardSummary()
+        console.log('Received summary data:', data)
         summary.value = data
         loading.value.summary = false
-      } catch (error) {
-        console.error('Error fetching summary data:', error)
+      } catch (err) {
+        console.error('Error fetching summary:', err)
+        error.value.summary = handleApiError(err)
+        loading.value.summary = false
       }
     }
 
     const fetchBreakdownData = async () => {
       try {
-        const data = await getBreakdownData()
-        breakdownData.value = data
+        clearErrors()
+        loading.value.breakdownCharts = true
+        console.log('Fetching dashboard breakdown...')
+        const data = await getDashboardBreakdown()
+        console.log('Received breakdown data:', data)
+        breakdownData.value = {
+          assetType: { ...data.assetType, totalNAV: data.totalNAV },
+          assetClass: { ...data.assetClass, totalNAV: data.totalNAV },
+          currency: { ...data.currency, totalNAV: data.totalNAV },
+        }
+        totalNAV.value = data.totalNAV
         loading.value.breakdownCharts = false
-      } catch (error) {
-        console.error('Error fetching breakdown data:', error)
+      } catch (err) {
+        console.error('Error fetching breakdown:', err)
+        error.value.breakdownCharts = handleApiError(err)
+        loading.value.breakdownCharts = false
       }
     }
 
-    onMounted(() => {
-      emit('update-page-title', 'Dashboard')
+    const fetchSummaryOverTimeData = async () => {
+      try {
+        clearErrors()
+        loading.value.summaryOverTime = true
+        // Implement the API call to fetch summary over time data
+        // const data = await getSummaryOverTimeData()
+        // summaryOverTimeData.value = data
+        // loading.value.summaryOverTime = false
+      } catch (err) {
+        error.value.summaryOverTime = handleApiError(err)
+        loading.value.summaryOverTime = false
+      }
+    }
+
+    const fetchNAVChartData = async () => {
+      try {
+        clearErrors()
+        loading.value.navChart = true
+        // Implement the API call to fetch NAV chart data
+        // const data = await getNAVChartData()
+        // navChartData.value = data
+        loading.value.navChart = false
+      } catch (err) {
+        error.value.navChart = handleApiError(err)
+        loading.value.navChart = false
+      }
+    }
+
+    const refreshAllData = () => {
       fetchSummaryData()
       fetchBreakdownData()
+      fetchSummaryOverTimeData()
+      fetchNAVChartData()
+    }
+
+    const handleNAVChartUpdate = (newData) => {
+      console.log('NAV Chart updated:', newData)
+      // Handle any necessary updates based on the new NAV chart data
+    }
+
+    // Watch for changes in the store that should trigger a data refresh
+    watch(
+      [
+        () => store.state.dataRefreshTrigger,
+      ],
+      () => {
+        console.log('Dashboard detected a change that requires data refresh')
+        refreshAllData()
+      }
+    )
+
+    onMounted(() => {
+      emit('update-page-title', 'Dashboard')
+      refreshAllData()
     })
 
     onUnmounted(() => {
@@ -114,9 +205,14 @@ export default {
       summary,
       currency,
       breakdownData,
+      totalNAV,
       summaryOverTimeData,
       navChartData,
       loading,
+      error,
+      handleNAVChartUpdate,
+      chartTypes,
+      chartTitles,
     }
   },
 }

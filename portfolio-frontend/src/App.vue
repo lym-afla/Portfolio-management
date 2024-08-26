@@ -34,13 +34,16 @@
       :timeout="5000"
       color="error"
       top
+      multi-line
     >
-      {{ errorMessage }}
+      <div v-for="(error, index) in errorMessages" :key="index">
+        {{ error }}
+      </div>
       <template v-slot:actions>
         <v-btn
           color="white"
           text
-          @click="errorSnackbar = false"
+          @click="clearErrors"
         >
           Close
         </v-btn>
@@ -117,14 +120,20 @@ export default {
     provide('isAuthenticated', isAuthenticated)
 
     const errorSnackbar = ref(false)
-    const errorMessage = ref('')
+    const errorMessages = ref([])
 
     const showError = (message) => {
-      errorMessage.value = message
+      errorMessages.value.push(message)
       errorSnackbar.value = true
     }
 
+    const clearErrors = () => {
+      errorMessages.value = []
+      errorSnackbar.value = false
+    }
+
     provide('showError', showError)
+    provide('clearErrors', clearErrors)
 
     return {
       user,
@@ -138,7 +147,8 @@ export default {
       isProfilePage,
       isDatabasePage,
       errorSnackbar,
-      errorMessage,
+      errorMessages,
+      clearErrors,
     }
   },
 }

@@ -8,14 +8,14 @@
       <v-table density="compact">
         <thead>
           <tr>
-            <th class="text-left">Metric</th>
+            <th></th>
             <th class="text-right">{{ props.currency }}</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="font-weight-bold">
           <tr v-for="(value, key) in props.summary" :key="key">
             <td class="text-left">{{ formatKey(key) }}</td>
-            <td class="text-right">{{ formatValue(value) }}</td>
+            <td class="text-right">{{ value }}</td>
           </tr>
         </tbody>
       </v-table>
@@ -37,29 +37,12 @@ export default {
     }
   },
   setup(props) {
+    
     const formatKey = (key) => {
-      return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+      return key.replace('_', ' ').replace(/^./, (str) => str.toUpperCase()).replace('Irr', 'IRR')
     }
-
-    const formatValue = (value) => {
-      if (typeof value === 'number') {
-        return new Intl.NumberFormat('en-US', {
-          style: 'decimal',
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        }).format(value)
-      } else if (typeof value === 'string' && value.endsWith('%')) {
-        return value
-      } else {
-        return value
-      }
-    }
-
-    return {
-      formatKey,
-      formatValue,
-      props // Return props to make them accessible in the template
-    }
+    
+    return { props, formatKey }
   }
 }
 </script>

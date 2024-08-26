@@ -9,7 +9,7 @@
 
       <v-window v-model="tab">
         <v-window-item value="chart">
-          <Pie :data="chartData" :options="chartOptions" />
+          <Pie :data="chartData" :options="pieChartOptions" />
         </v-window-item>
 
         <v-window-item value="table">
@@ -24,13 +24,13 @@
             <tbody>
               <tr v-for="(item, index) in sortedData" :key="index">
                 <td class="text-left category-column">{{ item.label }}</td>
-                <td class="text-right">{{ formatCurrency(item.value) }}</td>
-                <td class="text-right">{{ formatPercentage(item.value) }}</td>
+                <td class="text-right">{{ item.value }}</td>
+                <td class="text-right">{{ item.percentage }}</td>
               </tr>
               <tr class="font-weight-bold">
                 <td class="text-left category-column">Total</td>
-                <td class="text-right">{{ formatCurrency(totalAmount) }}</td>
-                <td class="text-right">100.00%</td>
+                <td class="text-right">{{ props.data.totalNAV }}</td>
+                <td class="text-right">100%</td>
               </tr>
             </tbody>
           </v-table>
@@ -44,6 +44,7 @@
 import { ref, computed } from 'vue'
 import { Pie } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
+import { pieChartOptions, colorPalette } from '@/config/chartConfig'
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale)
 
@@ -61,59 +62,38 @@ export default {
     },
     currency: {
       type: String,
-      default: 'USD'
+      required: true
     }
   },
   setup(props) {
     const tab = ref('chart')
 
+    console.log("BreakdownChart.vue. props.data", props.data)
+
     const sortedData = computed(() => {
-      return Object.entries(props.data)
-        .map(([label, value]) => ({ label, value: parseFloat(value.amount) }))
-        .sort((a, b) => b.value - a.value)
+      return Object.entries(props.data.data)
+        .map(([label, value]) => ({ 
+          label, 
+          value,
+          percentage: props.data.percentage[label]
+        }))
+        .sort((a, b) => parseFloat(b.value.replace(/[^0-9.-]+/g,"")) - parseFloat(a.value.replace(/[^0-9.-]+/g,"")))
     })
 
     const chartData = computed(() => ({
       labels: sortedData.value.map(item => item.label),
       datasets: [{
-        data: sortedData.value.map(item => item.value),
-        backgroundColor: [
-          '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
-          '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
-        ]
+        data: sortedData.value.map(item => parseFloat(item.value.replace(/[^0-9.-]+/g,""))),
+        backgroundColor: colorPalette
       }]
     }))
-
-    const chartOptions = {
-      responsive: true,
-      maintainAspectRatio: false
-    }
-
-    const totalAmount = computed(() => 
-      sortedData.value.reduce((sum, item) => sum + item.value, 0)
-    )
-
-    const formatCurrency = (value) => {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: props.currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(value)
-    }
-
-    const formatPercentage = (value) => {
-      return ((value / totalAmount.value) * 100).toFixed(2) + '%'
-    }
 
     return {
       tab,
       chartData,
-      chartOptions,
-      totalAmount,
+      pieChartOptions,
       sortedData,
-      formatCurrency,
-      formatPercentage
+      props // Expose props to the template
     }
   }
 }

@@ -86,11 +86,11 @@ export default {
       if (typeof newValue === 'object' && newValue !== null) {
         selectedBroker.value = newValue.value
         await updateDataForBroker(newValue.value)
-        store.dispatch('updateSelectedBroker', newValue)
+        // store.dispatch('updateSelectedBroker', newValue)
       } else {
         selectedBroker.value = newValue
         await updateDataForBroker(newValue)
-        store.dispatch('updateSelectedBroker', newValue)
+        // store.dispatch('updateSelectedBroker', newValue)
       }
     }
 
