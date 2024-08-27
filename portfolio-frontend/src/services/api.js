@@ -348,15 +348,15 @@ export const deleteSecurity = async (securityId) => {
   }
 }
 
-export const getSummaryData = async () => {
-  try {
-    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
-    return response.data
-  } catch (error) {
-    console.error('Error fetching summary data:', error)
-    throw error
-  }
-}
+// export const getSummaryData = async () => {
+//   try {
+//     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
+//     return response.data
+//   } catch (error) {
+//     console.error('Error fetching summary data:', error)
+//     throw error
+//   }
+// }
 
 export const getDashboardBreakdown = async () => {
   try {
@@ -368,7 +368,7 @@ export const getDashboardBreakdown = async () => {
   }
 }
 
-export const getSummaryOverTimeData = async () => {
+export const getDashboardSummaryOverTime = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary-over-time/`)
     return response.data

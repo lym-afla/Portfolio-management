@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from common.models import Assets, Brokers, Transactions
 from common.forms import DashboardForm_old_setup
 from core.positions_utils import get_positions_table_api
-from utils import broker_group_to_ids_old_approach, calculate_closed_table_output, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids_old_approach, calculate_closed_table_output, get_last_exit_date_for_brokers_old_approach
 
 @login_required
 def closed_positions(request):
@@ -73,7 +73,7 @@ def closed_positions(request):
     if first_year:
         first_year = first_year.date.year
 
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers, effective_current_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
     if first_year is not None:

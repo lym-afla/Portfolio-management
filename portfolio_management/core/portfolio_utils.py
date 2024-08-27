@@ -1,14 +1,19 @@
 from collections import defaultdict
 from datetime import date, timedelta
+import datetime
 from functools import lru_cache
-from django.db.models import Sum, QuerySet
+from django.db.models import Sum, QuerySet, Case, When, F, DecimalField, Q
+from django.db.models.functions import Coalesce
+import pandas as pd
 from pyxirr import xirr
-from common.models import FX, Assets, Brokers, Transactions
+from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
 from constants import BROKER_GROUPS
 
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Optional, Union
 import logging
+
+from core.formatting_utils import format_percentage
 
 def portfolio_at_date(user_id: int, to_date: date, brokers: List[int]) -> QuerySet[Assets]:
     """
@@ -236,5 +241,122 @@ def broker_group_to_ids(brokers_or_group: Union[str, List[int]], user) -> List[i
         if not selected_brokers.issubset(user_brokers):
             logging.warning("Some of the provided broker IDs do not belong to the user")
         return list(selected_brokers & user_brokers)
-    else:
-        raise ValueError(f"Invalid input type for brokers_or_group: {type(brokers_or_group)}")
+
+def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
+    performance_data = defaultdict(Decimal)
+
+    brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).select_related('investor')
+
+    bop_navs = AnnualPerformance.objects.filter(
+        investor=user, 
+        broker__in=brokers, 
+        year=start_date.year - 1, 
+        currency=currency_target
+    ).values('broker', 'eop_nav')
+
+    bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
+
+    for broker in brokers:
+        bop_nav = bop_nav_dict.get(broker.id)
+        if not bop_nav:
+            bop_nav = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
+        performance_data['bop_nav'] += bop_nav
+
+        transactions = Transactions.objects.filter(
+            investor=user,
+            broker_id=broker.id,
+            date__gte=start_date,
+            date__lte=end_date,
+        )
+
+        if is_restricted is not None:
+            restricted_filter = Q(security__isnull=False, security__restricted=is_restricted)
+            if not is_restricted:
+                restricted_filter |= Q(security__isnull=True)
+            transactions = transactions.filter(restricted_filter)
+
+        # Calculate transaction-based metrics
+        for transaction in transactions:
+            fx_rate = get_fx_rate(transaction.currency, currency_target, transaction.date)
+            converted_amount = transaction.cash_flow * fx_rate
+            
+            if transaction.type == 'Cash in':
+                performance_data['invested'] += converted_amount
+            elif transaction.type == 'Cash out':
+                performance_data['cash_out'] += converted_amount
+            elif transaction.type == 'Tax':
+                performance_data['tax'] += converted_amount
+            
+            performance_data['commission'] += (transaction.commission or 0) * fx_rate
+
+        # Calculate asset-based metrics
+        assets = Assets.objects.filter(investor=user, brokers=broker).prefetch_related('transactions')
+        if is_restricted is not None:
+            assets = assets.filter(restricted=is_restricted)
+
+        for asset in assets:
+            asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['price_change'] += asset_realized_gl["all_time"] if asset_realized_gl else 0
+            performance_data['price_change'] += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+
+        # Calculate EOP NAV
+        eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
+        performance_data['eop_nav'] += eop_nav
+
+    # Calculate FX impact
+    components_sum = sum(performance_data[key] for key in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax'])
+    performance_data['fx'] = performance_data['eop_nav'] - components_sum
+
+    # Calculate TSR
+    performance_data['tsr'] = format_percentage(IRR(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date), digits=1)
+
+    # Adjust FX for rounding errors
+    performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
+
+    return dict(performance_data)
+
+# Add percentage shares to the dict
+def calculate_percentage_shares(data_dict, selected_keys):
+
+    # Calculate Total NAV based on one of the categories
+    total = sum(data_dict[selected_keys[0]].values())
+    
+    # Add new dictionaries with percentage shares for selected categories
+    for category in selected_keys:
+        percentage_key = category + ' percentage'
+        data_dict[percentage_key] = {}
+        for key, value in data_dict[category].items():
+            try:
+                data_dict[percentage_key][key] = str(round(Decimal(value / total * 100), 1)) + '%'
+            except ZeroDivisionError:
+                data_dict[percentage_key][key] = '–'
+
+def get_last_exit_date_for_brokers(selected_brokers, date):
+    """
+    Calculate the last date after which all activities ended and no asset was opened for the selected brokers.
+
+    Args:
+        selected_brokers (list): List of broker IDs to include in the calculation.
+        date (date or str): The current date to use as a reference.
+
+    Returns:
+        date: The last date after which all activities ended and no asset was opened for the selected brokers.
+    """
+    # Ensure date is a date object
+    if isinstance(date, str):
+        date = datetime.strptime(date, '%Y-%m-%d').date()
+
+    # Step 1: Check the position of each security at the current date
+    for broker in Brokers.objects.filter(id__in=selected_brokers):
+        for security in broker.securities.all():
+            if security.position(date, [broker.id]) != 0:
+                return date
+
+    # Step 2: If positions for all securities at the current date are zero, find the latest transaction date
+    latest_transaction_date = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=date).order_by('-date').values_list('date', flat=True).first()
+    
+    if latest_transaction_date is None:
+        return date
+    
+    return latest_transaction_date

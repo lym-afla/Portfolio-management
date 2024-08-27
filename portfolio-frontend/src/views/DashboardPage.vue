@@ -28,9 +28,9 @@
         <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
         <SummaryOverTimeTable
           v-else-if="!error.summaryOverTime"
-          :lines="summaryOverTimeData.lines"
-          :years="summaryOverTimeData.years"
-          :currentYear="summaryOverTimeData.currentYear"
+          :lines="summaryOverTimeData ? summaryOverTimeData.lines : []"
+          :years="summaryOverTimeData ? summaryOverTimeData.years : []"
+          :currentYear="summaryOverTimeData ? summaryOverTimeData.currentYear : ''"
         />
         <v-alert v-else type="error">{{ error.summaryOverTime }}</v-alert>
       </v-col>
@@ -39,10 +39,9 @@
     <v-row>
       <v-col cols="12">
         <v-skeleton-loader v-if="loading.navChart" type="card" />
-        <NAVChart 
+        <!-- <NAVChart 
           v-else-if="!error.navChart"
-          @update-chart="handleNAVChartUpdate"
-        />
+        /> -->
         <v-alert v-else type="error">{{ error.navChart }}</v-alert>
       </v-col>
     </v-row>
@@ -55,8 +54,8 @@ import { useStore } from 'vuex'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
-import NAVChart from '@/components/dashboard/NAVChart.vue'
-import { getDashboardSummary, getDashboardBreakdown } from '@/services/api'
+// import NAVChart from '@/components/dashboard/NAVChart.vue'
+import { getDashboardSummary, getDashboardBreakdown, getDashboardSummaryOverTime } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
@@ -65,7 +64,6 @@ export default {
     SummaryCard,
     BreakdownChart,
     SummaryOverTimeTable,
-    NAVChart,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -145,12 +143,15 @@ export default {
       try {
         clearErrors()
         loading.value.summaryOverTime = true
-        // Implement the API call to fetch summary over time data
-        // const data = await getSummaryOverTimeData()
-        // summaryOverTimeData.value = data
-        // loading.value.summaryOverTime = false
+        console.log('Fetching summary over time data...')
+        const data = await getDashboardSummaryOverTime()
+        console.log('Received summary over time data:', data)
+        summaryOverTimeData.value = data
+        loading.value.summaryOverTime = false
       } catch (err) {
+        console.error('Error fetching summary over time:', err)
         error.value.summaryOverTime = handleApiError(err)
+        summaryOverTimeData.value = [] // Add empty summaryOverTimeData if error
         loading.value.summaryOverTime = false
       }
     }
@@ -176,10 +177,10 @@ export default {
       fetchNAVChartData()
     }
 
-    const handleNAVChartUpdate = (newData) => {
-      console.log('NAV Chart updated:', newData)
-      // Handle any necessary updates based on the new NAV chart data
-    }
+    // const handleNAVChartUpdate = (newData) => {
+    //   console.log('NAV Chart updated:', newData)
+    //   // Handle any necessary updates based on the new NAV chart data
+    // }
 
     // Watch for changes in the store that should trigger a data refresh
     watch(
@@ -210,7 +211,6 @@ export default {
       navChartData,
       loading,
       error,
-      handleNAVChartUpdate,
       chartTypes,
       chartTitles,
     }

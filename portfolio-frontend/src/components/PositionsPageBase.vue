@@ -247,10 +247,12 @@ export default {
       }
 
       // Set initial timespan to 'ytd' and update dateFrom and dateTo
-      await handleTimespanChange('ytd')
+    await handleTimespanChange('ytd')
 
       // Fetch year options
       await fetchYearOptions()
+
+      // await fetchData()
     }
 
     onMounted(() => {

@@ -1,13 +1,13 @@
 <template>
-  <v-card>
+  <v-card class="d-flex flex-column">
     <v-card-title>{{ title }}</v-card-title>
-    <v-card-text class="pa-0">
+    <v-card-text class="pa-0 flex-grow-1 d-flex flex-column">
       <v-tabs v-model="tab">
         <v-tab value="chart">Pie Chart</v-tab>
         <v-tab value="table">Table</v-tab>
       </v-tabs>
 
-      <v-window v-model="tab">
+      <v-window v-model="tab" class="flex-grow-1">
         <v-window-item value="chart">
           <div class="chart-container">
             <Pie :data="chartData" :options="pieChartOptions" />
@@ -43,11 +43,11 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Pie } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
-import { pieChartOptions, colorPalette } from '@/config/chartConfig'
+import { getChartOptions } from '@/config/chartConfig'
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, ChartDataLabels)
 
@@ -70,8 +70,8 @@ export default {
   },
   setup(props) {
     const tab = ref('chart')
-
-    console.log("BreakdownChart.vue. props.data", props.data)
+    const pieChartOptions = ref({})
+    const colorPalette = ref([])
 
     const sortedData = computed(() => {
       return Object.entries(props.data.data)
@@ -87,9 +87,15 @@ export default {
       labels: sortedData.value.map(item => item.label),
       datasets: [{
         data: sortedData.value.map(item => parseFloat(item.value.replace(/[^0-9.-]+/g,""))),
-        backgroundColor: colorPalette
+        backgroundColor: colorPalette.value
       }]
     }))
+
+    onMounted(async () => {
+      const { pieChartOptions: options, colorPalette: palette } = await getChartOptions()
+      pieChartOptions.value = options
+      colorPalette.value = palette
+    })
 
     return {
       tab,
@@ -104,12 +110,15 @@ export default {
 
 <style scoped>
 .chart-container {
-  /* height: 300px; */
   position: relative;
+  width: 100%;
+  max-width: 300px; /* Adjust this value as needed */
+  margin: 0 auto;
 }
 
-.category-column {
-  width: 50%;
+.v-window-item {
+  height: 100%;
+  width: 100%;
 }
 
 .v-table :deep(th) {

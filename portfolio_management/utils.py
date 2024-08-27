@@ -398,7 +398,7 @@ def currency_format_dict_values(data, currency, digits):
     return formatted_data
 
 # Add percentage shares to the dict
-def calculate_percentage_shares(data_dict, selected_keys):
+def calculate_percentage_shares_old_framework(data_dict, selected_keys):
 
     # Calculate Total NAV based on one of the categories
     total = sum(data_dict[selected_keys[0]].values())
@@ -1271,7 +1271,7 @@ def import_FX_from_csv(file_path):
         except IntegrityError as e:
             print(f"Error updating FX for date {date} and investor {investor_id}: {e}")
 
-def get_last_exit_date_for_brokers(selected_brokers, date):
+def get_last_exit_date_for_brokers_old_approach(selected_brokers, date):
     """
     Calculate the last date after which all activities ended and no asset was opened for the selected brokers.
 
@@ -1741,7 +1741,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     
     start_year = first_entry.year
     
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
@@ -1765,7 +1765,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     # Calculate YTD for the current year
     current_year = effective_date.year
     
-    ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_date, selected_brokers, currency_target)
+    ytd_data = calculate_performance_old_framework(user, date(current_year, 1, 1), effective_date, selected_brokers, currency_target)
     # for line_name, value in ytd_data.items():
     #     lines[line_name]["data"]["YTD"] = value
 
@@ -1975,7 +1975,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
         return {"public_markets_context": public_markets_context, "restricted_investments_context": restricted_investments_context}
     
     start_year = first_entry.year
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
@@ -2014,7 +2014,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
 
             # Add YTD data
             try:
-                ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_date, [broker.id], currency_target, is_restricted=restricted)
+                ytd_data = calculate_performance_old_framework(user, date(current_year, 1, 1), effective_date, [broker.id], currency_target, is_restricted=restricted)
                 compiled_ytd_data = compile_summary_data(ytd_data, currency_target, number_of_digits)
                 line_data['data']['YTD'] = compiled_ytd_data
 
@@ -2198,7 +2198,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
     start_year = first_transaction.date.year
 
     # Determine the ending year
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
@@ -2209,7 +2209,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
 
         try:
             with transaction.atomic():
-                performance_data = calculate_performance(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
+                performance_data = calculate_performance_old_framework(user, date(year, 1, 1), date(year, 12, 31), selected_brokers_ids, currency_target, is_restricted)
                 
                 performance, created = AnnualPerformance.objects.update_or_create(
                     investor=user,
@@ -2334,7 +2334,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
 
 #     return performance_data
 
-def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
+def calculate_performance_old_framework(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
     performance_data = {name: Decimal(0) for name in [
         "bop_nav", "invested", "cash_out", "price_change", "capital_distribution",
         "commission", "tax", "fx", "eop_nav", "tsr"

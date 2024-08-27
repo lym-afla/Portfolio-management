@@ -6,7 +6,7 @@ from django.shortcuts import render
 
 from common.forms import DashboardForm_old_setup
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-from utils import broker_group_to_ids_old_approach, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids_old_approach, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers_old_approach
 
 
 def summary_view(request):
@@ -45,7 +45,7 @@ def summary_view(request):
         investor=user,
         broker__in=user_brokers
     ).order_by('year').first().year
-    last_exit_date = get_last_exit_date_for_brokers([broker.id for broker in user_brokers], effective_current_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach([broker.id for broker in user_brokers], effective_current_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
     exposure_table_years = list(range(first_year, last_year + 1))

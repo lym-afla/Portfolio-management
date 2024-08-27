@@ -1,19 +1,29 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 import time
 import json
+import logging
+from collections import defaultdict
+
+from django.db import DatabaseError
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.db.models import Sum
+
 from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm_old_setup
+from core.formatting_utils import currency_format, format_percentage, format_table_data
+from core.portfolio_utils import IRR, NAV_at_date, broker_group_to_ids, calculate_percentage_shares, calculate_performance, get_last_exit_date_for_brokers
+
 from database.forms import BrokerPerformanceForm
-from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids_old_approach, calculate_from_date, calculate_percentage_shares, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
-from django.core.cache import cache
-from core.dashboard_utils import get_dashboard_summary, get_dashboard_nav_breakdown
+
+from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids_old_approach, calculate_from_date, calculate_percentage_shares_old_framework, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers_old_approach, dashboard_summary_over_time
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-import logging
+from rest_framework import status
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +92,7 @@ def dashboard(request):
     json_analysis = json.dumps(analysis, default=decimal_default)
 
     # Add percentage breakdowns
-    calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
+    calculate_percentage_shares_old_framework(analysis, ['Asset type', 'Currency', 'Asset class'])
     analysis = currency_format_dict_values(analysis, currency_target, number_of_digits)
 
     print("views. dashboard. Time taken for summary dict calcs", time.time() - start_t)
@@ -102,7 +112,7 @@ def dashboard(request):
     start_t = time.time()
 
     chart_settings = request.session['chart_settings']
-    chart_settings['To'] = get_last_exit_date_for_brokers(selected_brokers, effective_current_date).strftime('%Y-%m-%d')
+    chart_settings['To'] = get_last_exit_date_for_brokers_old_approach(selected_brokers, effective_current_date).strftime('%Y-%m-%d')
     from_date = calculate_from_date(chart_settings['To'], chart_settings['timeline'])
     if from_date == '1900-01-01':
         from_date = Transactions.objects.filter(investor=user, broker__in=selected_brokers).order_by('date').first().date
@@ -164,20 +174,20 @@ def nav_chart_data_request(request):
 
     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-@login_required
-def dashboard_summary_api(request):
-    user = request.user
-    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-    currency_target = user.default_currency
-    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
+# @login_required
+# def dashboard_summary_api(request):
+#     user = request.user
+#     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+#     currency_target = user.default_currency
+#     selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
-    analysis = NAV_at_date_old_structure(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+#     analysis = NAV_at_date_old_structure(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
     
-    summary_data = {
-        'totalValue': currency_format_old_structure(analysis['Total NAV'], currency_target, user.digits),
-        'change': format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
-    }
-    return JsonResponse(summary_data)
+#     summary_data = {
+#         'totalValue': currency_format_old_structure(analysis['Total NAV'], currency_target, user.digits),
+#         'change': format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
+#     }
+#     return JsonResponse(summary_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -185,7 +195,46 @@ def get_dashboard_summary_api(request):
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
-    summary = get_dashboard_summary(user, effective_current_date)
+    currency_target = user.default_currency
+    number_of_digits = user.digits
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+
+    summary = {}
+
+    # Calculate NAV
+    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    summary['Current NAV'] = analysis['Total NAV']
+
+    # Calculate Invested and Cash-out
+    summary['Invested'] = Decimal(0)
+    summary['Cash-out'] = Decimal(0)
+
+    transactions = Transactions.objects.filter(
+        investor=user,
+        broker__in=selected_brokers,
+        date__lte=effective_current_date,
+        type__in=['Cash in', 'Cash out']
+    ).values('currency', 'type', 'cash_flow', 'date').annotate(
+        total=Sum('cash_flow')
+    )
+
+    for transaction in transactions:
+        fx_rate = FX.get_rate(transaction['currency'], currency_target, transaction['date'])['FX']
+        if transaction['type'] == 'Cash in':
+            summary['Invested'] += Decimal(transaction['total']) * Decimal(fx_rate)
+        else:
+            summary['Cash-out'] += Decimal(transaction['total']) * Decimal(fx_rate)
+
+    # Calculate IRR and Return
+    try:
+        summary['total_return'] = (summary['Current NAV'] - summary['Cash-out']) / summary['Invested'] - 1
+    except ZeroDivisionError:
+        summary['total_return'] = None
+
+    summary['irr'] = IRR(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers)
+
+    summary = format_table_data(summary, currency_target, number_of_digits)
+    
     return Response(summary)
 
 @api_view(['GET'])
@@ -194,5 +243,125 @@ def get_dashboard_breakdown_api(request):
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     
-    breakdown = get_dashboard_nav_breakdown(user, effective_current_date)
-    return Response(breakdown)
+    currency_target = user.default_currency
+    number_of_digits = user.digits
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+
+    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    
+    # Remove 'Total NAV' from the analysis
+    total_nav = analysis.pop('Total NAV', None)
+    
+    # Calculate percentage breakdowns
+    calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
+    
+    # Format the values
+    analysis = format_table_data(analysis, currency_target, number_of_digits)
+    
+    return Response({
+        'assetType': {
+            'data': analysis['Asset type'],
+            'percentage': analysis['Asset type percentage']
+        },
+        'currency': {
+            'data': analysis['Currency'],
+            'percentage': analysis['Currency percentage']
+        },
+        'assetClass': {
+            'data': analysis['Asset class'],
+            'percentage': analysis['Asset class percentage']
+        },
+        'totalNAV': currency_format(total_nav, currency_target, number_of_digits)
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_dashboard_summary_over_time_api(request):
+    try:
+        user = request.user
+        effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+        
+        currency_target = user.default_currency
+        selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+
+        # Determine the starting year
+        stored_data = AnnualPerformance.objects.select_related('investor').filter(
+            investor=user,
+            broker_group=user.custom_brokers,
+            currency=currency_target,
+            restricted=None
+        )
+
+        first_entry = stored_data.order_by('year').first()
+        if not first_entry:
+            return Response({"message": "No data available for the selected period."}, status=status.HTTP_404_NOT_FOUND)
+        
+        start_year = first_entry.year
+        last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
+        last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
+        years = list(range(start_year, last_year + 1))
+
+        line_names = [
+            "BoP NAV", "Invested", "Cash out", "Price change", "Capital distribution",
+            "Commission", "Tax", "FX", "EoP NAV", "TSR"
+        ]
+        
+        lines = defaultdict(lambda: {"name": "", "data": {}})
+        for name in line_names:
+            lines[name]["name"] = name
+        
+        # Fetch stored data
+        stored_data = stored_data.filter(year__in=years).values_list('year', *[name.lower().replace(' ', '_') for name in line_names])
+
+        # Process stored data
+        processed_data = {
+            entry[0]: {line_names[i]: entry[i+1] for i in range(len(line_names))}
+            for entry in stored_data
+        }
+
+        for line_name in line_names:
+            lines[line_name]['data'] = {year: processed_data[year][line_name] for year in processed_data}
+
+        # Calculate YTD for the current year
+        current_year = effective_current_date.year
+        ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_current_date, selected_brokers, currency_target)
+
+        for line_name in line_names:
+            ytd_field_name = line_name.lower().replace(' ', '_')
+            lines[line_name]["data"]["YTD"] = ytd_data[ytd_field_name]
+
+        # Calculate All-time data
+        for line_name, line_data in lines.items():
+            if line_name != 'TSR':
+                line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if year != "All-time")
+
+        lines['TSR']["data"]["All-time"] = format_percentage(IRR(user.id, effective_current_date, currency_target, broker_id_list=selected_brokers), digits=1)
+        lines['BoP NAV']['data']['All-time'] = Decimal(0)
+        lines['EoP NAV']["data"]["All-time"] = lines['EoP NAV']["data"].get("YTD", Decimal(0))
+
+        # Format the data
+        format_funcs = {
+            Decimal: lambda v: currency_format(v, currency_target, user.digits),
+            float: lambda v: f"{v:.2%}"
+        }
+
+        for line in lines.values():
+            line['data'] = {
+                year: format_funcs.get(type(value), str)(value)
+                for year, value in line['data'].items()
+            }
+
+        return Response({
+            "years": years,
+            "lines": list(lines.values()),
+            "currentYear": str(current_year)
+        }, status=status.HTTP_200_OK)
+    
+    except AnnualPerformance.DoesNotExist:
+        return Response({"error": "No annual performance data found."}, status=status.HTTP_404_NOT_FOUND)
+    except DatabaseError:
+        return Response({"error": "Database error occurred while fetching data"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except KeyError:
+        return Response({"error": "Invalid session data"}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

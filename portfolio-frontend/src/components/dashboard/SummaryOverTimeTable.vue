@@ -2,7 +2,10 @@
   <v-card v-if="lines && years && currentYear">
     <v-card-title>Summary Over Time</v-card-title>
     <v-card-text>
-      <v-table>
+      <v-alert v-if="error" type="error" dismissible>
+        {{ error }}
+      </v-alert>
+      <v-table v-if="!error" density="compact">
         <thead>
           <tr>
             <th></th>
@@ -17,13 +20,21 @@
               {{ line.name }}
             </td>
             <td v-for="year in years" :key="`${line.name}-${year}`" class="text-center">
-              {{ formatValue(line.values[year]) }}
+              {{ line.data[year] }}
             </td>
-            <td class="text-center highlight">{{ formatValue(line.values[currentYear + 'YTD']) }}</td>
-            <td class="text-center font-weight-bold highlight">{{ formatValue(line.values['All-time']) }}</td>
+            <td class="text-center highlight">{{ line.data['YTD'] }}</td>
+            <td class="text-center font-weight-bold highlight">{{ line.data['All-time'] }}</td>
           </tr>
         </tbody>
       </v-table>
+    </v-card-text>
+  </v-card>
+  <v-card v-else>
+    <v-card-title>Summary Over Time</v-card-title>
+    <v-card-text>
+      <v-alert type="info">
+        No data available for the selected broker.
+      </v-alert>
     </v-card-text>
   </v-card>
 </template>
@@ -34,25 +45,21 @@ export default {
   props: {
     lines: {
       type: Array,
-      required: true
+      default: () => []
     },
     years: {
       type: Array,
-      required: true
+      default: () => []
     },
     currentYear: {
       type: String,
-      required: true
+      default: ''
+    },
+    error: {
+      type: String,
+      default: ''
     }
   },
-  methods: {
-    formatValue(value) {
-      if (typeof value === 'number') {
-        return value.toFixed(2)
-      }
-      return value
-    }
-  }
 }
 </script>
 

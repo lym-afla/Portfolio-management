@@ -22,25 +22,17 @@ export function useErrorHandler() {
 
     if (error.response) {
       if (error.response.status === 404) {
-        errorMessage = extractErrorMessage(error.response.data);
-      } else if (error.response.data && error.response.data.detail) {
-        errorMessage = error.response.data.detail
-      } else if (error.response.data && typeof error.response.data === 'string') {
-        errorMessage = error.response.data
-      } else {
-        errorMessage = `Error ${error.response.status}: ${error.response.statusText}`
+        errorMessage = extractErrorMessage(error.response.data)
+      } else if (error.response.data && error.response.data.error) {
+        errorMessage = error.response.data.error
+      } else if (error.response.status === 403) {
+        errorMessage = 'You do not have permission to access this resource.'
       }
     } else if (error.request) {
-      // The request was made but no response was received
-      errorMessage = 'No response from server. Please check your internet connection.'
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      errorMessage = error.message || 'An error occurred while processing your request.'
+      errorMessage = 'The server did not respond. Please check your internet connection.'
     }
 
-    console.error('API Error:', error)
     showError(errorMessage)
-    return errorMessage
   }
 
   return {

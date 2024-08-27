@@ -117,3 +117,20 @@ def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
             return f"{float(value * 100):.{int(digits)}f}%"
     except (TypeError, ValueError):
         return str(value)
+
+def currency_format_dict_values(data, currency, digits):
+    formatted_data = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            # Recursively format nested dictionaries
+            formatted_data[key] = currency_format_dict_values(value, currency, digits)
+        elif isinstance(value, Decimal):
+            if 'percentage' in str(key):
+                formatted_data[key] = format_percentage(value, 1)
+            else:
+                # Apply the currency_format function to Decimal values
+                formatted_data[key] = currency_format(value, currency, digits)
+        else:
+            # Copy other values as is
+            formatted_data[key] = value
+    return formatted_data

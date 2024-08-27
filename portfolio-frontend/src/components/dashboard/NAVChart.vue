@@ -59,10 +59,10 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { Line } from 'vue-chartjs'
 import { useNAVChartData } from '@/composables/useNAVChartData'
-import { chartOptions } from '@/config/chartConfig'
+import { getChartOptions } from '@/config/chartConfig'
 import { getNAVChartData } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
@@ -99,7 +99,7 @@ export default {
       }
     }
 
-    onMounted(fetchChartData)
+    // onMounted(fetchChartData)
 
     watch([selectedBreakdown, selectedFrequency, dateRange], fetchChartData)
 
@@ -110,7 +110,7 @@ export default {
       dateRange,
       loading,
       breakdownOptions,
-      chartOptions
+      chartOptions: getChartOptions()
     }
   }
 }
