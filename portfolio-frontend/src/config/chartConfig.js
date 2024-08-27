@@ -1,13 +1,23 @@
+const fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--system-font').trim();
+
 export const chartOptions = {
     responsive: false,
     maintainAspectRatio: false,
     plugins: {
       legend: {
         position: 'top',
+        labels: {
+          font: {
+            family: fontFamily,
+          },
+        },
       },
       title: {
         display: true,
         text: 'Chart.js Line Chart',
+        font: {
+          family: fontFamily,
+        },
       },
     },
   }
@@ -17,7 +27,37 @@ export const chartOptions = {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'right',
+        display: false, // Hide the legend
+      },
+      tooltip: {
+        enabled: false, // Disable tooltips as we'll use data labels
+      },
+      datalabels: {
+        color: '#000000', // Change to black for better visibility outside the chart
+        font: {
+          family: fontFamily,
+          size: 14,
+        },
+        formatter: (value, ctx) => {
+          let sum = 0;
+          let dataArr = ctx.chart.data.datasets[0].data;
+          dataArr.map(data => {
+            sum += data;
+          });
+          let percentage = (value * 100 / sum).toFixed(0) + "%";
+          return ctx.chart.data.labels[ctx.dataIndex] + ' ' + percentage;
+        },
+        anchor: 'end',
+        align: 'end',
+        offset: 8, // Move labels slightly away from the pie
+      },
+    },
+    layout: {
+      padding: {
+        top: 20,
+        bottom: 20,
+        left: 100, // Increase left padding to make room for labels
+        right: 100, // Increase right padding to make room for labels
       },
     },
   }

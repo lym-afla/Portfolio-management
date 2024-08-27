@@ -65,3 +65,4 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
+portfolio_management/db.sqlite3 (backup)

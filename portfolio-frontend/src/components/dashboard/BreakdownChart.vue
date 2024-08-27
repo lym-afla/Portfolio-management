@@ -9,7 +9,9 @@
 
       <v-window v-model="tab">
         <v-window-item value="chart">
-          <Pie :data="chartData" :options="pieChartOptions" />
+          <div class="chart-container">
+            <Pie :data="chartData" :options="pieChartOptions" />
+          </div>
         </v-window-item>
 
         <v-window-item value="table">
@@ -44,9 +46,10 @@
 import { ref, computed } from 'vue'
 import { Pie } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 import { pieChartOptions, colorPalette } from '@/config/chartConfig'
 
-ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale)
+ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, ChartDataLabels)
 
 export default {
   name: 'BreakdownChart',
@@ -100,6 +103,11 @@ export default {
 </script>
 
 <style scoped>
+.chart-container {
+  /* height: 300px; */
+  position: relative;
+}
+
 .category-column {
   width: 50%;
 }
