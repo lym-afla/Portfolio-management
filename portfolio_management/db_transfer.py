@@ -15,7 +15,7 @@ def transfer_db(direction):
         source, destination = project_db, local_db
     elif direction == 'import':
         # Backup the existing database before importing
-        backup_db = os.path.join(os.path.dirname(project_db), 'db.sqlite3 (backup)')
+        backup_db = os.path.join(os.path.dirname(project_db), '..', 'db.sqlite3 (backup)')
         if os.path.exists(project_db):
             shutil.copy2(project_db, backup_db)
             print(f"Backup of the existing database created successfully at {datetime.datetime.now()}.")
