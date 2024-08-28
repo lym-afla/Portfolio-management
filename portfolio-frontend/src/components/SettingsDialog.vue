@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-btn icon @click="openDialog">
+    <v-btn icon @click="openDialog" elevation="2">
       <v-icon>mdi-cog</v-icon>
     </v-btn>
 

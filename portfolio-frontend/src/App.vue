@@ -8,14 +8,14 @@
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
         
-        <v-app-bar elevation="0" height="auto">
+        <v-app-bar elevation="1" height="auto">
           <v-container fluid class="py-2">
-            <h2 v-if="pageTitle" class="text-h4 mb-4">{{ pageTitle }}</h2>
+            <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
             <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
             <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-2">
               <BrokerSelection class="flex-grow-1" />
               <v-divider vertical class="mx-2" />
-              <SettingsDialog />
+              <SettingsDialog elevation="6" />
             </div>
             <v-divider v-if="!isProfilePage && !isDatabasePage"></v-divider>
           </v-container>
@@ -129,6 +129,7 @@ export default {
     const errorMessages = ref([])
 
     const showError = (message) => {
+      console.log('Showing error:', message)
       errorMessages.value.push(message)
       errorSnackbar.value = true
     }
