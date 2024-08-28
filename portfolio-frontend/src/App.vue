@@ -7,16 +7,22 @@
     <template v-if="!layoutLoading">
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
-        <v-main>
-          <v-container fluid class="pa-4">
-            <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
-            <v-divider v-if="pageTitle" class="mb-2"></v-divider>
-            <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-4">
+        
+        <v-app-bar elevation="0" height="auto">
+          <v-container fluid class="py-2">
+            <h2 v-if="pageTitle" class="text-h4 mb-4">{{ pageTitle }}</h2>
+            <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
+            <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-2">
               <BrokerSelection class="flex-grow-1" />
               <v-divider vertical class="mx-2" />
               <SettingsDialog />
             </div>
-            <v-divider v-if="!isProfilePage && !isDatabasePage" class="mb-4"></v-divider>
+            <v-divider v-if="!isProfilePage && !isDatabasePage"></v-divider>
+          </v-container>
+        </v-app-bar>
+
+        <v-main style="padding-top: 140px;">
+          <v-container fluid class="pa-4">
             <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
         </v-main>
@@ -186,4 +192,5 @@ body {
 .v-dialog {
   overflow-y: visible;
 }
+
 </style>
