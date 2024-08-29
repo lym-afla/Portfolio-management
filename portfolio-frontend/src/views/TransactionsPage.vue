@@ -274,7 +274,7 @@ export default {
         { title: 'Last 12 Months', value: 'last12m' },
         { title: 'Last 3 Years', value: 'last3y' },
         { title: 'Last 5 Years', value: 'last5y' },
-        { title: 'All', value: 'all_time' },
+        { title: 'All-time', value: 'all_time' },
       ]
     })
 

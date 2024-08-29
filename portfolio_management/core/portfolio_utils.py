@@ -62,21 +62,21 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
 
 
 # Calculate NAV breakdown for selected brokers at certain date and in selected currency
-def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency: str, breakdown: List[str] = ['Asset type', 'Currency', 'Asset class', 'Broker']) -> Dict:
+def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency: str, breakdown: List[str] = []) -> Dict:
     portfolio = portfolio_at_date(user_id, date, broker_ids)
     portfolio_brokers = Brokers.objects.filter(investor__id=user_id, id__in=broker_ids)
     analysis = defaultdict(lambda: defaultdict(Decimal))
     analysis['Total NAV'] = Decimal(0)
-    item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
+    item_type = {'asset_type': 'type', 'currency': 'currency', 'asset_class': 'exposure'}
 
     for security in portfolio:
         current_value = Decimal(security.position(date, broker_ids) * security.price_at_date(date, target_currency).price)
         analysis['Total NAV'] += current_value
 
         for breakdown_type in breakdown:
-            if breakdown_type == 'Broker':
+            if breakdown_type == 'broker':
                 for broker in get_brokers_for_security(user_id, security.id):
-                    analysis['Broker'][broker.name] += current_value
+                    analysis['broker'][broker.name] += current_value
             else:
                 key = getattr(security, item_type[breakdown_type])
                 analysis[breakdown_type][key] += current_value
@@ -88,13 +88,15 @@ def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency
             fx_rate = get_fx_rate(currency, target_currency, date)
             converted_balance = balance * fx_rate
             cash += converted_balance
-            analysis['Broker'][broker.name] += converted_balance
-            analysis['Currency'][currency] += converted_balance
+            if 'broker' in breakdown:
+                analysis['broker'][broker.name] += converted_balance
+            if 'currency' in breakdown:
+                analysis['currency'][currency] += converted_balance
 
-    if 'Asset type' in breakdown:
-        analysis['Asset type']['Cash'] += cash
-    if 'Asset class' in breakdown:
-        analysis['Asset class']['Cash'] += cash
+    if 'asset_type' in breakdown:
+        analysis['asset_type']['Cash'] += cash
+    if 'asset_class' in breakdown:
+        analysis['asset_class']['Cash'] += cash
 
     analysis['Total NAV'] += cash
 
@@ -107,7 +109,7 @@ def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency
 def calculate_portfolio_value(user_id: int, date: date, currency: Optional[str] = None, asset_id: Optional[int] = None, broker_id_list: Optional[List[int]] = None) -> Decimal:
 
     if asset_id is None:
-        portfolio_value = NAV_at_date(user_id, broker_id_list, date, currency, [])['Total NAV']
+        portfolio_value = NAV_at_date(user_id, broker_id_list, date, currency)['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
         try:
@@ -278,14 +280,15 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
         # Calculate transaction-based metrics
         for transaction in transactions:
             fx_rate = get_fx_rate(transaction.currency, currency_target, transaction.date)
-            converted_amount = transaction.cash_flow * fx_rate
             
-            if transaction.type == 'Cash in':
-                performance_data['invested'] += converted_amount
-            elif transaction.type == 'Cash out':
-                performance_data['cash_out'] += converted_amount
-            elif transaction.type == 'Tax':
-                performance_data['tax'] += converted_amount
+            if transaction.cash_flow is not None:
+                converted_amount = transaction.cash_flow * fx_rate
+                if transaction.type == 'Cash in':
+                    performance_data['invested'] += converted_amount
+                elif transaction.type == 'Cash out':
+                    performance_data['cash_out'] += converted_amount
+                elif transaction.type == 'Tax':
+                    performance_data['tax'] += converted_amount
             
             performance_data['commission'] += (transaction.commission or 0) * fx_rate
 
@@ -324,7 +327,7 @@ def calculate_percentage_shares(data_dict, selected_keys):
     
     # Add new dictionaries with percentage shares for selected categories
     for category in selected_keys:
-        percentage_key = category + ' percentage'
+        percentage_key = category + '_percentage'
         data_dict[percentage_key] = {}
         for key, value in data_dict[category].items():
             try:

@@ -15,6 +15,7 @@ from common.models import AnnualPerformance, Brokers, Transactions, FX
 from common.forms import DashboardForm_old_setup
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from core.portfolio_utils import IRR, NAV_at_date, broker_group_to_ids, calculate_percentage_shares, calculate_performance, get_last_exit_date_for_brokers
+from core.chart_utils import get_nav_chart_data
 
 from database.forms import BrokerPerformanceForm
 
@@ -202,8 +203,7 @@ def get_dashboard_summary_api(request):
     summary = {}
 
     # Calculate NAV
-    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
-    summary['Current NAV'] = analysis['Total NAV']
+    summary['Current NAV'] = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target)['Total NAV']
 
     # Calculate Invested and Cash-out
     summary['Invested'] = Decimal(0)
@@ -247,29 +247,29 @@ def get_dashboard_breakdown_api(request):
     number_of_digits = user.digits
     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
-    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['asset_type', 'currency', 'asset_class'])
     
     # Remove 'Total NAV' from the analysis
     total_nav = analysis.pop('Total NAV', None)
     
     # Calculate percentage breakdowns
-    calculate_percentage_shares(analysis, ['Asset type', 'Currency', 'Asset class'])
+    calculate_percentage_shares(analysis, ['asset_type', 'currency', 'asset_class'])
     
     # Format the values
     analysis = format_table_data(analysis, currency_target, number_of_digits)
     
     return Response({
         'assetType': {
-            'data': analysis['Asset type'],
-            'percentage': analysis['Asset type percentage']
+            'data': analysis['asset_type'],
+            'percentage': analysis['asset_type_percentage']
         },
         'currency': {
-            'data': analysis['Currency'],
-            'percentage': analysis['Currency percentage']
+            'data': analysis['currency'],
+            'percentage': analysis['currency_percentage']
         },
         'assetClass': {
-            'data': analysis['Asset class'],
-            'percentage': analysis['Asset class percentage']
+            'data': analysis['asset_class'],
+            'percentage': analysis['asset_class_percentage']
         },
         'totalNAV': currency_format(total_nav, currency_target, number_of_digits)
     })
@@ -365,3 +365,28 @@ def get_dashboard_summary_over_time_api(request):
         return Response({"error": "Invalid session data"}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_nav_chart_data(request):
+    user = request.user
+    frequency = request.GET.get('frequency', 'M')
+    from_date = request.GET.get('from_date')
+    to_date = request.GET.get('to_date')
+    breakdown = request.GET.get('breakdown', 'none')
+    currency = user.default_currency
+    brokers = broker_group_to_ids(user.custom_brokers, user)
+
+    # If no dates are provided, use 'ytd' as default
+    if not from_date or not to_date:
+        to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+        from_date = date(to_date.year, 1, 1).isoformat()  # Start of current year
+
+    try:
+        chart_data = get_nav_chart_data(user.id, brokers, frequency, from_date, to_date, currency, breakdown)
+        return Response(chart_data)
+    except ValueError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

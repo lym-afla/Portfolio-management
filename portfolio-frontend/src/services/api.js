@@ -380,7 +380,9 @@ export const getDashboardSummaryOverTime = async () => {
 
 export const getNAVChartData = async (params) => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-nav-chart`, { params })
+    console.log('API request params:', params)
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-nav-chart-data/`, { params })
+    console.log('API response:', response.data)
     return response.data
   } catch (error) {
     console.error('Error fetching NAV chart data:', error)

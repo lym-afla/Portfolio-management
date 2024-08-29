@@ -8,109 +8,139 @@
             v-model="selectedBreakdown"
             :items="breakdownOptions"
             label="Breakdown by"
-            @update:model-value="updateChart"
+            @update:model-value="fetchChartData"
           ></v-select>
         </v-col>
         <v-col cols="12" sm="4">
-          <v-btn-toggle v-model="selectedFrequency" mandatory @change="updateChart">
+          <v-btn-toggle v-model="selectedFrequency" mandatory @change="fetchChartData">
             <v-btn value="D">D</v-btn>
             <v-btn value="W">W</v-btn>
             <v-btn value="M">M</v-btn>
+            <v-btn value="Q">Q</v-btn>
+            <v-btn value="Y">Y</v-btn>
           </v-btn-toggle>
         </v-col>
         <v-col cols="12" sm="4">
-          <v-menu
-            v-model="menu"
-            :close-on-content-click="false"
-            transition="scale-transition"
-            offset-y
-            min-width="auto"
-          >
-            <template v-slot:activator="{ props }">
-              <v-text-field
-                v-model="dateRangeText"
-                label="Date range"
-                prepend-icon="mdi-calendar"
-                readonly
-                v-bind="props"
-              ></v-text-field>
-            </template>
-            <v-date-picker
-              v-model="dateRange"
-              range
-              @update:model-value="updateChart"
-            ></v-date-picker>
-          </v-menu>
+          <DateRangeSelector v-model="dateRange" @update:model-value="fetchChartData" />
         </v-col>
       </v-row>
-      <v-progress-circular
-        v-if="loading"
-        indeterminate
-        color="primary"
-      ></v-progress-circular>
-      <Line
-        v-else-if="chartData.datasets && chartData.datasets.length > 0"
-        :data="chartData"
-        :options="chartOptions"
-      />
-      <v-alert v-else type="info">No data available for the chart.</v-alert>
+      <div ref="chartContainer">
+        <v-skeleton-loader v-if="loading" type="card" height="400" />
+        <canvas v-else ref="chartRef" height="400"></canvas>
+      </div>
     </v-card-text>
   </v-card>
 </template>
 
 <script>
-import { ref, watch } from 'vue'
-import { Line } from 'vue-chartjs'
-import { useNAVChartData } from '@/composables/useNAVChartData'
+import { ref, watch, onMounted, nextTick } from 'vue'
+import { Chart, registerables } from 'chart.js'
 import { getChartOptions } from '@/config/chartConfig'
 import { getNAVChartData } from '@/services/api'
-import { useErrorHandler } from '@/composables/useErrorHandler'
+import DateRangeSelector from '@/components/DateRangeSelector.vue'
+
+Chart.register(...registerables)
 
 export default {
   name: 'NAVChart',
-  components: { Line },
-  emits: ['update-chart'],
+  components: { DateRangeSelector },
+  emits: ['fetch-start', 'fetch-end', 'fetch-error'],
   setup(props, { emit }) {
-    const { chartData, updateChartData } = useNAVChartData()
-    const { handleApiError } = useErrorHandler()
+    const chartRef = ref(null)
+    const chartContainer = ref(null)
+    const chartInstance = ref(null)
+    const chartData = ref({ labels: [], datasets: [] })
+    const currency = ref('')
+    const loading = ref(true)
 
-    const selectedBreakdown = ref('currency')
+    const selectedBreakdown = ref('none')
     const selectedFrequency = ref('M')
-    const dateRange = ref([])
-    const loading = ref(false)
-    const breakdownOptions = ['currency', 'broker', 'account', 'asset_class', 'region']
+    const dateRange = ref({ from: null, to: null })
+    const breakdownOptions = [
+      { title: 'Broker', value: 'broker' },
+      { title: 'Asset Type', value: 'asset_type' },
+      { title: 'Asset Class', value: 'asset_class' },
+      { title: 'Currency', value: 'currency' },
+      { title: 'No breakdown', value: 'none' },
+      { title: 'Value Contributions', value: 'value_contributions' }
+    ]
+
+    const initChart = async () => {
+      await nextTick()
+      console.log('Initializing chart', chartRef.value, chartContainer.value)
+      if (!chartRef.value) {
+        console.error('Chart canvas element not found', chartRef, chartRef.value, !chartRef.value)
+        if (chartContainer.value) {
+          console.log('Recreating canvas element')
+          const canvas = document.createElement('canvas')
+          canvas.height = 400
+          chartContainer.value.innerHTML = ''
+          chartContainer.value.appendChild(canvas)
+          chartRef.value = canvas
+        } else {
+          console.error('Chart container not found')
+          return
+        }
+      }
+      const ctx = chartRef.value.getContext('2d')
+      const options = await getChartOptions(currency.value)
+      if (chartInstance.value) {
+        chartInstance.value.destroy()
+      }
+      chartInstance.value = new Chart(ctx, {
+        type: 'bar',
+        data: chartData.value,
+        options: options.navChartOptions
+      })
+    }
 
     const fetchChartData = async () => {
+      console.log('fetchChartData called')
       loading.value = true
+      emit('fetch-start')
       try {
         const params = {
           frequency: selectedFrequency.value,
-          from: dateRange.value[0],
-          to: dateRange.value[1],
+          from_date: dateRange.value.from,
+          to_date: dateRange.value.to,
           breakdown: selectedBreakdown.value
         }
+        console.log('Fetching chart data with params:', params)
         const data = await getNAVChartData(params)
-        updateChartData(data)
-        emit('update-chart', data)
-      } catch (error) {
-        handleApiError(error)
-      } finally {
+        console.log('Received chart data:', data)
+        chartData.value = data
+        currency.value = data.currency
+        await nextTick()
+        await initChart()
         loading.value = false
+        emit('fetch-end')
+      } catch (error) {
+        console.error('Error fetching NAV chart data:', error)
+        loading.value = false
+        emit('fetch-error', error.message || 'An error occurred while fetching chart data')
       }
     }
 
-    // onMounted(fetchChartData)
+    onMounted(() => {
+      console.log('NAVChart mounted')
+      console.log('chartRef:', chartRef.value)
+      console.log('chartContainer:', chartContainer.value)
+      nextTick(() => {
+        fetchChartData()
+      })
+    })
 
     watch([selectedBreakdown, selectedFrequency, dateRange], fetchChartData)
 
     return {
-      chartData,
+      chartRef,
+      chartContainer,
       selectedBreakdown,
       selectedFrequency,
       dateRange,
       loading,
       breakdownOptions,
-      chartOptions: getChartOptions()
+      fetchChartData
     }
   }
 }

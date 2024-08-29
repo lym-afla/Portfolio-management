@@ -1,6 +1,6 @@
 import pytest
 from datetime import date
-from utils import chart_dates
+from utils import chart_dates_old_framework
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("start_date, end_date, freq, expected", [
@@ -36,7 +36,7 @@ from utils import chart_dates
     (date(2023, 1, 1), date(2023, 6, 30), 'Y', [date(2023, 6, 30)]),
 ])
 def test_chart_dates(start_date, end_date, freq, expected):
-    result = chart_dates(start_date, end_date, freq)
+    result = chart_dates_old_framework(start_date, end_date, freq)
     assert list(result) == expected
 
 @pytest.mark.django_db
@@ -48,5 +48,5 @@ def test_chart_dates_with_string_input():
         date(2023, 5, 15), date(2023, 5, 16), date(2023, 5, 17), 
         date(2023, 5, 18), date(2023, 5, 19), date(2023, 5, 20)
     ]
-    result = chart_dates(start_date, end_date, freq)
+    result = chart_dates_old_framework(start_date, end_date, freq)
     assert list(result) == expected

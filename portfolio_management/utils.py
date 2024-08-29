@@ -238,7 +238,7 @@ def calculate_portfolio_value_old_structure(user_id, date, currency=None, asset_
     return portfolio_value
 
 # Collect chart dates 
-def chart_dates(start_date, end_date, freq):
+def chart_dates_old_framework(start_date, end_date, freq):
     # Create matching table for pandas
     frequency = {
         'D': 'D',
@@ -278,7 +278,7 @@ def chart_dates(start_date, end_date, freq):
     return date_range
 
 # Create labels according to dates
-def chart_labels(dates, frequency):
+def chart_labels_old_framework(dates, frequency):
     
     if frequency == 'D':
         return [i.strftime("%d-%b-%y") for i in dates]
@@ -422,10 +422,10 @@ def get_chart_data(user_id, brokers, frequency, from_date, to_date, currency, br
         from_date = Transactions.objects.filter(investor__id=user_id, broker__in=brokers).order_by('date').first().date
         # print(f"utils.py. Line 312. From date: {from_date}")
 
-    dates = chart_dates(from_date, to_date, frequency)
+    dates = chart_dates_old_framework(from_date, to_date, frequency)
         
     chart_data = {
-        'labels': chart_labels(dates, frequency),
+        'labels': chart_labels_old_framework(dates, frequency),
         'datasets': [],
         'currency': currency + 'k',
     }

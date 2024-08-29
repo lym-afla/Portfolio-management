@@ -38,11 +38,13 @@
 
     <v-row>
       <v-col cols="12">
-        <v-skeleton-loader v-if="loading.navChart" type="card" />
-        <!-- <NAVChart 
-          v-else-if="!error.navChart"
-        /> -->
-        <v-alert v-else type="error">{{ error.navChart }}</v-alert>
+        <!-- <v-skeleton-loader v-if="loading.navChart" type="card" height="400" /> -->
+        <NAVChart 
+          @fetch-start="onNAVChartFetchStart" 
+          @fetch-end="onNAVChartFetchEnd"
+          @fetch-error="onNAVChartFetchError"
+        />
+        <v-alert v-if="error.navChart" type="error" class="mt-2">{{ error.navChart }}</v-alert>
       </v-col>
     </v-row>
   </v-container>
@@ -54,7 +56,7 @@ import { useStore } from 'vuex'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
-// import NAVChart from '@/components/dashboard/NAVChart.vue'
+import NAVChart from '@/components/dashboard/NAVChart.vue'
 import { getDashboardSummary, getDashboardBreakdown, getDashboardSummaryOverTime } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
@@ -64,6 +66,7 @@ export default {
     SummaryCard,
     BreakdownChart,
     SummaryOverTimeTable,
+    NAVChart,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -92,7 +95,7 @@ export default {
       summary: true,
       breakdownCharts: true,
       summaryOverTime: true,
-      navChart: true,
+      navChart: false, // Initialize to false
     })
 
     const error = ref({
@@ -101,6 +104,23 @@ export default {
       summaryOverTime: null,
       navChart: null,
     })
+
+    const onNAVChartFetchStart = () => {
+      console.log('NAVChart fetch started')
+      loading.value.navChart = true
+      error.value.navChart = null
+    }
+
+    const onNAVChartFetchEnd = () => {
+      console.log('NAVChart fetch ended')
+      loading.value.navChart = false
+    }
+
+    const onNAVChartFetchError = (errorMessage) => {
+      console.log('NAVChart fetch error:', errorMessage)
+      loading.value.navChart = false
+      error.value.navChart = errorMessage
+    }
 
     const fetchSummaryData = async () => {
       try {
@@ -156,25 +176,25 @@ export default {
       }
     }
 
-    const fetchNAVChartData = async () => {
-      try {
-        clearErrors()
-        loading.value.navChart = true
-        // Implement the API call to fetch NAV chart data
-        // const data = await getNAVChartData()
-        // navChartData.value = data
-        loading.value.navChart = false
-      } catch (err) {
-        error.value.navChart = handleApiError(err)
-        loading.value.navChart = false
-      }
-    }
+    // const fetchNAVChartData = async () => {
+    //   try {
+    //     clearErrors()
+    //     loading.value.navChart = true
+    //     // Implement the API call to fetch NAV chart data
+    //     // const data = await getNAVChartData()
+    //     // navChartData.value = data
+    //     loading.value.navChart = false
+    //   } catch (err) {
+    //     error.value.navChart = handleApiError(err)
+    //     loading.value.navChart = false
+    //   }
+    // }
 
     const refreshAllData = () => {
       fetchSummaryData()
       fetchBreakdownData()
       fetchSummaryOverTimeData()
-      fetchNAVChartData()
+      // fetchNAVChartData()
     }
 
     // const handleNAVChartUpdate = (newData) => {
@@ -213,11 +233,14 @@ export default {
       error,
       chartTypes,
       chartTitles,
+      onNAVChartFetchStart,
+      onNAVChartFetchEnd,
+      onNAVChartFetchError,
+      // handleNAVChartUpdate
     }
   },
 }
 </script>
-
 <style scoped>
 .equal-height-row {
   display: flex;
