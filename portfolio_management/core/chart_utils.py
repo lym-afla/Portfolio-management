@@ -17,6 +17,27 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
     previous_date = None
     NAV_previous_date = 0
 
+    # Initialize datasets for bar charts first
+    if breakdown == 'none':
+        chart_data['datasets'].append(create_dataset('NAV', [], 'rgba(54, 162, 235, 0.7)', 'bar', 'y', stack='combined'))
+    elif breakdown == 'value_contributions':
+        chart_data['datasets'].extend([
+            create_dataset('BoP NAV', [], 'rgba(54, 162, 235, 0.7)', 'bar', 'y', stack='combined'),
+            create_dataset('Contributions', [], 'rgba(255, 206, 86, 0.7)', 'bar', 'y', stack='combined'),
+            create_dataset('Return', [], 'rgba(75, 192, 192, 0.7)', 'bar', 'y', stack='combined')
+        ])
+    elif breakdown != 'none':
+        # Initialize datasets for custom breakdown
+        NAV_initial = NAV_at_date(user_id, brokers, dates[0], currency, [breakdown])[breakdown]
+        for key, value in NAV_initial.items():
+            chart_data['datasets'].append(create_dataset(key, [], get_color(len(chart_data['datasets'])), 'bar', 'y', stack='combined'))
+
+    # Add line chart datasets last
+    chart_data['datasets'].extend([
+        create_dataset('IRR (RHS)', [], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
+        create_dataset('Rolling IRR (RHS)', [], 'rgba(153, 102, 255, 1)', 'line', 'y1')
+    ])
+
     for d in dates:
         IRR_value = IRR(user_id, d, currency, broker_id_list=brokers)
         IRR_rolling = IRR(user_id, d, currency, broker_id_list=brokers, start_date=previous_date)
@@ -37,52 +58,26 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
     return chart_data
 
 def add_no_breakdown_data(chart_data, IRR, IRR_rolling, NAV):
-    if len(chart_data['datasets']) == 0:
-        chart_data['datasets'] = [
-            create_dataset('IRR (RHS)', [IRR], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
-            create_dataset('Rolling IRR (RHS)', [IRR_rolling], 'rgba(153, 102, 255, 1)', 'line', 'y1'),
-            create_dataset('NAV', [NAV], 'rgba(54, 162, 235, 0.7)', 'bar', 'y', stack='combined')
-        ]
-    else:
-        chart_data['datasets'][0]['data'].append(IRR)
-        chart_data['datasets'][1]['data'].append(IRR_rolling)
-        chart_data['datasets'][2]['data'].append(NAV)
+    chart_data['datasets'][0]['data'].append(NAV)
+    chart_data['datasets'][1]['data'].append(IRR)
+    chart_data['datasets'][2]['data'].append(IRR_rolling)
 
 def add_contributions_data(chart_data, user_id, brokers, d, currency, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date):
     contributions = calculate_contributions(user_id, brokers, d, previous_date)
     return_amount = NAV - NAV_previous_date - contributions
 
-    if len(chart_data['datasets']) == 0:
-        chart_data['datasets'] = [
-            create_dataset('IRR (RHS)', [IRR], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
-            create_dataset('Rolling IRR (RHS)', [IRR_rolling], 'rgba(153, 102, 255, 1)', 'line', 'y1'),
-            create_dataset('BoP NAV', [NAV_previous_date], 'rgba(54, 162, 235, 0.7)', 'bar', 'y', stack='combined'),
-            create_dataset('Contributions', [contributions], 'rgba(255, 206, 86, 0.7)', 'bar', 'y', stack='combined'),
-            create_dataset('Return', [return_amount], 'rgba(75, 192, 192, 0.7)', 'bar', 'y', stack='combined')
-        ]
-    else:
-        chart_data['datasets'][0]['data'].append(IRR)
-        chart_data['datasets'][1]['data'].append(IRR_rolling)
-        chart_data['datasets'][2]['data'].append(NAV_previous_date)
-        chart_data['datasets'][3]['data'].append(contributions)
-        chart_data['datasets'][4]['data'].append(return_amount)
+    chart_data['datasets'][0]['data'].append(NAV_previous_date)
+    chart_data['datasets'][1]['data'].append(contributions)
+    chart_data['datasets'][2]['data'].append(return_amount)
+    chart_data['datasets'][3]['data'].append(IRR)
+    chart_data['datasets'][4]['data'].append(IRR_rolling)
 
 def add_breakdown_data(chart_data, IRR, IRR_rolling, NAV):
-    if len(chart_data['datasets']) == 0:
-        chart_data['datasets'] = [
-            create_dataset('IRR (RHS)', [IRR], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
-            create_dataset('Rolling IRR (RHS)', [IRR_rolling], 'rgba(153, 102, 255, 1)', 'line', 'y1')
-        ]
-    else:
-        chart_data['datasets'][0]['data'].append(IRR)
-        chart_data['datasets'][1]['data'].append(IRR_rolling)
+    for i, (key, value) in enumerate(NAV.items()):
+        chart_data['datasets'][i]['data'].append(value / 1000)
 
-    for key, value in NAV.items():
-        index = next((i for i, item in enumerate(chart_data['datasets']) if item["label"] == key), None)
-        if index is None:
-            chart_data['datasets'].append(create_dataset(key, [value / 1000], get_color(len(chart_data['datasets'])), 'bar', 'y', stack='combined'))
-        else:
-            chart_data['datasets'][index]['data'].append(value / 1000)
+    chart_data['datasets'][-2]['data'].append(IRR)
+    chart_data['datasets'][-1]['data'].append(IRR_rolling)
 
 def create_dataset(label, data, color, chart_type, axis_id, stack=None):
     dataset = {

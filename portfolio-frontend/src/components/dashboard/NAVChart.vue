@@ -87,16 +87,34 @@ export default {
       if (chartInstance.value) {
         chartInstance.value.destroy()
       }
+
+      const datasets = props.chartData.datasets.map((dataset, index) => ({
+        ...dataset,
+        backgroundColor: dataset.type === 'bar' ? colorPalette[index % colorPalette.length] : dataset.backgroundColor,
+        // Set order for line charts to be higher (will be drawn last)
+        order: dataset.type === 'line' ? 0 : index + 1
+      }))
+
       chartInstance.value = new Chart(ctx, {
         type: 'bar',
         data: {
           ...props.chartData,
-          datasets: props.chartData.datasets.map((dataset, index) => ({
-            ...dataset,
-            backgroundColor: colorPalette[index % colorPalette.length],
-          })),
+          datasets: datasets,
         },
-        options: navChartOptions,
+        options: {
+          ...navChartOptions,
+          plugins: {
+            ...navChartOptions.plugins,
+            legend: {
+              ...navChartOptions.plugins.legend,
+              reverse: true, // This will reverse the order of legend items
+            },
+            tooltip: {
+              ...navChartOptions.plugins.tooltip,
+              itemSort: (a, b) => a.datasetIndex - b.datasetIndex, // Sort tooltip items to match visual order
+            },
+          },
+        },
       })
     }
 
