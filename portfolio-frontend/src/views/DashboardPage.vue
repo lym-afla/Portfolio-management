@@ -38,11 +38,12 @@
 
     <v-row>
       <v-col cols="12">
-        <!-- <v-skeleton-loader v-if="loading.navChart" type="card" height="400" /> -->
+        <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
         <NAVChart 
-          @fetch-start="onNAVChartFetchStart" 
-          @fetch-end="onNAVChartFetchEnd"
-          @fetch-error="onNAVChartFetchError"
+          v-else
+          :chartData="navChartData"
+          :loading="updating.navChart"
+          @update-params="fetchNAVChartData"
         />
         <v-alert v-if="error.navChart" type="error" class="mt-2">{{ error.navChart }}</v-alert>
       </v-col>
@@ -57,7 +58,7 @@ import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
 import NAVChart from '@/components/dashboard/NAVChart.vue'
-import { getDashboardSummary, getDashboardBreakdown, getDashboardSummaryOverTime } from '@/services/api'
+import { getDashboardSummary, getDashboardBreakdown, getDashboardSummaryOverTime, getNAVChartData } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
@@ -82,22 +83,14 @@ export default {
     })
     const totalNAV = ref('')
     const summaryOverTimeData = ref({})
-    const navChartData = ref({})
-
-    const chartTypes = ['assetType', 'assetClass', 'currency']
-    const chartTitles = {
-      assetType: 'Asset Type',
-      assetClass: 'Asset Class',
-      currency: 'Currency',
-    }
-
+    const navChartData = ref(null)
     const loading = ref({
       summary: true,
       breakdownCharts: true,
       summaryOverTime: true,
-      navChart: false, // Initialize to false
+      navChart: true,
     })
-
+    const updating = ref({ navChart: false })
     const error = ref({
       summary: null,
       breakdownCharts: null,
@@ -105,21 +98,11 @@ export default {
       navChart: null,
     })
 
-    const onNAVChartFetchStart = () => {
-      console.log('NAVChart fetch started')
-      loading.value.navChart = true
-      error.value.navChart = null
-    }
-
-    const onNAVChartFetchEnd = () => {
-      console.log('NAVChart fetch ended')
-      loading.value.navChart = false
-    }
-
-    const onNAVChartFetchError = (errorMessage) => {
-      console.log('NAVChart fetch error:', errorMessage)
-      loading.value.navChart = false
-      error.value.navChart = errorMessage
+    const chartTypes = ['assetType', 'assetClass', 'currency']
+    const chartTitles = {
+      assetType: 'Asset Type',
+      assetClass: 'Asset Class',
+      currency: 'Currency',
     }
 
     const fetchSummaryData = async () => {
@@ -176,31 +159,29 @@ export default {
       }
     }
 
-    // const fetchNAVChartData = async () => {
-    //   try {
-    //     clearErrors()
-    //     loading.value.navChart = true
-    //     // Implement the API call to fetch NAV chart data
-    //     // const data = await getNAVChartData()
-    //     // navChartData.value = data
-    //     loading.value.navChart = false
-    //   } catch (err) {
-    //     error.value.navChart = handleApiError(err)
-    //     loading.value.navChart = false
-    //   }
-    // }
+    const fetchNAVChartData = async (params = {}) => {
+      try {
+        clearErrors()
+        updating.value.navChart = true
+        console.log('Fetching NAV chart data...')
+        const data = await getNAVChartData(params)
+        console.log('Received NAV chart data:', data)
+        navChartData.value = data
+      } catch (err) {
+        console.error('Error fetching NAV chart data:', err)
+        error.value.navChart = handleApiError(err)
+      } finally {
+        updating.value.navChart = false
+        loading.value.navChart = false
+      }
+    }
 
     const refreshAllData = () => {
       fetchSummaryData()
       fetchBreakdownData()
       fetchSummaryOverTimeData()
-      // fetchNAVChartData()
+      fetchNAVChartData({}) // Initial fetch with default params
     }
-
-    // const handleNAVChartUpdate = (newData) => {
-    //   console.log('NAV Chart updated:', newData)
-    //   // Handle any necessary updates based on the new NAV chart data
-    // }
 
     // Watch for changes in the store that should trigger a data refresh
     watch(
@@ -231,12 +212,10 @@ export default {
       navChartData,
       loading,
       error,
+      updating,
       chartTypes,
       chartTitles,
-      onNAVChartFetchStart,
-      onNAVChartFetchEnd,
-      onNAVChartFetchError,
-      // handleNAVChartUpdate
+      fetchNAVChartData,
     }
   },
 }

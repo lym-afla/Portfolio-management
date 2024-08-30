@@ -8,11 +8,11 @@
             v-model="selectedBreakdown"
             :items="breakdownOptions"
             label="Breakdown by"
-            @update:model-value="fetchChartData"
+            @update:model-value="updateParams"
           ></v-select>
         </v-col>
         <v-col cols="12" sm="4">
-          <v-btn-toggle v-model="selectedFrequency" mandatory @change="fetchChartData">
+          <v-btn-toggle v-model="selectedFrequency" mandatory @update:model-value="updateParams">
             <v-btn value="D">D</v-btn>
             <v-btn value="W">W</v-btn>
             <v-btn value="M">M</v-btn>
@@ -21,22 +21,23 @@
           </v-btn-toggle>
         </v-col>
         <v-col cols="12" sm="4">
-          <DateRangeSelector v-model="dateRange" @update:model-value="fetchChartData" />
+          <DateRangeSelector v-model="dateRange" @update:model-value="updateParams" />
         </v-col>
       </v-row>
-      <div ref="chartContainer">
-        <v-skeleton-loader v-if="loading" type="card" height="400" />
-        <canvas v-else ref="chartRef" height="400"></canvas>
+      <div class="chart-wrapper">
+        <canvas ref="chartRef"></canvas>
+        <div v-if="loading" class="chart-overlay">
+          <v-progress-circular indeterminate color="primary" size="64" />
+        </div>
       </div>
     </v-card-text>
   </v-card>
 </template>
 
 <script>
-import { ref, watch, onMounted, nextTick } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import { getChartOptions } from '@/config/chartConfig'
-import { getNAVChartData } from '@/services/api'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 
 Chart.register(...registerables)
@@ -44,15 +45,20 @@ Chart.register(...registerables)
 export default {
   name: 'NAVChart',
   components: { DateRangeSelector },
-  emits: ['fetch-start', 'fetch-end', 'fetch-error'],
+  props: {
+    chartData: {
+      type: Object,
+      required: true
+    },
+    loading: {
+      type: Boolean,
+      default: false
+    }
+  },
+  emits: ['update-params'],
   setup(props, { emit }) {
     const chartRef = ref(null)
-    const chartContainer = ref(null)
     const chartInstance = ref(null)
-    const chartData = ref({ labels: [], datasets: [] })
-    const currency = ref('')
-    const loading = ref(true)
-
     const selectedBreakdown = ref('none')
     const selectedFrequency = ref('M')
     const dateRange = ref({ from: null, to: null })
@@ -65,83 +71,70 @@ export default {
       { title: 'Value Contributions', value: 'value_contributions' }
     ]
 
+    const updateParams = () => {
+      emit('update-params', {
+        frequency: selectedFrequency.value,
+        from_date: dateRange.value.from,
+        to_date: dateRange.value.to,
+        breakdown: selectedBreakdown.value
+      })
+    }
+
     const initChart = async () => {
-      await nextTick()
-      console.log('Initializing chart', chartRef.value, chartContainer.value)
-      if (!chartRef.value) {
-        console.error('Chart canvas element not found', chartRef, chartRef.value, !chartRef.value)
-        if (chartContainer.value) {
-          console.log('Recreating canvas element')
-          const canvas = document.createElement('canvas')
-          canvas.height = 400
-          chartContainer.value.innerHTML = ''
-          chartContainer.value.appendChild(canvas)
-          chartRef.value = canvas
-        } else {
-          console.error('Chart container not found')
-          return
-        }
-      }
+      if (!chartRef.value || !props.chartData) return
       const ctx = chartRef.value.getContext('2d')
-      const options = await getChartOptions(currency.value)
+      const { navChartOptions, colorPalette } = await getChartOptions(props.chartData.currency)
       if (chartInstance.value) {
         chartInstance.value.destroy()
       }
       chartInstance.value = new Chart(ctx, {
         type: 'bar',
-        data: chartData.value,
-        options: options.navChartOptions
+        data: {
+          ...props.chartData,
+          datasets: props.chartData.datasets.map((dataset, index) => ({
+            ...dataset,
+            backgroundColor: colorPalette[index % colorPalette.length],
+          })),
+        },
+        options: navChartOptions,
       })
     }
 
-    const fetchChartData = async () => {
-      console.log('fetchChartData called')
-      loading.value = true
-      emit('fetch-start')
-      try {
-        const params = {
-          frequency: selectedFrequency.value,
-          from_date: dateRange.value.from,
-          to_date: dateRange.value.to,
-          breakdown: selectedBreakdown.value
-        }
-        console.log('Fetching chart data with params:', params)
-        const data = await getNAVChartData(params)
-        console.log('Received chart data:', data)
-        chartData.value = data
-        currency.value = data.currency
-        await nextTick()
-        await initChart()
-        loading.value = false
-        emit('fetch-end')
-      } catch (error) {
-        console.error('Error fetching NAV chart data:', error)
-        loading.value = false
-        emit('fetch-error', error.message || 'An error occurred while fetching chart data')
-      }
-    }
+    watch(() => props.chartData, initChart, { deep: true })
 
     onMounted(() => {
-      console.log('NAVChart mounted')
-      console.log('chartRef:', chartRef.value)
-      console.log('chartContainer:', chartContainer.value)
-      nextTick(() => {
-        fetchChartData()
-      })
+      updateParams() // Initial fetch
     })
-
-    watch([selectedBreakdown, selectedFrequency, dateRange], fetchChartData)
 
     return {
       chartRef,
-      chartContainer,
       selectedBreakdown,
       selectedFrequency,
       dateRange,
-      loading,
       breakdownOptions,
-      fetchChartData
+      updateParams
     }
   }
 }
 </script>
+
+<style scoped>
+.chart-wrapper {
+  position: relative;
+  width: 100%;
+  height: 600px;
+}
+
+.chart-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1;
+}
+</style>

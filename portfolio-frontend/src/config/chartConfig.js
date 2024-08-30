@@ -6,6 +6,11 @@ export const getChartOptions = async (currency) => {
   await nextTick()
   const fontFamily = getFontFamily()
 
+  const axisFont = {
+    family: fontFamily,
+    size: 12,
+  }
+
   return {
     // chartOptions: {
     //   responsive: false,
@@ -69,12 +74,15 @@ export const getChartOptions = async (currency) => {
     },
     navChartOptions: {
       responsive: true,
-      aspectRatio: 1.3,
+      maintainAspectRatio: false, // Remove aspectRatio
       scales: {
         x: {
           stacked: true,
           grid: {
             display: false
+          },
+          ticks: {
+            font: axisFont
           }
         },
         y: {
@@ -83,9 +91,13 @@ export const getChartOptions = async (currency) => {
           title: {
             display: true,
             text: currency,
+            font: axisFont
           },
           grid: {
             display: false
+          },
+          ticks: {
+            font: axisFont
           }
         },
         y1: {
@@ -94,7 +106,8 @@ export const getChartOptions = async (currency) => {
           display: true,
           position: 'right',
           ticks: {
-            callback: value => (value * 100).toFixed(0) + '%'
+            callback: value => (value * 100).toFixed(0) + '%',
+            font: axisFont
           },
           grid: {
             display: false
@@ -105,6 +118,10 @@ export const getChartOptions = async (currency) => {
         datalabels: {
           anchor: "end",
           align: "top",
+          font: {
+            family: fontFamily,
+            size: 14,
+          },
           formatter: (value, context) => {
             if (context.dataset.label === "Rolling IRR (RHS)" || context.dataset.label === "IRR (RHS)") {
               return (value * 100).toFixed(0) + '%';
