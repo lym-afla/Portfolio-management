@@ -43,6 +43,8 @@
           v-else
           :chartData="navChartData"
           :loading="updating.navChart"
+          :initialParams="navChartInitialParams"
+          :effectiveCurrentDate="effectiveCurrentDate"
           @update-params="fetchNAVChartData"
         />
         <v-alert v-if="error.navChart" type="error" class="mt-2">{{ error.navChart }}</v-alert>
@@ -52,8 +54,9 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, inject, watch } from 'vue'
+import { ref, onMounted, onUnmounted, inject, watch, computed } from 'vue'
 import { useStore } from 'vuex'
+import { calculateDateRange } from '@/utils/dateRangeUtils'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
@@ -84,6 +87,23 @@ export default {
     const totalNAV = ref('')
     const summaryOverTimeData = ref({})
     const navChartData = ref(null)
+    // const navChartInitialParams = computed(() => store.state.navChartParams)
+    
+    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+
+    const navChartInitialParams = computed(() => {
+      const params = store.state.navChartParams
+
+      if (!params.dateFrom || !params.dateTo) {
+        const calculatedRange = calculateDateRange(params.dateRange, effectiveCurrentDate.value);
+        return {
+          ...params,
+          dateFrom: calculatedRange.from,
+          dateTo: calculatedRange.to
+        }
+      }
+      return params
+    })
     const loading = ref({
       summary: true,
       breakdownCharts: true,
@@ -153,18 +173,27 @@ export default {
         loading.value.summaryOverTime = false
       } catch (err) {
         console.error('Error fetching summary over time:', err)
-        error.value.summaryOverTime = handleApiError(err)
-        summaryOverTimeData.value = [] // Add empty summaryOverTimeData if error
+        if (err.response && err.response.status === 404) {
+          // Handle 404 as "no data" instead of an error
+          summaryOverTimeData.value = null
+        } else {
+          error.value.summaryOverTime = handleApiError(err)
+        }
         loading.value.summaryOverTime = false
       }
     }
 
-    const fetchNAVChartData = async (params = {}) => {
+    const fetchNAVChartData = async (params = navChartInitialParams.value) => {
       try {
         clearErrors()
         updating.value.navChart = true
         console.log('Fetching NAV chart data...')
-        const data = await getNAVChartData(params)
+        const data = await getNAVChartData(
+          params.breakdown,
+          params.frequency,
+          params.dateFrom,
+          params.dateTo,
+        )
         console.log('Received NAV chart data:', data)
         navChartData.value = data
       } catch (err) {
@@ -176,11 +205,11 @@ export default {
       }
     }
 
-    const refreshAllData = () => {
-      fetchSummaryData()
-      fetchBreakdownData()
-      fetchSummaryOverTimeData()
-      fetchNAVChartData({}) // Initial fetch with default params
+    const refreshAllData = async () => {
+      await fetchSummaryData()
+      await fetchBreakdownData()
+      await fetchSummaryOverTimeData()
+      await fetchNAVChartData()
     }
 
     // Watch for changes in the store that should trigger a data refresh
@@ -188,15 +217,27 @@ export default {
       [
         () => store.state.dataRefreshTrigger,
       ],
-      () => {
+      async () => {
         console.log('Dashboard detected a change that requires data refresh')
-        refreshAllData()
+        await refreshAllData()
       }
     )
 
-    onMounted(() => {
-      emit('update-page-title', 'Dashboard')
-      refreshAllData()
+    onMounted(async () => {
+      if (!effectiveCurrentDate.value) {
+        await store.dispatch('fetchEffectiveCurrentDate')
+      }
+
+      if (!navChartInitialParams.value.dateFrom || !navChartInitialParams.value.dateTo) {
+        const caluclatedDateRange = calculateDateRange('ytd', effectiveCurrentDate.value)
+        navChartInitialParams.value.dateFrom = caluclatedDateRange.from
+        navChartInitialParams.value.dateTo = caluclatedDateRange.to
+      }
+      console.log('Date range:', navChartInitialParams.value)
+      fetchSummaryData()
+      fetchBreakdownData()
+      fetchSummaryOverTimeData()
+      fetchNAVChartData(navChartInitialParams.value)
     })
 
     onUnmounted(() => {
@@ -215,7 +256,9 @@ export default {
       updating,
       chartTypes,
       chartTitles,
+      navChartInitialParams,
       fetchNAVChartData,
+      effectiveCurrentDate,
     }
   },
 }

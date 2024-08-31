@@ -49,7 +49,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { getDashboardSettings, updateDashboardSettings } from '@/services/api'
 import { useStore } from 'vuex'
-import { calculateDateRange } from '@/utils/dateUtils'
+import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
 
 export default {
   setup() {
@@ -107,7 +107,7 @@ export default {
           console.log('[SettingsDialog] Current state:', currentState)
 
           // Calculate new date range based on the new effective date
-          const dateRange = calculateDateRange(currentState.tableSettings.timespan, response.data.table_date)
+          const dateRange = calculateDateRangeFromTimespan(currentState.tableSettings.timespan, response.data.table_date)
           
           // Update table settings and trigger data refresh
           store.dispatch('updateTableSettings', {

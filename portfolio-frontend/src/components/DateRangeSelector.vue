@@ -41,26 +41,27 @@
   <script>
   import { ref, computed } from 'vue'
   import { useStore } from 'vuex'
-  import { format, parseISO, startOfYear, subMonths, subYears } from 'date-fns'
+  import { format, parseISO } from 'date-fns'
+  import { calculateDateRange } from '@/utils/dateRangeUtils'
   
   export default {
     name: 'DateRangeSelector',
     props: {
       modelValue: {
         type: Object,
-        default: () => ({ from: null, to: null })
+        default: () => ({ dateRange: 'ytd', dateFrom: null, dateTo: null })
       }
     },
     emits: ['update:modelValue'],
     setup(props, { emit }) {
       const store = useStore()
       const menu = ref(false)
-      const selectedRange = ref('ytd')
-      const dateFrom = ref(props.modelValue.from)
-      const dateTo = ref(props.modelValue.to)
-  
+      const selectedRange = ref(props.modelValue.dateRange)
+      const dateFrom = ref(props.modelValue.dateFrom)
+      const dateTo = ref(props.modelValue.dateTo)
+
       const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
-  
+
       const dateRangeOptions = computed(() => {
         const currentYear = new Date(effectiveCurrentDate.value).getFullYear()
         return [
@@ -71,54 +72,27 @@
           { title: 'Last 12 Months', value: 'last12m' },
           { title: 'Last 3 Years', value: 'last3y' },
           { title: 'Last 5 Years', value: 'last5y' },
-          { title: 'All', value: 'all_time' },
+          { title: 'All-time', value: 'all_time' },
         ]
       })
-  
+
       const displayDateRange = computed(() => {
         if (dateFrom.value && dateTo.value) {
           return `${format(parseISO(dateFrom.value), 'dd MMM yyyy')} - ${format(parseISO(dateTo.value), 'dd MMM yyyy')}`
         }
         return 'Select Date Range'
       })
-  
+
       const handlePredefinedRange = (value) => {
-        const effectiveDate = parseISO(effectiveCurrentDate.value)
-        let fromDate
-  
-        switch (value) {
-          case 'ytd':
-            fromDate = startOfYear(effectiveDate)
-            break
-          case 'last1m':
-            fromDate = subMonths(effectiveDate, 1)
-            break
-          case 'last3m':
-            fromDate = subMonths(effectiveDate, 3)
-            break
-          case 'last6m':
-            fromDate = subMonths(effectiveDate, 6)
-            break
-          case 'last12m':
-            fromDate = subMonths(effectiveDate, 12)
-            break
-          case 'last3y':
-            fromDate = subYears(effectiveDate, 3)
-            break
-          case 'last5y':
-            fromDate = subYears(effectiveDate, 5)
-            break
-          case 'all_time':
-            fromDate = new Date('1900-01-01')
-            break
-        }
-  
-        dateFrom.value = format(fromDate, 'yyyy-MM-dd')
-        dateTo.value = format(effectiveDate, 'yyyy-MM-dd')
+        selectedRange.value = value
+        const calculatedDateRange = calculateDateRange(value, effectiveCurrentDate.value)
+        dateFrom.value = calculatedDateRange.from
+        dateTo.value = calculatedDateRange.to
       }
   
       const applyDateRange = () => {
-        emit('update:modelValue', { from: dateFrom.value, to: dateTo.value })
+        emit('update:modelValue', { dateRange: selectedRange.value, dateFrom: dateFrom.value, dateTo: dateTo.value })
+        console.log("Emitting dates from DateRangeSelector", dateFrom.value, dateTo.value)
         menu.value = false
       }
   

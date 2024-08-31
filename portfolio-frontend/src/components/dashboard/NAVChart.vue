@@ -21,7 +21,7 @@
           </v-btn-toggle>
         </v-col>
         <v-col cols="12" sm="4">
-          <DateRangeSelector v-model="dateRange" @update:model-value="updateParams" />
+          <DateRangeSelector v-model="dateRangeForSelector" @update:model-value="handleDateRangeChange" />
         </v-col>
       </v-row>
       <div class="chart-wrapper">
@@ -35,10 +35,12 @@
 </template>
 
 <script>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
+import { useStore } from 'vuex'
 import { Chart, registerables } from 'chart.js'
 import { getChartOptions } from '@/config/chartConfig'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
+// import { calculateDateRange } from '@/utils/dateRangeUtils'
 
 Chart.register(...registerables)
 
@@ -53,15 +55,30 @@ export default {
     loading: {
       type: Boolean,
       default: false
+    },
+    initialParams: {
+      type: Object,
+      required: true
+    },
+    effectiveCurrentDate: {
+      type: String,
+      required: true
     }
   },
   emits: ['update-params'],
   setup(props, { emit }) {
+    const store = useStore()
     const chartRef = ref(null)
     const chartInstance = ref(null)
-    const selectedBreakdown = ref('none')
-    const selectedFrequency = ref('M')
-    const dateRange = ref({ from: null, to: null })
+
+    const navChartParams = computed(() => store.state.navChartParams)
+
+    const selectedBreakdown = ref(navChartParams.value.breakdown)
+    const selectedFrequency = ref(navChartParams.value.frequency)
+    const dateRange = ref(navChartParams.value.dateRange)
+    const dateFrom = ref(navChartParams.value.dateFrom)
+    const dateTo = ref(navChartParams.value.dateTo)
+
     const breakdownOptions = [
       { title: 'Broker', value: 'broker' },
       { title: 'Asset Type', value: 'asset_type' },
@@ -72,13 +89,26 @@ export default {
     ]
 
     const updateParams = () => {
-      emit('update-params', {
+      const params = {
         frequency: selectedFrequency.value,
-        from_date: dateRange.value.from,
-        to_date: dateRange.value.to,
+        dateFrom: dateFrom.value,
+        dateTo: dateTo.value,
         breakdown: selectedBreakdown.value
-      })
+      }
+      store.dispatch('updateNavChartParams', params)
+      emit('update-params', params)
     }
+
+    const handleDateRangeChange = (newDateRange) => {
+      dateRange.value = newDateRange.dateRange
+      dateFrom.value = newDateRange.dateFrom
+      dateTo.value = newDateRange.dateTo
+      updateParams()
+    }
+
+    onMounted(() => {
+      initChart()
+    })
 
     const initChart = async () => {
       if (!chartRef.value || !props.chartData) return
@@ -120,17 +150,21 @@ export default {
 
     watch(() => props.chartData, initChart, { deep: true })
 
-    onMounted(() => {
-      updateParams() // Initial fetch
-    })
-
     return {
       chartRef,
       selectedBreakdown,
       selectedFrequency,
       dateRange,
+      dateFrom,
+      dateTo,
       breakdownOptions,
-      updateParams
+      updateParams,
+      handleDateRangeChange,
+      dateRangeForSelector: {
+        dateRange: dateRange.value,
+        dateFrom: dateFrom.value,
+        dateTo: dateTo.value
+      }
     }
   }
 }

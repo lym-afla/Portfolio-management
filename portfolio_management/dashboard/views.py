@@ -371,10 +371,10 @@ def get_dashboard_summary_over_time_api(request):
 @permission_classes([IsAuthenticated])
 def api_nav_chart_data(request):
     user = request.user
-    frequency = request.GET.get('frequency', 'M')
-    from_date = request.GET.get('from_date')
-    to_date = request.GET.get('to_date')
-    breakdown = request.GET.get('breakdown', 'none')
+    frequency = request.GET.get('frequency')
+    from_date = request.GET.get('dateFrom')
+    to_date = request.GET.get('dateTo')
+    breakdown = request.GET.get('breakdown')
     currency = user.default_currency
     brokers = broker_group_to_ids(user.custom_brokers, user)
 
@@ -383,10 +383,10 @@ def api_nav_chart_data(request):
         to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
         from_date = date(to_date.year, 1, 1).isoformat()  # Start of current year
 
-    try:
-        chart_data = get_nav_chart_data(user.id, brokers, frequency, from_date, to_date, currency, breakdown)
-        return Response(chart_data)
-    except ValueError as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # try:
+    chart_data = get_nav_chart_data(user.id, brokers, frequency, from_date, to_date, currency, breakdown)
+    return Response(chart_data)
+    # except ValueError as e:
+    #     return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    # except Exception as e:
+    #     return Response({'error': 'An unexpected error occurred: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

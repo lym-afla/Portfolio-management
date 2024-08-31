@@ -23,6 +23,13 @@ export default createStore({
       sortBy: [],
     },
     itemsPerPageOptions: [10, 25, 50, 100],
+    navChartParams: {
+      frequency: 'Q',
+      breakdown: 'none',
+      dateRange: 'ytd',
+      dateFrom: null,
+      dateTo: null
+    }
   },
   mutations: {
     setToken(state, token) {
@@ -69,6 +76,9 @@ export default createStore({
     SET_EFFECTIVE_CURRENT_DATE(state, date) {
       state.effectiveCurrentDate = date
     },
+    SET_NAV_CHART_PARAMS(state, params) {
+      state.navChartParams = { ...state.navChartParams, ...params }
+    }
   },
   actions: {
     async login({ commit }, credentials) {
@@ -154,6 +164,9 @@ export default createStore({
     updateTableSettings({ commit }, settings) {
       commit('SET_TABLE_SETTINGS', settings)
     },
+    updateNavChartParams({ commit }, params) {
+      commit('SET_NAV_CHART_PARAMS', params)
+    }
   },
   getters: {
     isAuthenticated: state => !!state.token,
