@@ -23,6 +23,13 @@ export default createStore({
       sortBy: [],
     },
     itemsPerPageOptions: [10, 25, 50, 100],
+    navChartParams: {
+      frequency: 'Q',
+      breakdown: 'none',
+      dateRange: 'ytd',
+      dateFrom: null,
+      dateTo: null
+    }
   },
   mutations: {
     setToken(state, token) {
@@ -60,15 +67,18 @@ export default createStore({
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
     },
-    SET_SELECTED_BROKER(state, broker) {
-      state.selectedBroker = broker
-    },
+    // SET_SELECTED_BROKER(state, broker) {
+    //   state.selectedBroker = broker
+    // },
     SET_USER_SETTINGS(state, settings) {
       state.userSettings = { ...state.userSettings, ...settings }
     },
     SET_EFFECTIVE_CURRENT_DATE(state, date) {
       state.effectiveCurrentDate = date
     },
+    SET_NAV_CHART_PARAMS(state, params) {
+      state.navChartParams = { ...state.navChartParams, ...params }
+    }
   },
   actions: {
     async login({ commit }, credentials) {
@@ -134,9 +144,9 @@ export default createStore({
         commit('setError', 'Failed to fetch brokers')
       }
     },
-    updateSelectedBroker({ commit }, broker) {
-      commit('SET_SELECTED_BROKER', broker)
-    },
+    // updateSelectedBroker({ commit }, broker) {
+    //   commit('SET_SELECTED_BROKER', broker)
+    // },
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
     },
@@ -154,6 +164,9 @@ export default createStore({
     updateTableSettings({ commit }, settings) {
       commit('SET_TABLE_SETTINGS', settings)
     },
+    updateNavChartParams({ commit }, params) {
+      commit('SET_NAV_CHART_PARAMS', params)
+    }
   },
   getters: {
     isAuthenticated: state => !!state.token,

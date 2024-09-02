@@ -26,7 +26,7 @@ def get_brokers_table_api(request):
     paginated_brokers, pagination_data = paginate_table(brokers_data, page, items_per_page)
     formatted_brokers = format_table_data(paginated_brokers, currency_target, number_of_digits)
 
-    totals = _calculate_totals(brokers_data, user, effective_current_date, currency_target, number_of_digits)
+    totals = _calculate_totals(brokers_data, user, effective_current_date, currency_target)
     totals = format_table_data(totals, currency_target, number_of_digits)
 
     return {
@@ -53,7 +53,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
             'currencies': ', '.join(broker.get_currencies()),
             'no_of_securities': sum(1 for security in broker.securities.filter(investor=user) if security.position(effective_current_date, [broker.id]) != 0),
             'first_investment': Transactions.objects.filter(investor=user, broker=broker).order_by('date').values_list('date', flat=True).first() or 'None',
-            'nav': NAV_at_date(user.id, [broker.id], effective_current_date, currency_target, [])['Total NAV'],
+            'nav': NAV_at_date(user.id, [broker.id], effective_current_date, currency_target)['Total NAV'],
             'cash_old': broker.balance(effective_current_date),
             'cash': {currency: currency_format(broker.balance(effective_current_date)[currency], currency, digits=0) for currency in broker.get_currencies()},
             'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=[broker.id])

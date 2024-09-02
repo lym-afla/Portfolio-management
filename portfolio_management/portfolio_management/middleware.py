@@ -6,7 +6,6 @@ class InitializeEffectiveDateMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        print("InitializeEffectiveDateMiddleware. __call__ - Session Data:", dict(request.session))
         if 'effective_current_date' not in request.session:
             request.session['effective_current_date'] = date.today().isoformat()
             request.session.modified = True

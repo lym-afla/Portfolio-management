@@ -347,3 +347,67 @@ export const deleteSecurity = async (securityId) => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+// export const getSummaryData = async () => {
+//   try {
+//     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
+//     return response.data
+//   } catch (error) {
+//     console.error('Error fetching summary data:', error)
+//     throw error
+//   }
+// }
+
+export const getDashboardBreakdown = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-breakdown/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching breakdown data:', error)
+    throw error
+  }
+}
+
+export const getDashboardSummaryOverTime = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary-over-time/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching summary over time data:', error)
+    throw error
+  }
+}
+
+export const getNAVChartData = async (breakdown, frequency, dateFrom, dateTo) => {
+  try {
+    console.log('API request params for NAV chart:', {
+      breakdown: breakdown,
+      frequency: frequency,
+      dateFrom: dateFrom,
+      dateTo: dateTo
+    })
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-nav-chart-data/`, { 
+      params: {
+        breakdown,
+        frequency,
+        dateFrom,
+        dateTo
+      }
+    })
+    console.log('API response:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching NAV chart data:', error)
+    throw error
+  }
+}
+
+export const getDashboardSummary = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching dashboard summary:', error)
+    throw error
+  }
+}

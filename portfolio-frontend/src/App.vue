@@ -7,16 +7,22 @@
     <template v-if="!layoutLoading">
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
-        <v-main>
-          <v-container fluid class="pa-4">
+        
+        <v-app-bar elevation="1" height="auto">
+          <v-container fluid class="py-2">
             <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
-            <v-divider v-if="pageTitle" class="mb-2"></v-divider>
-            <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-4">
+            <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
+            <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-2">
               <BrokerSelection class="flex-grow-1" />
               <v-divider vertical class="mx-2" />
-              <SettingsDialog />
+              <SettingsDialog elevation="6" />
             </div>
-            <v-divider v-if="!isProfilePage && !isDatabasePage" class="mb-4"></v-divider>
+            <v-divider v-if="!isProfilePage && !isDatabasePage"></v-divider>
+          </v-container>
+        </v-app-bar>
+
+        <v-main style="padding-top: 140px;">
+          <v-container fluid class="pa-4">
             <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
         </v-main>
@@ -34,13 +40,16 @@
       :timeout="5000"
       color="error"
       top
+      multi-line
     >
-      {{ errorMessage }}
+      <div v-for="(error, index) in errorMessages" :key="index">
+        {{ error }}
+      </div>
       <template v-slot:actions>
         <v-btn
           color="white"
           text
-          @click="errorSnackbar = false"
+          @click="clearErrors"
         >
           Close
         </v-btn>
@@ -117,14 +126,21 @@ export default {
     provide('isAuthenticated', isAuthenticated)
 
     const errorSnackbar = ref(false)
-    const errorMessage = ref('')
+    const errorMessages = ref([])
 
     const showError = (message) => {
-      errorMessage.value = message
+      console.log('Showing error:', message)
+      errorMessages.value.push(message)
       errorSnackbar.value = true
     }
 
+    const clearErrors = () => {
+      errorMessages.value = []
+      errorSnackbar.value = false
+    }
+
     provide('showError', showError)
+    provide('clearErrors', clearErrors)
 
     return {
       user,
@@ -138,12 +154,12 @@ export default {
       isProfilePage,
       isDatabasePage,
       errorSnackbar,
-      errorMessage,
+      errorMessages,
+      clearErrors,
     }
   },
 }
 </script>
-
 
 <style>
 html {
@@ -177,4 +193,5 @@ body {
 .v-dialog {
   overflow-y: visible;
 }
+
 </style>

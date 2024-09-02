@@ -1,8 +1,7 @@
-from common.models import Assets, Transactions
-from .portfolio_utils import IRR, NAV_at_date
+from common.models import Assets
 from .sorting_utils import sort_entries
 from .pagination_utils import paginate_table
-from .formatting_utils import currency_format, format_table_data
+from .formatting_utils import format_table_data
 from datetime import datetime
 
 def get_securities_table_api(request):

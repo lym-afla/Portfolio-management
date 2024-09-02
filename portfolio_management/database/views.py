@@ -28,7 +28,7 @@ from core.brokers_utils import get_brokers_table_api
 from core.securities_utils import get_securities_table_api
 
 from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
-from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
+from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers_old_approach, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
 
 logger = logging.getLogger(__name__)
 
@@ -734,7 +734,7 @@ def get_years_count(user, effective_date, brokers_or_group, currency_target, is_
     if not first_transaction:
         return 0
     start_year = first_transaction.date.year
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     return last_year - start_year + 1
 from datetime import datetime, timedelta, date
@@ -764,7 +764,7 @@ from common.forms import DashboardForm_old_setup
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 
 from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
-from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
+from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers_old_approach, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
 
 logger = logging.getLogger(__name__)
 
@@ -1470,7 +1470,7 @@ def get_years_count(user, effective_date, brokers_or_group, currency_target, is_
     if not first_transaction:
         return 0
     start_year = first_transaction.date.year
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     return last_year - start_year + 1
 

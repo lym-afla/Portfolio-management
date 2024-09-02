@@ -1,20 +1,23 @@
 import { startOfYear, parseISO, format, startOfDay } from 'date-fns'
 
-export function calculateDateRange(value, effectiveDate) {
+export function calculateDateRangeFromTimespan(timespan, effectiveDate) {
   const parsedEffectiveDate = parseISO(effectiveDate)
   let dateFromValue, dateToValue
 
-  if (value === 'ytd') {
+  if (timespan === "") {
+    dateFromValue = null
+    dateToValue = parsedEffectiveDate
+  } else if (timespan === 'ytd') {
     dateFromValue = startOfYear(parsedEffectiveDate)
     dateToValue = parsedEffectiveDate
-  } else if (value === 'all_time') {
+  } else if (timespan === 'all_time') {
     dateFromValue = null // Return null for dateFrom
     dateToValue = parsedEffectiveDate
   } else {
     // Assume it's a specific year
-    const year = parseInt(value, 10)
+    const year = parseInt(timespan, 10)
     if (isNaN(year)) {
-      console.error('Invalid timespan value:', value)
+      console.error('Invalid timespan value:', timespan)
       return null
     }
     dateFromValue = new Date(year, 0, 1) // January 1st of the year

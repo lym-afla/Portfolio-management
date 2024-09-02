@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { debounce } from 'lodash'
-import { calculateDateRange } from '@/utils/dateUtils'
+import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
 
 export function useTableSettings() {
   const store = useStore()
@@ -58,7 +58,7 @@ export function useTableSettings() {
       return
     }
 
-    const dateRange = calculateDateRange(value, currentDate)
+    const dateRange = calculateDateRangeFromTimespan(value, currentDate)
     if (!dateRange) return
 
     store.dispatch('updateTableSettings', {
