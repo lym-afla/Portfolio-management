@@ -93,11 +93,13 @@ export default {
 
     const navChartInitialParams = computed(() => {
       const params = store.state.navChartParams
+      const defaultDateRange = 'ytd'
 
       if (!params.dateFrom || !params.dateTo) {
-        const calculatedRange = calculateDateRange(params.dateRange, effectiveCurrentDate.value);
+        const calculatedRange = calculateDateRange(params.dateRange || defaultDateRange, effectiveCurrentDate.value)
         return {
           ...params,
+          dateRange: params.dateRange || defaultDateRange,
           dateFrom: calculatedRange.from,
           dateTo: calculatedRange.to
         }
@@ -228,16 +230,16 @@ export default {
         await store.dispatch('fetchEffectiveCurrentDate')
       }
 
-      if (!navChartInitialParams.value.dateFrom || !navChartInitialParams.value.dateTo) {
-        const caluclatedDateRange = calculateDateRange('ytd', effectiveCurrentDate.value)
-        navChartInitialParams.value.dateFrom = caluclatedDateRange.from
-        navChartInitialParams.value.dateTo = caluclatedDateRange.to
+      if (!store.state.navChartParams.dateFrom || !store.state.navChartParams.dateTo) {
+        const defaultDateRange = 'ytd'
+        const calculatedDateRange = calculateDateRange(defaultDateRange, effectiveCurrentDate.value)
+        await store.dispatch('updateNavChartParams', { dateRange: defaultDateRange, dateFrom: calculatedDateRange.from, dateTo: calculatedDateRange.to })
       }
       console.log('Date range:', navChartInitialParams.value)
-      fetchSummaryData()
-      fetchBreakdownData()
-      fetchSummaryOverTimeData()
-      fetchNAVChartData(navChartInitialParams.value)
+      await fetchSummaryData()
+      await fetchBreakdownData()
+      await fetchSummaryOverTimeData()
+      await fetchNAVChartData(navChartInitialParams.value)
     })
 
     onUnmounted(() => {

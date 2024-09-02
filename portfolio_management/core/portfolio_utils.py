@@ -75,7 +75,8 @@ def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency
 
         for breakdown_type in breakdown:
             if breakdown_type == 'broker':
-                for broker in get_brokers_for_security(user_id, security.id):
+                # for broker in get_brokers_for_security(user_id, security.id):
+                for broker in portfolio_brokers:
                     analysis['broker'][broker.name] += current_value
             else:
                 key = getattr(security, item_type[breakdown_type])

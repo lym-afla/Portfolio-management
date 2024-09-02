@@ -5,6 +5,9 @@ from core.portfolio_utils import IRR, NAV_at_date
 import pandas as pd
 import numpy as np
 
+from common.models import Transactions
+from django.db.models import Sum
+
 def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency, breakdown):
     dates = _chart_dates(from_date, to_date, frequency)
     
@@ -47,7 +50,7 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
             add_no_breakdown_data(chart_data, IRR_value, IRR_rolling, NAV)
         elif breakdown == 'value_contributions':
             NAV = NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000
-            add_contributions_data(chart_data, user_id, brokers, d, currency, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date)
+            add_contributions_data(chart_data, user_id, brokers, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date)
         else:
             NAV = NAV_at_date(user_id, brokers, d, currency, [breakdown])[breakdown]
             add_breakdown_data(chart_data, IRR_value, IRR_rolling, NAV)
@@ -62,7 +65,7 @@ def add_no_breakdown_data(chart_data, IRR, IRR_rolling, NAV):
     chart_data['datasets'][1]['data'].append(IRR)
     chart_data['datasets'][2]['data'].append(IRR_rolling)
 
-def add_contributions_data(chart_data, user_id, brokers, d, currency, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date):
+def add_contributions_data(chart_data, user_id, brokers, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date):
     contributions = calculate_contributions(user_id, brokers, d, previous_date)
     return_amount = NAV - NAV_previous_date - contributions
 
@@ -97,9 +100,21 @@ def get_color(index):
     colors = ['rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)']
     return colors[index % len(colors)]
 
-def calculate_contributions(user_id, brokers, end_date, start_date):
-    # Implement the logic to calculate contributions between start_date and end_date
-    pass
+def calculate_contributions(user_id, brokers, d, previous_date):
+    filter_conditions = {
+        'investor__id': user_id,
+        'broker__in': brokers,
+        'type__in': ['Cash in', 'Cash out']
+    }
+    
+    if previous_date is not None:
+        filter_conditions['date__gt'] = previous_date
+        filter_conditions['date__lte'] = d
+    else:
+        filter_conditions['date__lte'] = d
+
+    contributions = Transactions.objects.filter(**filter_conditions).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
+    return Decimal(contributions) / 1000
 
 
 # Collect chart dates 
