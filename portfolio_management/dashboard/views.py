@@ -5,9 +5,9 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from common.models import AnnualPerformance, Brokers, Transactions, FX
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from database.forms import BrokerPerformanceForm
-from utils import NAV_at_date, Irr, broker_group_to_ids, calculate_from_date, calculate_percentage_shares, currency_format, currency_format_dict_values, decimal_default, format_percentage, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
+from utils import NAV_at_date_old_structure, Irr_old_structure, broker_group_to_ids_old_approach, calculate_from_date, calculate_percentage_shares, currency_format_old_structure, currency_format_dict_values, decimal_default, format_percentage_old_structure, get_chart_data, get_last_exit_date_for_brokers, dashboard_summary_over_time
 
 @login_required
 def dashboard(request):
@@ -21,7 +21,7 @@ def dashboard(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     # use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -38,12 +38,12 @@ def dashboard(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     print("views. dashboard. Time taken for preparatory calcs", time.time() - start_t)
 
     start_t = time.time()
-    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    analysis = NAV_at_date_old_structure(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
     print("views. dashboard. Time taken for NAV at date calc", time.time() - start_t)
 
     start_t = time.time()
@@ -64,17 +64,17 @@ def dashboard(request):
             else:
                 summary['Cash-out'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
     
-    summary['IRR'] = format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
+    summary['IRR'] = format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
     
     try:
-        summary['Return'] = format_percentage((summary['NAV'] - summary['Cash-out']) / summary['Invested'] - 1, digits=1)
+        summary['Return'] = format_percentage_old_structure((summary['NAV'] - summary['Cash-out']) / summary['Invested'] - 1, digits=1)
     except:
         summary['Return'] = '–'
     
     # Convert data to string representation to feed the page
-    summary['NAV'] = currency_format(summary['NAV'], currency_target, number_of_digits)
-    summary['Invested'] = currency_format(summary['Invested'], currency_target, number_of_digits)
-    summary['Cash-out'] = currency_format(summary['Cash-out'], currency_target, number_of_digits)
+    summary['NAV'] = currency_format_old_structure(summary['NAV'], currency_target, number_of_digits)
+    summary['Invested'] = currency_format_old_structure(summary['Invested'], currency_target, number_of_digits)
+    summary['Cash-out'] = currency_format_old_structure(summary['Cash-out'], currency_target, number_of_digits)
 
     # Convert Python object to JSON string to be recognizable by Chart.js
     json_analysis = json.dumps(analysis, default=decimal_default)
@@ -92,7 +92,7 @@ def dashboard(request):
     for index in range(len(financial_table_context['lines'])):
         if financial_table_context['lines'][index]['name'] == 'TSR':
             for k, v in financial_table_context['lines'][index]['data'].items():
-                financial_table_context['lines'][index]['data'][k] = format_percentage(v, digits=1)
+                financial_table_context['lines'][index]['data'][k] = format_percentage_old_structure(v, digits=1)
         else:
             financial_table_context['lines'][index] = currency_format_dict_values(financial_table_context['lines'][index], currency_target, number_of_digits)
     print("views. dashboard. Time taken for summary table calcs", time.time() - start_t)
@@ -146,7 +146,7 @@ def nav_chart_data_request(request):
     # global selected_brokers
     user = request.user
     print("views. dashboard. 148", user)
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     if request.method == 'GET':
         frequency = request.GET.get('frequency')
@@ -167,12 +167,12 @@ def dashboard_summary_api(request):
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
     currency_target = user.default_currency
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
-    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
+    analysis = NAV_at_date_old_structure(user.id, selected_brokers, effective_current_date, currency_target, ['Asset type', 'Currency', 'Asset class'])
     
     summary_data = {
-        'totalValue': currency_format(analysis['Total NAV'], currency_target, user.digits),
-        'change': format_percentage(Irr(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
+        'totalValue': currency_format_old_structure(analysis['Total NAV'], currency_target, user.digits),
+        'change': format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
     }
     return JsonResponse(summary_data)

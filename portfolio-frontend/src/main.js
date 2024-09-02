@@ -8,6 +8,7 @@ import App from './App.vue'
 import router from './router'
 import store from './store'
 import axios from 'axios'
+import './assets/fonts.css'
 
 axios.defaults.xsrfCookieName = 'csrftoken'
 axios.defaults.xsrfHeaderName = 'X-CSRFToken'
@@ -15,8 +16,12 @@ axios.defaults.xsrfHeaderName = 'X-CSRFToken'
 axios.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+    console.log('Token from localStorage:', token);
     if (token) {
       config.headers['Authorization'] = `Token ${token}`;
+      console.log('Authorization header set:', config.headers['Authorization']);
+    } else {
+      console.log('No token found in localStorage');
     }
     return config;
   },
@@ -28,12 +33,13 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.log('Response error:', error.response);
     if (error.response && error.response.status === 401) {
-      // If we receive a 401 Unauthorized, clear the token and redirect to login
-      localStorage.removeItem('token');
-      router.push('/login');
+      console.log('401 Unauthorized error detected');
+      store.commit('logout')
+      router.push('/login')
     }
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
 );
 
@@ -42,6 +48,17 @@ const vuetify = createVuetify({
   directives,
   icons: {
     defaultSet: 'mdi',
+  },
+  theme: {
+    defaultTheme: 'light',
+    themes: {
+      light: {
+        dark: false,
+        variables: {
+          fontFamily: 'var(--system-font)',
+        },
+      },
+    },
   },
 })
 

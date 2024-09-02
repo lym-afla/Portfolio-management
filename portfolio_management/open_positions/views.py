@@ -6,9 +6,10 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from common.models import Brokers, Assets, Transactions
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from constants import TOLERANCE
-from utils import broker_group_to_ids, calculate_open_table_output, currency_format, get_last_exit_date_for_brokers
+from core.positions_utils import get_positions_table_api
+from utils import broker_group_to_ids_old_approach, calculate_open_table_output, currency_format_old_structure, get_last_exit_date_for_brokers
 
 from django.views.decorators.http import require_POST
 
@@ -24,7 +25,7 @@ def open_positions(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -33,7 +34,7 @@ def open_positions(request):
     sidebar_width = request.GET.get("width")
     sidebar_padding = request.GET.get("padding")
 
-    print("views. open positions. 30", effective_current_date, selected_brokers)
+    print("views. open positions. 37. Effective current date:", effective_current_date, selected_brokers)
 
     initial_data = {
         'selected_brokers': selected_brokers,
@@ -41,7 +42,7 @@ def open_positions(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     first_year = Transactions.objects.filter(
         investor=user,
@@ -86,7 +87,7 @@ def update_open_positions_table(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     # Process the data based on the timespan
     if timespan == 'YTD':
@@ -117,7 +118,7 @@ def update_open_positions_table(request):
         abs_total_quantity__lt=TOLERANCE
     )
 
-    print("views. 120", start_date)
+    print("views. 120. Start date:", start_date)
 
     categories = ['investment_date', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     # Filter your data based on year and broker_id
@@ -156,7 +157,7 @@ def update_open_positions_table(request):
 
 def get_cash_balances(user, timespan, effective_current_date):
 
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
     
     # Process the data based on the timespan
     if timespan == 'YTD':
@@ -187,6 +188,18 @@ def get_cash_balances(user, timespan, effective_current_date):
     number_of_digits = user.digits
     
     # Convert Decimal objects to strings for JSON serialization
-    serializable_balances = {currency_format('', currency, 0): currency_format(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
+    serializable_balances = {currency_format_old_structure('', currency, 0): currency_format_old_structure(balance, currency, number_of_digits) for currency, balance in aggregated_balances.items()}
 
     return serializable_balances
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@ensure_csrf_cookie
+def get_open_positions_table_api(request):
+    print("views. open positions. 204", request.session['effective_current_date'], request.user.username)
+    return Response(get_positions_table_api(request, is_closed=False))

@@ -1,9 +1,11 @@
 import json
+from django import forms
 from django.http import JsonResponse
 from django.urls import reverse_lazy
 from django.views import generic
+from django.utils import timezone
 
-from common.forms import DashboardForm
+from common.forms import DashboardForm, DashboardForm_old_setup
 from common.models import Brokers
 from constants import BROKER_GROUPS, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from .forms import SignUpForm, UserProfileForm, UserSettingsForm
@@ -116,7 +118,7 @@ def update_from_dashboard_form(request):
 
     # In case settings at the top menu are changed
     if request.method == "POST":
-        dashboard_form = DashboardForm(request.POST, instance=user)
+        dashboard_form = DashboardForm_old_setup(request.POST, instance=user)
         if dashboard_form.is_valid():
             # Process the form data
             request.session['effective_current_date'] = dashboard_form.cleaned_data['table_date'].isoformat()
@@ -124,11 +126,6 @@ def update_from_dashboard_form(request):
             # Save new parameters to user setting
             user.default_currency = dashboard_form.cleaned_data['default_currency']
             user.digits = dashboard_form.cleaned_data['digits']
-            # selected_broker_ids = [dashboard_form.cleaned_data['custom_brokers']]
-            # print("users. 128", selected_broker_ids, type(selected_broker_ids))
-            # broker_name = dashboard_form.cleaned_data['custom_brokers']
-            # print("users. views. 126", broker_name)
-            # selected_broker_ids = [broker.id for broker in Brokers.objects.filter(investor=user, name=broker_name)]
             user.custom_brokers = dashboard_form.cleaned_data['custom_brokers']
             user.save()
             # Redirect to the same page to refresh it
@@ -366,3 +363,87 @@ def update_user_broker_api(request):
         return Response({'ok': True})
     else:
         return Response({'ok': False, 'error': 'Broker or group name not provided'}, status=400)
+
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@ensure_csrf_cookie
+def update_user_settings_from_dashboard(request):
+    logger.info(f"Received data: {request.data}")
+    user = request.user
+    form = DashboardForm(request.data, instance=user)
+    
+    if form.is_valid():
+        form.save()
+        table_date = form.cleaned_data['table_date']
+        request.session['effective_current_date'] = table_date.isoformat()
+        # request.session.modified = True
+        print(f"Settings updated. New date: {table_date} for {request.user.username}")
+        
+        logger.info(f"Updated effective_current_date for user {user.id}: {request.session['effective_current_date']}")
+        
+        logger.info(f"Session before save: {dict(request.session)}")
+        # request.session.save()
+        logger.info(f"Session after save: {dict(request.session)} for {request.user.username}")
+
+        return Response({
+            'success': True,
+            'message': 'Settings updated successfully',
+            'data': {
+                'default_currency': user.default_currency,
+                'table_date': request.session['effective_current_date'],
+                'digits': user.digits,
+            }
+        })
+    else:
+        logger.error(f"Form validation failed for user {user.id}: {form.errors}")
+        return Response({
+            'success': False,
+            'errors': form.errors
+        }, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_dashboard_settings(request):
+    user = request.user
+    form = DashboardForm(instance=user)
+    
+    form_fields = []
+    for field_name, field in form.fields.items():
+        field_data = {
+            'name': field_name,
+            'label': field.label,
+            'type': 'text',  # default type
+        }
+        
+        if isinstance(field, forms.DateField):
+            field_data['type'] = 'date'
+        elif isinstance(field, forms.IntegerField):
+            field_data['type'] = 'number'
+        elif isinstance(field, forms.ChoiceField):
+            field_data['type'] = 'select'
+            field_data['choices'] = [{'text': choice[1], 'value': choice[0]} for choice in field.choices]
+        
+        form_fields.append(field_data)
+    
+    data = {
+        'form_fields': form_fields,
+    }
+    
+    # Add current values
+    for field in form_fields:
+        if field['name'] == 'table_date':
+            # Use the session value or current date for table_date
+            data[field['name']] = request.session.get('effective_current_date')#, timezone.now().date().isoformat())
+        elif field['type'] == 'select':
+            current_value = getattr(user, field['name'])
+            choices_dict = {choice['value']: choice['text'] for choice in field['choices']}
+            data[field['name']] = {
+                'value': current_value,
+                'text': choices_dict.get(current_value, current_value)  # Fallback to the value if text is not found
+            }
+        else:
+            data[field['name']] = getattr(user, field['name'])
+    
+    return Response(data)

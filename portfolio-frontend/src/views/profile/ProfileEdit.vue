@@ -25,7 +25,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import { getUserProfile, editUserProfile } from '@/services/api'
 
 export default {
   data() {
@@ -46,8 +46,8 @@ export default {
   methods: {
     async fetchUserDetails() {
       try {
-        const response = await axios.get('/users/api/profile/')
-        const userInfo = response.data.user_info
+        const response = await getUserProfile()
+        const userInfo = response.user_info
         
         userInfo.forEach(item => {
           const key = item.label.toLowerCase().replace(' ', '_')
@@ -61,8 +61,8 @@ export default {
     },
     async saveProfile() {
       try {
-        const response = await axios.post('/users/api/profile/edit/', this.profileForm)
-        if (response.data.success) {
+        const response = await editUserProfile(this.profileForm)
+        if (response.success) {
           this.showSuccessMessage('Profile updated successfully')
           setTimeout(() => {
             this.$router.push('/profile')

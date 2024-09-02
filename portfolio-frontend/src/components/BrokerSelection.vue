@@ -43,7 +43,6 @@
         </div>
       </v-card-text>
     </v-card>
-    <v-divider class="mt-2"></v-divider>
   </div>
 </template>
 
@@ -100,7 +99,7 @@ export default {
         console.log('updateDataForBroker called with:', brokerValue)
         const response = await updateUserBroker(brokerValue)
         console.log('updateUserBroker response:', response)
-        store.dispatch('setCustomBrokers', brokerValue)
+        // store.dispatch('setCustomBrokers', brokerValue)
         store.dispatch('triggerDataRefresh')
       } catch (error) {
         console.error('Error updating broker:', error)

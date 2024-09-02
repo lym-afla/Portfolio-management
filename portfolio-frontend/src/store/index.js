@@ -1,5 +1,6 @@
 import { createStore } from 'vuex'
 import * as api from '@/services/api'
+import axios from 'axios'
 
 export default createStore({
   state: {
@@ -11,10 +12,28 @@ export default createStore({
     customBrokerSelection: null,
     dataRefreshTrigger: 0,
     selectedBroker: null,
+    effectiveCurrentDate: null,
+    tableSettings: {
+      dateFrom: null,
+      dateTo: null,
+      timespan: '',
+      page: 1,
+      itemsPerPage: 25,
+      search: '',
+      sortBy: [],
+    },
+    itemsPerPageOptions: [10, 25, 50, 100],
   },
   mutations: {
     setToken(state, token) {
       state.token = token
+      localStorage.setItem('token', token)
+      axios.defaults.headers.common['Authorization'] = `Token ${token}`
+    },
+    clearToken(state) {
+      state.token = null
+      localStorage.removeItem('token')
+      delete axios.defaults.headers.common['Authorization']
     },
     setUser(state, user) {
       state.user = user
@@ -35,11 +54,20 @@ export default createStore({
     SET_CUSTOM_BROKER_SELECTION(state, broker_choices) {
       state.customBrokerSelection = broker_choices
     },
+    SET_TABLE_SETTINGS(state, settings) {
+      state.tableSettings = { ...state.tableSettings, ...settings }
+    },
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
     },
     SET_SELECTED_BROKER(state, broker) {
       state.selectedBroker = broker
+    },
+    SET_USER_SETTINGS(state, settings) {
+      state.userSettings = { ...state.userSettings, ...settings }
+    },
+    SET_EFFECTIVE_CURRENT_DATE(state, date) {
+      state.effectiveCurrentDate = date
     },
   },
   actions: {
@@ -47,7 +75,6 @@ export default createStore({
       try {
         const response = await api.login(credentials.username, credentials.password)
         const token = response.token
-        localStorage.setItem('token', token)
         commit('setToken', token)
         commit('setUser', response)
         return { success: true }
@@ -59,12 +86,12 @@ export default createStore({
     async logout({ commit }) {
       try {
         await api.logout()
-        localStorage.removeItem('token')
+        commit('clearToken')
         commit('logout')
         return { success: true }
       } catch (error) {
         console.error('Logout failed:', error)
-        localStorage.removeItem('token')
+        commit('clearToken')
         commit('logout')
         return { success: false, error: 'Logout failed' }
       }
@@ -113,24 +140,24 @@ export default createStore({
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
     },
-    async changePassword(_, passwordData) {
+    async fetchEffectiveCurrentDate({ commit }) {
       try {
-        return await api.changeUserPassword(passwordData)
+        const response = await api.getEffectiveCurrentDate()
+        commit('SET_EFFECTIVE_CURRENT_DATE', response.effective_current_date)
       } catch (error) {
-        console.error('Password change failed', error)
-        throw error
+        console.error('Failed to fetch effective current date', error)
       }
     },
-    async fetchUserProfile() {
-      try {
-        return await api.getUserProfile()
-      } catch (error) {
-        console.error('Fetching user profile failed', error)
-        throw error
-      }
+    updateEffectiveCurrentDate({ commit }, date) {
+      commit('SET_EFFECTIVE_CURRENT_DATE', date)
+    },
+    updateTableSettings({ commit }, settings) {
+      commit('SET_TABLE_SETTINGS', settings)
     },
   },
   getters: {
-    isAuthenticated: state => !!state.token
+    isAuthenticated: state => !!state.token,
+    effectiveCurrentDate: state => state.effectiveCurrentDate,
+    tableSettings: state => state.tableSettings,
   }
 })

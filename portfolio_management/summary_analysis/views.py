@@ -4,9 +4,9 @@ from decimal import Decimal
 from django.http import JsonResponse
 from django.shortcuts import render
 
-from common.forms import DashboardForm
+from common.forms import DashboardForm_old_setup
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-from utils import broker_group_to_ids, brokers_summary_data, currency_format, format_percentage, get_fx_rate, get_last_exit_date_for_brokers
+from utils import broker_group_to_ids_old_approach, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers
 
 
 def summary_view(request):
@@ -17,7 +17,7 @@ def summary_view(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
 
     sidebar_padding = 0
     sidebar_width = 0
@@ -33,7 +33,7 @@ def summary_view(request):
         'table_date': effective_current_date,
         'digits': number_of_digits
     }
-    dashboard_form = DashboardForm(instance=user, initial=initial_data)
+    dashboard_form = DashboardForm_old_setup(instance=user, initial=initial_data)
 
     user_brokers = Brokers.objects.filter(investor=user)
 
@@ -55,7 +55,7 @@ def summary_view(request):
     context = {
         'sidebar_width': sidebar_width,
         'sidebar_padding': sidebar_padding,
-        'currency': currency_format('', currency_target, 0),
+        'currency': currency_format_old_structure('', currency_target, 0),
         'table_date': effective_current_date,
         'brokers': Brokers.objects.filter(investor=user).all(),
         'selectedBrokers': user.custom_brokers,
@@ -151,7 +151,7 @@ def exposure_table_update(request):
         cash_balances = broker.balance(end_date).items()
         for currency, balance in cash_balances:
             # fx_rate = FX.get_rate(currency, currency_target, end_date)['FX']
-            fx_rate = get_fx_rate(currency, currency_target, end_date)
+            fx_rate = get_fx_rate_old_structure(currency, currency_target, end_date)
             balance_to_add = Decimal(round(balance * fx_rate, 2))
             for cat in ['Consolidated', category]:
                 data[cat]['Cash']['market_value'] += balance_to_add
@@ -170,7 +170,7 @@ def exposure_table_update(request):
 
         for transaction in commission_transactions:
             # fx_rate = FX.get_rate(transaction['currency'], currency_target, transaction['date'])['FX']
-            fx_rate = get_fx_rate(transaction['currency'], currency_target, transaction['date'])
+            fx_rate = get_fx_rate_old_structure(transaction['currency'], currency_target, transaction['date'])
             commission_to_add = Decimal(round(transaction['commission'] * fx_rate, 2))
             for cat in ['Consolidated', category]:
                 data[cat]['Cash']['commission'] += commission_to_add
@@ -199,28 +199,28 @@ def exposure_table_update(request):
                 'realized_percent': '',
                 'capital_distribution': '',
                 'capital_distribution_percent': '',
-                'commission': currency_format(values['commission'], currency_target, number_of_digits),
+                'commission': currency_format_old_structure(values['commission'], currency_target, number_of_digits),
                 'commission_percent': '',
-                'total': currency_format(values['commission'], currency_target, number_of_digits),
+                'total': currency_format_old_structure(values['commission'], currency_target, number_of_digits),
                 'total_percent': ''
                 }
             else:
                 # print("views. summary. 187", values)
                 line = {
                 'name': asset_category,
-                'cost': currency_format(values['cost'], currency_target, number_of_digits),
-                'unrealized': currency_format(values['unrealized'], currency_target, number_of_digits),
-                'unrealized_percent': format_percentage(values['unrealized'] / values['cost'] if values['cost'] else 0, digits=1),
+                'cost': currency_format_old_structure(values['cost'], currency_target, number_of_digits),
+                'unrealized': currency_format_old_structure(values['unrealized'], currency_target, number_of_digits),
+                'unrealized_percent': format_percentage_old_structure(values['unrealized'] / values['cost'] if values['cost'] else 0, digits=1),
                 'market_value': values['market_value'],
                 'portfolio_percent': 0,  # We'll calculate this after summing up all market values
-                'realized': currency_format(values['realized'], currency_target, number_of_digits),
-                'realized_percent': format_percentage((values['realized'] / values['cost']) if values['cost'] else 0, digits=1),
-                'capital_distribution': currency_format(values['capital_distribution'], currency_target, number_of_digits),
-                'capital_distribution_percent': format_percentage(values['capital_distribution'] / values['cost'] if values['cost'] else 0, digits=1),
-                'commission': currency_format(values['commission'], currency_target, number_of_digits),
-                'commission_percent': format_percentage(values['commission'] / values['cost'] if values['cost'] else 0, digits=1),
-                'total': currency_format(values['unrealized'] + values['realized'] + values['capital_distribution'] + values['commission'], currency_target, number_of_digits),
-                'total_percent': format_percentage((values['unrealized'] + values['realized'] + values['capital_distribution'] - values['commission']) / values['cost'] if values['cost'] else 0, digits=1),
+                'realized': currency_format_old_structure(values['realized'], currency_target, number_of_digits),
+                'realized_percent': format_percentage_old_structure((values['realized'] / values['cost']) if values['cost'] else 0, digits=1),
+                'capital_distribution': currency_format_old_structure(values['capital_distribution'], currency_target, number_of_digits),
+                'capital_distribution_percent': format_percentage_old_structure(values['capital_distribution'] / values['cost'] if values['cost'] else 0, digits=1),
+                'commission': currency_format_old_structure(values['commission'], currency_target, number_of_digits),
+                'commission_percent': format_percentage_old_structure(values['commission'] / values['cost'] if values['cost'] else 0, digits=1),
+                'total': currency_format_old_structure(values['unrealized'] + values['realized'] + values['capital_distribution'] + values['commission'], currency_target, number_of_digits),
+                'total_percent': format_percentage_old_structure((values['unrealized'] + values['realized'] + values['capital_distribution'] - values['commission']) / values['cost'] if values['cost'] else 0, digits=1),
             }
             context[f'{category.lower()}_context'].append(line)
 
@@ -228,26 +228,26 @@ def exposure_table_update(request):
     for category in categories:
         total_market_value = sum(line['market_value'] for line in context[f'{category.lower()}_context'])
         for line in context[f'{category.lower()}_context']:
-            line['portfolio_percent'] = format_percentage(line['market_value'] / total_market_value if total_market_value else 0, digits=1)
-            line['market_value'] = currency_format(line['market_value'], currency_target, number_of_digits)
+            line['portfolio_percent'] = format_percentage_old_structure(line['market_value'] / total_market_value if total_market_value else 0, digits=1)
+            line['market_value'] = currency_format_old_structure(line['market_value'], currency_target, number_of_digits)
     
     # Adding totals to the context
     for category in categories:
         total_line = {
             'name': 'TOTAL',
-            'cost': currency_format(totals[category]['cost'], currency_target, number_of_digits),
-            'unrealized': currency_format(totals[category]['unrealized'], currency_target, number_of_digits),
-            'unrealized_percent': format_percentage(totals[category]['unrealized'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
-            'market_value': currency_format(totals[category]['market_value'], currency_target, number_of_digits),
+            'cost': currency_format_old_structure(totals[category]['cost'], currency_target, number_of_digits),
+            'unrealized': currency_format_old_structure(totals[category]['unrealized'], currency_target, number_of_digits),
+            'unrealized_percent': format_percentage_old_structure(totals[category]['unrealized'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
+            'market_value': currency_format_old_structure(totals[category]['market_value'], currency_target, number_of_digits),
             'portfolio_percent': '',
-            'realized': currency_format(totals[category]['realized'], currency_target, number_of_digits),
-            'realized_percent': format_percentage(totals[category]['realized'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
-            'capital_distribution': currency_format(totals[category]['capital_distribution'], currency_target, number_of_digits),
-            'capital_distribution_percent': format_percentage(totals[category]['capital_distribution'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
-            'commission': currency_format(totals[category]['commission'], currency_target, number_of_digits),
-            'commission_percent': format_percentage(totals[category]['commission'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
-            'total': currency_format(totals[category]['unrealized'] + totals[category]['realized'] + totals[category]['capital_distribution'] +  totals[category]['commission'], currency_target, number_of_digits),
-            'total_percent': format_percentage((totals[category]['unrealized'] + totals[category]['realized'] + totals[category]['capital_distribution'] - totals[category]['commission']) / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
+            'realized': currency_format_old_structure(totals[category]['realized'], currency_target, number_of_digits),
+            'realized_percent': format_percentage_old_structure(totals[category]['realized'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
+            'capital_distribution': currency_format_old_structure(totals[category]['capital_distribution'], currency_target, number_of_digits),
+            'capital_distribution_percent': format_percentage_old_structure(totals[category]['capital_distribution'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
+            'commission': currency_format_old_structure(totals[category]['commission'], currency_target, number_of_digits),
+            'commission_percent': format_percentage_old_structure(totals[category]['commission'] / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
+            'total': currency_format_old_structure(totals[category]['unrealized'] + totals[category]['realized'] + totals[category]['capital_distribution'] +  totals[category]['commission'], currency_target, number_of_digits),
+            'total_percent': format_percentage_old_structure((totals[category]['unrealized'] + totals[category]['realized'] + totals[category]['capital_distribution'] - totals[category]['commission']) / totals[category]['cost'] if totals[category]['cost'] else 0, digits=1),
         }
         context[f'{category.lower()}_context'].append(total_line)
 

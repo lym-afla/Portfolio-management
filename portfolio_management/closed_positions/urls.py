@@ -11,5 +11,5 @@ urlpatterns = [
 
     # New API endpoints
     path('api/get_closed_positions_table/', views.get_closed_positions_table_api, name='get_closed_positions_table_api'),
-    path('api/get_year_options/', views.get_year_options_api, name='get_year_options_api'),
+    # path('api/get_year_options/', views.get_year_options_api, name='get_year_options_api'),
 ]

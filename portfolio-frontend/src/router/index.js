@@ -9,6 +9,11 @@ import ProfilePage from '../views/profile/ProfilePage.vue'
 import ProfileEdit from '../views/profile/ProfileEdit.vue'
 import ProfileSettings from '../views/profile/ProfileSettings.vue'
 import ClosedPositionsPage from '../views/ClosedPositionsPage.vue'
+import TransactionsPage from '../views/TransactionsPage.vue'
+import DatabasePage from '../views/DatabasePage.vue'
+import PricesPage from '../views/database/PricesPage.vue'
+import BrokersPage from '../views/database/BrokersPage.vue'
+import SecuritiesPage from '../views/database/SecuritiesPage.vue'
 
 export const loading = ref(true)
 
@@ -44,6 +49,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/transactions',
+    name: 'Transactions',
+    component: TransactionsPage,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/profile',
     component: ProfileLayout,
     meta: { requiresAuth: true },
@@ -65,29 +76,29 @@ const routes = [
       }
     ]
   },
-  // {
-  //   path: '/database',
-  //   name: 'Database',
-  //   component: () => import('../views/DatabasePage.vue'),
-  //   meta: { requiresAuth: true },
-  //   children: [
-  //     {
-  //       path: 'brokers',
-  //       name: 'Brokers',
-  //       component: () => import('../views/database/BrokersPage.vue'),
-  //     },
-  //     {
-  //       path: 'securities',
-  //       name: 'Securities',
-  //       component: () => import('../views/database/SecuritiesPage.vue'),
-  //     },
-  //     {
-  //       path: 'prices',
-  //       name: 'Prices',
-  //       component: () => import('../views/database/PricesPage.vue'),
-  //     },
-  //   ]
-  // },
+  {
+    path: '/database',
+    name: 'Database',
+    component: DatabasePage,
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: 'brokers',
+        name: 'Brokers',
+        component: BrokersPage,
+      },
+      {
+        path: 'prices',
+        name: 'Prices',
+        component: PricesPage,
+      },
+      {
+        path: 'securities',
+        name: 'Securities',
+        component: SecuritiesPage,
+      },
+    ]
+  },
   {
     path: '/',
     redirect: '/dashboard'

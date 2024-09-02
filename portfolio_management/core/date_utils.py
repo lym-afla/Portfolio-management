@@ -1,0 +1,30 @@
+from datetime import date
+from typing import Optional, Tuple
+import logging
+
+from constants import YTD, ALL_TIME
+
+logger = logging.getLogger(__name__)
+
+def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
+    """
+    Get the date range based on the given timespan and end date.
+
+    :param timespan: A string representing the timespan ('YTD', 'All-time', or a year as string)
+    :param to_date: The end date of the range
+    :return: A tuple containing the start date (or None for 'All-time') and the end date
+    :raises ValueError: If an invalid timespan is provided
+    """
+
+    if timespan == YTD:
+        return date(to_date.year, 1, 1), to_date
+    elif timespan == ALL_TIME:
+        return None, to_date
+    else:
+        try:
+            year = int(timespan)
+            return date(year, 1, 1), date(year, 12, 31)
+        except ValueError:
+            logger.error(f"Invalid timespan: {timespan}. Expected {YTD}, {ALL_TIME}, or a valid year.")
+            # raise ValueError(f"Invalid timespan: {timespan}. Expected {YTD}, {ALL_TIME}, or a valid year.")
+            return date(to_date.year, 1, 1), to_date

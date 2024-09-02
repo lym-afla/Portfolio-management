@@ -29,4 +29,6 @@ urlpatterns = [
 
     path('api/get_broker_choices/', views.get_broker_choices_api, name='get_broker_choices_api'),
     path('api/update_user_broker/', views.update_user_broker_api, name='update_user_broker_api'),
+    path('api/update-settings-from-dashboard/', views.update_user_settings_from_dashboard, name='update_user_settings_from_dashboard'),
+    path('api/dashboard-settings/', views.get_dashboard_settings, name='get_dashboard_settings'),
 ]

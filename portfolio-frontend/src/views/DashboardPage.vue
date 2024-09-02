@@ -2,7 +2,16 @@
   <div class="dashboard-page">
     <h1>Dashboard</h1>
     <DashboardSummary />
-    <!-- <NAVChart /> -->
+    Test text
+    <v-container>
+        <v-row justify="center">
+          <v-date-picker
+          show-adjacent-months
+          elevation="24"
+          
+          ></v-date-picker>
+        </v-row>
+      </v-container>
   </div>
 </template>
 

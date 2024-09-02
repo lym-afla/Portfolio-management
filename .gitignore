@@ -19,7 +19,12 @@ portfolio_management/transactions/__pycache__/
 portfolio_management/transactions/migrations/__pycache__/
 portfolio_management/database/__pycache__/
 portfolio_management/database/migrations/__pycache__/
+portfolio_management/summary_analysis/__pycache__/
 
+
+# Database
+portfolio_management/db.sqlite3
+*.sqlite3
 
 # Ignore Python bytecode
 __pycache__/

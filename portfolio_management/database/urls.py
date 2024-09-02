@@ -33,5 +33,12 @@ urlpatterns = [
     path('get_price_data_for_table/', views.get_price_data_for_table, name='get_price_data_for_table'),
     path('prices/import_prices/', views.import_prices, name='import_prices'),
     path('get_broker_securities/', views.get_broker_securities, name='get_broker_securities'),
-    
+
+    #New API methods
+    path('api/get-asset-types/', views.api_get_asset_types, name='api_get_asset_types'),
+    path('api/get-brokers/', views.api_get_brokers, name='api_get_brokers'),
+    path('api/get-securities/', views.api_get_securities, name='api_get_securities'),
+    path('api/get-prices-table/', views.api_get_prices_table, name='api_get_prices_table'),
+    path('api/get-brokers-for-database/', views.api_get_brokers_table, name='api_get_brokers_for_database'),
+    path('api/get-securities-for-database/', views.api_get_securities_table, name='api_get_securities_for_database'),
 ]
