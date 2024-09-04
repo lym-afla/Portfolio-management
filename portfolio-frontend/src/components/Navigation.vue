@@ -102,14 +102,14 @@
           value="profile"
           to="/profile"
         >
-          <template v-slot:append>
+          <!-- <template v-slot:append>
             <v-avatar size="36">
               <v-img
                 src="https://randomuser.me/api/portraits/men/85.jpg"
                 alt="User"
               ></v-img>
             </v-avatar>
-          </template>
+          </template> -->
         </v-list-item>
       </v-list>
     </template>
