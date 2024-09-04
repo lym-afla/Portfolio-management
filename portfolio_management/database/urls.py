@@ -41,4 +41,6 @@ urlpatterns = [
     path('api/get-prices-table/', views.api_get_prices_table, name='api_get_prices_table'),
     path('api/get-brokers-for-database/', views.api_get_brokers_table, name='api_get_brokers_for_database'),
     path('api/get-securities-for-database/', views.api_get_securities_table, name='api_get_securities_for_database'),
+    path('api/add-price/', views.api_add_price, name='api_add_price'),
+    path('api/delete-price/<int:price_id>/', views.api_delete_price, name='api_delete_price'),
 ]

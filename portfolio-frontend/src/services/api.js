@@ -348,16 +348,6 @@ export const deleteSecurity = async (securityId) => {
   }
 }
 
-// export const getSummaryData = async () => {
-//   try {
-//     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
-//     return response.data
-//   } catch (error) {
-//     console.error('Error fetching summary data:', error)
-//     throw error
-//   }
-// }
-
 export const getDashboardBreakdown = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-breakdown/`)
@@ -409,5 +399,23 @@ export const getDashboardSummary = async () => {
   } catch (error) {
     console.error('Error fetching dashboard summary:', error)
     throw error
+  }
+}
+
+export const addPrice = async (priceData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/add-price/`, priceData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deletePrice = async (priceId) => {
+  try {
+    const response = await axiosInstance.delete(`${API_URL}/database/api/delete-price/${priceId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
   }
 }

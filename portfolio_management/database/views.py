@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q, F
+from django.db.models.functions import Lower
 import pandas as pd
 import requests
 from requests.exceptions import RequestException
@@ -1775,6 +1776,7 @@ def get_broker_securities(request):
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 
 @api_view(['GET'])
 def api_get_asset_types(request):
@@ -1804,7 +1806,7 @@ def api_get_securities(request):
         broker = get_object_or_404(Brokers, id=broker_id, investor=user)
         securities = securities.filter(brokers=broker)
 
-    securities = securities.order_by('name').values('id', 'name', 'type')
+    securities = securities.order_by(Lower('name')).values('id', 'name', 'type')
     return Response(list(securities))
 
 @api_view(['POST'])
@@ -1854,3 +1856,27 @@ def api_delete_security(request, security_id):
 
     security.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_add_price(request):
+    form = PriceForm(request.data, investor=request.user)
+    if form.is_valid():
+        price = form.save()
+        return Response({'success': True, 'message': 'Price added successfully', 'id': price.id}, status=status.HTTP_201_CREATED)
+    return Response({'success': False, 'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def api_delete_price(request, price_id):
+    try:
+        price = Prices.objects.get(id=price_id)
+    except Prices.DoesNotExist:
+        return Response({'message': 'Price not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        price.delete()
+        return Response({'message': 'Price deleted successfully'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

@@ -122,10 +122,18 @@
           <v-col cols="auto">
             <v-row>
               <v-col cols="auto">
-                <AddSecurityButton />
+                  <AddSecurityButton />
               </v-col>
               <v-col cols="auto">
-                <AddPriceEntryButton />
+                <v-btn color="primary" @click="openAddPriceDialog">
+                  <v-icon left>mdi-plus</v-icon>
+                  Add Price Entry
+                </v-btn>
+                <PriceFormDialog
+                  v-model="showPriceDialog"
+                  :securities="securities"
+                  @price-added="handlePriceAdded"
+                />
               </v-col>
             </v-row>
           </v-col>
@@ -166,7 +174,7 @@
           <v-icon small class="mr-2" @click="editPrice(item)">
             mdi-pencil
           </v-icon>
-          <v-icon small @click="deletePrice(item)">
+          <v-icon small @click="openDeleteDialog(item)">
             mdi-delete
           </v-icon>
         </template>
@@ -202,58 +210,59 @@
       </v-data-table>
     </v-card>
 
-    <v-dialog v-model="editDialog" max-width="500px">
+    <v-dialog v-model="deleteDialog" max-width="500px">
       <v-card>
-        <v-card-title>Edit Price</v-card-title>
+        <v-card-title>Delete Price Entry</v-card-title>
         <v-card-text>
-          <v-form @submit.prevent="updatePrice">
-            <v-text-field
-              v-model="editedItem.price"
-              label="Price"
-              type="number"
-              step="0.01"
-              required
-            ></v-text-field>
-          </v-form>
+          Are you sure you want to delete this price entry?
+          <v-list dense>
+            <v-list-item>
+              <v-list-item-title>Date:</v-list-item-title>
+              <v-list-item-subtitle>{{ deletedItem.date }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title>Security:</v-list-item-title>
+              <v-list-item-subtitle>{{ deletedItem.security__name }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title>Price:</v-list-item-title>
+              <v-list-item-subtitle>{{ deletedItem.price }} {{ deletedItem.security__currency }}</v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="closeEditDialog">Cancel</v-btn>
-          <v-btn color="blue darken-1" text @click="updatePrice">Save</v-btn>
+          <v-btn color="blue darken-1" text @click="closeDeleteDialog" :disabled="isDeleting">Cancel</v-btn>
+          <v-btn color="red darken-1" text @click="confirmDelete" :loading="isDeleting" :disabled="isDeleting">Delete</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="deleteDialog" max-width="500px">
-      <v-card>
-        <v-card-title>Delete Price Entry</v-card-title>
-        <v-card-text>Are you sure you want to delete this price entry?</v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="closeDeleteDialog">Cancel</v-btn>
-          <v-btn color="red darken-1" text @click="confirmDelete">Delete</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <PriceFormDialog
+      v-model="showEditDialog"
+      :edit-item="editingPrice"
+      :securities="securities"
+      @price-updated="handlePriceUpdated"
+    />
   </div>
 </template>
 
 <script>
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, inject } from 'vue'
 import { useStore } from 'vuex'
-import { getAssetTypes, getBrokers, getSecurities, getPrices } from '@/services/api'
+import { getAssetTypes, getBrokers, getSecurities, getPrices, deletePrice } from '@/services/api'
 import AddSecurityButton from '@/components/buttons/AddSecurity.vue'
-import AddPriceEntryButton from '@/components/buttons/AddPrice.vue'
 import PriceChart from '@/components/charts/PriceChart.vue'
 import debounce from 'lodash/debounce'
 import { useTableSettings } from '@/composables/useTableSettings'
+import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 
 export default {
   name: 'PricesPage',
   components: {
     AddSecurityButton,
-    AddPriceEntryButton,
     PriceChart,
+    PriceFormDialog,
   },
   setup() {
     const store = useStore()
@@ -279,10 +288,13 @@ export default {
     const loading = ref(false)
     const tableLoading = ref(false)
     const totalItems = ref(0)
-    const editDialog = ref(false)
     const deleteDialog = ref(false)
-    const editedItem = ref({})
     const deletedItem = ref({})
+    const showEditDialog = ref(false)
+    const editingPrice = ref(null)
+    const showPriceDialog = ref(false)
+    const isDeleting = ref(false)
+    const showError = inject('showError')
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
@@ -407,37 +419,56 @@ export default {
     }
 
     const editPrice = (item) => {
-      editedItem.value = { ...item }
-      editDialog.value = true
+      editingPrice.value = item
+      showEditDialog.value = true
     }
 
-    const closeEditDialog = () => {
-      editDialog.value = false
-      editedItem.value = {}
-    }
-
-    const updatePrice = async () => {
-      // TODO: Implement actual API call to update price
-      console.log('Updating price:', editedItem.value)
-      closeEditDialog()
-      await fetchPriceData()
-    }
-
-    const deletePrice = (item) => {
+    const openDeleteDialog = (item) => {
       deletedItem.value = item
       deleteDialog.value = true
     }
 
     const closeDeleteDialog = () => {
-      deleteDialog.value = false
-      deletedItem.value = {}
+      if (!isDeleting.value) {
+        deleteDialog.value = false
+        deletedItem.value = {}
+      }
     }
 
     const confirmDelete = async () => {
-      // TODO: Implement actual API call to delete price
-      console.log('Deleting price:', deletedItem.value)
-      closeDeleteDialog()
-      await fetchPriceData()
+      isDeleting.value = true
+      try {
+        await deletePrice(deletedItem.value.id)
+        await fetchPriceData()
+      } catch (error) {
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error'
+        showError(`Failed to delete price: ${errorMessage}`)
+      } finally {
+        isDeleting.value = false
+        closeDeleteDialog()
+      }
+    }
+
+    const handlePriceUpdated = (updatedPrice) => {
+      // Update the price in the priceData array
+      const index = priceData.value.findIndex(p => p.id === updatedPrice.id)
+      if (index !== -1) {
+        priceData.value[index] = updatedPrice
+      }
+    }
+
+    const refreshPrices = () => {
+      fetchPriceData()
+    }
+
+    const openAddPriceDialog = () => {
+      showPriceDialog.value = true
+    }
+
+    const handlePriceAdded = (newPrice) => {
+      // Handle the newly added price
+      console.log('New price added:', newPrice)
+      refreshPrices()
     }
 
     watch(
@@ -477,17 +508,14 @@ export default {
       itemsPerPage,
       currentPage,
       sortBy,
-      editDialog,
       deleteDialog,
-      editedItem,
+      deletedItem,
       handlePageChange,
       handleItemsPerPageChange,
       handleSortChange,
       fetchPriceData,
       editPrice,
-      closeEditDialog,
-      updatePrice,
-      deletePrice,
+      openDeleteDialog,
       closeDeleteDialog,
       confirmDelete,
       assetTypesAllSelected,
@@ -499,6 +527,14 @@ export default {
       fetchSecurities,
       itemsPerPageOptions,
       pageCount,
+      showEditDialog,
+      editingPrice,
+      handlePriceUpdated,
+      refreshPrices,
+      showPriceDialog,
+      openAddPriceDialog,
+      handlePriceAdded,
+      isDeleting,
     }
   },
 }

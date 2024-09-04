@@ -71,5 +71,5 @@ MUTUAL_FUNDS_IN_PENCES = [
     'Legal & General Global Technology Index',
     'Fidelity Index Emerging Markets',
     'Rathbone Ethical Bond',
-
+    'iShares Physical Platinum ETC'
 ]
