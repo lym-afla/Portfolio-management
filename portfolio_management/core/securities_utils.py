@@ -1,4 +1,5 @@
 from common.models import Assets
+from core.portfolio_utils import IRR
 from .sorting_utils import sort_entries
 from .pagination_utils import paginate_table
 from .formatting_utils import format_table_data

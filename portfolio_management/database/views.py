@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 from decimal import Decimal, InvalidOperation
 import json
 import logging
+from django import forms
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1824,6 +1825,49 @@ def api_get_brokers_table(request):
 def api_get_securities_table(request):
     return Response(get_securities_table_api(request))
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_security_form_structure(request):
+    investor = request.user
+    form = SecurityForm(investor=investor)
+    structure = {
+        'fields': []
+    }
+
+    for field_name, field in form.fields.items():
+        field_data = {
+            'name': field_name,
+            'label': field.label,
+            'type': field.widget.__class__.__name__.lower(),
+            'required': field.required,
+            'choices': None,
+            'initial': field.initial,
+            'help_text': field.help_text,
+        }
+
+        if hasattr(field, 'choices'):
+            if field_name == 'custom_brokers':
+                field_data['choices'] = [{'value': broker.id, 'text': broker.name} for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+            else:
+                field_data['choices'] = [{'value': choice[0], 'text': choice[1]} for choice in field.choices]
+        
+        if field_name == 'type':
+            field_data['choices'] = [{'value': choice[0], 'text': choice[0]} for choice in Assets._meta.get_field('type').choices if choice[0]]
+        
+        if field_name == 'data_source':
+            field_data['choices'] = [{'value': '', 'text': 'None'}] + [{'value': choice[0], 'text': choice[1]} for choice in Assets.DATA_SOURCE_CHOICES]
+        
+        # Handle specific widget types
+        if isinstance(field.widget, forms.CheckboxInput):
+            field_data['type'] = 'checkbox'
+        elif isinstance(field.widget, forms.Textarea):
+            field_data['type'] = 'textarea'
+        elif isinstance(field.widget, forms.URLInput):
+            field_data['type'] = 'urlinput'
+        
+        structure['fields'].append(field_data)
+    
+    return Response(structure)            
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -1832,6 +1876,25 @@ def api_create_security(request):
     data['investor'] = request.user.id
     security = Assets.objects.create(**data)
     return Response({'id': security.id, 'name': security.name}, status=status.HTTP_201_CREATED)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_get_security_details(request, security_id):
+    security = get_object_or_404(Assets, id=security_id, investor=request.user)
+    return Response({
+        'id': security.id,
+        'name': security.name,
+        'ISIN': security.ISIN,
+        'type': security.type,
+        'currency': security.currency,
+        'exposure': security.exposure,
+        'restricted': security.restricted,
+        'custom_brokers': list(security.brokers.values_list('id', flat=True)),
+        'data_source': security.data_source,
+        'yahoo_symbol': security.yahoo_symbol,
+        'update_link': security.update_link,
+        'comment': security.comment,
+    })
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
@@ -1880,3 +1943,32 @@ def api_delete_price(request, price_id):
     except Exception as e:
         return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_get_price_details(request, price_id):
+    price = get_object_or_404(Prices, id=price_id, security__investor=request.user)
+    return Response({
+        'id': price.id,
+        'date': price.date.isoformat(),
+        'security': price.security.id,
+        'price': str(price.price),  # Convert Decimal to string to preserve precision
+    })
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def api_update_price(request, price_id):
+    price = get_object_or_404(Prices, id=price_id, security__investor=request.user)
+    form = PriceForm(request.data, instance=price, investor=request.user)
+    if form.is_valid():
+        updated_price = form.save()
+        return Response({
+            'id': updated_price.id,
+            'date': updated_price.date.isoformat(),
+            'security__name': updated_price.security.name,
+            'security__type': updated_price.security.type,
+            'security__currency': updated_price.security.currency,
+            'price': str(updated_price.price),
+        })
+    else:
+        print("Price update form errors:", form.errors)
+        return Response({'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)

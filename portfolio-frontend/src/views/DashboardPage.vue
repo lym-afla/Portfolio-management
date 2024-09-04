@@ -226,6 +226,8 @@ export default {
     )
 
     onMounted(async () => {
+      emit('update-page-title', 'Dashboard')
+
       if (!effectiveCurrentDate.value) {
         await store.dispatch('fetchEffectiveCurrentDate')
       }

@@ -122,18 +122,16 @@
           <v-col cols="auto">
             <v-row>
               <v-col cols="auto">
-                  <AddSecurityButton />
+                <v-btn color="primary" @click="addSecurity">
+                  <v-icon left>mdi-plus</v-icon>
+                  Add Security
+                </v-btn>
               </v-col>
               <v-col cols="auto">
                 <v-btn color="primary" @click="openAddPriceDialog">
                   <v-icon left>mdi-plus</v-icon>
                   Add Price Entry
                 </v-btn>
-                <PriceFormDialog
-                  v-model="showPriceDialog"
-                  :securities="securities"
-                  @price-added="handlePriceAdded"
-                />
               </v-col>
             </v-row>
           </v-col>
@@ -239,30 +237,37 @@
     </v-dialog>
 
     <PriceFormDialog
-      v-model="showEditDialog"
+      v-model="showPriceDialog"
       :edit-item="editingPrice"
       :securities="securities"
+      @price-added="handlePriceAdded"
       @price-updated="handlePriceUpdated"
     />
+
+    <SecurityFormDialog
+      v-model="showSecurityDialog"
+      :edit-item="null"
+    />
+
   </div>
 </template>
 
 <script>
 import { ref, watch, computed, onMounted, inject } from 'vue'
 import { useStore } from 'vuex'
-import { getAssetTypes, getBrokers, getSecurities, getPrices, deletePrice } from '@/services/api'
-import AddSecurityButton from '@/components/buttons/AddSecurity.vue'
+import { getAssetTypes, getBrokers, getSecurities, getPrices, deletePrice, getPriceDetails } from '@/services/api'
 import PriceChart from '@/components/charts/PriceChart.vue'
 import debounce from 'lodash/debounce'
 import { useTableSettings } from '@/composables/useTableSettings'
 import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
+import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 
 export default {
   name: 'PricesPage',
   components: {
-    AddSecurityButton,
     PriceChart,
     PriceFormDialog,
+    SecurityFormDialog,
   },
   setup() {
     const store = useStore()
@@ -290,9 +295,9 @@ export default {
     const totalItems = ref(0)
     const deleteDialog = ref(false)
     const deletedItem = ref({})
-    const showEditDialog = ref(false)
     const editingPrice = ref(null)
     const showPriceDialog = ref(false)
+    const showSecurityDialog = ref(false)
     const isDeleting = ref(false)
     const showError = inject('showError')
 
@@ -418,9 +423,14 @@ export default {
       console.log('Showing import modal')
     }
 
-    const editPrice = (item) => {
-      editingPrice.value = item
-      showEditDialog.value = true
+    const editPrice = async (item) => {
+      try {
+        const priceDetails = await getPriceDetails(item.id)
+        editingPrice.value = priceDetails
+        showPriceDialog.value = true
+      } catch (error) {
+        showError(`Failed to fetch price details: ${error.message}`)
+      }
     }
 
     const openDeleteDialog = (item) => {
@@ -450,25 +460,29 @@ export default {
     }
 
     const handlePriceUpdated = (updatedPrice) => {
-      // Update the price in the priceData array
       const index = priceData.value.findIndex(p => p.id === updatedPrice.id)
       if (index !== -1) {
         priceData.value[index] = updatedPrice
       }
-    }
-
-    const refreshPrices = () => {
       fetchPriceData()
     }
 
+    // const refreshPrices = () => {
+    //   fetchPriceData()
+    // }
+
     const openAddPriceDialog = () => {
+      editingPrice.value = null
       showPriceDialog.value = true
     }
 
     const handlePriceAdded = (newPrice) => {
-      // Handle the newly added price
       console.log('New price added:', newPrice)
-      refreshPrices()
+      fetchPriceData()
+    }
+
+    const addSecurity = () => {
+      showSecurityDialog.value = true
     }
 
     watch(
@@ -527,14 +541,15 @@ export default {
       fetchSecurities,
       itemsPerPageOptions,
       pageCount,
-      showEditDialog,
       editingPrice,
       handlePriceUpdated,
-      refreshPrices,
+      // refreshPrices,
       showPriceDialog,
       openAddPriceDialog,
       handlePriceAdded,
       isDeleting,
+      addSecurity,
+      showSecurityDialog,
     }
   },
 }

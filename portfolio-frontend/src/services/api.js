@@ -419,3 +419,40 @@ export const deletePrice = async (priceId) => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+export const getPriceDetails = async (priceId) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-price-details/${priceId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updatePrice = async (priceId, priceData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/update-price/${priceId}/`, priceData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+// Add this new function
+export const getSecurityFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/security-form-structure/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSecurityDetails = async (id) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-security-details/${id}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}

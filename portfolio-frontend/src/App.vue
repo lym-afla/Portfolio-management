@@ -21,7 +21,7 @@
           </v-container>
         </v-app-bar>
 
-        <v-main style="padding-top: 140px;">
+        <v-main :style="{ paddingTop: mainPadding }">
           <v-container fluid class="pa-4">
             <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
@@ -114,6 +114,10 @@ export default {
       pageTitle.value = title
     }
 
+    const mainPadding = computed(() => {
+      return route.meta.paddingTop || '140px' // Default padding
+    })
+
     onMounted(() => {
       updateAuthStatus()
       console.log('Is authenticated:', store.getters.isAuthenticated)
@@ -156,6 +160,7 @@ export default {
       errorSnackbar,
       errorMessages,
       clearErrors,
+      mainPadding,
     }
   },
 }
