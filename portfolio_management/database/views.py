@@ -1863,7 +1863,7 @@ def api_security_form_structure(request):
         elif isinstance(field.widget, forms.Textarea):
             field_data['type'] = 'textarea'
         elif isinstance(field.widget, forms.URLInput):
-            field_data['type'] = 'urlinput'
+            field_data['type'] = 'url'
         
         structure['fields'].append(field_data)
     
@@ -1872,10 +1872,27 @@ def api_security_form_structure(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_create_security(request):
-    data = request.data
-    data['investor'] = request.user.id
-    security = Assets.objects.create(**data)
-    return Response({'id': security.id, 'name': security.name}, status=status.HTTP_201_CREATED)
+    form = SecurityForm(request.data, investor=request.user)
+    if form.is_valid():
+        security = form.save(commit=False)
+        security.investor = request.user
+        security.save()
+        
+        # Handle custom_brokers (many-to-many relationship)
+        custom_brokers = form.cleaned_data.get('custom_brokers')
+        if custom_brokers:
+            security.brokers.set(custom_brokers)
+        
+        return Response({
+            'success': True,
+            'message': 'Security created successfully',
+            'id': security.id,
+            'name': security.name
+        }, status=status.HTTP_201_CREATED)
+    return Response({
+        'success': False,
+        'errors': form.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

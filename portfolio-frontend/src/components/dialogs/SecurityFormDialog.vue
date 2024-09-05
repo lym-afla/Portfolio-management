@@ -8,14 +8,15 @@
         <v-form @submit.prevent="submitForm">
           <template v-for="field in formFields" :key="field.name">
             <v-text-field
-              v-if="field.type === 'textinput' || field.type === 'urlinput'"
+              v-if="(field.type === 'textinput' || field.type === 'url') && shouldShowField(field.name)"
               v-model="form[field.name]"
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
+              :type="field.type === 'url' ? 'url' : 'text'"
             ></v-text-field>
             <v-select
-              v-else-if="field.type === 'select'"
+              v-else-if="field.type === 'select' && shouldShowField(field.name)"
               v-model="form[field.name]"
               :items="field.choices"
               item-title="text"
@@ -25,20 +26,20 @@
               :error-messages="errorMessages[field.name]"
             ></v-select>
             <v-checkbox
-              v-else-if="field.type === 'checkbox'"
+              v-else-if="field.type === 'checkbox' && shouldShowField(field.name)"
               v-model="form[field.name]"
               :label="field.label"
               :error-messages="errorMessages[field.name]"
             ></v-checkbox>
             <v-textarea
-              v-else-if="field.type === 'textarea'"
+              v-else-if="field.type === 'textarea' && shouldShowField(field.name)"
               v-model="form[field.name]"
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
             ></v-textarea>
             <v-select
-              v-else-if="field.type === 'selectmultiple'"
+              v-else-if="field.type === 'selectmultiple' && shouldShowField(field.name)"
               v-model="form[field.name]"
               :items="field.choices"
               item-title="text"
@@ -171,6 +172,16 @@ export default {
       }
     }
 
+    const shouldShowField = (fieldName) => {
+      if (fieldName === 'yahoo_symbol' && form.value.data_source !== 'YAHOO') {
+        return false
+      }
+      if (fieldName === 'update_link' && form.value.data_source !== 'FT') {
+        return false
+      }
+      return true
+    }
+
     return {
       dialog,
       isEdit,
@@ -181,6 +192,7 @@ export default {
       isSubmitting,
       closeDialog,
       submitForm,
+      shouldShowField,
     }
   }
 }
