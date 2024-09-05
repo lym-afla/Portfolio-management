@@ -136,7 +136,7 @@
             </v-row>
           </v-col>
           <v-col cols="auto">
-            <v-btn color="success" @click="showImportModal">
+            <v-btn color="success" @click="openImportDialog">
               Import Prices
             </v-btn>
           </v-col>
@@ -249,6 +249,11 @@
       :edit-item="null"
     />
 
+    <PriceImportDialog
+      v-model="showImportDialog"
+      @prices-imported="handlePricesImported"
+    />
+
   </div>
 </template>
 
@@ -261,6 +266,7 @@ import debounce from 'lodash/debounce'
 import { useTableSettings } from '@/composables/useTableSettings'
 import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
+import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
 
 export default {
   name: 'PricesPage',
@@ -268,6 +274,7 @@ export default {
     PriceChart,
     PriceFormDialog,
     SecurityFormDialog,
+    PriceImportDialog,
   },
   setup() {
     const store = useStore()
@@ -298,6 +305,7 @@ export default {
     const editingPrice = ref(null)
     const showPriceDialog = ref(false)
     const showSecurityDialog = ref(false)
+    const showImportDialog = ref(false)
     const isDeleting = ref(false)
     const showError = inject('showError')
 
@@ -418,9 +426,15 @@ export default {
       fetchPriceData()
     }
 
-    const showImportModal = () => {
-      // TODO: Implement import modal logic
-      console.log('Showing import modal')
+    const openImportDialog = () => {
+      showImportDialog.value = true
+    }
+
+    const handlePricesImported = (response) => {
+      // Handle the response from the import process
+      // This might involve refreshing the price data or showing a success message
+      console.log('Prices imported:', response)
+      // Refresh your price data here
     }
 
     const editPrice = async (item) => {
@@ -467,10 +481,6 @@ export default {
       fetchPriceData()
     }
 
-    // const refreshPrices = () => {
-    //   fetchPriceData()
-    // }
-
     const openAddPriceDialog = () => {
       editingPrice.value = null
       showPriceDialog.value = true
@@ -491,8 +501,6 @@ export default {
         itemsPerPage,
         currentPage,
         sortBy,
-        // dateFrom,
-        // dateTo
       ],
       () => {
         if (!isApplyingFilters.value) {
@@ -513,7 +521,6 @@ export default {
       dateFrom,
       dateTo,
       applyFilters,
-      showImportModal,
       headers,
       priceData,
       loading,
@@ -543,13 +550,15 @@ export default {
       pageCount,
       editingPrice,
       handlePriceUpdated,
-      // refreshPrices,
       showPriceDialog,
       openAddPriceDialog,
       handlePriceAdded,
       isDeleting,
       addSecurity,
       showSecurityDialog,
+      showImportDialog,
+      openImportDialog,
+      handlePricesImported,
     }
   },
 }

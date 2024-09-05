@@ -438,7 +438,6 @@ export const updatePrice = async (priceId, priceData) => {
   }
 }
 
-// Add this new function
 export const getSecurityFormStructure = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/database/api/security-form-structure/`)
@@ -451,6 +450,15 @@ export const getSecurityFormStructure = async () => {
 export const getSecurityDetails = async (id) => {
   try {
     const response = await axiosInstance.get(`${API_URL}/database/api/get-security-details/${id}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getPriceImportFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/price-import-form-structure/`)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
