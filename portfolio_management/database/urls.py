@@ -2,6 +2,7 @@ from django.urls import path
 from .import views
 from common.models import Brokers, Assets, Transactions, Prices
 from database.forms import BrokerForm, SecurityForm, TransactionForm, PriceForm
+from .views import PriceImportView
 
 app_name = 'database' # Optional, but useful for namespacing
 
@@ -50,5 +51,6 @@ urlpatterns = [
     path('api/update-security/<int:security_id>/', views.api_update_security, name='api_update_security'),
     path('api/delete-security/<int:security_id>/', views.api_delete_security, name='api_delete_security'),
     path('api/get-security-details/<int:security_id>/', views.api_get_security_details, name='api_get_security_details'),
-    path('api/price-import-form-structure/', views.api_price_import_form_structure, name='api_price_import_form_structure'),
+    # path('api/price-import-form-structure/', views.api_price_import_form_structure, name='api_price_import_form_structure'),
+    path('api/price-import/', PriceImportView.as_view(), name='price_import'),
 ]

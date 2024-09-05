@@ -6,80 +6,112 @@
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
-          <template v-for="field in formFields" :key="field.name">
-            <v-text-field
-              v-if="field.type === 'textinput' || field.type === 'url'"
-              v-model="form[field.name]"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-              :type="field.type === 'url' ? 'url' : 'text'"
-            ></v-text-field>
+          <v-autocomplete
+            v-model="securities"
+            :items="securitiesList"
+            label="Securities"
+            item-title="name"
+            item-value="id"
+            multiple
+            clearable
+            :disabled="brokers.length > 0"
+            :error-messages="errors.securities"
+            @update:model-value="value => console.log('Securities updated:', value)"
+            >
+            <template v-slot:prepend-item>
+              <v-list-item title="Select All" @click="toggleSelectAllSecurities">
+                <template v-slot:prepend>
+                  <v-checkbox-btn
+                    :model-value="securitiesAllSelected"
+                    :indeterminate="securitiesIndeterminate"
+                  ></v-checkbox-btn>
+                </template>
+              </v-list-item>
+              <v-divider class="mt-2"></v-divider>
+            </template>
+          </v-autocomplete>
+
+          <v-autocomplete
+            v-model="brokers"
+            :items="brokersList"
+            label="Brokers"
+            item-title="name"
+            item-value="id"
+            multiple
+            clearable
+            :disabled="securities.length > 0"
+            :error-messages="errors.brokers"
+            @update:model-value="value => console.log('Brokers updated:', value)"
+            >
+            <template v-slot:prepend-item>
+              <v-list-item title="Select All" @click="toggleSelectAllBrokers">
+                <template v-slot:prepend>
+                  <v-checkbox-btn
+                    :model-value="brokersAllSelected"
+                    :indeterminate="brokersIndeterminate"
+                  ></v-checkbox-btn>
+                </template>
+              </v-list-item>
+              <v-divider class="mt-2"></v-divider>
+            </template>
+          </v-autocomplete>
+
+          <v-radio-group v-model="dateType" row>
+            <v-radio label="Date Range" value="range"></v-radio>
+            <v-radio label="Single Date" value="single"></v-radio>
+          </v-radio-group>
+
+          <template v-if="dateType === 'range'">
+            <v-row>
+              <v-col cols="12" sm="6">
+                <v-date-picker 
+                  v-model="startDate" 
+                  label="Start Date"
+                  :error-messages="errors.startDate"
+                ></v-date-picker>
+              </v-col>
+              <v-col cols="12" sm="6">
+                <v-date-picker 
+                  v-model="endDate" 
+                  label="End Date"
+                  :error-messages="errors.endDate"
+                ></v-date-picker>
+              </v-col>
+            </v-row>
             <v-select
-              v-else-if="field.type === 'select'"
-              v-model="form[field.name]"
-              :items="field.choices"
+              v-model="frequency"
+              :items="frequencyChoices"
               item-title="text"
               item-value="value"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
+              label="Frequency"
+              :error-messages="errors.frequency"
             ></v-select>
-            <v-checkbox
-              v-else-if="field.type === 'checkbox'"
-              v-model="form[field.name]"
-              :label="field.label"
-              :error-messages="errorMessages[field.name]"
-            ></v-checkbox>
-            <v-textarea
-              v-else-if="field.type === 'textarea'"
-              v-model="form[field.name]"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-            ></v-textarea>
-            <v-select
-              v-else-if="field.type === 'selectmultiple'"
-              v-model="form[field.name]"
-              :items="field.choices"
-              item-title="text"
-              item-value="value"
-              :label="field.label"
-              :required="field.required"
-              multiple
-              chips
-              :error-messages="errorMessages[field.name]"
-            ></v-select>
-            <v-text-field
-              v-else-if="field.type === 'date'"
-              v-model="form[field.name]"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-              type="date"
-            ></v-text-field>
           </template>
+
+          <v-date-picker 
+            v-else 
+            v-model="singleDate" 
+            label="Date"
+            :error-messages="errors.singleDate"
+          ></v-date-picker>
+
+          <v-btn type="submit" color="primary" class="mt-4" :loading="isSubmitting" @click="console.log('Submit button clicked')">
+            Import Prices
+          </v-btn>
         </v-form>
-        <v-alert
-          v-if="generalError"
-          type="error"
-          class="mt-3"
-        >
+        <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
         </v-alert>
       </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="submitForm" :loading="isSubmitting">Import</v-btn>
-      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <script>
 import { ref, computed, onMounted } from 'vue'
-import { getPriceImportFormStructure, importPrices } from '@/services/api'
+import { useForm, useField } from 'vee-validate'
+import { importPrices, getPriceImportFormStructure } from '@/services/api'
+import { format } from 'date-fns'
 
 export default {
   name: 'PriceImportDialog',
@@ -92,81 +124,216 @@ export default {
       get: () => props.modelValue,
       set: (value) => emit('update:modelValue', value)
     })
-    const form = ref({})
-    const formFields = ref([])
-    const errorMessages = ref({})
+
+    const { handleSubmit, resetForm, errors } = useForm({
+      initialValues: {
+        securities: [],
+        brokers: [],
+        startDate: null,
+        endDate: null,
+        frequency: null,
+        singleDate: null,
+      },
+      validate: (values) => {
+        console.log('Validating form with values:', values)
+        const errors = {};
+
+        // Validate securities or brokers first
+        if (values.securities.length === 0 && values.brokers.length === 0) {
+          console.log('No securities or brokers selected')
+          errors.securities = 'Either securities or brokers must be selected'
+          errors.brokers = 'Either securities or brokers must be selected'
+          // Return early if this major error is present
+          return errors;
+        }
+
+        if (values.securities.length > 0 && values.brokers.length > 0) {
+          errors.securities = 'Only one of securities or brokers can be selected'
+          errors.brokers = 'Only one of securities or brokers can be selected'
+          // Return early if this major error is present
+          return errors;
+        }
+
+        // Validate date fields only if securities/brokers are correctly selected
+        if (dateType.value === 'single') {
+          if (!values.singleDate) {
+            errors.singleDate = 'Single date is required'
+          }
+        } else {
+          if (!values.startDate) {
+            errors.startDate = 'Start date is required for date range'
+          }
+          if (!values.endDate) {
+            errors.endDate = 'End date is required for date range'
+          }
+          if (!values.frequency) {
+            errors.frequency = 'Frequency is required for date range'
+          }
+        }
+
+        console.log('Validation errors:', errors)
+        return errors;
+      }
+    })
+
+    const { value: securities, errorMessage: securitiesError } = useField('securities')
+    const { value: brokers, errorMessage: brokersError } = useField('brokers')
+    const { value: startDate, errorMessage: startDateError } = useField('startDate')
+    const { value: endDate, errorMessage: endDateError } = useField('endDate')
+    const { value: frequency, errorMessage: frequencyError } = useField('frequency')
+    const { value: singleDate, errorMessage: singleDateError } = useField('singleDate')
+
+    const dateType = ref('range')
+    const securitiesList = ref([])
+    const brokersList = ref([])
+    const frequencyChoices = ref([])
     const generalError = ref('')
     const isSubmitting = ref(false)
 
     const fetchFormStructure = async () => {
       try {
         const structure = await getPriceImportFormStructure()
-        formFields.value = structure.fields
-        initializeForm()
+        securitiesList.value = structure.securities
+        brokersList.value = structure.brokers
+        frequencyChoices.value = structure.frequency_choices
       } catch (error) {
         console.error('Error fetching form structure:', error)
-        generalError.value = 'Failed to load form structure'
+        generalError.value = 'Failed to load form structure. Please try again.'
       }
     }
 
-    const initializeForm = () => {
-      form.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = field.initial !== undefined ? field.initial : ''
-        return acc
-      }, {})
-      errorMessages.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = []
-        return acc
-      }, {})
+    onMounted(() => {
+      fetchFormStructure()
+    })
+
+    const securitiesAllSelected = computed(() => {
+      return securities.value.length === securitiesList.value.length
+    })
+
+    const securitiesIndeterminate = computed(() => {
+      return securities.value.length > 0 && !securitiesAllSelected.value
+    })
+
+    const brokersAllSelected = computed(() => {
+      return brokers.value.length === brokersList.value.length
+    })
+
+    const brokersIndeterminate = computed(() => {
+      return brokers.value.length > 0 && !brokersAllSelected.value
+    })
+
+    const toggleSelectAllSecurities = () => {
+      if (securitiesAllSelected.value) {
+        securities.value = []
+      } else {
+        securities.value = securitiesList.value.map(s => s.id)
+      }
     }
 
-    onMounted(fetchFormStructure)
-
-    const closeDialog = () => {
-      dialog.value = false
-      initializeForm()
-      generalError.value = ''
+    const toggleSelectAllBrokers = () => {
+      if (brokersAllSelected.value) {
+        brokers.value = []
+      } else {
+        brokers.value = brokersList.value.map(b => b.id)
+      }
     }
 
-    const submitForm = async () => {
+    const submitForm = handleSubmit(async (values) => {
+      console.log('Submitting form with values:', values)
+      console.log('Current errors:', errors.value)
+
+      // Check if there are any front-end validation errors
+      if (Object.keys(errors.value).length > 0) {
+        console.log('Front-end validation failed. Not submitting.')
+        return;
+      }
+
       isSubmitting.value = true
-      errorMessages.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = []
-        return acc
-      }, {})
       generalError.value = ''
+      // Clear previous errors
+      Object.keys(errors.value).forEach(key => {
+        errors.value[key] = ''
+      })
 
       try {
-        const response = await importPrices(form.value)
+        // Prepare the data based on the date type
+        const submitData = { ...values }
+        if (dateType.value === 'single') {
+          // If it's a single date, remove the date range fields and format the single date
+          delete submitData.startDate
+          delete submitData.endDate
+          delete submitData.frequency
+          if (submitData.singleDate) {
+            submitData.single_date = format(new Date(submitData.singleDate), 'yyyy-MM-dd')
+          }
+        } else {
+          // If it's a date range, remove the single date field and format start and end dates
+          delete submitData.singleDate
+          if (submitData.startDate) {
+            submitData.start_date = format(new Date(submitData.startDate), 'yyyy-MM-dd')
+          }
+          if (submitData.endDate) {
+            submitData.end_date = format(new Date(submitData.endDate), 'yyyy-MM-dd')
+          }
+        }
+
+        console.log('Submitting data:', submitData)  // Add this line for debugging
+
+        const response = await importPrices(submitData)
         emit('prices-imported', response)
-        closeDialog()
+        dialog.value = false
+        resetForm()
       } catch (error) {
         console.error('Error importing prices:', error)
-        if (error.errors) {
-          Object.keys(error.errors).forEach(key => {
-            if (key === '__all__') {
-              generalError.value = error.errors[key][0]
-            } else {
-              errorMessages.value[key] = Array.isArray(error.errors[key]) ? error.errors[key] : [error.errors[key]]
-            }
-          })
+        if (typeof error === 'object') {
+          if (error.non_field_errors) {
+            generalError.value = error.non_field_errors[0]
+          } else {
+            // Handle field-specific errors
+            Object.keys(error).forEach(key => {
+              if (Array.isArray(error[key])) {
+                errors.value[key] = error[key][0]
+              } else {
+                errors.value[key] = error[key]
+              }
+            })
+          }
         } else {
-          generalError.value = error.message || 'An unexpected error occurred. Please try again.'
+          generalError.value = error.toString()
         }
       } finally {
         isSubmitting.value = false
       }
-    }
+    })
 
     return {
       dialog,
-      form,
-      formFields,
-      errorMessages,
+      securities,
+      brokers,
+      dateType,
+      startDate,
+      endDate,
+      frequency,
+      singleDate,
+      securitiesList,
+      brokersList,
+      frequencyChoices,
+      securitiesError,
+      brokersError,
+      startDateError,
+      endDateError,
+      frequencyError,
+      singleDateError,
       generalError,
       isSubmitting,
-      closeDialog,
+      securitiesAllSelected,
+      securitiesIndeterminate,
+      brokersAllSelected,
+      brokersIndeterminate,
+      toggleSelectAllSecurities,
+      toggleSelectAllBrokers,
       submitForm,
+      errors,
     }
   }
 }

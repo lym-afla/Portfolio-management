@@ -458,9 +458,29 @@ export const getSecurityDetails = async (id) => {
 
 export const getPriceImportFormStructure = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/price-import-form-structure/`)
+    const response = await axiosInstance.get(`${API_URL}/database/api/price-import/`)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
+  }
+}
+
+export const importPrices = async (importData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/price-import/`, importData)
+    return response.data
+  } catch (error) {
+    console.error('Error importing prices:', error)
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      throw error.response.data
+    } else if (error.request) {
+      // The request was made but no response was received
+      throw new Error('No response received from server')
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      throw new Error('Error setting up the request')
+    }
   }
 }

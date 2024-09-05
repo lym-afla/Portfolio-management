@@ -1038,6 +1038,9 @@ def get_broker_securities(request):
         return JsonResponse({'securities': list(securities)})
     return JsonResponse({'securities': []})
 
+from .serializers import PriceImportSerializer
+
+from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -1254,53 +1257,76 @@ def api_update_price(request, price_id):
         print("Price update form errors:", form.errors)
         return Response({'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from django import forms
-from .forms import PriceImportForm
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def api_price_import_form_structure(request):
-    form = PriceImportForm(user=request.user)
-    structure = {
-        'fields': []
-    }
-
-    for field_name, field in form.fields.items():
-        field_data = {
-            'name': field_name,
-            'label': field.label,
-            'type': field.widget.__class__.__name__.lower(),
-            'required': field.required,
-            'choices': None,
-            'initial': field.initial,
-            'help_text': field.help_text,
-        }
-
-        if isinstance(field, forms.ChoiceField):
-            field_data['choices'] = [{'value': str(choice[0]), 'text': str(choice[1])} for choice in field.choices]
-        elif isinstance(field, forms.ModelChoiceField) or isinstance(field, forms.ModelMultipleChoiceField):
-            field_data['choices'] = [{'value': str(obj.pk), 'text': str(obj)} for obj in field.queryset]
-
-        if isinstance(field.widget, forms.CheckboxInput):
-            field_data['type'] = 'checkbox'
-        elif isinstance(field.widget, forms.Textarea):
-            field_data['type'] = 'textarea'
-        elif isinstance(field.widget, forms.URLInput):
-            field_data['type'] = 'url'
-        elif isinstance(field.widget, forms.DateInput):
-            field_data['type'] = 'date'
-        elif isinstance(field.widget, forms.SelectMultiple):
-            field_data['type'] = 'selectmultiple'
-        elif isinstance(field.widget, forms.Select):
-            field_data['type'] = 'select'
-
-        # Convert initial value to string if it's not None
-        if field_data['initial'] is not None:
-            field_data['initial'] = str(field_data['initial'])
-
-        structure['fields'].append(field_data)
+class PriceImportView(APIView):
+    def get(self, request):
+        user = request.user
+        securities = Assets.objects.filter(investor=user)
+        brokers = Brokers.objects.filter(investor=user)
         
-    return Response(structure)
+        serializer = PriceImportSerializer()
+        frequency_choices = dict(serializer.fields['frequency'].choices)
+        
+        return Response({
+            'securities': [{'id': s.id, 'name': s.name} for s in securities],
+            'brokers': [{'id': b.id, 'name': b.name} for b in brokers],
+            'frequency_choices': [{'value': k, 'text': v} for k, v in frequency_choices.items()],
+        })
+
+    def post(self, request):
+        serializer = PriceImportSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            # Here you would implement the logic to import prices
+            # based on the validated data in serializer.validated_data
+            return Response({"message": "Prices imported successfully"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+# from django import forms
+# from .forms import PriceImportForm
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def api_price_import_form_structure(request):
+#     form = PriceImportForm(user=request.user)
+#     structure = {
+#         'fields': []
+#     }
+
+#     for field_name, field in form.fields.items():
+#         field_data = {
+#             'name': field_name,
+#             'label': field.label,
+#             'type': field.widget.__class__.__name__.lower(),
+#             'required': field.required,
+#             'choices': None,
+#             'initial': field.initial,
+#             'help_text': field.help_text,
+#         }
+
+#         if isinstance(field, forms.ChoiceField):
+#             field_data['choices'] = [{'value': str(choice[0]), 'text': str(choice[1])} for choice in field.choices]
+#         elif isinstance(field, forms.ModelChoiceField) or isinstance(field, forms.ModelMultipleChoiceField):
+#             field_data['choices'] = [{'value': str(obj.pk), 'text': str(obj)} for obj in field.queryset]
+
+#         if isinstance(field.widget, forms.CheckboxInput):
+#             field_data['type'] = 'checkbox'
+#         elif isinstance(field.widget, forms.Textarea):
+#             field_data['type'] = 'textarea'
+#         elif isinstance(field.widget, forms.URLInput):
+#             field_data['type'] = 'url'
+#         elif isinstance(field.widget, forms.DateInput):
+#             field_data['type'] = 'date'
+#         elif isinstance(field.widget, forms.SelectMultiple):
+#             field_data['type'] = 'selectmultiple'
+#         elif isinstance(field.widget, forms.Select):
+#             field_data['type'] = 'select'
+
+#         # Convert initial value to string if it's not None
+#         if field_data['initial'] is not None:
+#             field_data['initial'] = str(field_data['initial'])
+
+#         structure['fields'].append(field_data)
+        
+#     return Response(structure)
