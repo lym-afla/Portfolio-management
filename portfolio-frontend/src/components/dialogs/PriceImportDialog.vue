@@ -16,7 +16,6 @@
             clearable
             :disabled="brokers.length > 0"
             :error-messages="errors.securities"
-            @update:model-value="value => console.log('Securities updated:', value)"
             >
             <template v-slot:prepend-item>
               <v-list-item title="Select All" @click="toggleSelectAllSecurities">
@@ -41,7 +40,6 @@
             clearable
             :disabled="securities.length > 0"
             :error-messages="errors.brokers"
-            @update:model-value="value => console.log('Brokers updated:', value)"
             >
             <template v-slot:prepend-item>
               <v-list-item title="Select All" @click="toggleSelectAllBrokers">
@@ -64,6 +62,9 @@
           <template v-if="dateType === 'range'">
             <v-row>
               <v-col cols="12" sm="6">
+                <div v-if="errors.startDate" class="text-caption text-error pl-6">
+                  {{ errors.startDate }}
+                </div>
                 <v-date-picker 
                   v-model="startDate" 
                   label="Start Date"
@@ -71,6 +72,9 @@
                 ></v-date-picker>
               </v-col>
               <v-col cols="12" sm="6">
+                <div v-if="errors.endDate" class="text-caption text-error pl-6">
+                  {{ errors.endDate }}
+                </div>
                 <v-date-picker 
                   v-model="endDate" 
                   label="End Date"
@@ -88,14 +92,18 @@
             ></v-select>
           </template>
 
-          <v-date-picker 
-            v-else 
-            v-model="singleDate" 
-            label="Date"
-            :error-messages="errors.singleDate"
-          ></v-date-picker>
+          <template v-else>
+            <div v-if="errors.singleDate" class="text-caption text-error pl-6">
+                {{ errors.singleDate }}
+            </div>
+            <v-date-picker 
+              v-model="singleDate" 
+                label="Date"
+                :error="!!errors.singleDate"
+              ></v-date-picker>
+          </template>
 
-          <v-btn type="submit" color="primary" class="mt-4" :loading="isSubmitting" @click="console.log('Submit button clicked')">
+          <v-btn type="submit" color="primary" class="mt-4 w-100" :loading="isSubmitting">
             Import Prices
           </v-btn>
         </v-form>
@@ -134,46 +142,44 @@ export default {
         frequency: null,
         singleDate: null,
       },
-      validate: (values) => {
-        console.log('Validating form with values:', values)
-        const errors = {};
-
-        // Validate securities or brokers first
-        if (values.securities.length === 0 && values.brokers.length === 0) {
-          console.log('No securities or brokers selected')
-          errors.securities = 'Either securities or brokers must be selected'
-          errors.brokers = 'Either securities or brokers must be selected'
-          // Return early if this major error is present
-          return errors;
-        }
-
-        if (values.securities.length > 0 && values.brokers.length > 0) {
-          errors.securities = 'Only one of securities or brokers can be selected'
-          errors.brokers = 'Only one of securities or brokers can be selected'
-          // Return early if this major error is present
-          return errors;
-        }
-
-        // Validate date fields only if securities/brokers are correctly selected
-        if (dateType.value === 'single') {
-          if (!values.singleDate) {
-            errors.singleDate = 'Single date is required'
+      validationSchema: {
+        securities: (value) => {
+          if (value.length === 0 && brokers.value.length === 0) {
+            return 'Either securities or brokers must be selected'
           }
-        } else {
-          if (!values.startDate) {
-            errors.startDate = 'Start date is required for date range'
+          return true
+        },
+        brokers: (value) => {
+          if (value.length === 0 && securities.value.length === 0) {
+            return 'Either securities or brokers must be selected'
           }
-          if (!values.endDate) {
-            errors.endDate = 'End date is required for date range'
+          return true
+        },
+        startDate: (value) => {
+          if (dateType.value === 'range' && !value) {
+            return 'Start date is required for date range'
           }
-          if (!values.frequency) {
-            errors.frequency = 'Frequency is required for date range'
+          return true
+        },
+        endDate: (value) => {
+          if (dateType.value === 'range' && !value) {
+            return 'End date is required for date range'
           }
-        }
-
-        console.log('Validation errors:', errors)
-        return errors;
-      }
+          return true
+        },
+        frequency: (value) => {
+          if (dateType.value === 'range' && !value) {
+            return 'Frequency is required for date range'
+          }
+          return true
+        },
+        singleDate: (value) => {
+          if (dateType.value === 'single' && !value) {
+            return 'Date is required for single date import'
+          }
+          return true
+        },
+      },
     })
 
     const { value: securities, errorMessage: securitiesError } = useField('securities')
@@ -245,7 +251,7 @@ export default {
       // Check if there are any front-end validation errors
       if (Object.keys(errors.value).length > 0) {
         console.log('Front-end validation failed. Not submitting.')
-        return;
+        return
       }
 
       isSubmitting.value = true

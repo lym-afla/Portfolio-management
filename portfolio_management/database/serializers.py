@@ -16,7 +16,8 @@ class PriceImportSerializer(serializers.Serializer):
     end_date = serializers.DateField(required=False)
     frequency = serializers.ChoiceField(
         choices=[('weekly', 'Weekly'), ('monthly', 'Monthly'), ('quarterly', 'Quarterly'), ('annually', 'Annually')],
-        required=False
+        required=False,
+        allow_null=True
     )
     single_date = serializers.DateField(required=False, input_formats=['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%d'])
 
