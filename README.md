@@ -14,6 +14,10 @@ This application allows users to manage and analyze their investment portfolio. 
 - Frontend:
   - Vue.js 3
   - Vuetify 3
+  - Vuex 4
+  - Vue Router 4
+  - Chart.js
+  - Vee-Validate
 - Backend:
   - Django
 - Database:
@@ -76,15 +80,38 @@ portfolio_management/
 │   ├── public/
 │   ├── src/
 │       ├── assets/
+│           ├── fonts.css
 │       ├── components/
+│           ├── buttons/
+│           ├── charts/
+│               ├── PriceChart.vue
+│           ├── dashboard
+│               ├── BreakdownChart.vue
+│               ├── NAVChart.vue
+│               ├── SummaryCard.vue
+│               ├── SummaryOverTimeTable.vue
+│           ├── dialogs/
+│               ├── BrokerFormDialog.vue
+│               ├── PriceFormDialog.vue
+│               ├── PriceImportDialog.vue
+│               ├── ProgressDialog.vue
+│               ├── SecurityFormDialog.vue
+│               ├── UpdateBrokerPerformanceDialog.vue
 │           ├── BrokerSelection.vue
-│           ├── DashboardSummary.vue
+│           ├── DatePicker.vue
+│           ├── DateRangeSelector.vue
 │           ├── LoginForm.vue
 │           ├── Navigation.vue
-│           ├── Profile.vue
-│           ├── ProfileEdit.vue
-│           ├── ProfileLayout.vue
+│           ├── PositionsPageBase.vue
 │           ├── RegisterForm.vue
+│           ├── SettingsDialog.vue
+│       ├── composables/
+│           ├── useErrorHandler.js
+│           ├── useTableSettings.js
+│       ├── config/
+│           ├── chartConfig.js
+│       ├── plugins/
+│           ├── vee-validate.js
 │       ├── router/
 │           ├── index.js
 │       ├── services/
@@ -94,13 +121,25 @@ portfolio_management/
 │       ├── utils/
 │           ├── auth.js
 │           ├── brokerUtils.js
-│           ├── formatter.js
+│           ├── dateRangeUtils.js
+│           ├── dateUtils.js
 │       ├── views/
+│           ├── profile/
+│               ├── ProfileLayout.vue
+│               ├── ProfilePage.vue
+│               ├── ProfileEdit.vue
+│               ├── ProfileSettings.vue
+│           ├── database/
+│               ├── PricesPage.vue
+│               ├── BrokersPage.vue
+│               ├── SecuritiesPage.vue
 │           ├── ClosedPositionsPage.vue
 │           ├── DashboardPage.vue
 │           ├── LoginPage.vue
 │           ├── OpenPositionsPage.vue
 │           ├── RegisterPage.vue
+│           ├── TransactionsPage.vue
+│           ├── DatabasePage.vue
 │       ├── App.vue
 │       ├── main.js
 │   ├── package.json
@@ -223,14 +262,18 @@ portfolio_management/
 - Closed positions history
 - Broker selection
 - Data import and export capabilities
+- Price import functionality
+- Database management (securities, brokers, prices)
 
 ## API Integration
 
 The Vue.js frontend integrates with the Django backend through RESTful API endpoints. Key endpoints include:
 
-- `/api/auth/`: User authentication
-- `/api/portfolio/`: Portfolio data
-- `/api/transactions/`: Transaction management
+- Authentication
+- Portfolio data
+- Transactions management
+- Price import
+- Database management (securities, brokers, prices)
 
 For full API documentation, please refer to the backend codebase.
 

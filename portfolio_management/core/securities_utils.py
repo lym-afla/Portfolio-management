@@ -18,7 +18,8 @@ def get_securities_table_api(request):
     number_of_digits = user.digits
     
     securities_data = _filter_securities(user, search)
-    securities_data = _get_securities_data(user, securities_data, effective_current_date, currency_target)
+    securities_data = _get_securities_data(user, securities_data, effective_current_date)
+    print("securities_data", securities_data)
     securities_data = sort_entries(securities_data, sort_by)
     paginated_securities, pagination_data = paginate_table(securities_data, page, items_per_page)
     formatted_securities = format_table_data(paginated_securities, currency_target, number_of_digits)
@@ -36,11 +37,12 @@ def get_securities_table_api(request):
 
 def _filter_securities(user, search):
     securities = Assets.objects.filter(investor=user)
+    print(securities)
     if search:
         securities = securities.filter(name__icontains=search)
     return securities
 
-def _get_securities_data(user, securities, effective_current_date, currency_target):
+def _get_securities_data(user, securities, effective_current_date):
     securities_data = []
     for security in securities:
         security_data = {
@@ -67,12 +69,12 @@ def _get_securities_data(user, securities, effective_current_date, currency_targ
         securities_data.append(security_data)
     return securities_data
 
-def _calculate_totals(securities_data, user, effective_current_date, currency_target):
-    totals = {
-        'current_value': sum(security['current_value'] for security in securities_data if security['current_value'] is not None),
-        'realized': sum(security['realized'] for security in securities_data),
-        'unrealized': sum(security['unrealized'] for security in securities_data),
-        'capital_distribution': sum(security['capital_distribution'] for security in securities_data),
-        'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None)
-    }
-    return totals
+# def _calculate_totals(securities_data, user, effective_current_date, currency_target):
+#     totals = {
+#         'current_value': sum(security['current_value'] for security in securities_data if security['current_value'] is not None),
+#         'realized': sum(security['realized'] for security in securities_data),
+#         'unrealized': sum(security['unrealized'] for security in securities_data),
+#         'capital_distribution': sum(security['capital_distribution'] for security in securities_data),
+#         'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None)
+#     }
+#     return totals

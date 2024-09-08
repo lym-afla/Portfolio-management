@@ -179,6 +179,7 @@ export default {
 
     const fetchSecurities = async () => {
       tableLoading.value = true
+      console.log('fetching securities', currentPage.value, itemsPerPage.value, sortBy.value, search.value)
       try {
         const response = await getSecuritiesForDatabase({
           page: currentPage.value,
