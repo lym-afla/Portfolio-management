@@ -613,6 +613,16 @@ export const getBrokerFormStructure = async () => {
   }
 }
 
+export const getFXFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/fx/form_structure/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching FX form structure:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 export const getFXData = async ({ startDate, endDate, page, itemsPerPage, sortBy, search }) => {
   try {
     const response = await axiosInstance.post(`${API_URL}/database/api/fx/list_fx/`, {
@@ -626,6 +636,89 @@ export const getFXData = async ({ startDate, endDate, page, itemsPerPage, sortBy
     return response.data
   } catch (error) {
     console.error('Error fetching FX data:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getFXDetails = async (fxId) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/fx/${fxId}/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching FX details:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const addFXRate = async (fxData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/fx/`, fxData)
+    return response.data
+  } catch (error) {
+    console.error('Error adding FX rate:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateFXRate = async (fxId, fxData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/fx/${fxId}/`, fxData)
+    return response.data
+  } catch (error) {
+    console.error('Error updating FX rate:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteFXRate = async (fxId) => {
+  try {
+    const response = await axiosInstance.delete(`${API_URL}/database/api/fx/${fxId}/`)
+    return response.data
+  } catch (error) {
+    console.error('Error deleting FX rate:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getFXImportStats = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/fx/import_stats/`)
+    console.log('GetFXImportStats API response:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching FX import stats:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const importFXRates = async (importOption) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/fx/import_fx_rates/`, 
+      { import_option: importOption },
+      {
+        responseType: 'text',
+        onDownloadProgress: (progressEvent) => {
+          if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
+            const dataChunk = progressEvent.event.currentTarget.response
+            const lines = dataChunk.split('\n\n')
+            lines.forEach((line) => {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.slice(6) // Remove 'data: ' prefix
+                  const data = JSON.parse(jsonStr)
+                  window.dispatchEvent(new CustomEvent('fxImportProgress', { detail: data }))
+                } catch (error) {
+                  console.error('Error parsing progress data:', error, 'Line:', line)
+                }
+              }
+            })
+          }
+        }
+      }
+    )
+    return response.data
+  } catch (error) {
+    console.error('Error importing FX rates:', error)
     throw error.response ? error.response.data : error.message
   }
 }

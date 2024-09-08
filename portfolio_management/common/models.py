@@ -13,13 +13,17 @@ from users.models import CustomUser
 
 # Table with FX data
 class FX(models.Model):
-    date = models.DateField(primary_key=True)
+    id = models.AutoField(primary_key=True)
+    date = models.DateField()
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='FX')
-    USDEUR = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
-    USDGBP = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
-    CHFGBP = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
-    RUBUSD = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
-    PLNUSD = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+    USDEUR = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
+    USDGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
+    CHFGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
+    RUBUSD = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    PLNUSD = models.DecimalField(max_digits=9, decimal_places=5, null=True, blank=True)
+
+    class Meta:
+        unique_together = ('date', 'investor')
 
     # Get FX quote for date
     @classmethod

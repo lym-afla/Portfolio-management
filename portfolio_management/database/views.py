@@ -14,6 +14,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q, F
 from django.db.models.functions import Lower
+from django.utils.dateparse import parse_date
 import pandas as pd
 import requests
 from requests.exceptions import RequestException
@@ -1043,16 +1044,15 @@ def get_broker_securities(request):
         return JsonResponse({'securities': list(securities)})
     return JsonResponse({'securities': []})
 
-from .serializers import BrokerPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer
+from .serializers import BrokerPerformanceSerializer, FXFormSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer
 
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import NotFound
 from rest_framework import status, viewsets
 from .serializers import BrokerSerializer
-
-from django.core.paginator import Paginator
 
 @api_view(['GET'])
 def api_get_asset_types(request):
@@ -1417,11 +1417,6 @@ class BrokerViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         data = queryset.values('id', 'name')
         return Response(list(data))
-    
-    # @action(detail=False, methods=['POST'])
-    # def get_brokers_for_database(self, request):
-    #     # This adds a custom action that matches your previous API
-    #     return Response(get_brokers_table_api(request))
 
     @action(detail=False, methods=['GET'])
     def form_structure(self, request):
@@ -1524,12 +1519,20 @@ class UpdateBrokerPerformanceView(APIView):
 class FXViewSet(viewsets.ModelViewSet):
     serializer_class = FXSerializer
     permission_classes = [IsAuthenticated]
+    lookup_field = 'id'  # Use 'id' instead of 'date' for lookups
 
     def get_queryset(self):
         return FX.objects.filter(investor=self.request.user).order_by('-date')
 
     def perform_create(self, serializer):
         serializer.save(investor=self.request.user)
+
+    def get_object(self):
+        fx_id = self.kwargs.get('id')
+        try:
+            return FX.objects.get(id=fx_id, investor=self.request.user)
+        except FX.DoesNotExist:
+            raise NotFound(f"FX rate with id {fx_id} not found.")
 
     @action(detail=False, methods=['POST'])
     def get_rate(self, request):
@@ -1547,18 +1550,6 @@ class FXViewSet(viewsets.ModelViewSet):
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['POST'])
-    def update_fx_rate(self, request):
-        date = request.data.get('date')
-        if not date:
-            return Response({'error': 'Date is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            FX.update_fx_rate(date, request.user)
-            return Response({'message': 'FX rates updated successfully'})
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
     @action(detail=False, methods=['POST'])
     def list_fx(self, request):
         # Extract parameters from request data
@@ -1588,7 +1579,7 @@ class FXViewSet(viewsets.ModelViewSet):
             )
 
         # Convert queryset to list of dictionaries
-        fx_data = list(queryset.values('date', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD'))
+        fx_data = list(queryset.values('id', 'date', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD'))
 
         # Apply sorting
         if sort_by:
@@ -1598,7 +1589,7 @@ class FXViewSet(viewsets.ModelViewSet):
         paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
 
         # Format the data
-        formatted_fx_data = format_table_data(paginated_fx_data, 'USD', 4)  # Assuming USD as base currency and 4 decimal places
+        formatted_fx_data = format_table_data(paginated_fx_data, currency_target=None, number_of_digits=4)  # Assuming USD as base currency and 4 decimal places
 
         response_data = {
             'results': formatted_fx_data,
@@ -1609,3 +1600,93 @@ class FXViewSet(viewsets.ModelViewSet):
         }
 
         return Response(response_data)
+
+    @action(detail=False, methods=['GET'])
+    def form_structure(self, request):
+        return Response({
+            'fields': [
+                {
+                    'name': 'date',
+                    'label': 'Date',
+                    'type': 'datepicker',
+                    'required': True,
+                },
+                {
+                    'name': 'USDEUR',
+                    'label': 'USD/EUR',
+                    'type': 'number',
+                    'required': True,
+                },
+                {
+                    'name': 'USDGBP',
+                    'label': 'USD/GBP',
+                    'type': 'number',
+                    'required': True,
+                },
+                {
+                    'name': 'CHFGBP',
+                    'label': 'CHF/GBP',
+                    'type': 'number',
+                    'required': True,
+                },
+                {
+                    'name': 'RUBUSD',
+                    'label': 'RUB/USD',
+                    'type': 'number',
+                    'required': True,
+                },
+                {
+                    'name': 'PLNUSD',
+                    'label': 'PLN/USD',
+                    'type': 'number',
+                    'required': True,
+                },
+            ]
+        })
+    
+    @action(detail=False, methods=['GET'])
+    def import_stats(self, request):
+        user = request.user
+        transaction_dates = Transactions.objects.filter(investor=user).values('date').distinct()
+        total_dates = transaction_dates.count()
+        
+        fx_instances = FX.objects.filter(investor=user, date__in=transaction_dates.values('date'))
+        missing_instances = total_dates - fx_instances.count()
+        
+        incomplete_instances = fx_instances.filter(
+            Q(USDEUR__isnull=True) | Q(USDGBP__isnull=True) | Q(CHFGBP__isnull=True) |
+            Q(RUBUSD__isnull=True) | Q(PLNUSD__isnull=True)
+        ).count()
+
+        stats = {
+            'total_dates': total_dates,
+            'missing_instances': missing_instances,
+            'incomplete_instances': incomplete_instances
+        }
+        logger.info(f"FX import stats for user {user.id}: {stats}")
+        return Response(stats)
+    
+    @action(detail=False, methods=['POST'])
+    def import_fx_rates(self, request):
+        import_option = request.data.get('import_option')
+        user = request.user
+
+        def generate_progress():
+            transaction_dates = Transactions.objects.filter(investor=user).values_list('date', flat=True).distinct()
+            total_dates = len(transaction_dates)
+            
+            for i, date in enumerate(transaction_dates):
+                if import_option in ['missing', 'both']:
+                    if not FX.objects.filter(investor=user, date=date).exists():
+                        FX.update_fx_rate(date, user)
+                if import_option in ['incomplete', 'both']:
+                    fx_instance = FX.objects.filter(investor=user, date=date).first()
+                    if fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
+                        FX.update_fx_rate(date, user)
+                
+                progress = (i + 1) / total_dates * 100
+                yield f"data: {json.dumps({'progress': progress, 'current': i + 1, 'total': total_dates})}\n\n"
+
+            yield f"data: {json.dumps({'status': 'completed'})}\n\n"
+
+        return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')

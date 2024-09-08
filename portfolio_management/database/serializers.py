@@ -92,10 +92,19 @@ class BrokerPerformanceSerializer(serializers.Serializer):
 class FXSerializer(serializers.ModelSerializer):
     class Meta:
         model = FX
-        fields = ['date', 'investor', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
-        read_only_fields = ['date', 'investor']
+        fields = ['id', 'date', 'investor', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
+        read_only_fields = ['id', 'date', 'investor']
 
 class FXRateSerializer(serializers.Serializer):
     source = serializers.CharField(max_length=3)
     target = serializers.CharField(max_length=3)
     date = serializers.DateField()
+
+class FXFormSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FX
+        fields = ['id', 'date', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
+
+    def validate(self, data):
+        # Add any custom validation logic here if needed
+        return data
