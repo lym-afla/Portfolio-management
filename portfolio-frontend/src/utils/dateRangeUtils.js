@@ -31,7 +31,7 @@ export function calculateDateRange(value, effectiveCurrentDate) {
       fromDate = null
       break
   }
-
+  
   return {
     from: fromDate ? format(startOfDay(fromDate), 'yyyy-MM-dd') : null,
     to: format(toDate, 'yyyy-MM-dd')

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from common.models import Assets
 from core.portfolio_utils import IRR
 from .sorting_utils import sort_entries
@@ -19,7 +20,6 @@ def get_securities_table_api(request):
     
     securities_data = _filter_securities(user, search)
     securities_data = _get_securities_data(user, securities_data, effective_current_date)
-    print("securities_data", securities_data)
     securities_data = sort_entries(securities_data, sort_by)
     paginated_securities, pagination_data = paginate_table(securities_data, page, items_per_page)
     formatted_securities = format_table_data(paginated_securities, currency_target, number_of_digits)
@@ -37,7 +37,6 @@ def get_securities_table_api(request):
 
 def _filter_securities(user, search):
     securities = Assets.objects.filter(investor=user)
-    print(securities)
     if search:
         securities = securities.filter(name__icontains=search)
     return securities
@@ -53,7 +52,7 @@ def _get_securities_data(user, securities, effective_current_date):
             'first_investment': security.investment_date() or 'None',
             'currency': security.currency,
             'open_position': security.position(effective_current_date),
-            'current_value': None,
+            'current_value': Decimal(0),
             'realized': security.realized_gain_loss(effective_current_date)['all_time'],
             'unrealized': security.unrealized_gain_loss(effective_current_date),
             'capital_distribution': security.get_capital_distribution(effective_current_date),

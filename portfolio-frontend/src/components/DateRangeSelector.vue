@@ -39,7 +39,7 @@
   </template>
   
   <script>
-  import { ref, computed } from 'vue'
+  import { ref, computed, watch, onMounted } from 'vue'
   import { useStore } from 'vuex'
   import { format, parseISO } from 'date-fns'
   import { calculateDateRange } from '@/utils/dateRangeUtils'
@@ -85,17 +85,42 @@
 
       const handlePredefinedRange = (value) => {
         selectedRange.value = value
-        const calculatedDateRange = calculateDateRange(value, effectiveCurrentDate.value)
-        dateFrom.value = calculatedDateRange.from
-        dateTo.value = calculatedDateRange.to
+        updateDateRange()
       }
-  
+
+      const updateDateRange = () => {
+        if (effectiveCurrentDate.value) {
+          const calculatedDateRange = calculateDateRange(selectedRange.value, effectiveCurrentDate.value)
+          dateFrom.value = calculatedDateRange.from
+          dateTo.value = calculatedDateRange.to
+        }
+      }
+
       const applyDateRange = () => {
         emit('update:modelValue', { dateRange: selectedRange.value, dateFrom: dateFrom.value, dateTo: dateTo.value })
         console.log("Emitting dates from DateRangeSelector", dateFrom.value, dateTo.value)
         menu.value = false
       }
-  
+
+      // Watch for changes in the modelValue prop
+      watch(() => props.modelValue, (newValue) => {
+        selectedRange.value = newValue.dateRange
+        dateFrom.value = newValue.dateFrom
+        dateTo.value = newValue.dateTo
+      }, { deep: true })
+
+      // Watch for changes in effectiveCurrentDate
+      watch(effectiveCurrentDate, () => {
+        updateDateRange()
+      })
+
+      // Initialize the component
+      onMounted(() => {
+        if (!dateFrom.value || !dateTo.value) {
+          updateDateRange()
+        }
+      })
+
       return {
         menu,
         selectedRange,

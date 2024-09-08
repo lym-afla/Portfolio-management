@@ -612,3 +612,20 @@ export const getBrokerFormStructure = async () => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+export const getFXData = async ({ startDate, endDate, page, itemsPerPage, sortBy, search }) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/fx/list_fx/`, {
+      startDate,
+      endDate,
+      page,
+      itemsPerPage,
+      sortBy,
+      search
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching FX data:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}

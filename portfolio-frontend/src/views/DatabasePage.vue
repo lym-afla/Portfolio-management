@@ -10,6 +10,7 @@
           <v-tab to="/database/brokers" value="brokers">Brokers</v-tab>
           <v-tab to="/database/securities" value="securities">Securities</v-tab>
           <v-tab to="/database/prices" value="prices">Prices</v-tab>
+          <v-tab to="/database/fx" value="fx">FX</v-tab>
         </v-tabs>
       </v-col>
     </v-row>
@@ -40,17 +41,21 @@ export default {
         activeTab.value = 'securities'
       } else if (path.includes('/prices')) {
         activeTab.value = 'prices'
+      } else if (path.includes('/fx')) {
+        activeTab.value = 'fx'
       }
     }
 
     const pageTitle = computed(() => {
       switch (activeTab.value) {
         case 'brokers':
-          return 'Database - Brokers'
+          return 'Database – Brokers'
         case 'securities':
-          return 'Database - Securities'
+          return 'Database – Securities'
         case 'prices':
-          return 'Database - Prices'
+          return 'Database – Prices'
+        case 'fx':
+          return 'Database – FX'
         default:
           return 'Database'
       }

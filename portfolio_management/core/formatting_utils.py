@@ -49,7 +49,7 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
     if isinstance(value, dict):
         return {k: format_value(v, k, currency, digits) for k, v in value.items()}
     if 'currency' in key:
-        return get_currency_symbol(value.upper(), locale='en_US')
+        return currency_format(value=None, currency=value)
     if 'date' in key or key == 'first_investment' and isinstance(value, datetime.date):
         return value.strftime('%d-%b-%y') if value else None
     elif any(term in key for term in ['percentage', 'share', 'irr']) or key in ['total_return', 'total_return_percentage']:

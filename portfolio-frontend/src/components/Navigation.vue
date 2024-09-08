@@ -85,6 +85,13 @@
           to="/database/prices"
           @click="goToPage('/database/prices')"
         ></v-list-item>
+        <v-list-item
+          prepend-icon="mdi-currency-usd"
+          title="FX"
+          value="fx"
+          to="/database/fx"
+          @click="goToPage('/database/fx')"
+        ></v-list-item>
       </v-list-group>
     </v-list>
 

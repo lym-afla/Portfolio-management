@@ -37,7 +37,7 @@ def _get_sort_value(item: Dict[str, Any], key: str) -> Union[Decimal, date, date
     """
     value = item.get(key)
     
-    if value == 'N/R':
+    if value == 'N/R' or value is None:
         return Decimal('-Infinity')
     elif 'date' in key:
         return value if isinstance(value, (date, datetime)) else datetime.min

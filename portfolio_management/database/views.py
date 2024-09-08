@@ -28,6 +28,9 @@ from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENC
 from core.price_utils import get_prices_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.securities_utils import get_securities_table_api
+from core.formatting_utils import format_table_data
+from core.pagination_utils import paginate_table
+from core.sorting_utils import sort_entries
 
 from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
 from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers_old_approach, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance
@@ -1040,7 +1043,7 @@ def get_broker_securities(request):
         return JsonResponse({'securities': list(securities)})
     return JsonResponse({'securities': []})
 
-from .serializers import BrokerPerformanceSerializer, PriceImportSerializer
+from .serializers import BrokerPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer
 
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, action
@@ -1048,6 +1051,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from .serializers import BrokerSerializer
+
+from django.core.paginator import Paginator
 
 @api_view(['GET'])
 def api_get_asset_types(request):
@@ -1515,3 +1520,92 @@ class UpdateBrokerPerformanceView(APIView):
             return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
         else:
             return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
+
+class FXViewSet(viewsets.ModelViewSet):
+    serializer_class = FXSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return FX.objects.filter(investor=self.request.user).order_by('-date')
+
+    def perform_create(self, serializer):
+        serializer.save(investor=self.request.user)
+
+    @action(detail=False, methods=['POST'])
+    def get_rate(self, request):
+        serializer = FXRateSerializer(data=request.data)
+        if serializer.is_valid():
+            source = serializer.validated_data['source']
+            target = serializer.validated_data['target']
+            date = serializer.validated_data['date']
+            
+            try:
+                rate = FX.get_rate(source, target, date)
+                return Response(rate)
+            except ValueError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['POST'])
+    def update_fx_rate(self, request):
+        date = request.data.get('date')
+        if not date:
+            return Response({'error': 'Date is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            FX.update_fx_rate(date, request.user)
+            return Response({'message': 'FX rates updated successfully'})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+    @action(detail=False, methods=['POST'])
+    def list_fx(self, request):
+        # Extract parameters from request data
+        start_date = request.data.get('startDate')
+        end_date = request.data.get('endDate')
+        page = int(request.data.get('page', 1))
+        items_per_page = int(request.data.get('itemsPerPage', 10))
+        sort_by = request.data.get('sortBy')
+        search = request.data.get('search', '')
+
+        # Filter queryset
+        queryset = self.get_queryset()
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+
+        # Apply search
+        if search:
+            queryset = queryset.filter(
+                Q(date__icontains=search) |
+                Q(USDEUR__icontains=search) |
+                Q(USDGBP__icontains=search) |
+                Q(CHFGBP__icontains=search) |
+                Q(RUBUSD__icontains=search) |
+                Q(PLNUSD__icontains=search)
+            )
+
+        # Convert queryset to list of dictionaries
+        fx_data = list(queryset.values('date', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD'))
+
+        # Apply sorting
+        if sort_by:
+            fx_data = sort_entries(fx_data, sort_by)
+
+        # Paginate results
+        paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
+
+        # Format the data
+        formatted_fx_data = format_table_data(paginated_fx_data, 'USD', 4)  # Assuming USD as base currency and 4 decimal places
+
+        response_data = {
+            'results': formatted_fx_data,
+            'count': pagination_info['total_items'],
+            'current_page': pagination_info['current_page'],
+            'total_pages': pagination_info['total_pages'],
+            'currencies': ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
+        }
+
+        return Response(response_data)

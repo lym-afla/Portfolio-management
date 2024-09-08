@@ -9,6 +9,7 @@ app_name = 'database' # Optional, but useful for namespacing
 
 router = DefaultRouter()
 router.register(r'brokers', views.BrokerViewSet, basename='broker')
+router.register(r'fx', views.FXViewSet, basename='fx')
 
 urlpatterns = [
     path('brokers/', views.database_brokers, name='brokers'),

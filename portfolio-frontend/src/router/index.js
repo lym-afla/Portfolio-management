@@ -14,6 +14,7 @@ import PricesPage from '../views/database/PricesPage.vue'
 import BrokersPage from '../views/database/BrokersPage.vue'
 import SecuritiesPage from '../views/database/SecuritiesPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
+import FXPage from '../views/database/FXPage.vue'
 
 export const loading = ref(true)
 
@@ -96,6 +97,11 @@ const routes = [
         path: 'securities',
         name: 'Securities',
         component: SecuritiesPage,
+      },
+      {
+        path: 'fx',
+        name: 'FX',
+        component: FXPage,
       },
     ]
   },

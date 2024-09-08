@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from common.models import Assets, Brokers
+from common.models import Assets, Brokers, FX
 from constants import BROKER_GROUPS, CURRENCY_CHOICES
 
 class PriceImportSerializer(serializers.Serializer):
@@ -88,3 +88,14 @@ class BrokerPerformanceSerializer(serializers.Serializer):
             'currency_choices': self.fields['currency'].choices,
             'is_restricted_choices': self.fields['is_restricted'].choices,
         }
+
+class FXSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FX
+        fields = ['date', 'investor', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
+        read_only_fields = ['date', 'investor']
+
+class FXRateSerializer(serializers.Serializer):
+    source = serializers.CharField(max_length=3)
+    target = serializers.CharField(max_length=3)
+    date = serializers.DateField()
