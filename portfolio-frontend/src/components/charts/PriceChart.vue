@@ -43,8 +43,8 @@ export default {
         return acc;
       }, {});
 
-      // Get unique dates across all securities
-      const allDates = [...new Set(this.prices.map(price => price.date))].sort();
+      // Get unique dates across all securities and sort them
+      const allDates = [...new Set(this.prices.map(price => price.date))].sort((a, b) => new Date(a) - new Date(b));
 
       // Generate datasets for each security
       const datasets = Object.entries(pricesBySecurity).map(([securityName, prices], index) => {

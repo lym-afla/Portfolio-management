@@ -1,22 +1,27 @@
 export const formatBrokerChoices = (choices) => {
-  return choices.flatMap(group => {
-    if (group[0] === '__SEPARATOR__') {
+  if (!Array.isArray(choices)) {
+    console.error('Received invalid choices format:', choices)
+    return []
+  }
+
+  return choices.flatMap(choice => {
+    if (choice[0] === '__SEPARATOR__') {
       return { type: 'divider' }
-    }
-    if (Array.isArray(group[1])) {
+    } else if (Array.isArray(choice[1])) {
       return [
-        { title: group[0], type: 'header' },
-        ...group[1].map(choice => ({
-          title: choice[1],
-          value: choice[0],
-          type: 'option'
+        { type: 'header', title: choice[0] },
+        ...choice[1].map(subChoice => ({
+          type: 'option',
+          title: subChoice[1],
+          value: subChoice[0]
         }))
       ]
-    }
-    return {
-      title: group[1],
-      value: group[0],
-      type: 'option'
+    } else {
+      return {
+        type: 'option',
+        title: choice[1],
+        value: choice[0]
+      }
     }
   })
 }

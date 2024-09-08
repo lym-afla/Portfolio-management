@@ -880,9 +880,11 @@ def generate_dates(start, end, frequency):
         current = start.replace(day=1) + relativedelta(months=1) - timedelta(days=1)  # Last day of the start month
     elif frequency == 'quarterly':
         quarter_end_month = 3 * ((start.month - 1) // 3 + 1)
-        current = date(start.year, quarter_end_month, 1) + relativedelta(months=1, days=-1)
+        current = date(start.year, quarter_end_month, 1) + relativedelta(months=1) - timedelta(days=1)
     elif frequency == 'annually':
-        current = start.replace(month=12, day=31)  # Last day of the current year
+        current = date(start.year, 12, 31)
+    else:
+        raise ValueError(f"Unsupported frequency: {frequency}")
     
     while current <= end:
         dates.append(current)
@@ -891,7 +893,7 @@ def generate_dates(start, end, frequency):
         elif frequency == 'quarterly':
             current = (current + relativedelta(months=3)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
         elif frequency == 'annually':
-            current = (current + relativedelta(years=1)).replace(month=12, day=31)
+            current = date(current.year + 1, 12, 31)
     return dates
 
 def import_security_prices_from_ft(security, dates):
@@ -1038,25 +1040,26 @@ def get_broker_securities(request):
         return JsonResponse({'securities': list(securities)})
     return JsonResponse({'securities': []})
 
-from .serializers import PriceImportSerializer
+from .serializers import BrokerPerformanceSerializer, PriceImportSerializer
 
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
+from .serializers import BrokerSerializer
 
 @api_view(['GET'])
 def api_get_asset_types(request):
     asset_types = [{'value': value, 'text': text} for value, text in ASSET_TYPE_CHOICES]
     return Response(asset_types)
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def api_get_brokers(request):
-    user = request.user
-    brokers = Brokers.objects.filter(investor=user).order_by('name').values('id', 'name')
-    return Response(list(brokers))
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def api_get_brokers(request):
+#     user = request.user
+#     brokers = Brokers.objects.filter(investor=user).order_by('name').values('id', 'name')
+#     return Response(list(brokers))
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1082,10 +1085,10 @@ def api_get_securities(request):
 def api_get_prices_table(request):
     return Response(get_prices_table_api(request))
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def api_get_brokers_table(request):
-    return Response(get_brokers_table_api(request))
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def api_get_brokers_table(request):
+#     return Response(get_brokers_table_api(request))
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -1275,58 +1278,240 @@ class PriceImportView(APIView):
     def post(self, request):
         serializer = PriceImportSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            # Here you would implement the logic to import prices
-            # based on the validated data in serializer.validated_data
-            return Response({"message": "Prices imported successfully"}, status=status.HTTP_201_CREATED)
+            return StreamingHttpResponse(
+                self.import_prices(serializer.validated_data),
+                content_type='text/event-stream'
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# from rest_framework.decorators import api_view, permission_classes
-# from rest_framework.permissions import IsAuthenticated
-# from rest_framework.response import Response
-# from django import forms
-# from .forms import PriceImportForm
+    def import_prices(self, data):
+        securities = data.get('securities', [])
+        broker = data.get('broker')
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        frequency = data.get('frequency')
+        single_date = data.get('single_date')
 
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def api_price_import_form_structure(request):
-#     form = PriceImportForm(user=request.user)
-#     structure = {
-#         'fields': []
-#     }
+        if single_date:
+            dates = [single_date]
+            start_date = end_date = single_date
+            frequency = 'single'
+        else:
+            dates = generate_dates(start_date, end_date, frequency)
+            
+        if broker:
+            all_securities = broker.securities.filter(investor=self.request.user)
+            effective_current_date = datetime.strptime(self.request.session['effective_current_date'], '%Y-%m-%d').date()
+            securities = [
+                security for security in all_securities
+                if security.position(effective_current_date) > 0
+            ]
 
-#     for field_name, field in form.fields.items():
-#         field_data = {
-#             'name': field_name,
-#             'label': field.label,
-#             'type': field.widget.__class__.__name__.lower(),
-#             'required': field.required,
-#             'choices': None,
-#             'initial': field.initial,
-#             'help_text': field.help_text,
-#         }
+        total_securities = len(securities)
+        total_dates = len(dates)
+        total_operations = total_securities * total_dates
+        current_operation = 0
+        results = []
 
-#         if isinstance(field, forms.ChoiceField):
-#             field_data['choices'] = [{'value': str(choice[0]), 'text': str(choice[1])} for choice in field.choices]
-#         elif isinstance(field, forms.ModelChoiceField) or isinstance(field, forms.ModelMultipleChoiceField):
-#             field_data['choices'] = [{'value': str(obj.pk), 'text': str(obj)} for obj in field.queryset]
+        for security in securities:
+            try:
+                security = Assets.objects.get(id=security.id, investor=self.request.user)
+                
+                if security.data_source == 'FT' and security.update_link:
+                    price_generator = import_security_prices_from_ft(security, dates)
+                elif security.data_source == 'YAHOO' and security.yahoo_symbol:
+                    price_generator = import_security_prices_from_yahoo(security, dates)
+                else:
+                    error_message = f"No valid data source or update information for {security.name}"
+                    results.append({
+                        "security_name": security.name,
+                        "status": "skipped",
+                        "message": error_message
+                    })
+                    
+                    yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
+                    current_operation += len(dates)
+                    continue
 
-#         if isinstance(field.widget, forms.CheckboxInput):
-#             field_data['type'] = 'checkbox'
-#         elif isinstance(field.widget, forms.Textarea):
-#             field_data['type'] = 'textarea'
-#         elif isinstance(field.widget, forms.URLInput):
-#             field_data['type'] = 'url'
-#         elif isinstance(field.widget, forms.DateInput):
-#             field_data['type'] = 'date'
-#         elif isinstance(field.widget, forms.SelectMultiple):
-#             field_data['type'] = 'selectmultiple'
-#         elif isinstance(field.widget, forms.Select):
-#             field_data['type'] = 'select'
+                security_result = {
+                    "security_name": security.name,
+                    "updated_dates": [],
+                    "skipped_dates": [],
+                    "errors": []
+                }
 
-#         # Convert initial value to string if it's not None
-#         if field_data['initial'] is not None:
-#             field_data['initial'] = str(field_data['initial'])
+                for result in price_generator:
+                    current_operation += 1
+                    # progress = (current_operation / total_operations) * 100
 
-#         structure['fields'].append(field_data)
+                    if result["status"] == "updated":
+                        security_result["updated_dates"].append(result["date"])
+                    elif result["status"] == "skipped":
+                        security_result["skipped_dates"].append(result["date"])
+                    elif result["status"] == "error":
+                        security_result["errors"].append(f"{result['date']}: {result['message']}")
+
+                    yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
+
+                results.append(security_result)
+
+            except Assets.DoesNotExist:
+                error_message = f"Security with ID {security.id} not found"
+                results.append(error_message)
+                yield self.format_progress('error', current_operation, total_operations, message=error_message)
+                current_operation += len(dates)
+            except Exception as e:
+                error_message = f"Error updating prices for security {security.id}: {str(e)}"
+                results.append(error_message)
+                yield self.format_progress('error', current_operation, total_operations, message=error_message)
+                current_operation += len(dates)
+
+        yield self.format_progress('complete', current_operation, total_operations,
+                                   message='Price import process completed',
+                                   details=results,
+                                   start_date=start_date.strftime('%Y-%m-%d'),
+                                   end_date=end_date.strftime('%Y-%m-%d'),
+                                   frequency=frequency,
+                                   total_dates=len(dates))
         
-#     return Response(structure)
+    @staticmethod
+    def format_progress(status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
+        progress_data = {
+            'status': status,
+            'current': current,
+            'total': total,
+            'progress': (current / total) * 100,
+        }
+        if security_name:
+            progress_data['security_name'] = security_name
+        if date:
+            progress_data['date'] = date
+        if result:
+            progress_data['result'] = result
+        if message:
+            progress_data['message'] = message
+        progress_data.update(kwargs)
+        return json.dumps(progress_data) + '\n'
+            
+        
+class BrokerViewSet(viewsets.ModelViewSet):
+    serializer_class = BrokerSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Brokers.objects.filter(investor=self.request.user).order_by('name')
+
+    def perform_create(self, serializer):
+        serializer.save(investor=self.request.user)
+
+    @action(detail=False, methods=['POST'])
+    def list_brokers(self, request, *args, **kwargs):
+        return Response(get_brokers_table_api(request))
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        data = queryset.values('id', 'name')
+        return Response(list(data))
+    
+    # @action(detail=False, methods=['POST'])
+    # def get_brokers_for_database(self, request):
+    #     # This adds a custom action that matches your previous API
+    #     return Response(get_brokers_table_api(request))
+
+    @action(detail=False, methods=['GET'])
+    def form_structure(self, request):
+        return Response({
+            'fields': [
+                {
+                    'name': 'name',
+                    'label': 'Name',
+                    'type': 'textinput',
+                    'required': True,
+                },
+                {
+                    'name': 'country',
+                    'label': 'Country',
+                    'type': 'textinput',
+                    'required': True,
+                },
+                {
+                    'name': 'restricted',
+                    'label': 'Restricted',
+                    'type': 'checkbox',
+                    'required': False,
+                },
+                {
+                    'name': 'comment',
+                    'label': 'Comment',
+                    'type': 'textarea',
+                    'required': False,
+                },
+            ]
+        })
+        
+class UpdateBrokerPerformanceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = BrokerPerformanceSerializer(investor=request.user)
+        form_data = serializer.get_form_data()
+        return Response(form_data)
+
+    def post(self, request):
+        form = BrokerPerformanceForm(request.data, investor=request.user)
+        if form.is_valid():
+            effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+            broker_or_group = form.cleaned_data['broker_or_group']
+            currency = form.cleaned_data['currency']
+            is_restricted_str = form.cleaned_data['is_restricted']
+            skip_existing_years = form.cleaned_data['skip_existing_years']
+            user = request.user
+
+            if is_restricted_str == 'None':
+                is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
+            elif is_restricted_str == 'True':
+                is_restricted_list = [True]
+            elif is_restricted_str == 'False':
+                is_restricted_list = [False]
+            elif is_restricted_str == 'All':
+                is_restricted_list = [None, True, False]
+            else:
+                return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
+            
+            def generate_progress():
+                currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
+                total_operations = 0
+                for curr in currencies:
+                    for is_restricted in is_restricted_list:
+                        total_operations += get_years_count(user, effective_current_date, broker_or_group, curr, is_restricted)
+
+                current_operation = 0
+
+                try:
+                    for curr in currencies:
+                        for is_restricted in is_restricted_list:
+                            for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
+                                progress_info = json.loads(progress_data)
+                                if progress_info['status'] == 'progress':
+                                    current_operation += 1
+                                    progress = (current_operation / total_operations) * 100
+                                    yield json.dumps({
+                                        'status': 'progress',
+                                        'current': current_operation,
+                                        'total': total_operations,
+                                        'progress': progress,
+                                        'year': progress_info['year'],
+                                        'currency': curr,
+                                        'is_restricted': str(is_restricted)
+                                    }) + '\n'
+                                else:
+                                    yield progress_data
+
+                    yield json.dumps({'status': 'complete'}) + '\n'
+
+                except Exception as e:
+                    yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
+
+            return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+        else:
+            return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)

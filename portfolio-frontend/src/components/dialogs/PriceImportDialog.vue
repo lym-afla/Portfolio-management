@@ -107,22 +107,76 @@
             Import Prices
           </v-btn>
         </v-form>
-        <v-alert v-if="generalError" type="error" class="mt-4">
-          {{ generalError }}
-        </v-alert>
       </v-card-text>
+    </v-card>
+  </v-dialog>
+
+  <ProgressDialog
+    v-model="showProgressDialog"
+    :title="'Importing Prices'"
+    :progress="progress"
+    :error="generalError"
+  />
+
+  <v-dialog v-model="showSummaryDialog" max-width="800px">
+    <v-card>
+      <v-card-title>Import Summary</v-card-title>
+      <v-card-text>
+        <v-alert v-if="importSummary" type="success">
+          <p>Total securities processed: {{ importSummary.totalSecurities }}</p>
+          <p>Total dates processed: {{ importSummary.totalDates }}</p>
+          <p>Start date: {{ importSummary.startDate }}</p>
+          <p>End date: {{ importSummary.endDate }}</p>
+          <p>Frequency: {{ importSummary.frequency }}</p>
+        </v-alert>
+
+        <v-table v-if="detailedSummary.length > 0">
+          <thead>
+            <tr>
+              <th>Security</th>
+              <th>Updated Dates</th>
+              <th>Skipped Dates</th>
+              <th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="security in detailedSummary" :key="security.name">
+              <td>{{ security.name }}</td>
+              <td>{{ security.updatedDates.length }}</td>
+              <td>{{ security.skippedDates.length }}</td>
+              <td>
+                <v-tooltip v-if="security.errors.length > 0" bottom>
+                  <template v-slot:activator="{ props }">
+                    <v-icon v-bind="props" color="error">mdi-alert-circle</v-icon>
+                  </template>
+                  <span>{{ security.errors.join(', ') }}</span>
+                </v-tooltip>
+                <span v-else>None</span>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="blue darken-1" text @click="closeSummaryDialog">Close</v-btn>
+      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import { importPrices, getPriceImportFormStructure } from '@/services/api'
 import { format } from 'date-fns'
+import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 
 export default {
   name: 'PriceImportDialog',
+  components: {
+    ProgressDialog
+  },
   props: {
     modelValue: Boolean,
   },
@@ -195,6 +249,12 @@ export default {
     const frequencyChoices = ref([])
     const generalError = ref('')
     const isSubmitting = ref(false)
+    const isImporting = ref(false)
+    const progress = ref(0)
+    const importSummary = ref(null)
+    const detailedSummary = ref([])
+    const showProgressDialog = ref(false)
+    const showSummaryDialog = ref(false)
 
     const fetchFormStructure = async () => {
       try {
@@ -207,10 +267,6 @@ export default {
         generalError.value = 'Failed to load form structure. Please try again.'
       }
     }
-
-    onMounted(() => {
-      fetchFormStructure()
-    })
 
     const securitiesAllSelected = computed(() => {
       return securities.value.length === securitiesList.value.length
@@ -244,9 +300,45 @@ export default {
       }
     }
 
+    const handleProgress = (event) => {
+      console.log('Progress event received:', event)
+      const data = event.detail
+      if (data.status === 'progress') {
+        progress.value = data.progress
+        console.log('Updated progress:', progress.value)
+      } else if (data.status === 'complete') {
+        importSummary.value = {
+          totalSecurities: data.details.length,
+          totalDates: data.total_dates,
+          startDate: data.start_date,
+          endDate: data.end_date,
+          frequency: data.frequency
+        }
+        detailedSummary.value = data.details.map(security => ({
+          name: security.security_name,
+          updatedDates: security.updated_dates || [],
+          skippedDates: security.skipped_dates || [],
+          errors: security.errors || []
+        }))
+        showProgressDialog.value = false
+        showSummaryDialog.value = true
+        emit('prices-imported', importSummary.value)
+      } else if (data.status === 'error') {
+        generalError.value = data.message
+      }
+    }
+
+    onMounted(() => {
+      window.addEventListener('priceImportProgress', handleProgress)
+
+      fetchFormStructure()
+    })
+
+    onUnmounted(() => {
+      window.removeEventListener('priceImportProgress', handleProgress)
+    })
+
     const submitForm = handleSubmit(async (values) => {
-      console.log('Submitting form with values:', values)
-      console.log('Current errors:', errors.value)
 
       // Check if there are any front-end validation errors
       if (Object.keys(errors.value).length > 0) {
@@ -254,40 +346,37 @@ export default {
         return
       }
 
-      isSubmitting.value = true
+      dialog.value = false
+      showProgressDialog.value = true
+      progress.value = 0
+      importSummary.value = null
+      detailedSummary.value = []
       generalError.value = ''
-      // Clear previous errors
-      Object.keys(errors.value).forEach(key => {
-        errors.value[key] = ''
-      })
 
       try {
         // Prepare the data based on the date type
-        const submitData = { ...values }
+        const submitData = { 
+          securities: values.securities,
+          brokers: values.brokers,
+          frequency: values.frequency
+        }
+
         if (dateType.value === 'single') {
-          // If it's a single date, remove the date range fields and format the single date
-          delete submitData.startDate
-          delete submitData.endDate
-          delete submitData.frequency
-          if (submitData.singleDate) {
-            submitData.single_date = format(new Date(submitData.singleDate), 'yyyy-MM-dd')
+          if (values.singleDate) {
+            submitData.single_date = format(new Date(values.singleDate), 'yyyy-MM-dd')
           }
         } else {
-          // If it's a date range, remove the single date field and format start and end dates
-          delete submitData.singleDate
-          if (submitData.startDate) {
-            submitData.start_date = format(new Date(submitData.startDate), 'yyyy-MM-dd')
+          if (values.startDate) {
+            submitData.start_date = format(new Date(values.startDate), 'yyyy-MM-dd')
           }
-          if (submitData.endDate) {
-            submitData.end_date = format(new Date(submitData.endDate), 'yyyy-MM-dd')
+          if (values.endDate) {
+            submitData.end_date = format(new Date(values.endDate), 'yyyy-MM-dd')
           }
         }
 
-        console.log('Submitting data:', submitData)  // Add this line for debugging
-
-        const response = await importPrices(submitData)
-        emit('prices-imported', response)
-        dialog.value = false
+        console.log('Submitting data:', submitData)
+        
+        await importPrices(submitData)
         resetForm()
       } catch (error) {
         console.error('Error importing prices:', error)
@@ -308,9 +397,16 @@ export default {
           generalError.value = error.toString()
         }
       } finally {
-        isSubmitting.value = false
+        if (!showSummaryDialog.value) {
+          showProgressDialog.value = false
+        }
       }
     })
+
+    const closeSummaryDialog = () => {
+      showSummaryDialog.value = false
+      resetForm()
+    }
 
     return {
       dialog,
@@ -332,6 +428,10 @@ export default {
       singleDateError,
       generalError,
       isSubmitting,
+      isImporting,
+      progress,
+      importSummary,
+      detailedSummary,
       securitiesAllSelected,
       securitiesIndeterminate,
       brokersAllSelected,
@@ -340,6 +440,9 @@ export default {
       toggleSelectAllBrokers,
       submitForm,
       errors,
+      showProgressDialog,
+      showSummaryDialog,
+      closeSummaryDialog
     }
   }
 }

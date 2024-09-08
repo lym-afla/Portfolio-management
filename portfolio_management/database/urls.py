@@ -1,10 +1,14 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .import views
 from common.models import Brokers, Assets, Transactions, Prices
 from database.forms import BrokerForm, SecurityForm, TransactionForm, PriceForm
-from .views import PriceImportView
+from .views import PriceImportView, UpdateBrokerPerformanceView
 
 app_name = 'database' # Optional, but useful for namespacing
+
+router = DefaultRouter()
+router.register(r'brokers', views.BrokerViewSet, basename='broker')
 
 urlpatterns = [
     path('brokers/', views.database_brokers, name='brokers'),
@@ -37,10 +41,10 @@ urlpatterns = [
 
     #New API methods
     path('api/get-asset-types/', views.api_get_asset_types, name='api_get_asset_types'),
-    path('api/get-brokers/', views.api_get_brokers, name='api_get_brokers'),
+    # path('api/get-brokers/', views.api_get_brokers, name='api_get_brokers'),
     path('api/get-securities/', views.api_get_securities, name='api_get_securities'),
     path('api/get-prices-table/', views.api_get_prices_table, name='api_get_prices_table'),
-    path('api/get-brokers-for-database/', views.api_get_brokers_table, name='api_get_brokers_for_database'),
+    # path('api/get-brokers-for-database/', views.api_get_brokers_table, name='api_get_brokers_for_database'),
     path('api/get-securities-for-database/', views.api_get_securities_table, name='api_get_securities_for_database'),
     path('api/add-price/', views.api_add_price, name='api_add_price'),
     path('api/delete-price/<int:price_id>/', views.api_delete_price, name='api_delete_price'),
@@ -53,4 +57,6 @@ urlpatterns = [
     path('api/get-security-details/<int:security_id>/', views.api_get_security_details, name='api_get_security_details'),
     # path('api/price-import-form-structure/', views.api_price_import_form_structure, name='api_price_import_form_structure'),
     path('api/price-import/', PriceImportView.as_view(), name='price_import'),
+    path('api/', include(router.urls)),
+    path('api/update-broker-performance/', UpdateBrokerPerformanceView.as_view(), name='update_broker_performance'),
 ]

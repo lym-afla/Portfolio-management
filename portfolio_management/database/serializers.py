@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from common.models import Assets, Brokers
+from constants import BROKER_GROUPS, CURRENCY_CHOICES
 
 class PriceImportSerializer(serializers.Serializer):
     securities = serializers.PrimaryKeyRelatedField(
@@ -42,3 +43,48 @@ class PriceImportSerializer(serializers.Serializer):
             raise serializers.ValidationError("Either date range with frequency or single date must be provided.")
 
         return data
+    
+class BrokerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brokers
+        fields = ['id', 'name', 'country', 'comment', 'restricted']
+        read_only_fields = ['id']
+
+class BrokerPerformanceSerializer(serializers.Serializer):
+    broker_or_group = serializers.ChoiceField(choices=[])
+    currency = serializers.ChoiceField(choices=CURRENCY_CHOICES + (('All', 'All Currencies'),))
+    is_restricted = serializers.ChoiceField(choices=[
+        ('All', 'All'),
+        ('None', 'No flag'),
+        ('True', 'Restricted'),
+        ('False', 'Not restricted')
+    ])
+    skip_existing_years = serializers.BooleanField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        investor = kwargs.pop('investor', None)
+        super().__init__(*args, **kwargs)
+
+        broker_or_group_choices = [
+            ('All brokers', 'All brokers'),
+            ('__SEPARATOR_1__', '__SEPARATOR__'),
+        ]
+        
+        if investor is not None:
+            brokers = Brokers.objects.filter(investor=investor).order_by('name')
+            user_brokers = [(broker.name, broker.name) for broker in brokers]
+            if user_brokers:
+                broker_or_group_choices.extend(user_brokers)
+                broker_or_group_choices.append(('__SEPARATOR_2__', '__SEPARATOR__'))
+        
+        # Add BROKER_GROUPS keys
+        broker_or_group_choices.extend((group, group) for group in BROKER_GROUPS.keys())
+
+        self.fields['broker_or_group'].choices = broker_or_group_choices
+
+    def get_form_data(self):
+        return {
+            'broker_or_group_choices': self.fields['broker_or_group'].choices,
+            'currency_choices': self.fields['currency'].choices,
+            'is_restricted_choices': self.fields['is_restricted'].choices,
+        }

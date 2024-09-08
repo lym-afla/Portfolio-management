@@ -430,11 +430,10 @@ export default {
       showImportDialog.value = true
     }
 
-    const handlePricesImported = (response) => {
-      // Handle the response from the import process
-      // This might involve refreshing the price data or showing a success message
-      console.log('Prices imported:', response)
+    const handlePricesImported = (summary) => {
+      console.log('Prices imported:', summary)
       // Refresh your price data here
+      fetchPriceData()
     }
 
     const editPrice = async (item) => {

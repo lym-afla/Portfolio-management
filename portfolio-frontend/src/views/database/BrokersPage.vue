@@ -8,7 +8,10 @@
       <v-card-text>
         <v-row align="center" justify="space-between">
           <v-col cols="auto">
-            <AddBrokerButton @add-broker="openAddDialog" />
+            <v-btn color="primary" @click="openAddDialog">
+              <v-icon left>mdi-plus</v-icon>
+              Add Broker
+            </v-btn>
           </v-col>
         </v-row>
       </v-card-text>
@@ -115,51 +118,27 @@
       </template>
     </v-data-table>
 
-    <v-dialog v-model="dialog" max-width="500px">
-      <v-card>
-        <v-card-title>
-          <span class="text-h5">{{ formTitle }}</span>
-        </v-card-title>
-        <v-card-text>
-          <v-container>
-            <v-row>
-              <v-col cols="12" sm="6" md="4">
-                <v-text-field v-model="editedItem.name" label="Name"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6" md="4">
-                <v-text-field v-model="editedItem.country" label="Country"></v-text-field>
-              </v-col>
-              <v-col cols="12" sm="6" md="4">
-                <v-checkbox v-model="editedItem.restricted" label="Restricted"></v-checkbox>
-              </v-col>
-              <v-col cols="12">
-                <v-textarea v-model="editedItem.comment" label="Comment"></v-textarea>
-              </v-col>
-            </v-row>
-          </v-container>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="close">Cancel</v-btn>
-          <v-btn color="blue darken-1" text @click="save">Save</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <BrokerFormDialog
+      v-model="showBrokerDialog"
+      :edit-item="editingBroker"
+      @broker-added="handleBrokerAdded"
+      @broker-updated="handleBrokerUpdated"
+    />
   </div>
 </template>
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
-import AddBrokerButton from '@/components/buttons/AddBroker.vue'
-import { getBrokersForDatabase, createBroker, updateBroker, deleteBroker } from '@/services/api'
+import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
+import { getBrokersTable, deleteBroker, getBrokerDetails } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'BrokersPage',
   components: {
-    AddBrokerButton
+    BrokerFormDialog
   },
   setup() {
     const store = useStore()
@@ -178,22 +157,11 @@ export default {
     const brokers = ref([])
     const loading = ref(false)
     const tableLoading = ref(false)
-    const dialog = ref(false)
-    const editedIndex = ref(-1)
-    const editedItem = ref({
-      name: '',
-      country: '',
-      comment: '',
-      restricted: false
-    })
-    const defaultItem = {
-      name: '',
-      country: '',
-      comment: '',
-      restricted: false
-    }
 
     const currencies = ref([])
+    const totalItems = ref(0)
+    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
 
     const headers = computed(() => [
       { title: 'Name', key: 'name', align: 'start', sortable: true },
@@ -231,14 +199,6 @@ export default {
       return alignments;
     });
 
-    const formTitle = computed(() => {
-      return editedIndex.value === -1 ? 'New Broker' : 'Edit Broker'
-    })
-
-    const totalItems = ref(0)
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
-
     const totals = ref({})
 
     const flattenedHeaders = computed(() => {
@@ -258,7 +218,7 @@ export default {
     const fetchBrokers = async () => {
       tableLoading.value = true
       try {
-        const response = await getBrokersForDatabase({
+        const response = await getBrokersTable({
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           sortBy: sortBy.value[0] || {},
@@ -276,15 +236,18 @@ export default {
     }
 
     const openAddDialog = () => {
-      editedIndex.value = -1
-      editedItem.value = Object.assign({}, defaultItem)
-      dialog.value = true
+      editingBroker.value = null
+      showBrokerDialog.value = true
     }
 
-    const editBroker = (item) => {
-      editedIndex.value = brokers.value.indexOf(item)
-      editedItem.value = Object.assign({}, item)
-      dialog.value = true
+    const editBroker = async (item) => {
+      try {
+        const brokerDetails = await getBrokerDetails(item.id)
+        editingBroker.value = brokerDetails
+        showBrokerDialog.value = true
+      } catch (error) {
+        handleApiError(error)
+      }
     }
 
     const processDeleteBroker = async (item) => {
@@ -299,24 +262,12 @@ export default {
       }
     }
 
-    const close = () => {
-      dialog.value = false
-      editedIndex.value = -1
-      editedItem.value = Object.assign({}, defaultItem)
+    const handleBrokerAdded = () => {
+      fetchBrokers()
     }
 
-    const save = async () => {
-      try {
-        if (editedIndex.value > -1) {
-          await updateBroker(editedItem.value.id, editedItem.value)
-        } else {
-          await createBroker(editedItem.value)
-        }
-        close()
-        fetchBrokers()
-      } catch (error) {
-        handleApiError(error)
-      }
+    const handleBrokerUpdated = () => {
+      fetchBrokers()
     }
 
     onMounted(() => {
@@ -337,16 +288,19 @@ export default {
       { deep: true }
     )
 
+    const showBrokerDialog = ref(false)
+    const editingBroker = ref(null)
+
+    const addBroker = () => {
+      editingBroker.value = null
+      showBrokerDialog.value = true
+    }
+
     return {
       brokers,
       loading,
       tableLoading,
-      dialog,
-      editedIndex,
-      editedItem,
-      defaultItem,
       headers,
-      formTitle,
       itemsPerPage,
       currentPage,
       totalItems,
@@ -360,12 +314,15 @@ export default {
       openAddDialog,
       editBroker,
       processDeleteBroker,
-      close,
-      save,
       currencies,
+      handleBrokerAdded,
+      handleBrokerUpdated,
       headerAlignments,
       totals,
       flattenedHeaders,
+      showBrokerDialog,
+      editingBroker,
+      addBroker,
     }
   }
 }

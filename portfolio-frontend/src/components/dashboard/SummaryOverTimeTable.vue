@@ -27,6 +27,7 @@
           </tr>
         </tbody>
       </v-table>
+      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Broker Performance</v-btn>
     </v-card-text>
   </v-card>
   <v-card v-else>
@@ -35,13 +36,28 @@
       <v-alert type="info">
         No data available for the selected broker.
       </v-alert>
+      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Broker Performance</v-btn>
     </v-card-text>
   </v-card>
+
+  <UpdateBrokerPerformanceDialog
+    v-model="showDialog"
+    @update-started="handleUpdateStarted"
+    @update-progress="handleUpdateProgress"
+    @update-completed="handleUpdateCompleted"
+    @update-error="handleUpdateError"
+  />
 </template>
 
 <script>
+import { ref } from 'vue'
+import UpdateBrokerPerformanceDialog from '@/components/dialogs/UpdateBrokerPerformanceDialog.vue'
+
 export default {
   name: 'SummaryOverTimeTable',
+  components: {
+    UpdateBrokerPerformanceDialog
+  },
   props: {
     lines: {
       type: Array,
@@ -60,6 +76,40 @@ export default {
       default: ''
     }
   },
+  emits: ['refresh-data'],
+  setup(props, { emit }) {
+    const showDialog = ref(false)
+
+    const showUpdateDialog = () => {
+      showDialog.value = true
+    }
+
+    const handleUpdateStarted = () => {
+      console.log('Update started')
+    }
+
+    const handleUpdateProgress = (data) => {
+      console.log('Update progress:', data)
+    }
+
+    const handleUpdateCompleted = () => {
+      console.log('Update completed')
+      emit('refresh-data')
+    }
+
+    const handleUpdateError = (error) => {
+      console.error('Update error:', error)
+    }
+
+    return {
+      showDialog,
+      showUpdateDialog,
+      handleUpdateStarted,
+      handleUpdateProgress,
+      handleUpdateCompleted,
+      handleUpdateError
+    }
+  }
 }
 </script>
 
