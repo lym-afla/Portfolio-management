@@ -6,8 +6,9 @@ from .formatting_utils import currency_format, format_table_data
 from datetime import datetime
 
 def get_brokers_table_api(request):
-    
+
     data = request.data
+    
     page = int(data.get('page'))
     items_per_page = int(data.get('itemsPerPage'))
     search = data.get('search', '')
@@ -15,8 +16,6 @@ def get_brokers_table_api(request):
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-    # use_default_currency = user.use_default_currency_where_relevant
-    # currency_target = None if use_default_currency else user.default_currency
     currency_target = user.default_currency
     number_of_digits = user.digits
     

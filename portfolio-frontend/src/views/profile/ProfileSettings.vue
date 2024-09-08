@@ -170,6 +170,7 @@ export default {
     },
     async fetchChoices() {
       const response = await getSettingsChoices();
+      console.log('ProfileSettings Response:', response);
       this.currencyChoices = this.formatChoices(response.currency_choices);
       this.frequencyChoices = this.formatChoices(response.frequency_choices);
       this.timelineChoices = this.formatChoices(response.timeline_choices);

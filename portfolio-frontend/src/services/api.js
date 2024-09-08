@@ -241,14 +241,14 @@ export const getAssetTypes = async () => {
   }
 }
 
-export const getBrokers = async () => {
-  try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/get-brokers/`)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
+// export const getBrokers = async () => {
+//   try {
+//     const response = await axiosInstance.get(`${API_URL}/database/api/get-brokers/`)
+//     return response.data
+//   } catch (error) {
+//     throw error.response ? error.response.data : error.message
+//   }
+// }
 
 export const getSecurities = async (assetTypes = [], brokerId = null) => {
   try {
@@ -276,41 +276,41 @@ export const getPrices = async (params) => {
   }
 }
 
-export const getBrokersForDatabase = async (params) => {
-  try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/get-brokers-for-database/`, params)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
+// export const getBrokersForDatabase = async (params) => {
+//   try {
+//     const response = await axiosInstance.post(`${API_URL}/database/api/get-brokers-for-database/`, params)
+//     return response.data
+//   } catch (error) {
+//     throw error.response ? error.response.data : error.message
+//   }
+// }
 
-export const createBroker = async (brokerData) => {
-  try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/create-broker/`, brokerData)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
+// export const createBroker = async (brokerData) => {
+//   try {
+//     const response = await axiosInstance.post(`${API_URL}/database/api/create-broker/`, brokerData)
+//     return response.data
+//   } catch (error) {
+//     throw error.response ? error.response.data : error.message
+//   }
+// }
 
-export const updateBroker = async (brokerId, brokerData) => {
-  try {
-    const response = await axiosInstance.put(`${API_URL}/database/api/update-broker/${brokerId}/`, brokerData)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
+// export const updateBroker = async (brokerId, brokerData) => {
+//   try {
+//     const response = await axiosInstance.put(`${API_URL}/database/api/update-broker/${brokerId}/`, brokerData)
+//     return response.data
+//   } catch (error) {
+//     throw error.response ? error.response.data : error.message
+//   }
+// }
 
-export const deleteBroker = async (brokerId) => {
-  try {
-    const response = await axiosInstance.delete(`${API_URL}/database/api/delete-broker/${brokerId}/`)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
+// export const deleteBroker = async (brokerId) => {
+//   try {
+//     const response = await axiosInstance.delete(`${API_URL}/database/api/delete-broker/${brokerId}/`)
+//     return response.data
+//   } catch (error) {
+//     throw error.response ? error.response.data : error.message
+//   }
+// }
 
 export const getSecuritiesForDatabase = async (params) => {
   try {
@@ -347,16 +347,6 @@ export const deleteSecurity = async (securityId) => {
     throw error.response ? error.response.data : error.message
   }
 }
-
-// export const getSummaryData = async () => {
-//   try {
-//     const response = await axiosInstance.get(`${API_URL}/dashboard/api/get-summary/`)
-//     return response.data
-//   } catch (error) {
-//     console.error('Error fetching summary data:', error)
-//     throw error
-//   }
-// }
 
 export const getDashboardBreakdown = async () => {
   try {
@@ -409,5 +399,216 @@ export const getDashboardSummary = async () => {
   } catch (error) {
     console.error('Error fetching dashboard summary:', error)
     throw error
+  }
+}
+
+export const getBrokerPerformanceFormData = async () => {
+  const response = await axiosInstance.get(`${API_URL}/database/api/update-broker-performance/`)
+  return response.data
+}
+
+export const updateBrokerPerformance = async (formData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/update-broker-performance/`, formData, {
+      responseType: 'text',
+      onDownloadProgress: (progressEvent) => {
+        if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
+          const dataChunk = progressEvent.event.currentTarget.response
+          const lines = dataChunk.split('\n')
+          lines.forEach((line) => {
+            if (line) {
+              try {
+                const data = JSON.parse(line)
+                window.dispatchEvent(new CustomEvent('brokerPerformanceUpdateProgress', { detail: data }))
+              } catch (error) {
+                console.error('Error parsing progress data:', error, 'Line:', line)
+              }
+            }
+          })
+        }
+      }
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error updating broker performance:', error)
+    if (error.response) {
+      throw error.response.data
+    } else if (error.request) {
+      throw new Error('No response received from server')
+    } else {
+      throw new Error('Error setting up the request')
+    }
+  }
+}
+
+export const addPrice = async (priceData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/add-price/`, priceData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deletePrice = async (priceId) => {
+  try {
+    const response = await axiosInstance.delete(`${API_URL}/database/api/delete-price/${priceId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getPriceDetails = async (priceId) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-price-details/${priceId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updatePrice = async (priceId, priceData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/update-price/${priceId}/`, priceData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSecurityFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/security-form-structure/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSecurityDetails = async (id) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/get-security-details/${id}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getPriceImportFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/price-import/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const importPrices = async (importData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/price-import/`, importData, {
+      responseType: 'text',
+      onDownloadProgress: (progressEvent) => {
+        console.log('Progress event:', progressEvent)
+        if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
+          const dataChunk = progressEvent.event.currentTarget.response
+          console.log('Data chunk:', dataChunk)
+          const lines = dataChunk.split('\n')
+          lines.forEach((line) => {
+            if (line) {
+              try {
+                const data = JSON.parse(line)
+                window.dispatchEvent(new CustomEvent('priceImportProgress', { detail: data }))
+              } catch (error) {
+                console.error('Error parsing progress data:', error, 'Line:', line)
+              }
+            }
+          })
+        } else {
+          console.warn('Progress event does not contain expected data:', progressEvent)
+        }
+      }
+    })
+    console.log('Import completed. Response:', response)
+    return response.data
+  } catch (error) {
+    console.error('Error importing prices:', error)
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error('Error response:', error.response)
+      throw error.response.data
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('Error request:', error.request)
+      throw new Error('No response received from server')
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error('Error message:', error.message)
+      throw new Error('Error setting up the request')
+    }
+  }
+}
+
+export const getBrokersTable = async (params = {}) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/brokers/list_brokers/`, params)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getBrokers = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/brokers/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getBrokerDetails = async (brokerId) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/brokers/${brokerId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const createBroker = async (brokerData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/brokers/`, brokerData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateBroker = async (brokerId, brokerData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/brokers/${brokerId}/`, brokerData)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteBroker = async (brokerId) => {
+  try {
+    const response = await axiosInstance.delete(`${API_URL}/database/api/brokers/${brokerId}/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getBrokerFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/brokers/form_structure/`)
+    return response.data
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
   }
 }

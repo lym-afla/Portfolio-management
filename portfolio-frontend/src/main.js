@@ -9,6 +9,7 @@ import router from './router'
 import store from './store'
 import axios from 'axios'
 import './assets/fonts.css'
+import './plugins/vee-validate';
 
 axios.defaults.xsrfCookieName = 'csrftoken'
 axios.defaults.xsrfHeaderName = 'X-CSRFToken'

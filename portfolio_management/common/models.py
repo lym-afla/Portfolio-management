@@ -560,7 +560,7 @@ class Prices(models.Model):
         # Add constraints
         constraints = [
             models.UniqueConstraint(
-                fields=['date', 'security', 'price'],
+                fields=['date', 'security'],
                 name='unique_security_price_entry'
             ),
         ]

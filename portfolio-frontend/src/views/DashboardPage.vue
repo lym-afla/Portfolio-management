@@ -31,6 +31,7 @@
           :lines="summaryOverTimeData ? summaryOverTimeData.lines : []"
           :years="summaryOverTimeData ? summaryOverTimeData.years : []"
           :currentYear="summaryOverTimeData ? summaryOverTimeData.currentYear : ''"
+          @refresh-data="refreshAllData"
         />
         <v-alert v-else type="error">{{ error.summaryOverTime }}</v-alert>
       </v-col>
@@ -226,6 +227,8 @@ export default {
     )
 
     onMounted(async () => {
+      emit('update-page-title', 'Dashboard')
+
       if (!effectiveCurrentDate.value) {
         await store.dispatch('fetchEffectiveCurrentDate')
       }
@@ -261,6 +264,7 @@ export default {
       navChartInitialParams,
       fetchNAVChartData,
       effectiveCurrentDate,
+      refreshAllData,
     }
   },
 }

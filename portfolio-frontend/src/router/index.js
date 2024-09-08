@@ -22,13 +22,13 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: LoginPage,
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: false, paddingTop: '0px' }
   },
   {
     path: '/register',
     name: 'Register',
     component: RegisterPage,
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: false, paddingTop: '0px' }
   },
   {
     path: '/dashboard',
@@ -57,7 +57,7 @@ const routes = [
   {
     path: '/profile',
     component: ProfileLayout,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, paddingTop: '50px' },
     children: [
       {
         path: '',
@@ -80,7 +80,7 @@ const routes = [
     path: '/database',
     name: 'Database',
     component: DatabasePage,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, paddingTop: '70px' },
     children: [
       {
         path: 'brokers',
