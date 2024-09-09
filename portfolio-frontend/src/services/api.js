@@ -740,3 +740,52 @@ export const cancelFXImport = async () => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+export const getTransactionFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/transactions/form_structure/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching transaction form structure:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getTransactionDetails = async (id) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/database/api/transactions/${id}/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching transaction details:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const addTransaction = async (transactionData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/transactions/`, transactionData)
+    return response.data
+  } catch (error) {
+    console.error('Error adding transaction:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateTransaction = async (id, transactionData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/database/api/transactions/${id}/`, transactionData)
+    return response.data
+  } catch (error) {
+    console.error('Error updating transaction:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteTransaction = async (id) => {
+  try {
+    await axiosInstance.delete(`${API_URL}/database/api/transactions/${id}/`)
+  } catch (error) {
+    console.error('Error deleting transaction:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}

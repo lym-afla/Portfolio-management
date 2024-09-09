@@ -4,6 +4,32 @@
       <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
     </v-overlay>
 
+    <v-card class="mb-4">
+      <v-card-text>
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-plus"
+          class="mr-2"
+          @click="openAddTransactionDialog"
+        >
+          Add Transaction
+        </v-btn>
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-plus"
+          class="mr-2"
+        >
+          Add FX Transaction
+        </v-btn>
+        <v-btn
+          color="secondary"
+          prepend-icon="mdi-upload"
+        >
+          Import Transactions
+        </v-btn>
+      </v-card-text>
+    </v-card>
+
     <v-row no-gutters>
       <v-col cols="12">
         <v-data-table
@@ -103,7 +129,7 @@
               </td>
               <td class="text-center">{{ item.type }}</td>
               <td v-for="currency in currencies" :key="`cash_flow-${currency}`" class="text-center">
-                <template v-if="item.currency === currency">
+                <template v-if="item.cur === currency">
                   <template v-if="['Dividend', 'Tax'].includes(item.type) || item.type.includes('Interest') || item.type.includes('Cash')">
                     {{ item.cash_flow }}
                   </template>
@@ -128,6 +154,21 @@
               <td v-for="currency in currencies" :key="`balance-${currency}`" class="text-center">
                 {{ item.balances[currency] }}
               </td>
+              <td class="text-end">
+                <v-icon
+                  small
+                  class="mr-2"
+                  @click="editTransaction(item)"
+                >
+                  mdi-pencil
+                </v-icon>
+                <v-icon
+                  small
+                  @click="processDeleteTransaction(item)"
+                >
+                  mdi-delete
+                </v-icon>
+              </td>
             </tr>
           </template>
 
@@ -151,6 +192,26 @@
         </v-data-table>
       </v-col>
     </v-row>
+
+    <TransactionDialog
+      v-model="showTransactionDialog"
+      :edit-item="editedTransaction"
+      @transaction-added="handleTransactionAdded"
+      @transaction-updated="handleTransactionUpdated"
+    />
+
+    <v-dialog v-model="deleteDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h5">Delete Transaction</v-card-title>
+        <v-card-text>Are you sure you want to delete this transaction?</v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="blue darken-1" text @click="closeDeleteDialog">Cancel</v-btn>
+          <v-btn color="red darken-1" text @click="deleteTransactionConfirm">OK</v-btn>
+          <v-spacer></v-spacer>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -158,14 +219,17 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import { format } from 'date-fns'
-import { getTransactions } from '@/services/api'
+import { getTransactions, deleteTransaction, getTransactionDetails } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
+import TransactionDialog from '@/components/dialogs/TransactionDialog.vue'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: "TransactionsPage",
   components: {
-    DateRangeSelector
+    DateRangeSelector,
+    TransactionDialog
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -201,11 +265,17 @@ export default {
     const transactions = ref([])
     const totalItems = ref(0)
     const currencies = ref([])
+    const showTransactionDialog = ref(false)
+    const editedTransaction = ref(null)
+    const deleteDialog = ref(false)
+    const transactionToDelete = ref(null)
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
 
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+
+    const { handleApiError } = useErrorHandler()
 
     const headers = computed(() => [
       { title: '', key: 'actions', align: 'center', sortable: false },
@@ -237,6 +307,7 @@ export default {
           sortable: false
         })),
       },
+      { title: 'Actions', align: 'end', key: 'actions', sortable: false }
     ])
 
     const fetchTransactions = async () => {
@@ -287,6 +358,53 @@ export default {
       { deep: true }
     )
 
+    const openAddTransactionDialog = () => {
+      editedTransaction.value = null
+      showTransactionDialog.value = true
+    }
+
+    const editTransaction = async (item) => {
+      console.log('Editing item:', item)
+      try {
+        const transactionDetails = await getTransactionDetails(item.id)
+        editedTransaction.value = transactionDetails
+        showTransactionDialog.value = true
+      } catch (error) {
+        handleApiError(error)
+      }
+    }
+
+    const processDeleteTransaction = (item) => {
+      transactionToDelete.value = item
+      deleteDialog.value = true
+    }
+
+    const closeDeleteDialog = () => {
+      deleteDialog.value = false
+      transactionToDelete.value = null
+    }
+
+    const deleteTransactionConfirm = async () => {
+      if (transactionToDelete.value) {
+        try {
+          await deleteTransaction(transactionToDelete.value.id)
+          await fetchTransactions()
+        } catch (error) {
+          console.error('Error deleting transaction:', error)
+        } finally {
+          closeDeleteDialog()
+        }
+      }
+    }
+
+    const handleTransactionAdded = () => {
+      fetchTransactions()
+    }
+
+    const handleTransactionUpdated = () => {
+      fetchTransactions()
+    }
+
     onMounted(async () => {
       emit('update-page-title', 'Transactions')
       if (!effectiveCurrentDate.value) {
@@ -319,6 +437,17 @@ export default {
       handleSortChange,
       fetchTransactions,
       formatDate,
+      showTransactionDialog,
+      editedTransaction,
+      deleteDialog,
+      transactionToDelete,
+      openAddTransactionDialog,
+      editTransaction,
+      processDeleteTransaction,
+      closeDeleteDialog,
+      deleteTransactionConfirm,
+      handleTransactionAdded,
+      handleTransactionUpdated
     }
   }
 }

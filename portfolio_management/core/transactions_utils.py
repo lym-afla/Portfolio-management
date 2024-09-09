@@ -20,9 +20,6 @@ def get_transactions_table_api(request):
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
 
-    print("transactions_utils. 43", start_date, end_date, page, items_per_page, search, sort_by)
-    print(data.items())
-
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
 
@@ -125,7 +122,7 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
     transaction_data = {
         'type': transaction.type,
         'security': transaction.security.name if transaction.security else None,
-        'currency': transaction.currency,
+        'cur': transaction.currency,
     }
 
     balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
