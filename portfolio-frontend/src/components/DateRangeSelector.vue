@@ -77,10 +77,15 @@
       })
 
       const displayDateRange = computed(() => {
-        if (dateFrom.value && dateTo.value) {
-          return `${format(parseISO(dateFrom.value), 'dd MMM yyyy')} - ${format(parseISO(dateTo.value), 'dd MMM yyyy')}`
+        if (!dateFrom.value && !dateTo.value) {
+          return 'Select Date Range'
         }
-        return 'Select Date Range'
+        
+        const formatDate = (date) => date ? format(parseISO(date), 'dd MMM yyyy') : 'Start'
+        const fromStr = formatDate(dateFrom.value)
+        const toStr = formatDate(dateTo.value)
+        
+        return `${fromStr} ➔ ${toStr}`
       })
 
       const handlePredefinedRange = (value) => {

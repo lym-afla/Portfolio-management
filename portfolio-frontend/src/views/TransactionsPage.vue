@@ -21,9 +21,10 @@
         >
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
-              <v-btn icon elevation="2" @click="openDateDialog" class="mr-4">
-                <v-icon>mdi-calendar</v-icon>
-              </v-btn>
+              <DateRangeSelector
+                v-model="dateRangeModel"
+                @update:model-value="handleDateRangeChange"
+              />
               <v-col cols="12" sm="5" md="6" lg="7" class="px-2">
                 <v-text-field
                   v-model="search"
@@ -150,87 +151,22 @@
         </v-data-table>
       </v-col>
     </v-row>
-
-    <!-- Main Date Range Dialog -->
-    <v-dialog v-model="dateDialog" max-width="400px">
-      <v-card>
-        <v-card-title class="text-h5">Select Date Range</v-card-title>
-        <v-card-text>
-          <v-select
-            v-model="selectedDateRange"
-            :items="dateRangeOptions"
-            label="Date Range"
-            @update:model-value="handlePredefinedRange"
-          >
-            <template v-slot:item="{ item, props }">
-              <v-divider v-if="item.raw.divider" class="my-2"></v-divider>
-              <v-list-item v-else v-bind="props"></v-list-item>
-            </template>
-          </v-select>
-          <v-row>
-            <v-col cols="2" class="d-flex justify-center pr-0 pl-0">
-              <v-btn icon @click="openFromDatePicker">
-                <v-icon>mdi-calendar</v-icon>
-              </v-btn>
-            </v-col>
-            <v-col cols="10">
-              <v-text-field
-                v-model="dateFrom"
-                label="From"
-                type="date"
-              ></v-text-field>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col cols="2" class="d-flex justify-center pr-0 pl-0">
-              <v-btn icon @click="openToDatePicker">
-                <v-icon>mdi-calendar</v-icon>
-              </v-btn>
-            </v-col>
-            <v-col cols="10">
-              <v-text-field
-                v-model="dateTo"
-                label="To"
-                type="date"
-              ></v-text-field>
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue-darken-1" variant="text" @click="closeDateDialog">Cancel</v-btn>
-          <v-btn color="blue-darken-1" variant="text" @click="applyDateRange">Apply</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- From Date Picker Dialog -->
-    <v-dialog v-model="fromDatePickerDialog" max-width="300px">
-      <v-date-picker 
-        @update:model-value="closeFromDatePicker" 
-        show-adjacent-months
-      ></v-date-picker>
-    </v-dialog>
-
-    <!-- To Date Picker Dialog -->
-    <v-dialog v-model="toDatePickerDialog" max-width="300px">
-      <v-date-picker 
-        @update:model-value="closeToDatePicker" 
-        show-adjacent-months
-      ></v-date-picker>
-    </v-dialog>
   </v-container>
 </template>
 
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
-import { format, parseISO, startOfYear, subMonths, subYears, startOfDay } from 'date-fns'
+import { format } from 'date-fns'
 import { getTransactions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
+import DateRangeSelector from '@/components/DateRangeSelector.vue'
 
 export default {
   name: "TransactionsPage",
+  components: {
+    DateRangeSelector
+  },
   emits: ['update-page-title'],
   setup(props, { emit }) {
     const store = useStore()
@@ -247,9 +183,19 @@ export default {
       handleSortChange      
     } = useTableSettings()
 
-    const dateDialog = ref(false)
-    const fromDatePickerDialog = ref(false)
-    const toDatePickerDialog = ref(false)
+    const dateRangeModel = ref({
+      dateRange: 'ytd',
+      dateFrom: dateFrom.value,
+      dateTo: dateTo.value
+    })
+
+    const handleDateRangeChange = (newDateRange) => {
+      dateFrom.value = newDateRange.dateFrom
+      dateTo.value = newDateRange.dateTo
+      currentPage.value = 1
+      fetchTransactions()
+    }
+
     const loading = ref(false)
     const tableLoading = ref(false)
     const transactions = ref([])
@@ -260,23 +206,6 @@ export default {
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
 
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
-
-    const selectedDateRange = ref('ytd') // Set YTD as default
-
-    const dateRangeOptions = computed(() => {
-      const currentYear = new Date(effectiveCurrentDate.value).getFullYear()
-      return [
-        { title: `${currentYear}YTD`, value: 'ytd' },
-        { divider: true, value: 'divider' },
-        { title: 'Last 1 Month', value: 'last1m' },
-        { title: 'Last 3 Months', value: 'last3m' },
-        { title: 'Last 6 Months', value: 'last6m' },
-        { title: 'Last 12 Months', value: 'last12m' },
-        { title: 'Last 3 Years', value: 'last3y' },
-        { title: 'Last 5 Years', value: 'last5y' },
-        { title: 'All-time', value: 'all_time' },
-      ]
-    })
 
     const headers = computed(() => [
       { title: '', key: 'actions', align: 'center', sortable: false },
@@ -310,43 +239,6 @@ export default {
       },
     ])
 
-    const openDateDialog = () => {
-      dateDialog.value = true
-    }
-
-    const closeDateDialog = () => {
-      dateDialog.value = false
-    }
-
-    const openFromDatePicker = () => {
-      fromDatePickerDialog.value = true
-    }
-
-    const closeFromDatePicker = (pickerDateFrom) => {
-      dateFrom.value = formatDate(pickerDateFrom)
-      fromDatePickerDialog.value = false
-    }
-
-    const openToDatePicker = () => {
-      toDatePickerDialog.value = true
-    }
-
-    const closeToDatePicker = (pickerDateTo) => {
-      dateTo.value = formatDate(pickerDateTo)
-      toDatePickerDialog.value = false
-    }
-
-    const isApplyingDateRange = ref(false)
-
-    const applyDateRange = () => {
-      console.log('Date range:', dateFrom.value, dateTo.value)
-      console.log('Selected range:', selectedDateRange.value)
-      isApplyingDateRange.value = true
-      currentPage.value = 1
-      closeDateDialog()
-      fetchTransactions()
-    }
-
     const fetchTransactions = async () => {
       tableLoading.value = true
       console.log('[TransactionsPage] fetchTransactions called with:', {
@@ -374,62 +266,11 @@ export default {
         console.error('Error fetching transactions:', error)
       } finally {
         tableLoading.value = false
-        isApplyingDateRange.value = false
       }
     }
 
     const formatDate = (date) => {
       return format(new Date(date), 'yyyy-MM-dd')
-    }
-
-    const handlePredefinedRange = async (value) => {
-      let currentDate = effectiveCurrentDate.value
-      
-      if (!currentDate) {
-        await store.dispatch('fetchEffectiveCurrentDate')
-        currentDate = store.state.effectiveCurrentDate
-      }
-
-      if (!currentDate) {
-        console.error('Failed to fetch effective current date')
-        return
-      }
-
-      const effectiveDate = parseISO(currentDate)
-      let fromDate
-
-      switch (value) {
-        case 'ytd':
-          fromDate = startOfYear(effectiveDate)
-          break
-        case 'last1m':
-          fromDate = subMonths(effectiveDate, 1)
-          break
-        case 'last3m':
-          fromDate = subMonths(effectiveDate, 3)
-          break
-        case 'last6m':
-          fromDate = subMonths(effectiveDate, 6)
-          break
-        case 'last12m':
-          fromDate = subMonths(effectiveDate, 12)
-          break
-        case 'last3y':
-          fromDate = subYears(effectiveDate, 3)
-          break
-        case 'last5y':
-          fromDate = subYears(effectiveDate, 5)
-          break
-        case 'all_time':
-          // fromDate = new Date(0) // Beginning of time
-          fromDate = null
-          break
-        default:
-          return // Do nothing for custom
-      }
-
-      dateFrom.value = fromDate ? formatDate(startOfDay(fromDate)) : null
-      dateTo.value = formatDate(effectiveDate)
     }
 
     watch(
@@ -441,10 +282,7 @@ export default {
         search
       ],
       () => {
-        if (!isApplyingDateRange.value) {
-          fetchTransactions()
-        }
-        isApplyingDateRange.value = false
+        fetchTransactions()
       },
       { deep: true }
     )
@@ -454,8 +292,7 @@ export default {
       if (!effectiveCurrentDate.value) {
         await store.dispatch('fetchEffectiveCurrentDate')
       }
-      handlePredefinedRange('ytd') // Apply YTD range by default
-      await fetchTransactions()
+      fetchTransactions()
     })
 
     onUnmounted(() => {
@@ -463,11 +300,8 @@ export default {
     })
 
     return {
-      dateDialog,
-      fromDatePickerDialog,
-      toDatePickerDialog,
-      dateFrom,
-      dateTo,
+      dateRangeModel,
+      handleDateRangeChange,
       loading,
       tableLoading,
       transactions,
@@ -480,21 +314,10 @@ export default {
       search,
       headers,
       currencies,
-      openDateDialog,
-      closeDateDialog,
-      openFromDatePicker,
-      openToDatePicker,
-      applyDateRange,
       handleItemsPerPageChange,
       handlePageChange,
       handleSortChange,
       fetchTransactions,
-      closeFromDatePicker,
-      closeToDatePicker,
-      selectedDateRange,
-      dateRangeOptions,
-      handlePredefinedRange,
-      effectiveCurrentDate,
       formatDate,
     }
   }
