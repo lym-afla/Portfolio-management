@@ -110,10 +110,10 @@
     <FXDialog
       v-model="showFXDialog"
       :edit-item="editedItem"
-      @fx-added="handleFXAdded"
-      @fx-updated="handleFXUpdated"
+      @fx-added="fetchFXData"
+      @fx-updated="fetchFXData"
     />
-    <FXImportDialog v-model="showImportDialog" @import-completed="handleImportCompleted" />
+    <FXImportDialog v-model="showImportDialog" @import-completed="fetchFXData" @refresh-table="fetchFXData" />
 
     <!-- Add confirmation dialog for delete -->
     <v-dialog v-model="showDeleteDialog" max-width="300px">
@@ -123,7 +123,7 @@
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn color="blue darken-1" text @click="showDeleteDialog = false">Cancel</v-btn>
-          <v-btn color="red darken-1" text @click="confirmDelete">Delete</v-btn>
+          <v-btn color="red darken-1" text @click="confirmDelete" :loading="deleteLoading">Delete</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -164,6 +164,7 @@ export default {
 
     const loading = ref(true)
     const tableLoading = ref(false)
+    const deleteLoading = ref(false)
     const fxData = ref([])
     const totalItems = ref(0)
     const currencies = ref([])
@@ -179,10 +180,6 @@ export default {
     ])
 
     const fetchFXData = async () => {
-      if (!dateFrom.value || !dateTo.value) {
-        console.log('Date range not set, skipping fetch')
-        return
-      }
 
       console.log('Fetching FX data with:', {
         startDate: dateFrom.value,
@@ -290,28 +287,17 @@ export default {
     }
 
     const confirmDelete = async () => {
+      deleteLoading.value = true
       try {
         await deleteFXRate(itemToDelete.value.id)
         await fetchFXData()
-        showDeleteDialog.value = false
       } catch (error) {
         handleApiError(error)
       } finally {
         showDeleteDialog.value = false
         itemToDelete.value = null
+        deleteLoading.value = false
       }
-    }
-
-    const handleFXAdded = () => {
-      fetchFXData()
-    }
-
-    const handleFXUpdated = () => {
-      fetchFXData()
-    }
-
-    const handleImportCompleted = () => {
-      fetchFXData()
     }
 
     return {
@@ -343,10 +329,9 @@ export default {
       openAddFXDialog,
       editItem,
       deleteItem,
+      deleteLoading,
       confirmDelete,
-      handleFXAdded,
-      handleFXUpdated,
-      handleImportCompleted
+      fetchFXData
     }
   }
 }

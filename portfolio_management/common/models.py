@@ -126,9 +126,7 @@ class FX(models.Model):
 
                     if rate_data is not None:
                         # Update the fx_instance with the new rate
-                        print("FX model, update FX. line 125", rate_data['requested_date'], rate_data['exchange_rate'])
                         setattr(fx_instance, f'{source}{target}', rate_data['exchange_rate'])
-                        print(f'{source}{target} for {rate_data["requested_date"]} is updated')
                 except:
                     print(f'{source}{target} for {date} is NOT updated. Yahoo Finance is not responding correctly')
                     continue

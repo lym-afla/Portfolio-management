@@ -55,7 +55,57 @@
       :current="current"
       :total="total"
       :currentMessage="currentMessage"
+      :canStop="isImporting"
+      @stop-import="stopImport"
     />
+    <v-dialog v-model="showStopDialog" max-width="400px">
+      <v-card>
+        <v-card-title class="text-h5 pb-2">
+          <v-icon color="warning" class="mr-2">mdi-alert-circle</v-icon>
+          Import Stopped
+        </v-card-title>
+        <v-card-text>
+          <p>The import process was stopped.</p>
+          <v-divider class="my-3"></v-divider>
+          <v-row dense>
+            <v-col cols="12">
+              <v-card outlined>
+                <v-list-item>
+                  <template v-slot:prepend>
+                    <v-avatar color="primary" size="40">
+                      <v-icon dark>mdi-database-import</v-icon>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="text-h6">
+                    {{ current }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>FX rates imported before stopping</v-list-item-subtitle>
+                </v-list-item>
+              </v-card>
+            </v-col>
+            <v-col cols="12">
+              <v-card outlined>
+                <v-list-item>
+                  <template v-slot:prepend>
+                    <v-avatar color="error" size="40">
+                      <v-icon dark>mdi-cancel</v-icon>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="text-h6">
+                    {{ total - current }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>Remaining FX rates not imported</v-list-item-subtitle>
+                </v-list-item>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" @click="closeStopDialog">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     <v-dialog v-model="showSuccessDialog" max-width="400px">
       <v-card>
         <v-card-title class="text-h5 pb-2">
@@ -121,7 +171,7 @@
   
   <script>
   import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-  import { getFXImportStats, importFXRates } from '@/services/api'
+  import { getFXImportStats, importFXRates, cancelFXImport } from '@/services/api'
   import ProgressDialog from './ProgressDialog.vue'
   
   export default {
@@ -130,7 +180,7 @@
     props: {
       modelValue: Boolean,
     },
-    emits: ['update:modelValue', 'import-completed'],
+    emits: ['update:modelValue', 'import-completed', 'refresh-table'],
     setup(props, { emit }) {
       const dialog = computed({
         get: () => props.modelValue,
@@ -157,6 +207,8 @@
         missingFilled: 0,
         incompleteUpdated: 0
       })
+      const abortController = ref(null)
+      const showStopDialog = ref(false)
 
       const fetchStats = async () => {
         try {
@@ -188,16 +240,43 @@
         current.value = 0
         total.value = 0
         currentMessage.value = 'Starting import'
+        abortController.value = new AbortController()
         try {
           dialog.value = false // Close the FXImportDialog
-          await importFXRates(importOption.value)
+          await importFXRates(importOption.value, abortController.value.signal)
         } catch (err) {
-          error.value = 'Failed to start import process'
-          console.error(err)
+          if (err.name === 'AbortError') {
+            error.value = 'Import process was stopped'
+          } else {
+            error.value = 'Failed to start import process'
+            console.error(err)
+          }
           showProgress.value = false
         } finally {
           isImporting.value = false
+          abortController.value = null
         }
+      }
+
+      const stopImport = async () => {
+        if (abortController.value) {
+          abortController.value.abort()
+        }
+        try {
+          await cancelFXImport()
+          currentMessage.value = 'Cancelling import...'
+          showProgress.value = false
+          showStopDialog.value = true
+        } catch (err) {
+          console.error('Error cancelling import:', err)
+          progressError.value = 'Failed to cancel import'
+        }
+      }
+
+      const closeStopDialog = () => {
+        showStopDialog.value = false
+        closeDialog()
+        emit('refresh-table') // Emit event to refresh the table
       }
 
       const handleProgress = (event) => {
@@ -206,13 +285,17 @@
           progress.value = data.progress
           current.value = data.current
           total.value = data.total
-          currentMessage.value = data.message
+          currentMessage.value = `Importing FX rates (${current.value} / ${total.value})`
         }
         if (data.status === 'completed') {
           showProgress.value = false
           importStats.value = data.stats // Assuming the backend sends stats in the completed event
           showSuccessDialog.value = true
           emit('import-completed', data)
+        }
+        if (data.status === 'cancelled') {
+          showProgress.value = false
+          showStopDialog.value = true
         }
       }
 
@@ -250,7 +333,10 @@
         currentMessage,
         showSuccessDialog,
         importStats,
-        closeSuccessDialog
+        closeSuccessDialog,
+        stopImport,
+        showStopDialog,
+        closeStopDialog
       }
     }
   }

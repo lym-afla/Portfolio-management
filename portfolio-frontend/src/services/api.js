@@ -691,12 +691,13 @@ export const getFXImportStats = async () => {
   }
 }
 
-export const importFXRates = async (importOption) => {
+export const importFXRates = async (importOption, signal) => {
   try {
     const response = await axiosInstance.post(`${API_URL}/database/api/fx/import_fx_rates/`, 
       { import_option: importOption },
       {
         responseType: 'text',
+        signal: signal,
         onDownloadProgress: (progressEvent) => {
           if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
             const dataChunk = progressEvent.event.currentTarget.response
@@ -706,6 +707,9 @@ export const importFXRates = async (importOption) => {
                 try {
                   const jsonStr = line.slice(6) // Remove 'data: ' prefix
                   const data = JSON.parse(jsonStr)
+                  if (data.status === 'cancelled') {
+                    throw new DOMException('Import cancelled', 'AbortError')
+                  }
                   window.dispatchEvent(new CustomEvent('fxImportProgress', { detail: data }))
                 } catch (error) {
                   console.error('Error parsing progress data:', error, 'Line:', line)
@@ -718,7 +722,21 @@ export const importFXRates = async (importOption) => {
     )
     return response.data
   } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('FX import was aborted')
+      throw error
+    }
     console.error('Error importing FX rates:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const cancelFXImport = async () => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/database/api/fx/cancel_import/`)
+    return response.data
+  } catch (error) {
+    console.error('Error cancelling FX import:', error)
     throw error.response ? error.response.data : error.message
   }
 }

@@ -6,6 +6,7 @@ import json
 import logging
 from django import forms
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.cache import cache
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
@@ -1560,6 +1561,8 @@ class FXViewSet(viewsets.ModelViewSet):
         sort_by = request.data.get('sortBy')
         search = request.data.get('search', '')
 
+        print(start_date, end_date, page, items_per_page, sort_by, search)
+
         # Filter queryset
         queryset = self.get_queryset()
         if start_date:
@@ -1669,6 +1672,9 @@ class FXViewSet(viewsets.ModelViewSet):
     def import_fx_rates(self, request):
         import_option = request.data.get('import_option')
         user = request.user
+        import_id = f"fx_import_{user.id}"
+        cache.set(import_id, "running", timeout=3600)  # Set a running flag with 1 hour timeout
+
 
         def generate_progress():
             transaction_dates = Transactions.objects.filter(investor=user).values_list('date', flat=True).distinct()
@@ -1688,6 +1694,11 @@ class FXViewSet(viewsets.ModelViewSet):
             incomplete_updated = 0
 
             for i, date in enumerate(dates_to_update):
+                if cache.get(import_id) != "running":
+                    # The import has been cancelled
+                    yield f"data: {json.dumps({'status': 'cancelled'})}\n\n"
+                    break
+
                 fx_instance = FX.objects.filter(investor=user, date=date).first()
                 if not fx_instance:
                     FX.update_fx_rate(date, user)
@@ -1703,11 +1714,21 @@ class FXViewSet(viewsets.ModelViewSet):
                 message = f"{action} FX rates for {formatted_date}"
                 yield f"data: {json.dumps({'progress': progress, 'current': i + 1, 'total': total_dates, 'message': message})}\n\n"
 
-            stats = {
-                'totalImported': missing_filled + incomplete_updated,
-                'missingFilled': missing_filled,
-                'incompleteUpdated': incomplete_updated
-            }
-            yield f"data: {json.dumps({'status': 'completed', 'stats': stats})}\n\n"
+            if cache.get(import_id) == "running":
+                stats = {
+                    'totalImported': missing_filled + incomplete_updated,
+                    'missingFilled': missing_filled,
+                    'incompleteUpdated': incomplete_updated
+                }
+                yield f"data: {json.dumps({'status': 'completed', 'stats': stats})}\n\n"
+
+            cache.delete(import_id)  # Clean up the cache entry
 
         return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+    
+    @action(detail=False, methods=['POST'])
+    def cancel_import(self, request):
+        user = request.user
+        import_id = f"fx_import_{user.id}"
+        cache.delete(import_id)  # This will cause the import to stop
+        return JsonResponse({"status": "Import cancelled"})

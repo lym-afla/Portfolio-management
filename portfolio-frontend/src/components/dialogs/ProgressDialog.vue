@@ -3,14 +3,6 @@
     <v-card>
       <v-card-title class="d-flex align-center">
         {{ title }}
-        <v-spacer></v-spacer>
-        <v-progress-circular
-          indeterminate
-          color="primary"
-          size="24"
-          width="2"
-          class="ml-2"
-        ></v-progress-circular>
       </v-card-title>
       <v-card-text>
         <v-progress-linear
@@ -30,11 +22,25 @@
             </div>
           </v-col>
         </v-row>
-        <v-row no-gutters v-if="currentMessage">
+        <v-row no-gutters v-if="currentMessage" class="mb-4">
           <v-col cols="12">
             <v-card outlined class="mt-2 pa-2">
-              <div class="text-body-2">{{ currentMessage }}...</div>
+              <div class="d-flex align-center">
+                <v-progress-circular
+                  indeterminate
+                  color="primary"
+                  size="24"
+                  width="2"
+                  class="ml-2"
+                ></v-progress-circular>
+                <div class="text-body-2 ml-2">{{ currentMessage }}...</div>
+              </div>
             </v-card>
+          </v-col>
+        </v-row>
+        <v-row no-gutters class="mb-4">
+          <v-col cols="12" class="text-center">
+            <v-btn color="error" @click="stopImport" :disabled="!canStop">Stop Import</v-btn>
           </v-col>
         </v-row>
         <v-alert v-if="error" type="error" class="mt-4">
@@ -79,9 +85,13 @@ export default {
     error: {
       type: String,
       default: ''
+    },
+    canStop: {
+      type: Boolean,
+      default: true
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'stop-import'],
   setup(props, { emit }) {
     const dialogModel = computed({
       get: () => props.modelValue,
@@ -92,13 +102,18 @@ export default {
       emit('update:modelValue', false)
     }
 
+    const stopImport = () => {
+      emit('stop-import')
+    }
+
     watch(() => props.progress, (newValue) => {
       console.log('ProgressDialog: progress prop changed to', newValue)
     })
 
     return {
       dialogModel,
-      closeDialog
+      closeDialog,
+      stopImport
     }
   }
 }
