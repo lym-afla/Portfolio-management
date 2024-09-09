@@ -14,7 +14,7 @@ from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q, F
 from django.db.models.functions import Lower
-from django.utils.dateparse import parse_date
+from django.utils.formats import date_format
 import pandas as pd
 import requests
 from requests.exceptions import RequestException
@@ -1582,8 +1582,7 @@ class FXViewSet(viewsets.ModelViewSet):
         fx_data = list(queryset.values('id', 'date', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD'))
 
         # Apply sorting
-        if sort_by:
-            fx_data = sort_entries(fx_data, sort_by)
+        fx_data = sort_entries(fx_data, sort_by)
 
         # Paginate results
         paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
@@ -1673,20 +1672,42 @@ class FXViewSet(viewsets.ModelViewSet):
 
         def generate_progress():
             transaction_dates = Transactions.objects.filter(investor=user).values_list('date', flat=True).distinct()
-            total_dates = len(transaction_dates)
             
-            for i, date in enumerate(transaction_dates):
-                if import_option in ['missing', 'both']:
-                    if not FX.objects.filter(investor=user, date=date).exists():
-                        FX.update_fx_rate(date, user)
-                if import_option in ['incomplete', 'both']:
-                    fx_instance = FX.objects.filter(investor=user, date=date).first()
-                    if fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
-                        FX.update_fx_rate(date, user)
+            # Pre-filter dates based on import_option
+            dates_to_update = []
+            for date in transaction_dates:
+                fx_instance = FX.objects.filter(investor=user, date=date).first()
+                if import_option in ['missing', 'both'] and not fx_instance:
+                    dates_to_update.append(date)
+                elif import_option in ['incomplete', 'both'] and fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
+                    dates_to_update.append(date)
+
+            total_dates = len(dates_to_update)
+            
+            missing_filled = 0
+            incomplete_updated = 0
+
+            for i, date in enumerate(dates_to_update):
+                fx_instance = FX.objects.filter(investor=user, date=date).first()
+                if not fx_instance:
+                    FX.update_fx_rate(date, user)
+                    missing_filled += 1
+                    action = "Adding"
+                elif any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
+                    FX.update_fx_rate(date, user)
+                    incomplete_updated += 1
+                    action = "Updating"
                 
                 progress = (i + 1) / total_dates * 100
-                yield f"data: {json.dumps({'progress': progress, 'current': i + 1, 'total': total_dates})}\n\n"
+                formatted_date = date_format(date, "F j, Y")  # Format date as "Month Day, Year"
+                message = f"{action} FX rates for {formatted_date}"
+                yield f"data: {json.dumps({'progress': progress, 'current': i + 1, 'total': total_dates, 'message': message})}\n\n"
 
-            yield f"data: {json.dumps({'status': 'completed'})}\n\n"
+            stats = {
+                'totalImported': missing_filled + incomplete_updated,
+                'missingFilled': missing_filled,
+                'incompleteUpdated': incomplete_updated
+            }
+            yield f"data: {json.dumps({'status': 'completed', 'stats': stats})}\n\n"
 
         return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')

@@ -54,7 +54,69 @@
       :title="'Importing FX Rates'"
       :current="current"
       :total="total"
+      :currentMessage="currentMessage"
     />
+    <v-dialog v-model="showSuccessDialog" max-width="400px">
+      <v-card>
+        <v-card-title class="text-h5 pb-2">
+          <v-icon color="success" class="mr-2">mdi-check-circle</v-icon>
+          Import Completed
+        </v-card-title>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="12">
+              <v-card outlined>
+                <v-list-item>
+                  <template v-slot:prepend>
+                    <v-avatar color="primary" size="40">
+                      <v-icon dark>mdi-database-import</v-icon>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="text-h6">
+                    {{ importStats.totalImported }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>Total FX rates imported</v-list-item-subtitle>
+                </v-list-item>
+              </v-card>
+            </v-col>
+            <v-col cols="6">
+              <v-card outlined>
+                <v-list-item>
+                  <template v-slot:prepend>
+                    <v-avatar color="success" size="40">
+                      <v-icon dark>mdi-plus-circle</v-icon>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="text-h6">
+                    {{ importStats.missingFilled }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>Missing filled</v-list-item-subtitle>
+                </v-list-item>
+              </v-card>
+            </v-col>
+            <v-col cols="6">
+              <v-card outlined>
+                <v-list-item>
+                  <template v-slot:prepend>
+                    <v-avatar color="warning" size="40">
+                      <v-icon dark>mdi-update</v-icon>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="text-h6">
+                    {{ importStats.incompleteUpdated }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>Incomplete updated</v-list-item-subtitle>
+                </v-list-item>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" @click="closeSuccessDialog">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </template>
   
   <script>
@@ -88,6 +150,13 @@
       const progressError = ref('')
       const current = ref(0)
       const total = ref(0)
+      const currentMessage = ref('')
+      const showSuccessDialog = ref(false)
+      const importStats = ref({
+        totalImported: 0,
+        missingFilled: 0,
+        incompleteUpdated: 0
+      })
 
       const fetchStats = async () => {
         try {
@@ -118,14 +187,16 @@
         progressError.value = ''
         current.value = 0
         total.value = 0
-
+        currentMessage.value = 'Starting import'
         try {
+          dialog.value = false // Close the FXImportDialog
           await importFXRates(importOption.value)
         } catch (err) {
           error.value = 'Failed to start import process'
           console.error(err)
-          isImporting.value = false
           showProgress.value = false
+        } finally {
+          isImporting.value = false
         }
       }
 
@@ -135,12 +206,19 @@
           progress.value = data.progress
           current.value = data.current
           total.value = data.total
+          currentMessage.value = data.message
         }
         if (data.status === 'completed') {
           showProgress.value = false
+          importStats.value = data.stats // Assuming the backend sends stats in the completed event
+          showSuccessDialog.value = true
           emit('import-completed', data)
-          closeDialog()
         }
+      }
+
+      const closeSuccessDialog = () => {
+        showSuccessDialog.value = false
+        closeDialog()
       }
 
       onMounted(() => {
@@ -168,7 +246,11 @@
         closeDialog,
         startImport,
         current,
-        total
+        total,
+        currentMessage,
+        showSuccessDialog,
+        importStats,
+        closeSuccessDialog
       }
     }
   }
