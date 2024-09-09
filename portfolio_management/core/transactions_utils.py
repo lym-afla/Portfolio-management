@@ -36,7 +36,7 @@ def get_transactions_table_api(request):
 
     transactions = _filter_transactions(user, start_date, end_date, selected_brokers, search)
     
-    transactions_data, currencies = calculate_transactions_table_output(
+    transactions_data, currencies = _calculate_transactions_table_output(
         user, transactions, selected_brokers, number_of_digits, start_date
     )
 
@@ -85,7 +85,7 @@ def _filter_transactions(user, start_date, end_date, selected_brokers, search):
     )
     return all_transactions
 
-def calculate_transactions_table_output(user, transactions, selected_brokers, number_of_digits, start_date=None):
+def _calculate_transactions_table_output(user, transactions, selected_brokers, number_of_digits, start_date=None):
     currencies = set()
     for broker in Brokers.objects.filter(investor=user, id__in=selected_brokers):
         currencies.update(broker.get_currencies())
@@ -120,6 +120,8 @@ def calculate_transactions_table_output(user, transactions, selected_brokers, nu
 
 def _process_regular_transaction(transaction, balance, number_of_digits):
     transaction_data = {
+        'id': transaction.id,
+        'transaction_type': 'regular',
         'type': transaction.type,
         'security': transaction.security.name if transaction.security else None,
         'cur': transaction.currency,
@@ -142,6 +144,8 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
 
 def _process_fx_transaction(transaction, balance, number_of_digits):
     transaction_data = {
+        'id': transaction.id,
+        'transaction_type': 'fx',
         'type': 'FX',
         'from_currency': transaction.from_currency,
         'to_currency': transaction.to_currency,

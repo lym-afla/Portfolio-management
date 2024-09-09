@@ -1045,7 +1045,7 @@ def get_broker_securities(request):
         return JsonResponse({'securities': list(securities)})
     return JsonResponse({'securities': []})
 
-from .serializers import BrokerPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer, TransactionFormSerializer, TransactionSerializer
+from .serializers import BrokerPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer
 
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, action
@@ -1732,92 +1732,3 @@ class FXViewSet(viewsets.ModelViewSet):
         import_id = f"fx_import_{user.id}"
         cache.delete(import_id)  # This will cause the import to stop
         return JsonResponse({"status": "Import cancelled"})
-    
-class TransactionViewSet(viewsets.ModelViewSet):
-    serializer_class = TransactionSerializer
-    queryset = Transactions.objects.all()
-
-    def get_queryset(self):
-        return self.queryset.filter(investor=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(investor=self.request.user)
-
-    def get_object(self):
-        transaction_id = self.kwargs.get('id')
-        try:
-            return Transactions.objects.get(id=transaction_id, investor=self.request.user)
-        except Transactions.DoesNotExist:
-            raise NotFound(f"Transaction with id {transaction_id} not found.")
-
-    @action(detail=False, methods=['GET'])
-    def form_structure(self, request):
-        form_serializer = TransactionFormSerializer()
-        return Response({
-            'fields': [
-                {
-                    'name': 'date',
-                    'label': 'Date',
-                    'type': 'datepicker',
-                    'required': True,
-                },
-                {
-                    'name': 'broker',
-                    'label': 'Broker',
-                    'type': 'select',
-                    'required': True,
-                    'choices': form_serializer.get_broker_choices(request.user)
-                },
-                {
-                    'name': 'security',
-                    'label': 'Select Security',
-                    'type': 'select',
-                    'required': False,
-                    'choices': form_serializer.get_security_choices(request.user)
-                },
-                {
-                    'name': 'currency',
-                    'label': 'Currency',
-                    'type': 'select',
-                    'required': True,
-                    'choices': [{'value': currency[0], 'text': currency[1]} for currency in CURRENCY_CHOICES]
-                },
-                {
-                    'name': 'type',
-                    'label': 'Type',
-                    'type': 'select',
-                    'required': True,
-                    'choices': [{'value': type[0], 'text': type[0]} for type in Transactions._meta.get_field('type').choices if type[0]]
-                },
-                {
-                    'name': 'quantity',
-                    'label': 'Quantity',
-                    'type': 'number',
-                    'required': False,
-                },
-                {
-                    'name': 'price',
-                    'label': 'Price',
-                    'type': 'number',
-                    'required': False,
-                },
-                {
-                    'name': 'cash_flow',
-                    'label': 'Cash Flow',
-                    'type': 'number',
-                    'required': False,
-                },
-                {
-                    'name': 'commission',
-                    'label': 'Commission',
-                    'type': 'number',
-                    'required': False,
-                },
-                {
-                    'name': 'comment',
-                    'label': 'Comment',
-                    'type': 'textarea',
-                    'required': False,
-                },
-            ]
-        })

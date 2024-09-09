@@ -1,8 +1,8 @@
 <template>
-  <v-dialog v-model="dialog" max-width="600px">
+  <v-dialog v-model="dialog" max-width="500px">
     <v-card>
       <v-card-title>
-        <span class="text-h5">{{ isEdit ? 'Edit Transaction' : 'Add Transaction' }}</span>
+        <span class="text-h5">{{ isEdit ? 'Edit FX Transaction' : 'Add FX Transaction' }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
@@ -62,10 +62,10 @@
 
 <script>
 import { ref, computed, watch, onMounted } from 'vue'
-import { getTransactionFormStructure, addTransaction, updateTransaction } from '@/services/api'
+import { getFXTransactionFormStructure, addFXTransaction, updateFXTransaction } from '@/services/api'
 
 export default {
-  name: 'TransactionDialog',
+  name: 'FXTransactionDialog',
   props: {
     modelValue: Boolean,
     editItem: Object,
@@ -91,7 +91,7 @@ export default {
 
     const fetchFormStructure = async () => {
       try {
-        const response = await getTransactionFormStructure()
+        const response = await getFXTransactionFormStructure()
         formFields.value = response.fields
         initializeForm()
         if (props.editItem) {
@@ -138,15 +138,15 @@ export default {
       try {
         let response
         if (isEdit.value) {
-          response = await updateTransaction(form.value.id, form.value)
+          response = await updateFXTransaction(form.value.id, form.value)
           emit('transaction-updated', response)
         } else {
-          response = await addTransaction(form.value)
+          response = await addFXTransaction(form.value)
           emit('transaction-added', response)
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting transaction:', error)
+        console.error('Error submitting FX transaction:', error)
         if (error && typeof error === 'object') {
           Object.entries(error).forEach(([key, value]) => {
             if (key === '__all__') {

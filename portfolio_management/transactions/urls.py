@@ -1,11 +1,14 @@
-from django.urls import path
-from .import views
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from . import views
 
-app_name = 'transactions' # Optional, but useful for namespacing
+app_name = 'transactions'
+
+router = DefaultRouter()
+router.register(r'', views.TransactionViewSet, basename='transaction')
+router.register(r'fx', views.FXTransactionViewSet, basename='fx_transaction')
 
 urlpatterns = [
     path('', views.transactions, name='transactions'),
-
-    # API methods
-    path('api/get_transactions_table/', views.compile_transactions_table_api, name='get_transactions_table_api'),
+    path('api/', include(router.urls)),
 ]

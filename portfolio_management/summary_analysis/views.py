@@ -262,3 +262,4 @@ def categorize_asset(asset):
         return 'Options'
     else:
         return 'Other'  # Just in case there are any assets that don't fit the above categories
+    

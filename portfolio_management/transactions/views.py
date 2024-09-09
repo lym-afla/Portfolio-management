@@ -6,10 +6,14 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
+from constants import CURRENCY_CHOICES
+from .serializers import TransactionFormSerializer, TransactionSerializer, FXTransactionSerializer, FXTransactionFormSerializer
 from utils import broker_group_to_ids_old_approach, currency_format_old_structure
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import NotFound
+from rest_framework import status, viewsets
 from core.transactions_utils import get_transactions_table_api
 
 @login_required
@@ -126,7 +130,187 @@ def transactions(request):
         'buttons': buttons,
     })
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def compile_transactions_table_api(request):
-    return Response(get_transactions_table_api(request))
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def compile_transactions_table_api(request):
+#     return Response(get_transactions_table_api(request))
+
+class TransactionViewSet(viewsets.ModelViewSet):
+    serializer_class = TransactionSerializer
+    queryset = Transactions.objects.all()
+
+    def get_queryset(self):
+        return self.queryset.filter(investor=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(investor=self.request.user)
+
+    def get_object(self):
+        transaction_id = self.kwargs.get('pk')
+        try:
+            return Transactions.objects.get(id=transaction_id, investor=self.request.user)
+        except Transactions.DoesNotExist:
+            raise NotFound(f"Transaction with id {transaction_id} not found.")
+
+    @action(detail=False, methods=['POST'])    
+    def get_transactions_table(self, request):
+        return Response(get_transactions_table_api(request))
+
+    @action(detail=False, methods=['GET'])
+    def form_structure(self, request):
+        form_serializer = TransactionFormSerializer()
+        return Response({
+            'fields': [
+                {
+                    'name': 'date',
+                    'label': 'Date',
+                    'type': 'datepicker',
+                    'required': True,
+                },
+                {
+                    'name': 'broker',
+                    'label': 'Broker',
+                    'type': 'select',
+                    'required': True,
+                    'choices': form_serializer.get_broker_choices(request.user)
+                },
+                {
+                    'name': 'security',
+                    'label': 'Select Security',
+                    'type': 'select',
+                    'required': False,
+                    'choices': form_serializer.get_security_choices(request.user)
+                },
+                {
+                    'name': 'currency',
+                    'label': 'Currency',
+                    'type': 'select',
+                    'required': True,
+                    'choices': [{'value': currency[0], 'text': currency[1]} for currency in CURRENCY_CHOICES]
+                },
+                {
+                    'name': 'type',
+                    'label': 'Type',
+                    'type': 'select',
+                    'required': True,
+                    'choices': [{'value': type[0], 'text': type[0]} for type in Transactions._meta.get_field('type').choices if type[0]]
+                },
+                {
+                    'name': 'quantity',
+                    'label': 'Quantity',
+                    'type': 'number',
+                    'required': False,
+                },
+                {
+                    'name': 'price',
+                    'label': 'Price',
+                    'type': 'number',
+                    'required': False,
+                },
+                {
+                    'name': 'cash_flow',
+                    'label': 'Cash Flow',
+                    'type': 'number',
+                    'required': False,
+                },
+                {
+                    'name': 'commission',
+                    'label': 'Commission',
+                    'type': 'number',
+                    'required': False,
+                },
+                {
+                    'name': 'comment',
+                    'label': 'Comment',
+                    'type': 'textarea',
+                    'required': False,
+                },
+            ]
+        })
+
+class FXTransactionViewSet(viewsets.ModelViewSet):
+    serializer_class = FXTransactionSerializer
+    queryset = FXTransaction.objects.all()
+
+    def get_queryset(self):
+        return self.queryset.filter(investor=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(investor=self.request.user)
+
+    @action(detail=False, methods=['GET'])
+    def form_structure(self, request):
+        form_serializer = FXTransactionFormSerializer()
+        
+        return Response({
+            'fields': [
+                {
+                    'name': 'date',
+                    'label': 'Date',
+                    'type': 'datepicker',
+                    'required': True,
+                },
+                {
+                    'name': 'broker',
+                    'label': 'Broker',
+                    'type': 'select',
+                    'required': True,
+                    'choices': form_serializer.get_broker_choices(request.user)
+                },
+                {
+                    'name': 'from_currency',
+                    'label': 'From Currency',
+                    'type': 'select',
+                    'required': True,
+                    'choices': form_serializer.get_currency_choices()
+                },
+                {
+                    'name': 'to_currency',
+                    'label': 'To Currency',
+                    'type': 'select',
+                    'required': True,
+                    'choices': form_serializer.get_currency_choices()
+                },
+                {
+                    'name': 'from_amount',
+                    'label': 'From Amount',
+                    'type': 'number',
+                    'required': True,
+                },
+                {
+                    'name': 'to_amount',
+                    'label': 'To Amount',
+                    'type': 'number',
+                    'required': True,
+                },
+                {
+                    'name': 'commission',
+                    'label': 'Commission',
+                    'type': 'number',
+                    'required': False,
+                },
+                {
+                    'name': 'comment',
+                    'label': 'Comment',
+                    'type': 'textarea',
+                    'required': False,
+                },
+            ]
+        })
+
+    # def create(self, request, *args, **kwargs):
+    #     serializer = FXTransactionFormSerializer(data=request.data)
+    #     if serializer.is_valid():
+    #         self.perform_create(serializer)
+    #         headers = self.get_success_headers(serializer.data)
+    #         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = FXTransactionFormSerializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

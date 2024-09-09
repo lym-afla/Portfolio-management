@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.urls import path, include
 from common import views
-from django.conf import settings
+
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -19,9 +20,3 @@ urlpatterns = [
     path('api/effective-current-date/', views.get_effective_current_date, name='get_effective_current_date'),
 
 ]
-
-# if settings.DEBUG:
-#     import debug_toolbar
-#     urlpatterns += [
-#         path('__debug__/', include(debug_toolbar.urls)),
-#     ]

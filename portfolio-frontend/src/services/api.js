@@ -84,25 +84,6 @@ export const getClosedPositions = async (dateFrom, dateTo, timespan, page, items
   }
 }
 
-export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('API request payload for transactions:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy })
-  try {
-    const response = await axiosInstance.post(`${API_URL}/transactions/api/get_transactions_table/`, {
-      page,
-      itemsPerPage,
-      search,
-      dateFrom,
-      dateTo,
-      sortBy
-    })
-    console.log('API response for transactions:', response.data)
-    return response.data
-  } catch (error) {
-    console.error('Error fetching transactions:', error)
-    throw error
-  }
-}
-
 export const getYearOptions = async () => {
   try {
     const response = await axiosInstance.get(`${API_URL}/api/get-year-options/`)
@@ -741,9 +722,28 @@ export const cancelFXImport = async () => {
   }
 }
 
+export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('API request payload for transactions:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy })
+  try {
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/get_transactions_table/`, {
+      page,
+      itemsPerPage,
+      search,
+      dateFrom,
+      dateTo,
+      sortBy
+    })
+    console.log('API response for transactions:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching transactions:', error)
+    throw error
+  }
+}
+
 export const getTransactionFormStructure = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/transactions/form_structure/`)
+    const response = await axiosInstance.get(`${API_URL}/transactions/api/form_structure/`)
     return response.data
   } catch (error) {
     console.error('Error fetching transaction form structure:', error)
@@ -753,7 +753,7 @@ export const getTransactionFormStructure = async () => {
 
 export const getTransactionDetails = async (id) => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/transactions/${id}/`)
+    const response = await axiosInstance.get(`${API_URL}/transactions/api/${id}/`)
     return response.data
   } catch (error) {
     console.error('Error fetching transaction details:', error)
@@ -763,7 +763,7 @@ export const getTransactionDetails = async (id) => {
 
 export const addTransaction = async (transactionData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/transactions/`, transactionData)
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/`, transactionData)
     return response.data
   } catch (error) {
     console.error('Error adding transaction:', error)
@@ -773,7 +773,7 @@ export const addTransaction = async (transactionData) => {
 
 export const updateTransaction = async (id, transactionData) => {
   try {
-    const response = await axiosInstance.put(`${API_URL}/database/api/transactions/${id}/`, transactionData)
+    const response = await axiosInstance.put(`${API_URL}/transactions/api/${id}/`, transactionData)
     return response.data
   } catch (error) {
     console.error('Error updating transaction:', error)
@@ -783,9 +783,59 @@ export const updateTransaction = async (id, transactionData) => {
 
 export const deleteTransaction = async (id) => {
   try {
-    await axiosInstance.delete(`${API_URL}/database/api/transactions/${id}/`)
+    await axiosInstance.delete(`${API_URL}/transactions/api/${id}/`)
   } catch (error) {
     console.error('Error deleting transaction:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+// FX Transaction API functions
+export const getFXTransactionFormStructure = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/transactions/api/fx/form_structure/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching FX transaction form structure:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getFXTransactionDetails = async (id) => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/transactions/api/fx/${id}/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching FX transaction details:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const addFXTransaction = async (transactionData) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/fx/`, transactionData)
+    return response.data
+  } catch (error) {
+    console.error('Error adding FX transaction:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateFXTransaction = async (id, transactionData) => {
+  try {
+    const response = await axiosInstance.put(`${API_URL}/transactions/api/fx/${id}/`, transactionData)
+    return response.data
+  } catch (error) {
+    console.error('Error updating FX transaction:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteFXTransaction = async (id) => {
+  try {
+    await axiosInstance.delete(`${API_URL}/transactions/api/fx/${id}/`)
+  } catch (error) {
+    console.error('Error deleting FX transaction:', error)
     throw error.response ? error.response.data : error.message
   }
 }

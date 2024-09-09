@@ -18,12 +18,14 @@
           color="primary"
           prepend-icon="mdi-plus"
           class="mr-2"
+          @click="openAddFXTransactionDialog"
         >
           Add FX Transaction
         </v-btn>
         <v-btn
           color="secondary"
           prepend-icon="mdi-upload"
+          @click="openImportDialog"
         >
           Import Transactions
         </v-btn>
@@ -194,10 +196,19 @@
     </v-row>
 
     <TransactionDialog
+      v-if="showTransactionDialog && (editedTransaction ? editedTransaction.transaction_type === 'regular' : true)"
       v-model="showTransactionDialog"
       :edit-item="editedTransaction"
-      @transaction-added="handleTransactionAdded"
-      @transaction-updated="handleTransactionUpdated"
+      @transaction-added="fetchTransactions"
+      @transaction-updated="fetchTransactions"
+    />
+
+    <FXTransactionDialog
+      v-if="showFXTransactionDialog && (editedTransaction ? editedTransaction.transaction_type === 'fx' : true)"
+      v-model="showFXTransactionDialog"
+      :edit-item="editedTransaction"
+      @transaction-added="fetchTransactions"
+      @transaction-updated="fetchTransactions"
     />
 
     <v-dialog v-model="deleteDialog" max-width="500px">
@@ -212,6 +223,7 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
   </v-container>
 </template>
 
@@ -219,17 +231,19 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import { format } from 'date-fns'
-import { getTransactions, deleteTransaction, getTransactionDetails } from '@/services/api'
+import { getTransactions, deleteTransaction, getTransactionDetails, getFXTransactionDetails } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import TransactionDialog from '@/components/dialogs/TransactionDialog.vue'
+import FXTransactionDialog from '@/components/dialogs/FXTransactionDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: "TransactionsPage",
   components: {
     DateRangeSelector,
-    TransactionDialog
+    TransactionDialog,
+    FXTransactionDialog
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -266,9 +280,11 @@ export default {
     const totalItems = ref(0)
     const currencies = ref([])
     const showTransactionDialog = ref(false)
+    const showFXTransactionDialog = ref(false)
     const editedTransaction = ref(null)
     const deleteDialog = ref(false)
     const transactionToDelete = ref(null)
+    const showImportDialog = ref(false)
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
@@ -363,12 +379,26 @@ export default {
       showTransactionDialog.value = true
     }
 
+    const openAddFXTransactionDialog = () => {
+      editedTransaction.value = null
+      showFXTransactionDialog.value = true
+    }
+
     const editTransaction = async (item) => {
       console.log('Editing item:', item)
       try {
-        const transactionDetails = await getTransactionDetails(item.id)
-        editedTransaction.value = transactionDetails
-        showTransactionDialog.value = true
+        let transactionDetails
+        if (item.transaction_type === 'regular') {
+          transactionDetails = await getTransactionDetails(item.id)
+        } else if (item.transaction_type === 'fx') {
+          transactionDetails = await getFXTransactionDetails(item.id)
+        }
+        editedTransaction.value = { ...transactionDetails, transaction_type: item.transaction_type }
+        if (item.transaction_type === 'regular') {
+          showTransactionDialog.value = true
+        } else if (item.transaction_type === 'fx') {
+          showFXTransactionDialog.value = true
+        }
       } catch (error) {
         handleApiError(error)
       }
@@ -397,12 +427,8 @@ export default {
       }
     }
 
-    const handleTransactionAdded = () => {
-      fetchTransactions()
-    }
-
-    const handleTransactionUpdated = () => {
-      fetchTransactions()
+    const openImportDialog = () => {
+      showImportDialog.value = true
     }
 
     onMounted(async () => {
@@ -438,16 +464,18 @@ export default {
       fetchTransactions,
       formatDate,
       showTransactionDialog,
+      showFXTransactionDialog,
       editedTransaction,
       deleteDialog,
       transactionToDelete,
+      showImportDialog,
       openAddTransactionDialog,
+      openAddFXTransactionDialog,
       editTransaction,
       processDeleteTransaction,
       closeDeleteDialog,
       deleteTransactionConfirm,
-      handleTransactionAdded,
-      handleTransactionUpdated
+      openImportDialog
     }
   }
 }
