@@ -147,8 +147,8 @@ def _process_fx_transaction(transaction, balance, number_of_digits):
         'id': transaction.id,
         'transaction_type': 'fx',
         'type': 'FX',
-        'from_currency': transaction.from_currency,
-        'to_currency': transaction.to_currency,
+        'from_cur': transaction.from_currency,
+        'to_cur': transaction.to_currency,
         'exchange_rate': transaction.exchange_rate,
     }
 

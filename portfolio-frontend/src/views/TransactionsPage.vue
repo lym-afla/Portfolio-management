@@ -120,7 +120,7 @@
                   {{ item.quantity }} of {{ item.security }}
                 </template>
                 <template v-else-if="item.type === 'FX'">
-                  : {{ item.from_currency }} to {{ item.to_currency }} @ {{ item.exchange_rate }}
+                  : {{ item.from_cur }} to {{ item.to_cur }} @ {{ item.exchange_rate }}
                   <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
                 </template>
                 <template v-else-if="!['Broker commission', 'Tax', 'Interest income'].includes(item.type)">
@@ -142,10 +142,10 @@
                     {{ item.value }}
                   </template>
                 </template>
-                <template v-else-if="item.from_currency === currency">
+                <template v-else-if="item.from_cur === currency">
                   {{ item.from_amount }}
                 </template>
-                <template v-else-if="item.to_currency === currency">
+                <template v-else-if="item.to_cur === currency">
                   {{ item.to_amount }}
                 </template>
                 <template v-else>

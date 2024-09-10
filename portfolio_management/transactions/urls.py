@@ -5,7 +5,7 @@ from . import views
 app_name = 'transactions'
 
 router = DefaultRouter()
-router.register(r'', views.TransactionViewSet, basename='transaction___')
+router.register(r'', views.TransactionViewSet, basename='transaction')
 router.register(r'fx', views.FXTransactionViewSet, basename='fx_transaction')
 
 urlpatterns = [

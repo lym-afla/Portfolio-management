@@ -301,18 +301,18 @@ export default {
 
     const closeSuccessDialog = () => {
       showSuccessDialog.value = false
+      fetchStats()
       closeDialog()
     }
 
     onMounted(() => {
+      fetchStats()
       window.addEventListener('fxImportProgress', handleProgress)
     })
 
     onUnmounted(() => {
       window.removeEventListener('fxImportProgress', handleProgress)
     })
-
-    fetchStats()
 
     console.log('Import options:', importOptions)
 

@@ -237,7 +237,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class FXTransactionViewSet(viewsets.ModelViewSet):
     serializer_class = FXTransactionFormSerializer
     queryset = FXTransaction.objects.all()
-    http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']  # Add this line
 
     def get_queryset(self):
         return self.queryset.filter(investor=self.request.user)
@@ -245,7 +244,8 @@ class FXTransactionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(investor=self.request.user)
 
-    def create(self, request, *args, **kwargs):
+    @action(detail=False, methods=['POST'])
+    def create_fx_transaction(self, request):
         print("Received data:", request.data)  # Debug print
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
@@ -254,10 +254,6 @@ class FXTransactionViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
         print("Serializer errors:", serializer.errors)  # Debug print
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=False, methods=['POST'])
-    def create_fx_transaction(self, request):
-        return self.create(request)
 
     @action(detail=False, methods=['GET'])
     def form_structure(self, request):

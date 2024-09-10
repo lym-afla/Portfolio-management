@@ -58,6 +58,8 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
         return currency_format(value, currency=None, digits=0)
     elif key in ['id', 'no_of_securities']:
         return value
+    elif key == 'exchange_rate':
+        return currency_format(value, currency=None, digits=4)
     elif isinstance(value, (Decimal, float, int)):
         return currency_format(value, currency, digits)
     else:

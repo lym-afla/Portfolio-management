@@ -814,7 +814,7 @@ export const getFXTransactionDetails = async (id) => {
 export const addFXTransaction = async (transactionData) => {
   try {
     console.log('Sending FX transaction data:', transactionData)  // Add this line
-    const response = await axiosInstance.post(`${API_URL}/transactions/api/fx/`, transactionData)
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/fx/create_fx_transaction/`, transactionData)
     console.log('Received response:', response.data)  // Add this line
     return response.data
   } catch (error) {
