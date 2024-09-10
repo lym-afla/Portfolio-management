@@ -319,17 +319,14 @@ def add_fx_transaction(request):
             to_currency = fx_transaction.to_currency
             exchange_rate = fx_transaction.exchange_rate
 
-            fx_instance, created = FX.objects.get_or_create(
-                date=fx_date,
-                investor=request.user,
-                defaults={}
-            )
+            fx_instance, created = FX.objects.get_or_create(date=fx_date)
+            fx_instance.investors.add(request.user)
 
             # Determine the correct field to update
             currency_pair = f"{from_currency}{to_currency}"
             reverse_pair = f"{to_currency}{from_currency}"
 
-            pairs_list = [field.name for field in FX._meta.get_fields() if (field.name != 'date' and field.name != 'id')]
+            pairs_list = [field.name for field in FX._meta.get_fields() if field.name not in ['date', 'id', 'investors']]
 
             if currency_pair in pairs_list:
                 current_rate = getattr(fx_instance, currency_pair)
@@ -1523,15 +1520,16 @@ class FXViewSet(viewsets.ModelViewSet):
     lookup_field = 'id'  # Use 'id' instead of 'date' for lookups
 
     def get_queryset(self):
-        return FX.objects.filter(investor=self.request.user).order_by('-date')
+        return FX.objects.filter(investors=self.request.user).order_by('-date')
 
     def perform_create(self, serializer):
-        serializer.save(investor=self.request.user)
+        instance = serializer.save()
+        instance.investors.add(self.request.user)
 
     def get_object(self):
         fx_id = self.kwargs.get('id')
         try:
-            return FX.objects.get(id=fx_id, investor=self.request.user)
+            return FX.objects.filter(investors=self.request.user).get(id=fx_id)
         except FX.DoesNotExist:
             raise NotFound(f"FX rate with id {fx_id} not found.")
 
@@ -1544,7 +1542,7 @@ class FXViewSet(viewsets.ModelViewSet):
             date = serializer.validated_data['date']
             
             try:
-                rate = FX.get_rate(source, target, date)
+                rate = FX.get_rate(source, target, date, self.request.user)
                 return Response(rate)
             except ValueError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1652,7 +1650,7 @@ class FXViewSet(viewsets.ModelViewSet):
         transaction_dates = Transactions.objects.filter(investor=user).values('date').distinct()
         total_dates = transaction_dates.count()
         
-        fx_instances = FX.objects.filter(investor=user, date__in=transaction_dates.values('date'))
+        fx_instances = FX.objects.filter(investors=user, date__in=transaction_dates.values('date'))
         missing_instances = total_dates - fx_instances.count()
         
         incomplete_instances = fx_instances.filter(
@@ -1682,7 +1680,7 @@ class FXViewSet(viewsets.ModelViewSet):
             # Pre-filter dates based on import_option
             dates_to_update = []
             for date in transaction_dates:
-                fx_instance = FX.objects.filter(investor=user, date=date).first()
+                fx_instance = FX.objects.filter(investors=user, date=date).first()
                 if import_option in ['missing', 'both'] and not fx_instance:
                     dates_to_update.append(date)
                 elif import_option in ['incomplete', 'both'] and fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
@@ -1699,7 +1697,7 @@ class FXViewSet(viewsets.ModelViewSet):
                     yield f"data: {json.dumps({'status': 'cancelled'})}\n\n"
                     break
 
-                fx_instance = FX.objects.filter(investor=user, date=date).first()
+                fx_instance = FX.objects.filter(investors=user, date=date).first()
                 if not fx_instance:
                     FX.update_fx_rate(date, user)
                     missing_filled += 1

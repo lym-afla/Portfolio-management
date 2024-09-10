@@ -2435,8 +2435,8 @@ def calculate_performance_old_framework(user, start_date, end_date, selected_bro
     return performance_data
 
 @lru_cache(maxsize=None)
-def get_fx_rate_old_structure(currency, target_currency, date):
-    return FX.get_rate(currency, target_currency, date)['FX']
+def get_fx_rate_old_structure(currency, target_currency, date, user):
+    return FX.get_rate(currency, target_currency, date, user)['FX']
 
 def end_of_year_price_correction(user, year, broker_name, target_nav, asset_name):
     

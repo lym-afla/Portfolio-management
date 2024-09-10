@@ -235,18 +235,18 @@ class FXTransactionForm(forms.ModelForm):
         if investor is not None:
             self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
 
-    def clean(self):
-        cleaned_data = super().clean()
-        from_amount = cleaned_data.get('from_amount')
-        to_amount = cleaned_data.get('to_amount')
-        exchange_rate = cleaned_data.get('exchange_rate')
+    # def clean(self):
+    #     cleaned_data = super().clean()
+    #     from_amount = cleaned_data.get('from_amount')
+    #     to_amount = cleaned_data.get('to_amount')
+    #     exchange_rate = cleaned_data.get('exchange_rate')
 
-        if from_amount and to_amount and exchange_rate:
-            calculated_rate = from_amount / to_amount
-            if abs(calculated_rate - exchange_rate) > 0.0001:
-                raise forms.ValidationError("Exchange rate does not match the provided amounts.")
+    #     if from_amount and to_amount and exchange_rate:
+    #         calculated_rate = from_amount / to_amount
+    #         if abs(calculated_rate - exchange_rate) > 0.0001:
+    #             raise forms.ValidationError("Exchange rate does not match the provided amounts.")
 
-        return cleaned_data
+    #     return cleaned_data
 
 class PriceImportForm(forms.Form):
     securities = forms.ModelMultipleChoiceField(

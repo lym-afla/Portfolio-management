@@ -92,8 +92,8 @@ class BrokerPerformanceSerializer(serializers.Serializer):
 class FXSerializer(serializers.ModelSerializer):
     class Meta:
         model = FX
-        fields = ['id', 'date', 'investor', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
-        read_only_fields = ['id', 'date', 'investor']
+        fields = ['id', 'date', 'USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']
+        read_only_fields = ['id']  # Remove 'investor' from read_only_fields
 
 class FXRateSerializer(serializers.Serializer):
     source = serializers.CharField(max_length=3)

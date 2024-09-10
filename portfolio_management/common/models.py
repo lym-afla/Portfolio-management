@@ -14,8 +14,8 @@ from users.models import CustomUser
 # Table with FX data
 class FX(models.Model):
     id = models.AutoField(primary_key=True)
-    date = models.DateField()
-    investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='FX')
+    date = models.DateField(unique=True)
+    investors = models.ManyToManyField(CustomUser, related_name='fx_rates')
     USDEUR = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
     USDGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
     CHFGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
@@ -23,11 +23,11 @@ class FX(models.Model):
     PLNUSD = models.DecimalField(max_digits=9, decimal_places=5, null=True, blank=True)
 
     class Meta:
-        unique_together = ('date', 'investor')
+        ordering = ['-date']
 
     # Get FX quote for date
     @classmethod
-    def get_rate(cls, source, target, date):
+    def get_rate(cls, source, target, date, investor):
         fx_rate = 1
         dates_async = False
         dates_list = []
@@ -41,7 +41,7 @@ class FX(models.Model):
             }
 
         # Get all existing pairs
-        pairs_list = [field.name for field in FX._meta.get_fields() if (field.name != 'date' and field.name != 'id')]
+        pairs_list = [field.name for field in FX._meta.get_fields() if field.name not in ['date', 'id', 'investors']]
         
         # Create undirected graph with currencies, import networkx library working with graphs
         G = nx.Graph()
@@ -67,6 +67,7 @@ class FX(models.Model):
                     
                     fx_call = cls.objects.filter(
                         date__lte=date,
+                        investors=investor,
                         **{f'{field_name}__isnull': False}
                     ).values(
                         'date', quote=F(field_name)
@@ -75,6 +76,7 @@ class FX(models.Model):
                     if fx_call is None or fx_call['quote'] is None:
                         fx_call = cls.objects.filter(
                             date__gte=date,
+                            investors=investor,
                             **{f'{field_name}__isnull': False}
                         ).values(
                             'date', quote=F(field_name)
@@ -103,17 +105,15 @@ class FX(models.Model):
     
     @classmethod
     def update_fx_rate(cls, date, investor):
-        # Get FX model variables, except 'date'
-        fx_variables = [field for field in cls._meta.get_fields() if (field.name != 'date' and field.name != 'investor')]
+        # Get FX model variables, except 'date', 'id' and 'investors'
+        fx_variables = [field for field in cls._meta.get_fields() if field.name not in ['date', 'id', 'investors']]
 
         # Extract source and target currencies
         currency_pairs = [(field.name[:3], field.name[3:]) for field in fx_variables]
 
         # Create or get the fx_instance once before the loop
-        try:
-            fx_instance, created = cls.objects.get_or_create(date=date, investor=investor)
-        except IntegrityError:
-            fx_instance = cls.objects.filter(date=date, investor=investor).first()
+        fx_instance, created = cls.objects.get_or_create(date=date)
+        fx_instance.investors.add(investor)
 
         for source, target in currency_pairs:
             # Check if an FX rate exists for the date and currency pair
@@ -134,6 +134,9 @@ class FX(models.Model):
         # Save the fx_instance once after updating all currency pairs
         fx_instance.save()
 
+    @classmethod
+    def get_investor_fx_entries(cls, investor):
+        return cls.objects.filter(investors=investor)
 
 # Brokers
 class Brokers(models.Model):
