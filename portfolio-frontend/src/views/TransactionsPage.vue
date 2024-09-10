@@ -195,16 +195,14 @@
       </v-col>
     </v-row>
 
-    <TransactionDialog
-      v-if="showTransactionDialog && (editedTransaction ? editedTransaction.transaction_type === 'regular' : true)"
+    <TransactionFormDialog
       v-model="showTransactionDialog"
       :edit-item="editedTransaction"
       @transaction-added="fetchTransactions"
       @transaction-updated="fetchTransactions"
     />
 
-    <FXTransactionDialog
-      v-if="showFXTransactionDialog && (editedTransaction ? editedTransaction.transaction_type === 'fx' : true)"
+    <FXTransactionFormDialog
       v-model="showFXTransactionDialog"
       :edit-item="editedTransaction"
       @transaction-added="fetchTransactions"
@@ -234,16 +232,16 @@ import { format } from 'date-fns'
 import { getTransactions, deleteTransaction, getTransactionDetails, getFXTransactionDetails } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
-import TransactionDialog from '@/components/dialogs/TransactionDialog.vue'
-import FXTransactionDialog from '@/components/dialogs/FXTransactionDialog.vue'
+import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vue'
+import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: "TransactionsPage",
   components: {
     DateRangeSelector,
-    TransactionDialog,
-    FXTransactionDialog
+    TransactionFormDialog,
+    FXTransactionFormDialog
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -394,6 +392,7 @@ export default {
           transactionDetails = await getFXTransactionDetails(item.id)
         }
         editedTransaction.value = { ...transactionDetails, transaction_type: item.transaction_type }
+        console.log("Transaction fetched for editing:", editedTransaction.value)
         if (item.transaction_type === 'regular') {
           showTransactionDialog.value = true
         } else if (item.transaction_type === 'fx') {

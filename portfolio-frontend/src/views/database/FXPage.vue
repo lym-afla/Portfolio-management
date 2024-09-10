@@ -131,7 +131,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, watchEffect } from 'vue'
+import { ref, computed, watch, watchEffect } from 'vue'
 import { useStore } from 'vuex'
 import { getFXData, deleteFXRate, getFXDetails } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
@@ -254,9 +254,9 @@ export default {
       }
     })
 
-    onMounted(() => {
-      console.log('Mounting FXPage')
-    })
+    // onMounted(() => {
+    //   console.log('Mounting FXPage')
+    // })
 
     const showFXDialog = ref(false)
     const showImportDialog = ref(false)

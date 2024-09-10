@@ -151,7 +151,7 @@ def exposure_table_update(request):
         cash_balances = broker.balance(end_date).items()
         for currency, balance in cash_balances:
             # fx_rate = FX.get_rate(currency, currency_target, end_date)['FX']
-            fx_rate = get_fx_rate_old_structure(currency, currency_target, end_date)
+            fx_rate = get_fx_rate_old_structure(currency, currency_target, end_date, user)
             balance_to_add = Decimal(round(balance * fx_rate, 2))
             for cat in ['Consolidated', category]:
                 data[cat]['Cash']['market_value'] += balance_to_add
@@ -170,7 +170,7 @@ def exposure_table_update(request):
 
         for transaction in commission_transactions:
             # fx_rate = FX.get_rate(transaction['currency'], currency_target, transaction['date'])['FX']
-            fx_rate = get_fx_rate_old_structure(transaction['currency'], currency_target, transaction['date'])
+            fx_rate = get_fx_rate_old_structure(transaction['currency'], currency_target, transaction['date'], user)
             commission_to_add = Decimal(round(transaction['commission'] * fx_rate, 2))
             for cat in ['Consolidated', category]:
                 data[cat]['Cash']['commission'] += commission_to_add

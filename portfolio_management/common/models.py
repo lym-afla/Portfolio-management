@@ -27,7 +27,7 @@ class FX(models.Model):
 
     # Get FX quote for date
     @classmethod
-    def get_rate(cls, source, target, date, investor):
+    def get_rate(cls, source, target, date, investor=None):
         fx_rate = 1
         dates_async = False
         dates_list = []
@@ -65,10 +65,13 @@ class FX(models.Model):
                         field_name = f'{i_target}{i_source}'
                         multiplier = Decimal('-1')
                     
+                    filter_kwargs = {f'{field_name}__isnull': False}
+                    if investor is not None:
+                        filter_kwargs['investors'] = investor
+                    
                     fx_call = cls.objects.filter(
                         date__lte=date,
-                        investors=investor,
-                        **{f'{field_name}__isnull': False}
+                        **filter_kwargs
                     ).values(
                         'date', quote=F(field_name)
                     ).order_by("-date").first()
@@ -76,13 +79,12 @@ class FX(models.Model):
                     if fx_call is None or fx_call['quote'] is None:
                         fx_call = cls.objects.filter(
                             date__gte=date,
-                            investors=investor,
-                            **{f'{field_name}__isnull': False}
+                            **filter_kwargs
                         ).values(
                             'date', quote=F(field_name)
                         ).order_by("date").first()
                         if fx_call is None or fx_call['quote'] is None:
-                            raise ValueError(f"No FX rate found for {field_name} after before {date}")
+                            raise ValueError(f"No FX rate found for {field_name} before {date}")
                     
                     quote = Decimal(str(fx_call['quote']))
                     if multiplier == Decimal('1'):
@@ -102,7 +104,6 @@ class FX(models.Model):
             'dates_async': dates_async,
             'dates': dates_list
         }
-    
     @classmethod
     def update_fx_rate(cls, date, investor):
         # Get FX model variables, except 'date', 'id' and 'investors'

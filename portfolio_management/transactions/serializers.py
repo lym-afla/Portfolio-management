@@ -2,11 +2,11 @@ from rest_framework import serializers
 from common.models import Transactions, FXTransaction, Assets, Brokers
 from constants import CURRENCY_CHOICES
 
-class TransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Transactions
-        fields = ['id', 'investor', 'broker', 'security', 'currency', 'type', 'date', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
-        read_only_fields = ['id', 'investor']
+# class TransactionSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Transactions
+#         fields = ['id', 'investor', 'broker', 'security', 'currency', 'type', 'date', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
+#         read_only_fields = ['id', 'investor']
 
 class TransactionFormSerializer(serializers.ModelSerializer):
     class Meta:
@@ -54,11 +54,11 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         choices = [{'value': str(security.pk), 'text': security.name} for security in Assets.objects.filter(investor=investor).order_by('name')]
         return choices
 
-class FXTransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FXTransaction
-        fields = ['id', 'investor', 'broker', 'date', 'from_currency', 'to_currency', 'from_amount', 'to_amount', 'exchange_rate', 'commission', 'comment']
-        read_only_fields = ['id', 'investor']
+# class FXTransactionSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = FXTransaction
+#         fields = ['id', 'investor', 'broker', 'date', 'from_currency', 'to_currency', 'from_amount', 'to_amount', 'exchange_rate', 'commission', 'comment']
+#         read_only_fields = ['id', 'investor']
 
 class FXTransactionFormSerializer(serializers.ModelSerializer):
     class Meta:
@@ -90,4 +90,4 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
         return [{'value': str(broker.pk), 'text': broker.name} for broker in Brokers.objects.filter(investor=investor).order_by('name')]
 
     def get_currency_choices(self):
-        return [{'value': currency[0], 'text': currency[1]} for currency in CURRENCY_CHOICES]
+        return [{'value': currency[0], 'text': f"{currency[1]} ({currency[0]})"} for currency in CURRENCY_CHOICES]

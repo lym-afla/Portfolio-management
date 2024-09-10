@@ -73,9 +73,10 @@ def dashboard(request):
         quote = Transactions.objects.filter(investor=user, broker__in=selected_brokers, currency=cur, date__lte=effective_current_date, type__in=['Cash in', 'Cash out']).values_list('cash_flow', 'date', 'type')
         for cash_flow, date, transaction_type in quote:
             if transaction_type == 'Cash in':
-                summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
+                summary['Invested'] += cash_flow * FX.get_rate(cur, currency_target, date, user)['FX']
             else:
-                summary['Cash-out'] += cash_flow * FX.get_rate(cur, currency_target, date)['FX']
+                summary['Cash-out'] += cash_flow * FX.get_rate(cur, currency_target, date, user)['FX']
+
     
     summary['IRR'] = format_percentage_old_structure(Irr_old_structure(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers), digits=1)
     
@@ -219,7 +220,7 @@ def get_dashboard_summary_api(request):
     )
 
     for transaction in transactions:
-        fx_rate = FX.get_rate(transaction['currency'], currency_target, transaction['date'])['FX']
+        fx_rate = FX.get_rate(transaction['currency'], currency_target, transaction['date'], user)['FX']
         if transaction['type'] == 'Cash in':
             summary['Invested'] += Decimal(transaction['total']) * Decimal(fx_rate)
         else:

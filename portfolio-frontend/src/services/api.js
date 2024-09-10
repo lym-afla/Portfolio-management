@@ -813,10 +813,12 @@ export const getFXTransactionDetails = async (id) => {
 
 export const addFXTransaction = async (transactionData) => {
   try {
+    console.log('Sending FX transaction data:', transactionData)  // Add this line
     const response = await axiosInstance.post(`${API_URL}/transactions/api/fx/`, transactionData)
+    console.log('Received response:', response.data)  // Add this line
     return response.data
   } catch (error) {
-    console.error('Error adding FX transaction:', error)
+    console.error('Error adding FX transaction:', error.response ? error.response.data : error)
     throw error.response ? error.response.data : error.message
   }
 }

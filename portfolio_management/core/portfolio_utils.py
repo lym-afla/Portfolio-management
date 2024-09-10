@@ -50,8 +50,8 @@ def get_brokers_for_security(user_id: int, security_id: int) -> QuerySet[Brokers
     ).distinct()
 
 @lru_cache(maxsize=None)
-def get_fx_rate(currency: str, target_currency: str, date: date) -> Decimal:
-    return FX.get_rate(currency, target_currency, date)['FX']
+def get_fx_rate(currency: str, target_currency: str, date: date, user: Optional[int] = None) -> Decimal:
+    return FX.get_rate(currency, target_currency, date, user)['FX']
 
 # Create one dictionary from two. And add values for respective keys if keys present on both dictionaries
 def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
@@ -210,7 +210,7 @@ def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Opti
 
 def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     if transaction.type in ['Cash in', 'Cash out']:
-        return -transaction.cash_flow
+        return (transaction.cash_flow or 0) * Decimal(-1)
     elif transaction.type in ['Broker commission', 'Tax']:
         return Decimal(0)
     else:

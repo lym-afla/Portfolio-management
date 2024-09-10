@@ -108,7 +108,7 @@ def NAV_at_date_old_structure(user_id, broker_ids, date, target_currency, breakd
 
     cash = 0
     for currency, balance in cash_balance.items():
-        converted_cash = balance * get_fx_rate_old_structure(currency, target_currency, date)
+        converted_cash = balance * get_fx_rate_old_structure(currency, target_currency, date, user_id)
         cash += converted_cash
         update_analysis_old_structure(analysis['Currency'], currency, converted_cash)
 
@@ -136,7 +136,7 @@ def calculate_portfolio_cash_old_structure(user_id, broker_ids, date, currency):
 
     cash = Decimal(0)
     for currency, balance in cash_balance.items():
-        converted_cash = balance * get_fx_rate_old_structure(currency, currency, date)
+        converted_cash = balance * get_fx_rate_old_structure(currency, currency, date, user_id)
         cash += converted_cash
 
     return round(cash, 2)
@@ -200,7 +200,7 @@ def Irr_old_structure(user_id, date, currency=None, asset_id=None, broker_id_lis
             
         if currency is not None:
             # fx_rate = FX.get_rate(transaction.currency.upper(), currency, transaction.date)['FX']
-            fx_rate = get_fx_rate_old_structure(transaction.currency.upper(), currency, transaction.date)
+            fx_rate = get_fx_rate_old_structure(transaction.currency.upper(), currency, transaction.date, user_id)
         else:
             fx_rate = 1
         cash_flows.append(round(cash_flow * fx_rate, 2))
@@ -869,7 +869,7 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
                 entry_quantity = Decimal(0)
             
             for transaction in entry_transactions:
-                fx_rate = get_fx_rate_old_structure(transaction.currency, currency_used, transaction.date) if currency_used else 1
+                fx_rate = get_fx_rate_old_structure(transaction.currency, currency_used, transaction.date, user_id) if currency_used else 1
                 entry_value += transaction.price * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
@@ -878,7 +878,7 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
             # Calculate exit value and quantity
             exit_value = Decimal(0)
             for transaction in exit_transactions:
-                fx_rate = get_fx_rate_old_structure(transaction.currency, currency_used, transaction.date) if currency_used else 1
+                fx_rate = get_fx_rate_old_structure(transaction.currency, currency_used, transaction.date, user_id) if currency_used else 1
                 exit_value += transaction.price * abs(transaction.quantity) * fx_rate
 
             position['exit_value'] = round(Decimal(exit_value), 2)
@@ -2395,7 +2395,7 @@ def calculate_performance_old_framework(user, start_date, end_date, selected_bro
 
         if not transactions_df.empty:
             transactions_df['fx_rate'] = transactions_df.apply(
-                lambda row: get_fx_rate_old_structure(row['currency'], currency_target, row['date']), axis=1
+                lambda row: get_fx_rate_old_structure(row['currency'], currency_target, row['date'], user), axis=1
             )
 
             # Calculate transaction-based metrics

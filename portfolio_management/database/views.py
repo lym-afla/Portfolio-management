@@ -1673,15 +1673,14 @@ class FXViewSet(viewsets.ModelViewSet):
         import_id = f"fx_import_{user.id}"
         cache.set(import_id, "running", timeout=3600)  # Set a running flag with 1 hour timeout
 
-
         def generate_progress():
             transaction_dates = Transactions.objects.filter(investor=user).values_list('date', flat=True).distinct()
             
             # Pre-filter dates based on import_option
             dates_to_update = []
             for date in transaction_dates:
-                fx_instance = FX.objects.filter(investors=user, date=date).first()
-                if import_option in ['missing', 'both'] and not fx_instance:
+                fx_instance = FX.objects.filter(date=date).first()
+                if import_option in ['missing', 'both'] and (not fx_instance or user not in fx_instance.investors.all()):
                     dates_to_update.append(date)
                 elif import_option in ['incomplete', 'both'] and fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
                     dates_to_update.append(date)
@@ -1690,22 +1689,32 @@ class FXViewSet(viewsets.ModelViewSet):
             
             missing_filled = 0
             incomplete_updated = 0
+            existing_linked = 0
+
+            yield f"data: {json.dumps({'status': 'checking', 'message': 'Checking database for existing FX rates'})}\n\n"
 
             for i, date in enumerate(dates_to_update):
                 if cache.get(import_id) != "running":
-                    # The import has been cancelled
                     yield f"data: {json.dumps({'status': 'cancelled'})}\n\n"
                     break
 
-                fx_instance = FX.objects.filter(investors=user, date=date).first()
+                fx_instance = FX.objects.filter(date=date).first()
                 if not fx_instance:
+                    yield f"data: {json.dumps({'status': 'updating', 'message': f'Updating FX rates for {date}'})}\n\n"
                     FX.update_fx_rate(date, user)
                     missing_filled += 1
-                    action = "Adding"
+                    action = "Added"
+                elif user not in fx_instance.investors.all():
+                    fx_instance.investors.add(user)
+                    existing_linked += 1
+                    action = "Linked existing"
                 elif any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
+                    yield f"data: {json.dumps({'status': 'updating', 'message': f'Updating incomplete FX rates for {date}'})}\n\n"
                     FX.update_fx_rate(date, user)
                     incomplete_updated += 1
-                    action = "Updating"
+                    action = "Updated"
+                else:
+                    action = "Skipped"
                 
                 progress = (i + 1) / total_dates * 100
                 formatted_date = date_format(date, "F j, Y")  # Format date as "Month Day, Year"
@@ -1714,9 +1723,10 @@ class FXViewSet(viewsets.ModelViewSet):
 
             if cache.get(import_id) == "running":
                 stats = {
-                    'totalImported': missing_filled + incomplete_updated,
+                    'totalImported': missing_filled + incomplete_updated + existing_linked,
                     'missingFilled': missing_filled,
-                    'incompleteUpdated': incomplete_updated
+                    'incompleteUpdated': incomplete_updated,
+                    'existingLinked': existing_linked
                 }
                 yield f"data: {json.dumps({'status': 'completed', 'stats': stats})}\n\n"
 

@@ -7,9 +7,9 @@ from django.contrib.auth.decorators import login_required
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
 from constants import CURRENCY_CHOICES
-from .serializers import TransactionFormSerializer, TransactionSerializer, FXTransactionSerializer, FXTransactionFormSerializer
+from .serializers import TransactionFormSerializer, FXTransactionFormSerializer
 from utils import broker_group_to_ids_old_approach, currency_format_old_structure
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import NotFound
@@ -136,7 +136,7 @@ def transactions(request):
 #     return Response(get_transactions_table_api(request))
 
 class TransactionViewSet(viewsets.ModelViewSet):
-    serializer_class = TransactionSerializer
+    serializer_class = TransactionFormSerializer
     queryset = Transactions.objects.all()
 
     def get_queryset(self):
@@ -162,6 +162,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return Response({
             'fields': [
                 {
+                    'name': 'id',
+                    'label': 'ID',
+                    'type': 'hidden',
+                    'required': False,
+                },
+                {
                     'name': 'date',
                     'label': 'Date',
                     'type': 'datepicker',
@@ -186,7 +192,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     'label': 'Currency',
                     'type': 'select',
                     'required': True,
-                    'choices': [{'value': currency[0], 'text': currency[1]} for currency in CURRENCY_CHOICES]
+                    'choices': [{'value': currency[0], 'text': f"{currency[1]} ({currency[0]})"} for currency in CURRENCY_CHOICES]
                 },
                 {
                     'name': 'type',
@@ -229,14 +235,29 @@ class TransactionViewSet(viewsets.ModelViewSet):
         })
 
 class FXTransactionViewSet(viewsets.ModelViewSet):
-    serializer_class = FXTransactionSerializer
+    serializer_class = FXTransactionFormSerializer
     queryset = FXTransaction.objects.all()
+    http_method_names = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']  # Add this line
 
     def get_queryset(self):
         return self.queryset.filter(investor=self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(investor=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        print("Received data:", request.data)  # Debug print
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        print("Serializer errors:", serializer.errors)  # Debug print
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['POST'])
+    def create_fx_transaction(self, request):
+        return self.create(request)
 
     @action(detail=False, methods=['GET'])
     def form_structure(self, request):
@@ -306,11 +327,11 @@ class FXTransactionViewSet(viewsets.ModelViewSet):
     #         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = FXTransactionFormSerializer(instance, data=request.data, partial=partial)
-        if serializer.is_valid():
-            self.perform_update(serializer)
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # def update(self, request, *args, **kwargs):
+    #     partial = kwargs.pop('partial', False)
+    #     instance = self.get_object()
+    #     serializer = FXTransactionFormSerializer(instance, data=request.data, partial=partial)
+    #     if serializer.is_valid():
+    #         self.perform_update(serializer)
+    #         return Response(serializer.data)
+    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

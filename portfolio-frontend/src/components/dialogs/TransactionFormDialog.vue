@@ -1,0 +1,298 @@
+<template>
+  <v-dialog v-model="dialog" max-width="600px">
+    <v-card>
+      <v-card-title>
+        <span class="text-h5">{{ isEdit ? 'Edit Transaction' : 'Add Transaction' }}</span>
+      </v-card-title>
+      <v-card-text>
+        <v-form @submit.prevent="submitForm">
+          <template v-for="field in formFields" :key="field.name">
+            <v-text-field
+              v-if="field.type === 'datepicker'"
+              v-model="form[field.name]"
+              :label="field.label"
+              type="date"
+              :required="field.required"
+              :error-messages="errors[field.name]"
+              @input="clearFieldError(field.name)"
+            ></v-text-field>
+            <v-autocomplete
+              v-else-if="field.type === 'select'"
+              v-model="form[field.name]"
+              :items="field.choices"
+              item-title="text"
+              item-value="value"
+              :label="field.label"
+              :required="field.required"
+              :error-messages="errors[field.name]"
+              clearable
+              @input="clearFieldError(field.name)"
+            >
+              <template v-slot:selection="{ item }">
+                {{ item.raw ? item.raw.text : '' }}
+              </template>
+            </v-autocomplete>
+            <v-text-field
+              v-else-if="field.type === 'number'"
+              v-model="form[field.name]"
+              :label="field.label"
+              type="number"
+              step="0.01"
+              :required="field.required"
+              :error-messages="errors[field.name]"
+              @input="clearFieldError(field.name)"
+            ></v-text-field>
+            <v-textarea
+              v-else-if="field.type === 'textarea'"
+              v-model="form[field.name]"
+              :label="field.label"
+              :required="field.required"
+              :error-messages="errors[field.name]"
+              @input="clearFieldError(field.name)"
+            ></v-textarea>
+          </template>
+        </v-form>
+        <v-alert
+          v-if="generalError"
+          type="error"
+          class="mt-4"
+        >
+          {{ generalError }}
+        </v-alert>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
+        <v-btn color="blue darken-1" text @click="submitForm" :loading="isSubmitting" :disabled="!isFormValid">Save</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+</template>
+
+<script>
+import { ref, computed, watch, onMounted } from 'vue'
+import { useForm } from 'vee-validate'
+import * as yup from 'yup'
+import { getTransactionFormStructure, addTransaction, updateTransaction } from '@/services/api'
+
+export default {
+  name: 'TransactionFormDialog',
+  props: {
+    modelValue: Boolean,
+    editItem: Object,
+  },
+  emits: ['update:modelValue', 'transaction-added', 'transaction-updated'],
+  setup(props, { emit }) {
+    const dialog = computed({
+      get: () => props.modelValue,
+      set: (value) => emit('update:modelValue', value)
+    })
+    const isEdit = computed(() => !!props.editItem)
+    const formFields = ref([])
+    const generalError = ref('')
+    const isSubmitting = ref(false)
+
+    const schema = computed(() => {
+      const schemaObj = {}
+      formFields.value.forEach(field => {
+        if (field.required) {
+          schemaObj[field.name] = yup.mixed().required(`${field.label} is required`)
+        } else {
+          schemaObj[field.name] = yup.mixed().nullable()
+        }
+
+        if (field.name === 'cash_flow') {
+          schemaObj[field.name] = yup.number().nullable().test(
+            'cash-flow-validation',
+            'Cash flow must be negative for cash-out transactions and positive for cash-in transactions',
+            function (value) {
+              const type = this.parent.type
+              if (value === null || value === undefined) return true
+              if (type === 'Cash out') return value < 0
+              if (type === 'Cash in') return value > 0
+              return true
+            }
+          )
+        }
+        if (field.name === 'price') {
+          schemaObj[field.name] = yup.number().nullable().positive('Price must be positive')
+        }
+        if (field.name === 'quantity') {
+          schemaObj[field.name] = yup.number().nullable().test(
+            'quantity-validation',
+            'Quantity must be positive for buy transactions and negative for sell transactions',
+            function (value) {
+              const type = this.parent.type
+              if (value === null || value === undefined) return true
+              if (type === 'Buy') return value > 0
+              if (type === 'Sell') return value < 0
+              return true
+            }
+          )
+        }
+        if (field.name === 'commission') {
+          schemaObj[field.name] = yup.number().nullable().negative('Commission must be negative')
+        }
+        if (field.name === 'security') {
+          schemaObj[field.name] = yup.mixed().test(
+            'security-validation',
+            'Security must not be selected for Cash in or Cash out transactions',
+            function (value) {
+              const type = this.parent.type
+              if (type === 'Cash in' || type === 'Cash out') {
+                return value === null || value === undefined || value === ''
+              }
+              return true
+            }
+          ).nullable()
+        }
+      })
+      return yup.object().shape(schemaObj)
+    })
+
+    const { handleSubmit, errors, resetForm, values: form, setValues, setFieldError } = useForm({
+      validationSchema: schema,
+      validateOnChange: true
+    })
+
+    const clearFieldError = (fieldName) => {
+      setFieldError(fieldName, '')
+    }
+
+    const isFormValid = computed(() => {
+      return Object.keys(errors.value).length === 0
+    })
+
+    const fetchFormStructure = async () => {
+      try {
+        const response = await getTransactionFormStructure()
+        formFields.value = response.fields
+        initializeForm()
+      } catch (error) {
+        console.error('Error fetching form structure:', error)
+        generalError.value = 'Failed to load form structure. Please try again.'
+      }
+    }
+
+    const initializeForm = () => {
+      // if (formFields.value && formFields.value.length > 0) {
+        const initialValues = formFields.value.reduce((acc, field) => {
+          acc[field.name] = field.type === 'number' ? null : ''
+          return acc
+        }, {})
+        setValues(initialValues)
+      // } else {
+      //   generalError.value = 'Failed to initialize form. Please try again.'
+      // }
+    }
+
+    const submitForm = handleSubmit(async (values) => {
+      const submittableValues = { ...values }
+
+      isSubmitting.value = true
+      generalError.value = ''
+
+      try {
+        let response
+        if (isEdit.value) {
+          response = await updateTransaction(submittableValues.id, submittableValues)
+          emit('transaction-updated', response)
+        } else {
+          response = await addTransaction(submittableValues)
+          emit('transaction-added', response)
+        }
+        closeDialog()
+      } catch (error) {
+        console.error('Error submitting transaction:', error)
+        if (error && typeof error === 'object') {
+          Object.entries(error).forEach(([key, value]) => {
+            if (key === '__all__') {
+              generalError.value = Array.isArray(value) ? value[0] : value
+            } else {
+              setFieldError(key, Array.isArray(value) ? value[0] : value)
+            }
+          })
+        } else {
+          generalError.value = error.message || 'An unexpected error occurred. Please try again.'
+        }
+      } finally {
+        isSubmitting.value = false
+      }
+    })
+
+    const closeDialog = () => {
+      dialog.value = false
+      resetForm()
+      generalError.value = ''
+    }
+
+    const populateFormWithEditItem = () => {
+      if (props.editItem && formFields.value.length > 0) {
+        const formattedValues = { ...props.editItem }
+        formFields.value.forEach(field => {
+          if (field.type === 'select' && formattedValues[field.name]) {
+            if (typeof formattedValues[field.name] === 'object') {
+              formattedValues[field.name] = String(formattedValues[field.name].id)
+            } else {
+              formattedValues[field.name] = String(formattedValues[field.name])
+            }
+            
+            // Allow empty choice
+            if (formattedValues[field.name] === '') {
+              return
+            }
+            
+            // Verify that the value exists in the choices
+            const isValidChoice = field.choices.some(choice => choice.value === formattedValues[field.name])
+            if (!isValidChoice) {
+              console.warn(`Invalid value for ${field.name}: ${formattedValues[field.name]}`)
+              formattedValues[field.name] = ''  // Set to empty string for empty choice
+            }
+          }
+        })
+        setValues(formattedValues)
+      }
+    }
+
+    watch(() => props.editItem, (newValue) => {
+      if (newValue) {
+        populateFormWithEditItem()
+      } else {
+        initializeForm()
+      }
+    }, { immediate: true })
+
+    // watch(() => props.editItem, (newValue) => {
+    //   if (newValue) {
+    //     const formattedValues = { ...newValue }
+    //     formFields.value.forEach(field => {
+    //       if (field.type === 'select') {
+    //         if (typeof formattedValues[field.name] === 'object' && formattedValues[field.name] !== null) {
+    //           formattedValues[field.name] = String(formattedValues[field.name].id)
+    //         }
+    //       }
+    //     })
+    //     setValues(formattedValues)
+    //   } else {
+    //     initializeForm()
+    //   }
+    // }, { immediate: true })
+
+    onMounted(fetchFormStructure)
+
+    return {
+      dialog,
+      isEdit,
+      form,
+      formFields,
+      errors,
+      generalError,
+      isSubmitting,
+      isFormValid,
+      closeDialog,
+      submitForm,
+      clearFieldError,
+    }
+  }
+}
+</script>
