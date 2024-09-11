@@ -165,9 +165,13 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
         },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': 'debug.log',
+        },
     },
     'root': {
-        'handlers': ['console'],
+        'handlers': ['console', 'file'],
         'level': 'DEBUG',
         'propagate': False,
     },
@@ -187,13 +191,21 @@ LOGGING = {
             'level': 'WARNING',  # Change this to 'INFO' or 'ERROR' as needed
             'propagate': False,
         },
-        # Add this new logger for your application
         'closed_positions': {  # Use the name of your app
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False,
         },
-        # Add other third-party libraries as needed
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'portfolio_management': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 

@@ -2630,7 +2630,7 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
                     'cash_flow': round(Decimal(str(credit)), 2),
                 }
 
-            elif description == 'Funds Platform Fee':
+            elif description == 'Funds Platform Fee' or description == 'Govt Flat Rate Int Charge':
                 transaction_data = {
                     'investor': investor,
                     'broker': broker,
@@ -2646,6 +2646,18 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
                     'broker': broker,
                     'currency': currency,
                     'type': constants.TRANSACTION_TYPE_CASH_IN,
+                    'date': date,
+                    'cash_flow': Decimal(str(credit)),
+                }
+
+            elif 'Dividend' in description or 'Equalisation' in description or 'Tax Credit' in description:
+                security = find_or_prompt_security(stock_description, investor, broker, security_cache)
+                transaction_data = {
+                    'investor': investor,
+                    'broker': broker,
+                    'security': security,
+                    'currency': currency,
+                    'type': constants.TRANSACTION_TYPE_DIVIDEND,
                     'date': date,
                     'cash_flow': Decimal(str(credit)),
                 }
@@ -2699,7 +2711,6 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
         print("No transactions to save.")
 
     return transactions
-
 
 
 

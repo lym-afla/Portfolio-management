@@ -133,6 +133,7 @@ export default {
     const errorMessages = ref([])
 
     const showError = (message) => {
+      clearErrors()
       console.log('Showing error:', message)
       errorMessages.value.push(message)
       errorSnackbar.value = true

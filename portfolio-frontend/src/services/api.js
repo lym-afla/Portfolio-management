@@ -841,3 +841,35 @@ export const deleteFXTransaction = async (id) => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+export const analyzeFile = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error analyzing file:', error)
+    // throw error.response ? error.response.data : error.message
+    throw error
+  }
+}
+
+export const importTransactions = async (fileId, brokerId) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/import_transactions/`, {
+      file_id: fileId,
+      broker_id: brokerId
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error importing transactions:', error)
+    // throw error.response ? error.response.data : error.message
+    throw error
+  }
+}

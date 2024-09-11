@@ -1,12 +1,18 @@
+import logging
+import re
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from itertools import chain
 from operator import attrgetter
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.core.files.storage import default_storage
+import pandas as pd
+from fuzzywuzzy import fuzz
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
-from constants import CURRENCY_CHOICES
+from constants import BROKER_IDENTIFIERS, CURRENCY_CHOICES
 from .serializers import TransactionFormSerializer, FXTransactionFormSerializer
 from utils import broker_group_to_ids_old_approach, currency_format_old_structure
 from rest_framework.decorators import action
@@ -15,6 +21,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import NotFound
 from rest_framework import status, viewsets
 from core.transactions_utils import get_transactions_table_api
+
+logger = logging.getLogger(__name__)
 
 @login_required
 def transactions(request):
@@ -233,6 +241,164 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 },
             ]
         })
+
+    def search_keywords_in_excel(self, file_path):
+        df = pd.read_excel(file_path)
+        content = df.to_string().lower()
+        return content
+
+    def identify_broker(self, content, user):
+        logger.info(f"Starting broker identification for user {user.id}")
+        best_match = None
+        best_score = 0
+        perfect_match_threshold = 100
+        # content_limit = 10000  # Limit content to first 10,000 characters
+
+        # Limit the content size
+        lower_content = content.lower()
+        logger.debug(f"Content length: {len(lower_content)} characters")
+
+        for broker_name, config in BROKER_IDENTIFIERS.items():
+            logger.debug(f"Checking broker: {broker_name}")
+            keywords = config['keywords']
+            threshold = config['fuzzy_threshold']
+            
+            broker_scores = []
+            all_keywords_perfect = True
+
+            for keyword in keywords:
+                logger.debug(f"Searching for keyword: {keyword}")
+                # Use regex to find potential matches quickly
+                potential_matches = re.finditer(re.escape(keyword.lower()), lower_content)
+                
+                keyword_best_score = 0
+                for match in potential_matches:
+                    # Get the surrounding context (50 characters before and after the match)
+                    start = max(0, match.start() - 50)
+                    end = min(len(lower_content), match.end() + 50)
+                    context = lower_content[start:end]
+                    
+                    # Perform fuzzy matching on the context
+                    score = fuzz.partial_ratio(keyword.lower(), context)
+                    logger.debug(f"Fuzzy match score for '{keyword}': {score}")
+
+                    if score == perfect_match_threshold:
+                        keyword_best_score = score
+                        break
+                    
+                    keyword_best_score = max(keyword_best_score, score)
+                
+                broker_scores.append(keyword_best_score)
+                if keyword_best_score < perfect_match_threshold:
+                    all_keywords_perfect = False
+                
+                logger.debug(f"Best score for keyword '{keyword}': {keyword_best_score}")
+
+            # Calculate the average score for this broker
+            avg_score = sum(broker_scores) / len(broker_scores)
+            logger.info(f"Average score for broker {broker_name}: {avg_score}")
+
+            if all_keywords_perfect:
+                logger.info(f"Perfect match found for all keywords of broker {broker_name}")
+                try:
+                    broker = Brokers.objects.get(investor=user, name__iexact=broker_name)
+                    logger.info(f"Returning perfectly matched broker: {broker.name} (ID: {broker.id})")
+                    return broker
+                except Brokers.DoesNotExist:
+                    logger.warning(f"Perfect match found for {broker_name}, but no corresponding Broker object exists for this user")
+                    return None
+
+            if avg_score > threshold and avg_score > best_score:
+                best_score = avg_score
+                best_match = broker_name
+                logger.debug(f"New best match: {best_match} with average score {best_score}")
+
+        if best_match:
+            logger.info(f"Best match found: {best_match} with average score {best_score}")
+            try:
+                broker = Brokers.objects.get(investor=user, name__iexact=best_match)
+                logger.info(f"Returning best matched broker: {broker.name} (ID: {broker.id})")
+                return broker
+            except Brokers.DoesNotExist:
+                logger.warning(f"Best match {best_match} found, but no corresponding Broker object exists for this user")
+                return None
+        
+        logger.info("No broker match found")
+        return None
+
+    @action(detail=False, methods=['POST'])
+    def analyze_file(self, request):
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file was uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        file_id = str(uuid.uuid4())
+        file_name = f"temp_{file_id}_{file.name}"
+        file_path = default_storage.save(file_name, file)
+
+        try:
+            content = self.search_keywords_in_excel(file_path)
+            identified_broker = self.identify_broker(content, request.user)
+
+            if identified_broker:
+                return Response({
+                    'status': 'broker_identified',
+                    'message': 'Broker was automatically identified.',
+                    'fileId': file_id,
+                    'identifiedBroker': {'id': identified_broker.id, 'name': identified_broker.name}
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'status': 'broker_not_identified',
+                    'message': 'The broker could not be automatically identified from the file.',
+                    'fileId': file_id
+                }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['POST'])
+    def import_transactions(self, request):
+        file_id = request.data.get('file_id')
+        broker_id = request.data.get('broker_id')
+
+        if not file_id or not broker_id:
+            return Response({'error': 'File ID and broker ID are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Retrieve the file using the file_id
+        file_name = f"temp_{file_id}_*"
+        matching_files = default_storage.listdir('')[1]  # Get all files in the default storage
+        matching_files = [f for f in matching_files if f.startswith(f"temp_{file_id}_")]
+
+        if not matching_files:
+            return Response({'error': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        file_path = matching_files[0]
+
+        try:
+            # Process the file and import transactions
+            # ... Your import logic here ...
+
+            # Mock import results (replace with actual results from your import logic)
+            import_results = {
+                'totalTransactions': 100,
+                'importedTransactions': 95,
+                'failedTransactions': 5,
+                'newSecurities': 2
+            }
+
+            return Response({
+                'status': 'success',
+                'message': 'Transactions imported successfully.',
+                'importResults': import_results
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # If an error occurs during import, return an error response
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        finally:
+            # Always delete the temporary file after processing, whether successful or not
+            default_storage.delete(file_path)
 
 class FXTransactionViewSet(viewsets.ModelViewSet):
     serializer_class = FXTransactionFormSerializer

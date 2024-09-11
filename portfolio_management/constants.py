@@ -73,3 +73,21 @@ MUTUAL_FUNDS_IN_PENCES = [
     'Rathbone Ethical Bond',
     'iShares Physical Platinum ETC'
 ]
+
+# Broker identifiers for transaction import
+BROKER_IDENTIFIERS = {
+    'Charles Stanley': {
+        'keywords': ['Charles Stanley & Co. Limited',
+                     '1903304',
+                     'Contract Reference',
+                     'Sedol',
+                     'Stocks & Shares Subs'
+                     ],
+        'fuzzy_threshold': 59  # Adjust this threshold as needed
+    },
+    # Add more brokers here
+    # 'Broker Name': {
+    #     'keywords': ['Keyword 1', 'Keyword 2', 'Registration Number'],
+    #     'fuzzy_threshold': 85
+    # },
+}

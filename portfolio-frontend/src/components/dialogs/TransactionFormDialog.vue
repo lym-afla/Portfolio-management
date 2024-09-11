@@ -74,6 +74,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useForm } from 'vee-validate'
 import * as yup from 'yup'
 import { getTransactionFormStructure, addTransaction, updateTransaction } from '@/services/api'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'TransactionFormDialog',
@@ -91,6 +92,8 @@ export default {
     const formFields = ref([])
     const generalError = ref('')
     const isSubmitting = ref(false)
+
+    const { handleApiError } = useErrorHandler()
 
     const schema = computed(() => {
       const schemaObj = {}
@@ -170,7 +173,7 @@ export default {
         initializeForm()
       } catch (error) {
         console.error('Error fetching form structure:', error)
-        generalError.value = 'Failed to load form structure. Please try again.'
+        handleApiError(error)
       }
     }
 

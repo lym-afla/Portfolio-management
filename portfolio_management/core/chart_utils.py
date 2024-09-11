@@ -145,8 +145,16 @@ def _chart_dates(start_date, end_date, freq):
 
     # Get list of dates from pandas
     date_range = pd.date_range(start=start_date, end=end_date, freq=frequency[freq]).date
+
+    # Handle case where end_date is before or equal to start_date
+    if len(date_range) == 0:
+        return np.array([min(start_date, end_date)])
     
-    return np.append(date_range, end_date) if date_range[-1] != end_date else date_range
+    # Ensure the last date is included
+    if date_range[-1] != end_date:
+        date_range = np.append(date_range, end_date)
+
+    return date_range
 
 # Create labels according to dates
 def _chart_labels(dates, frequency):

@@ -102,7 +102,14 @@ export default {
 
     watch(() => props.editItem, (newValue) => {
       if (newValue) {
+        console.log('newValue', newValue)
         form.value = { ...newValue }
+        Object.keys(form.value).forEach(key => {
+          if (typeof form.value[key] === 'object' && form.value[key] !== null) {
+            form.value[key] = String(form.value[key].id) // For correct form pre-fill convert dict to id string
+          }
+        })
+        console.log('form', form.value)
       } else {
         initializeForm()
       }

@@ -56,7 +56,7 @@
 </template>
 
 <script>
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 
 export default {
   name: 'ProgressDialog',
@@ -91,23 +91,36 @@ export default {
       default: true
     }
   },
-  emits: ['update:modelValue', 'stop-import'],
+  emits: ['update:modelValue', 'stop-import', 'reset'],
   setup(props, { emit }) {
     const dialogModel = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => {
+        emit('update:modelValue', value)
+        if (!value) {
+          resetDialog()
+        }
+      }
     })
 
     const closeDialog = () => {
-      emit('update:modelValue', false)
+      dialogModel.value = false
     }
 
     const stopImport = () => {
       emit('stop-import')
     }
 
-    watch(() => props.progress, (newValue) => {
-      console.log('ProgressDialog: progress prop changed to', newValue)
+    const resetDialog = () => {
+      emit('reset')
+    }
+
+    // watch(() => props.progress, (newValue) => {
+    //   console.log('ProgressDialog: progress prop changed to', newValue)
+    // })
+
+    onBeforeUnmount(() => {
+      resetDialog()
     })
 
     return {

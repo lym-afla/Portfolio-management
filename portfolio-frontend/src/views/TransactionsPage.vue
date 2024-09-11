@@ -104,11 +104,6 @@
           <template #item="{ item }">
             <tr>
               <td>
-                <!-- <v-checkbox
-                  v-model="selectedItems"
-                  :value="item"
-                  hide-details
-                ></v-checkbox> -->
               </td>
               <td>{{ item.date }}</td>
               <td class="text-start text-nowrap">
@@ -222,6 +217,11 @@
       </v-card>
     </v-dialog>
 
+    <TransactionImportDialog
+      v-model="showImportDialog"
+      @import-completed="handleImportCompleted"
+    />
+
   </v-container>
 </template>
 
@@ -231,21 +231,24 @@ import { useStore } from 'vuex'
 import { format } from 'date-fns'
 import { getTransactions, deleteTransaction, getTransactionDetails, getFXTransactionDetails } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vue'
 import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
-import { useErrorHandler } from '@/composables/useErrorHandler'
+import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
 
 export default {
   name: "TransactionsPage",
   components: {
     DateRangeSelector,
     TransactionFormDialog,
-    FXTransactionFormDialog
+    FXTransactionFormDialog,
+    TransactionImportDialog
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
     const store = useStore()
+    const { handleApiError } = useErrorHandler()
 
     const {
       dateFrom,
@@ -289,8 +292,6 @@ export default {
 
     const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
 
-    const { handleApiError } = useErrorHandler()
-
     const headers = computed(() => [
       { title: '', key: 'actions', align: 'center', sortable: false },
       { title: 'Date', key: 'date', align: 'start', sortable: true },
@@ -326,14 +327,6 @@ export default {
 
     const fetchTransactions = async () => {
       tableLoading.value = true
-      console.log('[TransactionsPage] fetchTransactions called with:', {
-        dateFrom: dateFrom.value,
-        dateTo: dateTo.value,
-        currentPage: currentPage.value,
-        itemsPerPage: itemsPerPage.value,
-        search: search.value,
-        sortBy: sortBy.value[0] || {},
-      })
       try {
         const response = await getTransactions(
           dateFrom.value,
@@ -346,9 +339,8 @@ export default {
         transactions.value = response.transactions
         totalItems.value = response.total_items
         currencies.value = response.currencies || []
-        console.log('[TransactionsPage] Updated transactions:', transactions.value)
       } catch (error) {
-        console.error('Error fetching transactions:', error)
+        handleApiError(error)
       } finally {
         tableLoading.value = false
       }
@@ -419,7 +411,7 @@ export default {
           await deleteTransaction(transactionToDelete.value.id)
           await fetchTransactions()
         } catch (error) {
-          console.error('Error deleting transaction:', error)
+          handleApiError(error)
         } finally {
           closeDeleteDialog()
         }
@@ -428,6 +420,12 @@ export default {
 
     const openImportDialog = () => {
       showImportDialog.value = true
+    }
+
+    const handleImportCompleted = async (importResults) => {
+      console.log('Import completed:', importResults)
+      await fetchTransactions()
+      // You can add any additional logic here, such as showing a notification
     }
 
     onMounted(async () => {
@@ -474,7 +472,8 @@ export default {
       processDeleteTransaction,
       closeDeleteDialog,
       deleteTransactionConfirm,
-      openImportDialog
+      openImportDialog,
+      handleImportCompleted
     }
   }
 }
