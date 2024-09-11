@@ -59,6 +59,7 @@
 <script>
 import { ref, computed, watch, onMounted } from 'vue'
 import { createBroker, updateBroker, getBrokerFormStructure } from '@/services/api'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'BrokerFormDialog',
@@ -79,6 +80,8 @@ export default {
     const generalError = ref('')
     const isSubmitting = ref(false)
 
+    const { handleApiError } = useErrorHandler()
+
     const fetchFormStructure = async () => {
       try {
         const structure = await getBrokerFormStructure()
@@ -89,15 +92,18 @@ export default {
           throw new Error('Invalid form structure received')
         }
       } catch (error) {
-        console.error('Error fetching form structure:', error)
-        generalError.value = 'Failed to load form structure. Please try again.'
+        handleApiError(error)
       }
     }
 
     const initializeForm = () => {
       if (formFields.value && formFields.value.length > 0) {
         form.value = formFields.value.reduce((acc, field) => {
-          acc[field.name] = ''
+          if (field.type === 'checkbox') {
+            acc[field.name] = false // Initialize checkboxes to false
+          } else {
+            acc[field.name] = ''
+          }
           return acc
         }, {})
         errorMessages.value = formFields.value.reduce((acc, field) => {
@@ -140,28 +146,41 @@ export default {
       }, {})
       generalError.value = ''
 
+      // Prepare form data, ensuring boolean values for checkboxes
+      const formData = Object.keys(form.value).reduce((acc, key) => {
+        const field = formFields.value.find(f => f.name === key)
+        if (field && field.type === 'checkbox') {
+          acc[key] = Boolean(form.value[key]) // Ensure boolean value
+        } else {
+          acc[key] = form.value[key]
+        }
+        return acc
+      }, {})
+
       try {
         let response
         if (isEdit.value) {
-          response = await updateBroker(props.editItem.id, form.value)
+          response = await updateBroker(props.editItem.id, formData)
           emit('broker-updated', response)
         } else {
-          response = await createBroker(form.value)
+          response = await createBroker(formData)
           emit('broker-added', response)
         }
         closeDialog()
       } catch (error) {
         console.error('Error submitting broker:', error)
-        if (error.errors) {
-          Object.keys(error.errors).forEach(key => {
-            if (key === '__all__') {
-              generalError.value = error.errors[key][0]
+        if (error.response && error.response.status === 400 && error.response.data) {
+          Object.keys(error.response.data).forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(errorMessages.value, key)) {
+              errorMessages.value[key] = Array.isArray(error.response.data[key]) 
+                ? error.response.data[key] 
+                : [error.response.data[key]]
             } else {
-              errorMessages.value[key] = Array.isArray(error.errors[key]) ? error.errors[key] : [error.errors[key]]
+              generalError.value = `${key}: ${error.response.data[key]}`
             }
           })
         } else {
-          generalError.value = error.message || 'An unexpected error occurred. Please try again.'
+          handleApiError(error)
         }
       } finally {
         isSubmitting.value = false

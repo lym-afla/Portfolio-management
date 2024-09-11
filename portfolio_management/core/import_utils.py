@@ -1,20 +1,23 @@
 from collections import defaultdict
 import pandas as pd
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from fuzzywuzzy import process
 
+from django.db import transaction
+
 from common.models import Assets, Brokers, Transactions
-from constants import TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_BROKER_COMMISSION
 from users.models import CustomUser
+from constants import TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_BROKER_COMMISSION
 from datetime import datetime
 
-from decimal import Decimal, InvalidOperation
-
-def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
-    df = pd.read_excel(file, header=3, usecols=['Date', 'Description', 'Stock Description', 'Price', 'Debit', 'Credit'])
-    transactions = []
+def parse_charles_stanley_transactions(file_path, currency, broker_id, investor_id):
+    df = pd.read_excel(file_path, header=3, usecols=['Date', 'Description', 'Stock Description', 'Price', 'Debit', 'Credit'])
+    transactions_to_create = []
     security_cache = defaultdict(lambda: None)
     skipped_count = 0
+    total_transactions = 0
+    imported_transactions = 0
+    unrecognized_securities = set()
 
     broker = Brokers.objects.get(id=broker_id)
     investor = CustomUser.objects.get(id=investor_id)
@@ -22,14 +25,13 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
     quantity_decimal_places = Transactions._meta.get_field('quantity').decimal_places
     price_decimal_places = 5
 
-    # Precompute sets for faster lookups
     SKIP_DESCRIPTIONS = {'* BALANCE B/F *', 'Cash Transfers ISA'}
     COMMISSION_DESCRIPTIONS = {'Funds Platform Fee', 'Govt Flat Rate Int Charge'}
     CASH_IN_DESCRIPTIONS = {'Stocks & Shares Subs', 'ISA Subscription'}
 
-    MIN_PRICE = Decimal('0.0001')  # Define a minimum acceptable price
+    MIN_PRICE = Decimal('0.0001')
 
-    def find_or_prompt_security(stock_description):
+    def find_security(stock_description):
         if security_cache[stock_description] is not None:
             return security_cache[stock_description]
         
@@ -39,34 +41,11 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
         
         if best_match:
             match_name, match_score = best_match
-            print(f"Potential match found: '{match_name}' (Similarity: {match_score}%)")
-            user_confirm = input(f"Do you agree with this match for '{stock_description}'? (yes/no/skip/exit): ").lower()
-            
-            if user_confirm == 'yes':
-                security_cache[stock_description] = next(s for s in securities if s.name == match_name)
-                print(f"Match confirmed and cached for future use.")
-                return security_cache[stock_description]
-            elif user_confirm == 'exit':
-                raise KeyboardInterrupt("User requested to exit")
-            elif user_confirm == 'skip':
-                print("Skipping this transaction.")
-                return None
+            security = next(s for s in securities if s.name == match_name)
+            security_cache[stock_description] = security
+            return security
         
-        print(f"No matching security found for '{stock_description}'.")
-        user_input = input("Please enter the correct security name, 'skip' to skip this transaction, or 'exit' to stop processing: ")
-        
-        if user_input.lower() == 'exit':
-            raise KeyboardInterrupt("User requested to exit")
-        elif user_input.lower() != 'skip' and user_input:
-            try:
-                security = next(s for s in securities if s.name.lower() == user_input.lower())
-                print(f"Security '{security.name}' found and selected.")
-                security_cache[stock_description] = security
-                return security
-            except StopIteration:
-                print(f"No exact match found for '{user_input}'. This transaction will be skipped.")
-        
-        print("No security name provided or skipped. This transaction will be skipped.")
+        unrecognized_securities.add(stock_description)
         return None
 
     existing_transactions = set(Transactions.objects.filter(investor=investor, broker=broker).values_list(
@@ -74,6 +53,7 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
     ))
 
     for _, row in df.iterrows():
+        total_transactions += 1
         if pd.isna(row['Date']):
             continue
 
@@ -85,7 +65,7 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
         credit = row['Credit']
 
         if description in SKIP_DESCRIPTIONS:
-            print(f'Skipped: {description}')
+            skipped_count += 1
             continue
 
         if "Gross interest" in description:
@@ -116,8 +96,9 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
                 'cash_flow': Decimal(str(credit)),
             }
         elif 'Dividend' in description or 'Equalisation' in description or 'Tax Credit' in description:
-            security = find_or_prompt_security(stock_description)
+            security = find_security(stock_description)
             if security is None:
+                skipped_count += 1
                 continue
             transaction_data = {
                 'investor': investor,
@@ -129,8 +110,9 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
                 'cash_flow': Decimal(str(credit)),
             }
         elif pd.notna(stock_description):
-            security = find_or_prompt_security(stock_description)
+            security = find_security(stock_description)
             if security is None:
+                skipped_count += 1
                 continue
 
             if description == 'Buy':
@@ -141,21 +123,20 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
             try:
                 price = Decimal(str(price))
                 if price < MIN_PRICE:
-                    print(f"Warning: Very small price ({price}) for {stock_description}. Setting to minimum price.")
                     price = MIN_PRICE
                 price = round(price, price_decimal_places)
             except InvalidOperation:
-                print(f"Error: Invalid price ({price}) for {stock_description}. Skipping transaction.")
+                skipped_count += 1
                 continue
 
             try:
                 quantity = Decimal(str(debit if debit > 0 else -credit)) / price
                 quantity = round(quantity, quantity_decimal_places)
                 if quantity == 0:
-                    print(f"Warning: Zero quantity calculated for {stock_description}. Skipping transaction.")
+                    skipped_count += 1
                     continue
             except InvalidOperation:
-                print(f"Error: Invalid quantity calculation for {stock_description}. Skipping transaction.")
+                skipped_count += 1
                 continue
 
             transaction_data = {
@@ -169,7 +150,12 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
                 'price': price,
             }
         else:
-            print(f'Skipped: {description}')
+            skipped_count += 1
+            continue
+
+        if security is None and 'security' in transaction_data:
+            unrecognized_securities.add(stock_description)
+            skipped_count += 1
             continue
 
         transaction_tuple = (
@@ -184,23 +170,17 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
         )
 
         if transaction_tuple in existing_transactions:
-            print(f"Skipping existing transaction: {transaction_data}")
             skipped_count += 1
             continue
 
-        transactions.append(transaction_data)
+        transactions_to_create.append(transaction_data)
+        imported_transactions += 1
 
-    print(f"\nProcessed {len(transactions)} transactions.")
-    print(f"Skipped {skipped_count} existing transactions.")
-
-    if transactions:
-        save_choice = input(f"Do you want to save these transactions for {broker.name}? (yes/no): ").lower()
-        if save_choice == 'yes':
-            Transactions.objects.bulk_create([Transactions(**data) for data in transactions])
-            print("Transactions saved to the database.")
-        else:
-            print("Transactions were not saved to the database.")
-    else:
-        print("No transactions to save.")
-
-    return transactions
+    # Don't save transactions yet, just return the data
+    return {
+        'totalTransactions': total_transactions,
+        'importedTransactions': imported_transactions,
+        'skippedTransactions': skipped_count,
+        'unrecognizedSecurities': list(unrecognized_securities),
+        'transactionsToCreate': transactions_to_create
+    }

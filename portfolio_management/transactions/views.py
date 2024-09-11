@@ -10,17 +10,20 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
 import pandas as pd
 from fuzzywuzzy import fuzz
-from common.models import Brokers, FXTransaction, Transactions
+
+from common.models import Assets, Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
+from core.transactions_utils import get_transactions_table_api
+from core.import_utils import parse_charles_stanley_transactions
 from constants import BROKER_IDENTIFIERS, CURRENCY_CHOICES
 from .serializers import TransactionFormSerializer, FXTransactionFormSerializer
 from utils import broker_group_to_ids_old_approach, currency_format_old_structure
+
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import NotFound
 from rest_framework import status, viewsets
-from core.transactions_utils import get_transactions_table_api
 
 logger = logging.getLogger(__name__)
 
@@ -360,13 +363,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def import_transactions(self, request):
         file_id = request.data.get('file_id')
         broker_id = request.data.get('broker_id')
+        unrecognized_securities_mapping = request.data.get('unrecognizedSecuritiesMapping', {})
 
         if not file_id or not broker_id:
             return Response({'error': 'File ID and broker ID are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Retrieve the file using the file_id
-        file_name = f"temp_{file_id}_*"
-        matching_files = default_storage.listdir('')[1]  # Get all files in the default storage
+        matching_files = default_storage.listdir('')[1]
         matching_files = [f for f in matching_files if f.startswith(f"temp_{file_id}_")]
 
         if not matching_files:
@@ -375,29 +377,59 @@ class TransactionViewSet(viewsets.ModelViewSet):
         file_path = matching_files[0]
 
         try:
-            # Process the file and import transactions
-            # ... Your import logic here ...
+            broker = Brokers.objects.get(id=broker_id)
+            
+            if 'Charles Stanley' in broker.name:
+                import_results = parse_charles_stanley_transactions(
+                    file_path, 
+                    'GBP', # Natural CS currency 
+                    broker_id, 
+                    request.user.id
+                )
+            else:
+                # Implement other broker-specific import functions here
+                return Response({'error': 'Unsupported broker for import.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Mock import results (replace with actual results from your import logic)
-            import_results = {
-                'totalTransactions': 100,
-                'importedTransactions': 95,
-                'failedTransactions': 5,
-                'newSecurities': 2
-            }
+            if import_results['unrecognizedSecurities'] and not unrecognized_securities_mapping:
+                # Return unrecognized securities to the frontend for mapping
+                return Response({
+                    'status': 'unrecognized_securities',
+                    'message': 'Unrecognized securities found. Please map them before importing.',
+                    'unrecognizedSecurities': import_results['unrecognizedSecurities']
+                }, status=status.HTTP_202_ACCEPTED)
+
+            # If we have mappings, update the transactions
+            if unrecognized_securities_mapping:
+                for transaction in import_results['transactionsToCreate']:
+                    if transaction.get('security') in import_results['unrecognizedSecurities']:
+                        mapped_security_id = unrecognized_securities_mapping.get(transaction['security'])
+                        if mapped_security_id:
+                            transaction['security'] = Assets.objects.get(id=mapped_security_id)
+                        else:
+                            # If no mapping provided, skip this transaction
+                            import_results['skippedTransactions'] += 1
+                            import_results['importedTransactions'] -= 1
+                            import_results['transactionsToCreate'].remove(transaction)
+
+            # Now save the transactions
+            with transaction.atomic():
+                Transactions.objects.bulk_create([Transactions(**data) for data in import_results['transactionsToCreate']])
 
             return Response({
                 'status': 'success',
                 'message': 'Transactions imported successfully.',
-                'importResults': import_results
+                'importResults': {
+                    'totalTransactions': import_results['totalTransactions'],
+                    'importedTransactions': import_results['importedTransactions'],
+                    'skippedTransactions': import_results['skippedTransactions'],
+                    'unrecognizedSecurities': import_results['unrecognizedSecurities']
+                }
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            # If an error occurs during import, return an error response
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         finally:
-            # Always delete the temporary file after processing, whether successful or not
             default_storage.delete(file_path)
 
 class FXTransactionViewSet(viewsets.ModelViewSet):

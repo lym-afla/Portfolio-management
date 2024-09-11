@@ -86,9 +86,24 @@
                   </v-avatar>
                 </template>
                 <v-list-item-title class="text-h6">
-                  {{ importStats.totalImported }}
+                  {{ importStats.totalTransactions }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Total transactions imported</v-list-item-subtitle>
+                <v-list-item-subtitle>Total transactions processed</v-list-item-subtitle>
+              </v-list-item>
+            </v-card>
+          </v-col>
+          <v-col cols="6">
+            <v-card outlined>
+              <v-list-item>
+                <template v-slot:prepend>
+                  <v-avatar color="success" size="40">
+                    <v-icon dark>mdi-check-circle</v-icon>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="text-h6">
+                  {{ importStats.importedTransactions }}
+                </v-list-item-title>
+                <v-list-item-subtitle>Successfully imported</v-list-item-subtitle>
               </v-list-item>
             </v-card>
           </v-col>
@@ -101,9 +116,9 @@
                   </v-avatar>
                 </template>
                 <v-list-item-title class="text-h6">
-                  {{ importStats.failedTransactions }}
+                  {{ importStats.skippedTransactions }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Failed transactions</v-list-item-subtitle>
+                <v-list-item-subtitle>Skipped transactions</v-list-item-subtitle>
               </v-list-item>
             </v-card>
           </v-col>
@@ -111,7 +126,7 @@
             <v-card outlined>
               <v-list-item>
                 <template v-slot:prepend>
-                  <v-avatar color="success" size="40">
+                  <v-avatar color="info" size="40">
                     <v-icon dark>mdi-plus-circle</v-icon>
                   </v-avatar>
                 </template>
@@ -119,6 +134,21 @@
                   {{ importStats.newSecurities }}
                 </v-list-item-title>
                 <v-list-item-subtitle>New securities added</v-list-item-subtitle>
+              </v-list-item>
+            </v-card>
+          </v-col>
+          <v-col cols="6">
+            <v-card outlined>
+              <v-list-item>
+                <template v-slot:prepend>
+                  <v-avatar color="warning" size="40">
+                    <v-icon dark>mdi-help-circle</v-icon>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="text-h6">
+                  {{ importStats.unrecognizedSecurities.length }}
+                </v-list-item-title>
+                <v-list-item-subtitle>Unrecognized securities</v-list-item-subtitle>
               </v-list-item>
             </v-card>
           </v-col>
@@ -130,11 +160,43 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog v-model="showUnrecognizedSecuritiesDialog" max-width="600px">
+    <v-card>
+      <v-card-title>Unrecognized Securities</v-card-title>
+      <v-card-text>
+        <p>The following securities were not recognized. Please map them to existing securities or create new ones:</p>
+        <v-list>
+          <v-list-item v-for="security in unrecognizedSecurities" :key="security">
+            <v-list-item-content>
+              <v-list-item-title>{{ security }}</v-list-item-title>
+            </v-list-item-content>
+            <v-list-item-action>
+              <v-autocomplete
+                v-model="securityMappings[security]"
+                :items="existingSecurities"
+                item-text="name"
+                item-value="id"
+                label="Select existing security"
+              ></v-autocomplete>
+            </v-list-item-action>
+            <v-list-item-action>
+              <v-btn @click="createNewSecurity(security)">Create New</v-btn>
+            </v-list-item-action>
+          </v-list-item>
+        </v-list>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="primary" @click="confirmSecurityMappings">Confirm and Import</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script>
 import { ref, computed, watch } from 'vue'
-import { analyzeFile, getBrokers, importTransactions } from '@/services/api'
+import { analyzeFile, getBrokers, importTransactions, getSecurities } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 
@@ -168,15 +230,16 @@ export default {
     const brokerIdentified = ref(false)
     const identifiedBroker = ref(null)
     const brokerIdentificationComplete = ref(false)
-    const showSuccessDialog = ref(false)
-    const showProgressDialog = ref(false)
-    const importStats = ref({
-      totalImported: 0,
-      failedTransactions: 0,
-      newSecurities: 0
-    })
 
-    // Progress dialog related refs
+    const showProgressDialog = ref(false)
+    const showSuccessDialog = ref(false)
+    const importStats = ref({
+      totalTransactions: 0,
+      importedTransactions: 0,
+      skippedTransactions: 0,
+      newSecurities: 0,
+      unrecognizedSecurities: []
+    })
     const importProgress = ref(0)
     const currentImported = ref(0)
     const totalToImport = ref(0)
@@ -184,26 +247,37 @@ export default {
     const importError = ref('')
     const canStopImport = ref(true)
 
+    const unrecognizedSecurities = ref([])
+    const securityMappings = ref({})
+    const showUnrecognizedSecuritiesDialog = ref(false)
+    const existingSecurities = ref([])
+
     const { handleApiError } = useErrorHandler()
 
-    const handleFileChange = () => {
+    const handleFileChange = (event) => {
+      file.value = event.target.files[0]
       isAnalyzed.value = false
-      selectedBroker.value = null
       brokerIdentified.value = false
+      selectedBroker.value = null
       identifiedBroker.value = null
       brokerIdentificationComplete.value = false
-      fileId.value = null  // Reset fileId when a new file is selected
+      fileId.value = null
+      console.log('File changed:', file.value)
     }
 
     const closeDialog = () => {
       dialog.value = false
+      resetDialogPartial()
     }
 
     const submitFile = async () => {
       if (file.value) {
         isLoading.value = true
         try {
-          const result = await analyzeFile(file.value)
+          const formData = new FormData()
+          formData.append('file', file.value)
+          console.log('Submitting file:', file.value)
+          const result = await analyzeFile(formData)
           isAnalyzed.value = true
           fileId.value = result.fileId
           brokers.value = await getBrokers()
@@ -219,44 +293,52 @@ export default {
           isLoading.value = false
           brokerIdentificationComplete.value = true
         }
-      }
-    }
-
-    const startImport = () => {
-      if (fileId.value && selectedBroker.value) {
-        dialog.value = false
-        showProgressDialog.value = true
-        processImportTransactions()
       } else {
-        console.error('File ID or selected broker is missing')
+        console.error('No file selected')
       }
     }
 
-    const processImportTransactions = async () => {
-      try {
-        console.log('Importing with fileId:', fileId.value, 'and brokerId:', selectedBroker.value)
-        const result = await importTransactions(fileId.value, selectedBroker.value)
-        // Simulating progress updates
-        totalToImport.value = 100
-        for (let i = 1; i <= totalToImport.value; i++) {
-          currentImported.value = i
-          importProgress.value = (i / totalToImport.value) * 100
-          currentImportMessage.value = `Importing transaction ${i}`
-          await new Promise(resolve => setTimeout(resolve, 50)) // Simulating delay
+    const startImport = async () => {
+      if (fileId.value && selectedBroker.value) {
+        try {
+          const result = await importTransactions(fileId.value, selectedBroker.value)
+          if (result.status === 'unrecognized_securities') {
+            unrecognizedSecurities.value = result.unrecognizedSecurities
+            showUnrecognizedSecuritiesDialog.value = true
+            // Fetch existing securities for mapping
+            existingSecurities.value = await getSecurities()
+            console.log('Existing securities:', existingSecurities.value)
+          } else {
+            handleImportSuccess(result)
+          }
+        } catch (error) {
+          handleApiError(error)
         }
+      }
+    }
 
-        importStats.value = {
-          totalImported: result.importResults.importedTransactions,
-          failedTransactions: result.importResults.failedTransactions,
-          newSecurities: result.importResults.newSecurities
-        }
-        showProgressDialog.value = false
-        showSuccessDialog.value = true
-        emit('import-completed', result.importResults)
+    const confirmSecurityMappings = async () => {
+      try {
+        const result = await importTransactions(fileId.value, selectedBroker.value, securityMappings.value)
+        handleImportSuccess(result)
       } catch (error) {
         handleApiError(error)
-        importError.value = 'An error occurred during import'
+      } finally {
+        showUnrecognizedSecuritiesDialog.value = false
       }
+    }
+
+    const createNewSecurity = async (securityName) => {
+      console.log('Creating new security:', securityName)
+      // Implement logic to create a new security
+      // This could open a new dialog or navigate to a new security creation page
+      // After creation, update the securityMappings
+    }
+
+    const handleImportSuccess = (result) => {
+      importStats.value = result.importResults
+      showSuccessDialog.value = true
+      emit('import-completed', result.importResults)
     }
 
     const stopImport = () => {
@@ -322,10 +404,16 @@ export default {
       currentImportMessage,
       importError,
       canStopImport,
+      unrecognizedSecurities,
+      securityMappings,
+      showUnrecognizedSecuritiesDialog,
+      existingSecurities,
       handleFileChange,
       closeDialog,
       submitFile,
       startImport,
+      confirmSecurityMappings,
+      createNewSecurity,
       stopImport,
       closeSuccessDialog,
       resetProgressDialog

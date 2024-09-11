@@ -559,12 +559,8 @@ export const getBrokerDetails = async (brokerId) => {
 }
 
 export const createBroker = async (brokerData) => {
-  try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/brokers/`, brokerData)
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
+  const response = await axiosInstance.post(`${API_URL}/database/api/brokers/`, brokerData)
+  return response.data
 }
 
 export const updateBroker = async (brokerId, brokerData) => {
@@ -842,12 +838,27 @@ export const deleteFXTransaction = async (id) => {
   }
 }
 
-export const analyzeFile = async (file) => {
-  const formData = new FormData()
-  formData.append('file', file)
+// export const analyzeFile = async (file) => {
+//   const formData = new FormData()
+//   formData.append('file', file)
 
+//   try {
+//     const response = await axiosInstance.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
+//       headers: {
+//         'Content-Type': 'multipart/form-data'
+//       }
+//     })
+//     return response.data
+//   } catch (error) {
+//     console.error('Error analyzing file:', error)
+//     // throw error.response ? error.response.data : error.message
+//     throw error
+//   }
+// }
+
+export const analyzeFile = async (formData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
+    const response = await axios.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -855,7 +866,6 @@ export const analyzeFile = async (file) => {
     return response.data
   } catch (error) {
     console.error('Error analyzing file:', error)
-    // throw error.response ? error.response.data : error.message
     throw error
   }
 }
