@@ -1,13 +1,11 @@
 from collections import defaultdict
 import pandas as pd
 from decimal import Decimal
-from django.db.models import Q
 from fuzzywuzzy import process
 
 from common.models import Assets, Brokers, Transactions
 from constants import TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_BROKER_COMMISSION
 from users.models import CustomUser
-import sys
 from datetime import datetime
 
 from decimal import Decimal, InvalidOperation
