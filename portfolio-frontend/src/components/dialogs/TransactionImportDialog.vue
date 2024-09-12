@@ -168,21 +168,21 @@
         <p>The following securities were not recognized. Please map them to existing securities or create new ones:</p>
         <v-list>
           <v-list-item v-for="security in unrecognizedSecurities" :key="security">
-            <v-list-item-content>
-              <v-list-item-title>{{ security }}</v-list-item-title>
-            </v-list-item-content>
-            <v-list-item-action>
+            <v-list-item-title>{{ security }}</v-list-item-title>
+            <template v-slot:append>
               <v-autocomplete
                 v-model="securityMappings[security]"
                 :items="existingSecurities"
-                item-text="name"
+                item-title="name"
                 item-value="id"
                 label="Select existing security"
+                clearable
+                style="max-width: 300px;"
               ></v-autocomplete>
-            </v-list-item-action>
-            <v-list-item-action>
-              <v-btn @click="createNewSecurity(security)">Create New</v-btn>
-            </v-list-item-action>
+              <v-btn v-if="!securityMappings[security]" @click="createNewSecurity(security)" color="primary" text>
+                Create New Security
+              </v-btn>
+            </template>
           </v-list-item>
         </v-list>
       </v-card-text>
@@ -306,7 +306,7 @@ export default {
             unrecognizedSecurities.value = result.unrecognizedSecurities
             showUnrecognizedSecuritiesDialog.value = true
             // Fetch existing securities for mapping
-            existingSecurities.value = await getSecurities()
+            existingSecurities.value = await getSecurities([], selectedBroker.value)
             console.log('Existing securities:', existingSecurities.value)
           } else {
             handleImportSuccess(result)
