@@ -95,7 +95,7 @@
 </template>
 
 <script>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserProfile, changePassword as apiChangePassword } from '@/services/api'
 
@@ -208,8 +208,6 @@ export default {
     const showChangePasswordDialog = () => {
       changePasswordDialog.value = true
     }
-
-    onMounted(fetchUserDetails)
 
     return {
       userInfo,

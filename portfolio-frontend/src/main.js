@@ -9,27 +9,27 @@ import router from './router'
 import store from './store'
 import axios from 'axios'
 import './assets/fonts.css'
-import './plugins/vee-validate';
+import './plugins/vee-validate'
 
-axios.defaults.xsrfCookieName = 'csrftoken'
-axios.defaults.xsrfHeaderName = 'X-CSRFToken'
+// axios.defaults.xsrfCookieName = 'csrftoken'
+// axios.defaults.xsrfHeaderName = 'X-CSRFToken'
 
-axios.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    console.log('Token from localStorage:', token);
-    if (token) {
-      config.headers['Authorization'] = `Token ${token}`;
-      console.log('Authorization header set:', config.headers['Authorization']);
-    } else {
-      console.log('No token found in localStorage');
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+// axios.interceptors.request.use(
+//   (config) => {
+//     const token = localStorage.getItem('token')
+//     console.log('Token from localStorage:', token)
+//     if (token) {
+//       config.headers['Authorization'] = `Token ${token}`
+//       console.log('Authorization header set:', config.headers['Authorization'])
+//     } else {
+//       console.log('No token found in localStorage')
+//     }
+//     return config
+//   },
+//   (error) => {
+//     return Promise.reject(error)
+//   }
+// )
 
 axios.interceptors.response.use(
   (response) => response,

@@ -11,16 +11,17 @@ const axiosInstance = axios.create({
 // Add a request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = store.state.token;
+    const token = store.state.token
     if (token) {
-      config.headers['Authorization'] = `Token ${token}`;
+      config.headers['Authorization'] = `Token ${token}`
+      console.log("token handling in api.js", config.headers['Authorization'])
     }
-    return config;
+    return config
   },
   (error) => {
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
-);
+)
 
 export const login = async (username, password) => {
   try {

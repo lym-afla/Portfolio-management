@@ -278,7 +278,6 @@ def user_settings_api(request):
         settings_form = UserSettingsForm(request.data, instance=user)
         if settings_form.is_valid():
             settings_form.save()
-            print("views. users. 284", settings_form)
             return Response({'success': True})
         return Response({
             'success': False,
