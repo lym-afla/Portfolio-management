@@ -243,7 +243,7 @@ export default {
     DateRangeSelector,
     TransactionFormDialog,
     FXTransactionFormDialog,
-    TransactionImportDialog
+    TransactionImportDialog,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -425,7 +425,6 @@ export default {
     const handleImportCompleted = async (importResults) => {
       console.log('Import completed:', importResults)
       await fetchTransactions()
-      // You can add any additional logic here, such as showing a notification
     }
 
     onMounted(async () => {
@@ -473,7 +472,7 @@ export default {
       closeDeleteDialog,
       deleteTransactionConfirm,
       openImportDialog,
-      handleImportCompleted
+      handleImportCompleted,
     }
   }
 }

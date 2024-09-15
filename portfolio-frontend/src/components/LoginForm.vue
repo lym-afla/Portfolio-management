@@ -3,6 +3,7 @@
     <v-text-field
       v-model="username"
       label="Username"
+      autocomplete="username"
       required
       :error-messages="fieldErrors.username"
       @input="clearError('username')"
@@ -11,11 +12,12 @@
       v-model="password"
       label="Password"
       type="password"
+      autocomplete="current-password"
       required
       :error-messages="fieldErrors.password"
       @input="clearError('password')"
     ></v-text-field>
-    <v-btn type="submit" color="primary" block :loading="loading">Login</v-btn>
+    <v-btn type="submit" color="primary" block :loading="loading" :disabled="loading">Login</v-btn>
     <v-alert v-if="generalError" type="error" class="mt-3">{{ generalError }}</v-alert>
   </v-form>
 </template>

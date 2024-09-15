@@ -54,6 +54,9 @@
         </v-btn>
       </v-card-actions>
     </v-card>
+    <v-alert v-if="error" type="error" dismissible>
+      {{ error }}
+    </v-alert>
   </v-dialog>
 
   <ProgressDialog
@@ -67,6 +70,13 @@
     :can-stop="canStopImport"
     @stop-import="stopImport"
     @reset="resetProgressDialog"
+  />
+
+  <SecurityMappingDialog
+    v-model="showSecurityMappingDialog"
+    :security="securityToMap"
+    :best-match="bestMatch"
+    @security-mapped="handleSecurityMapped"
   />
 
   <v-dialog v-model="showSuccessDialog" max-width="500px">
@@ -191,19 +201,27 @@
         <v-btn color="primary" @click="confirmSecurityMappings">Confirm and Import</v-btn>
       </v-card-actions>
     </v-card>
+
+    <v-alert v-if="error" type="error" dismissible>
+      {{ error }}
+    </v-alert>
+
   </v-dialog>
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
-import { analyzeFile, getBrokers, importTransactions, getSecurities } from '@/services/api'
+import { ref, computed, watch, onUnmounted } from 'vue'
+import { analyzeFile, getBrokers, importTransactions } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
+import SecurityMappingDialog from '@/components/dialogs/SecurityMappingDialog.vue'
+import { useStore } from 'vuex';
 
 export default {
   name: 'TransactionImportDialog',
   components: {
-    ProgressDialog
+    ProgressDialog,
+    SecurityMappingDialog
   },
   props: {
     modelValue: Boolean,
@@ -252,7 +270,15 @@ export default {
     const showUnrecognizedSecuritiesDialog = ref(false)
     const existingSecurities = ref([])
 
+    const showSecurityMappingDialog = ref(false)
+    const securityToMap = ref('')
+    const bestMatch = ref(null)
+
+    const socket = ref(null)
+    const error = ref(null)
+
     const { handleApiError } = useErrorHandler()
+    const store = useStore();
 
     const handleFileChange = (event) => {
       file.value = event.target.files[0]
@@ -298,22 +324,70 @@ export default {
       }
     }
 
-    const startImport = async () => {
-      if (fileId.value && selectedBroker.value) {
-        try {
-          const result = await importTransactions(fileId.value, selectedBroker.value)
-          if (result.status === 'unrecognized_securities') {
-            unrecognizedSecurities.value = result.unrecognizedSecurities
-            showUnrecognizedSecuritiesDialog.value = true
-            // Fetch existing securities for mapping
-            existingSecurities.value = await getSecurities([], selectedBroker.value)
-            console.log('Existing securities:', existingSecurities.value)
-          } else {
-            handleImportSuccess(result)
-          }
-        } catch (error) {
-          handleApiError(error)
+    const startImport = () => {
+      error.value = null  // Clear any previous errors
+      const token = store.state.token
+      const wsScheme = window.location.protocol === "https:" ? "wss" : "ws"
+      const wsUrl = `${wsScheme}://${window.location.host}/ws/transactions/?token=${token}`
+      
+      console.log('Attempting to connect to WebSocket:', wsUrl)
+      
+      socket.value = new WebSocket(wsUrl)
+      
+      socket.value.onopen = () => {
+        console.log('WebSocket connection opened')
+        socket.value.send(JSON.stringify({
+          type: 'start_import',
+          file_id: fileId.value,
+          broker_id: selectedBroker.value
+        }))
+      }
+
+      socket.value.onerror = (event) => {
+        console.error('WebSocket error:', event)
+        error.value = 'An error occurred with the WebSocket connection.'
+      }
+
+      socket.value.onclose = (event) => {
+        console.log('WebSocket connection closed:', event)
+        if (!error.value) {
+          error.value = 'WebSocket connection closed unexpectedly.'
         }
+      }
+
+      socket.value.onmessage = (event) => {
+        console.log('Received message:', event.data)
+        const data = JSON.parse(event.data)
+        if (data.type === 'import_error') {
+          error.value = data.data.error
+        } else if (data.type === 'import_update') {
+          handleImportUpdate(data.data)
+        }
+      }
+    }
+
+    const handleImportUpdate = (update) => {
+      if (update.status === 'progress') {
+        importProgress.value = update.progress
+        currentImported.value = update.current
+        totalToImport.value = update.total
+        currentImportMessage.value = update.message
+      } else if (update.status === 'security_mapping') {
+        securityToMap.value = update.security
+        bestMatch.value = update.best_match
+        showSecurityMappingDialog.value = true
+      } else if (update.status === 'complete') {
+        handleImportSuccess(update.data)
+      }
+    }
+
+    const handleSecurityMapped = (securityId) => {
+      showSecurityMappingDialog.value = false
+      if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+        socket.value.send(JSON.stringify({
+          type: 'security_mapped',
+          security_id: securityId
+        }))
       }
     }
 
@@ -349,12 +423,11 @@ export default {
 
     const closeSuccessDialog = () => {
       showSuccessDialog.value = false
-      resetDialogFull()  // Full reset after successful import
+      resetDialogFull()
       closeDialog()
     }
 
     const resetDialogPartial = () => {
-      // Reset only visual states, keep fileId and selectedBroker
       file.value = null
       isAnalyzed.value = false
       brokerIdentified.value = false
@@ -378,6 +451,12 @@ export default {
       importError.value = ''
       canStopImport.value = true
     }
+
+    onUnmounted(() => {
+      if (socket.value) {
+        socket.value.close()
+      }
+    })
 
     watch(() => props.modelValue, (newValue) => {
       if (!newValue) {
@@ -408,6 +487,9 @@ export default {
       securityMappings,
       showUnrecognizedSecuritiesDialog,
       existingSecurities,
+      showSecurityMappingDialog,
+      securityToMap,
+      bestMatch,
       handleFileChange,
       closeDialog,
       submitFile,
@@ -416,7 +498,9 @@ export default {
       createNewSecurity,
       stopImport,
       closeSuccessDialog,
-      resetProgressDialog
+      resetProgressDialog,
+      handleSecurityMapped,
+      error
     }
   }
 }

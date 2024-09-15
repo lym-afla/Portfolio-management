@@ -5,9 +5,13 @@ from datetime import datetime
 from decimal import Decimal
 from itertools import chain
 from operator import attrgetter
+# from asgiref.sync import async_to_sync
+# from channels.layers import get_channel_layer
+from channels.db import database_sync_to_async
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
+from django.db import transaction
 import pandas as pd
 from fuzzywuzzy import fuzz
 
@@ -359,20 +363,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=False, methods=['POST'])
-    def import_transactions(self, request):
-        file_id = request.data.get('file_id')
-        broker_id = request.data.get('broker_id')
-        unrecognized_securities_mapping = request.data.get('unrecognizedSecuritiesMapping', {})
-
-        if not file_id or not broker_id:
-            return Response({'error': 'File ID and broker ID are required.'}, status=status.HTTP_400_BAD_REQUEST)
-
+    def import_transactions(self, user, file_id, broker_id):
         matching_files = default_storage.listdir('')[1]
         matching_files = [f for f in matching_files if f.startswith(f"temp_{file_id}_")]
 
         if not matching_files:
-            return Response({'error': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
+            yield {'error': 'File not found.'}
+            return
 
         file_path = matching_files[0]
 
@@ -380,54 +377,39 @@ class TransactionViewSet(viewsets.ModelViewSet):
             broker = Brokers.objects.get(id=broker_id)
             
             if 'Charles Stanley' in broker.name:
-                import_results = parse_charles_stanley_transactions(
+                parser = parse_charles_stanley_transactions(
                     file_path, 
-                    'GBP', # Natural CS currency 
+                    'GBP',
                     broker_id, 
-                    request.user.id
+                    user.id
                 )
-            else:
-                # Implement other broker-specific import functions here
-                return Response({'error': 'Unsupported broker for import.'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                for update in parser:
+                    logger.debug = ("import_transactions parser generator response:", update)
+                    if 'error' in update:
+                        yield update
+                    elif update['status'] == 'security_mapping':
+                        yield update
+                        security_id = yield
+                        parser.send(security_id)
+                    elif update['status'] in ['progress', 'complete']:
+                        yield update
 
-            if import_results['unrecognizedSecurities'] and not unrecognized_securities_mapping:
-                # Return unrecognized securities to the frontend for mapping
-                return Response({
-                    'status': 'unrecognized_securities',
-                    'message': 'Unrecognized securities found. Please map them before importing.',
-                    'unrecognizedSecurities': import_results['unrecognizedSecurities']
-                }, status=status.HTTP_202_ACCEPTED)
+                # Save transactions
+                with transaction.atomic():
+                    Transactions.objects.bulk_create([Transactions(**data) for data in update['data']['transactionsToCreate']])
 
-            # If we have mappings, update the transactions
-            if unrecognized_securities_mapping:
-                for transaction in import_results['transactionsToCreate']:
-                    if transaction.get('security') in import_results['unrecognizedSecurities']:
-                        mapped_security_id = unrecognized_securities_mapping.get(transaction['security'])
-                        if mapped_security_id:
-                            transaction['security'] = Assets.objects.get(id=mapped_security_id)
-                        else:
-                            # If no mapping provided, skip this transaction
-                            import_results['skippedTransactions'] += 1
-                            import_results['importedTransactions'] -= 1
-                            import_results['transactionsToCreate'].remove(transaction)
-
-            # Now save the transactions
-            with transaction.atomic():
-                Transactions.objects.bulk_create([Transactions(**data) for data in import_results['transactionsToCreate']])
-
-            return Response({
-                'status': 'success',
-                'message': 'Transactions imported successfully.',
-                'importResults': {
-                    'totalTransactions': import_results['totalTransactions'],
-                    'importedTransactions': import_results['importedTransactions'],
-                    'skippedTransactions': import_results['skippedTransactions'],
-                    'unrecognizedSecurities': import_results['unrecognizedSecurities']
+                yield {
+                    'status': 'success',
+                    'message': 'Transactions imported successfully.',
+                    'importResults': update['data']
                 }
-            }, status=status.HTTP_200_OK)
+            else:
+                yield {'error': 'Unsupported broker for import.'}
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error during import: {str(e)}", exc_info=True)
+            yield {'error': f'An error occurred during import: {str(e)}'}
 
         finally:
             default_storage.delete(file_path)
