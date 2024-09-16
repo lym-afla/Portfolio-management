@@ -1,10 +1,12 @@
 import { createStore } from 'vuex'
 import * as api from '@/services/api'
-import axios from 'axios'
+import router from '@/router'
+// import axios from 'axios'
 
 export default createStore({
   state: {
-    token: localStorage.getItem('token') || null,
+    accessToken: localStorage.getItem('accessToken') || null,
+    refreshToken: localStorage.getItem('refreshToken') || null,
     user: null,
     pageTitle: '',
     loading: false,
@@ -32,23 +34,31 @@ export default createStore({
     }
   },
   mutations: {
-    setToken(state, token) {
-      state.token = token
-      localStorage.setItem('token', token)
-      axios.defaults.headers.common['Authorization'] = `Token ${token}`
+    SET_TOKENS(state, { accessToken, refreshToken }) {
+      state.accessToken = accessToken
+      state.refreshToken = refreshToken
+      localStorage.setItem('accessToken', accessToken)
+      localStorage.setItem('refreshToken', refreshToken)
     },
-    clearToken(state) {
-      state.token = null
-      localStorage.removeItem('token')
-      delete axios.defaults.headers.common['Authorization']
+    CLEAR_TOKENS(state) {
+      state.accessToken = null
+      state.refreshToken = null
+      localStorage.removeItem('accessToken')
+      localStorage.removeItem('refreshToken')
     },
-    setUser(state, user) {
-      state.user = user
-    },
-    logout(state) {
-      state.token = null
-      state.user = null
-    },
+    // clearToken(state) {
+    //   state.token = null
+    //   localStorage.removeItem('token')
+      // delete axios.defaults.headers.common['Authorization']
+    // },
+    // SET_USER(state, user) {
+    //   state.user = user
+    // },
+    // logout(state) {
+    //   state.accessToken = null
+    //   state.refreshToken = null
+    //   state.user = null
+    // },
     setPageTitle(state, title) {
       state.pageTitle = title
     },
@@ -81,44 +91,74 @@ export default createStore({
     }
   },
   actions: {
+    // initializeToken({ commit }) {
+    //   const token = localStorage.getItem('token')
+    //   if (token) {
+    //     commit('SET_TOKEN', token)
+    //   }
+    // },
     async login({ commit }, credentials) {
       try {
         const response = await api.login(credentials.username, credentials.password)
-        const token = response.token
-        commit('setToken', token)
-        commit('setUser', response)
+        // const token = response.token
+        console.log("Response in 'login' action in the store:", response)
+        commit('SET_TOKENS', {
+          accessToken: response.access,
+          refreshToken: response.refresh
+        })
+        // commit('SET_USER', response.user)
+        // localStorage.setItem('token', response.access)
         return { success: true }
       } catch (error) {
-        console.error('Login failed', error)
+        console.error('Login failed from store', error)
+        // return { success: false, error: error }
+        throw error
+      }
+    },
+    async refreshToken({ commit, state }) {
+      try {
+        const response = await api.refreshToken(state.refreshToken)
+        commit('SET_TOKENS', {
+          accessToken: response.access,
+          refreshToken: response.refresh || state.refreshToken
+        })
+        return { success: true }
+      } catch (error) {
+        console.error('Token refresh failed', error)
+        commit('CLEAR_TOKENS')
         return { success: false, error: error }
       }
     },
     async logout({ commit }) {
       try {
         await api.logout()
-        commit('clearToken')
-        commit('logout')
-        return { success: true }
+        commit('CLEAR_TOKENS')
+        // commit('logout')
+        // return { success: true }
       } catch (error) {
-        console.error('Logout failed:', error)
-        commit('clearToken')
-        commit('logout')
-        return { success: false, error: 'Logout failed' }
+        console.error('Logout API call failed:', error)
+        // commit('CLEAR_TOKENS')
+        // commit('logout')
+        // return { success: false, error: 'Logout failed' }
+      } finally {
+        commit('CLEAR_TOKENS')
+        router.push('/login')
       }
     },
-    async register(_, credentials) {
-      try {
-        await api.register(credentials.username, credentials.email, credentials.password)
-        return { success: true, message: 'Registration successful. Please log in.' }
-      } catch (error) {
-        console.error('Registration failed', error)
-        return { success: false, error: error }
-      }
-    },
+    // async register(_, credentials) {
+    //   try {
+    //     await api.register(credentials.username, credentials.email, credentials.password)
+    //     return { success: true, message: 'Registration successful. Please log in.' }
+    //   } catch (error) {
+    //     console.error('Registration failed', error)
+    //     return { success: false, error: error }
+    //   }
+    // },
     async deleteAccount({ commit }) {
       try {
         await api.deleteAccount()
-        localStorage.removeItem('token')
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
         commit('logout')
         return { success: true, message: 'Account successfully deleted.' }
       } catch (error) {
@@ -169,7 +209,8 @@ export default createStore({
     }
   },
   getters: {
-    isAuthenticated: state => !!state.token,
+    isAuthenticated: state => !!state.accessToken,
+    currentUser: state => state.user,
     effectiveCurrentDate: state => state.effectiveCurrentDate,
     tableSettings: state => state.tableSettings,
   }

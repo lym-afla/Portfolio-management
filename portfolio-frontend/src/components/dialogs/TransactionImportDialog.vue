@@ -326,7 +326,7 @@ export default {
 
     const startImport = () => {
       error.value = null  // Clear any previous errors
-      const token = store.state.token
+      const token = store.state.accessToken
       const wsScheme = window.location.protocol === "https:" ? "wss" : "ws"
       const wsUrl = `${wsScheme}://${window.location.host}/ws/transactions/?token=${token}`
       

@@ -44,8 +44,10 @@ INSTALLED_APPS = [
     'summary_analysis',
 
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
-    'rest_framework.authtoken',
+    # 'rest_framework.authtoken',
 
     # 'debug_toolbar',
 
@@ -77,9 +79,9 @@ CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'portfolio_management.urls'
 
-SESSION_SAVE_EVERY_REQUEST = True
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_AGE = 86400  # 24hr in seconds
+# SESSION_SAVE_EVERY_REQUEST = True
+# SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+# SESSION_COOKIE_AGE = 86400  # 24hr in seconds
 
 TEMPLATES = [
     {
@@ -208,9 +210,21 @@ AUTHENTICATION_BACKENDS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.TokenAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
+}
+
+# JWT settings for authentication
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),  # Use "Bearer <token>" in headers
 }
 
 CACHES = {

@@ -78,6 +78,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
+import store from '@/store'
 
 export default {
   setup() {
@@ -99,13 +100,13 @@ export default {
   methods: {
     async logout() {
       try {
-        const response = await this.store.dispatch('logout')
-        if (response.success) {
-          this.$emit('update-page-title', '') // Clear the page title
-          this.router.push('/login')
-        } else {
-          console.error('Logout failed:', response.error)
-        }
+        await store.dispatch('logout')
+        // if (response.success) {
+        //   this.$emit('update-page-title', '') // Clear the page title
+        //   this.router.push('/login')
+        // } else {
+        //   console.error('Logout failed:', response.error)
+        // }
       } catch (error) {
         console.error('Logout error:', error)
       }

@@ -4,15 +4,16 @@
       v-model="username"
       label="Username"
       required
-      :error-messages="errors.username"
+      :error-messages="formErrors.username"
       @input="clearError('username')"
+      autocomplete="username"
     ></v-text-field>
     <v-text-field
       v-model="email"
       label="Email"
       type="email"
       required
-      :error-messages="errors.email"
+      :error-messages="formErrors.email"
       @input="clearError('email')"
     ></v-text-field>
     <v-text-field
@@ -20,88 +21,79 @@
       label="Password"
       type="password"
       required
-      :error-messages="errors.password"
+      :error-messages="formErrors.password"
       @input="clearError('password')"
+      autocomplete="new-password"
     ></v-text-field>
     <v-text-field
-      v-model="confirmPassword"
+      v-model="password2"
       label="Confirm Password"
       type="password"
       required
-      :error-messages="errors.confirmPassword"
-      @input="clearError('confirmPassword')"
+      :error-messages="formErrors.password2"
+      @input="clearError('password2')"
     ></v-text-field>
     <v-btn type="submit" color="primary" block :loading="loading">Register</v-btn>
-    <v-alert v-if="errors.general" type="error" class="mt-3">{{ errors.general }}</v-alert>
+    <v-alert v-if="formErrors.general" type="error" class="mt-3">{{ formErrors.general }}</v-alert>
   </v-form>
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 
 export default {
   props: {
     loading: Boolean,
+    serverErrors: {
+      type: Object,
+      default: () => ({})
+    }
   },
   emits: ['register'],
   setup(props, { emit }) {
     const username = ref('')
     const email = ref('')
     const password = ref('')
-    const confirmPassword = ref('')
-    const errors = reactive({
+    const password2 = ref('')
+    const formErrors = reactive({
       username: [],
       email: [],
       password: [],
-      confirmPassword: [],
+      password2: [],
       general: null,
     })
 
+    watch(() => props.serverErrors, (newErrors) => {
+      Object.keys(formErrors).forEach(key => {
+        formErrors[key] = Array.isArray(newErrors[key]) ? newErrors[key] : [newErrors[key]]
+      })
+      if (newErrors.general) {
+        formErrors.general = newErrors.general
+      }
+    }, { deep: true })
+
     const clearError = (field) => {
-      errors[field] = []
-      errors.general = null
+      formErrors[field] = []
+      formErrors.general = null
     }
 
     const submitForm = () => {
-      if (password.value !== confirmPassword.value) {
-        errors.confirmPassword = ['Passwords do not match']
-        return
-      }
       emit('register', {
         username: username.value,
         email: email.value,
         password: password.value,
+        password2: password2.value
       })
-    }
-
-    const setErrors = (newErrors) => {
-      Object.keys(errors).forEach(key => {
-        errors[key] = []
-      })
-      errors.general = null
-      
-      if (typeof newErrors === 'string') {
-        errors.general = newErrors
-      } else if (typeof newErrors === 'object' && newErrors !== null) {
-        Object.keys(newErrors).forEach(field => {
-          if (field in errors) {
-            errors[field] = Array.isArray(newErrors[field]) ? newErrors[field] : [newErrors[field]]
-          } else {
-            errors.general = newErrors[field]
-          }
-        })
-      }
     }
 
     return {
       username,
       email,
       password,
-      confirmPassword,
-      errors,
+      password2,
+      formErrors,
       submitForm,
       clearError,
-      setErrors
     }
   }
 }

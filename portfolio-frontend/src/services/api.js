@@ -1,97 +1,60 @@
-import axios from 'axios'
-import store from '@/store'  // Import your Vuex store
+
+import axiosInstance from '@/config/axiosConfig'
+// import store from '@/store'  // Import your Vuex store
 
 const API_URL = 'http://localhost:8000'  // Adjust this to your Django API URL
 
-const axiosInstance = axios.create({
-  baseURL: API_URL,
-  withCredentials: true
-});
+// const axiosInstance = axios.create({
+//   baseURL: API_URL,
+//   // withCredentials: true
+// })
 
-// Add a request interceptor
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = store.state.token
-    if (token) {
-      config.headers['Authorization'] = `Token ${token}`
-      console.log("token handling in api.js", config.headers['Authorization'])
-    }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
+// // Add a request interceptor
+// axiosInstance.interceptors.request.use(
+//   (config) => {
+//     const token = store.state.token
+//     if (token) {
+//       config.headers['Authorization'] = `Token ${token}`
+//       console.log("token handling in api.js", config.headers['Authorization'])
+//     }
+//     return config
+//   },
+//   (error) => {
+//     return Promise.reject(error)
+//   }
+// )
 
 export const login = async (username, password) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/login/`, { username, password })
+    const response = await axiosInstance.post(`/users/api/login/`, { username, password })
+    console.log("Response from login:", response)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
   }
 }
 
-export const register = async (username, email, password) => {
+export const refreshToken = async (refreshToken) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/register/`, { username, email, password })
+    const response = await axiosInstance.post('/users/api/refresh-token/', { refresh: refreshToken })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
   }
 }
 
-export const getOpenPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy });
-  try {
-    const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
-      dateFrom,
-      dateTo,
-      timespan,
-      page,
-      itemsPerPage,
-      search,
-      sortBy
+export const register = async (username, email, password, password2) => {
+  // try {
+    const response = await axiosInstance.post('/users/api/register/', {
+      username,
+      email,
+      password,
+      password2
     })
     return response.data
-  } catch (error) {
-    console.error('Error fetching open positions:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getClosedPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
-  try {
-    const response = await axiosInstance.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
-      dateFrom,
-      dateTo,
-      timespan,
-      page,
-      itemsPerPage,
-      search,
-      sortBy  // This will be a single object or an empty object
-    })
-    console.log('API request payload:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy })
-    console.log('API response:', response.data)
-    if (response.data && response.data.portfolio_closed && Array.isArray(response.data.portfolio_closed)) {
-      return response.data
-    } else {
-      console.error('Unexpected response format:', response.data)
-      throw new Error('Invalid response format')
-    }
-  } catch (error) {
-    console.error('Error fetching closed positions:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getYearOptions = async () => {
-  try {
-    const response = await axiosInstance.get(`${API_URL}/api/get-year-options/`)
-    return response.data.table_years
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
+  // } catch (error) {
+  //   throw error
+  // }
 }
 
 export const getBrokerChoices = async () => {
@@ -114,7 +77,7 @@ export const updateUserBroker = async (brokerOrGroupName) => {
 
 export const getUserProfile = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/users/api/profile/`)
+    const response = await axiosInstance.get('/users/api/profile/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -168,7 +131,7 @@ export const getSettingsChoices = async () => {
 
 export const logout = async () => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/logout/`)
+    const response = await axiosInstance.post('/users/api/logout/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -231,6 +194,61 @@ export const getAssetTypes = async () => {
 //     throw error.response ? error.response.data : error.message
 //   }
 // }
+
+
+export const getOpenPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy });
+  try {
+    const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
+      dateFrom,
+      dateTo,
+      timespan,
+      page,
+      itemsPerPage,
+      search,
+      sortBy
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching open positions:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getClosedPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
+      dateFrom,
+      dateTo,
+      timespan,
+      page,
+      itemsPerPage,
+      search,
+      sortBy  // This will be a single object or an empty object
+    })
+    console.log('API request payload:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy })
+    console.log('API response:', response.data)
+    if (response.data && response.data.portfolio_closed && Array.isArray(response.data.portfolio_closed)) {
+      return response.data
+    } else {
+      console.error('Unexpected response format:', response.data)
+      throw new Error('Invalid response format')
+    }
+  } catch (error) {
+    console.error('Error fetching closed positions:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getYearOptions = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/api/get-year-options/`)
+    return response.data.table_years
+  } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 
 export const getSecurities = async (assetTypes = [], brokerId = null) => {
   try {
@@ -859,7 +877,7 @@ export const deleteFXTransaction = async (id) => {
 
 export const analyzeFile = async (formData) => {
   try {
-    const response = await axios.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
+    const response = await axiosInstance.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

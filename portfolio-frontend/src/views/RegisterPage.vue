@@ -9,6 +9,7 @@
               ref="registerForm"
               @register="handleRegister" 
               :loading="loading" 
+              :serverErrors="errors"
             />
           </v-card-text>
           <v-card-actions>
@@ -54,24 +55,23 @@ export default {
     const showSuccessDialog = ref(false)
     const router = useRouter()
     const registerForm = ref(null)
+    const errors = ref({})
 
     const handleRegister = async (credentials) => {
+      console.log('Handling registration with credentials:', credentials)
       loading.value = true
+      errors.value = {}
 
       try {
-        await register(credentials.username, credentials.email, credentials.password)
+        await register(credentials.username, credentials.email, credentials.password, credentials.password2)
         successMessage.value = 'Registration successful. You can now log in to your account.'
         showSuccessDialog.value = true
       } catch (err) {
         console.error('Registration error:', err)
-        if (typeof err === 'object' && err !== null) {
-          if (err.non_field_errors) {
-            registerForm.value.setErrors({ general: err.non_field_errors })
-          } else {
-            registerForm.value.setErrors(err)
-          }
+        if (err.response && err.response.data) {
+          errors.value = err.response.data
         } else {
-          registerForm.value.setErrors({ general: 'An error occurred during registration.' })
+          errors.value = { general: 'An error occurred during registration.' }
         }
       } finally {
         loading.value = false
@@ -83,9 +83,7 @@ export default {
     }
 
     onBeforeUnmount(() => {
-      if (registerForm.value) {
-        registerForm.value.setErrors({})
-      }
+      errors.value = {}
     })
 
     return { 
@@ -94,7 +92,8 @@ export default {
       registerForm, 
       successMessage, 
       showSuccessDialog, 
-      redirectToLogin 
+      redirectToLogin,
+      errors
     }
   },
   mounted() {

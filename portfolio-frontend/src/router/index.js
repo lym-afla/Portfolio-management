@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { ref } from 'vue'
+// import { ref } from 'vue'
+import store from '@/store'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
@@ -16,7 +17,7 @@ import SecuritiesPage from '../views/database/SecuritiesPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import FXPage from '../views/database/FXPage.vue'
 
-export const loading = ref(true)
+// export const loading = ref(true)
 
 const routes = [
   {
@@ -116,9 +117,21 @@ const router = createRouter({
   routes
 })
 
+// router.beforeEach((to, from, next) => {
+//   loading.value = true
+//   next()
+// })
+
 router.beforeEach((to, from, next) => {
-  loading.value = true
-  next()
+  if (to.matched.some(record => record.meta.requiresAuth)) {
+    if (!store.getters.isAuthenticated) {
+      next({ name: 'Login' })
+    } else {
+      next()
+    }
+  } else {
+    next()
+  }
 })
 
 export default router

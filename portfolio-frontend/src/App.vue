@@ -63,7 +63,6 @@ import { provide, ref, onMounted, watch, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
 import BrokerSelection from './components/BrokerSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
-import { checkAuth } from './utils/auth'
 import { useRouter, useRoute } from 'vue-router'
 import { useStore } from 'vuex'
 
@@ -79,7 +78,7 @@ export default {
     const router = useRouter()
     const route = useRoute()
     const user = ref(null)
-    const isAuthenticated = ref(false)
+    const isAuthenticated = computed(() => store.getters.isAuthenticated)
     const layoutLoading = ref(true)
     const pageTitle = ref('')
 
@@ -95,18 +94,17 @@ export default {
       user.value = userData
     }
 
-    const updateAuthStatus = async () => {
-      layoutLoading.value = true
-      isAuthenticated.value = await checkAuth()
+    const updateAuthStatus = () => {
+      layoutLoading.value = false
       if (!isAuthenticated.value && route.meta.requiresAuth) {
         router.push('/login')
+      } else if (isAuthenticated.value && route.path === '/login') {
+        router.push('/profile')
       }
-      layoutLoading.value = false
     }
 
     const handleLogout = () => {
-      setUser(null)
-      isAuthenticated.value = false
+      store.dispatch('logout')
       router.push('/login')
     }
 
@@ -120,14 +118,15 @@ export default {
 
     onMounted(() => {
       updateAuthStatus()
-      console.log('Is authenticated:', store.getters.isAuthenticated)
+      console.log('[App.vue] Is authenticated:', store.getters.isAuthenticated)
     })
 
+    watch(isAuthenticated, updateAuthStatus)
     watch(() => route.fullPath, updateAuthStatus)
 
-    provide('user', user)
-    provide('setUser', setUser)
-    provide('isAuthenticated', isAuthenticated)
+    // provide('user', user)
+    // provide('setUser', setUser)
+    // provide('isAuthenticated', isAuthenticated)
 
     const errorSnackbar = ref(false)
     const errorMessages = ref([])

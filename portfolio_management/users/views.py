@@ -174,10 +174,10 @@ def update_data_for_broker(request):
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .serializers import UserSerializer
 from django.contrib.auth import authenticate, get_user_model, logout
@@ -186,55 +186,70 @@ from django.contrib.auth.password_validation import validate_password
 
 import logging
 
+User = get_user_model()
+
 logger = logging.getLogger(__name__)
 
-class RegisterView(APIView):
-    def post(self, request):
-        serializer = UserSerializer(data=request.data)
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED, headers=headers)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class CustomObtainAuthToken(ObtainAuthToken):
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data,
-                                           context={'request': request})
-        if serializer.is_valid():
-            user = serializer.validated_data['user']
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'token': token.key,
-                'user_id': user.pk,
-                'email': user.email
-            })
-        else:
-            errors = {}
-            username = request.data.get('username')
-            password = request.data.get('password')
+# class RegisterView(APIView):
+#     def post(self, request):
+#         serializer = UserSerializer(data=request.data)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            if not username:
-                errors['username'] = ['This field is required.']
-            if not password:
-                errors['password'] = ['This field is required.']
+# class CustomObtainAuthToken(ObtainAuthToken):
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.serializer_class(data=request.data,
+#                                            context={'request': request})
+#         if serializer.is_valid():
+#             user = serializer.validated_data['user']
+#             token, created = Token.objects.get_or_create(user=user)
+#             return Response({
+#                 'token': token.key,
+#                 'user_id': user.pk,
+#                 'email': user.email
+#             })
+#         else:
+#             errors = {}
+#             username = request.data.get('username')
+#             password = request.data.get('password')
 
-            if username and password:
-                User = get_user_model()
-                try:
-                    user = User.objects.get(username=username)
-                    if not user.check_password(password):
-                        errors['password'] = ['Incorrect password.']
-                except User.DoesNotExist:
-                    errors['username'] = ['User with this username does not exist.']
+#             if not username:
+#                 errors['username'] = ['This field is required.']
+#             if not password:
+#                 errors['password'] = ['This field is required.']
 
-            # Validate password complexity only if a password is provided
-            if password:
-                try:
-                    validate_password(password)
-                except ValidationError as e:
-                    errors['password'] = list(e.messages)
+#             if username and password:
+#                 User = get_user_model()
+#                 try:
+#                     user = User.objects.get(username=username)
+#                     if not user.check_password(password):
+#                         errors['password'] = ['Incorrect password.']
+#                 except User.DoesNotExist:
+#                     errors['username'] = ['User with this username does not exist.']
 
-            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+#             # Validate password complexity only if a password is provided
+#             if password:
+#                 try:
+#                     validate_password(password)
+#                 except ValidationError as e:
+#                     errors['password'] = list(e.messages)
+
+#             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
 class DeleteAccountView(APIView):
     permission_classes = [IsAuthenticated]
