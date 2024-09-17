@@ -9,7 +9,7 @@
               ref="registerForm"
               @register="handleRegister" 
               :loading="loading" 
-              :serverErrors="errors"
+              :errors="errors"
             />
           </v-card-text>
           <v-card-actions>
@@ -63,15 +63,15 @@ export default {
       errors.value = {}
 
       try {
-        await register(credentials.username, credentials.email, credentials.password, credentials.password2)
-        successMessage.value = 'Registration successful. You can now log in to your account.'
+        const response = await register(credentials.username, credentials.email, credentials.password, credentials.password2)
+        successMessage.value = response.message || 'Registration successful. You can now log in to your account.'
         showSuccessDialog.value = true
       } catch (err) {
-        console.error('Registration error:', err)
-        if (err.response && err.response.data) {
-          errors.value = err.response.data
+        console.error('[RegisterPage] Registration error:', err)
+        if (typeof err === 'object' && err !== null) {
+          errors.value = err
         } else {
-          errors.value = { general: 'An error occurred during registration.' }
+          errors.value = { general: [err.toString()] }
         }
       } finally {
         loading.value = false

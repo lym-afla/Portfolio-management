@@ -1,10 +1,13 @@
-from django.urls import path
+from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework.routers import DefaultRouter
 # from .views import SignUpView, CustomObtainAuthToken, RegisterView
 from . import views
-
 app_name = 'users' # Optional, but useful for namespacing
+
+router = DefaultRouter()
+router.register(r'', views.UserViewSet, basename='user')
 
 urlpatterns = [
     path('signup/', views.SignUpView.as_view(), name='signup'),
@@ -23,15 +26,11 @@ urlpatterns = [
     path('api/change-password/', views.change_password_api, name='api_change_password'),
     path('api/logout/', views.logout_api, name='api_logout'),
 
-    # path('api/login/', views.CustomObtainAuthToken.as_view(), name='api_login'),
-    # path('api/register/', views.RegisterView.as_view(), name='api_register'),
-    # path('api/verify-token/', views.verify_token_api, name='api_verify_token'),
-    path('api/delete-account/', views.DeleteAccountView.as_view(), name='api_delete_account'),
-
     # New user handling with JWT
     path('api/login/', TokenObtainPairView.as_view(), name='login'),
     path('api/refresh-token/', TokenRefreshView.as_view(), name='refresh_token'),
-    path('api/register/', views.UserViewSet.as_view({'post': 'create'}), name='api_register'),
+    path('', include(router.urls)),
+    path('api/register/', views.UserViewSet.as_view({'post': 'create_user'}), name='api_register'),
 
     path('api/get_broker_choices/', views.get_broker_choices_api, name='get_broker_choices_api'),
     path('api/update_user_broker/', views.update_user_broker_api, name='update_user_broker_api'),

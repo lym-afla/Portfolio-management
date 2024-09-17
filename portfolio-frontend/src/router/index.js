@@ -127,9 +127,11 @@ router.beforeEach((to, from, next) => {
     if (!store.getters.isAuthenticated) {
       next({ name: 'Login' })
     } else {
+      console.log('[index.js. Router] isAuthenticated. Running next()')
       next()
     }
   } else {
+    console.log('[index.js. Router] not requiresAuth. Running next()')
     next()
   }
 })

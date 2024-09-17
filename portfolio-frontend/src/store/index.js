@@ -132,7 +132,7 @@ export default createStore({
     async logout({ commit }) {
       try {
         await api.logout()
-        commit('CLEAR_TOKENS')
+        // commit('CLEAR_TOKENS')
         // commit('logout')
         // return { success: true }
       } catch (error) {
@@ -154,18 +154,18 @@ export default createStore({
     //     return { success: false, error: error }
     //   }
     // },
-    async deleteAccount({ commit }) {
-      try {
-        await api.deleteAccount()
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        commit('logout')
-        return { success: true, message: 'Account successfully deleted.' }
-      } catch (error) {
-        console.error('Account deletion failed', error)
-        return { success: false, error: error }
-      }
-    },
+    // async deleteAccount({ commit }) {
+    //   try {
+    //     await api.deleteAccount()
+    //     localStorage.removeItem('accessToken')
+    //     localStorage.removeItem('refreshToken')
+    //     commit('CLEAR_TOKENS')
+    //     return { success: true, message: 'Account successfully deleted.' }
+    //   } catch (error) {
+    //     console.error('Account deletion failed', error)
+    //     return { success: false, error: error }
+    //   }
+    // },
     updatePageTitle({ commit }, title) {
       commit('setPageTitle', title)
     },

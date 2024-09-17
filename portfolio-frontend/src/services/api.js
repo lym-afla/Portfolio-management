@@ -44,17 +44,23 @@ export const refreshToken = async (refreshToken) => {
 }
 
 export const register = async (username, email, password, password2) => {
-  // try {
+  try {
     const response = await axiosInstance.post('/users/api/register/', {
       username,
       email,
       password,
       password2
     })
+    console.log('Registration response:', response)
     return response.data
-  // } catch (error) {
-  //   throw error
-  // }
+  } catch (error) {
+    console.error('Registration error:', error.response)
+    if (error.response && error.response.data && error.response.data.errors) {
+      throw error.response.data.errors
+    } else {
+      throw { general: ['An unexpected error occurred. Please try again.'] }
+    }
+  }
 }
 
 export const getBrokerChoices = async () => {
@@ -140,9 +146,15 @@ export const logout = async () => {
 
 export const deleteAccount = async () => {
   try {
-    const response = await axiosInstance.delete(`${API_URL}/users/api/delete-account/`)
+    const refreshToken = localStorage.getItem('refreshToken')
+    const response = await axiosInstance.delete('/users/api/',
+      { data: { refresh_token: refreshToken } })
+    // Clear all authentication tokens
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
     return response.data
   } catch (error) {
+    console.error('Error deleting account:', error.response || error)
     throw error.response ? error.response.data : error.message
   }
 }

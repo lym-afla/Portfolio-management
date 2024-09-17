@@ -176,8 +176,9 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .serializers import UserSerializer
 from django.contrib.auth import authenticate, get_user_model, logout
@@ -195,13 +196,49 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
 
-    def create(self, request, *args, **kwargs):
+    def initial(self, request, *args, **kwargs):
+        logger.info(f"Method: {request.method}")
+        logger.info(f"URL: {request.get_full_path()}")
+        logger.info(f"Data: {request.data}")
+        super().initial(request, *args, **kwargs)
+
+    # def get_permissions(self):
+    #     logger.info(f"Action: {self.action}")
+    #     if self.action == 'create':
+    #         return [AllowAny()]
+    #     return super().get_permissions()
+
+    @action(detail=False, methods=['post'])
+    def create_user(self, request):
+        logger.info(f"Create user action called with data: {request.data}")
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             self.perform_create(serializer)
             headers = self.get_success_headers(serializer.data)
             return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED, headers=headers)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        logger.error(f"Serializer errors: {serializer.errors}")
+        return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.request.user
+        if user.is_authenticated:
+            # Blacklist the refresh token
+            try:
+                refresh_token = request.data.get('refresh_token')
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except Exception as e:
+                # If there's an error with the token, we'll still delete the user
+                pass
+
+            # Delete the user
+            user.delete()
+            return Response({"detail": "User account has been deleted."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    # def create(self, request, *args, **kwargs):
+    #     logger.info(f"Default create method called")
+    #     return self.create_user(request)
 
 # class RegisterView(APIView):
 #     def post(self, request):
@@ -251,13 +288,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
 #             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
-class DeleteAccountView(APIView):
-    permission_classes = [IsAuthenticated]
+# class DeleteAccountView(APIView):
+#     permission_classes = [IsAuthenticated]
 
-    def delete(self, request):
-        user = request.user
-        user.delete()
-        return Response({"message": "Account successfully deleted"}, status=status.HTTP_200_OK)
+#     def delete(self, request):
+#         user = request.user
+#         user.delete()
+#         return Response({"message": "Account successfully deleted"}, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

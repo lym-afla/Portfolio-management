@@ -64,7 +64,7 @@
           <v-btn
             color="error"
             :disabled="confirmationText !== 'DELETE'"
-            @click="deleteAccount"
+            @click="processDeleteAccount"
           >
             Delete Account
           </v-btn>
@@ -79,6 +79,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import store from '@/store'
+import { deleteAccount } from '@/services/api'
 
 export default {
   setup() {
@@ -86,8 +87,37 @@ export default {
     const store = useStore()
     const showDeleteConfirmation = ref(false)
     const confirmationText = ref('')
+    const isLoading = ref(false)
 
-    return { router, store, showDeleteConfirmation, confirmationText }
+    const processDeleteAccount = async () => {
+      if (confirmationText.value !== 'DELETE') {
+        return
+      }
+      isLoading.value = true
+      try {
+        await deleteAccount()
+        // Clear authentication state
+        store.commit('CLEAR_TOKENS')        
+        // Redirect to register page
+        router.push('/register')
+      } catch (error) {
+        console.error('Error deleting account:', error)
+        // Handle error (e.g., show error message to user)
+      } finally {
+        isLoading.value = false
+        showDeleteConfirmation.value = false
+        confirmationText.value = ''
+      }
+    }
+
+    return {
+      router,
+      store,
+      showDeleteConfirmation,
+      confirmationText,
+      isLoading,
+      processDeleteAccount,
+    }
   },
   data() {
     return {
@@ -113,23 +143,6 @@ export default {
     },
     isActive(route) {
       return this.$route.path === route
-    },
-    async deleteAccount() {
-      if (this.confirmationText !== 'DELETE') {
-        return
-      }
-      try {
-        const response = await this.store.dispatch('deleteAccount')
-        if (response.success) {
-          this.router.push('/register')
-        } else {
-          // Handle error (e.g., show error message to user)
-          console.error('Account deletion failed:', response.error)
-        }
-      } finally {
-        this.showDeleteConfirmation = false
-        this.confirmationText = ''
-      }
     },
   },
   mounted() {
