@@ -34,6 +34,7 @@ axiosInstance.interceptors.response.use(
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError)
+        store.commit('CLEAR_TOKENS')
       }
     }
     return Promise.reject(error)

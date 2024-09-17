@@ -11,26 +11,29 @@
         </v-card-title>
         <v-card-text>
           <v-form @submit.prevent="saveSettings" ref="form">
-            <template v-for="field in formFields" :key="field.name">
-              <v-select
-                v-if="field.type === 'select'"
-                v-model="formData[field.name]"
-                :items="field.choices"
-                item-title="text"
-                item-value="value"
-                :label="field.label"
-                :error-messages="errors[field.name]"
-                :disabled="isUpdating"
-              ></v-select>
-              <v-text-field
-                v-else
-                v-model="formData[field.name]"
-                :label="field.label"
-                :type="field.type"
-                :error-messages="errors[field.name]"
-                :disabled="isUpdating"
-              ></v-text-field>
-            </template>
+            <v-select
+              v-model="formData.default_currency"
+              :items="currencyChoices"
+              item-title="text"
+              item-value="value"
+              label="Currency"
+              :error-messages="errors.default_currency"
+              :disabled="isUpdating"
+            ></v-select>
+            <v-text-field
+              v-model="formData.digits"
+              label="Number of digits"
+              type="number"
+              :error-messages="errors.digits"
+              :disabled="isUpdating"
+            ></v-text-field>
+            <v-text-field
+              v-model="formData.table_date"
+              label="Date"
+              type="date"
+              :error-messages="errors.table_date"
+              :disabled="isUpdating"
+            ></v-text-field>
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -58,21 +61,23 @@ export default {
     const form = ref(null)
     const errors = ref({})
     const isUpdating = ref(false)
-    const formFields = ref([])
-    const formData = reactive({})
+    const currencyChoices = ref([])
+    const formData = reactive({
+      default_currency: '',
+      digits: 0,
+      table_date: '',
+    })
 
     const fetchSettingsData = async () => {
       try {
         const response = await getDashboardSettings()
         console.log('[SettingsDialog] Getting dashboard settings:', response)
-        formFields.value = response.form_fields
-        formFields.value.forEach(field => {
-          if (field.type === 'select') {
-            formData[field.name] = response[field.name].value
-          } else {
-            formData[field.name] = response[field.name]
-          }
-        })
+        
+        // Update formData with settings
+        Object.assign(formData, response.settings)
+        
+        // Format currency choices
+        currencyChoices.value = response.choices.default_currency.map(([value, text]) => ({ value, text }))
       } catch (error) {
         console.error('Failed to fetch settings data:', error)
       }
@@ -99,15 +104,15 @@ export default {
         console.log('[SettingsDialog] Sending formData:', formData)
         const response = await updateDashboardSettings(formData)
         if (response.success) {
-          console.log('Settings updated successfully:', response.data)
-          store.dispatch('updateEffectiveCurrentDate', response.data.table_date)
+          console.log('Settings updated successfully:', response)
+          store.dispatch('updateEffectiveCurrentDate', response.table_date)
           
           // Get the current state from the store
           const currentState = store.state
           console.log('[SettingsDialog] Current state:', currentState)
 
           // Calculate new date range based on the new effective date
-          const dateRange = calculateDateRangeFromTimespan(currentState.tableSettings.timespan, response.data.table_date)
+          const dateRange = calculateDateRangeFromTimespan(currentState.tableSettings.timespan, response.table_date)
           
           // Update table settings and trigger data refresh
           store.dispatch('updateTableSettings', {
@@ -152,7 +157,7 @@ export default {
     return {
       dialog,
       formData,
-      formFields,
+      currencyChoices,
       form,
       errors,
       openDialog,

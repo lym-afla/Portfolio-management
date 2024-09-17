@@ -181,10 +181,10 @@ LOGGING = {
         },
     },
     'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
-            'level': 'INFO',
-        },
+        # 'django': {
+        #     'handlers': ['console', 'file'],
+        #     'level': 'INFO',
+        # },
         'users': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
@@ -195,6 +195,11 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
+        'channels': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        }
     },
     'root': {
         'handlers': ['console', 'file'],

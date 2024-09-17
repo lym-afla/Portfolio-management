@@ -65,7 +65,7 @@ export const register = async (username, email, password, password2) => {
 
 export const getBrokerChoices = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/users/api/get_broker_choices/`)
+    const response = await axiosInstance.get('/users/api/get_broker_choices/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -74,7 +74,7 @@ export const getBrokerChoices = async () => {
 
 export const updateUserBroker = async (brokerOrGroupName) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/update_user_broker/`, { broker_or_group_name: brokerOrGroupName })
+    const response = await axiosInstance.post('/users/api/update_data_for_new_broker/', { broker_or_group_name: brokerOrGroupName })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -92,16 +92,19 @@ export const getUserProfile = async () => {
 
 export const editUserProfile = async (profileData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/profile/edit/`, profileData)
+    const response = await axiosInstance.put('/users/api/edit_profile/', profileData)
     return response.data
   } catch (error) {
-    throw error.response ? error.response.data : error.message
+    return { 
+      success: false, 
+      errors: error.response?.data || { general: [error.message] }
+    }
   }
 }
 
 export const changePassword = async (passwordData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/change-password/`, passwordData)
+    const response = await axiosInstance.post('/users/api/change_password/', passwordData)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -110,7 +113,7 @@ export const changePassword = async (passwordData) => {
 
 export const getUserSettings = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/users/api/settings/`)
+    const response = await axiosInstance.get('/users/api/user_settings/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -119,7 +122,7 @@ export const getUserSettings = async () => {
 
 export const updateUserSettings = async (settings) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/users/api/settings/`, settings)
+    const response = await axiosInstance.post('/users/api/user_settings/', settings)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -128,7 +131,7 @@ export const updateUserSettings = async (settings) => {
 
 export const getSettingsChoices = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/users/api/settings/choices/`)
+    const response = await axiosInstance.get('/users/api/user_settings_choices/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -137,7 +140,16 @@ export const getSettingsChoices = async () => {
 
 export const logout = async () => {
   try {
-    const response = await axiosInstance.post('/users/api/logout/')
+    const refreshToken = localStorage.getItem('refreshToken')
+    if (!refreshToken) {
+      throw new Error('No refresh token found')
+    }
+    const response = await axiosInstance.post('/users/api/logout/', { refresh_token: refreshToken })
+
+    // Clear all authentication tokens
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -147,7 +159,7 @@ export const logout = async () => {
 export const deleteAccount = async () => {
   try {
     const refreshToken = localStorage.getItem('refreshToken')
-    const response = await axiosInstance.delete('/users/api/',
+    const response = await axiosInstance.delete('/users/api/delete_account/',
       { data: { refresh_token: refreshToken } })
     // Clear all authentication tokens
     localStorage.removeItem('accessToken')
@@ -161,26 +173,21 @@ export const deleteAccount = async () => {
 
 export const getDashboardSettings = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/users/api/dashboard-settings/`)
+    const response = await axiosInstance.get('/users/api/dashboard_settings/')
     return response.data
   } catch (error) {
+    console.error('Error fetching dashboard settings:', error)
     throw error.response ? error.response.data : error.message
   }
 }
 
 export const updateDashboardSettings = async (settings) => {
   try {
-    console.log('Sending settings to API:', settings)
-    const response = await axiosInstance.post(`${API_URL}/users/api/update-settings-from-dashboard/`, settings, {
-      withCredentials: true
-    })
-    console.log('API response:', response.data)
-    return response.data
+    const response = await axiosInstance.post('/users/api/update_dashboard_settings/', settings)
+    return { success: true, ...response.data }
   } catch (error) {
-    if (error.response && error.response.data) {
-      return error.response.data
-    }
-    throw error
+    console.error('Error updating dashboard settings:', error)
+    return { success: false, error: error.response ? error.response.data : error.message }
   }
 }
 
@@ -206,7 +213,6 @@ export const getAssetTypes = async () => {
 //     throw error.response ? error.response.data : error.message
 //   }
 // }
-
 
 export const getOpenPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
   console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy });

@@ -77,6 +77,8 @@
         <v-select
           v-model="settingsForm.custom_brokers"
           :items="brokerChoices"
+          item-title="title"
+          item-value="value"
           label="Brokers"
           :error-messages="fieldErrors.custom_brokers"
         >
@@ -153,29 +155,23 @@ export default {
   methods: {
     async loadData() {
       try {
-        await Promise.all([
-          this.fetchSettings(),
-          this.fetchChoices()
-        ]);
-        this.loading = false;
+        this.loading = true
+        const [settings, choices] = await Promise.all([
+          getUserSettings(),
+          getSettingsChoices()
+        ])
+        this.settingsForm = settings
+        this.currencyChoices = this.formatChoices(choices.currency_choices)
+        this.frequencyChoices = this.formatChoices(choices.frequency_choices)
+        this.timelineChoices = this.formatChoices(choices.timeline_choices)
+        this.navBreakdownChoices = this.formatChoices(choices.nav_breakdown_choices)
+        this.brokerChoices = formatBrokerChoices(choices.broker_choices)
       } catch (error) {
-        console.error('Error loading data:', error);
-        this.showErrorMessage('Failed to load settings. Please refresh the page.');
-        this.loading = false;
+        console.error('Error loading settings data:', error)
+        this.showErrorMessage('Failed to load settings. Please try again.')
+      } finally {
+        this.loading = false
       }
-    },
-    async fetchSettings() {
-      const response = await getUserSettings();
-      this.settingsForm = response;
-    },
-    async fetchChoices() {
-      const response = await getSettingsChoices();
-      console.log('ProfileSettings Response:', response);
-      this.currencyChoices = this.formatChoices(response.currency_choices);
-      this.frequencyChoices = this.formatChoices(response.frequency_choices);
-      this.timelineChoices = this.formatChoices(response.timeline_choices);
-      this.navBreakdownChoices = this.formatChoices(response.nav_breakdown_choices);
-      this.brokerChoices = formatBrokerChoices(response.broker_choices);
     },
     formatChoices(choices) {
       return choices.map(choice => ({
@@ -185,18 +181,15 @@ export default {
     },
     async saveSettings() {
       try {
-        console.log('Sending settings:', this.settingsForm);
-        const response = await updateUserSettings(this.settingsForm);
-        console.log('Settings saved successfully:', response);
-        this.showSuccessMessage('Settings saved successfully');
-        this.clearFieldErrors();
-      } catch (error) {
-        console.error('Error saving settings:', error.response?.data || error.message);
-        if (error.response && error.response.data && error.response.data.errors) {
-          this.handleFieldErrors(error.response.data.errors);
+        const response = await updateUserSettings(this.settingsForm)
+        if (response.success) {
+          this.showSuccessMessage('Settings saved successfully')
         } else {
-          this.showErrorMessage('Failed to save settings. Please try again.');
+          this.handleFieldErrors(response.errors)
         }
+      } catch (error) {
+        console.error('Error saving settings:', error)
+        this.showErrorMessage('Failed to save settings. Please try again.')
       }
     },
     handleFieldErrors(errors) {

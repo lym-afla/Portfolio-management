@@ -3,12 +3,12 @@
     <v-card-title>User Profile</v-card-title>
     <v-card-text>
       <v-list>
-        <v-list-item v-for="(info, index) in userInfo" :key="index">
+        <v-list-item v-for="(value, key) in userInfo" :key="key">
           <template v-slot:title>
-            {{ info.label }}
+            {{ formatLabel(key) }}
           </template>
           <template v-slot:subtitle>
-            {{ info.value }}
+            {{ value || 'Not provided' }}
           </template>
         </v-list-item>
       </v-list>
@@ -32,6 +32,7 @@
               :disabled="isLoading"
               :error-messages="passwordErrors.old_password"
               @input="clearPasswordError('old_password')"
+              autocomplete="current-password"
             ></v-text-field>
             <v-text-field
               v-model="passwordForm.new_password1"
@@ -41,6 +42,7 @@
               :disabled="isLoading"
               :error-messages="passwordErrors.new_password1"
               @input="clearPasswordError('new_password1')"
+              autocomplete="new-password"
             ></v-text-field>
             <v-text-field
               v-model="passwordForm.new_password2"
@@ -50,6 +52,7 @@
               :disabled="isLoading"
               :error-messages="passwordMismatchError"
               @input="clearPasswordError('new_password2')"
+              autocomplete="new-password"
             ></v-text-field>
             <v-btn 
               type="submit" 
@@ -103,6 +106,11 @@ export default {
   setup() {
     const router = useRouter()
     const userInfo = ref([])
+
+    const formatLabel = (key) => {
+      return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+    }
+
     const changePasswordDialog = ref(false)
     const passwordForm = reactive({
       old_password: '',
@@ -161,17 +169,20 @@ export default {
 
       isLoading.value = true
       try {
-        await apiChangePassword(passwordForm)
-        changePasswordDialog.value = false
-        showSuccessMessage('Password changed successfully')
-        Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
-        Object.keys(passwordErrors).forEach(key => passwordErrors[key] = [])
+        const response = await apiChangePassword(passwordForm)
+        if (response.success) {
+          changePasswordDialog.value = false
+          showSuccessMessage(response.message || 'Password changed successfully')
+          Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
+        } else {
+          setPasswordErrors(response.error || 'Failed to change password')
+        }
       } catch (error) {
         console.error('Error changing password:', error)
-        if (error.response && error.response.data) {
-          setPasswordErrors(error.response.data)
+        if (error.error === 'Incorrect old password') {
+          passwordErrors.old_password = ['Incorrect current password']
         } else {
-          showErrorMessage('Failed to change password. Please try again.')
+          setPasswordErrors(error.error || 'An unexpected error occurred')
         }
       } finally {
         isLoading.value = false
@@ -189,12 +200,12 @@ export default {
         console.log('Fetching user profile...')
         const response = await getUserProfile()
         console.log('Received response:', response)
-        if (response && response.user_info) {
-          userInfo.value = response.user_info
-        } else {
-          console.error('Unexpected response format:', response)
-          showErrorMessage('Unexpected response format')
-        }
+        // if (response && response.user_info) {
+          userInfo.value = response
+        // } else {
+        //   console.error('Unexpected response format:', response)
+        //   showErrorMessage('Unexpected response format')
+        // }
       } catch (error) {
         console.error('Error fetching user details:', error)
         showErrorMessage(`Failed to fetch user details: ${error.message || 'Unknown error'}`)
@@ -211,6 +222,7 @@ export default {
 
     return {
       userInfo,
+      formatLabel,
       changePasswordDialog,
       passwordForm,
       passwordErrors,

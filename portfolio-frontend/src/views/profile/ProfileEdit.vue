@@ -3,19 +3,24 @@
     <v-card-title>Edit Profile</v-card-title>
     <v-card-text>
       <v-form @submit.prevent="saveProfile">
-        <v-text-field v-model="profileForm.username" label="Username" :disabled="true"></v-text-field>
-        <v-text-field v-model="profileForm.first_name" label="First Name"></v-text-field>
-        <v-text-field v-model="profileForm.last_name" label="Last Name"></v-text-field>
-        <v-text-field v-model="profileForm.email" label="Email"></v-text-field>
+        <v-text-field
+          v-for="(value, key) in profileForm"
+          :key="key"
+          v-model="profileForm[key]"
+          :label="formatLabel(key)"
+          :disabled="key === 'username'"
+          :error-messages="formErrors[key]"
+          @input="clearError(key)"
+        ></v-text-field>
         <v-card-actions>
-          <v-btn type="submit" color="primary">Save</v-btn>
+          <v-btn type="submit" color="primary" :loading="isLoading">Save</v-btn>
           <v-btn @click="cancel" color="secondary">Cancel</v-btn>
         </v-card-actions>
       </v-form>
     </v-card-text>
 
     <!-- Success Snackbar -->
-    <v-snackbar v-model="snackbar" :timeout="3000" color="success">
+    <v-snackbar v-model="snackbar" :timeout="3000" :color="snackbarColor">
       {{ snackbarMessage }}
       <template v-slot:actions>
         <v-btn color="white" text @click="snackbar = false">Close</v-btn>
@@ -25,91 +30,104 @@
 </template>
 
 <script>
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getUserProfile, editUserProfile } from '@/services/api'
 
 export default {
-  data() {
-    return {
-      profileForm: {
-        username: '',
-        first_name: '',
-        last_name: '',
-        email: '',
-      },
-      snackbar: false,
-      snackbarMessage: '',
+  setup() {
+    const router = useRouter()
+    const profileForm = reactive({})
+    const formErrors = reactive({})
+    const isLoading = ref(false)
+    const snackbar = ref(false)
+    const snackbarMessage = ref('')
+    const snackbarColor = ref('success')
+
+    const formatLabel = (key) => {
+      return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
     }
-  },
-  mounted() {
-    this.fetchUserDetails()
-  },
-  methods: {
-    async fetchUserDetails() {
+
+    const clearError = (field) => {
+      if (formErrors[field]) {
+        formErrors[field] = []
+      }
+    }
+
+    const fetchUserDetails = async () => {
       try {
         const response = await getUserProfile()
-        const userInfo = response.user_info
-        
-        userInfo.forEach(item => {
-          const key = item.label.toLowerCase().replace(' ', '_')
-          if (key in this.profileForm) {
-            this.profileForm[key] = item.value
-          }
+        Object.keys(response).forEach(key => {
+          profileForm[key] = response[key]
+          formErrors[key] = []
         })
       } catch (error) {
         console.error('Error fetching user details:', error)
+        showErrorMessage('Failed to fetch user details')
       }
-    },
-    async saveProfile() {
+    }
+
+    const saveProfile = async () => {
+      isLoading.value = true
       try {
-        const response = await editUserProfile(this.profileForm)
-        if (response.success) {
-          this.showSuccessMessage('Profile updated successfully')
+        await editUserProfile(profileForm)
+        // if (response.success) {
+          showSuccessMessage('Profile updated successfully')
           setTimeout(() => {
-            this.$router.push('/profile')
+            router.push('/profile')
           }, 1000)
-        } else {
-          if (response.data.errors) {
-            // Handle specific field errors
-            const errorMessages = Object.entries(response.data.errors)
-              .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
-              .join('\n')
-            this.showErrorMessage(`Failed to update profile:\n${errorMessages}`)
-          } else {
-            this.showErrorMessage('Failed to update profile. Please try again.')
-          }
-        }
+        // } else {
+        //   handleErrors(response.errors)
+        // }
       } catch (error) {
         console.error('Error saving profile:', error)
-        if (error.response) {
-          // The request was made and the server responded with a status code
-          // that falls out of the range of 2xx
-          if (error.response.status === 400) {
-            this.showErrorMessage(`Validation error: ${error.response.data.message || 'Please check your input.'}`)
-          } else if (error.response.status === 403) {
-            this.showErrorMessage('You do not have permission to perform this action.')
-          } else {
-            this.showErrorMessage(`Server error: ${error.response.data.message || 'An unexpected error occurred.'}`)
-          }
-        } else if (error.request) {
-          // The request was made but no response was received
-          this.showErrorMessage('No response from server. Please check your internet connection.')
-        } else {
-          // Something happened in setting up the request that triggered an Error
-          this.showErrorMessage('An error occurred while saving the profile.')
-        }
+        handleErrors(error.errors || { general: ['An unexpected error occurred'] })
+      } finally {
+        isLoading.value = false
       }
-    },
-    cancel() {
-      this.$router.push('/profile')
-    },
-    showSuccessMessage(message) {
-      this.snackbarMessage = message
-      this.snackbar = true
-    },
-    showErrorMessage(message) {
-      this.snackbarMessage = message
-      this.snackbar = true
-    },
+    }
+
+    const handleErrors = (errors) => {
+      Object.keys(formErrors).forEach(key => {
+        formErrors[key] = errors[key] || []
+      })
+      if (errors.general) {
+        showErrorMessage(errors.general[0])
+      } else {
+        showErrorMessage('Failed to update profile. Please check the form for errors.')
+      }
+    }
+
+    const cancel = () => {
+      router.push('/profile')
+    }
+
+    const showSuccessMessage = (message) => {
+      snackbarMessage.value = message
+      snackbarColor.value = 'success'
+      snackbar.value = true
+    }
+
+    const showErrorMessage = (message) => {
+      snackbarMessage.value = message
+      snackbarColor.value = 'error'
+      snackbar.value = true
+    }
+
+    onMounted(fetchUserDetails)
+
+    return {
+      profileForm,
+      formErrors,
+      isLoading,
+      snackbar,
+      snackbarMessage,
+      snackbarColor,
+      formatLabel,
+      clearError,
+      saveProfile,
+      cancel,
+    }
   },
 }
 </script>

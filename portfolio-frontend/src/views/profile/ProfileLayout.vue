@@ -16,7 +16,7 @@
             </v-list-item>
           </v-list>
           <v-divider></v-divider>
-          <v-list-item @click="logout">
+          <v-list-item @click="handleLogout">
             <v-list-item-title>Logout</v-list-item-title>
           </v-list-item>
         </v-card>
@@ -78,8 +78,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
-import store from '@/store'
-import { deleteAccount } from '@/services/api'
+// import store from '@/store'
+import { deleteAccount, logout } from '@/services/api'
 
 export default {
   setup() {
@@ -88,6 +88,19 @@ export default {
     const showDeleteConfirmation = ref(false)
     const confirmationText = ref('')
     const isLoading = ref(false)
+
+    const handleLogout = async () => {
+      isLoading.value = true
+      try {
+        await logout()
+        store.commit('CLEAR_TOKENS')
+        router.push('/login')
+      } catch (error) {
+        console.error('Error logging out:', error)
+      } finally {
+        isLoading.value = false
+      }
+    }
 
     const processDeleteAccount = async () => {
       if (confirmationText.value !== 'DELETE') {
@@ -117,6 +130,7 @@ export default {
       confirmationText,
       isLoading,
       processDeleteAccount,
+      handleLogout,
     }
   },
   data() {
@@ -128,19 +142,19 @@ export default {
     }
   },
   methods: {
-    async logout() {
-      try {
-        await store.dispatch('logout')
-        // if (response.success) {
-        //   this.$emit('update-page-title', '') // Clear the page title
-        //   this.router.push('/login')
-        // } else {
-        //   console.error('Logout failed:', response.error)
-        // }
-      } catch (error) {
-        console.error('Logout error:', error)
-      }
-    },
+    // async logout() {
+    //   try {
+    //     await store.dispatch('logout')
+    //     // if (response.success) {
+    //     //   this.$emit('update-page-title', '') // Clear the page title
+    //     //   this.router.push('/login')
+    //     // } else {
+    //     //   console.error('Logout failed:', response.error)
+    //     // }
+    //   } catch (error) {
+    //     console.error('Logout error:', error)
+    //   }
+    // },
     isActive(route) {
       return this.$route.path === route
     },

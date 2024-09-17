@@ -328,7 +328,7 @@ export default {
       error.value = null  // Clear any previous errors
       const token = store.state.accessToken
       const wsScheme = window.location.protocol === "https:" ? "wss" : "ws"
-      const wsUrl = `${wsScheme}://${window.location.host}/ws/transactions/?token=${token}`
+      const wsUrl = `${wsScheme}://${window.location.hostname}:8000/ws/transactions/?token=${token}`
       
       console.log('Attempting to connect to WebSocket:', wsUrl)
       

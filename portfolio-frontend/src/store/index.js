@@ -1,6 +1,6 @@
 import { createStore } from 'vuex'
 import * as api from '@/services/api'
-import router from '@/router'
+// import router from '@/router'
 // import axios from 'axios'
 
 export default createStore({
@@ -46,19 +46,6 @@ export default createStore({
       localStorage.removeItem('accessToken')
       localStorage.removeItem('refreshToken')
     },
-    // clearToken(state) {
-    //   state.token = null
-    //   localStorage.removeItem('token')
-      // delete axios.defaults.headers.common['Authorization']
-    // },
-    // SET_USER(state, user) {
-    //   state.user = user
-    // },
-    // logout(state) {
-    //   state.accessToken = null
-    //   state.refreshToken = null
-    //   state.user = null
-    // },
     setPageTitle(state, title) {
       state.pageTitle = title
     },
@@ -91,12 +78,6 @@ export default createStore({
     }
   },
   actions: {
-    // initializeToken({ commit }) {
-    //   const token = localStorage.getItem('token')
-    //   if (token) {
-    //     commit('SET_TOKEN', token)
-    //   }
-    // },
     async login({ commit }, credentials) {
       try {
         const response = await api.login(credentials.username, credentials.password)
@@ -129,43 +110,6 @@ export default createStore({
         return { success: false, error: error }
       }
     },
-    async logout({ commit }) {
-      try {
-        await api.logout()
-        // commit('CLEAR_TOKENS')
-        // commit('logout')
-        // return { success: true }
-      } catch (error) {
-        console.error('Logout API call failed:', error)
-        // commit('CLEAR_TOKENS')
-        // commit('logout')
-        // return { success: false, error: 'Logout failed' }
-      } finally {
-        commit('CLEAR_TOKENS')
-        router.push('/login')
-      }
-    },
-    // async register(_, credentials) {
-    //   try {
-    //     await api.register(credentials.username, credentials.email, credentials.password)
-    //     return { success: true, message: 'Registration successful. Please log in.' }
-    //   } catch (error) {
-    //     console.error('Registration failed', error)
-    //     return { success: false, error: error }
-    //   }
-    // },
-    // async deleteAccount({ commit }) {
-    //   try {
-    //     await api.deleteAccount()
-    //     localStorage.removeItem('accessToken')
-    //     localStorage.removeItem('refreshToken')
-    //     commit('CLEAR_TOKENS')
-    //     return { success: true, message: 'Account successfully deleted.' }
-    //   } catch (error) {
-    //     console.error('Account deletion failed', error)
-    //     return { success: false, error: error }
-    //   }
-    // },
     updatePageTitle({ commit }, title) {
       commit('setPageTitle', title)
     },
