@@ -3,13 +3,13 @@
       <v-card>
         <v-card-title>Confirm Transaction</v-card-title>
         <v-card-text>
-          <p>Transaction {{ index }} of {{ total }}</p>
-          <v-list>
-            <v-list-item v-for="(value, key) in transaction" :key="key">
-              <v-list-item-title>{{ key }}:</v-list-item-title>
-              <v-list-item-subtitle>{{ value }}</v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
+            <p>Transaction {{ index }} of {{ total }}</p>
+            <v-list>
+                <v-list-item v-for="(value, key) in transaction" :key="key">
+                    <v-list-item-title>{{ key }}:</v-list-item-title>
+                    <v-list-item-subtitle>{{ value }}</v-list-item-subtitle>
+                </v-list-item>
+            </v-list>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -56,5 +56,5 @@
         skip,
       }
     }
-  }
-  </script>
+}
+</script>

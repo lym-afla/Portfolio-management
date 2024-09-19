@@ -73,15 +73,6 @@
     :canStop="canStopImport"
     @stop-import="stopImport"
   />
-
-  <SecurityMappingDialog
-    v-model="showSecurityMappingDialog"
-    :security="securityToMap"
-    :bestMatch="bestMatch"
-    :brokerId="selectedBroker"
-    @security-mapped="handleSecurityMapped"
-  />
-
   <TransactionConfirmationDialog
     v-model="showTransactionConfirmationDialog"
     :transaction="currentTransaction"
@@ -89,6 +80,14 @@
     :total="totalTransactions"
     @confirm="confirmTransaction"
     @skip="skipTransaction"
+  />
+
+  <SecurityMappingDialog
+    v-model="showSecurityMappingDialog"
+    :security="securityToMap"
+    :bestMatch="bestMatch"
+    :brokerId="selectedBroker"
+    @security-mapped="handleSecurityMapped"
   />
 
   <v-dialog v-model="showSuccessDialog" max-width="500px">
@@ -141,21 +140,6 @@
                   {{ importStats.skippedTransactions }}
                 </v-list-item-title>
                 <v-list-item-subtitle>Skipped transactions</v-list-item-subtitle>
-              </v-list-item>
-            </v-card>
-          </v-col>
-          <v-col cols="6">
-            <v-card outlined>
-              <v-list-item>
-                <template v-slot:prepend>
-                  <v-avatar color="info" size="40">
-                    <v-icon dark>mdi-plus-circle</v-icon>
-                  </v-avatar>
-                </template>
-                <v-list-item-title class="text-h6">
-                  {{ importStats.newSecurities }}
-                </v-list-item-title>
-                <v-list-item-subtitle>New securities added</v-list-item-subtitle>
               </v-list-item>
             </v-card>
           </v-col>

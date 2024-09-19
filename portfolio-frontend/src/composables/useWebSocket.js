@@ -33,10 +33,16 @@ export function useWebSocket(baseUrl) {
     socket.value.onclose = () => {
       isConnected.value = false
       console.log('WebSocket connection closed')
+    // Attempt reconnection after a delay
+      setTimeout(() => {
+        console.log('Reconnecting WebSocket...')
+        connect()
+      }, 5000)
     }
 
     socket.value.onerror = (error) => {
       console.error('WebSocket error:', error)
+      socket.value.close()
     }
   }
 
@@ -47,7 +53,8 @@ export function useWebSocket(baseUrl) {
   }
 
   const sendMessage = (message) => {
-    if (socket.value && isConnected.value) {
+    console.log('WebSocket readyState:', socket.value.readyState)
+    if (socket.value && isConnected.value && socket.value.readyState === WebSocket.OPEN) {
       console.log('Sending message:', message)
       socket.value.send(JSON.stringify(message))
     } else {

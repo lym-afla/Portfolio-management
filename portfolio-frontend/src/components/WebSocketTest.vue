@@ -8,12 +8,12 @@
   </template>
   
   <script>
-  import { ref } from 'vue'
+  import { ref, watch } from 'vue'
   import { useWebSocket } from '@/composables/useWebSocket'
   
   export default {
     setup() {
-      const { sendMessage, connect, isConnected } = useWebSocket('/ws/transactions/')
+      const { sendMessage, connect, isConnected, lastMessage } = useWebSocket('/ws/transactions/')
       const messageReceived = ref(false)
   
       const sendTestMessage = () => {
@@ -28,6 +28,12 @@
       }
   
       connect()
+
+      watch(lastMessage, (newMessage) => {
+        if (newMessage) {
+          messageReceived.value = true
+        }
+      })
   
       return {
         sendTestMessage,

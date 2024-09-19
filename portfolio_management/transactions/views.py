@@ -347,7 +347,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         file_name = f"temp_{file_id}_{file.name}"
         print(f"File name: {file_name}")
         file_path = default_storage.save(file_name, file)
-        logger.info(f"File saved at: {file_path}", type(file_path))
+        logger.info(f"File saved at: {file_path}, type(file_path): {type(file_path)}")
 
         try:
             content = self.search_keywords_in_excel(file_path)
@@ -369,9 +369,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @database_sync_to_async
-    def get_broker(self, broker_id):
-        return Brokers.objects.get(id=broker_id)
+    # @database_sync_to_async
+    # def get_broker(self, broker_id):
+    #     return Brokers.objects.get(id=broker_id)
 
     @database_sync_to_async
     def validate_import_data(self, file_id, broker_id):
@@ -409,23 +409,24 @@ class TransactionViewSet(viewsets.ModelViewSet):
         logger.debug("Starting import_transactions")
         try:
             file_path, broker_id = await self.validate_import_data(file_id, broker_id)
-            broker = await self.get_broker(broker_id)
+            broker = await get_broker(broker_id)
             
             if CHARLES_STANLEY_BROKER in broker.name:
-                transactions_to_create = []
+                # transactions_to_create = []
                 async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, consumer):
                     if isinstance(update, dict):
                         if update.get('status') == 'security_mapping':
+                            logger.debug(f"Security mapping required for {update.get('security')}")
                             security = yield update
                             update = await self.handle_security_mapping(security)
-                        elif update.get('status') == 'complete':
-                            if 'data' in update and 'transactionsToCreate' in update['data']:
-                                transactions_to_create.extend(update['data']['transactionsToCreate'])
+                        # elif update.get('status') == 'complete':
+                        #     if 'data' in update and 'transactionsToCreate' in update['data']:
+                        #         transactions_to_create.extend(update['data']['transactionsToCreate'])
                     yield update
 
-                # Save transactions after the loop
-                if transactions_to_create:
-                    await self.save_transactions(transactions_to_create)
+                # # Save transactions after the loop
+                # if transactions_to_create:
+                #     await self.save_transactions(transactions_to_create)
 
                 yield {
                     'status': 'complete',

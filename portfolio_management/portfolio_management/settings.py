@@ -252,6 +252,14 @@ LOGGING = {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
         },
+        "channels": {
+            "handlers": ["console", "json_file"],
+            "level": "DEBUG",
+        },
+        "core": {
+            "handlers": ["console", "json_file"],
+            "level": "DEBUG",
+        }
     },
 }
 
