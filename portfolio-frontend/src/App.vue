@@ -26,6 +26,8 @@
             <router-view @update-page-title="updatePageTitle"></router-view>
           </v-container>
         </v-main>
+
+        <WebSocketTest />
       </template>
       <template v-else>
         <v-main>
@@ -63,6 +65,7 @@ import { provide, ref, onMounted, watch, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
 import BrokerSelection from './components/BrokerSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import WebSocketTest from './components/WebSocketTest.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useStore } from 'vuex'
 
@@ -72,6 +75,7 @@ export default {
     Navigation,
     BrokerSelection,
     SettingsDialog,
+    WebSocketTest,
   },
   setup() {
     const store = useStore()
@@ -165,7 +169,6 @@ export default {
   },
 }
 </script>
-
 <style>
 html {
   overflow-y: scroll;

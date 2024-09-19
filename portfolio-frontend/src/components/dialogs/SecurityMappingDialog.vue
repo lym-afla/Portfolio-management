@@ -23,19 +23,27 @@
   </template>
   
   <script>
-  import { ref, watch } from 'vue'
+  import { ref, watch, computed } from 'vue'
+  import { getSecurities } from '@/services/api'
   
   export default {
     props: {
       modelValue: Boolean,
       security: String,
       bestMatch: Array,
+      brokerId: Number
     },
     emits: ['update:modelValue', 'security-mapped'],
     setup(props, { emit }) {
       const dialog = ref(props.modelValue)
       const selectedSecurity = ref(null)
-      const securityOptions = ref([])  // You'll need to populate this with your available securities
+      const securityOptions = computed(() => {
+        const securities = getSecurities([], props.brokerId)
+        return securities.map(security => ({
+          id: security.id,
+          name: security.name
+        }))
+      })
   
       watch(() => props.modelValue, (newValue) => {
         dialog.value = newValue

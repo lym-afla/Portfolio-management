@@ -91,3 +91,6 @@ BROKER_IDENTIFIERS = {
     #     'fuzzy_threshold': 85
     # },
 }
+
+# Broker names
+CHARLES_STANLEY_BROKER = 'Charles Stanley'

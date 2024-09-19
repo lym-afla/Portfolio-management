@@ -1,58 +1,65 @@
-import { ref, onMounted, onUnmounted } from 'vue'
-import { io } from 'socket.io-client'
+import { ref } from 'vue'
+import { useStore } from 'vuex'
 
-export function useWebSocket() {
+export function useWebSocket(baseUrl) {
+  const store = useStore()
   const socket = ref(null)
   const isConnected = ref(false)
   const lastMessage = ref(null)
 
+  const getWebSocketUrl = (baseUrl) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const host = window.location.hostname
+    const port = 8000
+    const token = store.state.accessToken
+    return `${protocol}://${host}:${port}${baseUrl}?token=${token}`
+  }
+
   const connect = () => {
-    socket.value = io('http://localhost:8000', {
-      transports: ['websocket'],
-      autoConnect: false
-    })
+    const url = getWebSocketUrl(baseUrl)
+    console.log('Attempting to connect to WebSocket:', url)
+    socket.value = new WebSocket(url)
 
-    socket.value.on('connect', () => {
+    socket.value.onopen = () => {
       isConnected.value = true
-      console.log('WebSocket connected')
-    })
+      console.log('WebSocket connection opened')
+    }
 
-    socket.value.on('disconnect', () => {
+    socket.value.onmessage = (event) => {
+      lastMessage.value = JSON.parse(event.data)
+      console.log('WebSocket message received:', lastMessage.value)
+    }
+
+    socket.value.onclose = () => {
       isConnected.value = false
-      console.log('WebSocket disconnected')
-    })
+      console.log('WebSocket connection closed')
+    }
 
-    socket.value.on('message', (data) => {
-      lastMessage.value = data
-      console.log('Received message:', data)
-    })
-
-    socket.value.connect()
+    socket.value.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
   }
 
   const disconnect = () => {
     if (socket.value) {
-      socket.value.disconnect()
+      socket.value.close()
     }
   }
 
   const sendMessage = (message) => {
     if (socket.value && isConnected.value) {
-      socket.value.emit('message', message)
+      console.log('Sending message:', message)
+      socket.value.send(JSON.stringify(message))
+    } else {
+      console.error('Cannot send message: WebSocket is not connected')
     }
   }
-
-  onMounted(() => {
-    connect()
-  })
-
-  onUnmounted(() => {
-    disconnect()
-  })
 
   return {
     isConnected,
     lastMessage,
-    sendMessage
+    sendMessage,
+    connect,
+    disconnect
   }
 }
