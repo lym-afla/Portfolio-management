@@ -31,6 +31,10 @@
           :hint="brokerIdentified ? 'Suggested broker based on file analysis' : ''"
           persistent-hint
         ></v-autocomplete>
+        <v-checkbox
+          v-model="confirmEveryTransaction"
+          label="Confirm every transaction manually"
+        ></v-checkbox>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -56,39 +60,59 @@
         </v-btn>
       </v-card-actions>
     </v-card>
-    <v-alert v-if="error" type="error" dismissible>
-      {{ error }}
-    </v-alert>
   </v-dialog>
 
   <ProgressDialog
-    v-if="showProgressDialog"
     v-model="showProgressDialog"
     :title="'Importing Transactions'"
-    :progress="importProgress"
+    :progress="importState.progress.value"
     :current="currentImported"
     :total="totalToImport"
     :currentMessage="currentImportMessage"
     :error="importError"
     :canStop="canStopImport"
     @stop-import="stopImport"
-  />
-  <TransactionConfirmationDialog
-    v-model="showTransactionConfirmationDialog"
-    :transaction="currentTransaction"
-    :index="currentTransactionIndex"
-    :total="totalTransactions"
-    @confirm="confirmTransaction"
-    @skip="skipTransaction"
-  />
+  >
 
-  <SecurityMappingDialog
-    v-model="showSecurityMappingDialog"
-    :security="securityToMap"
-    :bestMatch="bestMatch"
-    :brokerId="selectedBroker"
-    @security-mapped="handleSecurityMapped"
-  />
+    <v-card v-if="showSecurityMapping || showTransactionConfirmation">
+      <v-card-title class="text-h5">
+        <v-icon start color="primary" icon="mdi-import"></v-icon>
+        Import Transaction
+      </v-card-title>
+
+      <v-card-text>
+        <SecurityMappingDialog
+          v-if="showSecurityMapping"
+          :showSecurityMapping="showSecurityMapping"
+          :security="securityToMap"
+          :bestMatch="bestMatch"
+          :brokerId="selectedBroker"
+          @security-selected="handleSecuritySelected"
+        />
+
+        <TransactionImportProgress
+          v-if="showTransactionConfirmation"
+          :showConfirmation="showTransactionConfirmation"
+          :currentTransaction="currentTransaction"
+          :securityMappingRequired="showSecurityMapping"
+          @confirm="handleConfirm"
+          @skip="handleSkip"
+        />
+      </v-card-text>
+      <!-- <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="error" @click="handleSkip">
+          <v-icon start icon="mdi-close"></v-icon>
+          Skip
+        </v-btn>
+        <v-btn color="primary" @click="handleConfirm">
+          <v-icon start icon="mdi-check"></v-icon>
+          {{ showSecurityMapping ? 'Map and Confirm' : 'Confirm' }}
+        </v-btn>
+      </v-card-actions> -->
+    </v-card>
+
+  </ProgressDialog>
 
   <v-dialog v-model="showSuccessDialog" max-width="500px">
     <v-card>
@@ -132,6 +156,21 @@
             <v-card outlined>
               <v-list-item>
                 <template v-slot:prepend>
+                  <v-avatar color="warning" size="40">
+                    <v-icon dark>mdi-alert-circle</v-icon>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="text-h6">
+                  {{ importStats.duplicateTransactions }}
+                </v-list-item-title>
+                <v-list-item-subtitle>Duplicates found</v-list-item-subtitle>
+              </v-list-item>
+            </v-card>
+          </v-col>
+          <v-col cols="6">
+            <v-card outlined>
+              <v-list-item>
+                <template v-slot:prepend>
                   <v-avatar color="error" size="40">
                     <v-icon dark>mdi-alert-circle</v-icon>
                   </v-avatar>
@@ -140,6 +179,21 @@
                   {{ importStats.skippedTransactions }}
                 </v-list-item-title>
                 <v-list-item-subtitle>Skipped transactions</v-list-item-subtitle>
+              </v-list-item>
+            </v-card>
+          </v-col>
+          <v-col cols="6">
+            <v-card outlined>
+              <v-list-item>
+                <template v-slot:prepend>
+                  <v-avatar color="error" size="40">
+                    <v-icon dark>mdi-alert-circle</v-icon>
+                  </v-avatar>
+                </template>
+                <v-list-item-title class="text-h6">
+                  {{ importStats.importErrors }}
+                </v-list-item-title>
+                <v-list-item-subtitle>Import Errors</v-list-item-subtitle>
               </v-list-item>
             </v-card>
           </v-col>
@@ -154,41 +208,28 @@
 </template>
 
 <script>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useImportState } from '@/composables/useImportState'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import { analyzeFile, getBrokers } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import SecurityMappingDialog from './SecurityMappingDialog.vue'
-import TransactionConfirmationDialog from './TransactionConfirmationDialog.vue'
+import TransactionImportProgress from '../TransactionImportProgress.vue'
 
 export default {
   name: 'TransactionImportDialog',
   components: {
     ProgressDialog,
     SecurityMappingDialog,
-    TransactionConfirmationDialog,
+    TransactionImportProgress
   },
   props: {
     modelValue: Boolean,
   },
   emits: ['update:modelValue', 'import-completed'],
   setup(props, { emit }) {
-    const { handleApiError } = useErrorHandler()
-    const { isConnected, lastMessage, sendMessage, connect, disconnect } = useWebSocket('/ws/transactions/')
-    const importState = useImportState()
-
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => {
-        emit('update:modelValue', value)
-        if (!value) {
-          resetDialogPartial()
-        }
-      }
-    })
-
+    const dialog = ref(props.modelValue)
     const file = ref(null)
     const isLoading = ref(false)
     const isAnalyzed = ref(false)
@@ -197,40 +238,42 @@ export default {
     const fileId = ref(null)
     const brokerIdentified = ref(false)
     const identifiedBroker = ref(null)
-
     const brokerIdentificationComplete = ref(false)
-
     const showProgressDialog = ref(false)
-    const showSuccessDialog = ref(false)
-    const importStats = ref({
-      totalTransactions: 0,
-      importedTransactions: 0,
-      skippedTransactions: 0,
-      // newSecurities: 0,
-      // unrecognizedSecurities: []
-    })
-    const importProgress = ref(0)
     const currentImported = ref(0)
     const totalToImport = ref(0)
     const currentImportMessage = ref('')
     const importError = ref('')
     const canStopImport = ref(true)
-
-    const unrecognizedSecurities = ref([])
-    const securityMappings = ref({})
-    const showUnrecognizedSecuritiesDialog = ref(false)
-    const existingSecurities = ref([])
-
-    const showSecurityMappingDialog = ref(false)
+    const showSecurityMapping = ref(false)
+    const showTransactionConfirmation = ref(false)
     const securityToMap = ref('')
     const bestMatch = ref(null)
+    const currentTransaction = ref({})
+    const selectedSecurityId = ref(null)
 
-    const error = ref(null)
+    const showSuccessDialog = ref(false)
+    const importStats = ref({
+      totalTransactions: 0,
+      importedTransactions: 0,
+      skippedTransactions: 0,
+      duplicateTransactions: 0,
+      importErrors: 0
+    })
 
-    const showTransactionConfirmationDialog = ref(false)
-    const currentTransaction = ref(null)
-    const currentTransactionIndex = ref(0)
-    const totalTransactions = ref(0)
+    const importState = useImportState()
+    const { handleApiError } = useErrorHandler()
+    const { isConnected, lastMessage, sendMessage, connect, disconnect } = useWebSocket('/ws/transactions/')
+    
+    watch(() => props.modelValue, (newValue) => {
+      dialog.value = newValue
+    })
+
+    watch(dialog, (newValue) => {
+      emit('update:modelValue', newValue)
+    })
+
+    const confirmEveryTransaction = ref(false)
 
     const handleFileChange = (event) => {
       file.value = event.target.files[0]
@@ -240,12 +283,16 @@ export default {
       identifiedBroker.value = null
       brokerIdentificationComplete.value = false
       fileId.value = null
-      console.log('File changed:', file.value)
     }
 
     const closeDialog = () => {
       dialog.value = false
-      resetDialogPartial()
+      file.value = null
+      isAnalyzed.value = false
+      brokerIdentified.value = false
+      identifiedBroker.value = null
+      brokerIdentificationComplete.value = false
+      resetProgressDialog()
     }
 
     const submitFile = async () => {
@@ -255,7 +302,6 @@ export default {
         try {
           const formData = new FormData()
           formData.append('file', file.value)
-          console.log('Submitting file:', file.value)
           const result = await analyzeFile(formData)
           isAnalyzed.value = true
           fileId.value = result.fileId
@@ -267,23 +313,77 @@ export default {
             selectedBroker.value = result.identifiedBroker.id
           }
           importState.setState('idle')
+          // startImport(result.file_id, confirmAllTransactions.value)
         } catch (error) {
           handleApiError(error)
           importState.setState('error', error.message)
+          importState.setState('idle')
         } finally {
           isLoading.value = false
           brokerIdentificationComplete.value = true
         }
       } else {
-        console.error('No file selected')
         importState.setState('error', 'No file selected')
       }
     }
 
+    const startImport = async () => {
+      if (!fileId.value || !selectedBroker.value) {
+        importState.setState('error', 'File and broker must be selected')
+        return
+      }
+
+      importState.setState('importing')
+      showProgressDialog.value = true
+      dialog.value = false
+
+      if (!isConnected.value) {
+        connect()
+      }
+
+      await waitForConnection()
+
+      if (isConnected.value) {
+        sendMessage({
+          type: 'start_import',
+          file_id: fileId.value,
+          broker_id: selectedBroker.value,
+          confirm_every: confirmEveryTransaction.value
+        })
+      } else {
+        importError.value = 'WebSocket not connected. Please try again.'
+        importState.setState('error', importError.value)
+      }
+    }
+
+    const waitForConnection = async () => {
+      await new Promise((resolve) => {
+        const checkConnection = setInterval(() => {
+          if (isConnected.value) {
+            clearInterval(checkConnection)
+            resolve()
+          }
+        }, 100)
+      })
+    }
+
+    const stopImport = () => {
+      if (isConnected.value) {
+        sendMessage({ type: 'stop_import' })
+      }
+      importState.setState('idle')
+      showProgressDialog.value = false
+      resetProgressDialog()
+      resetConfirmationState()
+    }
+
     const handleWebSocketMessage = (message) => {
-      if (message.type === 'import_update') {
+      if (message.type === 'initialization') {
+        totalToImport.value = message.total_to_update
+        currentImportMessage.value = message.message
+      } else if (message.type === 'import_update') {
         handleImportUpdate(message.data)
-      } else if (message.type === 'import_error') {
+      } else if (message.type === 'import_error' || message.type === 'save_error') {
         handleImportError(message.data.error)
       } else if (message.type === 'import_complete') {
         handleImportSuccess(message.data)
@@ -293,20 +393,16 @@ export default {
     }
 
     const handleImportUpdate = (update) => {
-      console.log('[TransactionImportDialog] Import update:', update)
       if (update.status === 'progress') {
-        importProgress.value = update.progress
         currentImported.value = update.current
-        totalToImport.value = update.total
         currentImportMessage.value = update.message
         importState.setProgress(update.progress)
         importState.setState('importing', update.message)
       } else if (update.status === 'security_mapping') {
         handleSecurityMapping(update)
+        // importState.setSecurityToMap(update.security)
       } else if (update.status === 'transaction_confirmation') {
         handleTransactionConfirmation(update)
-      } else if (update.status === 'complete') {
-        handleImportSuccess(update.data)
       } else if (update.error) {
         importError.value = update.error
         importState.setState('error', update.error)
@@ -319,125 +415,98 @@ export default {
     }
 
     const handleSecurityMapping = (data) => {
-      securityToMap.value = data.security
-      bestMatch.value = data.best_match
-      showSecurityMappingDialog.value = true
-      importState.setSecurityToMap(data.security)
-    }
-
-    const handleSecurityMapped = (securityId) => {
-      showSecurityMappingDialog.value = false
-      if (isConnected.value) {
-        sendMessage({
-          type: 'security_mapped',
-          security_id: securityId
-        })
-      }
+      securityToMap.value = data.mapping_data.stock_description
+      bestMatch.value = data.mapping_data.best_match
+      currentTransaction.value = data.transaction_data
+      showSecurityMapping.value = true
+      showTransactionConfirmation.value = true
     }
 
     const handleTransactionConfirmation = (data) => {
       currentTransaction.value = data.data
-      currentTransactionIndex.value = data.index
-      totalTransactions.value = data.total
-      showTransactionConfirmationDialog.value = true
+      showTransactionConfirmation.value = true
+      showSecurityMapping.value = false
     }
 
-    const confirmTransaction = () => {
-      showTransactionConfirmationDialog.value = false
-      console.log('[TransactionImportDialog] Confirming transaction:', isConnected.value)
-      if (isConnected.value) {
-        sendMessage({
-          type: 'transaction_confirmed',
-          confirmed: true
-        })
-      }
+    const handleSecuritySelected = (securityId) => {
+      selectedSecurityId.value = securityId
     }
 
-    const skipTransaction = () => {
-      showTransactionConfirmationDialog.value = false
-      console.log('[TransactionImportDialog] Skipping transaction:', isConnected.value)
+    const handleConfirm = () => {
       if (isConnected.value) {
-        sendMessage({
-          type: 'transaction_confirmed',
-          confirmed: false
-        })
+        if (showSecurityMapping.value) {
+          sendMessage({
+            type: 'security_mapped',
+            action: 'map',
+            security_id: selectedSecurityId.value
+          })
+        } else {
+          sendMessage({
+            type: 'transaction_confirmed',
+            confirmed: true
+          })
+        }
       }
+      resetConfirmationState()
+    }
+
+    const handleSkip = () => {
+      if (isConnected.value) {
+        if (showSecurityMapping.value) {
+          sendMessage({
+          type: 'security_mapped',
+          action: 'skip',
+          security_id: null
+        })
+        } else {
+          sendMessage({
+            type: 'transaction_confirmed',
+            confirmed: false
+          })
+        }
+      }
+      resetConfirmationState()
+    }
+
+    const resetConfirmationState = () => {
+      showSecurityMapping.value = false
+      showTransactionConfirmation.value = false
+      currentTransaction.value = {}
+      securityToMap.value = ''
+      bestMatch.value = null
+      selectedSecurityId.value = null
     }
 
     const handleImportSuccess = (result) => {
-      importState.setState('complete', 'Import completed successfully')
       importStats.value = result
       showSuccessDialog.value = true
-      emit('import-completed', result)
-    }
-
-    const startImport = async () => {
-      if (!fileId.value || !selectedBroker.value) {
-        importState.setState('error', 'File and broker must be selected')
-        return
-      }
-
-      importState.setState('importing')
-      showProgressDialog.value = true
-      dialog.value = false // Close the main dialog
-
-      connect()
-
-      // Wait for connection
-      await new Promise((resolve) => {
-        const checkConnection = setInterval(() => {
-          if (isConnected.value) {
-            clearInterval(checkConnection)
-            resolve()
-          }
-        }, 100)
-      })
-
-      if (isConnected.value) {
-        console.log('WebSocket connected, sending start_import message')
-        sendMessage({
-          type: 'start_import',
-          file_id: fileId.value,
-          broker_id: selectedBroker.value
-        })
-      } else {
-        console.error('WebSocket not connected')
-        importError.value = 'WebSocket not connected. Please try again.'
-        importState.setState('error', importError.value)
-      }
-    }
-
-    const stopImport = () => {
-      if (isConnected.value) {
-        sendMessage({ type: 'stop_import' })
-      }
-      importState.setState('idle')
       showProgressDialog.value = false
+      emit('import-completed', result)
+      importState.setState('complete', 'Import completed successfully')
+  
+      currentImported.value = 0
+      totalToImport.value = 0
+      currentImportMessage.value = ''
+      importError.value = ''
+      canStopImport.value = true
+      importState.setProgress(0)
+      importState.setState('idle')
     }
 
     const closeSuccessDialog = () => {
       showSuccessDialog.value = false
-      resetDialogFull()
-      closeDialog()
-    }
-
-    const resetDialogPartial = () => {
       file.value = null
       isAnalyzed.value = false
       brokerIdentified.value = false
       identifiedBroker.value = null
       brokerIdentificationComplete.value = false
+      fileId.value = null
+      selectedBroker.value = null
+
       resetProgressDialog()
     }
 
-    const resetDialogFull = () => {
-      resetDialogPartial()
-      fileId.value = null
-      selectedBroker.value = null
-    }
-
     const resetProgressDialog = () => {
-      importProgress.value = 0
       currentImported.value = 0
       totalToImport.value = 0
       currentImportMessage.value = ''
@@ -454,11 +523,7 @@ export default {
     })
 
     watch(isConnected, (newValue) => {
-      if (newValue) {
-        console.log('WebSocket is connected')
-      } else {
-        console.log('WebSocket is not connected')
-      }
+      console.log('WebSocket connection status:', newValue ? 'connected' : 'disconnected')
     })
 
     onUnmounted(() => {
@@ -478,17 +543,12 @@ export default {
       brokerIdentificationComplete,
       showSuccessDialog,
       showProgressDialog,
-      importProgress,
       currentImported,
       totalToImport,
       currentImportMessage,
       importError,
       canStopImport,
-      unrecognizedSecurities,
-      securityMappings,
-      showUnrecognizedSecuritiesDialog,
-      existingSecurities,
-      showSecurityMappingDialog,
+      showSecurityMapping,
       securityToMap,
       bestMatch,
       handleFileChange,
@@ -497,18 +557,15 @@ export default {
       startImport,
       stopImport,
       closeSuccessDialog,
-      resetProgressDialog,
-      handleSecurityMapped,
-      error,
+      handleSecuritySelected,
+      handleConfirm,
+      handleSkip,
       importState,
       importStats,
       isConnected,
-      showTransactionConfirmationDialog,
+      showTransactionConfirmation,
       currentTransaction,
-      currentTransactionIndex,
-      totalTransactions,
-      confirmTransaction,
-      skipTransaction,
+      confirmEveryTransaction
     }
   }
 }

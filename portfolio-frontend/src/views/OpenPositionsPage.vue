@@ -212,11 +212,10 @@ export default {
       'all_assets_share_of_portfolio_percentage'
     ]
 
-    const fetchOpenPositions = async ({ dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy }) => {
+    const fetchOpenPositions = async ({ dateFrom, dateTo, page, itemsPerPage, search, sortBy }) => {
       console.log('[OpenPositionsPage] fetchOpenPositions called with:', {
         dateFrom,
         dateTo,
-        timespan,
         page,
         itemsPerPage,
         search,
@@ -225,7 +224,6 @@ export default {
       const data = await getOpenPositions(
         dateFrom,
         dateTo,
-        timespan,
         page,
         itemsPerPage,
         search,

@@ -32,16 +32,16 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     start_time = time.time()  # Start timing
 
     data = request.data
-    timespan = data.get('timespan', '')
+    # timespan = data.get('timespan', '')
     start_date = datetime.strptime(data.get('dateFrom', None), '%Y-%m-%d').date() if data.get('dateFrom') else None
     end_date = datetime.strptime(data.get('dateTo', None), '%Y-%m-%d').date() if data.get('dateTo') else None
     page = int(data.get('page'))
+    print("positions_utils. 39", data.get('itemsPerPage'))
     items_per_page = int(data.get('itemsPerPage', 25))
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
 
-    print("positions_utils. 43", timespan, start_date, end_date, page, items_per_page, search, sort_by)
-    print(data.items())
+    print("positions_utils. 43", start_date, end_date, page, items_per_page, search, sort_by)
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
@@ -86,7 +86,7 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     formatted_portfolio = format_table_data(paginated_portfolio, currency_target, number_of_digits)
     formatted_totals = format_table_data(portfolio_totals, currency_target, number_of_digits)
 
-    cash_balances = _get_cash_balances_for_api(user, timespan, effective_current_date) if not is_closed else None
+    cash_balances = _get_cash_balances_for_api(user, end_date) if not is_closed else None
     
     total_duration = time.time() - start_time
     print(f"Total processing time for get_positions_table_api: {total_duration:.4f} seconds")
@@ -112,7 +112,7 @@ def _get_categories(is_closed: bool) -> List[str]:
     open_specific = ['current_value', 'unrealized_gl']
     return common_categories + (closed_specific if is_closed else open_specific)
 
-def _get_cash_balances_for_api(user: CustomUser, timespan: str, target_date: date) -> Dict[str, str]:
+def _get_cash_balances_for_api(user: CustomUser, target_date: date) -> Dict[str, str]:
     """
     Get cash balances for API response.
 
@@ -123,14 +123,12 @@ def _get_cash_balances_for_api(user: CustomUser, timespan: str, target_date: dat
     """
     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
     
-    balance_date = target_date if timespan in (YTD, ALL_TIME) else date(int(timespan), 12, 31)
-    
     aggregated_balances = defaultdict(Decimal)
 
     for broker_id in selected_brokers:
         try:
             broker = Brokers.objects.get(id=broker_id, investor=user)
-            for currency, balance in broker.balance(balance_date).items():
+            for currency, balance in broker.balance(target_date).items():
                 aggregated_balances[currency] += balance
         except Brokers.DoesNotExist:
             continue

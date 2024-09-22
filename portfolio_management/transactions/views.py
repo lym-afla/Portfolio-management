@@ -12,9 +12,11 @@ from typing import Generator, Dict, Any
 from django.core.exceptions import ValidationError
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.core.files.storage import default_storage
-from django.db import transaction, models
-from asgiref.sync import sync_to_async
+from django.core.files.storage import FileSystemStorage
+from django.db import transaction
+from django.db.models import Q
+from django.conf import settings
+# from asgiref.sync import sync_to_async
 import pandas as pd
 from channels.db import database_sync_to_async
 from fuzzywuzzy import fuzz
@@ -345,9 +347,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
         file = request.FILES['file']
         file_id = str(uuid.uuid4())
         file_name = f"temp_{file_id}_{file.name}"
-        print(f"File name: {file_name}")
-        file_path = default_storage.save(file_name, file)
-        logger.info(f"File saved at: {file_path}, type(file_path): {type(file_path)}")
+        temp_storage = FileSystemStorage(location=settings.TEMP_FILE_DIR)
+        saved_file_name = temp_storage.save(file_name, file)
+        file_path = os.path.join(settings.TEMP_FILE_DIR, saved_file_name)
+        logger.info(f"File saved at: {file_path}")
 
         try:
             content = self.search_keywords_in_excel(file_path)
@@ -369,9 +372,39 @@ class TransactionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # @database_sync_to_async
-    # def get_broker(self, broker_id):
-    #     return Brokers.objects.get(id=broker_id)
+
+    async def import_transactions(self, user, file_id, broker_id, consumer, confirm_every):
+        logger.debug("Starting import_transactions")
+        file_path = None
+        try:
+            file_path, broker_id = await self.validate_import_data(file_id, broker_id)
+            broker = await get_broker(broker_id)
+            
+            if CHARLES_STANLEY_BROKER in broker.name:
+                async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, consumer, confirm_every):
+                    # if isinstance(update, dict):
+                    #     if update.get('status') == 'security_mapping':
+                    #         logger.debug(f"Security mapping required for {update.get('security')}")
+                    #         security = yield update
+                    #         update = await self.handle_security_mapping(security)
+                    yield update
+
+                # yield {
+                #     'status': 'complete',
+                #     'message': 'Transactions imported successfully.',
+                #     'importResults': update
+                # }
+            else:
+                yield {'error': f'Unsupported broker for import: {broker.name}'}
+
+        except Exception as e:
+            logger.error(f"Error in import_transactions: {str(e)}", exc_info=True)
+            yield {'status': 'error', 'message': f'An error occurred during import: {str(e)}'}
+        finally:
+            logger.debug("Finishing import_transactions")
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+                logger.debug(f"Temporary file deleted: {file_path}")
 
     @database_sync_to_async
     def validate_import_data(self, file_id, broker_id):
@@ -383,14 +416,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
         except ValueError:
             raise ValidationError("Invalid broker ID")
 
-        matching_files = [f for f in default_storage.listdir('')[1] if f.startswith(f"temp_{file_id}_")]
+        temp_storage = FileSystemStorage(location=settings.TEMP_FILE_DIR)
+        matching_files = [f for f in temp_storage.listdir('')[1] if f.startswith(f"temp_{file_id}_")]
 
         if not matching_files:
             raise ValidationError("No matching file found for the given file ID")
         elif len(matching_files) > 1:
             raise ValidationError("Multiple matching files found. Please try again")
 
-        file_path = matching_files[0]
+        file_path = os.path.join(settings.TEMP_FILE_DIR, matching_files[0])
 
         # Validate file extension
         allowed_extensions = ['xlsx', 'xls', 'csv']
@@ -405,63 +439,24 @@ class TransactionViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             Transactions.objects.bulk_create([Transactions(**data) for data in transactions_to_create])
 
-    async def import_transactions(self, user, file_id, broker_id, consumer):
-        logger.debug("Starting import_transactions")
-        try:
-            file_path, broker_id = await self.validate_import_data(file_id, broker_id)
-            broker = await get_broker(broker_id)
-            
-            if CHARLES_STANLEY_BROKER in broker.name:
-                # transactions_to_create = []
-                async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, consumer):
-                    if isinstance(update, dict):
-                        if update.get('status') == 'security_mapping':
-                            logger.debug(f"Security mapping required for {update.get('security')}")
-                            security = yield update
-                            update = await self.handle_security_mapping(security)
-                        # elif update.get('status') == 'complete':
-                        #     if 'data' in update and 'transactionsToCreate' in update['data']:
-                        #         transactions_to_create.extend(update['data']['transactionsToCreate'])
-                    yield update
+    # @database_sync_to_async
+    # def transaction_exists(self, transaction_data):
+    #     query = Q()
+    #     required_fields = ['investor', 'broker', 'date', 'currency', 'type']
+    #     optional_fields = ['security', 'quantity', 'price', 'cash_flow', 'commission']
 
-                # # Save transactions after the loop
-                # if transactions_to_create:
-                #     await self.save_transactions(transactions_to_create)
+    #     # Add required fields to the query
+    #     for field in required_fields:
+    #         if field not in transaction_data:
+    #             raise ValueError(f"Required field '{field}' is missing from transaction_data")
+    #         query &= Q(**{field: transaction_data[field]})
 
-                yield {
-                    'status': 'complete',
-                    'message': 'Transactions imported successfully.',
-                    'importResults': update.get('data', {})
-                }
-            else:
-                yield {'error': f'Unsupported broker for import: {broker.name}'}
+    #     # Add optional fields to the query if they exist
+    #     for field in optional_fields:
+    #         if field in transaction_data and transaction_data[field] is not None:
+    #             query &= Q(**{field: transaction_data[field]})
 
-        except Exception as e:
-            logger.error(f"Error in import_transactions: {str(e)}", exc_info=True)
-            yield {'status': 'error', 'message': f'An error occurred during import: {str(e)}'}
-        finally:
-            logger.debug("Finishing import_transactions")
-            if await database_sync_to_async(default_storage.exists)(file_path):
-                await database_sync_to_async(default_storage.delete)(file_path)
-
-    # async def async_parse_transactions(self, file_path, currency, broker_id, user_id):
-    #     logger.debug("Starting async_parse_transactions")
-    #     parser = parse_charles_stanley_transactions(file_path, currency, broker_id, user_id)
-    #     try:
-    #         async for update in parser:
-    #             logger.debug(f"Parsed update: {update}")
-    #             yield update
-    #     except Exception as e:
-    #         logger.error(f"Error in async_parse_transactions: {str(e)}")
-    #         logger.error(traceback.format_exc())
-    #     finally:
-    #         logger.debug("Finishing async_parse_transactions")
-
-    # @staticmethod
-    # async def aiter_sync(iterable):
-    #     for item in iterable:
-    #         yield item
-            
+    #     return Transactions.objects.filter(query).exists()
 
 class FXTransactionViewSet(viewsets.ModelViewSet):
     serializer_class = FXTransactionFormSerializer
@@ -543,20 +538,3 @@ class FXTransactionViewSet(viewsets.ModelViewSet):
                 },
             ]
         })
-
-    # def create(self, request, *args, **kwargs):
-    #     serializer = FXTransactionFormSerializer(data=request.data)
-    #     if serializer.is_valid():
-    #         self.perform_create(serializer)
-    #         headers = self.get_success_headers(serializer.data)
-    #         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    # def update(self, request, *args, **kwargs):
-    #     partial = kwargs.pop('partial', False)
-    #     instance = self.get_object()
-    #     serializer = FXTransactionFormSerializer(instance, data=request.data, partial=partial)
-    #     if serializer.is_valid():
-    #         self.perform_update(serializer)
-    #         return Response(serializer.data)
-    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

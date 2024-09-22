@@ -51,7 +51,10 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
     if 'currency' in key:
         return currency_format(value=None, currency=value)
     if 'date' in key or key == 'first_investment' and isinstance(value, datetime.date):
-        return value.strftime('%d-%b-%y') if value else None
+        if isinstance(value, datetime.date):
+            return value.strftime('%d-%b-%y')
+        else:
+            return value
     elif any(term in key for term in ['percentage', 'share', 'irr']) or key in ['total_return', 'total_return_percentage']:
         return format_percentage(value, digits=1)
     elif key in ['current_position', 'open_position', 'quantity']:

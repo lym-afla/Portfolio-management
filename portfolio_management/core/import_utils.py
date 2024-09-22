@@ -11,8 +11,9 @@ import structlog
 import logging
 from channels.db import database_sync_to_async
 from django.forms.models import model_to_dict
+from django.db.models import Q
 
-from constants import TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL
+from constants import TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -28,10 +29,31 @@ def get_broker(broker_id):
     return Brokers.objects.get(id=broker_id)
 
 @database_sync_to_async
-def get_existing_transactions(investor, broker):
-    return set(Transactions.objects.filter(investor=investor, broker=broker).values_list(
-        'security__id', 'currency', 'type', 'date', 'quantity', 'price', 'cash_flow', 'commission'
-    ))
+def get_security(security_id):
+    try:
+        return Assets.objects.get(id=security_id)
+    except Assets.DoesNotExist:
+        logger.error(f"Security with id {security_id} does not exist")
+        return None
+
+@database_sync_to_async
+def transaction_exists(transaction_data):
+    query = Q()
+    required_fields = ['investor', 'broker', 'date', 'currency', 'type', 'security']
+    optional_fields = ['quantity', 'price', 'cash_flow', 'commission']
+
+    # Add required fields to the query
+    for field in required_fields:
+        if field not in transaction_data:
+            raise ValueError(f"Required field '{field}' is missing from transaction_data")
+        query &= Q(**{field: transaction_data[field]})
+
+    # Add optional fields to the query if they exist
+    for field in optional_fields:
+        if field in transaction_data and transaction_data[field] is not None:
+            query &= Q(**{field: transaction_data[field]})
+
+    return Transactions.objects.filter(query).exists()
 
 def read_excel_file(file_path):
     try:
@@ -44,25 +66,30 @@ def read_excel_file(file_path):
         raise ValueError(f'An error occurred while reading the file: {str(e)}')
 
 @database_sync_to_async
-def find_security(stock_description, investor, broker, security_cache):
-    if security_cache[stock_description] is not None:
-        return security_cache[stock_description], None
-
+def _find_security(stock_description, investor, broker):
+    
     securities = list(Assets.objects.filter(investor=investor, brokers=broker))
+    
+    # Check for exact match
+    security = next((s for s in securities if s.name == stock_description), None)
+
+    # If no exact match, look for best match
     security_names = [security.name for security in securities]
-    best_match = process.extractOne(stock_description, security_names, score_cutoff=60)
+    best_match = process.extractOne(stock_description, security_names)
     
     if best_match:
         match_name, match_score = best_match
-        security = next(s for s in securities if s.name == match_name)
-        security_cache[stock_description] = security
-        return security, best_match
+        if match_score == 100:  # Perfect match found
+            security = next(s for s in securities if s.name == match_name)
+            return security, None
+        else:  # Close match found, but not perfect
+            match_id = next(s.id for s in securities if s.name == match_name)
+            return None, {'match_name': match_name, 'match_score': match_score, 'match_id': match_id}
     
+    # No match found
     return None, None
 
-async def process_transaction_row(row, investor, broker, currency, security_cache, existing_transactions):
-    
-    logger.info(f"Processing transaction row, {investor.id}, {broker.id}, {currency}")
+async def _process_transaction_row(row, investor, broker, currency):
 
     quantity_decimal_places = Transactions._meta.get_field('quantity').decimal_places
     price_decimal_places = Transactions._meta.get_field('price').decimal_places
@@ -81,34 +108,35 @@ async def process_transaction_row(row, investor, broker, currency, security_cach
         SKIP_DESCRIPTIONS = {'* BALANCE B/F *', 'Cash Transfers ISA'}
         COMMISSION_DESCRIPTIONS = {'Funds Platform Fee', 'Govt Flat Rate Int Charge'}
         CASH_IN_DESCRIPTIONS = {'Stocks & Shares Subs', 'ISA Subscription'}
+        CASH_OUT_DESCRIPTIONS = { "BACS P'MNT"}
+        ### Try to use regex for the below two. Relevant for Gross interest and Tax Credit
         INTEREST_INCOME_DESCRIPTIONS = {'Gross interest'}
-        DIVIDEND_DESCRIPTIONS = {'Dividend', 'Equalisation', 'Tax Credit'}
+        DIVIDEND_DESCRIPTIONS = {'Dividend', 'Equalisation', 'Tax Credit', 'Tax Credit*'}
 
         if description in SKIP_DESCRIPTIONS:
             return None, 'skipped'
+        
+        security, best_match = None, None
 
         if description in COMMISSION_DESCRIPTIONS:
             transaction_type = TRANSACTION_TYPE_BROKER_COMMISSION
-        elif description in CASH_IN_DESCRIPTIONS:
+        elif any(keyword in description for keyword in CASH_IN_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_CASH_IN
-        elif description in DIVIDEND_DESCRIPTIONS:
+        elif any(keyword in description for keyword in CASH_OUT_DESCRIPTIONS):
+            transaction_type = TRANSACTION_TYPE_CASH_OUT
+        elif any(keyword in description for keyword in DIVIDEND_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_DIVIDEND
-        elif description in INTEREST_INCOME_DESCRIPTIONS:
+            security, best_match = await _find_security(stock_description, investor, broker)
+        elif any(keyword in description for keyword in INTEREST_INCOME_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_INTEREST_INCOME
-        elif debit > 0:
-            transaction_type = TRANSACTION_TYPE_BUY
-        elif credit > 0:
-            transaction_type = TRANSACTION_TYPE_SELL
+        elif pd.notna(stock_description):
+            security, best_match = await _find_security(stock_description, investor, broker)
+            if debit > 0:
+                transaction_type = TRANSACTION_TYPE_BUY
+            elif credit > 0:
+                transaction_type = TRANSACTION_TYPE_SELL
         else:
             return None, 'skipped'
-
-        if isinstance(stock_description, str):
-            security, best_match = await find_security(stock_description, investor, broker, security_cache)
-        else:
-            security, best_match = None, None
-
-        if security is None and transaction_type not in [TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_BROKER_COMMISSION]:
-            return {'status': 'security_mapping', 'security': stock_description, 'best_match': best_match}, 'mapping_required'
 
         transaction_data = {
             'investor': investor,
@@ -118,34 +146,44 @@ async def process_transaction_row(row, investor, broker, currency, security_cach
             'type': transaction_type,
             'date': transaction_date,
         }
-
+        
         if transaction_type in [TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL]:
             if transaction_type == TRANSACTION_TYPE_BUY:
-                quantity = abs(Decimal(str(debit)) / price)
+                quantity = Decimal(str(debit)) / price
             else:
-                quantity = abs(-Decimal(str(credit)) / price)
+                quantity = -Decimal(str(credit)) / price
             transaction_data.update({
                 'quantity': round(quantity, quantity_decimal_places),
                 'price': round(Decimal(str(price)), price_decimal_places),
             })
-        elif transaction_type in [TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_DIVIDEND]:
-            transaction_data['cash_flow'] = round(Decimal(str(credit)), 2)
+        elif transaction_type in [TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_DIVIDEND]:
+            transaction_data['cash_flow'] = Decimal(str(credit))
+        elif transaction_type == TRANSACTION_TYPE_CASH_IN:
+            transaction_data['cash_flow'] = Decimal(str(credit))
+        elif transaction_type == TRANSACTION_TYPE_CASH_OUT:
+            transaction_data['cash_flow'] = -Decimal(str(debit))
         elif transaction_type == TRANSACTION_TYPE_BROKER_COMMISSION:
-            transaction_data['commission'] = round(-Decimal(str(debit)), 2)
+            transaction_data['commission'] = -Decimal(str(debit))
 
-        transaction_tuple = (
-            transaction_data.get('security').id if transaction_data.get('security') else None,
-            transaction_data['currency'],
-            transaction_data['type'],
-            transaction_data['date'],
-            transaction_data.get('quantity'),
-            transaction_data.get('price'),
-            transaction_data.get('cash_flow'),
-            transaction_data.get('commission')
-        )
+        NON_SECURITY_RELATED_TRANSACTION_TYPES = [
+            TRANSACTION_TYPE_INTEREST_INCOME,
+            TRANSACTION_TYPE_CASH_IN,
+            TRANSACTION_TYPE_CASH_OUT,
+            TRANSACTION_TYPE_BROKER_COMMISSION
+        ]
 
-        if transaction_tuple in existing_transactions:
+        exists = await transaction_exists(transaction_data)
+        if exists:
+            logger.debug(f"Transaction already exists. Duplicate: {transaction_data}")
             return None, 'duplicate'
+        
+        if security is None and transaction_type not in NON_SECURITY_RELATED_TRANSACTION_TYPES:
+            mapping_details = {
+                'stock_description': stock_description,
+                'best_match': best_match
+            }
+            logger.debug(f"Mapping required for transaction: {transaction_data}")
+            return {'mapping_details': mapping_details, 'transaction_details': transaction_data }, 'mapping_required'
 
         logger.debug(f"Transaction processed successfully {transaction_type}, {transaction_data}")
 
@@ -157,21 +195,26 @@ async def process_transaction_row(row, investor, broker, currency, security_cach
         logger.error(f"Unexpected error in process_transaction_row {str(e)}, {row}")
         return None, 'error'
 
-async def parse_charles_stanley_transactions(file_path, currency, broker_id, user_id, consumer):
+async def parse_charles_stanley_transactions(file_path, currency, broker_id, user_id, consumer, confirm_every):
     """
     Refactored to ONLY yield messages without awaiting confirmations.
     """
     yield {
-        'status': 'progress',
-        'message': 'Opening file and preparing for import',
-        'progress': 0
+        'status': 'initialization',
+        'message': 'Opening and reading file',
     }
     logger.debug("Yielded progress message: Opening file and preparing for import")
 
     try:
         df = read_excel_file(file_path)
-        total_rows = len(df)
+        df = df[df['Date'].notna()]
+        total_rows = df.shape[0]
         logger.debug(f"File read successfully. Total rows: {total_rows}")
+        yield {
+            'status': 'initialization',
+            'message': 'File read successfuly. Preparing for import',
+            'total_to_update': int(total_rows)
+        }
     except ValueError as e:
         yield {'error': str(e)}
         return
@@ -179,71 +222,32 @@ async def parse_charles_stanley_transactions(file_path, currency, broker_id, use
     try:
         investor = await get_investor(user_id)
         broker = await get_broker(broker_id)
-        existing_transactions = await get_existing_transactions(investor, broker)
-        logger.debug("Retrieved investor, broker, and existing transactions")
+        logger.debug("Retrieved investor and broker")
     except Exception as e:
         logger.error(f"Error getting investor or broker: {str(e)}")
         yield {'error': f'An unexpected error occurred while getting investor or broker: {str(e)}'}
         return
 
     BATCH_SIZE = 1
-    security_cache = defaultdict(lambda: None)
     total_transactions = 0
-    imported_transactions = 0
+    # imported_transactions = 0
     skipped_count = 0
     duplicate_count = 0
-    transactions_to_create = []
-
-    # def serialize_transaction_data(data):
-    #     serialized = {}
-    #     for key, value in data.items():
-    #         if isinstance(value, (CustomUser, Brokers, Assets)):
-    #             serialized[key] = model_to_dict(value, fields=['id', 'name'])
-    #         elif isinstance(value, (datetime.date, datetime.datetime)):
-    #             serialized[key] = value.isoformat()
-    #         elif isinstance(value, Decimal):
-    #             serialized[key] = float(value)
-    #         else:
-    #             serialized[key] = value
-    #     return serialized
+    import_errors = 0
 
     for index, row in df.iterrows():
-        if consumer.stop_event.is_set():
-            logger.debug("Stop event detected. Breaking loop.")
-            break
+        # if consumer.stop_event.is_set():
+        #     logger.debug("Stop event detected. Breaking loop.")
+        #     break
 
         try:
             total_transactions += 1
-            transaction_data, status = await process_transaction_row(
-                row, investor, broker, currency, security_cache, existing_transactions
+            transaction_data, status = await _process_transaction_row(
+                row, investor, broker, currency
             )
-
-            if status == 'new':
-                yield {
-                    'status': 'transaction_confirmation',
-                    # 'data': serialize_transaction_data(transaction_data),
-                    'data': transaction_data,
-                    'index': index + 1,
-                    'total': total_rows
-                }
-                logger.debug("Yielded transaction_confirmation for row %d", index + 1)
-                # No awaiting here; confirmation is handled externally
-            elif status == 'skipped':
-                skipped_count += 1
-                logger.debug("Transaction skipped for row %d", index + 1)
-            elif status == 'duplicate':
-                duplicate_count += 1
-                logger.debug("Transaction duplicate for row %d", index + 1)
-            elif status == 'mapping_required':
-                yield {
-                    'status': 'security_mapping',
-                    'security': model_to_dict(transaction_data['security'], fields=['id', 'name']),
-                    'best_match': transaction_data.get('best_match', None)
-                }
-                logger.debug("Yielded security_mapping for row %d", index + 1)
-                # Similarly, mapping is handled externally
-            else:
-                logger.warning("Unknown status '%s' for row %d", status, index + 1)
+            
+            logger.debug(f"Row {index + 1} processed. Status: {status}")
+            logger.debug(f"Transaction data: {transaction_data}")
 
             if (index + 1) % BATCH_SIZE == 0 or index == total_rows - 1:
                 progress = min(((index + 1) / total_rows) * 100, 100)
@@ -252,27 +256,54 @@ async def parse_charles_stanley_transactions(file_path, currency, broker_id, use
                     'message': f'Processing transaction {index + 1} of {total_rows}', 
                     'progress': progress,
                     'current': index + 1,
-                    'total': total_rows
                 }
-                logger.debug("Yielded progress update: %d%%", progress)
+
+            if status == 'new':
+                if confirm_every:
+                    yield {
+                        'status': 'transaction_confirmation',
+                        'data': transaction_data,
+                    }
+                    logger.debug("Yielded transaction_confirmation for row %d", index + 1)
+                else:
+                    yield {
+                        'status': 'add_transaction',
+                        'data': transaction_data,
+                    }
+            elif status == 'mapping_required':
+                # Always yield for security mapping, regardless of confirm_every
+                yield {
+                    'status': 'security_mapping',
+                    'mapping_data': transaction_data.get('mapping_details'),
+                    'transaction_data': transaction_data.get('transaction_details')
+                }
+                logger.debug("Yielded security_mapping for row %d", index + 1)
+            elif status == 'skipped':
+                skipped_count += 1
+                logger.debug("Transaction skipped for row %d", index + 1)
+            elif status == 'duplicate':
+                duplicate_count += 1
+                logger.debug("Transaction duplicate for row %d", index + 1)
+            else:
+                logger.warning("Unknown status '%s' for row %d", status, index + 1)
 
         except InvalidOperation as e:
             logger.error(f"InvalidOperation in process_transaction_row: {str(e)}")
             yield {'error': f'An invalid operation occurred while processing a transaction: {str(e)}'}
         except Exception as e:
-            logger.error(f"Error processing transaction: {str(e)}")
-            yield {'error': f'An unexpected error occurred while processing a transaction: {str(e)}'}
+            logger.error(f"Error processing transaction at row {index + 1}: {str(e)}")
+            logger.error(f"Row data: {row}")
+            import_errors += 1
+            yield {'error': f'An unexpected error occurred while processing a transaction at row {index + 1}: {str(e)}'}
 
-    if not consumer.stop_event.is_set():
-        yield {
-            'status': 'complete',
-            'data': {
-                'totalTransactions': total_transactions,
-                'importedTransactions': imported_transactions,
-                'skippedTransactions': skipped_count,
-                'duplicateTransactions': duplicate_count,
-                'transactionsToCreate': [model_to_dict(t) for t in transactions_to_create]
-            },
-            'message': 'Import process completed'
-        }
-        logger.debug("Yielded completion of import process")
+    yield {
+        'status': 'complete',
+        'data': {
+            'totalTransactions': total_transactions,
+            'importedTransactions': 0, #Filled in the consumer
+            'skippedTransactions': skipped_count,
+            'duplicateTransactions': duplicate_count,
+            'importErrors': import_errors
+        },
+    }
+    logger.debug("Yielded completion of import process")

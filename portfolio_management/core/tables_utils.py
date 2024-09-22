@@ -231,10 +231,15 @@ def calculate_open_table_output_for_api(
         asset_start_date = start_date if start_date is not None else position_entry_date
             
         position['entry_price'] = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, asset_start_date)
+        if position['entry_price'] == 0:
+            position['entry_price'] = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers)
         position['entry_value'] = Decimal(position['entry_price'] * position['current_position'])
         
         if 'current_value' in categories:
-            position['current_price'] = asset.price_at_date(end_date, currency_used).price
+            if asset.price_at_date(end_date, currency_used) is not None:
+                position['current_price'] = asset.price_at_date(end_date, currency_used).price
+            else:
+                position['current_price'] = position['entry_price']
             position['current_value'] = Decimal(position['current_price'] * position['current_position'])
             position['share_of_portfolio'] = position['current_value'] / portfolio_NAV
 

@@ -246,7 +246,7 @@ LOGGING = {
         },
         "django.server": {
             "handlers": ["console", "json_file"],
-            "level": "INFO",
+            "level": "DEBUG",
         },
         "transactions": {
             "handlers": ["console", "json_file"],
@@ -259,6 +259,7 @@ LOGGING = {
         "core": {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
+            # "propagate": True
         }
     },
 }
@@ -320,3 +321,9 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
     }
 }
+
+# Define the directory for temporary files
+TEMP_FILE_DIR = os.path.join(BASE_DIR, 'temp_files')
+
+# Ensure the directory exists
+os.makedirs(TEMP_FILE_DIR, exist_ok=True)

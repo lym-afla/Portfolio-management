@@ -1,73 +1,107 @@
 <template>
-    <v-dialog v-model="dialog" persistent max-width="500px">
-      <v-card>
-        <v-card-title>Map Security</v-card-title>
-        <v-card-text>
-          <p>Unrecognized security: {{ security }}</p>
-          <p v-if="bestMatch">Best match: {{ bestMatch[0] }} (Score: {{ bestMatch[1] }})</p>
-          <v-select
-            v-model="selectedSecurity"
-            :items="securityOptions"
-            label="Select Security"
-            item-text="name"
-            item-value="id"
-          ></v-select>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="primary" @click="mapSecurity">Map</v-btn>
-          <v-btn color="error" @click="skipSecurity">Skip</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </template>
-  
-  <script>
-  import { ref, watch, computed } from 'vue'
-  import { getSecurities } from '@/services/api'
-  
-  export default {
-    props: {
-      modelValue: Boolean,
-      security: String,
-      bestMatch: Array,
-      brokerId: Number
+  <v-card v-if="showSecurityMapping" class="mt-4">
+    <v-card-title class="text-h6 d-flex align-center">
+      <v-icon start color="primary" icon="mdi-link-variant" class="mr-2"></v-icon>
+      Map Security
+    </v-card-title>
+    <v-card-text>
+      <v-alert type="warning" variant="tonal" class="mb-4">
+        <div class="text-subtitle-1 font-weight-medium">Unrecognized security</div>
+        <div class="text-body-2">{{ security }}</div>
+      </v-alert>
+      
+      <v-alert v-if="bestMatch" type="info" variant="tonal" class="mb-4">
+        <div class="text-subtitle-1 font-weight-medium">Best match found</div>
+        <div class="text-body-2">{{ bestMatch.match_name }} (Score: {{ bestMatch.match_score }})</div>
+      </v-alert>
+
+      <v-autocomplete
+        v-model="selectedSecurity"
+        :items="securityOptions"
+        label="Select Security"
+        item-title="name"
+        item-value="id"
+        :loading="loadingSecurities"
+        :disabled="loadingSecurities"
+        :error-messages="securityError"
+        variant="outlined"
+        class="mt-2"
+      >
+        <template v-slot:prepend-inner>
+          <v-icon color="primary">mdi-magnify</v-icon>
+        </template>
+      </v-autocomplete>
+    </v-card-text>
+  </v-card>
+</template>
+
+<script>
+import { ref, watch } from 'vue'
+import { getSecurities } from '@/services/api'
+
+export default {
+  name: 'SecurityMappingDialog',
+  props: {
+    showSecurityMapping: {
+      type: Boolean,
+      default: false
     },
-    emits: ['update:modelValue', 'security-mapped'],
-    setup(props, { emit }) {
-      const dialog = ref(props.modelValue)
-      const selectedSecurity = ref(null)
-      const securityOptions = computed(() => {
-        const securities = getSecurities([], props.brokerId)
-        return securities.map(security => ({
-          id: security.id,
-          name: security.name
-        }))
-      })
-  
-      watch(() => props.modelValue, (newValue) => {
-        dialog.value = newValue
-      })
-  
-      watch(dialog, (newValue) => {
-        emit('update:modelValue', newValue)
-      })
-  
-      const mapSecurity = () => {
-        emit('security-mapped', selectedSecurity.value)
-      }
-  
-      const skipSecurity = () => {
-        emit('security-mapped', null)
-      }
-  
-      return {
-        dialog,
-        selectedSecurity,
-        securityOptions,
-        mapSecurity,
-        skipSecurity,
+    security: String,
+    bestMatch: Object,
+    brokerId: Number
+  },
+  emits: ['security-selected'],
+  setup(props, { emit }) {
+    console.log('SecurityMappingDialog setup called')
+    
+    const selectedSecurity = ref(null)
+    const securityOptions = ref([])
+    const loadingSecurities = ref(false)
+    const securityError = ref(null)
+
+    const fetchSecurities = async () => {
+      loadingSecurities.value = true
+      securityError.value = null
+      try {
+        console.log('Fetching securities for brokerId:', props.brokerId)
+        const securities = await getSecurities([], props.brokerId)
+        console.log('Fetched securities:', securities)
+        if (Array.isArray(securities)) {
+          securityOptions.value = securities.map(security => ({
+            id: security.id,
+            name: security.name
+          }))
+          selectedSecurity.value = props.bestMatch.match_id
+          console.log("Assigning value to Select", props.bestMatch.match_id, props.bestMatch.match_name, selectedSecurity.value)
+        } else {
+          console.error('Fetched securities is not an array:', securities)
+          securityError.value = 'Invalid data received from server'
+        }
+      } catch (error) {
+        console.error('Error fetching securities:', error)
+        securityError.value = 'Failed to fetch securities'
+      } finally {
+        loadingSecurities.value = false
       }
     }
+
+    watch(() => props.brokerId, (newValue) => {
+      console.log('brokerId changed:', newValue)
+      if (newValue) {
+        fetchSecurities()
+      }
+    }, { immediate: true })
+
+    watch(() => selectedSecurity.value, (newValue) => {
+      emit('security-selected', newValue)
+    })
+
+    return {
+      selectedSecurity,
+      securityOptions,
+      loadingSecurities,
+      securityError,
+    }
   }
-  </script>
+}
+</script>

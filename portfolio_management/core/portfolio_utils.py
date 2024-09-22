@@ -70,7 +70,12 @@ def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency
     item_type = {'asset_type': 'type', 'currency': 'currency', 'asset_class': 'exposure'}
 
     for security in portfolio:
-        current_value = Decimal(security.position(date, broker_ids) * security.price_at_date(date, target_currency).price)
+        security_price = security.price_at_date(date, target_currency)
+        if security_price is not None:
+            security_price = security_price.price
+        else:
+            security_price = security.calculate_buy_in_price(date, target_currency, broker_ids)
+        current_value = Decimal(security.position(date, broker_ids) * security_price)
         analysis['Total NAV'] += current_value
 
         for breakdown_type in breakdown:

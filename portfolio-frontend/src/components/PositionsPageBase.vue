@@ -175,7 +175,7 @@ export default {
       tableLoading.value = true
       try {
         console.log('[PositionsPageBase] fetchData called with:', {
-          timespan: timespan.value,
+          // timespan: timespan.value,
           dateFrom: dateFrom.value,
           dateTo: dateTo.value,
           currentPage: currentPage.value,
@@ -184,7 +184,7 @@ export default {
           sortBy: sortBy.value
         });
         const data = await props.fetchPositions({
-          timespan: timespan.value,
+          // timespan: timespan.value,
           dateFrom: dateFrom.value,
           dateTo: dateTo.value,
           page: currentPage.value,

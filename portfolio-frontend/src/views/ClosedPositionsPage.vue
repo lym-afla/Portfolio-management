@@ -123,11 +123,10 @@ export default {
       'irr'
     ]
 
-    const fetchClosedPositions = async ({ dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy }) => {
+    const fetchClosedPositions = async ({ dateFrom, dateTo, page, itemsPerPage, search, sortBy }) => {
       console.log('[ClosedPositionsPage] fetchClosedPositions called with:', {
         dateFrom,
         dateTo,
-        timespan,
         page,
         itemsPerPage,
         search,
@@ -136,7 +135,6 @@ export default {
       const data = await getClosedPositions(
         dateFrom,
         dateTo,
-        timespan,
         page,
         itemsPerPage,
         search,

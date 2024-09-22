@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="dialogModel" persistent max-width="400px">
+  <v-dialog v-model="dialogModel" persistent max-width="600px">
     <v-card>
       <v-card-title class="d-flex align-center">
         {{ title }}
@@ -43,6 +43,7 @@
             <v-btn color="error" @click="stopImport" :disabled="!canStop">Stop Import</v-btn>
           </v-col>
         </v-row>
+        <slot></slot>
         <v-alert v-if="error" type="error" class="mt-4">
           {{ error }}
         </v-alert>
@@ -126,9 +127,8 @@ export default {
     return {
       dialogModel,
       closeDialog,
-      stopImport
+      stopImport,
     }
   }
 }
-
 </script>

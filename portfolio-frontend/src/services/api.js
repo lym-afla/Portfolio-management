@@ -214,13 +214,12 @@ export const getAssetTypes = async () => {
 //   }
 // }
 
-export const getOpenPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy });
+export const getOpenPositions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
+  console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy });
   try {
     const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
       dateFrom,
       dateTo,
-      timespan,
       page,
       itemsPerPage,
       search,
@@ -228,23 +227,22 @@ export const getOpenPositions = async (dateFrom, dateTo, timespan, page, itemsPe
     })
     return response.data
   } catch (error) {
-    console.error('Error fetching open positions:', error)
+  console.error('Error fetching open positions:', error)
     throw error.response ? error.response.data : error.message
   }
 }
 
-export const getClosedPositions = async (dateFrom, dateTo, timespan, page, itemsPerPage, search = '', sortBy = {}) => {
+export const getClosedPositions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
   try {
     const response = await axiosInstance.post(`${API_URL}/closed_positions/api/get_closed_positions_table/`, {
       dateFrom,
       dateTo,
-      timespan,
       page,
       itemsPerPage,
       search,
       sortBy  // This will be a single object or an empty object
     })
-    console.log('API request payload:', { dateFrom, dateTo, timespan, page, itemsPerPage, search, sortBy })
+    console.log('API request payload:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy })
     console.log('API response:', response.data)
     if (response.data && response.data.portfolio_closed && Array.isArray(response.data.portfolio_closed)) {
       return response.data
@@ -547,7 +545,7 @@ export const importPrices = async (importData) => {
         }
       }
     })
-    console.log('Import completed. Response:', response)
+    console.log('[api.js] Import completed. Response:', response)
     return response.data
   } catch (error) {
     console.error('Error importing prices:', error)
