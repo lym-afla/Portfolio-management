@@ -117,7 +117,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         logger.debug("Starting start_import")
         try:
             self.confirm_every = confirm_every
-            self.import_generator = self.view_set.import_transactions(self.user, file_id, broker_id, self, confirm_every)
+            self.import_generator = self.view_set.import_transactions(self.user, file_id, broker_id, confirm_every)
             await self.process_import()
         except Exception as e:
             logger.error(f"Error in start_import: {str(e)}")

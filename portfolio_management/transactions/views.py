@@ -373,7 +373,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-    async def import_transactions(self, user, file_id, broker_id, consumer, confirm_every):
+    async def import_transactions(self, user, file_id, broker_id, confirm_every):
         logger.debug("Starting import_transactions")
         file_path = None
         try:
@@ -381,7 +381,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             broker = await get_broker(broker_id)
             
             if CHARLES_STANLEY_BROKER in broker.name:
-                async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, consumer, confirm_every):
+                async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, confirm_every):
                     # if isinstance(update, dict):
                     #     if update.get('status') == 'security_mapping':
                     #         logger.debug(f"Security mapping required for {update.get('security')}")

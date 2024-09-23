@@ -195,7 +195,7 @@ async def _process_transaction_row(row, investor, broker, currency):
         logger.error(f"Unexpected error in process_transaction_row {str(e)}, {row}")
         return None, 'error'
 
-async def parse_charles_stanley_transactions(file_path, currency, broker_id, user_id, consumer, confirm_every):
+async def parse_charles_stanley_transactions(file_path, currency, broker_id, user_id, confirm_every):
     """
     Refactored to ONLY yield messages without awaiting confirmations.
     """
@@ -207,16 +207,20 @@ async def parse_charles_stanley_transactions(file_path, currency, broker_id, use
 
     try:
         df = read_excel_file(file_path)
+        if df.empty:
+            raise ValueError("The Excel file is empty or could not be read.")
         df = df[df['Date'].notna()]
         total_rows = df.shape[0]
         logger.debug(f"File read successfully. Total rows: {total_rows}")
         yield {
             'status': 'initialization',
-            'message': 'File read successfuly. Preparing for import',
+            'message': 'File read successfully. Preparing for import',
             'total_to_update': int(total_rows)
         }
-    except ValueError as e:
-        yield {'error': str(e)}
+    except Exception as e:
+        error_message = f"Error reading Excel file: {str(e)}"
+        logger.error(error_message)
+        yield {'error': error_message}
         return
 
     try:

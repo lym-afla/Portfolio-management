@@ -16,7 +16,8 @@ import structlog
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOG_DIR, exist_ok=True)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -233,7 +234,7 @@ LOGGING = {
         },
         "json_file": {
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": "logs/json.log",
+            "filename": os.path.join(LOG_DIR, "json.log"),
             "formatter": "json_formatter",
             "maxBytes": 5242880,
             "backupCount": 5,
@@ -262,10 +263,16 @@ LOGGING = {
             # "propagate": True
         }
     },
+    "filters": {
+        "require_debug_false": {
+            "()": "django.utils.log.RequireDebugFalse",
+        },
+    },
 }
 
 structlog.configure(
     processors=[
+        structlog.contextvars.merge_contextvars,
         structlog.stdlib.filter_by_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.stdlib.add_logger_name,
@@ -276,7 +283,7 @@ structlog.configure(
         structlog.processors.UnicodeDecoder(),
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
-    context_class=structlog.threadlocal.wrap_dict(dict),
+    context_class=dict,  # Changed from structlog.contextvars.dict_class
     logger_factory=structlog.stdlib.LoggerFactory(),
     wrapper_class=structlog.stdlib.BoundLogger,
     cache_logger_on_first_use=True,

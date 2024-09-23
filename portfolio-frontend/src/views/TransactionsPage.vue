@@ -233,7 +233,7 @@ import { getTransactions, deleteTransaction, getTransactionDetails, getFXTransac
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
-import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog - NOT USED.vue'
+import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vue'
 import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
 
