@@ -16,6 +16,7 @@ import BrokersPage from '../views/database/BrokersPage.vue'
 import SecuritiesPage from '../views/database/SecuritiesPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import FXPage from '../views/database/FXPage.vue'
+import SummaryPage from '@/views/SummaryPage.vue'
 
 // export const loading = ref(true)
 
@@ -105,6 +106,12 @@ const routes = [
         component: FXPage,
       },
     ]
+  },
+  {
+    path: '/summary',
+    name: 'Summary',
+    component: SummaryPage,
+    meta: { requiresAuth: true }
   },
   {
     path: '/',

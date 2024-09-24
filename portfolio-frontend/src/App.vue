@@ -12,12 +12,14 @@
           <v-container fluid class="py-2">
             <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
             <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
-            <div v-if="!isProfilePage && !isDatabasePage" class="d-flex align-center mb-2">
-              <BrokerSelection class="flex-grow-1" />
-              <v-divider vertical class="mx-2" />
-              <SettingsDialog elevation="6" />
+            <div v-if="showComponents" class="d-flex align-center mb-2">
+              <BrokerSelection v-if="showBrokerSelection" class="flex-grow-1" />
+              <v-divider v-if="showBrokerSelection && showSettingsDialog" vertical class="mx-2" />
+              <div v-if="showSettingsDialog" :class="{ 'ml-auto': !showBrokerSelection }">
+                <SettingsDialog elevation="6" />
+              </div>
             </div>
-            <v-divider v-if="!isProfilePage && !isDatabasePage"></v-divider>
+            <v-divider v-if="showComponents"></v-divider>
           </v-container>
         </v-app-bar>
 
@@ -82,13 +84,13 @@ export default {
     const layoutLoading = ref(true)
     const pageTitle = ref('')
 
-    const isProfilePage = computed(() => {
-      return route.path.startsWith('/profile')
-    })
+    const isProfilePage = computed(() => route.path.startsWith('/profile'))
+    const isDatabasePage = computed(() => route.path.startsWith('/database'))
+    const isSummaryPage = computed(() => route.path === '/summary')
 
-    const isDatabasePage = computed(() => {
-      return route.path.startsWith('/database')
-    })
+    const showComponents = computed(() => !isProfilePage.value && !isDatabasePage.value)
+    const showBrokerSelection = computed(() => showComponents.value && !isSummaryPage.value)
+    const showSettingsDialog = computed(() => showComponents.value)
 
     const setUser = (userData) => {
       user.value = userData
@@ -161,6 +163,9 @@ export default {
       errorMessages,
       clearErrors,
       mainPadding,
+      showComponents,
+      showBrokerSelection,
+      showSettingsDialog,
     }
   },
 }

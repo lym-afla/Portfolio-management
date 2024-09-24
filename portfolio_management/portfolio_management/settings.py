@@ -257,6 +257,10 @@ LOGGING = {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
         },
+        "summary_analysis": {
+            "handlers": ["console", "json_file"],
+            "level": "DEBUG",
+        },
         "core": {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
