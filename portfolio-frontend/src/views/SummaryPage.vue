@@ -1,7 +1,26 @@
 <template>
-  <v-container fluid>
-    <!-- Date range selector component -->
-    <DateRangeSelector @date-range-changed="handleDateRangeChange" />
+  <v-container fluid class="pa-0">
+    <!-- Year selector -->
+    <v-row no-gutters>
+      <v-col cols="12" sm="3" md="2" lg="2">
+        <v-select
+          v-model="timespan"
+          :items="yearOptions"
+          item-title="text"
+          item-value="value"
+          label="Year"
+          density="compact"
+          hide-details
+          class="mr-2"
+          @update:model-value="handleTimespanChange"
+        >
+          <template #item="{ props, item }">
+            <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
+            <v-divider v-else class="my-2"></v-divider>
+          </template>
+        </v-select>
+      </v-col>
+    </v-row>
 
     <!-- Broker performance breakdown table -->
     <v-card class="mt-4">
@@ -67,18 +86,17 @@
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
+import { useRouter } from 'vue-router'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import DateRangeSelector from '@/components/DateRangeSelector.vue'
-import { getSummaryAnalysis } from '@/services/api'
+import { getSummaryAnalysis, getYearOptions } from '@/services/api'
+import { useTableSettings } from '@/composables/useTableSettings'
 
 export default {
   name: 'SummaryPage',
-  components: {
-    DateRangeSelector,
-  },
   emits: ['update-page-title'],
   setup(props, { emit }) {
     const store = useStore()
+    const router = useRouter()
     const { handleApiError } = useErrorHandler()
     const loading = ref({
       brokerPerformance: false,
@@ -88,6 +106,15 @@ export default {
     const portfolioBreakdownData = ref([])
     const years = ref([])
     const currentYear = new Date().getFullYear()
+
+    const {
+      timespan,
+      dateFrom,
+      dateTo,
+      handleTimespanChange,
+    } = useTableSettings()
+
+    const yearOptions = ref([])
 
     const brokerPerformanceHeaders = computed(() => [
       { text: '', value: 'name', sortable: false },
@@ -119,20 +146,33 @@ export default {
       { text: 'Fee per AuM', value: 'fee_per_aum' },
     ])
 
-    const handleDateRangeChange = async (dateRange) => {
-      await fetchSummaryData(dateRange.startDate, dateRange.endDate)
+    const fetchYearOptions = async () => {
+      try {
+        const years = await getYearOptions()
+        yearOptions.value = years
+      } catch (error) {
+        handleApiError(error)
+      }
     }
 
-    const fetchSummaryData = async (startDate, endDate) => {
+    const fetchSummaryData = async () => {
       try {
         loading.value.brokerPerformance = true
         loading.value.portfolioBreakdown = true
-        const data = await getSummaryAnalysis(startDate, endDate)
-        brokerPerformanceData.value = data.brokerPerformance
-        portfolioBreakdownData.value = data.portfolioBreakdown
-        years.value = data.years
+        const data = await getSummaryAnalysis(dateFrom.value, dateTo.value)
+        if (data && data.public_markets_context && data.restricted_investments_context) {
+          brokerPerformanceData.value = data.public_markets_context.lines.concat(data.restricted_investments_context.lines)
+          portfolioBreakdownData.value = data.total_context.line
+          years.value = data.public_markets_context.years
+        } else {
+          console.error('Unexpected data structure:', data)
+        }
       } catch (error) {
-        handleApiError(error)
+        if (error.message === 'Authentication required') {
+          router.push('/login')  // Redirect to login page
+        } else {
+          handleApiError(error)
+        }
       } finally {
         loading.value.brokerPerformance = false
         loading.value.portfolioBreakdown = false
@@ -141,21 +181,24 @@ export default {
 
     onMounted(async () => {
       emit('update-page-title', 'Summary Analysis')
-      // Load initial data with default date range (e.g., current year)
-      const currentDate = new Date()
-      const startDate = new Date(currentDate.getFullYear(), 0, 1) // January 1st of current year
-      const endDate = currentDate
-      await fetchSummaryData(startDate, endDate)
+      await fetchYearOptions()
+      await handleTimespanChange('ytd')
     })
 
     // Watch for changes in the store that should trigger a data refresh
     watch(
-      () => store.state.dataRefreshTrigger,
-      async () => {
-        console.log('Summary page detected a change that requires data refresh')
-        const currentDate = new Date(store.state.effectiveCurrentDate)
-        const startDate = new Date(currentDate.getFullYear(), 0, 1)
-        await fetchSummaryData(startDate, currentDate)
+      [timespan, dateFrom, dateTo, () => store.state.dataRefreshTrigger],
+      () => {
+        fetchSummaryData()
+      },
+      { deep: true }
+    )
+
+    // This watch is used to update the year options when the selected broker changes.
+    watch(
+      () => store.state.selectedBroker,
+      () => {
+        fetchYearOptions()
       }
     )
 
@@ -168,7 +211,9 @@ export default {
       years,
       subHeaders,
       currentYear,
-      handleDateRangeChange,
+      timespan,
+      yearOptions,
+      handleTimespanChange,
     }
   }
 }

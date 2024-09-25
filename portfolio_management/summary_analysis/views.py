@@ -263,3 +263,34 @@ def categorize_asset(asset):
     else:
         return 'Other'  # Just in case there are any assets that don't fit the above categories
     
+
+from rest_framework import viewsets
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from django.contrib.auth.mixins import LoginRequiredMixin
+from rest_framework.permissions import IsAuthenticated
+from datetime import datetime
+# from utils import brokers_summary_data
+from core.formatting_utils import format_table_data
+
+class SummaryViewSet(LoginRequiredMixin, viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['GET'])
+    def summary_data(self, request):
+        user = request.user
+        effective_current_date = datetime.strptime(request.session.get('effective_current_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date()
+        currency_target = user.default_currency
+        number_of_digits = user.digits
+        selected_brokers = request.GET.get('selected_brokers', user.custom_brokers)
+
+        summary_data = brokers_summary_data(user, effective_current_date, selected_brokers, currency_target, number_of_digits)
+
+        # Format the data
+        formatted_data = {
+            "public_markets_context": format_table_data(summary_data["public_markets_context"], currency_target, number_of_digits),
+            "restricted_investments_context": format_table_data(summary_data["restricted_investments_context"], currency_target, number_of_digits),
+            "total_context": format_table_data(summary_data["total_context"], currency_target, number_of_digits)
+        }
+
+        return Response(formatted_data)

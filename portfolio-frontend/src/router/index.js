@@ -111,7 +111,7 @@ const routes = [
     path: '/summary',
     name: 'Summary',
     component: SummaryPage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, paddingTop: '70px' }
   },
   {
     path: '/',

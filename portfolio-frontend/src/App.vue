@@ -10,13 +10,16 @@
         
         <v-app-bar elevation="1" height="auto">
           <v-container fluid class="py-2">
-            <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
+            <div class="d-flex">
+              <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
+              <SettingsDialog v-if="showSettingsDialog" class="ml-auto" />
+            </div>
             <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
             <div v-if="showComponents" class="d-flex align-center mb-2">
-              <BrokerSelection v-if="showBrokerSelection" class="flex-grow-1" />
-              <v-divider v-if="showBrokerSelection && showSettingsDialog" vertical class="mx-2" />
-              <div v-if="showSettingsDialog" :class="{ 'ml-auto': !showBrokerSelection }">
-                <SettingsDialog elevation="6" />
+              <BrokerSelection class="flex-grow-1" />
+              <v-divider vertical class="mx-2" />
+              <div>
+                <SettingsDialog/>
               </div>
             </div>
             <v-divider v-if="showComponents"></v-divider>
@@ -88,9 +91,9 @@ export default {
     const isDatabasePage = computed(() => route.path.startsWith('/database'))
     const isSummaryPage = computed(() => route.path === '/summary')
 
-    const showComponents = computed(() => !isProfilePage.value && !isDatabasePage.value)
-    const showBrokerSelection = computed(() => showComponents.value && !isSummaryPage.value)
-    const showSettingsDialog = computed(() => showComponents.value)
+    const showComponents = computed(() => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value)
+    // const showBrokerSelection = computed(() => showComponents.value && !isSummaryPage.value)
+    const showSettingsDialog = computed(() => isSummaryPage.value)
 
     const setUser = (userData) => {
       user.value = userData
@@ -164,7 +167,6 @@ export default {
       clearErrors,
       mainPadding,
       showComponents,
-      showBrokerSelection,
       showSettingsDialog,
     }
   },

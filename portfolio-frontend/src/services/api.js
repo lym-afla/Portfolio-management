@@ -907,7 +907,7 @@ export const analyzeFile = async (formData) => {
 
 export const importTransactions = async (fileId, brokerId) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/transactions/api/import_transactions/`, {
+    const response = await axiosInstance.post('/transactions/api/import_transactions/', {
       file_id: fileId,
       broker_id: brokerId
     })
@@ -916,5 +916,24 @@ export const importTransactions = async (fileId, brokerId) => {
     console.error('Error importing transactions:', error)
     // throw error.response ? error.response.data : error.message
     throw error
+  }
+}
+
+export async function getSummaryAnalysis(dateFrom, dateTo) {
+  try {
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
+    const response = await axiosInstance.get(`/summary/api/summary_data/?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      // Redirect to login page or dispatch a Vuex action to handle authentication
+      // For example:
+      // store.dispatch('auth/redirectToLogin');
+      throw new Error('Authentication required');
+    }
+    throw error;
   }
 }
