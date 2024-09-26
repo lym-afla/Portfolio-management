@@ -75,6 +75,7 @@
           title="Profile"
           value="profile"
           to="/profile"
+          :active="isActive('/profile')"
         >
           <!-- <template v-slot:append>
             <v-avatar size="36">
@@ -99,7 +100,7 @@ export default {
   name: 'Navigation',
   setup() {
     const drawer = ref(true)
-    const extended = ref(true)
+    const extended = ref(false)
     const route = useRoute()
     const router = useRouter()
     const store = useStore()

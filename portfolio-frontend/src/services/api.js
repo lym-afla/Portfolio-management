@@ -425,7 +425,7 @@ export const getBrokerPerformanceFormData = async () => {
 
 export const updateBrokerPerformance = async (formData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/update-broker-performance/`, formData, {
+    const response = await axiosInstance.post('/database/api/update-broker-performance/', formData, {
       responseType: 'text',
       onDownloadProgress: (progressEvent) => {
         if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {

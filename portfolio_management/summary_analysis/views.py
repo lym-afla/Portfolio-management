@@ -1,13 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
+import logging
 
 from django.http import JsonResponse
 from django.shortcuts import render
 
 from common.forms import DashboardForm_old_setup
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-from utils import broker_group_to_ids_old_approach, brokers_summary_data, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers_old_approach
+from utils import broker_group_to_ids_old_approach, brokers_summary_data_old, currency_format_old_structure, format_percentage_old_structure, get_fx_rate_old_structure, get_last_exit_date_for_brokers_old_approach
 
+logger = logging.getLogger(__name__)
 
 def summary_view(request):
     user = request.user
@@ -37,7 +39,7 @@ def summary_view(request):
 
     user_brokers = Brokers.objects.filter(investor=user)
 
-    broker_table_contexts = brokers_summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
+    broker_table_contexts = brokers_summary_data_old(user, effective_current_date, user_brokers, currency_target, number_of_digits)
 
     # exposure_table_contexts = exposure_summary_data(user, effective_current_date, user_brokers, currency_target, number_of_digits)
 
@@ -267,24 +269,27 @@ def categorize_asset(asset):
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from django.contrib.auth.mixins import LoginRequiredMixin
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime
 # from utils import brokers_summary_data
 from core.formatting_utils import format_table_data
+from core.summary_utils import brokers_summary_data
 
-class SummaryViewSet(LoginRequiredMixin, viewsets.ViewSet):
+class SummaryViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
-    
+
     @action(detail=False, methods=['GET'])
     def summary_data(self, request):
         user = request.user
         effective_current_date = datetime.strptime(request.session.get('effective_current_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d').date()
         currency_target = user.default_currency
         number_of_digits = user.digits
-        selected_brokers = request.GET.get('selected_brokers', user.custom_brokers)
+        # selected_brokers = request.GET.get('selected_brokers', user.custom_brokers)
 
-        summary_data = brokers_summary_data(user, effective_current_date, selected_brokers, currency_target, number_of_digits)
+        user_brokers = Brokers.objects.filter(investor=user)
+
+        summary_data = brokers_summary_data(user, effective_current_date, 'All brokers', currency_target, number_of_digits)
+        logger.info(f"summary_data: {summary_data}")
 
         # Format the data
         formatted_data = {

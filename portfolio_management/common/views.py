@@ -9,7 +9,7 @@ from common.models import Transactions
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-@ensure_csrf_cookie
+# @ensure_csrf_cookie
 def get_year_options_api(request):
     user = request.user
     selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)

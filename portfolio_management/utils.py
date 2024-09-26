@@ -1924,7 +1924,7 @@ def dashboard_summary_over_time(user, effective_date, brokers_or_group, currency
     
 #     return summary_context
 
-def brokers_summary_data(user, effective_date, brokers_or_group, currency_target, number_of_digits):
+def brokers_summary_data_old(user, effective_date, brokers_or_group, currency_target, number_of_digits):
     def initialize_context():
         return {
             'years': [],
@@ -2010,12 +2010,12 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
                     'eop_nav': Decimal(0),
                     'tsr': Decimal(0)
                 }
-                line_data['data'][year] = compile_summary_data(line_data['data'][year], currency_target, number_of_digits)
+                line_data['data'][year] = compile_summary_data_old(line_data['data'][year], currency_target, number_of_digits)
 
             # Add YTD data
             try:
                 ytd_data = calculate_performance_old_framework(user, date(current_year, 1, 1), effective_date, [broker.id], currency_target, is_restricted=restricted)
-                compiled_ytd_data = compile_summary_data(ytd_data, currency_target, number_of_digits)
+                compiled_ytd_data = compile_summary_data_old(ytd_data, currency_target, number_of_digits)
                 line_data['data']['YTD'] = compiled_ytd_data
 
                 # Update totals for YTD
@@ -2032,7 +2032,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
             for entry in stored_data:
                 if entry['broker_id'] == broker.id and entry['restricted'] == restricted:
                     year_data = {k: v for k, v in entry.items() if k not in ('id', 'broker_id', 'investor_id', 'broker_group')}
-                    formatted_year_data = compile_summary_data(year_data, currency_target, number_of_digits)
+                    formatted_year_data = compile_summary_data_old(year_data, currency_target, number_of_digits)
                     line_data['data'][entry['year']] = formatted_year_data
 
                     # Update totals for each year
@@ -2064,7 +2064,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
                 all_time_data['tsr'] = 'N/R'
 
             # Format all-time data
-            formatted_all_time_data = compile_summary_data(all_time_data, currency_target, number_of_digits)
+            formatted_all_time_data = compile_summary_data_old(all_time_data, currency_target, number_of_digits)
             line_data['data']['All-time'] = formatted_all_time_data
 
             # Update totals for All-time
@@ -2088,7 +2088,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
             #     print(f"Error calculating TSR for year {year}: {e}")
             #     totals[year]['tsr'] = 'N/R'
 
-            sub_totals_line['data'][year] = compile_summary_data(totals[year], currency_target, number_of_digits)
+            sub_totals_line['data'][year] = compile_summary_data_old(totals[year], currency_target, number_of_digits)
         
         context['lines'].append(sub_totals_line)
 
@@ -2138,7 +2138,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
         totals_line['data'][year]['fee_per_aum'] = fee_per_aum
         
         # Compile and format the data
-        totals_line['data'][year] = compile_summary_data(totals_line['data'][year], currency_target, number_of_digits)
+        totals_line['data'][year] = compile_summary_data_old(totals_line['data'][year], currency_target, number_of_digits)
     
     # Create a new context for the total line
     total_context = {
@@ -2152,7 +2152,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
         "total_context": total_context
     }
 
-def compile_summary_data(data, currency_target, number_of_digits):
+def compile_summary_data_old(data, currency_target, number_of_digits):
     
     bop_nav = data.get('bop_nav', Decimal(0))
     eop_nav = data.get('eop_nav', Decimal(0))
@@ -2186,7 +2186,7 @@ def compile_summary_data(data, currency_target, number_of_digits):
 
     return formatted_data
 
-def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
+def save_or_update_annual_broker_performance_old(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
     selected_brokers_ids = broker_group_to_ids_old_approach(brokers_or_group, user)
 
     # Determine the starting year

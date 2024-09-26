@@ -16,10 +16,13 @@ from .date_utils import get_date_range
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
 from .portfolio_utils import broker_group_to_ids
+import logging
 
 from constants import TOLERANCE
 
 import time
+
+logger = logging.getLogger(__name__)
 
 def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, Any]:
     """
@@ -41,7 +44,7 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
 
-    print("positions_utils. 43", start_date, end_date, page, items_per_page, search, sort_by)
+    logging.info("positions_utils. 43", start_date, end_date, page, items_per_page, search, sort_by)
 
     user = request.user
     effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()

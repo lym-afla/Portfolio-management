@@ -209,10 +209,10 @@ export default {
     }
 
     const refreshAllData = async () => {
-      await fetchSummaryData()
-      await fetchBreakdownData()
-      await fetchSummaryOverTimeData()
-      await fetchNAVChartData()
+      fetchSummaryData()
+      fetchBreakdownData()
+      fetchSummaryOverTimeData()
+      fetchNAVChartData()
     }
 
     // Watch for changes in the store that should trigger a data refresh
