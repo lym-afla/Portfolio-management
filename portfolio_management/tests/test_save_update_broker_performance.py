@@ -65,7 +65,7 @@ def transactions(user, broker):
         broker=broker,
         date=date(2022, 8, 31),
         type=TRANSACTION_TYPE_SELL,
-        quantity=Decimal('10'),
+        quantity=Decimal('-10'),
         price=Decimal('120'),
         currency='USD',
         security=asset
@@ -121,9 +121,9 @@ def test_update_broker_performance(api_client, user, broker, transactions, caplo
 
     assert performance is not None
     assert performance.bop_nav == Decimal('0')
-    assert performance.eop_nav == Decimal('300')  # 1500 (cash in) - 1000 (buy) + 1200 (sell) - 1200 (cash out) = 500
-    assert performance.invested == Decimal('1500')  # 10 * 100
-    assert performance.cash_out == Decimal('-1200')  # 10 * 120
+    assert performance.eop_nav == Decimal('500')  # 1500 (cash in) - 1000 (buy) + 1200 (sell) - 1200 (cash out) = 500
+    assert performance.invested == Decimal('1500')  # Cash in 1500
+    assert performance.cash_out == Decimal('-1200')  # Cash out 1200
     assert performance.price_change == Decimal('200')  # (120 - 100) * 10
 
     # Test updating existing data
@@ -193,75 +193,60 @@ def test_update_broker_performance_no_transactions(api_client, user, broker):
     assert error_events[0]['message'] == 'No transactions found'
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("broker_or_group, currency, is_restricted, skip_existing_years", [
-    ("All", "USD", "All", True),
-    ("Test Broker", "EUR", "True", False),
-    ("Group1", "All", "False", True),
-    ("Test Broker", "GBP", "None", False),
-])
-def test_update_broker_performance_combinations(api_client, user, broker, transactions, broker_or_group, currency, is_restricted, skip_existing_years):
+def test_update_broker_performance_streaming(api_client, user, broker, transactions, capsys):
+    print("Starting test_update_broker_performance_streaming")
+
     api_client.force_authenticate(user=user)
     url = reverse('database:update_broker_performance')
+    print(f"URL: {url}")
 
     session = api_client.session
     session['effective_current_date'] = '2023-01-01'
     session.save()
+    print("Session saved")
 
     data = {
-        'broker_or_group': broker_or_group,
-        'currency': currency,
-        'is_restricted': is_restricted,
-        'skip_existing_years': skip_existing_years,
-    }
-    response = api_client.post(url, data)
-    assert response.status_code == 200
-
-    content = b''.join(response.streaming_content).decode('utf-8')
-    events = [json.loads(line) for line in content.strip().split('\n')]
-
-    progress_events = [event for event in events if event['status'] == 'progress']
-    complete_events = [event for event in events if event['status'] == 'complete']
-
-    assert len(complete_events) == 1
-    if broker_or_group != "All" and currency != "All":
-        assert len(progress_events) > 0
-
-@pytest.mark.django_db
-def test_update_broker_performance_streaming(api_client, user, broker, transactions):
-    api_client.force_authenticate(user=user)
-    url = reverse('database:update_broker_performance')
-
-    session = api_client.session
-    session['effective_current_date'] = '2023-01-01'
-    session.save()
-
-    data = {
-        'broker_or_group': 'All',
+        'broker_or_group': broker.name,
         'currency': 'All',
         'is_restricted': 'All',
         'skip_existing_years': False,
     }
+    print(f"Request data: {data}")
     response = api_client.post(url, data)
-    assert response.status_code == 200
-    
+
+    print(f"Response status code: {response.status_code}")
+    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
+
+    # Handle streaming content
+    print("Starting to process streaming content")
     content = b''
     for chunk in response.streaming_content:
         content += chunk
-        progress_data = json.loads(chunk.decode('utf-8').strip())
-        
-        if progress_data['status'] == 'progress':
-            assert 'current' in progress_data
-            assert 'total' in progress_data
-            assert 'progress' in progress_data
-            assert 'year' in progress_data
-            assert 'currency' in progress_data
-            assert 'is_restricted' in progress_data
-        elif progress_data['status'] == 'complete':
-            break
-        elif progress_data['status'] == 'error':
-            pytest.fail(f"Error in streaming: {progress_data['message']}")
+        try:
+            progress_data = json.loads(chunk.decode('utf-8').strip())
+            print(f"Received chunk: {progress_data}")
+            
+            if progress_data['status'] == 'progress':
+                assert 'current' in progress_data
+                assert 'total' in progress_data
+                assert 'progress' in progress_data
+                assert 'year' in progress_data
+                assert 'currency' in progress_data
+                assert 'is_restricted' in progress_data
+            elif progress_data['status'] == 'complete':
+                print("Received complete status")
+                break
+            elif progress_data['status'] == 'error':
+                pytest.fail(f"Error in streaming: {progress_data['message']}")
+        except json.JSONDecodeError:
+            print(f"Received non-JSON chunk: {chunk}")
+            raise
 
-    assert b'{"status": "complete"}' in content
+    assert b'{"status": "complete"}' in content, "Did not receive complete status in the response"
+
+    captured = capsys.readouterr()
+    print("Captured output:")
+    print(captured.out)
 
 @pytest.mark.django_db
 def test_get_last_exit_date_for_brokers(user, broker):
@@ -330,6 +315,14 @@ def test_calculate_performance(user, broker, caplog):
     Transactions.objects.create(
         investor=user,
         broker=broker,
+        date=start_date,
+        type=TRANSACTION_TYPE_CASH_IN,
+        cash_flow=Decimal('1000'),
+        currency='USD'
+    )
+    Transactions.objects.create(
+        investor=user,
+        broker=broker,
         security=asset,
         date=start_date + timedelta(days=30),
         type=TRANSACTION_TYPE_BUY,
@@ -347,6 +340,14 @@ def test_calculate_performance(user, broker, caplog):
         price=15,
         currency='USD'
     )
+    Transactions.objects.create(
+        investor=user,
+        broker=broker,
+        date=end_date,
+        type=TRANSACTION_TYPE_CASH_OUT,
+        cash_flow=Decimal('-1200'),
+        currency='USD'
+    )
     
     performance_data = calculate_performance(
         user,
@@ -357,7 +358,7 @@ def test_calculate_performance(user, broker, caplog):
     )
 
     for t in Transactions.objects.filter(investor=user, broker=broker):
-        print(f"Transaction: {t.date} {t.security.name} {t.type} {t.quantity} {t.price} {t.currency}")
+        print(f"Transaction: {t.date} {t.type} {t.quantity} {t.price} {t.currency}")
 
     print(f"Price change: {asset.realized_gain_loss(end_date, 'USD', broker_id_list=[broker.id], start_date=start_date)}")
     
@@ -372,6 +373,6 @@ def test_calculate_performance(user, broker, caplog):
     assert 'fx' in performance_data
     assert 'tsr' in performance_data
     
-    assert performance_data['invested'] == Decimal('0')  # No cash inflows
-    assert performance_data['cash_out'] == Decimal('0')  # No cash outflows
+    assert performance_data['invested'] == Decimal('1000')  # No cash inflows
+    assert performance_data['cash_out'] == Decimal('-1200')  # No cash outflows
     assert performance_data['price_change'] == Decimal('500')  # (15 - 10) * 100

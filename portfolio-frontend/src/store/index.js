@@ -18,7 +18,7 @@ export default createStore({
     tableSettings: {
       dateFrom: null,
       dateTo: null,
-      timespan: '',
+      timespan: 'ytd', // Set default timespan to 'ytd'
       page: 1,
       itemsPerPage: 25,
       search: '',

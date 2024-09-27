@@ -342,3 +342,5 @@ TEMP_FILE_DIR = os.path.join(BASE_DIR, 'temp_files')
 
 # Ensure the directory exists
 os.makedirs(TEMP_FILE_DIR, exist_ok=True)
+
+# FORMS_URLFIELD_ASSUME_HTTPS = True

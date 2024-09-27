@@ -246,13 +246,17 @@ export default {
         await store.dispatch('fetchEffectiveCurrentDate')
       }
 
-      // Set initial timespan to 'ytd' and update dateFrom and dateTo
-    await handleTimespanChange('ytd')
+      // Check if dateFrom and dateTo are already set in the store
+      if (!store.state.tableSettings.dateFrom || !store.state.tableSettings.dateTo) {
+        // If not set, use the default 'ytd' timespan
+        await handleTimespanChange(store.state.tableSettings.timespan)
+      } else {
+        // If already set, update the local timespan value
+        timespan.value = store.state.tableSettings.timespan
+      }
 
       // Fetch year options
       await fetchYearOptions()
-
-      // await fetchData()
     }
 
     onMounted(() => {
