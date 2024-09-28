@@ -394,3 +394,175 @@ def test_calculate_performance(user, broker, caplog):
     assert performance_data['invested'] == Decimal('1000')  # No cash inflows
     assert performance_data['cash_out'] == Decimal('-1200')  # No cash outflows
     assert performance_data['price_change'] == Decimal('500')  # (15 - 10) * 100
+
+@pytest.mark.django_db
+def test_update_broker_performance_skip_existing(api_client, user, broker, fx_rates, capsys):
+    print("\nStarting test_update_broker_performance_skip_existing")
+    api_client.force_authenticate(user=user)
+    url = reverse('database:update_broker_performance')
+    print(f"URL: {url}")
+
+    # Create transactions for different years
+    asset = Assets.objects.create(
+        investor=user,
+        type='Stock',
+        ISIN='US0378331005',
+        name='Apple Inc.',
+        currency='USD',
+        exposure='Equity',
+        restricted=False
+    )
+    asset.brokers.add(broker)
+
+    years = [2021, 2022, 2023]
+    for year in years:
+        Transactions.objects.create(
+            investor=user,
+            broker=broker,
+            date=date(year, 1, 1),
+            type=TRANSACTION_TYPE_CASH_IN,
+            cash_flow=Decimal('1000'),
+            currency='USD'
+        )
+        Transactions.objects.create(
+            investor=user,
+            broker=broker,
+            date=date(year, 6, 1),
+            type=TRANSACTION_TYPE_BUY,
+            quantity=Decimal('10'),
+            price=Decimal('100'),
+            currency='USD',
+            security=asset
+        )
+        Transactions.objects.create(
+            investor=user,
+            broker=broker,
+            date=date(year, 12, 31),
+            type=TRANSACTION_TYPE_SELL,
+            quantity=Decimal('-10'),
+            price=Decimal('120'),
+            currency='USD',
+            security=asset
+        )
+
+    # Create an existing AnnualPerformance instance for 2022
+    AnnualPerformance.objects.create(
+        investor=user,
+        broker_group=broker.name,
+        year=2022,
+        currency='USD',
+        restricted=False,
+        bop_nav=Decimal('1200'),
+        eop_nav=Decimal('2400'),
+        invested=Decimal('1000'),
+        cash_out=Decimal('0'),
+        price_change=Decimal('200'),
+        capital_distribution=Decimal('0'),
+        commission=Decimal('0'),
+        tax=Decimal('0'),
+        fx=Decimal('0'),
+        tsr='20%'
+    )
+
+    print("Created transactions and existing AnnualPerformance")
+
+    # Set the effective current date in the session
+    session = api_client.session
+    session['effective_current_date'] = '2024-01-01'
+    session.save()
+    print("Session saved")
+
+    data = {
+        'broker_or_group': broker.name,
+        'currency': 'USD',
+        'is_restricted': 'False',
+        'skip_existing_years': True
+    }
+    print(f"Request data: {data}")
+
+    response = api_client.post(url, data)
+    print(f"Response status code: {response.status_code}")
+    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
+
+    # Handle streaming content
+    print("Starting to process streaming content")
+    content = b''
+    for chunk in response.streaming_content:
+        content += chunk
+        try:
+            progress_data = json.loads(chunk.decode('utf-8').strip())
+            print(f"Received chunk: {progress_data}")
+            
+            if progress_data['status'] == 'progress':
+                assert 'year' in progress_data
+                assert 'currency' in progress_data
+                assert 'is_restricted' in progress_data
+            elif progress_data['status'] == 'complete':
+                print("Received complete status")
+                break
+            elif progress_data['status'] == 'error':
+                pytest.fail(f"Error in streaming: {progress_data['message']}")
+        except json.JSONDecodeError:
+            print(f"Received non-JSON chunk: {chunk}")
+            raise
+
+    assert b'{"status": "complete"}' in content, "Did not receive complete status in the response"
+
+    # Parse the streaming response
+    events = [json.loads(line) for line in content.decode('utf-8').strip().split('\n')]
+
+    progress_events = [event for event in events if event['status'] == 'progress']
+    complete_events = [event for event in events if event['status'] == 'complete']
+
+    print(f"Number of progress events: {len(progress_events)}")
+    print(f"Number of complete events: {len(complete_events)}")
+
+    assert len(progress_events) == 2  # Progress events for 2021 and 2023
+    assert len(complete_events) == 1
+
+    # Check if the AnnualPerformance instance for 2022 was not updated
+    performance = AnnualPerformance.objects.filter(
+        investor=user,
+        broker_group=broker.name,
+        year=2022,
+        currency='USD',
+        restricted=False
+    ).first()
+
+    assert performance is not None
+    assert performance.bop_nav == Decimal('1200')
+    assert performance.eop_nav == Decimal('2400')
+    assert performance.invested == Decimal('1000')
+    assert performance.cash_out == Decimal('0')
+    assert performance.price_change == Decimal('200')
+
+    # Check if the AnnualPerformance instances for 2021 and 2023 were created
+    performance_2021 = AnnualPerformance.objects.filter(
+        investor=user,
+        broker_group=broker.name,
+        year=2021,
+        currency='USD',
+        restricted=False
+    ).first()
+
+    assert performance_2021 is not None
+    assert performance_2021.bop_nav == Decimal('0')
+    assert performance_2021.eop_nav == Decimal('1200')
+    assert performance_2021.invested == Decimal('1000')
+    assert performance_2021.cash_out == Decimal('0')
+    assert performance_2021.price_change == Decimal('200')
+
+    performance_2023 = AnnualPerformance.objects.filter(
+        investor=user,
+        broker_group=broker.name,
+        year=2023,
+        currency='USD',
+        restricted=False
+    ).first()
+
+    assert performance_2023 is not None
+    assert performance_2023.bop_nav == Decimal('2400')
+    assert performance_2023.eop_nav == Decimal('3600')
+    assert performance_2023.invested == Decimal('1000')
+    assert performance_2023.cash_out == Decimal('0')
+    assert performance_2023.price_change == Decimal('200')
