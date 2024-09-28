@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from decimal import Decimal
 from django.utils import timezone
 from datetime import date, datetime, timedelta
-from common.models import AnnualPerformance, Brokers, Transactions, Assets
+from common.models import FX, AnnualPerformance, Brokers, Transactions, Assets
 from constants import (
     CURRENCY_CHOICES, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, 
     TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT
@@ -78,6 +78,23 @@ def transactions(user, broker):
         cash_flow=Decimal('-1200'),
         currency='USD'
     )
+
+@pytest.fixture
+def fx_rates(user):
+    # Create FX rates for the test period
+    start_date = date(2010, 1, 1)
+    # end_date = date(2023, 1, 1)
+    # current_date = start_date
+    # while current_date <= end_date:
+    fx = FX.objects.create(date=start_date)
+    fx.investors.add(user)
+    fx.USDEUR = Decimal('1.15')
+    fx.USDGBP = Decimal('1.25')
+    fx.CHFGBP = Decimal('0.85')
+    fx.RUBUSD = Decimal('65')
+    fx.PLNUSD = Decimal('4')
+    fx.save()
+        # current_date += timedelta(days=1)
 
 @pytest.mark.django_db
 def test_update_broker_performance(api_client, user, broker, transactions, caplog):
@@ -193,7 +210,8 @@ def test_update_broker_performance_no_transactions(api_client, user, broker):
     assert error_events[0]['message'] == 'No transactions found'
 
 @pytest.mark.django_db
-def test_update_broker_performance_streaming(api_client, user, broker, transactions, capsys):
+def test_update_broker_performance_streaming(api_client, user, broker, transactions, fx_rates, capsys):
+
     print("Starting test_update_broker_performance_streaming")
 
     api_client.force_authenticate(user=user)
@@ -245,7 +263,7 @@ def test_update_broker_performance_streaming(api_client, user, broker, transacti
     assert b'{"status": "complete"}' in content, "Did not receive complete status in the response"
 
     captured = capsys.readouterr()
-    print("Captured output:")
+    print("============== Captured output: ==============")
     print(captured.out)
 
 @pytest.mark.django_db

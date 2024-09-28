@@ -672,72 +672,69 @@ def get_update_fx_dates(request):
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-def update_broker_performance(request):
-    if request.method == 'POST':
-        form = BrokerPerformanceForm(request.POST, investor=request.user)
-        if form.is_valid():
-            effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-            broker_or_group = form.cleaned_data['broker_or_group']
-            currency = form.cleaned_data['currency']
-            is_restricted_str = form.cleaned_data['is_restricted']
-            skip_existing_years = form.cleaned_data['skip_existing_years']
-            user = request.user
+# def update_broker_performance(request):
+#     if request.method == 'POST':
+#         form = BrokerPerformanceForm(request.POST, investor=request.user)
+#         if form.is_valid():
+#             effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+#             broker_or_group = form.cleaned_data['broker_or_group']
+#             currency = form.cleaned_data['currency']
+#             is_restricted_str = form.cleaned_data['is_restricted']
+#             skip_existing_years = form.cleaned_data['skip_existing_years']
+#             user = request.user
 
-            if is_restricted_str == 'None':
-                is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
-            elif is_restricted_str == 'True':
-                is_restricted_list = [True]
-            elif is_restricted_str == 'False':
-                is_restricted_list = [False]
-            elif is_restricted_str == 'All':
-                is_restricted_list = [None, True, False]
-            else:
-                return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
+#             if is_restricted_str == 'None':
+#                 is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
+#             elif is_restricted_str == 'True':
+#                 is_restricted_list = [True]
+#             elif is_restricted_str == 'False':
+#                 is_restricted_list = [False]
+#             elif is_restricted_str == 'All':
+#                 is_restricted_list = [None, True, False]
+#             else:
+#                 return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
             
-            def generate_progress():
-                logger.info("Starting generate_progress")
-                currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
-                total_operations = 0
-                for curr in currencies:
-                    for is_restricted in is_restricted_list:
-                        total_operations += _get_years_count(user, effective_current_date, broker_or_group, curr, is_restricted)
+#             def generate_progress():
+#                 logger.info("Starting generate_progress")
+#                 currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
+#                 total_operations = len(currencies) * len(is_restricted_list) * _get_years_count(user, effective_current_date, broker_or_group)
 
-                current_operation = 0
+#                 current_operation = 0
 
-                try:
-                    for curr in currencies:
-                        for is_restricted in is_restricted_list:
-                            for progress_data in save_or_update_annual_broker_performance_old(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
-                                progress_info = json.loads(progress_data)
-                                if progress_info['status'] == 'progress':
-                                    current_operation += 1
-                                    progress = (current_operation / total_operations) * 100
-                                    yield json.dumps({
-                                        'status': 'progress',
-                                        'current': current_operation,
-                                        'total': total_operations,
-                                        'progress': progress,
-                                        'year': progress_info['year'],
-                                        'currency': curr,
-                                        'is_restricted': str(is_restricted)
-                                    }) + '\n'
-                                else:
-                                    yield progress_data
+#                 try:
+#                     for curr in currencies:
+#                         for is_restricted in is_restricted_list:
+#                             for progress_data in save_or_update_annual_broker_performance_old(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
+#                                 progress_info = json.loads(progress_data)
+#                                 if progress_info['status'] == 'progress':
+#                                     current_operation += 1
+#                                     progress = (current_operation / total_operations) * 100
+#                                     yield json.dumps({
+#                                         'status': 'progress',
+#                                         'current': current_operation,
+#                                         'total': total_operations,
+#                                         'progress': progress,
+#                                         'year': progress_info['year'],
+#                                         'currency': curr,
+#                                         'is_restricted': str(is_restricted)
+#                                     }) + '\n'
+#                                 else:
+#                                     yield progress_data
 
-                    # yield json.dumps({'status': 'complete'}) + '\n'
+#                     # yield json.dumps({'status': 'complete'}) + '\n'
 
-                except Exception as e:
-                    yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
+#                 except Exception as e:
+#                     yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
                 
-                logger.info("Finishing generate_progress")
+#                 logger.info("Finishing generate_progress")
 
-            return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
-        else:
-            return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
+#             return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+#         else:
+#             return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
 
-    return JsonResponse({'error': 'Invalid request method'}, status=400)
+#     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-def _get_years_count(user, effective_date, brokers_or_group, currency_target, is_restricted):
+def _get_years_count(user, effective_date, brokers_or_group):
     selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
     first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
     if not first_transaction:
@@ -1483,10 +1480,7 @@ class UpdateBrokerPerformanceView(APIView):
             
             def generate_progress():
                 currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
-                total_operations = 0
-                for curr in currencies:
-                    for is_restricted in is_restricted_list:
-                        total_operations += _get_years_count(user, effective_current_date, broker_or_group, curr, is_restricted)
+                total_operations = len(currencies) * len(is_restricted_list) * _get_years_count(user, effective_current_date, broker_or_group)
 
                 current_operation = 0
 
@@ -1494,8 +1488,7 @@ class UpdateBrokerPerformanceView(APIView):
                     for curr in currencies:
                         for is_restricted in is_restricted_list:
                             for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
-                                progress_info = json.loads(progress_data)
-                                if progress_info['status'] == 'progress':
+                                if progress_data['status'] == 'progress':
                                     current_operation += 1
                                     progress = (current_operation / total_operations) * 100
                                     yield json.dumps({
@@ -1503,14 +1496,16 @@ class UpdateBrokerPerformanceView(APIView):
                                         'current': current_operation,
                                         'total': total_operations,
                                         'progress': progress,
-                                        'year': progress_info['year'],
+                                        'year': progress_data['year'],
                                         'currency': curr,
                                         'is_restricted': str(is_restricted)
                                     }) + '\n'
-                                else:
-                                    yield progress_data
+                                elif progress_data['status'] == 'error':
+                                    yield json.dumps(progress_data) + '\n'
+                                elif progress_data['status'] == 'complete':
+                                    pass  # We'll yield the complete status at the end
 
-                    # yield json.dumps({'status': 'complete'}) + '\n'
+                    yield json.dumps({'status': 'complete'}) + '\n'
 
                 except Exception as e:
                     yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'

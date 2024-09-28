@@ -20,7 +20,7 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
         if not first_transaction:
             error_msg = 'No transactions found'
             logger.error(error_msg)
-            yield json.dumps({'status': 'error', 'message': error_msg}) + '\n'
+            yield {'status': 'error', 'message': error_msg}
             return
         
         start_year = first_transaction.date.year
@@ -53,26 +53,21 @@ def save_or_update_annual_broker_performance(user, effective_date, brokers_or_gr
 
                 progress_data = {
                     'status': 'progress',
-                    'current': i,
-                    'total': total_years,
-                    'progress': (i / total_years) * 100,
                     'year': year
                 }
-                logger.info(f"Progress: {json.dumps(progress_data)}")
-                logger.info(f"Created: {created}")
-                logger.info(f"Performance: {performance}")
-                yield json.dumps(progress_data) + '\n'
-            except Exception as e:
-                error_msg = f"Error processing year {year}: {str(e)}"
-                logger.error(error_msg)
-                logger.error(traceback.format_exc())
-                yield json.dumps({'status': 'error', 'message': error_msg}) + '\n'
+                yield progress_data
+            except ValueError as e:
+                if "No FX rate found" in str(e):
+                    error_msg = f"Missing FX rate processing year {year}: {str(e)}"
+                    logger.error(error_msg)
+                    yield {'status': 'error', 'message': error_msg}
+                else:
+                    raise
 
-        logger.info("Finishing save_or_update_annual_broker_performance")
-        yield json.dumps({'status': 'complete'}) + '\n'
+        yield {'status': 'complete'}
 
     except Exception as e:
         error_msg = f"Unexpected error in save_or_update_annual_broker_performance: {str(e)}"
         logger.error(error_msg)
         logger.error(traceback.format_exc())
-        yield json.dumps({'status': 'error', 'message': error_msg}) + '\n'
+        yield {'status': 'error', 'message': error_msg}

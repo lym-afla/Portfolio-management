@@ -58,6 +58,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { updateBrokerPerformance, getBrokerPerformanceFormData } from '@/services/api'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'UpdateBrokerPerformanceDialog',
@@ -88,6 +89,9 @@ export default {
     const showProgressDialog = ref(false)
     const progress = ref(0)
     const generalError = ref('')
+    const errors = ref([])
+
+    const { handleApiError } = useErrorHandler()
 
     const fetchFormData = async () => {
       try {
@@ -130,7 +134,7 @@ export default {
         showProgressDialog.value = false
         emit('update-completed')
       } else if (data.status === 'error') {
-        generalError.value = data.message
+        errors.value.push(data.message)
         emit('update-error', data.message)
       }
     }
@@ -154,9 +158,7 @@ export default {
       try {
         await updateBrokerPerformance(formData)
       } catch (error) {
-        console.error('Error updating broker performance:', error)
-        generalError.value = error.toString()
-        emit('update-error', error.toString())
+        handleApiError(error)
       } finally {
         if (!showProgressDialog.value) {
           loading.value = false
@@ -180,6 +182,7 @@ export default {
       showProgressDialog,
       progress,
       generalError,
+      errors,
     }
   },
 }

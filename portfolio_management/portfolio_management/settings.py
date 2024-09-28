@@ -266,10 +266,10 @@ LOGGING = {
             "level": "DEBUG",
             # "propagate": True
         },
-        "common": {
-            "handlers": ["console", "json_file"],
-            "level": "DEBUG",
-        }
+        # "common": {
+        #     "handlers": ["console", "json_file"],
+        #     "level": "INFO",
+        # }
     },
     "filters": {
         "require_debug_false": {
