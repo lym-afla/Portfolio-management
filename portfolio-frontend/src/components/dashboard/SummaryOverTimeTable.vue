@@ -43,20 +43,31 @@
   <UpdateBrokerPerformanceDialog
     v-model="showDialog"
     @update-started="handleUpdateStarted"
-    @update-progress="handleUpdateProgress"
-    @update-completed="handleUpdateCompleted"
     @update-error="handleUpdateError"
+  />
+  <ProgressDialog
+    v-model="showProgressDialog"
+    :title="'Updating Broker Performance'"
+    :progress="updateProgress"
+    :current="currentOperation"
+    :total="totalOperations"
+    :currentMessage="currentMessage"
+    :errors="errors"
+    @stop-import="handleStopImport"
   />
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import UpdateBrokerPerformanceDialog from '@/components/dialogs/UpdateBrokerPerformanceDialog.vue'
+import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
+import { updateBrokerPerformance } from '@/services/api'
 
 export default {
   name: 'SummaryOverTimeTable',
   components: {
-    UpdateBrokerPerformanceDialog
+    UpdateBrokerPerformanceDialog,
+    ProgressDialog
   },
   props: {
     lines: {
@@ -79,35 +90,87 @@ export default {
   emits: ['refresh-data'],
   setup(props, { emit }) {
     const showDialog = ref(false)
+    const showProgressDialog = ref(false)
+    const updateProgress = ref(0)
+    const currentOperation = ref(0)
+    const totalOperations = ref(0)
+    const currentMessage = ref('')
+    const errors = ref([])
 
     const showUpdateDialog = () => {
       showDialog.value = true
     }
 
-    const handleUpdateStarted = () => {
-      console.log('Update started')
+    const handleUpdateStarted = async (formData) => {
+      console.log('Update started', formData)
+      showProgressDialog.value = true
+      currentMessage.value = 'Starting update'
+      updateProgress.value = 0
+      currentOperation.value = 0
+      totalOperations.value = 0
+      errors.value = []
+
+      try {
+        await updateBrokerPerformance(formData)
+      } catch (error) {
+        handleUpdateError(error.message)
+      }
     }
 
-    const handleUpdateProgress = (data) => {
-      console.log('Update progress:', data)
+    const handleProgress = (event) => {
+      const data = event.detail
+      console.log('Progress:', data)
+      if (data.status === 'initializing') {
+        totalOperations.value = data.total
+      } else if (data.status === 'progress') {
+        updateProgress.value = data.progress
+        currentOperation.value = data.current
+        // totalOperations.value = data.total
+        currentMessage.value = compileProgressMessage(data)
+      } else if (data.status === 'complete') {
+        // showProgressDialog.value = false
+        emit('refresh-data')
+      } else if (data.status === 'error') {
+        errors.value.push(data.message)
+        console.error('Update error:', data.message)
+      }
     }
 
-    const handleUpdateCompleted = () => {
-      console.log('Update completed')
-      emit('refresh-data')
+    const compileProgressMessage = (data) => {
+      return `Processing year ${data.year}, currency: ${data.currency}, restricted: ${data.is_restricted}`
     }
 
     const handleUpdateError = (error) => {
       console.error('Update error:', error)
+      errors.value.push(error)
+      currentMessage.value = `Error: ${error}`
     }
+
+    const handleStopImport = () => {
+      // Implement stop import logic here
+      console.log('Stop import requested')
+    }
+
+    onMounted(() => {
+      window.addEventListener('brokerPerformanceUpdateProgress', handleProgress)
+    })
+
+    onUnmounted(() => {
+      window.removeEventListener('brokerPerformanceUpdateProgress', handleProgress)
+    })
 
     return {
       showDialog,
+      showProgressDialog,
       showUpdateDialog,
       handleUpdateStarted,
-      handleUpdateProgress,
-      handleUpdateCompleted,
-      handleUpdateError
+      handleUpdateError,
+      updateProgress,
+      currentOperation,
+      totalOperations,
+      currentMessage,
+      errors,
+      handleStopImport
     }
   }
 }

@@ -45,27 +45,16 @@
       </v-card-text>
     </v-card>
   </v-dialog>
-
-  <ProgressDialog
-    v-model="showProgressDialog"
-    :title="'Updating Broker Performance'"
-    :progress="progress"
-    :error="generalError"
-  />
 </template>
 
 <script>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { updateBrokerPerformance, getBrokerPerformanceFormData } from '@/services/api'
-import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { getBrokerPerformanceFormData } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'UpdateBrokerPerformanceDialog',
-  components: {
-    ProgressDialog
-  },
-  emits: ['update:modelValue', 'update-started', 'update-progress', 'update-completed', 'update-error'],
+  emits: ['update:modelValue', 'update-started', 'update-error'],
   props: {
     modelValue: Boolean,
   },
@@ -86,11 +75,6 @@ export default {
     const currencyOptions = ref([])
     const restrictedOptions = ref([])
 
-    const showProgressDialog = ref(false)
-    const progress = ref(0)
-    const generalError = ref('')
-    const errors = ref([])
-
     const { handleApiError } = useErrorHandler()
 
     const fetchFormData = async () => {
@@ -102,7 +86,8 @@ export default {
         restrictedOptions.value = Object.entries(data.is_restricted_choices).map(([value, text]) => ({ value, text }))
       } catch (error) {
         console.error('Error fetching form data:', error)
-        generalError.value = 'Failed to load form data. Please try again.'
+        handleApiError(error)
+        emit('update-error', 'Failed to load form data. Please try again.')
       }
     }
 
@@ -125,50 +110,25 @@ export default {
       })
     }
 
-    const handleProgress = (event) => {
-      const data = event.detail
-      if (data.status === 'progress') {
-        progress.value = data.progress
-        emit('update-progress', data)
-      } else if (data.status === 'complete') {
-        showProgressDialog.value = false
-        emit('update-completed')
-      } else if (data.status === 'error') {
-        errors.value.push(data.message)
-        emit('update-error', data.message)
-      }
-    }
-
-    onMounted(() => {
-      window.addEventListener('brokerPerformanceUpdateProgress', handleProgress)
-      fetchFormData()
-    })
-
-    onUnmounted(() => {
-      window.removeEventListener('brokerPerformanceUpdateProgress', handleProgress)
-    })
-
     const submitForm = async () => {
       dialog.value = false
-      showProgressDialog.value = true
-      progress.value = 0
-      generalError.value = ''
-      emit('update-started')
+      emit('update-started', formData)
 
-      try {
-        await updateBrokerPerformance(formData)
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        if (!showProgressDialog.value) {
-          loading.value = false
-        }
-      }
+      // try {
+      //   await updateBrokerPerformance(formData)
+      // } catch (error) {
+      //   handleApiError(error)
+      //   emit('update-error', error.message)
+      // }
     }
 
     const closeDialog = () => {
       dialog.value = false
     }
+
+    onMounted(() => {
+      fetchFormData()
+    })
 
     return {
       dialog,
@@ -179,10 +139,6 @@ export default {
       restrictedOptions,
       submitForm,
       closeDialog,
-      showProgressDialog,
-      progress,
-      generalError,
-      errors,
     }
   },
 }

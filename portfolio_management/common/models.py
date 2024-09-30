@@ -207,14 +207,14 @@ class Assets(models.Model):
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
-        logger.info(f"Fetching price for {self.name} as of {price_date} in currency {currency}")
+        logger.debug(f"Fetching price for {self.name} as of {price_date} in currency {currency}")
         quote = self.prices.filter(date__lte=price_date).order_by('-date').first()
         if quote is None:
             logger.warning(f"No price quote found for {self.name} as of {price_date}. Checking last transaction.")
             # If no quote is found, take the price from the last transaction
             last_transaction = self.transactions.filter(date__lte=price_date).order_by('-date').first()
             if last_transaction:
-                logger.info(f"Using last transaction price for {self.name} as of {last_transaction.date}")
+                logger.debug(f"Using last transaction price for {self.name} as of {last_transaction.date}")
                 quote = type('obj', (object,), {'price': last_transaction.price, 'date': last_transaction.date})
             else:
                 logger.error(f"No transaction found for {self.name} as of {price_date}")
@@ -222,15 +222,14 @@ class Assets(models.Model):
         
         if currency is not None:
             fx_rate = FX.get_rate(self.currency, currency, price_date)['FX']
-            logger.info(f"Converting price from {self.currency} to {currency} using FX rate {fx_rate}")
+            logger.debug(f"Converting price from {self.currency} to {currency} using FX rate {fx_rate}")
             quote.price = quote.price * fx_rate
-        logger.info(f"Price for {self.name} as of {quote.date} is {quote.price} in currency {currency or self.currency}")
+        logger.debug(f"Price for {self.name} as of {quote.date} is {quote.price} in currency {currency or self.currency}")
         return quote
 
     # Define position at date by summing all movements to date
     def position(self, date, broker_id_list=None):
         query = self.transactions.filter(date__lte=date)
-        # print(f"models.py. line 134. {query}")
         if broker_id_list is not None:
             query = query.filter(broker_id__in=broker_id_list)
         total_quantity = query.aggregate(total=models.Sum('quantity'))['total']
@@ -304,8 +303,8 @@ class Assets(models.Model):
         Returns:
             float: The calculated buy-in price. Returns None if an error occurs.
         """
-        logger.info(f"Calculating buy-in price for {self.name} as of {date}")
-        logger.info(f"Parameters: currency={currency}, broker_id_list={broker_id_list}, start_date={start_date}")
+        logger.debug(f"Calculating buy-in price for {self.name} as of {date}")
+        logger.debug(f"Parameters: currency={currency}, broker_id_list={broker_id_list}, start_date={start_date}")
 
         is_long_position = None
 
@@ -317,10 +316,10 @@ class Assets(models.Model):
         if broker_id_list is not None:
             transactions = transactions.filter(broker_id__in=broker_id_list)
         
-        logger.info(f"Number of transactions: {transactions.count()}")
+        logger.debug(f"Number of transactions: {transactions.count()}")
 
         if not transactions:
-            logger.warning("No transactions found")
+            logger.debug("Buy-in price: No transactions found")
             return None
 
         # Get latest entry date
@@ -329,17 +328,17 @@ class Assets(models.Model):
             logger.warning("No entry dates found")
             return None
         entry_date = entry_dates[-1]
-        logger.info(f"Latest entry date: {entry_date}")
+        logger.debug(f"Latest entry date: {entry_date}")
 
         if start_date and start_date > entry_date:
             # Add artificial transaction at start_date
-            logger.info(f"Start date {start_date} is after latest entry date {entry_date}")
+            logger.debug(f"Start date {start_date} is after latest entry date {entry_date}")
             position = self.position(start_date, broker_id_list)
-            logger.info(f"Position at start date: {position}")
+            logger.debug(f"Position at start date: {position}")
             if position != 0:
                 price_at_start = self.price_at_date(start_date)
                 if price_at_start:
-                    logger.info(f"Price at start date: {price_at_start.price}")
+                    logger.debug(f"Price at start date: {price_at_start.price}")
                     artificial_transaction = {
                         'date': start_date,
                         'quantity': position,
@@ -349,15 +348,15 @@ class Assets(models.Model):
                     transactions = list(transactions.filter(date__gte=start_date))
                     transactions.insert(0, type('obj', (object,), artificial_transaction))
                     is_long_position = position > 0
-                    logger.info(f"Added artificial transaction: {artificial_transaction}")
+                    logger.debug(f"Added artificial transaction: {artificial_transaction}")
             entry_date = start_date
 
         transactions = [t for t in transactions if t.date >= entry_date]
-        logger.info(f"Number of transactions after filtering: {len(transactions)}")
+        logger.debug(f"Number of transactions after filtering: {len(transactions)}")
 
         if is_long_position is None and transactions:
             is_long_position = transactions[0].quantity > 0
-        logger.info(f"Is long position: {is_long_position}")
+        logger.debug(f"Is long position: {is_long_position}")
 
         # Calculate the buy-in price
         value_entry = Decimal(0)
@@ -365,13 +364,13 @@ class Assets(models.Model):
         previous_entry_price = Decimal(0)
 
         for transaction in transactions:
-            logger.info(f"Processing transaction: Date={transaction.date}, Quantity={transaction.quantity}, Price={transaction.price}")
+            logger.debug(f"Processing transaction: Date={transaction.date}, Quantity={transaction.quantity}, Price={transaction.price}")
             
             if currency is not None:
                 fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
             else:
                 fx_rate = Decimal(1)
-            logger.info(f"FX rate: {fx_rate}")
+            logger.debug(f"FX rate: {fx_rate}")
 
             current_price = transaction.price * fx_rate
             weight_current = transaction.quantity
@@ -390,10 +389,10 @@ class Assets(models.Model):
             quantity_entry += transaction.quantity
             value_entry = entry_price * quantity_entry
 
-            logger.info(f"After transaction: Entry price={entry_price}, Quantity={quantity_entry}, Value={value_entry}")
+            logger.debug(f"After transaction: Entry price={entry_price}, Quantity={quantity_entry}, Value={value_entry}")
 
         final_price = round(Decimal(value_entry / quantity_entry), 6) if quantity_entry else previous_entry_price
-        logger.info(f"Final buy-in price: {final_price}")
+        logger.debug(f"Final buy-in price: {final_price}")
         return final_price
 
         # except Exception as e:
@@ -425,20 +424,20 @@ class Assets(models.Model):
         the specified currency using the FX.get_rate function.
         """
 
-        logger.info(f"Calculating realized gain/loss for {self.name} as of {date}")
-        logger.info(f"Parameters: currency={currency}, broker_id_list={broker_id_list}, start_date={start_date}")
+        logger.debug(f"Calculating realized gain/loss for {self.name} as of {date}")
+        logger.debug(f"Parameters: currency={currency}, broker_id_list={broker_id_list}, start_date={start_date}")
 
         realized_gain_loss_for_current_position = 0
         total_gl_before_current_position = 0
         latest_exit_date = None
 
         exit_dates = self.exit_dates(date, broker_id_list)
-        logger.info(f"Exit dates: {exit_dates}")
+        logger.debug(f"Exit dates: {exit_dates}")
 
         if len(exit_dates) != 0:
             # Step 1: Find the latest date when position is 0
             latest_exit_date = exit_dates[-1]
-            logger.info(f"Latest exit date: {latest_exit_date}")
+            logger.debug(f"Latest exit date: {latest_exit_date}")
 
             # Step 2: Sum up values of all transactions before that date
             transactions_before_entry = self.transactions.filter(date__lte=latest_exit_date, quantity__isnull=False)
@@ -447,40 +446,40 @@ class Assets(models.Model):
             if broker_id_list is not None:
                 transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
             
-            logger.info(f"Number of transactions before entry: {transactions_before_entry.count()}")
+            logger.debug(f"Number of transactions before entry: {transactions_before_entry.count()}")
 
-        if transactions_before_entry.exists():
-            if currency is not None:
-                for transaction in transactions_before_entry:
-                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
-                    logger.info(f"Transaction: {transaction.date}, {transaction.type}, Quantity: {transaction.quantity}, Price: {transaction.price}, FX rate: {fx_rate}")
-                    if fx_rate:
-                        total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
-            else:
-                total_gl_before_current_position = -transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
-
-            if start_date is not None:
-                start_position = self.position(start_date)
-                if start_position != 0:
-                    start_price = self.price_at_date(start_date, currency)
-                    if start_price:
-                        logger.info(f"Start date adjustment: Price at {start_date}: {start_price.price}, Position: {start_position}")
-                        total_gl_before_current_position += start_price.price * start_position
-                    else:
-                        logger.warning(f"No price available at start date {start_date}. Skipping start date adjustment.")
+            if transactions_before_entry.exists():
+                if currency is not None:
+                    for transaction in transactions_before_entry:
+                        fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)['FX']
+                        logger.debug(f"Transaction: {transaction.date}, {transaction.type}, Quantity: {transaction.quantity}, Price: {transaction.price}, FX rate: {fx_rate}")
+                        if fx_rate:
+                            total_gl_before_current_position -= transaction.price * transaction.quantity * fx_rate
                 else:
-                    logger.info(f"No position at start date {start_date}. Skipping start date adjustment.")
+                    total_gl_before_current_position = -transactions_before_entry.aggregate(total=Sum(F('price') * F('quantity')))['total'] or 0
 
-        logger.info(f"Total G/L before current position: {total_gl_before_current_position}")
+                if start_date is not None:
+                    start_position = self.position(start_date)
+                    if start_position != 0:
+                        start_price = self.price_at_date(start_date, currency)
+                        if start_price:
+                            logger.debug(f"Start date adjustment: Price at {start_date}: {start_price.price}, Position: {start_position}")
+                            total_gl_before_current_position += start_price.price * start_position
+                        else:
+                            logger.warning(f"No price available at start date {start_date}. Skipping start date adjustment.")
+                    else:
+                        logger.debug(f"No position at start date {start_date}. Skipping start date adjustment.")
+
+        logger.debug(f"Total G/L before current position: {total_gl_before_current_position}")
 
         # Step 3: Determine whether it is a long or short position
         position_at_date = self.position(date)
-        logger.info(f"Position at {date}: {position_at_date}")
+        logger.debug(f"Position at {date}: {position_at_date}")
 
         if position_at_date != 0:
             is_long_position = position_at_date > 0
             exit_type = TRANSACTION_TYPE_SELL if is_long_position else TRANSACTION_TYPE_BUY
-            logger.info(f"Position type: {'Long' if is_long_position else 'Short'}, Exit type: {exit_type}")
+            logger.debug(f"Position type: {'Long' if is_long_position else 'Short'}, Exit type: {exit_type}")
 
             # Step 4: Calculate realized gain/loss based on exit price and buy-in price
             exit_transactions = self.transactions.filter(type=exit_type, date__lte=date)
@@ -491,11 +490,11 @@ class Assets(models.Model):
             if broker_id_list is not None:
                 exit_transactions = exit_transactions.filter(broker_id__in=broker_id_list)
             
-            logger.info(f"Number of exit transactions: {exit_transactions.count()}")
+            logger.debug(f"Number of exit transactions: {exit_transactions.count()}")
             
             for exit in exit_transactions:
                 buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list, start_date)
-                logger.info(f"Exit transaction: Date: {exit.date}, Price: {exit.price}, Quantity: {exit.quantity}, Buy-in price: {buy_in_price}")
+                logger.debug(f"Exit transaction: Date: {exit.date}, Price: {exit.price}, Quantity: {exit.quantity}, Buy-in price: {buy_in_price}")
                 if buy_in_price is not None:
                     if currency is not None:
                         fx_rate = FX.get_rate(exit.currency, currency, exit.date)['FX']
@@ -504,13 +503,13 @@ class Assets(models.Model):
                     if fx_rate:
                         realized_gain_loss = -(exit.price - buy_in_price) * fx_rate * (exit.quantity)
                         realized_gain_loss_for_current_position += realized_gain_loss
-                        logger.info(f"Realized gain/loss for this exit: {realized_gain_loss}")
+                        logger.debug(f"Realized gain/loss for this exit: {realized_gain_loss}")
                 else:
                     logger.warning("Buy-in price is not available")
                     return None
                 
-        logger.info(f"Realized gain/loss for current position: {realized_gain_loss_for_current_position}")
-        logger.info(f"Total realized gain/loss: {total_gl_before_current_position + realized_gain_loss_for_current_position}")
+        logger.debug(f"Realized gain/loss for current position: {realized_gain_loss_for_current_position}")
+        logger.debug(f"Total realized gain/loss: {total_gl_before_current_position + realized_gain_loss_for_current_position}")
 
         return {
             "current_position": round(Decimal(realized_gain_loss_for_current_position), 2),

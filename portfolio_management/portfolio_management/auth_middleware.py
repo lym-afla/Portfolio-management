@@ -37,20 +37,3 @@ class TokenAuthMiddleware:
             logger.debug("No token provided, user is anonymous")
 
         return await self.inner(scope, receive, send)
-
-# class TokenAuthMiddleware:
-#     def __init__(self, inner):
-#         self.inner = inner
-
-#     async def __call__(self, scope, receive, send):
-#         query_string = scope['query_string'].decode()
-#         query_params = parse_qs(query_string)
-#         token_key = query_params.get('token', [None])[0]
-#         logger.debug(f"Received token: {token_key}")
-#         if token_key:
-#             scope['user'] = await get_user(token_key)
-#             logger.debug(f"Authenticated user: {scope['user']}")
-#         else:
-#             scope['user'] = AnonymousUser()
-#             logger.debug("No token provided, user is anonymous")
-#         return await self.inner(scope, receive, send)

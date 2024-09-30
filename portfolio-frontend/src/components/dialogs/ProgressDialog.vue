@@ -57,7 +57,7 @@
 </template>
 
 <script>
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 
 export default {
   name: 'ProgressDialog',
@@ -120,9 +120,21 @@ export default {
       emit('reset')
     }
 
-    // watch(() => props.progress, (newValue) => {
-    //   console.log('ProgressDialog: progress prop changed to', newValue)
-    // })
+    watch(() => props.progress, (newValue) => {
+      console.log('ProgressDialog: progress prop changed to', newValue)
+    })
+
+    watch(() => props.current, (newValue) => {
+      console.log('ProgressDialog: current prop changed to', newValue)
+    })
+
+    watch(() => props.total, (newValue) => {
+      console.log('ProgressDialog: total prop changed to', newValue)
+    })
+
+    watch(() => props.currentMessage, (newValue) => {
+      console.log('ProgressDialog: currentMessage prop changed to', newValue)
+    })
 
     onBeforeUnmount(() => {
       resetDialog()

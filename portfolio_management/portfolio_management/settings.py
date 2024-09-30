@@ -249,6 +249,10 @@ LOGGING = {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
         },
+        # "daphne": {
+        #     "handlers": ["console", "json_file"],
+        #     "level": "DEBUG",
+        # },
         "transactions": {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
@@ -266,10 +270,10 @@ LOGGING = {
             "level": "DEBUG",
             # "propagate": True
         },
-        # "common": {
-        #     "handlers": ["console", "json_file"],
-        #     "level": "INFO",
-        # }
+        "common": {
+            "handlers": ["console", "json_file"],
+            "level": "INFO",
+        }
     },
     "filters": {
         "require_debug_false": {

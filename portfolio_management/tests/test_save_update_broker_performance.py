@@ -159,7 +159,7 @@ def test_update_broker_performance(api_client, user, broker, transactions, caplo
     assert len(complete_events) == 1
 
     # If the test fails, print additional debug information
-    if not AnnualPerformance.objects.filter(investor=user, broker=broker, year=2022, currency='USD', restricted=False).exists():
+    if not AnnualPerformance.objects.filter(investor=user, broker_group=broker.name, year=2022, currency='USD', restricted=False).exists():
         print("AnnualPerformance instance was not created. Debug info:")
         print(f"User: {user}")
         print(f"Broker: {broker}")

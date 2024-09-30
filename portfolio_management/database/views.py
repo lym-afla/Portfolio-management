@@ -7,6 +7,7 @@ import logging
 from django import forms
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.cache import cache
+from django.db import OperationalError
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
@@ -1482,34 +1483,48 @@ class UpdateBrokerPerformanceView(APIView):
                 currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
                 total_operations = len(currencies) * len(is_restricted_list) * _get_years_count(user, effective_current_date, broker_or_group)
 
+                # Send initial progress event
+                yield json.dumps({
+                    'status': 'initializing',
+                    'total': total_operations
+                }) + '\n'
+
                 current_operation = 0
 
                 try:
                     for curr in currencies:
                         for is_restricted in is_restricted_list:
                             for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
+                                logger.info(f"Progress data: {progress_data}")
                                 if progress_data['status'] == 'progress':
                                     current_operation += 1
                                     progress = (current_operation / total_operations) * 100
-                                    yield json.dumps({
+                                    event = {
                                         'status': 'progress',
                                         'current': current_operation,
-                                        'total': total_operations,
+                                        # 'total': total_operations,
                                         'progress': progress,
                                         'year': progress_data['year'],
                                         'currency': curr,
                                         'is_restricted': str(is_restricted)
-                                    }) + '\n'
+                                    }
+                                    yield json.dumps(event) + '\n'
                                 elif progress_data['status'] == 'error':
                                     yield json.dumps(progress_data) + '\n'
                                 elif progress_data['status'] == 'complete':
                                     pass  # We'll yield the complete status at the end
 
-                    yield json.dumps({'status': 'complete'}) + '\n'
+                    yield f"data: {json.dumps({'status': 'complete'})}\n\n"
 
+                except OperationalError as e:
+                    yield json.dumps({'status': 'error', 'message': f"Database error: {str(e)}"}) + '\n'
                 except Exception as e:
                     yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
 
+            # response = StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+            # response['Cache-Control'] = 'no-cache'
+            # response['X-Accel-Buffering'] = 'no'  # Disable buffering for Nginx
+            # return response
             return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
         else:
             return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)

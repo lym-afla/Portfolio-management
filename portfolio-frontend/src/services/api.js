@@ -435,6 +435,7 @@ export const updateBrokerPerformance = async (formData) => {
             if (line) {
               try {
                 const data = JSON.parse(line)
+                console.log('[api.js] brokerPerformanceUpdateProgress:', data)
                 window.dispatchEvent(new CustomEvent('brokerPerformanceUpdateProgress', { detail: data }))
               } catch (error) {
                 console.error('Error parsing progress data:', error, 'Line:', line)

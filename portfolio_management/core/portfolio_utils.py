@@ -250,25 +250,32 @@ def broker_group_to_ids(brokers_or_group: Union[str, List[int]], user) -> List[i
             logging.warning("Some of the provided broker IDs do not belong to the user")
         return list(selected_brokers & user_brokers)
 
-def calculate_performance(user, start_date, end_date, selected_brokers_ids, currency_target, is_restricted=None):
+def calculate_performance(user, start_date, end_date, brokers_or_group, currency_target, is_restricted=None):
     performance_data = defaultdict(Decimal)
 
+    # Initialize all required fields with Decimal(0)
+    for field in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax', 'eop_nav']:
+        performance_data[field] = Decimal('0')
+
+    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
+    
     brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).select_related('investor')
 
-    bop_navs = AnnualPerformance.objects.filter(
+    bop_nav = AnnualPerformance.objects.filter(
         investor=user, 
-        broker__in=brokers, 
+        broker_group=brokers_or_group, 
         year=start_date.year - 1, 
         currency=currency_target
-    ).values('broker', 'eop_nav')
+    ).values_list('eop_nav', flat=True).first()
+    logging.info(f"BOP NAV: {bop_nav}")
 
-    bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
+    # bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
 
     for broker in brokers:
-        bop_nav = bop_nav_dict.get(broker.id)
+        # bop_nav = bop_nav_dict.get(broker.id)
         if not bop_nav:
-            bop_nav = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
-        performance_data['bop_nav'] += bop_nav
+            bop_nav_broker = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
+            performance_data['bop_nav'] += bop_nav_broker
 
         transactions = Transactions.objects.filter(
             investor=user,
@@ -313,6 +320,9 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
         eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
         performance_data['eop_nav'] += eop_nav
 
+    if bop_nav:
+        performance_data['bop_nav'] = bop_nav
+
     # Calculate FX impact
     components_sum = sum(performance_data[key] for key in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax'])
     performance_data['fx'] = performance_data['eop_nav'] - components_sum
@@ -321,7 +331,7 @@ def calculate_performance(user, start_date, end_date, selected_brokers_ids, curr
     performance_data['tsr'] = format_percentage(IRR(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date), digits=1)
 
     # Adjust FX for rounding errors
-    performance_data['fx'] = Decimal(0) if abs(performance_data['fx']) < 0.1 else performance_data['fx']
+    performance_data['fx'] = Decimal('0') if abs(performance_data['fx']) < 0.1 else performance_data['fx']
 
     return dict(performance_data)
 

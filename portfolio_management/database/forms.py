@@ -113,6 +113,8 @@ class SecurityForm(forms.ModelForm):
         label='Brokers'
     )
 
+    update_link = forms.URLField(required=False, assume_scheme='http')  # Specify the default scheme
+
     class Meta:
         model = Assets
         fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'data_source', 'yahoo_symbol', 'update_link', 'comment']

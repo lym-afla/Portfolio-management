@@ -1,4 +1,3 @@
-# myapp/middleware.py
 from datetime import date
 
 class InitializeEffectiveDateMiddleware:
