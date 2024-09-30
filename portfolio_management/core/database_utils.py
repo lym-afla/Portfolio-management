@@ -85,3 +85,13 @@ def save_annual_performance(user, brokers_or_group, year, currency_target, is_re
 
     logger.error(f"Failed to save AnnualPerformance for year {year} after {max_retries} attempts")
     raise OperationalError(f"Database locked, unable to save data for year {year}")
+
+def get_years_count(user, effective_date, brokers_or_group):
+    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
+    first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
+    if not first_transaction:
+        return 0
+    start_year = first_transaction.date.year
+    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
+    return last_year - start_year + 1

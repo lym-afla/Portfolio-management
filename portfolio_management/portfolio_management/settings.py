@@ -273,6 +273,10 @@ LOGGING = {
         "common": {
             "handlers": ["console", "json_file"],
             "level": "INFO",
+        },
+        "database": {
+            "handlers": ["console", "json_file"],
+            "level": "DEBUG",
         }
     },
     "filters": {

@@ -1458,75 +1458,76 @@ class UpdateBrokerPerformanceView(APIView):
         form_data = serializer.get_form_data()
         return Response(form_data)
 
-    def post(self, request):
-        form = BrokerPerformanceForm(request.data, investor=request.user)
-        if form.is_valid():
-            effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-            broker_or_group = form.cleaned_data['broker_or_group']
-            currency = form.cleaned_data['currency']
-            is_restricted_str = form.cleaned_data['is_restricted']
-            skip_existing_years = form.cleaned_data['skip_existing_years']
-            user = request.user
+    # def post(self, request):
+    #     form = BrokerPerformanceForm(request.data, investor=request.user)
+    #     if form.is_valid():
+    #         effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    #         broker_or_group = form.cleaned_data['broker_or_group']
+    #         currency = form.cleaned_data['currency']
+    #         is_restricted_str = form.cleaned_data['is_restricted']
+    #         skip_existing_years = form.cleaned_data['skip_existing_years']
+    #         user = request.user
 
-            if is_restricted_str == 'None':
-                is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
-            elif is_restricted_str == 'True':
-                is_restricted_list = [True]
-            elif is_restricted_str == 'False':
-                is_restricted_list = [False]
-            elif is_restricted_str == 'All':
-                is_restricted_list = [None, True, False]
-            else:
-                return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
+    #         if is_restricted_str == 'None':
+    #             is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
+    #         elif is_restricted_str == 'True':
+    #             is_restricted_list = [True]
+    #         elif is_restricted_str == 'False':
+    #             is_restricted_list = [False]
+    #         elif is_restricted_str == 'All':
+    #             is_restricted_list = [None, True, False]
+    #         else:
+    #             return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
             
-            def generate_progress():
-                currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
-                total_operations = len(currencies) * len(is_restricted_list) * _get_years_count(user, effective_current_date, broker_or_group)
+    #         def generate_progress():
+    #             currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
+    #             total_operations = len(currencies) * len(is_restricted_list) * _get_years_count(user, effective_current_date, broker_or_group)
 
-                # Send initial progress event
-                yield json.dumps({
-                    'status': 'initializing',
-                    'total': total_operations
-                }) + '\n'
+    #             # Send initial progress event
+    #             yield json.dumps({
+    #                 'status': 'initializing',
+    #                 'total': total_operations
+    #             }) + '\n'
 
-                current_operation = 0
+    #             current_operation = 0
 
-                try:
-                    for curr in currencies:
-                        for is_restricted in is_restricted_list:
-                            for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
-                                logger.info(f"Progress data: {progress_data}")
-                                if progress_data['status'] == 'progress':
-                                    current_operation += 1
-                                    progress = (current_operation / total_operations) * 100
-                                    event = {
-                                        'status': 'progress',
-                                        'current': current_operation,
-                                        # 'total': total_operations,
-                                        'progress': progress,
-                                        'year': progress_data['year'],
-                                        'currency': curr,
-                                        'is_restricted': str(is_restricted)
-                                    }
-                                    yield json.dumps(event) + '\n'
-                                elif progress_data['status'] == 'error':
-                                    yield json.dumps(progress_data) + '\n'
-                                elif progress_data['status'] == 'complete':
-                                    pass  # We'll yield the complete status at the end
+    #             try:
+    #                 for curr in currencies:
+    #                     for is_restricted in is_restricted_list:
+    #                         for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
+    #                             logger.info(f"Progress data: {progress_data}")
+    #                             if progress_data['status'] == 'progress':
+    #                                 current_operation += 1
+    #                                 progress = (current_operation / total_operations) * 100
+    #                                 event = {
+    #                                     'status': 'progress',
+    #                                     'current': current_operation,
+    #                                     # 'total': total_operations,
+    #                                     'progress': progress,
+    #                                     'year': progress_data['year'],
+    #                                     'currency': curr,
+    #                                     'is_restricted': str(is_restricted)
+    #                                 }
+    #                                 yield json.dumps(event) + '\n'
+    #                             elif progress_data['status'] == 'error':
+    #                                 yield json.dumps(progress_data) + '\n'
+    #                             elif progress_data['status'] == 'complete':
+    #                                 pass  # We'll yield the complete status at the end
 
-                    yield json.dumps({'status': 'complete'}) + "\n"
+    #                 yield f"data: {json.dumps({'status': 'complete'})}\n\n"
 
-                except OperationalError as e:
-                    yield json.dumps({'status': 'error', 'message': f"Database error: {str(e)}"}) + '\n'
-                except Exception as e:
-                    yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
+    #             except OperationalError as e:
+    #                 yield json.dumps({'status': 'error', 'message': f"Database error: {str(e)}"}) + '\n'
+    #             except Exception as e:
+    #                 yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
 
-            return StreamingHttpResponse(generate_progress(), content_type='text/event-stream', headers={
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive'
-            })
-        else:
-            return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
+    #         # response = StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+    #         # response['Cache-Control'] = 'no-cache'
+    #         # response['X-Accel-Buffering'] = 'no'  # Disable buffering for Nginx
+    #         # return response
+    #         return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+    #     else:
+    #         return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
 
 class FXViewSet(viewsets.ModelViewSet):
     serializer_class = FXSerializer

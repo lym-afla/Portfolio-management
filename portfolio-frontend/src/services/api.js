@@ -419,21 +419,24 @@ export const getDashboardSummary = async () => {
 }
 
 export const getBrokerPerformanceFormData = async () => {
-  const response = await axiosInstance.get(`${API_URL}/database/api/update-broker-performance/`)
+  const response = await axiosInstance.get('/database/api/update-broker-performance/')
   return response.data
 }
 
 export const updateBrokerPerformance = async (formData) => {
   try {
-    const response = await axiosInstance.post('/database/api/update-broker-performance/', formData, {
-      responseType: 'text',
+    const response = await axiosInstance.post('/database/api/update-broker-performance/sse/', formData, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      responseType: 'text', // Important to set this to 'text' to handle SSE properly
       onDownloadProgress: (progressEvent) => {
         if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
           const dataChunk = progressEvent.event.currentTarget.response
           const lines = dataChunk.split('\n')
           console.log('[api.js] brokerPerformanceUpdateProgress:', lines)
           lines.forEach((line) => {
-            if (line) {
+            if (line.trim()) {
               try {
                 const data = JSON.parse(line)
                 console.log('[api.js] brokerPerformanceUpdateProgress:', data)
