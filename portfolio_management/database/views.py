@@ -1514,18 +1514,17 @@ class UpdateBrokerPerformanceView(APIView):
                                 elif progress_data['status'] == 'complete':
                                     pass  # We'll yield the complete status at the end
 
-                    yield f"data: {json.dumps({'status': 'complete'})}\n\n"
+                    yield json.dumps({'status': 'complete'}) + "\n"
 
                 except OperationalError as e:
                     yield json.dumps({'status': 'error', 'message': f"Database error: {str(e)}"}) + '\n'
                 except Exception as e:
                     yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
 
-            # response = StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
-            # response['Cache-Control'] = 'no-cache'
-            # response['X-Accel-Buffering'] = 'no'  # Disable buffering for Nginx
-            # return response
-            return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+            return StreamingHttpResponse(generate_progress(), content_type='text/event-stream', headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            })
         else:
             return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
 

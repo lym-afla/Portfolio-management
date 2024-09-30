@@ -431,6 +431,7 @@ export const updateBrokerPerformance = async (formData) => {
         if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
           const dataChunk = progressEvent.event.currentTarget.response
           const lines = dataChunk.split('\n')
+          console.log('[api.js] brokerPerformanceUpdateProgress:', lines)
           lines.forEach((line) => {
             if (line) {
               try {
