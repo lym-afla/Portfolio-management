@@ -149,6 +149,7 @@ export default {
     const handleStopImport = () => {
       // Implement stop import logic here
       console.log('Stop import requested')
+      showProgressDialog.value = false
     }
 
     onMounted(() => {

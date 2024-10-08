@@ -1,6 +1,6 @@
 
 import axiosInstance from '@/config/axiosConfig'
-// import store from '@/store'  // Import your Vuex store
+import store from '@/store'
 
 const API_URL = 'http://localhost:8000'  // Adjust this to your Django API URL
 
@@ -152,6 +152,10 @@ export const logout = async () => {
 
     return response.data
   } catch (error) {
+    console.error('Error during logout:', error)
+    // Even if the server request fails, we should clear local tokens
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
     throw error.response ? error.response.data : error.message
   }
 }
@@ -425,7 +429,18 @@ export const getBrokerPerformanceFormData = async () => {
 
 export const updateBrokerPerformance = async (formData) => {
   try {
-    const response = await axiosInstance.post('/database/api/update-broker-performance/sse/', formData, {
+
+    const effectiveCurrentDate = store.state.effectiveCurrentDate
+    if (!effectiveCurrentDate) {
+      throw new Error('Effective current date not set')
+    }
+
+    const dataToSend = {
+      ...formData,
+      effective_current_date: effectiveCurrentDate
+    }
+
+    const response = await axiosInstance.post('/database/api/update-broker-performance/sse/', dataToSend, {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -434,12 +449,12 @@ export const updateBrokerPerformance = async (formData) => {
         if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
           const dataChunk = progressEvent.event.currentTarget.response
           const lines = dataChunk.split('\n')
-          console.log('[api.js] brokerPerformanceUpdateProgress:', lines)
+          console.log('[api.js] brokerPerformanceUpdateProgress 1:', lines)
           lines.forEach((line) => {
             if (line.trim()) {
               try {
                 const data = JSON.parse(line)
-                console.log('[api.js] brokerPerformanceUpdateProgress:', data)
+                console.log('[api.js] brokerPerformanceUpdateProgress 2:', data)
                 window.dispatchEvent(new CustomEvent('brokerPerformanceUpdateProgress', { detail: data }))
               } catch (error) {
                 console.error('Error parsing progress data:', error, 'Line:', line)

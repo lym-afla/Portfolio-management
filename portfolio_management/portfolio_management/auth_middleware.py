@@ -1,23 +1,20 @@
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
-from django.conf import settings
 from django.contrib.auth import get_user_model
-from rest_framework.authtoken.models import Token
-from rest_framework_simplejwt.tokens import UntypedToken, AccessToken
+from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from urllib.parse import parse_qs
+from jwt import decode as jwt_decode
+from django.conf import settings
 import logging
-import jwt
 
 logger = logging.getLogger(__name__)
 
 @database_sync_to_async
-def get_user_from_token(token_key):
+def get_user(user_id):
+    User = get_user_model()
     try:
-        access_token = AccessToken(token_key)
-        user = get_user_model().objects.get(id=access_token['user_id'])
-        return user
-    except (TokenError, get_user_model().DoesNotExist):
+        return User.objects.get(id=user_id)
+    except User.DoesNotExist:
         return AnonymousUser()
 
 class TokenAuthMiddleware:
@@ -25,15 +22,21 @@ class TokenAuthMiddleware:
         self.inner = inner
 
     async def __call__(self, scope, receive, send):
-        query_string = scope['query_string'].decode()
-        query_params = dict(q.split('=') for q in query_string.split('&') if '=' in q)
-        token_key = query_params.get('token')
-        
-        if token_key:
-            scope['user'] = await get_user_from_token(token_key)
-            logger.debug(f"Authenticated user: {scope['user']}")
+        headers = dict(scope['headers'])
+        if b'authorization' in headers:
+            try:
+                token = headers[b'authorization'].decode().split()[1]
+                # This will raise an error if the token is invalid
+                UntypedToken(token)
+                # Decode the token
+                decoded_data = jwt_decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+                user_id = decoded_data['user_id']
+                scope['user'] = await get_user(user_id)
+                logger.debug(f"Authenticated user: {scope['user']}")
+            except (InvalidToken, TokenError, KeyError) as e:
+                logger.error(f"Invalid token: {str(e)}")
+                scope['user'] = AnonymousUser()
         else:
             scope['user'] = AnonymousUser()
-            logger.debug("No token provided, user is anonymous")
-
+        
         return await self.inner(scope, receive, send)

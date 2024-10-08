@@ -51,18 +51,19 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
     stored_data = AnnualPerformance.objects.filter(
         investor=user,
         currency=currency_target,
+        broker_group=brokers_or_group
     )
 
     logger.info(f"Stored data: {stored_data}")
     logger.info(f"Selected brokers IDs: {selected_brokers_ids}")
-    logger.info(f"Group name: {group_name}")
+    logger.info(f"Group name: {brokers_or_group}")
 
-    if group_name is not None:
-        stored_data = stored_data.filter(broker_group=group_name)
-    else:
-        stored_data = stored_data.filter(broker_id__in=selected_brokers_ids)
+    # if group_name is not None:
+    #     stored_data = stored_data.filter(broker_group=group_name)
+    # else:
+    #     stored_data = stored_data.filter(broker_id__in=selected_brokers_ids)
 
-    logger.info(f"Stored data after filtering: {stored_data}")
+    # logger.info(f"Stored data after filtering: {stored_data}")
 
     first_entry = stored_data.order_by('year').first()
     if not first_entry:

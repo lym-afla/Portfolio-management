@@ -1,85 +1,92 @@
 <template>
   <v-container fluid class="pa-0">
-    <!-- Year selector -->
-    <v-row no-gutters>
-      <v-col cols="12" sm="3" md="2" lg="2">
-        <v-select
-          v-model="timespan"
-          :items="yearOptions"
-          item-title="text"
-          item-value="value"
-          label="Year"
-          density="compact"
-          hide-details
-          class="mr-2"
-          @update:model-value="handleTimespanChange"
-        >
-          <template #item="{ props, item }">
-            <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
-            <v-divider v-else class="my-2"></v-divider>
-          </template>
-        </v-select>
-      </v-col>
-    </v-row>
+    <v-alert v-if="error" type="error" dismissible>
+      {{ error }}
+    </v-alert>
 
-    <!-- Broker performance breakdown table -->
-    <v-card class="mt-4">
-      <v-card-title>Broker performance breakdown</v-card-title>
-      <v-card-text>
-        <v-data-table
-          :headers="brokerPerformanceHeaders"
-          :items="brokerPerformanceData"
-          :loading="loading.brokerPerformance"
-          class="elevation-1"
-        >
-          <!-- Custom header to handle multi-level headers -->
-          <template v-slot:header>
-            <thead>
-              <tr>
-                <th rowspan="2"></th>
-                <th v-for="year in years" :key="year" :colspan="8" class="text-center" :class="{ 'highlight-column': year === 'YTD' || year === 'All-time' }">
-                  {{ year === 'YTD' ? currentYear : year }}
-                </th>
-              </tr>
-              <tr>
-                <template v-for="year in years" :key="`subheader-${year}`">
-                  <th v-for="subheader in subHeaders" :key="`${year}-${subheader.value}`" class="text-center" :class="{ 'highlight-column': year === 'YTD' || year === 'All-time' }">
+    <v-skeleton-loader
+      v-if="loading.brokerPerformance || loading.portfolioBreakdown"
+      type="table"
+    ></v-skeleton-loader>
+
+    <template v-else>
+      <!-- Year selector -->
+      <v-row no-gutters>
+        <v-col cols="12" sm="3" md="2" lg="2">
+          <v-select
+            v-model="timespan"
+            :items="yearOptions"
+            item-title="text"
+            item-value="value"
+            label="Year"
+            density="compact"
+            hide-details
+            class="mr-2"
+            @update:model-value="handleTimespanChange"
+          >
+            <template #item="{ props, item }">
+              <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
+              <v-divider v-else class="my-2"></v-divider>
+            </template>
+          </v-select>
+        </v-col>
+      </v-row>
+
+      <!-- Broker performance breakdown table -->
+      <v-card class="mt-4">
+        <v-card-title>Broker performance breakdown</v-card-title>
+        <v-card-text>
+          <v-data-table
+            :headers="brokerPerformanceHeaders"
+            :items="brokerPerformanceData"
+            :loading="loading.brokerPerformance"
+            class="elevation-1"
+          >
+            <template v-slot:header="{ props: { headers } }">
+              <thead>
+                <tr>
+                  <th v-for="header in headers" :key="header.value" :colspan="header.colspan" :rowspan="header.rowspan" :class="header.class">
+                    {{ header.text }}
+                  </th>
+                </tr>
+                <tr>
+                  <th v-for="subheader in brokerPerformanceSubHeaders" :key="subheader.value" :class="subheader.class">
                     {{ subheader.text }}
                   </th>
+                </tr>
+              </thead>
+            </template>
+
+            <!-- Custom item slot to handle nested data -->
+            <template v-slot:item="{ item }">
+              <tr>
+                <td>{{ item.name }}</td>
+                <template v-for="year in years" :key="`data-${year}`">
+                  <td v-for="subheader in subHeaders" :key="`${year}-${subheader.value}`" class="text-center" :class="{ 'highlight-column': year === 'YTD' || year === 'All-time' }">
+                    {{ item.data && item.data[year] ? item.data[year][subheader.value] : 'N/A' }}
+                  </td>
                 </template>
               </tr>
-            </thead>
-          </template>
+            </template>
+          </v-data-table>
+        </v-card-text>
+      </v-card>
 
-          <!-- Custom item slot to handle nested data -->
-          <template v-slot:item="{ item }">
-            <tr>
-              <td>{{ item.name }}</td>
-              <template v-for="year in years" :key="`data-${year}`">
-                <td v-for="subheader in subHeaders" :key="`${year}-${subheader.value}`" class="text-center" :class="{ 'highlight-column': year === 'YTD' || year === 'All-time' }">
-                  {{ item[year][subheader.value] }}
-                </td>
-              </template>
-            </tr>
-          </template>
-        </v-data-table>
-      </v-card-text>
-    </v-card>
-
-    <!-- Portfolio breakdown table -->
-    <v-card class="mt-4">
-      <v-card-title>Portfolio breakdown</v-card-title>
-      <v-card-text>
-        <v-data-table
-          :headers="portfolioBreakdownHeaders"
-          :items="portfolioBreakdownData"
-          :loading="loading.portfolioBreakdown"
-          class="elevation-1"
-        >
-          <!-- Add custom slots if needed -->
-        </v-data-table>
-      </v-card-text>
-    </v-card>
+      <!-- Portfolio breakdown table -->
+      <v-card class="mt-4">
+        <v-card-title>Portfolio breakdown</v-card-title>
+        <v-card-text>
+          <v-data-table
+            :headers="portfolioBreakdownHeaders"
+            :items="portfolioBreakdownData"
+            :loading="loading.portfolioBreakdown"
+            class="elevation-1"
+          >
+            <!-- Add custom slots if needed -->
+          </v-data-table>
+        </v-card-text>
+      </v-card>
+    </template>
   </v-container>
 </template>
 
@@ -117,8 +124,19 @@ export default {
     const yearOptions = ref([])
 
     const brokerPerformanceHeaders = computed(() => [
-      { text: '', value: 'name', sortable: false },
-      ...years.value.flatMap(year => 
+      { text: 'Broker', value: 'name', sortable: false, rowspan: 2 },
+      ...years.value.map(year => ({
+        text: year === 'YTD' ? currentYear : year,
+        value: year,
+        sortable: false,
+        align: 'center',
+        colspan: subHeaders.value.length,
+        class: year === 'YTD' || year === 'All-time' ? 'highlight-column' : ''
+      }))
+    ])
+
+    const brokerPerformanceSubHeaders = computed(() => 
+      years.value.flatMap(year => 
         subHeaders.value.map(subheader => ({
           text: subheader.text,
           value: `${year}.${subheader.value}`,
@@ -127,7 +145,7 @@ export default {
           class: year === 'YTD' || year === 'All-time' ? 'highlight-column' : ''
         }))
       )
-    ])
+    )
 
     const portfolioBreakdownHeaders = ref([
       { text: 'Category', value: 'category' },
@@ -136,14 +154,14 @@ export default {
     ])
 
     const subHeaders = ref([
-      { text: 'BoP NAV', value: 'bop_nav' },
-      { text: 'Cash-in/(out)', value: 'cash_flow' },
-      { text: 'Return', value: 'return' },
-      { text: 'FX', value: 'fx' },
-      { text: 'TSR', value: 'tsr' },
-      { text: 'EoP NAV', value: 'eop_nav' },
-      { text: 'Commissions', value: 'commissions' },
-      { text: 'Fee per AuM', value: 'fee_per_aum' },
+      { text: 'BoP NAV', value: 'BoP NAV' },
+      { text: 'Cash-in/(out)', value: 'Cash-in/out' },
+      { text: 'Return', value: 'Return' },
+      { text: 'FX', value: 'FX' },
+      { text: 'TSR', value: 'TSR percentage' },
+      { text: 'EoP NAV', value: 'EoP NAV' },
+      { text: 'Commissions', value: 'Commission' },
+      { text: 'Fee per AuM', value: 'Fee per AuM (percentage)' },
     ])
 
     const fetchYearOptions = async () => {
@@ -160,10 +178,14 @@ export default {
         loading.value.brokerPerformance = true
         loading.value.portfolioBreakdown = true
         const data = await getSummaryAnalysis(dateFrom.value, dateTo.value)
-        if (data && data.public_markets_context && data.restricted_investments_context) {
-          brokerPerformanceData.value = data.public_markets_context.lines.concat(data.restricted_investments_context.lines)
-          portfolioBreakdownData.value = data.total_context.line
-          years.value = data.public_markets_context.years
+        if (data && data.public_markets_context && data.restricted_investments_context && data.total_context) {
+          brokerPerformanceData.value = [
+            ...data.public_markets_context.lines,
+            ...data.restricted_investments_context.lines,
+            data.total_context.line
+          ]
+          portfolioBreakdownData.value = [] // You might need to adjust this based on your actual data structure
+          years.value = data.public_markets_context.years || []
         } else {
           console.error('Unexpected data structure:', data)
         }
@@ -178,6 +200,8 @@ export default {
         loading.value.portfolioBreakdown = false
       }
     }
+
+    const error = ref(null)
 
     onMounted(async () => {
       emit('update-page-title', 'Summary Analysis')
@@ -207,6 +231,7 @@ export default {
       brokerPerformanceData,
       portfolioBreakdownData,
       brokerPerformanceHeaders,
+      brokerPerformanceSubHeaders,
       portfolioBreakdownHeaders,
       years,
       subHeaders,
@@ -214,6 +239,7 @@ export default {
       timespan,
       yearOptions,
       handleTimespanChange,
+      error,
     }
   }
 }

@@ -286,7 +286,7 @@ class SummaryViewSet(viewsets.ViewSet):
         number_of_digits = user.digits
         # selected_brokers = request.GET.get('selected_brokers', user.custom_brokers)
 
-        user_brokers = Brokers.objects.filter(investor=user)
+        # user_brokers = Brokers.objects.filter(investor=user)
 
         summary_data = brokers_summary_data(user, effective_current_date, 'All brokers', currency_target, number_of_digits)
         logger.info(f"summary_data: {summary_data}")
