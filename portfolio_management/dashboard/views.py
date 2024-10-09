@@ -379,11 +379,12 @@ def api_nav_chart_data(request):
     currency = user.default_currency
     brokers = broker_group_to_ids(user.custom_brokers, user)
 
-    # If no dates are provided, use 'ytd' as default
-    if not from_date or not to_date:
-        to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-        from_date = date(to_date.year, 1, 1).isoformat()  # Start of current year
+    # If to_date is not provided, use the effective current date
+    if not to_date:
+        to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date().isoformat()
 
+    # from_date can be None, it will be handled in get_nav_chart_data
+    
     logger.info(f"Received request for NAV chart data with frequency: {frequency}, from date: {from_date}, to date: {to_date}, breakdown: {breakdown}, currency: {currency}, brokers: {user.custom_brokers}")
 
     # try:

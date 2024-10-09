@@ -9,9 +9,13 @@ import logging
 logger = logging.getLogger('dashboard')
 
 from common.models import Transactions
-from django.db.models import Sum
+from django.db.models import Sum, Min
 
 def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency, breakdown):
+    # If from_date is None, get the earliest date for the set of brokers
+    if from_date is None:
+        from_date = _get_earliest_date_for_brokers(user_id, brokers)
+    
     dates = _chart_dates(from_date, to_date, frequency)
 
     # logger.info(f"Chart dates: {dates}")
@@ -64,7 +68,7 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
             add_breakdown_data(chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d)
 
         NAV_previous_date = NAV
-        previous_date = d
+        previous_date = d + timedelta(days=1)
 
     # Fill in missing historical data for categories
     fill_missing_historical_data(chart_data, categories, frequency)
@@ -231,3 +235,11 @@ def _chart_labels(dates, frequency):
         return [f'Q{(d.month-1)//3+1} {d.strftime("%y")}' for d in dates]
     if frequency == 'Y':
         return [d.strftime("%Y") for d in dates]
+    
+def _get_earliest_date_for_brokers(user_id, brokers):
+    earliest_date = Transactions.objects.filter(
+        investor__id=user_id,
+        broker_id__in=brokers
+    ).aggregate(Min('date'))['date__min']
+    
+    return earliest_date.isoformat() if earliest_date else None

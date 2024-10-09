@@ -602,7 +602,7 @@ class Transactions(models.Model):
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name='transactions', null=True, blank=True)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False, blank=False)
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
-    date = models.DateField(null=False)
+    date = models.DateField(db_index=True, null=False)
     quantity = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
     price = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

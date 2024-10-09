@@ -129,7 +129,7 @@ def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currenc
 # Helper for IRR calculation
 def calculate_portfolio_value(user_id: int, date: date, currency: Optional[str] = None, asset_id: Optional[int] = None, broker_id_list: Optional[List[int]] = None) -> Decimal:
     if asset_id is None:
-        portfolio_value = NAV_at_date(user_id, tuple(broker_id_list), date, currency, ())['Total NAV']
+        portfolio_value = NAV_at_date(user_id, tuple(broker_id_list), date, currency)['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
         try:

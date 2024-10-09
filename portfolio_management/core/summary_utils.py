@@ -51,7 +51,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
     stored_data = AnnualPerformance.objects.filter(
         investor=user,
         currency=currency_target,
-        broker_group=brokers_or_group
+        # broker_group=brokers_or_group
     )
 
     # logger.info(f"Stored data: {stored_data}")
@@ -81,6 +81,9 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
     stored_data = stored_data.filter(year__in=years).values()
     current_year = effective_date.year
 
+    # logger.info(f"Years: {years}")
+    # logger.info(f"Stored data for years: {stored_data}")
+
     public_totals = initialize_totals(years)
     restricted_totals = initialize_totals(years)
 
@@ -95,7 +98,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
         for broker in brokers_subgroup:
             line_data = {'name': broker.name, 'data': {}}
 
-             # Initialize data for all years
+            # Initialize data for all years
             for year in ['YTD'] + years + ['All-time']:
                 line_data['data'][year] = {
                     'bop_nav': Decimal(0),
@@ -129,7 +132,7 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
 
             # Add stored data for each year
             for entry in stored_data:
-                if entry['broker_id'] == broker.id and entry['restricted'] == restricted:
+                if entry['broker_group'] == broker.name and entry['restricted'] == restricted:
                     year_data = {k: v for k, v in entry.items() if k not in ('id', 'broker_id', 'investor_id', 'broker_group')}
                     formatted_year_data = compile_summary_data(year_data, currency_target, number_of_digits)
                     line_data['data'][entry['year']] = formatted_year_data

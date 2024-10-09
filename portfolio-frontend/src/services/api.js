@@ -939,21 +939,26 @@ export const importTransactions = async (fileId, brokerId) => {
   }
 }
 
-export async function getSummaryAnalysis(dateFrom, dateTo) {
+export async function getBrokerPerformanceSummary() {
   try {
-    const params = new URLSearchParams({
-      date_from: dateFrom,
-      date_to: dateTo,
-    });
-    const response = await axiosInstance.get(`/summary/api/summary_data/?${params.toString()}`);
-    return response.data;
+    const response = await axiosInstance.get('/summary/api/summary_data/')
+    return response.data
   } catch (error) {
     if (error.response && error.response.status === 401) {
-      // Redirect to login page or dispatch a Vuex action to handle authentication
-      // For example:
-      // store.dispatch('auth/redirectToLogin');
-      throw new Error('Authentication required');
+      throw new Error('Authentication required')
     }
-    throw error;
+    throw error
+  }
+}
+
+export async function getPortfolioBreakdownSummary(year) {
+  try {
+    const response = await axiosInstance.get('/summary/api/portfolio_breakdown/', {
+      params: { year: year }
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching portfolio breakdown:', error)
+    throw error
   }
 }
