@@ -289,7 +289,7 @@ class SummaryViewSet(viewsets.ViewSet):
         # user_brokers = Brokers.objects.filter(investor=user)
 
         summary_data = brokers_summary_data(user, effective_current_date, 'All brokers', currency_target, number_of_digits)
-        logger.info(f"summary_data: {summary_data}")
+        # logger.info(f"summary_data: {summary_data}")
 
         # Format the data
         formatted_data = {

@@ -8,9 +8,13 @@ import pandas as pd
 from pyxirr import xirr
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
 from constants import BROKER_GROUPS
+from functools import lru_cache
+
+import logging
+logger = logging.getLogger('dashboard')
 
 from decimal import Decimal, ROUND_HALF_UP
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Tuple, Union
 import logging
 
 from core.formatting_utils import format_percentage
@@ -62,12 +66,21 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
 
 
 # Calculate NAV breakdown for selected brokers at certain date and in selected currency
-def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency: str, breakdown: List[str] = []) -> Dict:
+@lru_cache(maxsize=None)
+def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currency: str, breakdown: Tuple[str] = ()) -> Dict:
+    broker_ids = list(broker_ids)  # Convert tuple back to list for internal use
+    breakdown = list(breakdown)  # Convert tuple back to list for internal use
+    
+    # logger.info(f"Calculating NAV at date: {date} for brokers: {broker_ids} with breakdown: {breakdown}")
+    
     portfolio = portfolio_at_date(user_id, date, broker_ids)
     portfolio_brokers = Brokers.objects.filter(investor__id=user_id, id__in=broker_ids)
     analysis = defaultdict(lambda: defaultdict(Decimal))
     analysis['Total NAV'] = Decimal(0)
     item_type = {'asset_type': 'type', 'currency': 'currency', 'asset_class': 'exposure'}
+
+    # logger.info(f"Portfolio: {portfolio}")
+    # logger.info(f"Portfolio brokers: {portfolio_brokers}")
 
     for security in portfolio:
         security_price = security.price_at_date(date, target_currency)
@@ -107,15 +120,16 @@ def NAV_at_date(user_id: int, broker_ids: List[int], date: date, target_currency
     analysis['Total NAV'] += cash
 
     # Remove keys with zero values
-    analysis = {k: {sk: sv for sk, sv in v.items() if sv != 0} if isinstance(v, dict) else v for k, v in analysis.items()}
+    # analysis = {k: {sk: sv for sk, sv in v.items() if sv != 0} if isinstance(v, dict) else v for k, v in analysis.items()}
+
+    # logger.info(f"Calculated NAV: {dict(analysis)}")
 
     return dict(analysis)
 
 # Helper for IRR calculation
 def calculate_portfolio_value(user_id: int, date: date, currency: Optional[str] = None, asset_id: Optional[int] = None, broker_id_list: Optional[List[int]] = None) -> Decimal:
-
     if asset_id is None:
-        portfolio_value = NAV_at_date(user_id, broker_id_list, date, currency)['Total NAV']
+        portfolio_value = NAV_at_date(user_id, tuple(broker_id_list), date, currency, ())['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id)
         try:
@@ -152,7 +166,7 @@ MAX_IRR = Decimal('2')
 IRR_PRECISION = Decimal('0.0001')
 
 def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Optional[int] = None, 
-        broker_id_list: Optional[List[int]] = None, start_date: Optional[date] = None) -> Union[Decimal, str]:
+        broker_id_list: Optional[List[int]] = None, start_date: Optional[date] = None, cached_nav: Optional[Decimal] = None) -> Union[Decimal, str]:
     """
     Calculate the Internal Rate of Return (IRR) for a given portfolio or asset.
 
@@ -162,9 +176,13 @@ def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Opti
     :param asset_id: The ID of the specific asset to calculate IRR for (optional)
     :param broker_id_list: List of broker IDs to include in the calculation (optional)
     :param start_date: The start date for IRR calculation (optional)
+    :param cached_nav: Precalculated NAV value (optional)
     :return: The calculated IRR as a Decimal, or 'N/R' if not relevant, or 'N/A' if calculation fails
     """
-    portfolio_value = calculate_portfolio_value(user_id, date, currency, asset_id, broker_id_list)
+    if cached_nav is not None:
+        portfolio_value = cached_nav
+    else:
+        portfolio_value = calculate_portfolio_value(user_id, date, currency, asset_id, broker_id_list)
 
     # Not relevant for short positions
     if portfolio_value < 0:
@@ -274,7 +292,7 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
     for broker in brokers:
         # bop_nav = bop_nav_dict.get(broker.id)
         if not bop_nav:
-            bop_nav_broker = NAV_at_date(user.id, [broker.id], start_date - timedelta(days=1), currency_target)['Total NAV']
+            bop_nav_broker = NAV_at_date(user.id, tuple([broker.id]), start_date - timedelta(days=1), currency_target)['Total NAV']
             performance_data['bop_nav'] += bop_nav_broker
 
         transactions = Transactions.objects.filter(
@@ -317,7 +335,7 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
             performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
 
         # Calculate EOP NAV
-        eop_nav = NAV_at_date(user.id, [broker.id], end_date, currency_target)['Total NAV']
+        eop_nav = NAV_at_date(user.id, tuple([broker.id]), end_date, currency_target)['Total NAV']
         performance_data['eop_nav'] += eop_nav
 
     if bop_nav:

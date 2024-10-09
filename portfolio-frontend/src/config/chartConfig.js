@@ -74,7 +74,7 @@ export const getChartOptions = async (currency) => {
     },
     navChartOptions: {
       responsive: true,
-      maintainAspectRatio: false, // Remove aspectRatio
+      maintainAspectRatio: false,
       scales: {
         x: {
           stacked: true,
@@ -116,34 +116,61 @@ export const getChartOptions = async (currency) => {
       },
       plugins: {
         datalabels: {
-          anchor: "end",
-          align: "top",
+          anchor: (context) => {
+            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const dataIndex = context.dataIndex
+            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
+            const lastNegativeIndex = datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v < 0)
+            return sum >= 0 ? 'end' : (lastNegativeIndex !== -1 ? 'start' : 'end')
+          },
+          align: (context) => {
+            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const dataIndex = context.dataIndex
+            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
+            const lastPositiveIndex = datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v > 0)
+            return sum >= 0 ? (lastPositiveIndex !== -1 ? 'top' : 'bottom') : 'bottom'
+          },
           font: {
             family: fontFamily,
             size: 14,
           },
           formatter: (value, context) => {
-            if (context.dataset.label === "Rolling IRR (RHS)" || context.dataset.label === "IRR (RHS)") {
-              return (value * 100).toFixed(0) + '%';
+            if (context.dataset.type === 'line') {
+              return (value * 100).toFixed(1) + '%'
             }
             
-            const dataArray = context.chart.data.datasets
-              .filter(dataset => !["IRR (RHS)", "Rolling IRR (RHS)"].includes(dataset.label))
-              .map(dataset => parseFloat(dataset.data[context.dataIndex] || 0));
-
-            const sum = Math.round(dataArray.reduce((a, b) => a + b, 0) * 10) / 10;
-            const labelIndex = dataArray.findLastIndex(value => value > 0);
-
-            return context.datasetIndex === labelIndex + 1 ? sum.toLocaleString().replace(/,/g, '.') : "";
+            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const dataIndex = context.dataIndex
+            
+            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
+            
+            const labelIndex = sum >= 0 
+              ? datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v > 0)
+              : datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v < 0)
+            
+            return context.datasetIndex === labelIndex ? sum.toFixed(1) : null
+          },
+          color: () => 'black', // Use black for all labels
+          offset: (context) => {
+            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const dataIndex = context.dataIndex
+            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
+            const lastPositiveIndex = datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v > 0)
+            return sum >= 0 ? (lastPositiveIndex !== -1 ? 5 : -5) : -5
           },
         },
         tooltip: {
           callbacks: {
-            label: function(tooltipItem) {
-              if (tooltipItem.datasetIndex > 1) {
-                return Math.round(tooltipItem.raw * 10) / 10;
+            label: function(context) {
+              let label = context.dataset.label || '';
+              let value = context.parsed.y;
+
+              if (label === "IRR (RHS)" || label === "Rolling IRR (RHS)") {
+                // For line charts (IRR), show percentage with one decimal point
+                return `${label}: ${(value * 100).toFixed(1)}%`;
               } else {
-                return (tooltipItem.raw * 100).toFixed(1) + '%';
+                // For bar charts (NAV and other categories), show number with one decimal point
+                return `${label}: ${value.toFixed(1)}`;
               }
             }
           }

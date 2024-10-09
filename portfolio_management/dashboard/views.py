@@ -204,7 +204,7 @@ def get_dashboard_summary_api(request):
     summary = {}
 
     # Calculate NAV
-    summary['Current NAV'] = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target)['Total NAV']
+    summary['Current NAV'] = NAV_at_date(user.id, tuple (selected_brokers), effective_current_date, currency_target)['Total NAV']
 
     # Calculate Invested and Cash-out
     summary['Invested'] = Decimal(0)
@@ -248,7 +248,7 @@ def get_dashboard_breakdown_api(request):
     number_of_digits = user.digits
     selected_brokers = broker_group_to_ids(user.custom_brokers, user)
 
-    analysis = NAV_at_date(user.id, selected_brokers, effective_current_date, currency_target, ['asset_type', 'currency', 'asset_class'])
+    analysis = NAV_at_date(user.id, tuple(selected_brokers), effective_current_date, currency_target, tuple(['asset_type', 'currency', 'asset_class']))
     
     # Remove 'Total NAV' from the analysis
     total_nav = analysis.pop('Total NAV', None)
@@ -383,6 +383,8 @@ def api_nav_chart_data(request):
     if not from_date or not to_date:
         to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
         from_date = date(to_date.year, 1, 1).isoformat()  # Start of current year
+
+    logger.info(f"Received request for NAV chart data with frequency: {frequency}, from date: {from_date}, to date: {to_date}, breakdown: {breakdown}, currency: {currency}, brokers: {user.custom_brokers}")
 
     # try:
     chart_data = get_nav_chart_data(user.id, brokers, frequency, from_date, to_date, currency, breakdown)

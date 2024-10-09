@@ -131,20 +131,7 @@ export default {
           ...props.chartData,
           datasets: datasets,
         },
-        options: {
-          ...navChartOptions,
-          plugins: {
-            ...navChartOptions.plugins,
-            legend: {
-              ...navChartOptions.plugins.legend,
-              reverse: true, // This will reverse the order of legend items
-            },
-            tooltip: {
-              ...navChartOptions.plugins.tooltip,
-              itemSort: (a, b) => a.datasetIndex - b.datasetIndex, // Sort tooltip items to match visual order
-            },
-          },
-        },
+        options: navChartOptions,
       })
     }
 

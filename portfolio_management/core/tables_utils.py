@@ -197,7 +197,7 @@ def calculate_open_table_output_for_api(
     :return: A tuple containing a list of open position dictionaries and a dictionary of totals
     """
     start_time = time.time()  # Start timing the overall function
-    portfolio_NAV = NAV_at_date(user_id, selected_brokers, end_date, currency_target)['Total NAV']
+    portfolio_NAV = NAV_at_date(user_id, tuple(selected_brokers), end_date, currency_target)['Total NAV']
     portfolio_cash = calculate_portfolio_cash(user_id, selected_brokers, end_date, currency_target)
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']

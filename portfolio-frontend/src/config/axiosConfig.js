@@ -54,7 +54,6 @@ axiosInstance.interceptors.response.use(
       } catch (logoutError) {
         console.error('Error during logout:', logoutError)
       }
-      return Promise.reject(error)
     }
     
     return Promise.reject(error)

@@ -277,6 +277,10 @@ LOGGING = {
         "database": {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
+        },
+        "dashboard": {
+            "handlers": ["console", "json_file"],
+            "level": "DEBUG",
         }
     },
     "filters": {

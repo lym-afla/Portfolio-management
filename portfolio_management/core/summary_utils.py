@@ -54,9 +54,9 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
         broker_group=brokers_or_group
     )
 
-    logger.info(f"Stored data: {stored_data}")
-    logger.info(f"Selected brokers IDs: {selected_brokers_ids}")
-    logger.info(f"Group name: {brokers_or_group}")
+    # logger.info(f"Stored data: {stored_data}")
+    # logger.info(f"Selected brokers IDs: {selected_brokers_ids}")
+    # logger.info(f"Group name: {brokers_or_group}")
 
     # if group_name is not None:
     #     stored_data = stored_data.filter(broker_group=group_name)

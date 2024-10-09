@@ -1,15 +1,21 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 from core.portfolio_utils import IRR, NAV_at_date
 import pandas as pd
 import numpy as np
 
+import logging
+logger = logging.getLogger('dashboard')
+
 from common.models import Transactions
 from django.db.models import Sum
 
 def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency, breakdown):
     dates = _chart_dates(from_date, to_date, frequency)
+
+    # logger.info(f"Chart dates: {dates}")
+    # logger.info(f"Breakdown: {breakdown}")
     
     chart_data = {
         'labels': _chart_labels(dates, frequency),
@@ -19,48 +25,55 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
 
     previous_date = None
     NAV_previous_date = 0
+    categories = {}
 
-    # Initialize datasets for bar charts first
+    # Initialize datasets
     if breakdown == 'none':
-        chart_data['datasets'].append(create_dataset('NAV', [], 'rgba(54, 162, 235, 0.7)', 'bar', 'y', stack='combined'))
+        chart_data['datasets'] = [
+            _create_dataset('NAV', [], 'rgba(75, 192, 192, 0.7)', 'bar', 'y'),
+            _create_dataset('IRR (RHS)', [], 'rgba(153, 102, 255, 1)', 'line', 'y1'),
+            _create_dataset('Rolling IRR (RHS)', [], 'rgba(255, 159, 64, 1)', 'line', 'y1')
+        ]
     elif breakdown == 'value_contributions':
+        chart_data['datasets'] = [
+            _create_dataset('Previous NAV', [], 'rgba(75, 192, 192, 0.7)', 'bar', 'y', stack='combined'),
+            _create_dataset('Contributions', [], 'rgba(153, 102, 255, 0.7)', 'bar', 'y', stack='combined'),
+            _create_dataset('Return', [], 'rgba(255, 159, 64, 0.7)', 'bar', 'y', stack='combined'),
+            _create_dataset('IRR (RHS)', [], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
+            _create_dataset('Rolling IRR (RHS)', [], 'rgba(153, 102, 255, 1)', 'line', 'y1')
+        ]
+    else:
         chart_data['datasets'].extend([
-            create_dataset('BoP NAV', [], 'rgba(54, 162, 235, 0.7)', 'bar', 'y', stack='combined'),
-            create_dataset('Contributions', [], 'rgba(255, 206, 86, 0.7)', 'bar', 'y', stack='combined'),
-            create_dataset('Return', [], 'rgba(75, 192, 192, 0.7)', 'bar', 'y', stack='combined')
+            _create_dataset('IRR (RHS)', [], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
+            _create_dataset('Rolling IRR (RHS)', [], 'rgba(153, 102, 255, 1)', 'line', 'y1')
         ])
-    elif breakdown != 'none':
-        # Initialize datasets for custom breakdown
-        NAV_initial = NAV_at_date(user_id, brokers, dates[0], currency, [breakdown])[breakdown]
-        for key, value in NAV_initial.items():
-            chart_data['datasets'].append(create_dataset(key, [], get_color(len(chart_data['datasets'])), 'bar', 'y', stack='combined'))
-
-    # Add line chart datasets last
-    chart_data['datasets'].extend([
-        create_dataset('IRR (RHS)', [], 'rgba(75, 192, 192, 1)', 'line', 'y1'),
-        create_dataset('Rolling IRR (RHS)', [], 'rgba(153, 102, 255, 1)', 'line', 'y1')
-    ])
 
     for d in dates:
-        IRR_value = IRR(user_id, d, currency, broker_id_list=brokers)
-        IRR_rolling = IRR(user_id, d, currency, broker_id_list=brokers, start_date=previous_date)
-        
+        NAV_data = NAV_at_date(user_id, tuple(brokers), d, currency, tuple([breakdown]) if breakdown not in ['none', 'value_contributions'] else ())
+        NAV = NAV_data['Total NAV'] / 1000
+
+        IRR_value = IRR(user_id, d, currency, broker_id_list=brokers, cached_nav=NAV * 1000)
+        IRR_rolling = IRR(user_id, d, currency, broker_id_list=brokers, start_date=previous_date, cached_nav=NAV * 1000)
+
         if breakdown == 'none':
-            NAV = NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000
-            add_no_breakdown_data(chart_data, IRR_value, IRR_rolling, NAV)
+            add_no_breakdown_data(chart_data, NAV, IRR_value, IRR_rolling)
         elif breakdown == 'value_contributions':
-            NAV = NAV_at_date(user_id, brokers, d, currency)['Total NAV'] / 1000
             add_contributions_data(chart_data, user_id, brokers, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date)
         else:
-            NAV = NAV_at_date(user_id, brokers, d, currency, [breakdown])[breakdown]
-            add_breakdown_data(chart_data, IRR_value, IRR_rolling, NAV)
+            breakdown_data = NAV_data.get(breakdown, {})
+            add_breakdown_data(chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d)
 
         NAV_previous_date = NAV
         previous_date = d
 
+    # Fill in missing historical data for categories
+    fill_missing_historical_data(chart_data, categories, frequency)
+
+    # logger.info(f"Chart data: {chart_data}")
+
     return chart_data
 
-def add_no_breakdown_data(chart_data, IRR, IRR_rolling, NAV):
+def add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
     chart_data['datasets'][0]['data'].append(NAV)
     chart_data['datasets'][1]['data'].append(IRR)
     chart_data['datasets'][2]['data'].append(IRR_rolling)
@@ -75,14 +88,63 @@ def add_contributions_data(chart_data, user_id, brokers, d, IRR, IRR_rolling, NA
     chart_data['datasets'][3]['data'].append(IRR)
     chart_data['datasets'][4]['data'].append(IRR_rolling)
 
-def add_breakdown_data(chart_data, IRR, IRR_rolling, NAV):
-    for i, (key, value) in enumerate(NAV.items()):
-        chart_data['datasets'][i]['data'].append(value / 1000)
+def add_breakdown_data(chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date):
+    for key, value in breakdown_data.items():
+        if key not in categories:
+            categories[key] = current_date
+            chart_data['datasets'].insert(-2, _create_dataset(key, [], get_color(len(categories)), 'bar', 'y', stack='combined'))
+        
+        dataset_index = next(i for i, dataset in enumerate(chart_data['datasets']) if dataset['label'] == key)
+        chart_data['datasets'][dataset_index]['data'].append(value / 1000)
 
+    # Add IRR data
     chart_data['datasets'][-2]['data'].append(IRR)
     chart_data['datasets'][-1]['data'].append(IRR_rolling)
 
-def create_dataset(label, data, color, chart_type, axis_id, stack=None):
+def fill_missing_historical_data(chart_data, categories, frequency):
+    for dataset in chart_data['datasets'][:-2]:  # Exclude IRR datasets
+        label = dataset['label']
+        if label in categories:
+            first_data_index = find_first_data_index(chart_data['labels'], categories[label], frequency)
+            dataset['data'] = [None] * first_data_index + dataset['data']
+
+    # Ensure all datasets have the same length
+    max_length = len(chart_data['labels'])
+    for dataset in chart_data['datasets']:
+        dataset['data'] += [None] * (max_length - len(dataset['data']))
+
+def find_first_data_index(labels, category_date, frequency):
+    for index, label in enumerate(labels):
+        if compare_dates(label, category_date, frequency):
+            return index
+    return 0  # Return 0 if no match found
+
+def compare_dates(label, category_date, frequency):
+    label_date = parse_label_date(label, frequency)
+    if frequency == 'D':
+        return label_date >= category_date
+    elif frequency == 'W':
+        return label_date.isocalendar()[:2] >= category_date.isocalendar()[:2]
+    elif frequency == 'M':
+        return (label_date.year, label_date.month) >= (category_date.year, category_date.month)
+    elif frequency == 'Q':
+        return (label_date.year, (label_date.month - 1) // 3) >= (category_date.year, (category_date.month - 1) // 3)
+    elif frequency == 'Y':
+        return label_date.year >= category_date.year
+
+def parse_label_date(label, frequency):
+    if frequency == 'D' or frequency == 'W':
+        return datetime.strptime(label, "%d-%b-%y").date()
+    elif frequency == 'M':
+        return datetime.strptime(label, "%b-%y").date()
+    elif frequency == 'Q':
+        quarter, year = label.split()
+        month = (int(quarter[1]) - 1) * 3 + 1
+        return date(int('20' + year), month, 1)
+    elif frequency == 'Y':
+        return date(int(label), 1, 1)
+
+def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
     dataset = {
         'label': label,
         'data': data,
@@ -94,6 +156,8 @@ def create_dataset(label, data, color, chart_type, axis_id, stack=None):
     }
     if stack:
         dataset['stack'] = stack
+    if chart_type == 'line':
+        dataset['fill'] = False
     return dataset
 
 def get_color(index):

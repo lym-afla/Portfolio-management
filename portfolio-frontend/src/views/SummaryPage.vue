@@ -4,42 +4,40 @@
       {{ error }}
     </v-alert>
 
-    <v-skeleton-loader
-      v-if="loading.brokerPerformance || loading.portfolioBreakdown"
-      type="table"
-    ></v-skeleton-loader>
-
-    <template v-else>
-      <!-- Year selector -->
-      <v-row no-gutters>
-        <v-col cols="12" sm="3" md="2" lg="2">
-          <v-select
-            v-model="timespan"
-            :items="yearOptions"
-            item-title="text"
-            item-value="value"
-            label="Year"
-            density="compact"
-            hide-details
-            class="mr-2"
-            @update:model-value="handleTimespanChange"
-          >
-            <template #item="{ props, item }">
-              <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
-              <v-divider v-else class="my-2"></v-divider>
-            </template>
-          </v-select>
-        </v-col>
-      </v-row>
-
-      <!-- Broker performance breakdown table -->
-      <v-card class="mt-4">
-        <v-card-title>Broker performance breakdown</v-card-title>
-        <v-card-text>
+    <!-- Broker performance breakdown table -->
+    <v-card class="mt-4">
+      <v-card-title>Broker performance breakdown</v-card-title>
+      <v-card-text>
+        <v-skeleton-loader
+          v-if="loading.brokerPerformance"
+          type="table"
+        ></v-skeleton-loader>
+        <template v-else>
+          <!-- Year selector -->
+          <v-row no-gutters class="mb-4">
+            <v-col cols="12" sm="3" md="2" lg="2">
+              <v-select
+                v-model="timespan"
+                :items="yearOptions"
+                item-title="text"
+                item-value="value"
+                label="Year"
+                density="compact"
+                hide-details
+                class="mr-2"
+                @update:model-value="handleTimespanChange"
+              >
+                <template #item="{ props, item }">
+                  <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
+                  <v-divider v-else class="my-2"></v-divider>
+                </template>
+              </v-select>
+            </v-col>
+          </v-row>
+          
           <v-data-table
             :headers="brokerPerformanceHeaders"
             :items="brokerPerformanceData"
-            :loading="loading.brokerPerformance"
             class="elevation-1"
           >
             <template v-slot:header="{ props: { headers } }">
@@ -69,24 +67,28 @@
               </tr>
             </template>
           </v-data-table>
-        </v-card-text>
-      </v-card>
+        </template>
+      </v-card-text>
+    </v-card>
 
-      <!-- Portfolio breakdown table -->
-      <v-card class="mt-4">
-        <v-card-title>Portfolio breakdown</v-card-title>
-        <v-card-text>
-          <v-data-table
-            :headers="portfolioBreakdownHeaders"
-            :items="portfolioBreakdownData"
-            :loading="loading.portfolioBreakdown"
-            class="elevation-1"
-          >
-            <!-- Add custom slots if needed -->
-          </v-data-table>
-        </v-card-text>
-      </v-card>
-    </template>
+    <!-- Portfolio breakdown table -->
+    <v-card class="mt-4">
+      <v-card-title>Portfolio breakdown</v-card-title>
+      <v-card-text>
+        <v-skeleton-loader
+          v-if="loading.portfolioBreakdown"
+          type="table"
+        ></v-skeleton-loader>
+        <v-data-table
+          v-else
+          :headers="portfolioBreakdownHeaders"
+          :items="portfolioBreakdownData"
+          class="elevation-1"
+        >
+          <!-- Add custom slots if needed -->
+        </v-data-table>
+      </v-card-text>
+    </v-card>
   </v-container>
 </template>
 
