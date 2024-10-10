@@ -15,6 +15,7 @@ export default createStore({
     dataRefreshTrigger: 0,
     selectedBroker: null,
     effectiveCurrentDate: null,
+    selectedCurrency: null,
     tableSettings: {
       dateFrom: null,
       dateTo: null,
@@ -72,6 +73,9 @@ export default createStore({
     },
     SET_EFFECTIVE_CURRENT_DATE(state, date) {
       state.effectiveCurrentDate = date
+    },
+    SET_SELECTED_CURRENCY(state, currency) {
+      state.selectedCurrency = currency
     },
     SET_NAV_CHART_PARAMS(state, params) {
       state.navChartParams = { ...state.navChartParams, ...params }

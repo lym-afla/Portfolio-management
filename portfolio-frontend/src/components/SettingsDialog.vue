@@ -78,6 +78,15 @@ export default {
         
         // Format currency choices
         currencyChoices.value = response.choices.default_currency.map(([value, text]) => ({ value, text }))
+
+        // Find the list in choices.default_currency where the first element equals settings.default_currency
+        const selectedCurrency = response.choices.default_currency.find(([value]) => value === response.settings.default_currency)
+        console.log('[SettingsDialog] Selected currency:', selectedCurrency)
+        // Set the currency in the store to the second element of the found list
+        if (selectedCurrency && store.state.selectedCurrency !== selectedCurrency[1] ) {
+          store.commit('SET_SELECTED_CURRENCY', selectedCurrency[1])
+        }
+
       } catch (error) {
         console.error('Failed to fetch settings data:', error)
       }

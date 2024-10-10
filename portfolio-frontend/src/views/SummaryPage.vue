@@ -13,7 +13,7 @@
           type="table"
         ></v-skeleton-loader>
         <div v-else class="table-wrapper">
-          <table class="v-data-table">
+          <table class="v-data-table broker-performance-table">
             <thead>
               <tr>
                 <th rowspan="2" class="text-left no-wrap">Broker</th>
@@ -35,7 +35,7 @@
                     class="text-center"
                     :class="{ 
                       'highlight-column': year === 'YTD' || year === 'All-time',
-                      'italic': subheader.value === 'TSR percentage' || subheader.value === 'Fee per AuM (percentage)'
+                      'italic-column': ['TSR percentage', 'Fee per AuM (percentage)'].includes(subheader.value)
                     }"
                   >
                     {{ subheader.text }}
@@ -59,7 +59,7 @@
                       class="text-center"
                       :class="{ 
                         'highlight-column': year === 'YTD' || year === 'All-time',
-                        'italic': subheader.value === 'TSR percentage' || subheader.value === 'Fee per AuM (percentage)'
+                        'italic-column': ['TSR percentage', 'Fee per AuM (percentage)'].includes(subheader.value)
                       }"
                     >
                       {{ item.data && item.data[year] ? item.data[year][subheader.value] : 'N/A' }}
@@ -75,7 +75,7 @@
                       class="text-center"
                       :class="{ 
                         'highlight-column': year === 'YTD' || year === 'All-time',
-                        'italic': subheader.value === 'TSR percentage' || subheader.value === 'Fee per AuM (percentage)'
+                        'italic-column': ['TSR percentage', 'Fee per AuM (percentage)'].includes(subheader.value)
                       }"
                     >
                       {{ group.subtotal[year] ? group.subtotal[year][subheader.value] : 'N/A' }}
@@ -84,7 +84,7 @@
                 </tr>
               </template>
               <tr class="total-row">
-                <td class="no-wrap"><strong>{{ totalData.name }}</strong></td>
+                <td class="no-wrap">{{ totalData.name }}</td>
                 <template v-for="year in years" :key="`total-${year}`">
                   <td 
                     v-for="subheader in subHeaders" 
@@ -92,10 +92,10 @@
                     class="text-center"
                     :class="{ 
                       'highlight-column': year === 'YTD' || year === 'All-time',
-                      'italic': subheader.value === 'TSR percentage' || subheader.value === 'Fee per AuM (percentage)'
+                      'italic-column': ['TSR percentage', 'Fee per AuM (percentage)'].includes(subheader.value)
                     }"
                   >
-                    <strong>{{ totalData.data && totalData.data[year] ? totalData.data[year][subheader.value] : 'N/A' }}</strong>
+                    {{ totalData.data && totalData.data[year] ? totalData.data[year][subheader.value] : 'N/A' }}
                   </td>
                 </template>
               </tr>
@@ -141,7 +141,7 @@
               <tr>
                 <th v-for="header in portfolioBreakdownHeaders" :key="header.value"
                     :rowspan="header.rowspan" :colspan="header.colspan"
-                    :class="[header.class, 'text-center']">
+                    :class="[header.class, 'text-center', { 'italic-column': header.value === 'portfolio_percent' }]">
                   {{ header.text }}
                 </th>
               </tr>
@@ -149,7 +149,7 @@
                 <template v-for="header in portfolioBreakdownHeaders" :key="`sub-${header.value}`">
                   <template v-if="header.colspan === 2">
                     <th v-for="subHeader in portfolioBreakdownSubHeaders.filter(sh => sh.value.startsWith(header.value))"
-                        :key="subHeader.value" :class="[subHeader.class, 'text-center']">
+                        :key="subHeader.value" :class="[subHeader.class, 'text-center', { 'italic-column': subHeader.text === '(%)' }]">
                       {{ subHeader.text }}
                     </th>
                   </template>
@@ -169,17 +169,17 @@
                   <td>{{ item.name }}</td>
                   <td class="text-right">{{ item.cost }}</td>
                   <td class="text-right">{{ item.unrealized }}</td>
-                  <td class="text-right">{{ item.unrealized_percent }}</td>
+                  <td class="text-right italic-column">{{ item.unrealized_percent }}</td>
                   <td class="text-right">{{ item.market_value }}</td>
-                  <td class="text-right">{{ item.portfolio_percent }}</td>
+                  <td class="text-right italic-column">{{ item.portfolio_percent }}</td>
                   <td class="text-right">{{ item.realized }}</td>
-                  <td class="text-right">{{ item.realized_percent }}</td>
+                  <td class="text-right italic-column">{{ item.realized_percent }}</td>
                   <td class="text-right">{{ item.capital_distribution }}</td>
-                  <td class="text-right">{{ item.capital_distribution_percent }}</td>
+                  <td class="text-right italic-column">{{ item.capital_distribution_percent }}</td>
                   <td class="text-right">{{ item.commission }}</td>
-                  <td class="text-right">{{ item.commission_percent }}</td>
+                  <td class="text-right italic-column">{{ item.commission_percent }}</td>
                   <td class="text-right">{{ item.total }}</td>
-                  <td class="text-right">{{ item.total_percent }}</td>
+                  <td class="text-right italic-column">{{ item.total_percent }}</td>
                 </tr>
               </template>
             </tbody>
@@ -411,115 +411,99 @@ export default {
   overflow-x: auto;
   margin-bottom: 20px;
 }
+
 .v-data-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
-.v-data-table th, .v-data-table td {
+
+.v-data-table :deep(th), .v-data-table :deep(td) {
   padding: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
-.v-data-table th {
-  border-bottom: 2px solid #bdbdbd;
+
+/* Remove highlight from table headings */
+.v-data-table :deep(th) {
+  font-weight: bold;
+  background-color: transparent;
 }
+
 .highlight-column {
   background-color: rgba(0, 0, 0, 0.03);
 }
-.italic {
-  font-style: italic;
-}
+
 .no-wrap {
   white-space: nowrap;
 }
+
 .group-header {
   background-color: #e0e0e0;
   font-weight: bold;
-  border-top: 1px solid #bdbdbd;
-  border-bottom: 1px solid #bdbdbd;
 }
+
 .subtotal-row {
   background-color: #f0f0f0;
 }
+
+/* Add top border to TOTAL lines */
 .total-row {
   font-weight: bold;
-  background-color: #c0c0c0;
+  background-color: #e0e0e0;
+  border-top: 2px solid rgba(0, 0, 0, 0.12);
 }
-/* Add vertical lines between year groups in the main part of the table */
-.v-data-table tbody td:nth-child(8n+1):not(:first-child):not(:last-child) {
+
+/* Add vertical lines between year groups in the main part of the first table */
+.broker-performance-table :deep(tbody td:nth-child(8n+1):not(:first-child):not(:last-child)) {
   border-right: 2px solid #bdbdbd;
 }
-/* Add vertical lines for the first header row (years) */
-.v-data-table thead tr:first-child th:nth-child(n+3) {
+
+/* Add vertical lines for the first header row (years) in the first table */
+.broker-performance-table :deep(thead tr:first-child th:nth-child(n+3)) {
   border-left: 2px solid #bdbdbd;
 }
-/* Add vertical lines for the second header row (subheaders) */
-.v-data-table thead tr:nth-child(2) th:nth-child(8n+1):not(:first-child) {
+
+/* Add vertical lines for the second header row (subheaders) in the first table */
+.broker-performance-table :deep(thead tr:nth-child(2) th:nth-child(8n+1):not(:first-child)) {
   border-left: 2px solid #bdbdbd;
 }
+
 /* Zebra striping for rows */
-.v-data-table tbody tr:nth-child(even):not(.group-header):not(.total-row) {
+.v-data-table :deep(tbody tr:nth-child(even):not(.group-header):not(.total-row)) {
   background-color: #f9f9f9;
 }
-/* Highlight YTD and All-time columns in the header */
-.v-data-table thead th.highlight-column {
-  background-color: rgba(0, 0, 0, 0.03);
-}
-/* Add these new styles */
-.v-data-table >>> thead th {
-  font-weight: bold;
-  background-color: #f5f5f5;
-}
 
-.v-data-table >>> tbody td {
-  height: 48px;
-}
-
-.group-header td {
-  font-weight: bold;
-  background-color: #e0e0e0;
-  text-transform: capitalize;
-}
-
-.portfolio-breakdown-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.portfolio-breakdown-table thead th {
-  font-weight: bold;
-  background-color: #f5f5f5;
+/* Portfolio breakdown table specific styles */
+.portfolio-breakdown-table :deep(tbody td) {
   text-align: right;
-  padding: 12px 8px;
 }
 
-.portfolio-breakdown-table thead th:first-child {
+.portfolio-breakdown-table :deep(thead th:first-child),
+.portfolio-breakdown-table :deep(tbody td:first-child) {
   text-align: left;
 }
 
-.portfolio-breakdown-table tbody td {
-  height: 48px;
-  text-align: right;
-  padding: 8px;
-}
-
-.portfolio-breakdown-table tbody td:first-child {
-  text-align: left;
+/* Remove vertical lines for the Portfolio breakdown table */
+.portfolio-breakdown-table :deep(th),
+.portfolio-breakdown-table :deep(td) {
+  border-left: none !important;
+  border-right: none !important;
 }
 
 .group-header td {
-  font-weight: bold;
-  background-color: #e0e0e0;
   text-transform: uppercase;
   padding: 12px 8px;
 }
 
-.total-row {
-  font-weight: bold;
+/* Highlight YTD and All-time columns in the header */
+.broker-performance-table :deep(thead th.highlight-column) {
+  background-color: rgba(0, 0, 0, 0.03);
 }
 
-/* Zebra striping for rows */
-.portfolio-breakdown-table tbody tr:nth-child(even):not(.group-header):not(.total-row) {
-  background-color: #f9f9f9;
+/* Make specific columns italic */
+.italic-column,
+.italic-column :deep(th),
+.italic-column :deep(td) {
+  font-style: italic;
 }
 </style>

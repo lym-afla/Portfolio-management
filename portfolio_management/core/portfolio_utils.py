@@ -366,7 +366,7 @@ def calculate_percentage_shares(data_dict, selected_keys):
         for key, value in data_dict[category].items():
             try:
                 data_dict[percentage_key][key] = str(round(Decimal(value / total * 100), 1)) + '%'
-            except ZeroDivisionError:
+            except ZeroDivisionError or DecimalInvalidOperation:
                 data_dict[percentage_key][key] = '–'
 
 def get_last_exit_date_for_brokers(selected_brokers, date):

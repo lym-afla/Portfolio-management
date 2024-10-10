@@ -2,12 +2,12 @@
   <v-card class="d-flex flex-column">
     <v-card-title>{{ title }}</v-card-title>
     <v-card-text class="pa-0 flex-grow-1 d-flex flex-column">
-      <v-tabs v-model="tab">
+      <v-tabs v-model="tab" v-if="hasData">
         <v-tab value="chart">Pie Chart</v-tab>
         <v-tab value="table">Table</v-tab>
       </v-tabs>
 
-      <v-window v-model="tab" class="flex-grow-1">
+      <v-window v-model="tab" class="flex-grow-1" v-if="hasData">
         <v-window-item value="chart">
           <div class="chart-container">
             <Pie :data="chartData" :options="pieChartOptions" />
@@ -38,6 +38,10 @@
           </v-table>
         </v-window-item>
       </v-window>
+
+      <div v-if="!hasData" class="text-center pa-4">
+        No data available
+      </div>
     </v-card-text>
   </v-card>
 </template>
@@ -73,23 +77,34 @@ export default {
     const pieChartOptions = ref({})
     const colorPalette = ref([])
 
+    const hasData = computed(() => {
+      return props.data && props.data.data && Object.keys(props.data.data).length > 0
+    })
+
     const sortedData = computed(() => {
+      if (!hasData.value) return []
+      
       return Object.entries(props.data.data)
         .map(([label, value]) => ({ 
           label, 
           value,
           percentage: props.data.percentage[label]
         }))
+        .filter(item => item.value !== '–' && parseFloat(item.value.replace(/[^0-9.-]+/g,"")) !== 0)
         .sort((a, b) => parseFloat(b.value.replace(/[^0-9.-]+/g,"")) - parseFloat(a.value.replace(/[^0-9.-]+/g,"")))
     })
 
-    const chartData = computed(() => ({
-      labels: sortedData.value.map(item => item.label),
-      datasets: [{
-        data: sortedData.value.map(item => parseFloat(item.value.replace(/[^0-9.-]+/g,""))),
-        backgroundColor: colorPalette.value
-      }]
-    }))
+    const chartData = computed(() => {
+      if (!hasData.value) return { labels: [], datasets: [] }
+      
+      return {
+        labels: sortedData.value.map(item => item.label),
+        datasets: [{
+          data: sortedData.value.map(item => parseFloat(item.value.replace(/[^0-9.-]+/g,""))),
+          backgroundColor: colorPalette.value.slice(0, sortedData.value.length)
+        }]
+      }
+    })
 
     onMounted(async () => {
       const { pieChartOptions: options, colorPalette: palette } = await getChartOptions()
@@ -102,6 +117,7 @@ export default {
       chartData,
       pieChartOptions,
       sortedData,
+      hasData,
       props // Expose props to the template
     }
   }

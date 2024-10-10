@@ -315,7 +315,7 @@ class SummaryViewSet(viewsets.ViewSet):
         # Get the data using the existing logic
         context = self.get_exposure_table_data(user, start_date, end_date, currency_target, number_of_digits)
 
-        logger.info(f"context: {context}")
+        # logger.info(f"context: {context}")
 
         # Format the data for the frontend
         # formatted_data = self.format_portfolio_breakdown(context)

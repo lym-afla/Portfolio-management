@@ -249,7 +249,7 @@ export default {
     })
 
     watch([loading, currentPage, itemsPerPage, sortBy, search], () => {
-      if (!loading.value && dateFrom.value && dateTo.value) {
+      if (!loading.value && dateTo.value) {
         fetchFXData()
       }
     })
