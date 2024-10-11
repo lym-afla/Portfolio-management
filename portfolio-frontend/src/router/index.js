@@ -17,6 +17,7 @@ import SecuritiesPage from '../views/database/SecuritiesPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import FXPage from '../views/database/FXPage.vue'
 import SummaryPage from '../views/SummaryPage.vue'
+import SecurityDetailPage from '../views/database/SecurityDetailPage.vue'
 
 // export const loading = ref(true)
 
@@ -106,6 +107,12 @@ const routes = [
         component: FXPage,
       },
     ]
+  },
+  {
+    path: '/database/securities/:id',
+    name: 'SecurityDetail',
+    component: SecurityDetailPage,
+    meta: { requiresAuth: true, paddingTop: '70px' }
   },
   {
     path: '/summary',

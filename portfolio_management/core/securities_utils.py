@@ -1,4 +1,6 @@
 from decimal import Decimal
+
+from django.shortcuts import get_object_or_404
 from common.models import Assets
 from core.portfolio_utils import IRR
 from .sorting_utils import sort_entries
@@ -68,12 +70,49 @@ def _get_securities_data(user, securities, effective_current_date):
         securities_data.append(security_data)
     return securities_data
 
-# def _calculate_totals(securities_data, user, effective_current_date, currency_target):
-#     totals = {
-#         'current_value': sum(security['current_value'] for security in securities_data if security['current_value'] is not None),
-#         'realized': sum(security['realized'] for security in securities_data),
-#         'unrealized': sum(security['unrealized'] for security in securities_data),
-#         'capital_distribution': sum(security['capital_distribution'] for security in securities_data),
-#         'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None)
-#     }
-#     return totals
+def get_security_detail(request, security_id):
+    user = request.user
+    effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+    currency_target = user.default_currency
+    number_of_digits = user.digits
+
+    security = get_object_or_404(Assets, id=security_id, investor=user)
+    
+    security_data = {
+        'id': security.id,
+        'type': security.type,
+        'ISIN': security.ISIN,
+        'name': security.name,
+        'first_investment': security.investment_date() or 'None',
+        'currency': security.currency,
+        'open_position': security.position(effective_current_date),
+        'current_value': Decimal(0),
+        'realized': security.realized_gain_loss(effective_current_date)['all_time'],
+        'unrealized': security.unrealized_gain_loss(effective_current_date),
+        'capital_distribution': security.get_capital_distribution(effective_current_date),
+        'irr': None,
+        'data_source': security.data_source,
+        'update_link': security.update_link,
+        'yahoo_symbol': security.yahoo_symbol,
+        'comment': security.comment,
+    }
+
+    # Calculate current value and IRR if price is available
+    price = security.price_at_date(effective_current_date)
+    if price is not None:
+        security_data['current_value'] = security_data['open_position'] * price.price
+        security_data['irr'] = IRR(user.id, effective_current_date, security.currency, asset_id=security.id)
+
+    return format_table_data([security_data], currency_target, number_of_digits)[0]
+
+def get_security_price_history(request, security_id):
+    # Implement logic to fetch and return price history data
+    pass
+
+def get_security_position_history(request, security_id):
+    # Implement logic to fetch and return position history data
+    pass
+
+def get_security_transactions(request, security_id):
+    # Implement logic to fetch and return recent transactions data
+    pass

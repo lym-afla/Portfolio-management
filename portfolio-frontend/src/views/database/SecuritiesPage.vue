@@ -66,6 +66,11 @@
                 mdi-delete
               </v-icon>
             </template>
+            <template v-else-if="header.key === 'name'">
+              <router-link :to="{ name: 'SecurityDetail', params: { id: item.id } }">
+                {{ item.name }}
+              </router-link>
+            </template>
             <template v-else>
               {{ item[header.key] }}
             </template>
@@ -212,6 +217,7 @@ export default {
       } catch (error) {
         handleApiError(error)
       }
+
     }
 
     const handleSecurityAdded = (newSecurity) => {

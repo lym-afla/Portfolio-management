@@ -30,7 +30,7 @@ from common.forms import DashboardForm_old_setup
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 from core.price_utils import get_prices_table_api
 from core.brokers_utils import get_brokers_table_api
-from core.securities_utils import get_securities_table_api
+from core.securities_utils import get_securities_table_api, get_security_detail, get_security_price_history, get_security_position_history, get_security_transactions
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
@@ -1086,6 +1086,22 @@ def api_get_securities(request):
     securities = securities.order_by(Lower('name')).values('id', 'name', 'type')
     return Response(list(securities))
 
+@api_view(['GET'])
+def api_get_security_detail(request, security_id):
+    return Response(get_security_detail(request, security_id))
+
+@api_view(['GET'])
+def api_get_security_price_history(request, security_id):
+    return Response(get_security_price_history(request, security_id))
+
+@api_view(['GET'])
+def api_get_security_position_history(request, security_id):
+    return Response(get_security_position_history(request, security_id))
+
+@api_view(['GET'])
+def api_get_security_transactions(request, security_id):
+    return Response(get_security_transactions(request, security_id))
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_get_prices_table(request):
@@ -1172,7 +1188,7 @@ def api_create_security(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def api_get_security_details(request, security_id):
+def api_get_security_details_for_editing(request, security_id):
     security = get_object_or_404(Assets, id=security_id, investor=request.user)
     return Response({
         'id': security.id,

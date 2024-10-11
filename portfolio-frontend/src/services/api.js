@@ -348,16 +348,56 @@ export const getSecuritiesForDatabase = async (params) => {
 
 export const createSecurity = async (securityData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/create-security/`, securityData)
+    const response = await axiosInstance.post('/database/api/create-security/', securityData)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
   }
 }
 
+export const getSecurityDetail = async (securityId) => {
+  try {
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching security detail:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const getSecurityPriceHistory = async (securityId) => {
+  try {
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/price-history/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching security price history:', error)
+    throw error
+  }
+}
+
+export const getSecurityPositionHistory = async (securityId) => {
+  try {
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/position-history/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching security position history:', error)
+    throw error
+  }
+}
+
+export const getSecurityTransactions = async (securityId) => {
+  try {
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/transactions/`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching security transactions:', error)
+    throw error
+  }
+}
+
 export const updateSecurity = async (securityId, securityData) => {
   try {
-    const response = await axiosInstance.put(`${API_URL}/database/api/update-security/${securityId}/`, securityData)
+    const response = await axiosInstance.put(`/database/api/update-security/${securityId}/`, securityData)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
