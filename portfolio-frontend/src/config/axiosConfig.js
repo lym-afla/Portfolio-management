@@ -1,61 +1,87 @@
 import axios from 'axios'
-import store from '@/store'
 import router from '@/router'
-import { logout } from '@/services/api'
 
 const axiosInstance = axios.create({
   baseURL: 'http://localhost:8000',
 })
 
-axiosInstance.interceptors.request.use(async config => {
-  const token = store.state.accessToken
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  } else {
-    console.log('No token found in the state')
+let isRefreshing = false
+let failedQueue = []
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
+const refreshToken = async () => {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) {
+    throw new Error('No refresh token available')
   }
-  return config
-}, error => {
-  return Promise.reject(error)
-})
+  
+  try {
+    const response = await axios.post('http://localhost:8000/users/api/refresh-token/', { refresh: refreshToken })
+    const { access, refresh } = response.data
+    localStorage.setItem('accessToken', access)
+    localStorage.setItem('refreshToken', refresh)
+    return access
+  } catch (error) {
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    throw error
+  }
+}
+
+axiosInstance.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('accessToken')
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
+    return config
+  },
+  error => Promise.reject(error)
+)
 
 axiosInstance.interceptors.response.use(
   response => response,
   async error => {
-    console.log('Error in axiosInstance.interceptors.response.use:', error)
     const originalRequest = error.config
-    
-    // Check if the error is due to an invalid or expired token
-    if (error.response.status === 401 && error.response.data.code === "token_not_valid") {
-      if (!originalRequest._retry && store.state.refreshToken) {
-        console.log('Attempting to refresh token...')
-        originalRequest._retry = true
-        try {
-          const refreshed = await store.dispatch('refreshToken')
-          console.log('Token refresh attempt result:', refreshed)
-          if (refreshed) {
-            return axiosInstance(originalRequest)
-          }
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError)
-        }
+
+    if (error.response.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(token => {
+          originalRequest.headers['Authorization'] = `Bearer ${token}`
+          return axiosInstance(originalRequest)
+        }).catch(err => Promise.reject(err))
       }
-      
-      // If we reach here, it means either:
-      // 1. We've already tried to refresh and failed
-      // 2. We don't have a refresh token
-      // 3. The refresh attempt failed
-      // In all these cases, we should log out the user
-      console.log('Authentication failed. Logging out user.')
+
+      originalRequest._retry = true
+      isRefreshing = true
+
       try {
-        await logout()
-        store.commit('CLEAR_TOKENS')
+        const newToken = await refreshToken()
+        processQueue(null, newToken)
+        originalRequest.headers['Authorization'] = `Bearer ${newToken}`
+        return axiosInstance(originalRequest)
+      } catch (refreshError) {
+        processQueue(refreshError, null)
+        console.error('Token refresh failed:', refreshError)
         router.push('/login')
-      } catch (logoutError) {
-        console.error('Error during logout:', logoutError)
+        return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
-    
+
     return Promise.reject(error)
   }
 )

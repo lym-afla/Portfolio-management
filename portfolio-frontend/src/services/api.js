@@ -1,4 +1,3 @@
-
 import axiosInstance from '@/config/axiosConfig'
 import store from '@/store'
 
@@ -34,12 +33,18 @@ export const login = async (username, password) => {
   }
 }
 
-export const refreshToken = async (refreshToken) => {
+export const refreshToken = async () => {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) {
+    throw new Error('No refresh token available')
+  }
+  
   try {
     const response = await axiosInstance.post('/users/api/refresh-token/', { refresh: refreshToken })
     return response.data
   } catch (error) {
-    throw error.response ? error.response.data : error.message
+    console.error('Error refreshing token:', error)
+    throw error
   }
 }
 

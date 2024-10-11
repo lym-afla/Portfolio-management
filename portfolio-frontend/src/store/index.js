@@ -1,6 +1,6 @@
 import { createStore } from 'vuex'
 import * as api from '@/services/api'
-// import router from '@/router'
+import router from '@/router'
 // import axios from 'axios'
 
 export default createStore({
@@ -101,8 +101,10 @@ export default createStore({
       }
     },
     async refreshToken({ commit, state }) {
+      console.log('Refreshing token...')
       try {
         const response = await api.refreshToken(state.refreshToken)
+        console.log('Refresh token response:', response)
         commit('SET_TOKENS', {
           accessToken: response.access,
           refreshToken: response.refresh || state.refreshToken
@@ -154,6 +156,18 @@ export default createStore({
     },
     updateNavChartParams({ commit }, params) {
       commit('SET_NAV_CHART_PARAMS', params)
+    },
+    async logout({ commit }) {
+      console.log('Logout action triggered')
+      try {
+        await api.logout()
+      } catch (error) {
+        console.error('Error during logout:', error)
+      } finally {
+        commit('CLEAR_TOKENS')
+        commit('SET_USER', null)
+        router.push('/login')
+      }
     }
   },
   getters: {

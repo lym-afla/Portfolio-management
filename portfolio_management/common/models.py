@@ -124,7 +124,7 @@ class FX(models.Model):
             existing_rate = getattr(fx_instance, f'{source}{target}', None)
 
             if existing_rate is None:
-                # Get the FX rate for the date
+                # Get the FX rate for the dateaxio
                 try:
                     rate_data = update_FX_from_Yahoo(source, target, date)
 
