@@ -30,6 +30,7 @@ def get_prices_table_api(request):
             'security__name': price.security.name,
             'security__type': price.security.type,
             'security__currency': price.security.currency,
+            'security__id': price.security.id,
             'price': f"{price.price:,.{2}f}"
         }
         for price in prices

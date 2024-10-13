@@ -165,6 +165,14 @@
         disable-sort
         no-data-text="Use 'Apply Filters' to update table"
       >
+        <template #[`item.security__name`]="{ item }">
+          <router-link
+            :to="{ name: 'SecurityDetail', params: { id: item.security__id } }"
+            class="text-primary text-decoration-none font-weight-medium"
+          >
+            {{ item.security__name }}
+          </router-link>
+        </template>
         <template #[`item.price`]="{ item }">
           <span class="editable" @click="editPrice(item)">{{ item.price }}</span>
         </template>

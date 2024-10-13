@@ -587,16 +587,27 @@ export const getPriceImportFormStructure = async () => {
 
 export const importPrices = async (importData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/price-import/`, importData, {
+    const effectiveCurrentDate = store.state.effectiveCurrentDate
+    if (!effectiveCurrentDate) {
+      throw new Error('Effective current date not set')
+    }
+
+    const dataToSend = {
+      ...importData,
+      effective_current_date: effectiveCurrentDate
+    }
+
+    const response = await axiosInstance.post('/database/api/price-import/sse/', dataToSend, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
       responseType: 'text',
       onDownloadProgress: (progressEvent) => {
-        console.log('Progress event:', progressEvent)
         if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
           const dataChunk = progressEvent.event.currentTarget.response
-          console.log('Data chunk:', dataChunk)
           const lines = dataChunk.split('\n')
           lines.forEach((line) => {
-            if (line) {
+            if (line.trim()) {
               try {
                 const data = JSON.parse(line)
                 window.dispatchEvent(new CustomEvent('priceImportProgress', { detail: data }))
@@ -605,27 +616,18 @@ export const importPrices = async (importData) => {
               }
             }
           })
-        } else {
-          console.warn('Progress event does not contain expected data:', progressEvent)
         }
       }
     })
     console.log('[api.js] Import completed. Response:', response)
     return response.data
   } catch (error) {
-    console.error('Error importing prices:', error)
+    console.error('Error updating broker performance:', error)
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      console.error('Error response:', error.response)
       throw error.response.data
     } else if (error.request) {
-      // The request was made but no response was received
-      console.error('Error request:', error.request)
       throw new Error('No response received from server')
     } else {
-      // Something happened in setting up the request that triggered an Error
-      console.error('Error message:', error.message)
       throw new Error('Error setting up the request')
     }
   }

@@ -166,7 +166,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import { importPrices, getPriceImportFormStructure } from '@/services/api'
 import { format } from 'date-fns'
@@ -187,6 +187,11 @@ export default {
       set: (value) => emit('update:modelValue', value)
     })
 
+    const dateType = ref('range')
+    const securitiesList = ref([])
+    const brokersList = ref([])
+    const frequencyChoices = ref([])
+
     const { handleSubmit, resetForm, errors } = useForm({
       initialValues: {
         securities: [],
@@ -198,12 +203,14 @@ export default {
       },
       validationSchema: {
         securities: (value) => {
+          if (!value) return true; // Allow undefined during cleanup
           if (value.length === 0 && brokers.value.length === 0) {
             return 'Either securities or brokers must be selected'
           }
           return true
         },
         brokers: (value) => {
+          if (!value) return true; // Allow undefined during cleanup
           if (value.length === 0 && securities.value.length === 0) {
             return 'Either securities or brokers must be selected'
           }
@@ -243,10 +250,6 @@ export default {
     const { value: frequency, errorMessage: frequencyError } = useField('frequency')
     const { value: singleDate, errorMessage: singleDateError } = useField('singleDate')
 
-    const dateType = ref('range')
-    const securitiesList = ref([])
-    const brokersList = ref([])
-    const frequencyChoices = ref([])
     const generalError = ref('')
     const isSubmitting = ref(false)
     const isImporting = ref(false)
@@ -328,14 +331,25 @@ export default {
       }
     }
 
+    const cleanupForm = () => {
+      resetForm()
+      securities.value = []
+      brokers.value = []
+      startDate.value = null
+      endDate.value = null
+      frequency.value = null
+      singleDate.value = null
+    }
+
     onMounted(() => {
       window.addEventListener('priceImportProgress', handleProgress)
 
       fetchFormStructure()
     })
 
-    onUnmounted(() => {
+    onBeforeUnmount(() => {
       window.removeEventListener('priceImportProgress', handleProgress)
+      cleanupForm()
     })
 
     const submitForm = handleSubmit(async (values) => {
@@ -408,6 +422,12 @@ export default {
       resetForm()
     }
 
+    watch(() => props.modelValue, (newValue) => {
+      if (!newValue) {
+        cleanupForm()
+      }
+    })
+
     return {
       dialog,
       securities,
@@ -442,7 +462,7 @@ export default {
       errors,
       showProgressDialog,
       showSummaryDialog,
-      closeSummaryDialog
+      closeSummaryDialog,
     }
   }
 }

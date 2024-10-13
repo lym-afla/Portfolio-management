@@ -109,10 +109,25 @@
               <td class="text-start text-nowrap">
                 {{ item.type }}
                 <template v-if="item.type.includes('Cash') || item.type === 'Dividend'">
-                  {{ item.cash_flow }} {{ item.type === 'Dividend' ? `for ${item.security}` : '' }}
+                  {{ item.cash_flow }}
+                  <template v-if="item.type === 'Dividend'">
+                    for 
+                    <router-link
+                      :to="{ name: 'SecurityDetail', params: { id: item.security.id } }"
+                      class="text-primary text-decoration-none font-weight-medium"
+                    >
+                      {{ item.security.name }}
+                    </router-link>
+                  </template>
                 </template>
                 <template v-else-if="item.type === 'Close'">
-                  {{ item.quantity }} of {{ item.security }}
+                  {{ item.quantity }} of
+                  <router-link
+                    :to="{ name: 'SecurityDetail', params: { id: item.security.id } }"
+                    class="text-primary text-decoration-none font-weight-medium"
+                  >
+                    {{ item.security.name }}
+                  </router-link>
                 </template>
                 <template v-else-if="item.type === 'FX'">
                   : {{ item.from_cur }} to {{ item.to_cur }} @ {{ item.exchange_rate }}
@@ -120,7 +135,13 @@
                 </template>
                 <template v-else-if="!['Broker commission', 'Tax', 'Interest income'].includes(item.type)">
                   {{ item.quantity }}
-                  @ {{ item.price }} of {{ item.security }}
+                  @ {{ item.price }} of
+                  <router-link
+                    :to="{ name: 'SecurityDetail', params: { id: item.security.id } }"
+                    class="text-primary text-decoration-none font-weight-medium"
+                  >
+                    {{ item.security.name }}
+                  </router-link>
                   <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
                 </template>
               </td>

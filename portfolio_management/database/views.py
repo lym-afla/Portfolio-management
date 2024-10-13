@@ -30,7 +30,7 @@ from common.forms import DashboardForm_old_setup
 from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
 from core.price_utils import get_prices_table_api
 from core.brokers_utils import get_brokers_table_api
-from core.securities_utils import get_securities_table_api, get_security_detail, get_security_price_history, get_security_position_history, get_security_transactions
+from core.securities_utils import get_securities_table_api, get_security_detail, get_security_transactions
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
@@ -879,162 +879,162 @@ def import_prices(request):
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
 
-def generate_dates(start, end, frequency):
-    dates = []
-    if frequency == 'monthly':
-        current = start.replace(day=1) + relativedelta(months=1) - timedelta(days=1)  # Last day of the start month
-    elif frequency == 'quarterly':
-        quarter_end_month = 3 * ((start.month - 1) // 3 + 1)
-        current = date(start.year, quarter_end_month, 1) + relativedelta(months=1) - timedelta(days=1)
-    elif frequency == 'annually':
-        current = date(start.year, 12, 31)
-    else:
-        raise ValueError(f"Unsupported frequency: {frequency}")
+# def generate_dates(start, end, frequency):
+#     dates = []
+#     if frequency == 'monthly':
+#         current = start.replace(day=1) + relativedelta(months=1) - timedelta(days=1)  # Last day of the start month
+#     elif frequency == 'quarterly':
+#         quarter_end_month = 3 * ((start.month - 1) // 3 + 1)
+#         current = date(start.year, quarter_end_month, 1) + relativedelta(months=1) - timedelta(days=1)
+#     elif frequency == 'annually':
+#         current = date(start.year, 12, 31)
+#     else:
+#         raise ValueError(f"Unsupported frequency: {frequency}")
     
-    while current <= end:
-        dates.append(current)
-        if frequency == 'monthly':
-            current = (current + relativedelta(months=1)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
-        elif frequency == 'quarterly':
-            current = (current + relativedelta(months=3)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
-        elif frequency == 'annually':
-            current = date(current.year + 1, 12, 31)
-    return dates
+#     while current <= end:
+#         dates.append(current)
+#         if frequency == 'monthly':
+#             current = (current + relativedelta(months=1)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
+#         elif frequency == 'quarterly':
+#             current = (current + relativedelta(months=3)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
+#         elif frequency == 'annually':
+#             current = date(current.year + 1, 12, 31)
+#     return dates
 
-def import_security_prices_from_ft(security, dates):
-    url = security.update_link
-    user_agent = UserAgent().random
-    headers = {'User-Agent': user_agent}
+# def import_security_prices_from_ft(security, dates):
+#     url = security.update_link
+#     user_agent = UserAgent().random
+#     headers = {'User-Agent': user_agent}
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        yield {
-            "security_name": security.name,
-            "status": "error",
-            "message": f"Error fetching data for {security.name}: {str(e)}"
-        }
-        return
+#     try:
+#         response = requests.get(url, headers=headers, timeout=10)
+#         response.raise_for_status()
+#     except requests.RequestException as e:
+#         yield {
+#             "security_name": security.name,
+#             "status": "error",
+#             "message": f"Error fetching data for {security.name}: {str(e)}"
+#         }
+#         return
 
-    soup = BeautifulSoup(response.content, "html.parser")
+#     soup = BeautifulSoup(response.content, "html.parser")
 
-    elem = soup.find('section', {'class': 'mod-tearsheet-add-to-watchlist'})
-    if elem and 'data-mod-config' in elem.attrs:
-        data = json.loads(elem['data-mod-config'])
-        xid = data['xid']
+#     elem = soup.find('section', {'class': 'mod-tearsheet-add-to-watchlist'})
+#     if elem and 'data-mod-config' in elem.attrs:
+#         data = json.loads(elem['data-mod-config'])
+#         xid = data['xid']
 
-        for date in dates:
-            result = {
-                "security_name": security.name,
-                "date": date.strftime('%Y-%m-%d'),
-                "status": "skipped"
-            }
+#         for date in dates:
+#             result = {
+#                 "security_name": security.name,
+#                 "date": date.strftime('%Y-%m-%d'),
+#                 "status": "skipped"
+#             }
 
-            # Check if a price already exists for this date
-            if Prices.objects.filter(security=security, date=date).exists():
-                yield result
-                continue
+#             # Check if a price already exists for this date
+#             if Prices.objects.filter(security=security, date=date).exists():
+#                 yield result
+#                 continue
 
-            end_date = date.strftime('%Y/%m/%d')
-            start_date = (date - timedelta(days=7)).strftime('%Y/%m/%d')
+#             end_date = date.strftime('%Y/%m/%d')
+#             start_date = (date - timedelta(days=7)).strftime('%Y/%m/%d')
 
-            try:
-                r = requests.get(
-                    f'https://markets.ft.com/data/equities/ajax/get-historical-prices?startDate={start_date}&endDate={end_date}&symbol={xid}',
-                    headers=headers,
-                    timeout=10
-                )
-                r.raise_for_status()
-                data = r.json()
+#             try:
+#                 r = requests.get(
+#                     f'https://markets.ft.com/data/equities/ajax/get-historical-prices?startDate={start_date}&endDate={end_date}&symbol={xid}',
+#                     headers=headers,
+#                     timeout=10
+#                 )
+#                 r.raise_for_status()
+#                 data = r.json()
 
-                df = pd.read_html(StringIO('<table>' + data['html'] + '</table>'))[0]
-                df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-                df['Date'] = pd.to_datetime(df['Date'].apply(lambda x: x.split(',')[-2][1:] + x.split(',')[-1]))
+#                 df = pd.read_html(StringIO('<table>' + data['html'] + '</table>'))[0]
+#                 df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+#                 df['Date'] = pd.to_datetime(df['Date'].apply(lambda x: x.split(',')[-2][1:] + x.split(',')[-1]))
 
-                # Convert 'date' to pandas Timestamp for comparison
-                date_as_timestamp = pd.Timestamp(date)
+#                 # Convert 'date' to pandas Timestamp for comparison
+#                 date_as_timestamp = pd.Timestamp(date)
 
-                df = df[df['Date'] <= date_as_timestamp]
+#                 df = df[df['Date'] <= date_as_timestamp]
 
-                if not df.empty:
-                    latest_price = df.iloc[0]['Close']
-                    if security.name in MUTUAL_FUNDS_IN_PENCES:
-                        latest_price = latest_price / 100
-                    Prices.objects.create(security=security, date=date, price=latest_price)
-                    result["status"] = "updated"
-                else:
-                    result["status"] = "error"
-                    result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
-            except Exception as e:
-                result["status"] = "error"
-                result["message"] = f"Error processing data for {security.name}: {str(e)}"
+#                 if not df.empty:
+#                     latest_price = df.iloc[0]['Close']
+#                     if security.name in MUTUAL_FUNDS_IN_PENCES:
+#                         latest_price = latest_price / 100
+#                     Prices.objects.create(security=security, date=date, price=latest_price)
+#                     result["status"] = "updated"
+#                 else:
+#                     result["status"] = "error"
+#                     result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
+#             except Exception as e:
+#                 result["status"] = "error"
+#                 result["message"] = f"Error processing data for {security.name}: {str(e)}"
 
-            yield result
+#             yield result
 
-    else:
-        yield {
-            "security_name": security.name,
-            "status": "error",
-            "message": f"No data found for {security.name}"
-        }
+#     else:
+#         yield {
+#             "security_name": security.name,
+#             "status": "error",
+#             "message": f"No data found for {security.name}"
+#         }
 
-def import_security_prices_from_yahoo(security, dates):
-    if not security.yahoo_symbol:
-        yield {
-            "security_name": security.name,
-            "status": "error",
-            "message": f"No Yahoo Finance symbol specified for {security.name}"
-        }
-        return
+# def import_security_prices_from_yahoo(security, dates):
+#     if not security.yahoo_symbol:
+#         yield {
+#             "security_name": security.name,
+#             "status": "error",
+#             "message": f"No Yahoo Finance symbol specified for {security.name}"
+#         }
+#         return
 
-    ticker = yf.Ticker(security.yahoo_symbol)
+#     ticker = yf.Ticker(security.yahoo_symbol)
 
-    for date in dates:
-        result = {
-            "security_name": security.name,
-            "date": date.strftime('%Y-%m-%d'),
-            "status": "skipped"
-        }
+#     for date in dates:
+#         result = {
+#             "security_name": security.name,
+#             "date": date.strftime('%Y-%m-%d'),
+#             "status": "skipped"
+#         }
 
-        # Check if a price already exists for this date
-        if Prices.objects.filter(security=security, date=date).exists():
-            yield result
-            continue
+#         # Check if a price already exists for this date
+#         if Prices.objects.filter(security=security, date=date).exists():
+#             yield result
+#             continue
 
-        end_date = (date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-        start_date = (date - pd.Timedelta(days=6)).strftime('%Y-%m-%d')
+#         end_date = (date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+#         start_date = (date - pd.Timedelta(days=6)).strftime('%Y-%m-%d')
 
-        try:
-            # Set auto_adjust to False to get unadjusted close prices
-            history = ticker.history(start=start_date, end=end_date, auto_adjust=False)
+#         try:
+#             # Set auto_adjust to False to get unadjusted close prices
+#             history = ticker.history(start=start_date, end=end_date, auto_adjust=False)
 
-            if not history.empty:
-                # Use 'Close' for unadjusted close price
-                latest_price = history.iloc[-1]['Close']
-                Prices.objects.create(security=security, date=date, price=latest_price)
-                result["status"] = "updated"
-            else:
-                result["status"] = "error"
-                result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
-        except RequestException as e:
-            logger.error(f"Network error while fetching data for {security.name}: {str(e)}")
-            result["status"] = "error"
-            result["message"] = f"Network error: {str(e)}"
-        except yf.YFinanceException as e:
-            logger.error(f"YFinance error for {security.name}: {str(e)}")
-            result["status"] = "error"
-            result["message"] = f"YFinance error: {str(e)}"
-        except pd.errors.EmptyDataError:
-            logger.error(f"Empty data received for {security.name}")
-            result["status"] = "error"
-            result["message"] = "Empty data received from Yahoo Finance"
-        except Exception as e:
-            logger.exception(f"Unexpected error processing data for {security.name}")
-            result["status"] = "error"
-            result["message"] = f"Unexpected error: {str(e)}"
+#             if not history.empty:
+#                 # Use 'Close' for unadjusted close price
+#                 latest_price = history.iloc[-1]['Close']
+#                 Prices.objects.create(security=security, date=date, price=latest_price)
+#                 result["status"] = "updated"
+#             else:
+#                 result["status"] = "error"
+#                 result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
+#         except RequestException as e:
+#             logger.error(f"Network error while fetching data for {security.name}: {str(e)}")
+#             result["status"] = "error"
+#             result["message"] = f"Network error: {str(e)}"
+#         except yf.YFinanceException as e:
+#             logger.error(f"YFinance error for {security.name}: {str(e)}")
+#             result["status"] = "error"
+#             result["message"] = f"YFinance error: {str(e)}"
+#         except pd.errors.EmptyDataError:
+#             logger.error(f"Empty data received for {security.name}")
+#             result["status"] = "error"
+#             result["message"] = "Empty data received from Yahoo Finance"
+#         except Exception as e:
+#             logger.exception(f"Unexpected error processing data for {security.name}")
+#             result["status"] = "error"
+#             result["message"] = f"Unexpected error: {str(e)}"
 
-        yield result
+#         yield result
 
     
 def get_broker_securities(request):
@@ -1092,11 +1092,31 @@ def api_get_security_detail(request, security_id):
 
 @api_view(['GET'])
 def api_get_security_price_history(request, security_id):
-    return Response(get_security_price_history(request, security_id))
+    try:
+        effective_current_date = request.session.get('effective_current_date', datetime.now().date().isoformat())
+        security = Assets.objects.get(id=security_id)
+        prices = Prices.objects.filter(security=security, date__lte=effective_current_date).order_by('date')
+        price_history = [{'date': price.date.strftime('%Y-%m-%d'), 'price': float(price.price)} for price in prices]
+        return JsonResponse(price_history, safe=False)
+    except Assets.DoesNotExist:
+        return JsonResponse({'error': 'Security not found'}, status=404)
 
 @api_view(['GET'])
 def api_get_security_position_history(request, security_id):
-    return Response(get_security_position_history(request, security_id))
+    try:
+        security = Assets.objects.get(id=security_id)
+        transactions = Transactions.objects.filter(security=security, investor=request.user).order_by('date')
+        position_history = []
+        current_position = 0
+        for transaction in transactions:
+            if transaction.type == 'Buy':
+                current_position += transaction.quantity
+            elif transaction.type == 'Sell':
+                current_position += transaction.quantity
+            position_history.append({'date': transaction.date.strftime('%Y-%m-%d'), 'position': current_position})
+        return JsonResponse(position_history, safe=False)
+    except Assets.DoesNotExist:
+        return JsonResponse({'error': 'Security not found'}, status=404)
 
 @api_view(['GET'])
 def api_get_security_transactions(request, security_id):
@@ -1282,6 +1302,9 @@ def api_update_price(request, price_id):
         print("Price update form errors:", form.errors)
         return Response({'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)
 
+from channels.db import database_sync_to_async
+import asyncio
+
 class PriceImportView(APIView):
     def get(self, request):
         user = request.user
@@ -1306,114 +1329,122 @@ class PriceImportView(APIView):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def import_prices(self, data):
-        securities = data.get('securities', [])
-        broker = data.get('broker')
-        start_date = data.get('start_date')
-        end_date = data.get('end_date')
-        frequency = data.get('frequency')
-        single_date = data.get('single_date')
+    # async def import_prices(self, data, user):
+    #     securities = data.get('securities', [])
+    #     broker = data.get('broker')
+    #     start_date = data.get('start_date')
+    #     end_date = data.get('end_date')
+    #     frequency = data.get('frequency')
+    #     single_date = data.get('single_date')
+    #     effective_current_date = parse_date(data.get('effective_current_date'))
 
-        if single_date:
-            dates = [single_date]
-            start_date = end_date = single_date
-            frequency = 'single'
-        else:
-            dates = generate_dates(start_date, end_date, frequency)
-            
-        if broker:
-            all_securities = broker.securities.filter(investor=self.request.user)
-            effective_current_date = datetime.strptime(self.request.session['effective_current_date'], '%Y-%m-%d').date()
-            securities = [
-                security for security in all_securities
-                if security.position(effective_current_date) > 0
-            ]
+    #     if not effective_current_date:
+    #         raise ValueError("Invalid or missing effective_current_date")
 
-        total_securities = len(securities)
-        total_dates = len(dates)
-        total_operations = total_securities * total_dates
-        current_operation = 0
-        results = []
+    #     if single_date:
+    #         dates = [single_date]
+    #         start_date = end_date = single_date
+    #         frequency = 'single'
+    #     else:
+    #         dates = await database_sync_to_async(generate_dates)(start_date, end_date, frequency)
 
-        for security in securities:
-            try:
-                security = Assets.objects.get(id=security.id, investor=self.request.user)
+    #     if broker:
+    #         all_securities = await database_sync_to_async(broker.securities.filter)(investor=user)
+    #         securities = [
+    #             security for security in all_securities
+    #             if await database_sync_to_async(security.position)(effective_current_date) > 0
+    #         ]
+
+    #     total_securities = len(securities)
+    #     total_dates = len(dates)
+    #     total_operations = total_securities * total_dates
+    #     current_operation = 0
+    #     results = []
+
+    #     for security in securities:
+    #         try:
+    #             security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
                 
-                if security.data_source == 'FT' and security.update_link:
-                    price_generator = import_security_prices_from_ft(security, dates)
-                elif security.data_source == 'YAHOO' and security.yahoo_symbol:
-                    price_generator = import_security_prices_from_yahoo(security, dates)
-                else:
-                    error_message = f"No valid data source or update information for {security.name}"
-                    results.append({
-                        "security_name": security.name,
-                        "status": "skipped",
-                        "message": error_message
-                    })
+    #             if security.data_source == 'FT' and security.update_link:
+    #                 price_generator = import_security_prices_from_ft(security, dates)
+    #             elif security.data_source == 'YAHOO' and security.yahoo_symbol:
+    #                 price_generator = import_security_prices_from_yahoo(security, dates)
+    #             else:
+    #                 error_message = f"No valid data source or update information for {security.name}"
+    #                 results.append({
+    #                     "security_name": security.name,
+    #                     "status": "skipped",
+    #                     "message": error_message
+    #                 })
                     
-                    yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
-                    current_operation += len(dates)
-                    continue
+    #                 yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
+    #                 current_operation += len(dates)
+    #                 continue
 
-                security_result = {
-                    "security_name": security.name,
-                    "updated_dates": [],
-                    "skipped_dates": [],
-                    "errors": []
-                }
+    #             security_result = {
+    #                 "security_name": security.name,
+    #                 "updated_dates": [],
+    #                 "skipped_dates": [],
+    #                 "errors": []
+    #             }
 
-                for result in price_generator:
-                    current_operation += 1
-                    # progress = (current_operation / total_operations) * 100
+    #             async for result in self.async_generator(price_generator):
+    #                 current_operation += 1
 
-                    if result["status"] == "updated":
-                        security_result["updated_dates"].append(result["date"])
-                    elif result["status"] == "skipped":
-                        security_result["skipped_dates"].append(result["date"])
-                    elif result["status"] == "error":
-                        security_result["errors"].append(f"{result['date']}: {result['message']}")
+    #                 if result["status"] == "updated":
+    #                     security_result["updated_dates"].append(result["date"])
+    #                 elif result["status"] == "skipped":
+    #                     security_result["skipped_dates"].append(result["date"])
+    #                 elif result["status"] == "error":
+    #                     security_result["errors"].append(f"{result['date']}: {result['message']}")
 
-                    yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
+    #                 yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
 
-                results.append(security_result)
+    #             results.append(security_result)
 
-            except Assets.DoesNotExist:
-                error_message = f"Security with ID {security.id} not found"
-                results.append(error_message)
-                yield self.format_progress('error', current_operation, total_operations, message=error_message)
-                current_operation += len(dates)
-            except Exception as e:
-                error_message = f"Error updating prices for security {security.id}: {str(e)}"
-                results.append(error_message)
-                yield self.format_progress('error', current_operation, total_operations, message=error_message)
-                current_operation += len(dates)
+    #         except Assets.DoesNotExist:
+    #             error_message = f"Security with ID {security.id} not found"
+    #             results.append(error_message)
+    #             yield self.format_progress('error', current_operation, total_operations, message=error_message)
+    #             current_operation += len(dates)
+    #         except Exception as e:
+    #             error_message = f"Error updating prices for security {security.id}: {str(e)}"
+    #             results.append(error_message)
+    #             yield self.format_progress('error', current_operation, total_operations, message=error_message)
+    #             current_operation += len(dates)
 
-        yield self.format_progress('complete', current_operation, total_operations,
-                                   message='Price import process completed',
-                                   details=results,
-                                   start_date=start_date.strftime('%Y-%m-%d'),
-                                   end_date=end_date.strftime('%Y-%m-%d'),
-                                   frequency=frequency,
-                                   total_dates=len(dates))
+    #     yield self.format_progress('complete', current_operation, total_operations,
+    #                                message='Price import process completed',
+    #                                details=results,
+    #                                start_date=start_date.strftime('%Y-%m-%d'),
+    #                                end_date=end_date.strftime('%Y-%m-%d'),
+    #                                frequency=frequency,
+    #                                total_dates=len(dates))
         
-    @staticmethod
-    def format_progress(status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
-        progress_data = {
-            'status': status,
-            'current': current,
-            'total': total,
-            'progress': (current / total) * 100,
-        }
-        if security_name:
-            progress_data['security_name'] = security_name
-        if date:
-            progress_data['date'] = date
-        if result:
-            progress_data['result'] = result
-        if message:
-            progress_data['message'] = message
-        progress_data.update(kwargs)
-        return json.dumps(progress_data) + '\n'
+    # @staticmethod
+    # def format_progress(status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
+    #     progress_data = {
+    #         'status': status,
+    #         'current': current,
+    #         'total': total,
+    #         'progress': (current / total) * 100,
+    #     }
+    #     if security_name:
+    #         progress_data['security_name'] = security_name
+    #     if date:
+    #         progress_data['date'] = date
+    #     if result:
+    #         progress_data['result'] = result
+    #     if message:
+    #         progress_data['message'] = message
+    #     progress_data.update(kwargs)
+    #     return json.dumps(progress_data) + '\n'
+
+    # @staticmethod
+    # async def async_generator(sync_generator):
+    #     for item in sync_generator:
+    #         yield item
+    #         await asyncio.sleep(0)  # Allow other coroutines to run
             
         
 class BrokerViewSet(viewsets.ModelViewSet):
@@ -1491,7 +1522,7 @@ class UpdateBrokerPerformanceView(APIView):
     #         elif is_restricted_str == 'False':
     #             is_restricted_list = [False]
     #         elif is_restricted_str == 'All':
-    #             is_restricted_list = [None, True, False]
+    #             is_restricted_list = [None, TrFue, False]
     #         else:
     #             return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
             

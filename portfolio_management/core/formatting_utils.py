@@ -59,7 +59,7 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
         return format_percentage(value, digits=1)
     elif key in ['current_position', 'open_position', 'quantity']:
         return currency_format(value, currency=None, digits=0)
-    elif key in ['id', 'no_of_securities']:
+    elif key in ['id', 'no_of_securities'] or 'id' in key:
         return value
     elif key == 'exchange_rate':
         return currency_format(value, currency=None, digits=4)

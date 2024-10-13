@@ -123,7 +123,10 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
         'id': transaction.id,
         'transaction_type': 'regular',
         'type': transaction.type,
-        'security': transaction.security.name if transaction.security else None,
+        'security': {
+            'name': transaction.security.name if transaction.security else None,
+            'id': transaction.security.id if transaction.security else None,
+        },
         'cur': transaction.currency,
     }
 

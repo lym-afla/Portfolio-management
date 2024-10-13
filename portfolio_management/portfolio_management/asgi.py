@@ -2,7 +2,7 @@ import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.urls import path, re_path
-from database.consumers import UpdateBrokerPerformanceConsumer
+from database.consumers import UpdateBrokerPerformanceConsumer, PriceImportConsumer
 from transactions.consumers import TransactionConsumer
 from channels.security.websocket import AllowedHostsOriginValidator
 from .auth_middleware import TokenAuthMiddleware
@@ -16,6 +16,7 @@ application = ProtocolTypeRouter({
         URLRouter([
             # Route for SSE POST requests
             path("database/api/update-broker-performance/sse/", UpdateBrokerPerformanceConsumer.as_asgi()),
+            path("database/api/price-import/sse/", PriceImportConsumer.as_asgi()),
             # Route all other HTTP requests to Django
             re_path(r"", django_asgi_app),  # This should be the last route
         ])

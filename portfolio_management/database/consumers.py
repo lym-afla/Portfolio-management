@@ -2,6 +2,11 @@ import json
 from channels.generic.http import AsyncHttpConsumer
 from channels.db import database_sync_to_async
 
+from django.utils.dateparse import parse_date
+import asyncio
+from common.models import Assets, Brokers
+from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo
+
 from constants import CURRENCY_CHOICES
 from .forms import BrokerPerformanceForm
 from core.database_utils import get_years_count, save_or_update_annual_broker_performance
@@ -138,3 +143,165 @@ class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
             await self.send_response(405, json.dumps({'error': 'Method Not Allowed'}).encode('utf-8'), headers=headers + [
                 (b'Content-Type', b'application/json'),
             ])
+
+class PriceImportConsumer(AsyncHttpConsumer):
+    async def handle(self, body):
+        headers = [
+            (b"Access-Control-Allow-Origin", b"http://localhost:8080"),
+            (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
+            (b"Access-Control-Allow-Headers", b"Content-Type, Authorization"),
+            (b"Access-Control-Allow-Credentials", b"true"),
+        ]
+
+        if self.scope['method'] == 'OPTIONS':
+            await self.send_response(200, b'', headers=headers)
+            return
+
+        if isinstance(self.scope['user'], AnonymousUser):
+            await self.send_response(401, json.dumps({'error': 'Authentication required'}).encode('utf-8'), headers=headers + [
+                (b'Content-Type', b'application/json'),
+            ])
+            return
+
+        if self.scope['method'] == 'POST':
+            try:
+                data = json.loads(body.decode('utf-8'))
+            except json.JSONDecodeError:
+                await self.send_response(400, json.dumps({'error': 'Invalid JSON'}).encode('utf-8'), headers=headers + [
+                    (b'Content-Type', b'application/json'),
+                ])
+                return
+
+            sse_headers = headers + [
+                (b"Cache-Control", b"no-cache"),
+                (b"Content-Type", b"text/event-stream"),
+                (b"Transfer-Encoding", b"chunked"),
+            ]
+            await self.send_headers(headers=sse_headers)
+
+            user = self.scope['user']
+            async for event in self.import_prices(data, user):
+                await self.send_body(event.encode('utf-8'), more_body=True)
+
+            await self.send_body(b'', more_body=False)
+        else:
+            await self.send_response(405, json.dumps({'error': 'Method Not Allowed'}).encode('utf-8'), headers=headers + [
+                (b'Content-Type', b'application/json'),
+            ])
+
+    async def import_prices(self, data, user):
+        securities = data.get('securities', [])
+        broker = data.get('broker')
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        frequency = data.get('frequency')
+        single_date = data.get('single_date')
+        effective_current_date = parse_date(data.get('effective_current_date'))
+
+        if not effective_current_date:
+            raise ValueError("Invalid or missing effective_current_date")
+
+        if single_date:
+            dates = [single_date]
+            start_date = end_date = single_date
+            frequency = 'single'
+        else:
+            dates = await database_sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
+
+        if broker:
+            all_securities = await database_sync_to_async(Brokers.objects.get)(id=broker, investor=user).securities.all()
+            securities = [
+                security for security in all_securities
+                if await database_sync_to_async(security.position)(effective_current_date) > 0
+            ]
+
+        total_securities = len(securities)
+        total_dates = len(dates)
+        total_operations = total_securities * total_dates
+        current_operation = 0
+        results = []
+
+        for security in securities:
+            try:
+                security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
+                
+                if security.data_source == 'FT' and security.update_link:
+                    price_generator = import_security_prices_from_ft(security, dates)
+                elif security.data_source == 'YAHOO' and security.yahoo_symbol:
+                    price_generator = import_security_prices_from_yahoo(security, dates)
+                else:
+                    error_message = f"No valid data source or update information for {security.name}"
+                    results.append({
+                        "security_name": security.name,
+                        "status": "skipped",
+                        "message": error_message
+                    })
+                    
+                    yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
+                    current_operation += len(dates)
+                    continue
+
+                security_result = {
+                    "security_name": security.name,
+                    "updated_dates": [],
+                    "skipped_dates": [],
+                    "errors": []
+                }
+
+                async for result in self.async_generator(price_generator):
+                    current_operation += 1
+
+                    if result["status"] == "updated":
+                        security_result["updated_dates"].append(result["date"])
+                    elif result["status"] == "skipped":
+                        security_result["skipped_dates"].append(result["date"])
+                    elif result["status"] == "error":
+                        security_result["errors"].append(f"{result['date']}: {result['message']}")
+
+                    yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
+
+                results.append(security_result)
+
+            except Assets.DoesNotExist:
+                error_message = f"Security with ID {security.id} not found"
+                results.append(error_message)
+                yield self.format_progress('error', current_operation, total_operations, message=error_message)
+                current_operation += len(dates)
+            except Exception as e:
+                error_message = f"Error updating prices for security {security.id}: {str(e)}"
+                results.append(error_message)
+                yield self.format_progress('error', current_operation, total_operations, message=error_message)
+                current_operation += len(dates)
+
+        yield self.format_progress('complete', current_operation, total_operations,
+                                   message='Price import process completed',
+                                   details=results,
+                                   start_date=start_date.strftime('%Y-%m-%d'),
+                                   end_date=end_date.strftime('%Y-%m-%d'),
+                                   frequency=frequency,
+                                   total_dates=len(dates))
+
+    @staticmethod
+    def format_progress(status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
+        progress_data = {
+            'status': status,
+            'current': current,
+            'total': total,
+            'progress': (current / total) * 100,
+        }
+        if security_name:
+            progress_data['security_name'] = security_name
+        if date:
+            progress_data['date'] = date
+        if result:
+            progress_data['result'] = result
+        if message:
+            progress_data['message'] = message
+        progress_data.update(kwargs)
+        return json.dumps(progress_data) + '\n'
+
+    @staticmethod
+    async def async_generator(sync_generator):
+        for item in sync_generator:
+            yield item
+            await asyncio.sleep(0)  # Allow other coroutines to run

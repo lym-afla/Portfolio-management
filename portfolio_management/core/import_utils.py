@@ -1,7 +1,11 @@
 import datetime
 from functools import lru_cache
+from io import StringIO
+import json
+from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
-from common.models import Brokers, Assets, Transactions
+import requests
+from common.models import Brokers, Assets, Prices, Transactions
 from decimal import Decimal, InvalidOperation
 import pandas as pd
 from django.core.files.storage import default_storage
@@ -12,8 +16,13 @@ import logging
 from channels.db import database_sync_to_async
 from django.forms.models import model_to_dict
 from django.db.models import Q
+from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
+from fake_useragent import UserAgent
+from requests.exceptions import RequestException
+import yfinance as yf
 
-from constants import TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL
+from constants import MUTUAL_FUNDS_IN_PENCES, TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -311,3 +320,160 @@ async def parse_charles_stanley_transactions(file_path, currency, broker_id, use
         },
     }
     logger.debug("Yielded completion of import process")
+
+def generate_dates_for_price_import(start, end, frequency):
+    dates = []
+    if frequency == 'monthly':
+        current = start.replace(day=1) + relativedelta(months=1) - timedelta(days=1)  # Last day of the start month
+    elif frequency == 'quarterly':
+        quarter_end_month = 3 * ((start.month - 1) // 3 + 1)
+        current = date(start.year, quarter_end_month, 1) + relativedelta(months=1) - timedelta(days=1)
+    elif frequency == 'annually':
+        current = date(start.year, 12, 31)
+    else:
+        raise ValueError(f"Unsupported frequency: {frequency}")
+    
+    while current <= end:
+        dates.append(current)
+        if frequency == 'monthly':
+            current = (current + relativedelta(months=1)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
+        elif frequency == 'quarterly':
+            current = (current + relativedelta(months=3)).replace(day=1) + relativedelta(months=1) - timedelta(days=1)
+        elif frequency == 'annually':
+            current = date(current.year + 1, 12, 31)
+    return dates
+
+def import_security_prices_from_ft(security, dates):
+    url = security.update_link
+    user_agent = UserAgent().random
+    headers = {'User-Agent': user_agent}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        yield {
+            "security_name": security.name,
+            "status": "error",
+            "message": f"Error fetching data for {security.name}: {str(e)}"
+        }
+        return
+
+    soup = BeautifulSoup(response.content, "html.parser")
+
+    elem = soup.find('section', {'class': 'mod-tearsheet-add-to-watchlist'})
+    if elem and 'data-mod-config' in elem.attrs:
+        data = json.loads(elem['data-mod-config'])
+        xid = data['xid']
+
+        for date in dates:
+            result = {
+                "security_name": security.name,
+                "date": date.strftime('%Y-%m-%d'),
+                "status": "skipped"
+            }
+
+            # Check if a price already exists for this date
+            if Prices.objects.filter(security=security, date=date).exists():
+                yield result
+                continue
+
+            end_date = date.strftime('%Y/%m/%d')
+            start_date = (date - timedelta(days=7)).strftime('%Y/%m/%d')
+
+            try:
+                r = requests.get(
+                    f'https://markets.ft.com/data/equities/ajax/get-historical-prices?startDate={start_date}&endDate={end_date}&symbol={xid}',
+                    headers=headers,
+                    timeout=10
+                )
+                r.raise_for_status()
+                data = r.json()
+
+                df = pd.read_html(StringIO('<table>' + data['html'] + '</table>'))[0]
+                df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+                df['Date'] = pd.to_datetime(df['Date'].apply(lambda x: x.split(',')[-2][1:] + x.split(',')[-1]))
+
+                # Convert 'date' to pandas Timestamp for comparison
+                date_as_timestamp = pd.Timestamp(date)
+
+                df = df[df['Date'] <= date_as_timestamp]
+
+                if not df.empty:
+                    latest_price = df.iloc[0]['Close']
+                    if security.name in MUTUAL_FUNDS_IN_PENCES:
+                        latest_price = latest_price / 100
+                    Prices.objects.create(security=security, date=date, price=latest_price)
+                    result["status"] = "updated"
+                else:
+                    result["status"] = "error"
+                    result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
+            except Exception as e:
+                result["status"] = "error"
+                result["message"] = f"Error processing data for {security.name}: {str(e)}"
+
+            yield result
+
+    else:
+        yield {
+            "security_name": security.name,
+            "status": "error",
+            "message": f"No data found for {security.name}"
+        }
+
+def import_security_prices_from_yahoo(security, dates):
+    if not security.yahoo_symbol:
+        yield {
+            "security_name": security.name,
+            "status": "error",
+            "message": f"No Yahoo Finance symbol specified for {security.name}"
+        }
+        return
+
+    ticker = yf.Ticker(security.yahoo_symbol)
+
+    for date in dates:
+        result = {
+            "security_name": security.name,
+            "date": date.strftime('%Y-%m-%d'),
+            "status": "skipped"
+        }
+
+        # Check if a price already exists for this date
+        if Prices.objects.filter(security=security, date=date).exists():
+            yield result
+            continue
+
+        end_date = (date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        start_date = (date - pd.Timedelta(days=6)).strftime('%Y-%m-%d')
+
+        try:
+            # Set auto_adjust to False to get unadjusted close prices
+            history = ticker.history(start=start_date, end=end_date, auto_adjust=False)
+
+            if not history.empty:
+                # Use 'Close' for unadjusted close price
+                latest_price = history.iloc[-1]['Close']
+                Prices.objects.create(security=security, date=date, price=latest_price)
+                result["status"] = "updated"
+            else:
+                result["status"] = "error"
+                result["message"] = f"No data found for {date.strftime('%Y-%m-%d')}"
+        except RequestException as e:
+            logger.error(f"Network error while fetching data for {security.name}: {str(e)}")
+            result["status"] = "error"
+            result["message"] = f"Network error: {str(e)}"
+        except yf.YFinanceException as e:
+            logger.error(f"YFinance error for {security.name}: {str(e)}")
+            result["status"] = "error"
+            result["message"] = f"YFinance error: {str(e)}"
+        except pd.errors.EmptyDataError:
+            logger.error(f"Empty data received for {security.name}")
+            result["status"] = "error"
+            result["message"] = "Empty data received from Yahoo Finance"
+        except Exception as e:
+            logger.exception(f"Unexpected error processing data for {security.name}")
+            result["status"] = "error"
+            result["message"] = f"Unexpected error: {str(e)}"
+
+        yield result

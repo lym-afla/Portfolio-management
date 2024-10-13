@@ -67,7 +67,10 @@
               </v-icon>
             </template>
             <template v-else-if="header.key === 'name'">
-              <router-link :to="{ name: 'SecurityDetail', params: { id: item.id } }">
+              <router-link
+                :to="{ name: 'SecurityDetail', params: { id: item.id } }"
+                class="text-primary text-decoration-none font-weight-medium"
+              >
                 {{ item.name }}
               </router-link>
             </template>

@@ -105,14 +105,6 @@ def get_security_detail(request, security_id):
 
     return format_table_data([security_data], currency_target, number_of_digits)[0]
 
-def get_security_price_history(request, security_id):
-    # Implement logic to fetch and return price history data
-    pass
-
-def get_security_position_history(request, security_id):
-    # Implement logic to fetch and return position history data
-    pass
-
 def get_security_transactions(request, security_id):
     # Implement logic to fetch and return recent transactions data
     pass
