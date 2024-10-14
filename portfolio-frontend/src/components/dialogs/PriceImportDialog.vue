@@ -171,6 +171,7 @@ import { useForm, useField } from 'vee-validate'
 import { importPrices, getPriceImportFormStructure } from '@/services/api'
 import { format } from 'date-fns'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
+import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'PriceImportDialog',
@@ -258,6 +259,8 @@ export default {
     const detailedSummary = ref([])
     const showProgressDialog = ref(false)
     const showSummaryDialog = ref(false)
+
+    const { handleApiError } = useErrorHandler()
 
     const fetchFormStructure = async () => {
       try {
@@ -394,22 +397,7 @@ export default {
         resetForm()
       } catch (error) {
         console.error('Error importing prices:', error)
-        if (typeof error === 'object') {
-          if (error.non_field_errors) {
-            generalError.value = error.non_field_errors[0]
-          } else {
-            // Handle field-specific errors
-            Object.keys(error).forEach(key => {
-              if (Array.isArray(error[key])) {
-                errors.value[key] = error[key][0]
-              } else {
-                errors.value[key] = error[key]
-              }
-            })
-          }
-        } else {
-          generalError.value = error.toString()
-        }
+        handleApiError(error)
       } finally {
         if (!showSummaryDialog.value) {
           showProgressDialog.value = false

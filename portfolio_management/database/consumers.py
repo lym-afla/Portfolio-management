@@ -1,6 +1,7 @@
 import json
 from channels.generic.http import AsyncHttpConsumer
 from channels.db import database_sync_to_async
+from asgiref.sync import sync_to_async
 
 from django.utils.dateparse import parse_date
 import asyncio
@@ -190,12 +191,12 @@ class PriceImportConsumer(AsyncHttpConsumer):
             ])
 
     async def import_prices(self, data, user):
-        securities = data.get('securities', [])
+        security_ids = data.get('securities', [])
         broker = data.get('broker')
-        start_date = data.get('start_date')
-        end_date = data.get('end_date')
+        start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d').date() if data.get('start_date') else None
+        end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d').date() if data.get('end_date') else None
         frequency = data.get('frequency')
-        single_date = data.get('single_date')
+        single_date = datetime.strptime(data.get('single_date'), '%Y-%m-%d').date() if data.get('single_date') else None
         effective_current_date = parse_date(data.get('effective_current_date'))
 
         if not effective_current_date:
@@ -206,7 +207,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
             start_date = end_date = single_date
             frequency = 'single'
         else:
-            dates = await database_sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
+            dates = await sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
 
         if broker:
             all_securities = await database_sync_to_async(Brokers.objects.get)(id=broker, investor=user).securities.all()
@@ -214,6 +215,10 @@ class PriceImportConsumer(AsyncHttpConsumer):
                 security for security in all_securities
                 if await database_sync_to_async(security.position)(effective_current_date) > 0
             ]
+        else:
+            securities = await database_sync_to_async(list)(Assets.objects.filter(investor=user, id__in=security_ids))
+
+        print(f"Filtered securities: {securities}")  # For debugging
 
         total_securities = len(securities)
         total_dates = len(dates)
@@ -223,7 +228,9 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
         for security in securities:
             try:
-                security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
+                # If security is already an Asset object, we don't need to fetch it again
+                if not isinstance(security, Assets):
+                    security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
                 
                 if security.data_source == 'FT' and security.update_link:
                     price_generator = import_security_prices_from_ft(security, dates)

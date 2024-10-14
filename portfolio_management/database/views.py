@@ -745,139 +745,139 @@ def _get_years_count(user, effective_date, brokers_or_group):
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     return last_year - start_year + 1
 
-def import_prices(request):
-    if request.method == 'POST':
-        form = PriceImportForm(request.POST, user=request.user)
-        if form.is_valid():
-            securities = form.cleaned_data.get('securities')
-            broker = form.cleaned_data.get('broker')
-            start_date = form.cleaned_data.get('start_date')
-            end_date = form.cleaned_data.get('end_date')
-            frequency = form.cleaned_data.get('frequency')
-            single_date = form.cleaned_data.get('single_date')
+# def import_prices(request):
+#     if request.method == 'POST':
+#         form = PriceImportForm(request.POST, user=request.user)
+#         if form.is_valid():
+#             securities = form.cleaned_data.get('securities')
+#             broker = form.cleaned_data.get('broker')
+#             start_date = form.cleaned_data.get('start_date')
+#             end_date = form.cleaned_data.get('end_date')
+#             frequency = form.cleaned_data.get('frequency')
+#             single_date = form.cleaned_data.get('single_date')
 
-            if single_date:
-                dates = [single_date]
-                start_date = end_date = single_date
-                frequency = 'single'
-            else:
-                dates = generate_dates(start_date, end_date, frequency)
+#             if single_date:
+#                 dates = [single_date]
+#                 start_date = end_date = single_date
+#                 frequency = 'single'
+#             else:
+#                 dates = generate_dates(start_date, end_date, frequency)
 
-            if broker:
-                # Get all securities for the broker
-                all_securities = broker.securities.filter(investor=request.user)
+#             if broker:
+#                 # Get all securities for the broker
+#                 all_securities = broker.securities.filter(investor=request.user)
 
-                # Convert single_date to effective_current_date
-                effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
+#                 # Convert single_date to effective_current_date
+#                 effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
                 
-                # Filter securities based on non-zero position for the effective date
-                securities = [
-                    security for security in all_securities
-                    if security.position(effective_current_date) > 0
-                ]
+#                 # Filter securities based on non-zero position for the effective date
+#                 securities = [
+#                     security for security in all_securities
+#                     if security.position(effective_current_date) > 0
+#                 ]
 
-            def generate_progress():
-                results = []
-                total_securities = len(securities)
-                total_dates = len(dates)
-                total_operations = total_securities * total_dates
-                current_operation = 0
+#             def generate_progress():
+#                 results = []
+#                 total_securities = len(securities)
+#                 total_dates = len(dates)
+#                 total_operations = total_securities * total_dates
+#                 current_operation = 0
 
-                for i, security in enumerate(securities, 1):
-                    try:
-                        security = Assets.objects.get(id=security.id, investor=request.user)
+#                 for i, security in enumerate(securities, 1):
+#                     try:
+#                         security = Assets.objects.get(id=security.id, investor=request.user)
                         
-                        if security.data_source == 'FT' and security.update_link:
-                            price_generator = import_security_prices_from_ft(security, dates)
-                        elif security.data_source == 'YAHOO' and security.yahoo_symbol:
-                            price_generator = import_security_prices_from_yahoo(security, dates)
-                        else:
-                            error_message = f"No valid data source or update information for {security.name}"
-                            results.append({
-                                "security_name": security.name,
-                                "status": "skipped",
-                                "message": error_message
-                            })
-                            yield json.dumps({
-                                'status': 'error',
-                                'current': current_operation,
-                                'total': total_operations,
-                                'progress': (current_operation / total_operations) * 100,
-                                'security_name': security.name,
-                                'message': error_message
-                            }) + '\n'
-                            current_operation += len(dates)  # Skip all dates for this security
-                            continue
+#                         if security.data_source == 'FT' and security.update_link:
+#                             price_generator = import_security_prices_from_ft(security, dates)
+#                         elif security.data_source == 'YAHOO' and security.yahoo_symbol:
+#                             price_generator = import_security_prices_from_yahoo(security, dates)
+#                         else:
+#                             error_message = f"No valid data source or update information for {security.name}"
+#                             results.append({
+#                                 "security_name": security.name,
+#                                 "status": "skipped",
+#                                 "message": error_message
+#                             })
+#                             yield json.dumps({
+#                                 'status': 'error',
+#                                 'current': current_operation,
+#                                 'total': total_operations,
+#                                 'progress': (current_operation / total_operations) * 100,
+#                                 'security_name': security.name,
+#                                 'message': error_message
+#                             }) + '\n'
+#                             current_operation += len(dates)  # Skip all dates for this security
+#                             continue
 
-                        security_result = {
-                            "security_name": security.name,
-                            "updated_dates": [],
-                            "skipped_dates": [],
-                            "errors": []
-                        }
+#                         security_result = {
+#                             "security_name": security.name,
+#                             "updated_dates": [],
+#                             "skipped_dates": [],
+#                             "errors": []
+#                         }
 
-                        for result in price_generator:
-                            current_operation += 1
-                            progress = (current_operation / total_operations) * 100
+#                         for result in price_generator:
+#                             current_operation += 1
+#                             progress = (current_operation / total_operations) * 100
 
-                            if result["status"] == "updated":
-                                security_result["updated_dates"].append(result["date"])
-                            elif result["status"] == "skipped":
-                                security_result["skipped_dates"].append(result["date"])
-                            elif result["status"] == "error":
-                                security_result["errors"].append(f"{result['date']}: {result['message']}")
+#                             if result["status"] == "updated":
+#                                 security_result["updated_dates"].append(result["date"])
+#                             elif result["status"] == "skipped":
+#                                 security_result["skipped_dates"].append(result["date"])
+#                             elif result["status"] == "error":
+#                                 security_result["errors"].append(f"{result['date']}: {result['message']}")
 
-                            yield json.dumps({
-                                'status': 'progress',
-                                'current': current_operation,
-                                'total': total_operations,
-                                'progress': progress,
-                                'security_name': security.name,
-                                'date': result["date"],
-                                'result': result["status"]
-                            }) + '\n'
+#                             yield json.dumps({
+#                                 'status': 'progress',
+#                                 'current': current_operation,
+#                                 'total': total_operations,
+#                                 'progress': progress,
+#                                 'security_name': security.name,
+#                                 'date': result["date"],
+#                                 'result': result["status"]
+#                             }) + '\n'
 
-                        results.append(security_result)
+#                         results.append(security_result)
 
-                    except ObjectDoesNotExist:
-                        error_message = f"Security with ID {security.id} not found"
-                        results.append(error_message)
-                        yield json.dumps({
-                            'status': 'error',
-                            'current': current_operation,
-                            'total': total_operations,
-                            'progress': (current_operation / total_operations) * 100,
-                            'message': error_message
-                        }) + '\n'
-                        current_operation += len(dates)  # Skip all dates for this security
-                    except Exception as e:
-                        error_message = f"Error updating prices for security {security.id}: {str(e)}"
-                        results.append(error_message)
-                        yield json.dumps({
-                            'status': 'error',
-                            'current': current_operation,
-                            'total': total_operations,
-                            'progress': (current_operation / total_operations) * 100,
-                            'message': error_message
-                        }) + '\n'
-                        current_operation += len(dates)  # Skip all dates for this security
+#                     except ObjectDoesNotExist:
+#                         error_message = f"Security with ID {security.id} not found"
+#                         results.append(error_message)
+#                         yield json.dumps({
+#                             'status': 'error',
+#                             'current': current_operation,
+#                             'total': total_operations,
+#                             'progress': (current_operation / total_operations) * 100,
+#                             'message': error_message
+#                         }) + '\n'
+#                         current_operation += len(dates)  # Skip all dates for this security
+#                     except Exception as e:
+#                         error_message = f"Error updating prices for security {security.id}: {str(e)}"
+#                         results.append(error_message)
+#                         yield json.dumps({
+#                             'status': 'error',
+#                             'current': current_operation,
+#                             'total': total_operations,
+#                             'progress': (current_operation / total_operations) * 100,
+#                             'message': error_message
+#                         }) + '\n'
+#                         current_operation += len(dates)  # Skip all dates for this security
 
-                # Send final response
-                yield json.dumps({
-                    'status': 'complete',
-                    'message': 'Price import process completed',
-                    'details': results,
-                    'start_date': start_date.strftime('%Y-%m-%d'),
-                    'end_date': end_date.strftime('%Y-%m-%d'),
-                    'frequency': frequency,
-                    'total_dates': len(dates)
-                }) + '\n'
+#                 # Send final response
+#                 yield json.dumps({
+#                     'status': 'complete',
+#                     'message': 'Price import process completed',
+#                     'details': results,
+#                     'start_date': start_date.strftime('%Y-%m-%d'),
+#                     'end_date': end_date.strftime('%Y-%m-%d'),
+#                     'frequency': frequency,
+#                     'total_dates': len(dates)
+#                 }) + '\n'
 
-            return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
-        else:
-            return JsonResponse({'status': 'error', 'message': 'Invalid form data', 'errors': form.errors})
+#             return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
+#         else:
+#             return JsonResponse({'status': 'error', 'message': 'Invalid form data', 'errors': form.errors})
 
-    return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+#     return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
 
 # def generate_dates(start, end, frequency):
 #     dates = []

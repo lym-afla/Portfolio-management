@@ -249,10 +249,10 @@ LOGGING = {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",
         },
-        # "daphne": {
-        #     "handlers": ["console", "json_file"],
-        #     "level": "DEBUG",
-        # },
+        "uvicorn": {
+            "handlers": ["console", "json_file"],
+            "level": "DEBUG",
+        },
         "transactions": {
             "handlers": ["console", "json_file"],
             "level": "DEBUG",

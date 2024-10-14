@@ -622,13 +622,13 @@ export const importPrices = async (importData) => {
     console.log('[api.js] Import completed. Response:', response)
     return response.data
   } catch (error) {
-    console.error('Error updating broker performance:', error)
+    console.error('Error updating price import:', error)
     if (error.response) {
       throw error.response.data
     } else if (error.request) {
       throw new Error('No response received from server')
     } else {
-      throw new Error('Error setting up the request')
+      throw new Error(error.message || 'Error setting up the request')
     }
   }
 }

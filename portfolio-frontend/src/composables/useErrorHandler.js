@@ -15,6 +15,8 @@ export function useErrorHandler() {
       }
     } else if (error.request) {
       errorMessage = 'The server did not respond. Please check your internet connection.'
+    } else if (error.message) {
+      errorMessage = error.message
     }
 
     showError(errorMessage)
