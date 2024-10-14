@@ -122,6 +122,13 @@
     <v-card>
       <v-card-title>Import Summary</v-card-title>
       <v-card-text>
+        <v-alert v-if="generalErrorSummary" type="error">
+          {{ generalErrorSummary.message }}
+          <p>Start date: {{ generalErrorSummary.startDate }}</p>
+          <p>End date: {{ generalErrorSummary.endDate }}</p>
+          <p>Frequency: {{ generalErrorSummary.frequency }}</p>
+        </v-alert>
+        
         <v-alert v-if="importSummary" type="success">
           <p>Total securities processed: {{ importSummary.totalSecurities }}</p>
           <p>Total dates processed: {{ importSummary.totalDates }}</p>
@@ -257,6 +264,7 @@ export default {
     const progress = ref(0)
     const importSummary = ref(null)
     const detailedSummary = ref([])
+    const generalErrorSummary = ref(null)
     const showProgressDialog = ref(false)
     const showSummaryDialog = ref(false)
 
@@ -313,19 +321,28 @@ export default {
         progress.value = data.progress
         console.log('Updated progress:', progress.value)
       } else if (data.status === 'complete') {
-        importSummary.value = {
-          totalSecurities: data.details.length,
-          totalDates: data.total_dates,
-          startDate: data.start_date,
-          endDate: data.end_date,
-          frequency: data.frequency
+        if (data.details) {
+          importSummary.value = {
+            totalSecurities: data.details.length,
+            totalDates: data.total_dates,
+            startDate: data.start_date,
+            endDate: data.end_date,
+            frequency: data.frequency
+          }
+          detailedSummary.value = data.details.map(security => ({
+            name: security.security_name,
+            updatedDates: security.updated_dates || [],
+            skippedDates: security.skipped_dates || [],
+            errors: security.errors || []
+          }))
+        } else if (data.message) {
+          generalErrorSummary.value = {
+            message: data.message,
+            startDate: data.start_date,
+            endDate: data.end_date,
+            frequency: data.frequency,
+          }
         }
-        detailedSummary.value = data.details.map(security => ({
-          name: security.security_name,
-          updatedDates: security.updated_dates || [],
-          skippedDates: security.skipped_dates || [],
-          errors: security.errors || []
-        }))
         showProgressDialog.value = false
         showSummaryDialog.value = true
         emit('prices-imported', importSummary.value)
@@ -369,6 +386,7 @@ export default {
       importSummary.value = null
       detailedSummary.value = []
       generalError.value = ''
+      generalErrorSummary.value = null
 
       try {
         // Prepare the data based on the date type
@@ -440,6 +458,7 @@ export default {
       progress,
       importSummary,
       detailedSummary,
+      generalErrorSummary,
       securitiesAllSelected,
       securitiesIndeterminate,
       brokersAllSelected,

@@ -208,6 +208,14 @@ class PriceImportConsumer(AsyncHttpConsumer):
             frequency = 'single'
         else:
             dates = await sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
+            
+        if len(dates) == 0:
+            yield self.format_progress('complete', 0, 0,
+                                       message='No dates to import',
+                                       start_date=start_date.strftime('%Y-%m-%d'),
+                                       end_date=end_date.strftime('%Y-%m-%d'),
+                                       frequency=frequency)
+            return
 
         if broker:
             all_securities = await database_sync_to_async(Brokers.objects.get)(id=broker, investor=user).securities.all()
@@ -218,7 +226,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
         else:
             securities = await database_sync_to_async(list)(Assets.objects.filter(investor=user, id__in=security_ids))
 
-        print(f"Filtered securities: {securities}")  # For debugging
+        print(f"Filtered securities: {[security.name for security in securities]}")  # For debugging
 
         total_securities = len(securities)
         total_dates = len(dates)
@@ -272,12 +280,12 @@ class PriceImportConsumer(AsyncHttpConsumer):
             except Assets.DoesNotExist:
                 error_message = f"Security with ID {security.id} not found"
                 results.append(error_message)
-                yield self.format_progress('error', current_operation, total_operations, message=error_message)
+                yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
                 current_operation += len(dates)
             except Exception as e:
-                error_message = f"Error updating prices for security {security.id}: {str(e)}"
+                error_message = f"Error updating prices for security {security.name}: {str(e)}"
                 results.append(error_message)
-                yield self.format_progress('error', current_operation, total_operations, message=error_message)
+                yield self.format_progress('error', current_operation, total_operations, security_name=security.name, message=error_message)
                 current_operation += len(dates)
 
         yield self.format_progress('complete', current_operation, total_operations,
@@ -294,7 +302,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
             'status': status,
             'current': current,
             'total': total,
-            'progress': (current / total) * 100,
+            'progress': (current / total) * 100 if total > 0 else 0,
         }
         if security_name:
             progress_data['security_name'] = security_name
@@ -305,6 +313,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
         if message:
             progress_data['message'] = message
         progress_data.update(kwargs)
+        print(f"Progress data: {progress_data}")
         return json.dumps(progress_data) + '\n'
 
     @staticmethod
