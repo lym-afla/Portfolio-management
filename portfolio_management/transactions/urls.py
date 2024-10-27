@@ -9,6 +9,6 @@ router.register(r'', views.TransactionViewSet, basename='transaction')
 router.register(r'fx', views.FXTransactionViewSet, basename='fx_transaction')
 
 urlpatterns = [
-    path('', views.transactions, name='transactions'),
+    # path('', views.transactions, name='transactions'),
     path('api/', include(router.urls)),
 ]

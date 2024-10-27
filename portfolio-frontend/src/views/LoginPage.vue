@@ -23,7 +23,7 @@
 
 <script>
 import { ref } from 'vue'
-// import { useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 // import axios from 'axios'
 import store from '@/store'
 import LoginForm from '@/components/LoginForm.vue'
@@ -35,7 +35,7 @@ export default {
   },
   setup() {
     const loading = ref(false)
-    // const router = useRouter()
+    const router = useRouter()
     const loginForm = ref(null)
 
     const handleLogin = async (credentials) => {
@@ -43,13 +43,13 @@ export default {
       loading.value = true
 
       try {
-        await store.dispatch('login', credentials)
+        const result = await store.dispatch('login', credentials)
         console.log("[LoginPage.vue] Token set in the store:", store.state.accessToken)
         console.log("[LoginPage.vue] Token from localStorage:", localStorage.getItem('accessToken'))
-        // if (result.success) {
-        //   console.log("Login successful from LoginPage.vue")
-        //   router.push('/profile')
-        // }
+        if (result.success) {
+          console.log("Login successful from LoginPage.vue")
+          router.push('/profile')
+        }
       } catch (error) {
         console.log('Login failed from LoginPage.vue', error)
         if (error.non_field_errors) {
@@ -65,33 +65,6 @@ export default {
       } finally {
         loading.value = false
       }
-
-      // try {
-      //   const response = await axios.post('/users/api/login/', credentials)
-      //   console.log('Login response:', response.data)
-      //   if (response.data.token) {
-      //     localStorage.setItem('token', response.data.token)
-      //     router.push('/dashboard')
-      //   } else {
-      //     console.log('Login failed, no token received')
-      //     loginForm.value.setErrors('Login failed. Please try again.')
-      //   }
-      // } catch (err) {
-      //   console.error('Login error:', err)
-      //   console.error('Error response:', err.response?.data)
-      //   if (err.response?.data?.non_field_errors) {
-      //     console.log('Non-field errors:', err.response.data.non_field_errors)
-      //     loginForm.value.setErrors(err.response.data.non_field_errors[0])
-      //   } else if (err.response?.data) {
-      //     console.log('Field errors:', err.response.data)
-      //     loginForm.value.setErrors(err.response.data)
-      //   } else {
-      //     console.log('Unknown error')
-      //     loginForm.value.setErrors('An unknown error occurred. Please try again.')
-      //   }
-      // } finally {
-      //   loading.value = false
-      // }
     }
 
     return { loading, handleLogin, loginForm }

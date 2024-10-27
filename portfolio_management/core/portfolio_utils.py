@@ -71,16 +71,11 @@ def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currenc
     broker_ids = list(broker_ids)  # Convert tuple back to list for internal use
     breakdown = list(breakdown)  # Convert tuple back to list for internal use
     
-    # logger.info(f"Calculating NAV at date: {date} for brokers: {broker_ids} with breakdown: {breakdown}")
-    
     portfolio = portfolio_at_date(user_id, date, broker_ids)
     portfolio_brokers = Brokers.objects.filter(investor__id=user_id, id__in=broker_ids)
     analysis = defaultdict(lambda: defaultdict(Decimal))
     analysis['Total NAV'] = Decimal(0)
     item_type = {'asset_type': 'type', 'currency': 'currency', 'asset_class': 'exposure'}
-
-    # logger.info(f"Portfolio: {portfolio}")
-    # logger.info(f"Portfolio brokers: {portfolio_brokers}")
 
     for security in portfolio:
         security_price = security.price_at_date(date, target_currency)
@@ -88,41 +83,36 @@ def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currenc
             security_price = security_price.price
         else:
             security_price = security.calculate_buy_in_price(date, target_currency, broker_ids)
-        current_value = Decimal(security.position(date, broker_ids) * security_price)
-        analysis['Total NAV'] += current_value
+        
+        for broker in portfolio_brokers:
+            broker_position = security.position(date, [broker.id])
+            broker_value = Decimal(broker_position * security_price)
+            analysis['Total NAV'] += broker_value
 
-        for breakdown_type in breakdown:
-            if breakdown_type == 'broker':
-                # for broker in get_brokers_for_security(user_id, security.id):
-                for broker in portfolio_brokers:
-                    analysis['broker'][broker.name] += current_value
+            if 'broker' in breakdown:
+                analysis['broker'][broker.name] += broker_value
             else:
-                key = getattr(security, item_type[breakdown_type])
-                analysis[breakdown_type][key] += current_value
 
-    cash = Decimal(0)
+                for breakdown_type in breakdown:
+                    key = getattr(security, item_type[breakdown_type])
+                    analysis[breakdown_type][key] += broker_value
+
+    # Handle cash balances
     for broker in portfolio_brokers:
         broker_balance = broker.balance(date)
         for currency, balance in broker_balance.items():
             fx_rate = get_fx_rate(currency, target_currency, date)
             converted_balance = balance * fx_rate
-            cash += converted_balance
+            analysis['Total NAV'] += converted_balance
+            
             if 'broker' in breakdown:
                 analysis['broker'][broker.name] += converted_balance
             if 'currency' in breakdown:
                 analysis['currency'][currency] += converted_balance
-
-    if 'asset_type' in breakdown:
-        analysis['asset_type']['Cash'] += cash
-    if 'asset_class' in breakdown:
-        analysis['asset_class']['Cash'] += cash
-
-    analysis['Total NAV'] += cash
-
-    # Remove keys with zero values
-    # analysis = {k: {sk: sv for sk, sv in v.items() if sv != 0} if isinstance(v, dict) else v for k, v in analysis.items()}
-
-    # logger.info(f"Calculated NAV: {dict(analysis)}")
+            if 'asset_type' in breakdown:
+                analysis['asset_type']['Cash'] += converted_balance
+            if 'asset_class' in breakdown:
+                analysis['asset_class']['Cash'] += converted_balance
 
     return dict(analysis)
 
@@ -272,8 +262,10 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
     performance_data = defaultdict(Decimal)
 
     # Initialize all required fields with Decimal(0)
-    for field in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax', 'eop_nav']:
+    for field in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax', 'fx', 'eop_nav', 'tsr']:
         performance_data[field] = Decimal('0')
+
+    alternative_fx_check = Decimal('0')
 
     selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
     
@@ -285,6 +277,7 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
         year=start_date.year - 1, 
         currency=currency_target
     ).values_list('eop_nav', flat=True).first()
+
     logging.info(f"BOP NAV: {bop_nav}")
 
     # bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
@@ -330,8 +323,12 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
 
         for asset in assets:
             asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
-            performance_data['price_change'] += asset_realized_gl["all_time"] if asset_realized_gl else 0
-            performance_data['price_change'] += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            asset_unrealized_gl = asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+    
+            performance_data['price_change'] += asset_realized_gl['all_time']['price_appreciation'] if asset_realized_gl else 0
+            alternative_fx_check += asset_realized_gl['all_time']['fx_effect']
+            performance_data['price_change'] += asset_unrealized_gl['price_appreciation']
+            alternative_fx_check += asset_unrealized_gl['fx_effect']
             performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
 
         # Calculate EOP NAV
@@ -343,13 +340,16 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
 
     # Calculate FX impact
     components_sum = sum(performance_data[key] for key in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax'])
-    performance_data['fx'] = performance_data['eop_nav'] - components_sum
+    performance_data['fx'] += performance_data['eop_nav'] - components_sum
 
     # Calculate TSR
     performance_data['tsr'] = format_percentage(IRR(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date), digits=1)
 
     # Adjust FX for rounding errors
     performance_data['fx'] = Decimal('0') if abs(performance_data['fx']) < 0.1 else performance_data['fx']
+
+    logger.info(f"Alternative FX check: {alternative_fx_check}")
+    logger.info(f"FX effect: {performance_data['fx']}")
 
     return dict(performance_data)
 

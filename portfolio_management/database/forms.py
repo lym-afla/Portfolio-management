@@ -217,7 +217,7 @@ class BrokerPerformanceForm(forms.Form):
 class FXTransactionForm(forms.ModelForm):
     class Meta:
         model = FXTransaction
-        fields = ['broker', 'date', 'from_currency', 'to_currency', 'from_amount', 'to_amount', 'commission', 'comment']
+        fields = ['broker', 'date', 'from_currency', 'to_currency', 'commission_currency', 'from_amount', 'to_amount', 'commission', 'comment']
         widgets = {
             'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'broker': forms.Select(attrs={'class': 'form-select', 'data-live-search': 'true'}),
@@ -227,6 +227,7 @@ class FXTransactionForm(forms.ModelForm):
             'to_amount': forms.NumberInput(attrs={'class': 'form-control'}),
             # 'exchange_rate': forms.NumberInput(attrs={'class': 'form-control'}),
             'commission': forms.NumberInput(attrs={'class': 'form-control'}),
+            'commission_currency': forms.Select(attrs={'class': 'form-select'}),
             'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
         }
 

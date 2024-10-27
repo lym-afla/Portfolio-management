@@ -31,8 +31,8 @@ def format_table_data(data: Union[List[Dict[str, Any]], Dict[str, Any], Page], c
             {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
             for position in data.object_list
         ]
-    else:
-        raise ValueError(f"Input data must be either a list of dictionaries, a single dictionary, or a Page object. We have got: {type(data)}")
+    # else:
+    #     raise ValueError(f"Input data must be either a list of dictionaries, a single dictionary, or a Page object. We have got: {type(data)}")
 
 def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
     """

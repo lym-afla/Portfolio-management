@@ -5,7 +5,7 @@ from asgiref.sync import sync_to_async
 
 from django.utils.dateparse import parse_date
 import asyncio
-from common.models import Assets, Brokers
+from common.models import Assets, Brokers, FX, Transactions
 from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo
 
 from constants import CURRENCY_CHOICES
@@ -15,6 +15,9 @@ from django.conf import settings
 from datetime import datetime
 import logging
 from django.contrib.auth.models import AnonymousUser
+from django.core.cache import cache
+from django.utils.formats import date_format
+from django.db.models import Prefetch
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +51,6 @@ class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
                     (b'Content-Type', b'application/json'),
                 ])
                 return
-            
-            logger.debug(f"Received data: {data}")
-            logger.debug(f"Scope: {self.scope}")
 
             # Extract effective_current_date from the request data
             effective_current_date_str = data.get('effective_current_date')
@@ -192,7 +192,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
     async def import_prices(self, data, user):
         security_ids = data.get('securities', [])
-        broker = data.get('broker')
+        brokers = data.get('brokers')
         start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d').date() if data.get('start_date') else None
         end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d').date() if data.get('end_date') else None
         frequency = data.get('frequency')
@@ -217,10 +217,20 @@ class PriceImportConsumer(AsyncHttpConsumer):
                                        frequency=frequency)
             return
 
-        if broker:
-            all_securities = await database_sync_to_async(Brokers.objects.get)(id=broker, investor=user).securities.all()
+        if brokers:
+            @database_sync_to_async
+            def get_securities_from_brokers():
+                broker_queryset = Brokers.objects.filter(id__in=brokers, investor=user).prefetch_related(
+                    Prefetch('securities', queryset=Assets.objects.all(), to_attr='all_securities')
+                )
+                securities = []
+                for broker in broker_queryset:
+                    securities.extend(broker.all_securities)
+                return securities
+
+            securities = await get_securities_from_brokers()
             securities = [
-                security for security in all_securities
+                security for security in securities
                 if await database_sync_to_async(security.position)(effective_current_date) > 0
             ]
         else:
@@ -236,7 +246,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
         for security in securities:
             try:
-                # If security is already an Asset object, we don't need to fetch it again
+                # If security is not an Asset object, fetch it
                 if not isinstance(security, Assets):
                     security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
                 
@@ -263,7 +273,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     "errors": []
                 }
 
-                async for result in self.async_generator(price_generator):
+                async for result in price_generator:
                     current_operation += 1
 
                     if result["status"] == "updated":
@@ -296,8 +306,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                                    frequency=frequency,
                                    total_dates=len(dates))
 
-    @staticmethod
-    def format_progress(status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
+    def format_progress(self, status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
         progress_data = {
             'status': status,
             'current': current,
@@ -316,8 +325,153 @@ class PriceImportConsumer(AsyncHttpConsumer):
         print(f"Progress data: {progress_data}")
         return json.dumps(progress_data) + '\n'
 
-    @staticmethod
-    async def async_generator(sync_generator):
-        for item in sync_generator:
-            yield item
-            await asyncio.sleep(0)  # Allow other coroutines to run
+    # @staticmethod
+    # async def async_generator(sync_generator):
+    #     for item in sync_generator:
+    #         yield item
+    #         await asyncio.sleep(0)  # Allow other coroutines to run
+
+class FXImportConsumer(AsyncHttpConsumer):
+    async def handle(self, body):
+        headers = [
+            (b"Access-Control-Allow-Origin", b"http://localhost:8080"),
+            (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
+            (b"Access-Control-Allow-Headers", b"Content-Type, Authorization"),
+            (b"Access-Control-Allow-Credentials", b"true"),
+        ]
+
+        if self.scope['method'] == 'OPTIONS':
+            await self.send_response(200, b'', headers=headers)
+            return
+        
+        if self.scope['method'] == 'POST':
+            try:
+                data = json.loads(body.decode('utf-8'))
+                print("Data in FX importer: ", data)
+            except json.JSONDecodeError:
+                await self.send_response(400, json.dumps({'error': 'Invalid JSON'}).encode('utf-8'), headers=headers + [
+                    (b'Content-Type', b'application/json'),
+                ])
+                return
+            
+            sse_headers = headers + [
+                (b"Cache-Control", b"no-cache"),
+                (b"Content-Type", b"text/event-stream"),
+                (b"Transfer-Encoding", b"chunked"),
+            ]
+            await self.send_headers(headers=sse_headers)
+
+            import_option = data.get('import_option')
+            user = self.scope['user']
+            
+            if import_option == 'manual':
+                dates = await self.generate_dates(data)
+            else:
+                await self.send_body(self.format_sse_message({'status': 'initializing', 'message': 'Checking database for existing FX rates'}), more_body=True)
+                transaction_dates = await self.get_transaction_dates(user)
+                dates = await self.filter_dates_to_update(transaction_dates, import_option, user)
+            
+            total_dates = len(dates)
+            await self.send_body(self.format_sse_message({'status': 'initializing', 'message': 'Preparing for update', 'total': total_dates}), more_body=True)
+
+            async for event in self.generate_events(user, import_option, dates):
+                await self.send_body(self.format_sse_message(event), more_body=True)
+
+            await self.send_body(b'', more_body=False)
+        else:
+            await self.send_response(405, json.dumps({'error': 'Method Not Allowed'}).encode('utf-8'), headers=headers + [
+                (b'Content-Type', b'application/json'),
+            ])
+
+    def format_sse_message(self, data):
+        return f"data: {json.dumps(data)}\n\n".encode('utf-8')
+
+    async def generate_dates(self, data):
+        date_type = data.get('date_type')
+        if date_type == 'single':
+            single_date = parse_date(data.get('single_date'))
+            return [single_date] if single_date else []
+        elif date_type == 'range':
+            start_date = parse_date(data.get('start_date'))
+            end_date = parse_date(data.get('end_date'))
+            frequency = data.get('frequency')
+            if start_date and end_date and frequency:
+                return await sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
+        return []
+
+    async def generate_events(self, user, import_option, dates_to_update):
+        import_id = f"fx_import_{user.id}"
+        await sync_to_async(cache.set)(import_id, "running", timeout=3600)
+
+        try:
+            total_dates = len(dates_to_update)
+            missing_filled = 0
+            incomplete_updated = 0
+            existing_linked = 0
+            message = ""
+
+            for i, date in enumerate(dates_to_update):
+                if await sync_to_async(cache.get)(import_id) != "running":
+                    yield {'status': 'cancelled'}
+                    break
+                progress = (i) / total_dates * 100
+                formatted_date = await sync_to_async(date_format)(date, "F j, Y")
+                    
+                yield {
+                    'status': 'updating',
+                    'progress': progress,
+                    'current': i,
+                    'message': f"{message}Updating FX rates for {formatted_date}"
+                }
+
+                action, result = await self.process_fx_rate(date, user)
+                if result == 'missing_filled':
+                    missing_filled += 1
+                elif result == 'incomplete_updated':
+                    incomplete_updated += 1
+                elif result == 'existing_linked':
+                    existing_linked += 1
+
+                message = f"{action} FX rates for {formatted_date}. "
+
+            if await sync_to_async(cache.get)(import_id) == "running":
+                stats = {
+                    'totalImported': missing_filled + incomplete_updated + existing_linked,
+                    'missingFilled': missing_filled,
+                    'incompleteUpdated': incomplete_updated,
+                    'existingLinked': existing_linked
+                }
+                yield {'status': 'completed', 'stats': stats}
+        finally:
+            await sync_to_async(cache.delete)(import_id)
+
+    @database_sync_to_async
+    def get_transaction_dates(self, user):
+        return list(Transactions.objects.filter(investor=user).values_list('date', flat=True).distinct())
+
+    @database_sync_to_async
+    def filter_dates_to_update(self, transaction_dates, import_option, user):
+        dates_to_update = []
+        for date in transaction_dates:
+            fx_instance = FX.objects.filter(date=date).first()
+            if import_option in ['missing', 'both'] and (not fx_instance or user not in fx_instance.investors.all()):
+                dates_to_update.append(date)
+            elif import_option in ['incomplete', 'both'] and fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
+                dates_to_update.append(date)
+        return dates_to_update
+
+    @database_sync_to_async
+    def process_fx_rate(self, date, user):
+        fx_instance = FX.objects.filter(date=date).first()
+        if not fx_instance:
+            FX.update_fx_rate(date, user)
+            return "Added", "missing_filled"
+        elif user not in fx_instance.investors.all():
+            fx_instance.investors.add(user)
+            return "Linked existing", "existing_linked"
+        elif any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
+            FX.update_fx_rate(date, user)
+            return "Updated", "incomplete_updated"
+        else:
+            return "Skipped", "skipped"
+

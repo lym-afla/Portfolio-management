@@ -8,7 +8,11 @@
       <v-card class="mb-4">
         <v-card-title class="text-h6">Cash Balances</v-card-title>
         <v-card-text>
-          <v-table density="compact">
+          <v-skeleton-loader
+            v-if="cashBalancesLoading"
+            type="table-row-divider@3"
+          ></v-skeleton-loader>
+          <v-table v-else density="compact">
             <tbody>
               <tr v-for="(balance, currency) in cashBalances" :key="currency">
                 <td class="text-left">{{ currency }}</td>
@@ -73,6 +77,15 @@
       <span v-else>-</span>
     </template>
 
+    <template #[`item.name`]="{ item }">
+      <router-link
+        :to="{ name: 'SecurityDetail', params: { id: item.id } }"
+        class="text-decoration-none"
+      >
+        {{ item.name }}
+      </router-link>
+    </template>
+
     <template #tfoot>
       <tfoot v-if="totals">
         <tr class="font-weight-bold">
@@ -128,6 +141,7 @@ export default {
 
     const totals = ref({})
     const cashBalances = ref({})
+    const cashBalancesLoading = ref(true)
 
     const headers = ref([
       { title: 'Type', key: 'type', align: 'start', sortable: true },
@@ -221,20 +235,25 @@ export default {
         search,
         sortBy
       })
-      const data = await getOpenPositions(
-        dateFrom,
-        dateTo,
-        page,
-        itemsPerPage,
-        search,
-        sortBy
-      )
-      totals.value = data.portfolio_open_totals
-      cashBalances.value = data.cash_balances
-      return {
-        positions: data.portfolio_open,
-        totals: data.portfolio_open_totals,
-        total_items: data.total_items,
+      cashBalancesLoading.value = true
+      try {
+        const data = await getOpenPositions(
+          dateFrom,
+          dateTo,
+          page,
+          itemsPerPage,
+          search,
+          sortBy
+        )
+        totals.value = data.portfolio_open_totals
+        cashBalances.value = data.cash_balances
+        return {
+          positions: data.portfolio_open,
+          totals: data.portfolio_open_totals,
+          total_items: data.total_items,
+        }
+      } finally {
+        cashBalancesLoading.value = false
       }
     }
 
@@ -271,6 +290,7 @@ export default {
       getColspan,
       getRowspan,
       cashBalances,
+      cashBalancesLoading,
     }
   }
 }

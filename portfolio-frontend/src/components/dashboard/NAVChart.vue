@@ -21,7 +21,10 @@
           </v-btn-toggle>
         </v-col>
         <v-col cols="12" sm="4">
-          <DateRangeSelector v-model="dateRangeForSelector" @update:model-value="handleDateRangeChange" />
+          <DateRangeSelector
+            v-model="dateRangeForSelector"
+            @update:model-value="handleDateRangeChange"
+          />
         </v-col>
       </v-row>
       <div class="chart-wrapper">
@@ -93,7 +96,8 @@ export default {
         frequency: selectedFrequency.value,
         dateFrom: dateFrom.value,
         dateTo: dateTo.value,
-        breakdown: selectedBreakdown.value
+        breakdown: selectedBreakdown.value,
+        dateRange: dateRange.value
       }
       store.dispatch('updateNavChartParams', params)
       emit('update-params', params)
@@ -147,11 +151,11 @@ export default {
       breakdownOptions,
       updateParams,
       handleDateRangeChange,
-      dateRangeForSelector: {
+      dateRangeForSelector: computed(() => ({
         dateRange: dateRange.value,
         dateFrom: dateFrom.value,
         dateTo: dateTo.value
-      }
+      })),
     }
   }
 }

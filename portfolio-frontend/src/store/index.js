@@ -79,40 +79,40 @@ export default createStore({
     },
     SET_NAV_CHART_PARAMS(state, params) {
       state.navChartParams = { ...state.navChartParams, ...params }
+    },
+    SET_USER(state, user) {
+      state.user = user
     }
   },
   actions: {
-    async login({ commit }, credentials) {
+    async login({ commit, dispatch }, credentials) {
       try {
         const response = await api.login(credentials.username, credentials.password)
-        // const token = response.token
-        console.log("Response in 'login' action in the store:", response)
         commit('SET_TOKENS', {
           accessToken: response.access,
           refreshToken: response.refresh
         })
-        // commit('SET_USER', response.user)
-        // localStorage.setItem('token', response.access)
+        await dispatch('fetchUserData')
         return { success: true }
       } catch (error) {
         console.error('Login failed from store', error)
-        // return { success: false, error: error }
         throw error
       }
     },
-    async refreshToken({ commit, state }) {
+    async refreshToken({ commit, dispatch, state }) {
       console.log('Refreshing token...')
       try {
         const response = await api.refreshToken(state.refreshToken)
-        console.log('Refresh token response:', response)
         commit('SET_TOKENS', {
           accessToken: response.access,
           refreshToken: response.refresh || state.refreshToken
         })
+        await dispatch('fetchUserData')
         return { success: true }
       } catch (error) {
         console.error('Token refresh failed', error)
         commit('CLEAR_TOKENS')
+        commit('SET_USER', null)
         return { success: false, error: error }
       }
     },
@@ -168,10 +168,37 @@ export default createStore({
         commit('SET_USER', null)
         router.push('/login')
       }
+    },
+    async fetchUserData({ commit }) {
+      try {
+        const userData = await api.getUserProfile()
+        commit('SET_USER', userData)
+      } catch (error) {
+        console.error('Failed to fetch user data', error)
+        throw error
+      }
+    },
+    async initializeApp({ commit, dispatch, state }) {
+      if (state.accessToken && !state.user) {
+        try {
+          await dispatch('fetchUserData')
+          return { success: true }
+        } catch (error) {
+          console.error('Failed to initialize app:', error)
+          const refreshResult = await dispatch('refreshToken')
+          if (!refreshResult.success) {
+            commit('CLEAR_TOKENS')
+            commit('SET_USER', null)
+            return { success: false }
+          }
+          return { success: true }
+        }
+      }
+      return { success: !!state.user }
     }
   },
   getters: {
-    isAuthenticated: state => !!state.accessToken,
+    isAuthenticated: state => !!state.accessToken && !!state.user,
     currentUser: state => state.user,
     effectiveCurrentDate: state => state.effectiveCurrentDate,
     tableSettings: state => state.tableSettings,

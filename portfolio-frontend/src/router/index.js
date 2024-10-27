@@ -131,14 +131,10 @@ const router = createRouter({
   routes
 })
 
-// router.beforeEach((to, from, next) => {
-//   loading.value = true
-//   next()
-// })
-
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   if (to.matched.some(record => record.meta.requiresAuth)) {
-    if (!store.getters.isAuthenticated) {
+    const initResult = await store.dispatch('initializeApp')
+    if (!initResult.success) {
       next({ name: 'Login' })
     } else {
       console.log('[index.js. Router] isAuthenticated. Running next()')

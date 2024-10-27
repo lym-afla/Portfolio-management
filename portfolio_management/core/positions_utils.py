@@ -61,7 +61,7 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     # if not start_date:
     #     start_date = date(end_date.year, 1, 1)  # Set start date to the beginning of the current year
 
-    print("positions_utils. 53", start_date, end_date)
+    # print("positions_utils. 53", start_date, end_date)
 
     # start_date, end_date = get_date_range(timespan, effective_current_date)
     # print("positions_utils. 58", start_date, end_date)
@@ -115,7 +115,7 @@ def _get_categories(is_closed: bool) -> List[str]:
     open_specific = ['current_value', 'unrealized_gl']
     return common_categories + (closed_specific if is_closed else open_specific)
 
-def _get_cash_balances_for_api(user: CustomUser, target_date: date) -> Dict[str, str]:
+def _get_cash_balances_for_api(user: CustomUser, target_date: date, selected_brokers: List[int] = None) -> Dict[str, str]:
     """
     Get cash balances for API response.
 
@@ -124,17 +124,23 @@ def _get_cash_balances_for_api(user: CustomUser, target_date: date) -> Dict[str,
     :param date: The effective current date
     :return: Dictionary of formatted cash balances
     """
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_brokers = selected_brokers or broker_group_to_ids(user.custom_brokers, user)
+
+    logger.info(f"Getting cash balances for {selected_brokers} on {target_date} for {user}")
     
     aggregated_balances = defaultdict(Decimal)
+    logger.debug(f"Aggregated balances: {aggregated_balances}")
 
     for broker_id in selected_brokers:
         try:
             broker = Brokers.objects.get(id=broker_id, investor=user)
+            logger.debug(f"Broker balances: {broker.balance(target_date)}")
             for currency, balance in broker.balance(target_date).items():
                 aggregated_balances[currency] += balance
+            logger.debug(f"Aggregated balances after adding {broker.name}: {aggregated_balances}")
         except Brokers.DoesNotExist:
             continue
+    logger.debug(f"Final aggregated balances: {aggregated_balances}")
 
     return {
         currency_format('', currency, 0): currency_format(balance, currency, user.digits)

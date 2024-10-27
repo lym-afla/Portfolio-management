@@ -1,5 +1,6 @@
 import axios from 'axios'
-import router from '@/router'
+// import router from '@/router'
+// import store from '@/store'  // Import the store
 
 const axiosInstance = axios.create({
   baseURL: 'http://localhost:8000',
@@ -75,7 +76,9 @@ axiosInstance.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null)
         console.error('Token refresh failed:', refreshError)
-        router.push('/login')
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+        window.location.href = '/login'  // Redirect to login page on refresh failure
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false

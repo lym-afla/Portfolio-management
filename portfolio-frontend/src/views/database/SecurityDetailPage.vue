@@ -96,6 +96,10 @@
           <v-card>
             <v-card-title>Position History</v-card-title>
             <v-card-text>
+              <TimelineSelector
+                v-model="selectedPeriod"
+                :effective-current-date="effectiveCurrentDate"
+              />
               <div style="height: 400px;">
                 <LineChart
                   :chart-data="positionChartData"
@@ -110,9 +114,77 @@
       <v-row>
         <v-col cols="12">
           <v-card>
-            <v-card-title>Recent Transactions</v-card-title>
+            <v-card-title>Transaction History</v-card-title>
+            <TimelineSelector
+              v-model="selectedPeriod"
+              :effective-current-date="effectiveCurrentDate"
+            />
             <v-card-text>
-              <TransactionsTable :transactions="recentTransactions" />
+              <v-data-table
+                :headers="transactionHeaders"
+                :items="transactions"
+                :loading="loadingTransactions"
+                :items-per-page="transactionOptions.itemsPerPage"
+                disable-sort
+              >
+
+                <template #item="{ item }">
+                  <tr>
+                    <td>{{ item.date }}</td>
+                    <td class="text-start text-nowrap">
+                      {{ item.type }}
+                      <template v-if="item.type === 'Dividend'">
+                        payout of {{ item.cash_flow }}
+                      </template>
+                      <template v-else-if="item.type === 'Close'">
+                        Close of {{ item.quantity }} securities
+                      </template>
+                      <template v-else-if="!['Broker commission', 'Tax', 'Interest income'].includes(item.type)">
+                        {{ item.quantity }}
+                        @ {{ item.price }}
+                        <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
+                      </template>
+                    </td>
+                    <td class="text-center">{{ item.type }}</td>
+                    <td class="text-center">
+                      <template v-if="['Dividend', 'Tax'].includes(item.type) || item.type.includes('Interest') || item.type.includes('Cash')">
+                        {{ item.cash_flow }}
+                      </template>
+                      <template v-else>
+                        {{ item.value }}
+                      </template>
+                    </td>
+                  </tr>
+                </template>
+
+                <template #bottom>
+                  <div class="d-flex align-center justify-space-between pa-2">
+                    <v-select
+                      v-model="transactionOptions.itemsPerPage"
+                      :items="itemsPerPageOptions"
+                      label="Rows per page"
+                      density="compact"
+                      variant="outlined"
+                      hide-details
+                      class="rows-per-page-select mr-4"
+                      style="max-width: 150px;"
+                      bg-color="white"
+                    ></v-select>
+                    <span class="text-caption">
+                      Showing {{ (transactionOptions.page - 1) * transactionOptions.itemsPerPage + 1 }}-{{
+                        Math.min(transactionOptions.page * transactionOptions.itemsPerPage, totalTransactions)
+                      }}
+                      of {{ totalTransactions }} entries
+                    </span>
+                    <v-pagination
+                      v-model="transactionOptions.page"
+                      :length="pageCount"
+                      :total-visible="7"
+                      rounded="circle"
+                    ></v-pagination>
+                  </div>
+                </template>
+              </v-data-table>
             </v-card-text>
           </v-card>
         </v-col>
@@ -126,12 +198,11 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useStore } from 'vuex'
-import { getSecurityDetail, getSecurityPriceHistory, getSecurityPositionHistory } from '@/services/api'
+import { getSecurityDetail, getSecurityPriceHistory, getSecurityPositionHistory, getSecurityTransactions } from '@/services/api'
 import LineChart from '@/components/charts/LineChart.vue'
-import TransactionsTable from '@/components/tables/TransactionsTable.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
 import { getChartOptions } from '@/config/chartConfig'
 import 'chartjs-adapter-date-fns'
@@ -145,7 +216,6 @@ export default {
   name: 'SecurityDetailPage',
   components: {
     LineChart,
-    TransactionsTable,
     TimelineSelector
   },
   emits: ['update-page-title'],
@@ -155,14 +225,44 @@ export default {
     const security = ref(null)
     const priceHistory = ref([])
     const positionHistory = ref([])
-    const recentTransactions = ref([])
+    const transactions = ref([])
     const chartOptions = ref(null)
     const chartOptionsLoaded = ref(false)
     const loading = ref(true)
+    const loadingPriceChart = ref(true)
+    const loadingPositionChart = ref(true)
+    const loadingTransactions = ref(true)
+    const totalTransactions = ref(0)
 
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
 
     const selectedPeriod = ref('1Y')
+
+    const transactionOptions = ref({
+      page: 1,
+      itemsPerPage: 10,
+    })
+
+    const itemsPerPageOptions = [10, 25, 50, 100]
+
+    const transactionHeaders = [
+      { title: 'Date', key: 'date', align: 'start' },
+      { title: 'Description', key: 'description', align: 'start' },
+      { title: 'Type', key: 'type', align: 'center' },
+      { title: 'Cash Flow', key: 'cash_flow', align: 'center' },
+    ]
+
+    const pageCount = computed(() => Math.ceil(totalTransactions.value / transactionOptions.value.itemsPerPage))
+
+    const getTransactionDescription = (item) => {
+      if (item.type.includes('Cash') || item.type === 'Dividend') {
+        return item.type
+      } else if (item.type === 'Close') {
+        return `${item.quantity} of ${item.price}`
+      } else {
+        return `${item.quantity} @ ${item.price}`
+      }
+    }
 
     const updateChartPeriod = (period) => {
       selectedPeriod.value = period
@@ -178,11 +278,9 @@ export default {
         case '1Y': return subYears(currentDate, 1)
         case '3Y': return subYears(currentDate, 3)
         case '5Y': return subYears(currentDate, 5)
+        case 'ytd': return startOfYear(currentDate)
         case 'All': return null
         default:
-          if (period.startsWith('YTD-')) {
-            return startOfYear(currentDate)
-          }
           return subYears(currentDate, 1) // Default to 1Y
       }
     }
@@ -202,34 +300,79 @@ export default {
     const fetchSecurityData = async () => {
       try {
         const securityId = route.params.id
-        const [securityResponse, priceHistoryResponse, positionHistoryResponse] = await Promise.all([
-          getSecurityDetail(securityId),
-          getSecurityPriceHistory(securityId),
-          getSecurityPositionHistory(securityId)
+        // loading.value = true
+        loadingPriceChart.value = true
+        loadingPositionChart.value = true
+
+        if (!security.value) {
+          const securityResponse = await getSecurityDetail(securityId)
+          security.value = securityResponse
+          emit('update-page-title', security.value.name)
+        }
+
+        const [priceHistoryResponse, positionHistoryResponse] = await Promise.all([
+          getSecurityPriceHistory(securityId, selectedPeriod.value),
+          getSecurityPositionHistory(securityId, selectedPeriod.value)
         ])
         
-        security.value = securityResponse
         priceHistory.value = priceHistoryResponse || []
         positionHistory.value = positionHistoryResponse || []
 
-        // Update page title
-        emit('update-page-title', security.value.name)
+        if (!chartOptionsLoaded.value) {
+          chartOptions.value = await getChartOptions(security.value.currency)
+          chartOptionsLoaded.value = true
+        }
 
-        // Get chart options after security data is loaded
-        chartOptions.value = await getChartOptions(security.value.currency)
-        chartOptionsLoaded.value = true
-
-        // Fetch effective current date if not available
         if (!effectiveCurrentDate.value) {
           await store.dispatch('fetchEffectiveCurrentDate')
         }
+
+        loadingPriceChart.value = false
+        loadingPositionChart.value = false
       } catch (error) {
         console.error('Error fetching security data:', error)
-        // Handle error (e.g., show error message to user)
-      } finally {
-        loading.value = false
+      // } finally {
+      //   loading.value = false
       }
     }
+
+    const fetchTransactions = async () => {
+      try {
+        loadingTransactions.value = true
+        const securityId = route.params.id
+        const response = await getSecurityTransactions(
+          securityId, 
+          {
+            page: transactionOptions.value.page,
+            itemsPerPage: transactionOptions.value.itemsPerPage,
+          },
+          selectedPeriod.value
+        )
+        transactions.value = response.transactions
+        totalTransactions.value = response.total_items
+      } catch (error) {
+        console.error('Error fetching transactions:', error)
+      } finally {
+        loadingTransactions.value = false
+      }
+    }
+
+    watch(selectedPeriod, () => {
+      fetchSecurityData()
+      transactionOptions.value.page = 1
+      fetchTransactions()
+    })
+
+    watch(transactionOptions, () => {
+      fetchTransactions()
+    }, { deep: true })
+
+    onMounted(async () => {
+      loading.value = true
+      await fetchSecurityData()
+      await fetchTransactions()
+      loading.value = false
+    })
 
     const getLastAvailableDataPoint = (data, targetDate) => {
       const sortedData = [...data].sort((a, b) => new Date(b.date) - new Date(a.date))
@@ -385,21 +528,31 @@ export default {
       }
     }))
 
-    onMounted(fetchSecurityData)
-
     return {
       security,
       priceChartData,
       positionChartData,
       priceChartOptions,
       positionChartOptions,
-      recentTransactions,
+      transactions,
+      transactionHeaders,
+      transactionOptions,
+      totalTransactions,
+      itemsPerPageOptions,
+      pageCount,
       chartOptionsLoaded,
       loading,
+      loadingPriceChart,
+      loadingPositionChart,
+      loadingTransactions,
       selectedPeriod,
       updateChartPeriod,
-      effectiveCurrentDate
+      effectiveCurrentDate,
+      getTransactionDescription
     }
   }
 }
 </script>
+
+
+

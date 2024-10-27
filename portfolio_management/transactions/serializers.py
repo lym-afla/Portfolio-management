@@ -19,6 +19,14 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         price = data.get('price')
         quantity = data.get('quantity')
         commission = data.get('commission')
+        security = data.get('security')
+
+        # Validate security field based on transaction type
+        if transaction_type in ['Buy', 'Sell', 'Dividend'] and not security:
+            raise serializers.ValidationError({'security': 'Security must be selected for Buy, Sell, or Dividend transactions.'})
+        
+        if transaction_type in ['Cash in', 'Cash out'] and security:
+            raise serializers.ValidationError({'security': 'Security must not be selected for Cash in or Cash out transactions.'})
 
         if cash_flow is not None and transaction_type == 'Cash out' and cash_flow >= 0:
             raise serializers.ValidationError({'cash_flow': 'Cash flow must be negative for cash-out transactions.'})
@@ -63,7 +71,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
 class FXTransactionFormSerializer(serializers.ModelSerializer):
     class Meta:
         model = FXTransaction
-        fields = ['id', 'broker', 'date', 'from_currency', 'to_currency', 'from_amount', 'to_amount', 'exchange_rate', 'commission', 'comment']
+        fields = ['id', 'broker', 'date', 'from_currency', 'to_currency', 'commission_currency', 'from_amount', 'to_amount', 'exchange_rate', 'commission', 'comment']
 
     def validate(self, data):
         if data.get('from_amount') <= 0:

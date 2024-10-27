@@ -64,7 +64,7 @@
 </template>
 
 <script>
-import { provide, ref, onMounted, watch, computed } from 'vue'
+import { provide, ref, onMounted, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
 import BrokerSelection from './components/BrokerSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -99,17 +99,16 @@ export default {
       user.value = userData
     }
 
-    const updateAuthStatus = () => {
-      layoutLoading.value = false
-      if (!isAuthenticated.value && route.meta.requiresAuth) {
-        router.push('/login')
-      } else if (isAuthenticated.value && route.path === '/login') {
-        router.push('/profile')
-      }
-    }
+    // const updateAuthStatus = () => {
+    //   if (!isAuthenticated.value && route.meta.requiresAuth) {
+    //     router.push('/login')
+    //   } else if (isAuthenticated.value && route.path === '/login') {
+    //     router.push('/profile')
+    //   }
+    // }
 
-    const handleLogout = () => {
-      store.dispatch('logout')
+    const handleLogout = async () => {
+      await store.dispatch('logout')
       router.push('/login')
     }
 
@@ -121,17 +120,15 @@ export default {
       return route.meta.paddingTop || '140px' // Default padding
     })
 
+    const init = async () => {
+      layoutLoading.value = true
+      await store.dispatch('initializeApp')
+      layoutLoading.value = false
+    }
+
     onMounted(() => {
-      updateAuthStatus()
-      console.log('[App.vue] Is authenticated:', store.getters.isAuthenticated)
+      init()
     })
-
-    watch(isAuthenticated, updateAuthStatus)
-    watch(() => route.fullPath, updateAuthStatus)
-
-    // provide('user', user)
-    // provide('setUser', setUser)
-    // provide('isAuthenticated', isAuthenticated)
 
     const errorSnackbar = ref(false)
     const errorMessages = ref([])

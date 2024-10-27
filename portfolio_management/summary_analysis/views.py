@@ -123,9 +123,9 @@ def exposure_table_update(request):
         asset.current_price = Decimal(getattr(asset.price_at_date(end_date, currency_target), 'price', 0))
         market_value = round(asset.current_price * asset.current_position, 2)
         
-        unrealized = asset.unrealized_gain_loss(end_date, currency_target, broker_ids, start_date)
+        unrealized = asset.unrealized_gain_loss(end_date, currency_target, broker_ids, start_date)['total']
 
-        realized = asset.realized_gain_loss(end_date, currency_target, broker_ids, start_date)['all_time']
+        realized = asset.realized_gain_loss(end_date, currency_target, broker_ids, start_date)['all_time']['total']
 
         capital_distribution = asset.get_capital_distribution(end_date, currency_target, broker_ids, start_date)
 
@@ -369,8 +369,8 @@ class SummaryViewSet(viewsets.ViewSet):
             asset.current_price = Decimal(getattr(asset.price_at_date(end_date, currency_target), 'price', 0))
             market_value = round(asset.current_price * asset.current_position, 2)
             
-            unrealized = asset.unrealized_gain_loss(end_date, currency_target, broker_ids, start_date)
-            realized = asset.realized_gain_loss(end_date, currency_target, broker_ids, start_date)['all_time']
+            unrealized = asset.unrealized_gain_loss(end_date, currency_target, broker_ids, start_date)['total']
+            realized = asset.realized_gain_loss(end_date, currency_target, broker_ids, start_date)['all_time']['total']
             capital_distribution = asset.get_capital_distribution(end_date, currency_target, broker_ids, start_date)
             commission = asset.get_commission(end_date, currency_target, broker_ids, start_date)
 

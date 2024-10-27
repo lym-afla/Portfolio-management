@@ -9,16 +9,17 @@
           <template v-for="field in formFields" :key="field.name">
             <v-text-field
               v-if="field.type === 'datepicker'"
-              v-model="form[field.name]"
+              :model-value="form[field.name]"
               :label="field.label"
               type="date"
               :required="field.required"
               :error-messages="errors[field.name]"
-              @input="clearFieldError(field.name)"
+              @update:model-value="value => setFieldValue(field.name, value)"
             ></v-text-field>
+
             <v-autocomplete
               v-else-if="field.type === 'select'"
-              v-model="form[field.name]"
+              :model-value="form[field.name]"
               :items="field.choices"
               item-title="text"
               item-value="value"
@@ -26,29 +27,31 @@
               :required="field.required"
               :error-messages="errors[field.name]"
               clearable
-              @input="clearFieldError(field.name)"
+              @update:model-value="value => setFieldValue(field.name, value)"
             >
               <template v-slot:selection="{ item }">
                 {{ item.raw ? item.raw.text : '' }}
               </template>
             </v-autocomplete>
+
             <v-text-field
               v-else-if="field.type === 'number'"
-              v-model="form[field.name]"
+              :model-value="form[field.name]"
               :label="field.label"
               type="number"
               step="0.01"
               :required="field.required"
               :error-messages="errors[field.name]"
-              @input="clearFieldError(field.name)"
+              @update:model-value="value => setFieldValue(field.name, value)"
             ></v-text-field>
+
             <v-textarea
               v-else-if="field.type === 'textarea'"
-              v-model="form[field.name]"
+              :model-value="form[field.name]"
               :label="field.label"
               :required="field.required"
               :error-messages="errors[field.name]"
-              @input="clearFieldError(field.name)"
+              @update:model-value="value => setFieldValue(field.name, value)"
             ></v-textarea>
           </template>
         </v-form>
@@ -63,7 +66,15 @@
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="submitForm" :loading="isSubmitting" :disabled="!isFormValid">Save</v-btn>
+        <v-btn
+          color="blue darken-1"
+          text
+          @click="submitForm"
+          :loading="isSubmitting"
+          :disabled="!isFormValid"
+        >
+          Save
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -95,17 +106,19 @@ export default {
 
     const { handleApiError } = useErrorHandler()
 
-    const schema = computed(() => {
-      const schemaObj = {}
-      formFields.value.forEach(field => {
-        if (field.required) {
-          schemaObj[field.name] = yup.mixed().required(`${field.label} is required`)
-        } else {
-          schemaObj[field.name] = yup.mixed().nullable()
-        }
+    const getNumberSchema = (field) => {
+      let numberSchema = yup
+        .number()
+        .transform((value, originalValue) => {
+          // Convert empty strings to null
+          return originalValue === '' ? null : value
+        })
+        .nullable()
 
-        if (field.name === 'cash_flow') {
-          schemaObj[field.name] = yup.number().nullable().test(
+      // Apply specific validations based on the field name
+      switch (field.name) {
+        case 'cash_flow':
+          numberSchema = numberSchema.test(
             'cash-flow-validation',
             'Cash flow must be negative for cash-out transactions and positive for cash-in transactions',
             function (value) {
@@ -116,12 +129,14 @@ export default {
               return true
             }
           )
-        }
-        if (field.name === 'price') {
-          schemaObj[field.name] = yup.number().nullable().positive('Price must be positive')
-        }
-        if (field.name === 'quantity') {
-          schemaObj[field.name] = yup.number().nullable().test(
+          break
+
+        case 'price':
+          numberSchema = numberSchema.positive('Price must be positive')
+          break
+
+        case 'quantity':
+          numberSchema = numberSchema.test(
             'quantity-validation',
             'Quantity must be positive for buy transactions and negative for sell transactions',
             function (value) {
@@ -132,28 +147,60 @@ export default {
               return true
             }
           )
-        }
-        if (field.name === 'commission') {
-          schemaObj[field.name] = yup.number().nullable().negative('Commission must be negative')
-        }
-        if (field.name === 'security') {
-          schemaObj[field.name] = yup.mixed().test(
-            'security-validation',
-            'Security must not be selected for Cash in or Cash out transactions',
-            function (value) {
-              const type = this.parent.type
-              if (type === 'Cash in' || type === 'Cash out') {
-                return value === null || value === undefined || value === ''
-              }
-              return true
-            }
-          ).nullable()
+          break
+
+        case 'commission':
+          numberSchema = numberSchema.negative('Commission must be negative')
+          break
+
+        default:
+          break
+      }
+
+      return numberSchema
+    }
+
+    const schema = computed(() => {
+      const schemaObj = {}
+      formFields.value.forEach(field => {
+        if (field.type === 'number') {
+          schemaObj[field.name] = getNumberSchema(field)
+        } else {
+          if (field.required) {
+            schemaObj[field.name] = yup.mixed().required(`${field.label} is required`)
+          } else {
+            schemaObj[field.name] = yup.mixed().nullable()
+          }
+
+          // Update security validation
+          if (field.name === 'security') {
+            schemaObj[field.name] = yup
+              .mixed()
+              .test(
+                'security-validation',
+                'Security must be selected for Buy, Sell, or Dividend transactions',
+                function (value) {
+                  const type = this.parent.type
+                  // For Cash in/out transactions, security must be empty
+                  if (type === 'Cash in' || type === 'Cash out') {
+                    return value === null || value === undefined || value === ''
+                  }
+                  // For Buy, Sell, or Dividend transactions, security is required
+                  if (['Buy', 'Sell', 'Dividend'].includes(type)) {
+                    return value !== null && value !== undefined && value !== ''
+                  }
+                  // For other transaction types (if any), security is optional
+                  return true
+                }
+              )
+              .nullable()
+          }
         }
       })
       return yup.object().shape(schemaObj)
     })
 
-    const { handleSubmit, errors, resetForm, values: form, setValues, setFieldError } = useForm({
+    const { handleSubmit, errors, resetForm, values: form, setValues, setFieldValue, setFieldError } = useForm({
       validationSchema: schema,
       validateOnChange: true
     })
@@ -178,15 +225,11 @@ export default {
     }
 
     const initializeForm = () => {
-      // if (formFields.value && formFields.value.length > 0) {
-        const initialValues = formFields.value.reduce((acc, field) => {
-          acc[field.name] = field.type === 'number' ? null : ''
-          return acc
-        }, {})
-        setValues(initialValues)
-      // } else {
-      //   generalError.value = 'Failed to initialize form. Please try again.'
-      // }
+      const initialValues = formFields.value.reduce((acc, field) => {
+        acc[field.name] = field.type === 'number' ? null : ''
+        return acc
+      }, {})
+      setValues(initialValues)
     }
 
     const submitForm = handleSubmit(async (values) => {
@@ -239,12 +282,12 @@ export default {
             } else {
               formattedValues[field.name] = String(formattedValues[field.name])
             }
-            
+
             // Allow empty choice
             if (formattedValues[field.name] === '') {
               return
             }
-            
+
             // Verify that the value exists in the choices
             const isValidChoice = field.choices.some(choice => choice.value === formattedValues[field.name])
             if (!isValidChoice) {
@@ -265,22 +308,6 @@ export default {
       }
     }, { immediate: true })
 
-    // watch(() => props.editItem, (newValue) => {
-    //   if (newValue) {
-    //     const formattedValues = { ...newValue }
-    //     formFields.value.forEach(field => {
-    //       if (field.type === 'select') {
-    //         if (typeof formattedValues[field.name] === 'object' && formattedValues[field.name] !== null) {
-    //           formattedValues[field.name] = String(formattedValues[field.name].id)
-    //         }
-    //       }
-    //     })
-    //     setValues(formattedValues)
-    //   } else {
-    //     initializeForm()
-    //   }
-    // }, { immediate: true })
-
     onMounted(fetchFormStructure)
 
     return {
@@ -295,7 +322,9 @@ export default {
       closeDialog,
       submitForm,
       clearFieldError,
+      setFieldValue
     }
   }
 }
 </script>
+

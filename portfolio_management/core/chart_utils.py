@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
-from core.portfolio_utils import IRR, NAV_at_date
+from core.portfolio_utils import IRR, NAV_at_date, get_fx_rate
 import pandas as pd
 import numpy as np
 
@@ -18,8 +18,8 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
     
     dates = _chart_dates(from_date, to_date, frequency)
 
-    # logger.info(f"Chart dates: {dates}")
-    # logger.info(f"Breakdown: {breakdown}")
+    logger.info(f"Chart dates: {dates}")
+    logger.info(f"Breakdown: {breakdown}")
     
     chart_data = {
         'labels': _chart_labels(dates, frequency),
@@ -62,7 +62,7 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
         if breakdown == 'none':
             add_no_breakdown_data(chart_data, NAV, IRR_value, IRR_rolling)
         elif breakdown == 'value_contributions':
-            add_contributions_data(chart_data, user_id, brokers, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date)
+            add_contributions_data(chart_data, user_id, brokers, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date, currency)
         else:
             breakdown_data = NAV_data.get(breakdown, {})
             add_breakdown_data(chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d)
@@ -73,8 +73,6 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
     # Fill in missing historical data for categories
     fill_missing_historical_data(chart_data, categories, frequency)
 
-    # logger.info(f"Chart data: {chart_data}")
-
     return chart_data
 
 def add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
@@ -82,8 +80,8 @@ def add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
     chart_data['datasets'][1]['data'].append(IRR)
     chart_data['datasets'][2]['data'].append(IRR_rolling)
 
-def add_contributions_data(chart_data, user_id, brokers, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date):
-    contributions = calculate_contributions(user_id, brokers, d, previous_date)
+def add_contributions_data(chart_data, user_id, brokers, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date, currency):
+    contributions = calculate_contributions(user_id, brokers, d, previous_date, currency)
     return_amount = NAV - NAV_previous_date - contributions
 
     chart_data['datasets'][0]['data'].append(NAV_previous_date)
@@ -168,7 +166,7 @@ def get_color(index):
     colors = ['rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)']
     return colors[index % len(colors)]
 
-def calculate_contributions(user_id, brokers, d, previous_date):
+def calculate_contributions(user_id, brokers, d, previous_date, target_currency):
     filter_conditions = {
         'investor__id': user_id,
         'broker__in': brokers,
@@ -181,8 +179,19 @@ def calculate_contributions(user_id, brokers, d, previous_date):
     else:
         filter_conditions['date__lte'] = d
 
-    contributions = Transactions.objects.filter(**filter_conditions).aggregate(Sum('cash_flow'))['cash_flow__sum'] or 0
-    return Decimal(contributions) / 1000
+    transactions = Transactions.objects.filter(**filter_conditions)
+    
+    total_contributions = Decimal(0)
+    
+    for transaction in transactions:
+        transaction_currency = transaction.currency
+        transaction_date = transaction.date
+        fx_rate = get_fx_rate(transaction_currency, target_currency, transaction_date)
+        
+        converted_amount = transaction.cash_flow * fx_rate
+        total_contributions += converted_amount
+
+    return total_contributions / 1000  # Convert to thousands
 
 
 # Collect chart dates 

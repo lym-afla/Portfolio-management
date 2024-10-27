@@ -115,7 +115,9 @@
     v-model="showProgressDialog"
     :title="'Importing Prices'"
     :progress="progress"
-    :error="generalError"
+    :current="currentOperation"
+    :total="totalOperations"
+    :currentMessage="currentMessage"
   />
 
   <v-dialog v-model="showSummaryDialog" max-width="800px">
@@ -267,6 +269,9 @@ export default {
     const generalErrorSummary = ref(null)
     const showProgressDialog = ref(false)
     const showSummaryDialog = ref(false)
+    const currentOperation = ref(0)
+    const totalOperations = ref(0)
+    const currentMessage = ref('')
 
     const { handleApiError } = useErrorHandler()
 
@@ -319,6 +324,9 @@ export default {
       const data = event.detail
       if (data.status === 'progress') {
         progress.value = data.progress
+        currentOperation.value = data.current
+        totalOperations.value = data.total
+        currentMessage.value = `${data.result.charAt(0).toUpperCase() + data.result.slice(1)} for ${data.date} for ${data.security_name}`
         console.log('Updated progress:', progress.value)
       } else if (data.status === 'complete') {
         if (data.details) {
@@ -381,6 +389,7 @@ export default {
       }
 
       dialog.value = false
+      currentMessage.value = 'Starting import'
       showProgressDialog.value = true
       progress.value = 0
       importSummary.value = null
@@ -470,6 +479,9 @@ export default {
       showProgressDialog,
       showSummaryDialog,
       closeSummaryDialog,
+      currentOperation,
+      totalOperations,
+      currentMessage,
     }
   }
 }

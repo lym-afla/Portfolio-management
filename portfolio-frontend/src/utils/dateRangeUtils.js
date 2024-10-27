@@ -1,6 +1,6 @@
 import { parseISO, startOfYear, subMonths, subYears, startOfDay, format } from 'date-fns'
 
-export function calculateDateRange(value, effectiveCurrentDate) {
+export function calculateDateRange(value, effectiveCurrentDate, customFrom = null, customTo = null) {
   const effectiveDate = parseISO(effectiveCurrentDate)
   let fromDate = null
   let toDate = effectiveDate
@@ -29,6 +29,10 @@ export function calculateDateRange(value, effectiveCurrentDate) {
       break
     case 'all_time':
       fromDate = null
+      break
+    case 'custom':
+      fromDate = customFrom ? parseISO(customFrom) : null
+      toDate = customTo ? parseISO(customTo) : effectiveDate
       break
   }
   

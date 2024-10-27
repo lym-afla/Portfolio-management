@@ -145,8 +145,17 @@
     </v-card>
 
     <v-card class="mb-4">
+      <v-card-title>Price History</v-card-title>
       <v-card-text>
-        <PriceChart v-if="priceData.length > 0" :prices="priceData" />
+        <TimelineSelector
+          v-model="selectedPeriod"
+          :effective-current-date="effectiveCurrentDate"
+        />
+        <LineChart
+          v-if="chartData.datasets.length > 0"
+          :chart-data="chartData"
+          :options="chartOptions"
+        />
         <p v-else>No price data available. Please apply filters.</p>
       </v-card-text>
     </v-card>
@@ -269,17 +278,21 @@
 import { ref, watch, computed, onMounted, inject } from 'vue'
 import { useStore } from 'vuex'
 import { getAssetTypes, getBrokers, getSecurities, getPrices, deletePrice, getPriceDetails } from '@/services/api'
-import PriceChart from '@/components/charts/PriceChart.vue'
 import debounce from 'lodash/debounce'
+import LineChart from '@/components/charts/LineChart.vue'
+import TimelineSelector from '@/components/TimelineSelector.vue'
 import { useTableSettings } from '@/composables/useTableSettings'
 import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
+import { getChartOptions } from '@/config/chartConfig'
+import { subDays, subMonths, subYears, startOfYear, differenceInDays } from 'date-fns'
 
 export default {
   name: 'PricesPage',
   components: {
-    PriceChart,
+    LineChart,
+    TimelineSelector,
     PriceFormDialog,
     SecurityFormDialog,
     PriceImportDialog,
@@ -518,6 +531,160 @@ export default {
       { deep: true }
     )
 
+    const chartOptions = ref({})
+    const selectedPeriod = ref('1Y')
+    const chartOptionsLoaded = ref(false)
+
+    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+
+    const getStartDate = (period) => {
+      const currentDate = new Date(effectiveCurrentDate.value)
+      switch (period) {
+        case '7d': return subDays(currentDate, 7)
+        case '1m': return subMonths(currentDate, 1)
+        case '3m': return subMonths(currentDate, 3)
+        case '6m': return subMonths(currentDate, 6)
+        case '1Y': return subYears(currentDate, 1)
+        case '3Y': return subYears(currentDate, 3)
+        case '5Y': return subYears(currentDate, 5)
+        case 'All': return null
+        default:
+          if (period.startsWith('YTD-')) {
+            return startOfYear(currentDate)
+          }
+          return subYears(currentDate, 1) // Default to 1Y
+      }
+    }
+
+    const filteredPriceData = computed(() => {
+      const startDate = getStartDate(selectedPeriod.value)
+      if (!startDate) return priceData.value
+      return priceData.value.filter(item => new Date(item.date) >= startDate)
+    })
+
+    const getLastAvailableDataPoint = (data, targetDate) => {
+      const sortedData = [...data].sort((a, b) => new Date(b.date) - new Date(a.date))
+      return sortedData.find(item => new Date(item.date) <= new Date(targetDate)) || sortedData[0]
+    }
+
+    const chartData = computed(() => {
+      const groupedData = filteredPriceData.value.reduce((acc, item) => {
+        if (!acc[item.security__name]) {
+          acc[item.security__name] = []
+        }
+        acc[item.security__name].push({ x: new Date(item.date), y: item.price })
+        return acc
+      }, {})
+
+      return {
+        datasets: Object.entries(groupedData).map(([securityName, data], index) => {
+          if (effectiveCurrentDate.value) {
+            const lastDataPoint = getLastAvailableDataPoint(data, effectiveCurrentDate.value)
+            if (lastDataPoint) {
+              data.push({ x: new Date(effectiveCurrentDate.value), y: lastDataPoint.y })
+            }
+          }
+          return {
+            label: securityName,
+            data: data,
+            borderColor: chartOptions.value?.colorPalette?.[index % (chartOptions.value?.colorPalette?.length || 1)] || 'rgba(75, 192, 192, 1)',
+            tension: 0.1
+          }
+        })
+      }
+    })
+
+    const getTimeConfig = (period) => {
+      const currentDate = new Date(effectiveCurrentDate.value)
+      const startDate = getStartDate(period)
+      const daysDiff = differenceInDays(currentDate, startDate)
+
+      if (daysDiff <= 14) {
+        return { unit: 'day', stepSize: 1 }
+      } else if (daysDiff <= 31) {
+        return { unit: 'day', stepSize: 2 }
+      } else if (daysDiff <= 90) {
+        return { unit: 'week', stepSize: 1 }
+      } else if (daysDiff <= 180) {
+        return { unit: 'month', stepSize: 1 }
+      } else if (daysDiff <= 365) {
+        return { unit: 'month', stepSize: 2 }
+      } else if (daysDiff <= 365 * 2) {
+        return { unit: 'quarter', stepSize: 1 }
+      } else {
+        return { unit: 'year', stepSize: 1 }
+      }
+    }
+
+    const updateChartOptions = async () => {
+      const baseOptions = await getChartOptions('Price')
+      const timeConfig = getTimeConfig(selectedPeriod.value)
+
+      chartOptions.value = {
+        ...baseOptions.navChartOptions,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            type: 'time',
+            time: {
+              unit: timeConfig.unit,
+              stepSize: timeConfig.stepSize,
+              displayFormats: {
+                day: 'd MMM',
+                week: 'd MMM',
+                month: 'MMM yyyy',
+                quarter: 'QQQ yyyy',
+                year: 'yyyy'
+              }
+            },
+            grid: {
+              display: false
+            },
+            title: {
+              display: false
+            },
+            max: effectiveCurrentDate.value
+          },
+          y: {
+            beginAtZero: false,
+            grid: {
+              display: true
+            },
+            title: {
+              display: true,
+              text: 'Price'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: true
+          },
+          tooltip: {
+            callbacks: {
+              title: function(context) {
+                return new Date(context[0].parsed.x).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+              }
+            }
+          },
+          datalabels: {
+            display: false
+          }
+        }
+      }
+      chartOptionsLoaded.value = true
+    }
+
+    watch(selectedPeriod, updateChartOptions)
+
+    onMounted(async () => {
+      if (!effectiveCurrentDate.value) {
+        await store.dispatch('fetchEffectiveCurrentDate')
+      }
+      await applyFilters()
+    })
+
     return {
       assetTypes,
       brokers,
@@ -566,6 +733,11 @@ export default {
       showImportDialog,
       openImportDialog,
       handlePricesImported,
+      chartData,
+      chartOptions,
+      selectedPeriod,
+      effectiveCurrentDate,
+      chartOptionsLoaded
     }
   },
 }

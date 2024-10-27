@@ -142,7 +142,9 @@
                   >
                     {{ item.security.name }}
                   </router-link>
-                  <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
+                  <span v-if="item.commission" class="text-caption text-grey"> || Fee: 
+                    <span v-if="item.commission_currency">{{ item.commission_currency }}</span>
+                    {{ item.commission }}</span>
                 </template>
               </td>
               <td class="text-center">{{ item.type }}</td>
@@ -285,11 +287,12 @@ export default {
 
     const dateRangeModel = ref({
       dateRange: 'ytd',
-      dateFrom: dateFrom.value,
-      dateTo: dateTo.value
+      dateFrom: null,
+      dateTo: null
     })
 
     const handleDateRangeChange = (newDateRange) => {
+      dateRangeModel.value = newDateRange
       dateFrom.value = newDateRange.dateFrom
       dateTo.value = newDateRange.dateTo
       currentPage.value = 1

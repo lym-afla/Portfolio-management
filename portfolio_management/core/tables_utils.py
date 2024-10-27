@@ -69,6 +69,7 @@ def calculate_closed_table_output_for_api(
             
             # Has to be defined here to accomodate different closed positions of same asset as separate rows
             position = {
+                'id': asset.id,
                 'type': asset.type,
                 'name': asset.name,
                 'currency': currency_format(None, asset.currency),
@@ -213,6 +214,7 @@ def calculate_open_table_output_for_api(
         currency_used = None if use_default_currency else currency_target
 
         position = {
+            'id': asset.id,
             'type': asset.type,
             'name': asset.name,
             'currency': currency_format(None, asset.currency)
@@ -246,12 +248,12 @@ def calculate_open_table_output_for_api(
             portfolio_open_totals['all_assets_share_of_portfolio_percentage'] += position['share_of_portfolio']
         
         if 'realized_gl' in categories:
-            position['realized_gl'] = asset.realized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)['current_position']
+            position['realized_gl'] = asset.realized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)['current_position']['total']
         else:
             position['realized_gl'] = Decimal(0)
 
         if 'unrealized_gl' in categories:
-            position['unrealized_gl'] = asset.unrealized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)
+            position['unrealized_gl'] = asset.unrealized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)['total']
         else:
             position['unrealized_gl'] = Decimal(0)
         
@@ -292,9 +294,9 @@ def calculate_open_table_output_for_api(
                 elif key == 'current_value':
                     addition = position['current_value']
                 elif key == 'realized_gl':
-                    addition = asset.realized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['current_position']
+                    addition = asset.realized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['current_position']['total']
                 elif key == 'unrealized_gl':
-                    addition = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)
+                    addition = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['total']
                 elif key == 'capital_distribution':
                     addition = asset.get_capital_distribution(end_date, currency_target, selected_brokers, asset_start_date)
                 elif key == 'commission':

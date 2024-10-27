@@ -130,9 +130,9 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
         'cur': transaction.currency,
     }
 
-    balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
-        - Decimal(transaction.cash_flow or 0) \
-        - Decimal(transaction.commission or 0))
+    balance[transaction.currency] = round(balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0)) \
+        - Decimal(transaction.cash_flow or Decimal(0)) \
+        - Decimal(transaction.commission or Decimal(0))), 2)
 
     if transaction.quantity:
         transaction_data['value'] = currency_format(-round(Decimal(transaction.quantity * transaction.price), 2) + (transaction.commission or 0), transaction.currency, number_of_digits)
@@ -158,11 +158,18 @@ def _process_fx_transaction(transaction, balance, number_of_digits):
     balance[transaction.from_currency] -= transaction.from_amount
     balance[transaction.to_currency] += transaction.to_amount
     if transaction.commission:
-        balance[transaction.from_currency] -= transaction.commission
+        balance[transaction.commission_currency] += transaction.commission
 
-    transaction_data['from_amount'] = currency_format(-transaction.from_amount, transaction.from_currency, number_of_digits)
-    transaction_data['to_amount'] = currency_format(transaction.to_amount, transaction.to_currency, number_of_digits)
+    transaction_data['from_amount'] = 0
+    transaction_data['to_amount'] = 0
     if transaction.commission:
-        transaction_data['commission'] = currency_format(-transaction.commission, transaction.from_currency, number_of_digits)
+        transaction_data['commission'] = currency_format(-transaction.commission, transaction.commission_currency, number_of_digits)
+        if transaction.commission_currency == transaction.from_currency:
+            transaction_data['from_amount'] += transaction.commission
+        elif transaction.commission_currency == transaction.to_currency:
+            transaction_data['to_amount'] += transaction.commission
+    transaction_data['from_amount'] = currency_format(transaction_data['from_amount'] - transaction.from_amount, transaction.from_currency, number_of_digits)
+    transaction_data['to_amount'] = currency_format(transaction_data['to_amount'] + transaction.to_amount, transaction.to_currency, number_of_digits)
+    
 
     return transaction_data

@@ -55,8 +55,8 @@ def _get_securities_data(user, securities, effective_current_date):
             'currency': security.currency,
             'open_position': security.position(effective_current_date),
             'current_value': Decimal(0),
-            'realized': security.realized_gain_loss(effective_current_date)['all_time'],
-            'unrealized': security.unrealized_gain_loss(effective_current_date),
+            'realized': security.realized_gain_loss(effective_current_date)['all_time']['total'],
+            'unrealized': security.unrealized_gain_loss(effective_current_date)['total'],
             'capital_distribution': security.get_capital_distribution(effective_current_date),
             'irr': None
         }
@@ -87,8 +87,8 @@ def get_security_detail(request, security_id):
         'currency': security.currency,
         'open_position': security.position(effective_current_date),
         'current_value': Decimal(0),
-        'realized': security.realized_gain_loss(effective_current_date)['all_time'],
-        'unrealized': security.unrealized_gain_loss(effective_current_date),
+        'realized': security.realized_gain_loss(effective_current_date)['all_time']['total'],
+        'unrealized': security.unrealized_gain_loss(effective_current_date)['total'],
         'capital_distribution': security.get_capital_distribution(effective_current_date),
         'irr': None,
         'data_source': security.data_source,

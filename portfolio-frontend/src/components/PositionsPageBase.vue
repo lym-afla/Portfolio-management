@@ -12,7 +12,12 @@
 
     <v-row no-gutters>
       <v-col cols="12">
+        <v-skeleton-loader
+          v-if="initialLoading"
+          type="table"
+        ></v-skeleton-loader>
         <v-data-table
+          v-else
           :headers="headers"
           :items="positions"
           :loading="tableLoading"
@@ -148,6 +153,7 @@ export default {
     const tableLoading = ref(true)
     const yearOptions = ref([])
     const totalItems = ref(0)
+    const initialLoading = ref(true)
 
     const {
       timespan,
@@ -200,6 +206,7 @@ export default {
         console.error('Error fetching positions:', error)
       } finally {
         tableLoading.value = false
+        initialLoading.value = false
         console.log('[PositionsPageBase] Current state:', store.state)
       }
     }
@@ -210,6 +217,8 @@ export default {
         yearOptions.value = years
       } catch (error) {
         store.dispatch('setError', error)
+      } finally {
+        initialLoading.value = false
       }
     }
 
@@ -257,6 +266,7 @@ export default {
 
       // Fetch year options
       await fetchYearOptions()
+      await fetchData()
     }
 
     onMounted(() => {
@@ -307,6 +317,7 @@ export default {
       handleTimespanChange,
       loading: computed(() => store.state.loading),
       error: computed(() => store.state.error),
+      initialLoading,
     }
   },
 }

@@ -38,9 +38,7 @@ async def save_or_update_annual_broker_performance(user, effective_date, brokers
                 continue
 
         try:
-            logger.info(f"Calculating performance for year {year}")
             performance_data = await database_sync_to_async(calculate_performance)(user, date(year, 1, 1), date(year, 12, 31), brokers_or_group, currency_target, is_restricted)
-            logger.info(f"Performance data calculated for year {year}: {performance_data}")
             
             # Use a separate function to save the data
             await save_annual_performance(user, brokers_or_group, year, currency_target, is_restricted, performance_data)

@@ -165,9 +165,9 @@ class Brokers(models.Model):
         # This approach in order to match how balances are calculated in 'transactions' app after each transaction
         transactions = self.transactions.filter(date__lte=date)
         for transaction in transactions:
-            balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or 0) * Decimal(transaction.quantity or 0) \
-            - Decimal(transaction.cash_flow or 0) \
-                - Decimal(transaction.commission or 0))
+            balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal((transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0)) \
+            - Decimal(transaction.cash_flow or Decimal(0)) \
+                - Decimal(transaction.commission or Decimal(0)))
             
         # Calculate balance from FX transactions
         fx_transactions = self.fx_transactions.filter(date__lte=date)
@@ -175,8 +175,8 @@ class Brokers(models.Model):
             balance[fx_transaction.from_currency] = balance.get(fx_transaction.from_currency, Decimal(0)) - fx_transaction.from_amount
             balance[fx_transaction.to_currency] = balance.get(fx_transaction.to_currency, Decimal(0)) + fx_transaction.to_amount
             if fx_transaction.commission:
-                commission_currency = fx_transaction.from_currency  # Assume commission is in the source currency
-                balance[commission_currency] = balance.get(commission_currency, Decimal(0)) - fx_transaction.commission
+                # commission_currency = fx_transaction.from_currency  # Assume commission is in the source currency
+                balance[fx_transaction.commission_currency] = balance.get(fx_transaction.commission_currency, Decimal(0)) + fx_transaction.commission
             
         for key, value in balance.items():
             balance[key] = round(Decimal(value), 2)
@@ -399,7 +399,7 @@ class Assets(models.Model):
         #     print(f"Error when calculating buy-in price for {self.name}: {e}")
         #     return None
 
-    def realized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
+    def realized_gain_loss_old(self, date, currency=None, broker_id_list=None, start_date=None):
         """
         Calculates the realized gain or loss of a security as of a specific date.
 
@@ -424,20 +424,15 @@ class Assets(models.Model):
         the specified currency using the FX.get_rate function.
         """
 
-        logger.debug(f"Calculating realized gain/loss for {self.name} as of {date}")
-        logger.debug(f"Parameters: currency={currency}, broker_id_list={broker_id_list}, start_date={start_date}")
-
         realized_gain_loss_for_current_position = 0
         total_gl_before_current_position = 0
         latest_exit_date = None
 
         exit_dates = self.exit_dates(date, broker_id_list)
-        logger.debug(f"Exit dates: {exit_dates}")
 
         if len(exit_dates) != 0:
             # Step 1: Find the latest date when position is 0
             latest_exit_date = exit_dates[-1]
-            logger.debug(f"Latest exit date: {latest_exit_date}")
 
             # Step 2: Sum up values of all transactions before that date
             transactions_before_entry = self.transactions.filter(date__lte=latest_exit_date, quantity__isnull=False)
@@ -445,8 +440,6 @@ class Assets(models.Model):
                 transactions_before_entry = transactions_before_entry.filter(date__gte=start_date)
             if broker_id_list is not None:
                 transactions_before_entry = transactions_before_entry.filter(broker_id__in=broker_id_list)
-            
-            logger.debug(f"Number of transactions before entry: {transactions_before_entry.count()}")
 
             if transactions_before_entry.exists():
                 if currency is not None:
@@ -464,7 +457,7 @@ class Assets(models.Model):
                         start_price = self.price_at_date(start_date, currency)
                         if start_price:
                             logger.debug(f"Start date adjustment: Price at {start_date}: {start_price.price}, Position: {start_position}")
-                            total_gl_before_current_position += start_price.price * start_position
+                            total_gl_before_current_position -= start_price.price * start_position
                         else:
                             logger.warning(f"No price available at start date {start_date}. Skipping start date adjustment.")
                     else:
@@ -493,7 +486,8 @@ class Assets(models.Model):
             logger.debug(f"Number of exit transactions: {exit_transactions.count()}")
             
             for exit in exit_transactions:
-                buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list, start_date)
+                # buy_in_price = self.calculate_buy_in_price(exit.date, exit.currency, broker_id_list, start_date)
+                buy_in_price = self.calculate_buy_in_price(exit.date, currency, broker_id_list, start_date)
                 logger.debug(f"Exit transaction: Date: {exit.date}, Price: {exit.price}, Quantity: {exit.quantity}, Buy-in price: {buy_in_price}")
                 if buy_in_price is not None:
                     if currency is not None:
@@ -501,7 +495,8 @@ class Assets(models.Model):
                     else:
                         fx_rate = 1
                     if fx_rate:
-                        realized_gain_loss = -(exit.price - buy_in_price) * fx_rate * (exit.quantity)
+                        # realized_gain_loss = -(exit.price - buy_in_price) * fx_rate * exit.quantity
+                        realized_gain_loss = -(exit.price * fx_rate - buy_in_price) * exit.quantity
                         realized_gain_loss_for_current_position += realized_gain_loss
                         logger.debug(f"Realized gain/loss for this exit: {realized_gain_loss}")
                 else:
@@ -516,30 +511,157 @@ class Assets(models.Model):
             "all_time": round(Decimal(total_gl_before_current_position + realized_gain_loss_for_current_position), 2)
         }
     
+    def realized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
+        def calculate_position_gain_loss(start, end):
+            result = {
+                "price_appreciation": Decimal(0),
+                "fx_effect": Decimal(0),
+                "total": Decimal(0)
+            }
+            
+            transactions = self.transactions.filter(
+                date__gte=start, 
+                date__lte=end,
+                quantity__isnull=False
+            ).order_by('date')
+            if broker_id_list is not None:
+                transactions = transactions.filter(broker_id__in=broker_id_list)
+
+            position = self.position(start, broker_id_list)
+            logger.debug(f"Starting position at {start}: {position}")
+
+            for transaction in transactions:
+                logger.debug(f"Transaction: {transaction.date}, {transaction.type}, Quantity: {transaction.quantity}, Price: {transaction.price}")
+
+                if (position > 0 and transaction.type == TRANSACTION_TYPE_SELL) or \
+                   (position < 0 and transaction.type == TRANSACTION_TYPE_BUY) or \
+                   (position == 0):  # This handles same-day open and close
+
+                    buy_in_price_target_currency = self.calculate_buy_in_price(transaction.date, currency, broker_id_list, start)
+                    buy_in_price_lcl_currency = self.calculate_buy_in_price(transaction.date, transaction.currency, broker_id_list, start)
+
+                    logger.debug(f"Buy-in price in target currency: {buy_in_price_target_currency}, in LCL currency: {buy_in_price_lcl_currency}")
+                    
+                    if buy_in_price_target_currency is not None and buy_in_price_lcl_currency is not None:
+                        fx_rate_exit = FX.get_rate(transaction.currency, currency, transaction.date)['FX'] if currency else 1
+
+
+                        price_appreciation = -(transaction.price - buy_in_price_lcl_currency) * transaction.quantity * fx_rate_exit
+                        gl_target_currency = -(transaction.price * fx_rate_exit - buy_in_price_target_currency) * transaction.quantity
+                        fx_effect = gl_target_currency - price_appreciation
+                        
+                        result["total"] += Decimal(gl_target_currency)
+                        result["price_appreciation"] += Decimal(price_appreciation)
+                        result["fx_effect"] += Decimal(fx_effect)
+
+                        logger.debug(f"Realized G/L for this transaction: {gl_target_currency}")
+
+                position += transaction.quantity
+                logger.debug(f"Position after transaction: {position}")
+
+            logger.debug(f"Final position at {end}: {position}")
+            return result
+
+        result = {
+            "current_position": {
+                "price_appreciation": Decimal(0),
+                "fx_effect": Decimal(0),
+                "total": Decimal(0)
+            },
+            "all_time": {
+                "price_appreciation": Decimal(0),
+                "fx_effect": Decimal(0),
+                "total": Decimal(0)
+            }
+        }
+
+        # Calculate all-time realized gain/loss
+        exit_dates = self.exit_dates(date, broker_id_list, start_date)
+        entry_dates = self.entry_dates(date, broker_id_list)
+
+        logger.debug("Exit dates:", exit_dates)
+        logger.debug("Entry dates:", entry_dates)
+
+        # Pair entry and exit dates
+        date_pairs = []
+        for entry_date in entry_dates:
+            exit_date = next((d for d in exit_dates if d >= entry_date), date)
+            date_pairs.append((entry_date, exit_date))
+
+        # Adjust date pairs based on start_date and end_date
+        adjusted_pairs = []
+        for entry_date, exit_date in date_pairs:
+            logger.debug(f"Unadjusted pair: {entry_date} to {exit_date}")
+            if start_date and start_date > entry_date and start_date <= exit_date:
+                entry_date = start_date
+            if exit_date > date and date >= start_date:
+                exit_date = date
+            adjusted_pairs.append((entry_date, exit_date))
+
+        logger.debug("Adjusted date pairs:", adjusted_pairs)
+
+        # Calculate gain/loss for each position
+        for position_start, position_end in adjusted_pairs:
+            logger.debug(f"Calculating for position: {position_start} to {position_end}")
+            position_result = calculate_position_gain_loss(position_start, position_end)
+            logger.debug("Position result:", position_result)
+            
+            for key in result["all_time"]:
+                result["all_time"][key] += position_result[key]
+            
+            # If this is the current position, update the current_position result as well
+            if position_end == date:
+                result["current_position"] = position_result.copy()
+                logger.debug("Current position result:", result["current_position"])
+
+        # Round all results to 2 decimal places
+        for period in result:
+            for component in result[period]:
+                result[period][component] = round(result[period][component], 2)
+
+        return result
+
     def unrealized_gain_loss(self, date, currency=None, broker_id_list=None, start_date=None):
         """
-        Calculates the capital distribution (dividends) for a security as of a specific date.
-
+        Calculates the unrealized gain/loss for an asset and breaks it down into components: 
+        price appreciation, and FX effect.
+        
         Parameters:
-            date (datetime.date): The date as of which the capital distribution is calculated.
-            currency (str, optional): The currency in which the capital distribution is calculated. If None, the original currency of the dividends is used. Defaults to None.
-            broker_id_list (list, optional): A list of broker IDs to filter the transactions. Defaults to None.
-
+            asset (Asset): The asset object for which unrealized gain/loss is calculated.
+            date (datetime.date): The date as of which the calculation is performed.
+            currency (str, optional): The reporting currency. Defaults to None.
+            broker_id_list (list, optional): List of broker IDs to filter transactions. Defaults to None.
+            start_date (datetime.date, optional): The start date for calculating buy-in price. Defaults to None.
+        
         Returns:
-            float: The total capital distribution (dividends) for the security as of the given date, rounded to 2 decimal places. If there are no dividend transactions, it returns 0.
-
-        This method calculates the capital distribution by summing up the cash flow from all 'dividend' type transactions as of the given date. If a currency is provided, the dividends are converted to that currency using the FX.get_rate function.
+            dict: A dictionary containing the breakdown of unrealized gain/loss:
+                - 'price_appreciation': The price appreciation component in reporting currency.
+                - 'fx_effect': The FX effect component in reporting currency.
+                - 'total': The total unrealized gain/loss in reporting currency.
         """
         unrealized_gain_loss = 0
+        price_appreciation = 0
+        fx_effect = 0
 
         current_position = self.position(date, broker_id_list)
         
-        current_price = self.price_at_date(date, currency).price if self.price_at_date(date) else 0
-        buy_in_price = self.calculate_buy_in_price(date, currency, broker_id_list, start_date)
-        if buy_in_price is not None:
-            unrealized_gain_loss = (current_price - buy_in_price) * current_position
+        current_price_in_lcl_cur = self.price_at_date(date, currency=None).price if self.price_at_date(date) else 0
+        current_price_in_target_cur = self.price_at_date(date, currency).price if self.price_at_date(date) else 0
+        buy_in_price_in_lcl_cur = self.calculate_buy_in_price(date, currency=None, broker_id_list=broker_id_list, start_date=start_date)
+        buy_in_price_in_target_cur = self.calculate_buy_in_price(date, currency, broker_id_list, start_date)
 
-        return round(Decimal(unrealized_gain_loss), 2)
+        fx_rate_eop = FX.get_rate(self.currency, currency, date)['FX'] if currency else 1
+
+        if buy_in_price_in_lcl_cur is not None and buy_in_price_in_target_cur is not None:
+            price_appreciation = (current_price_in_lcl_cur - buy_in_price_in_lcl_cur) * current_position * fx_rate_eop
+            unrealized_gain_loss = (current_price_in_target_cur - buy_in_price_in_target_cur) * current_position
+            fx_effect = unrealized_gain_loss - price_appreciation
+
+        return {
+             'price_appreciation': round(Decimal(price_appreciation), 2),
+             'fx_effect': round(Decimal(fx_effect), 2),
+             'total': round(Decimal(unrealized_gain_loss), 2)
+        }
     
     def get_capital_distribution(self, date, currency=None, broker_id_list=None, start_date=None):
         """
@@ -608,11 +730,6 @@ class Transactions(models.Model):
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
-
-    # def save(self, *args, **kwargs):
-    #     super().save(*args, **kwargs)
-    #     # Update broker balance after each transaction
-    #     self.broker.balance(self.date)
 
     def __str__(self):
         return f"{self.type} || {self.date}"
@@ -742,6 +859,7 @@ class FXTransaction(models.Model):
     to_amount = models.DecimalField(max_digits=15, decimal_places=6, null=False)
     exchange_rate = models.DecimalField(max_digits=15, decimal_places=6, null=False, blank=True)
     commission = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
+    commission_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
 
     def save(self, *args, **kwargs):

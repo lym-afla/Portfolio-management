@@ -1,6 +1,9 @@
 from rest_framework import serializers
-from common.models import Assets, Brokers, FX
+from common.models import Assets, Brokers, FX, Transactions
 from constants import BROKER_GROUPS, CURRENCY_CHOICES
+from decimal import Decimal
+
+from core.formatting_utils import format_value
 
 class PriceImportSerializer(serializers.Serializer):
     securities = serializers.PrimaryKeyRelatedField(
@@ -16,7 +19,7 @@ class PriceImportSerializer(serializers.Serializer):
     start_date = serializers.DateField(required=False)
     end_date = serializers.DateField(required=False)
     frequency = serializers.ChoiceField(
-        choices=[('weekly', 'Weekly'), ('monthly', 'Monthly'), ('quarterly', 'Quarterly'), ('annually', 'Annually')],
+        choices=[('weekly', 'Weekly'), ('monthly', 'Monthly'), ('quarterly', 'Quarterly'), ('yearly', 'Yearly')],
         required=False,
         allow_null=True
     )
@@ -100,3 +103,49 @@ class FXRateSerializer(serializers.Serializer):
     target = serializers.CharField(max_length=3)
     date = serializers.DateField()
 
+class TransactionSerializer(serializers.ModelSerializer):
+    date = serializers.SerializerMethodField()
+    type = serializers.CharField()
+    quantity = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    value = serializers.SerializerMethodField()
+    cash_flow = serializers.SerializerMethodField()
+    commission = serializers.SerializerMethodField()
+    currency = serializers.CharField()
+    security_name = serializers.SerializerMethodField()
+    security_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Transactions
+        fields = ['date', 'type', 'quantity', 'price', 'value', 'cash_flow', 'commission', 'currency', 'security_name', 'security_id']
+
+    def get_digits(self):
+        return self.context.get('digits', 2)  # Default to 2 if not provided
+
+    def get_date(self, obj):
+        return format_value(obj.date, 'date', None, None)
+
+    def get_quantity(self, obj):
+        quantity = abs(obj.quantity) if obj.quantity else None
+        return format_value(quantity, 'quantity', None, 0)
+
+    def get_price(self, obj):
+        return format_value(obj.price, 'price', obj.currency, self.get_digits())
+
+    def get_value(self, obj):
+        if obj.quantity and obj.price:
+            value = Decimal(obj.quantity) * Decimal(obj.price)
+            return format_value(value, 'value', obj.currency, self.get_digits())
+        return None
+
+    def get_cash_flow(self, obj):
+        return format_value(obj.cash_flow, 'cash_flow', obj.currency, self.get_digits())
+
+    def get_commission(self, obj):
+        return format_value(obj.commission, 'commission', obj.currency, self.get_digits())
+
+    def get_security_name(self, obj):
+        return obj.security.name if obj.security else None
+
+    def get_security_id(self, obj):
+        return obj.security.id if obj.security else None

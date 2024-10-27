@@ -8,7 +8,7 @@
     <v-btn value="1m">1m</v-btn>
     <v-btn value="3m">3m</v-btn>
     <v-btn value="6m">6m</v-btn>
-    <v-btn v-if="showYTD" :value="ytdValue">YTD</v-btn>
+    <v-btn v-if="showYTD" value="ytd">YTD</v-btn>
     <v-btn value="1Y">1Y</v-btn>
     <v-btn value="3Y">3Y</v-btn>
     <v-btn value="5Y">5Y</v-btn>
@@ -41,13 +41,13 @@ export default {
       return currentDate.value > startOfYear
     })
 
-    const ytdValue = computed(() => {
-      return `YTD-${currentDate.value.getFullYear()}`
-    })
+    // const ytdValue = computed(() => {
+    //   return `YTD-${currentDate.value.getFullYear()}`
+    // })
 
     return {
       showYTD,
-      ytdValue
+      // ytdValue
     }
   }
 }

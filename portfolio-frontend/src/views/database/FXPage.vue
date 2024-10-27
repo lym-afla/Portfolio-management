@@ -131,9 +131,9 @@
 </template>
 
 <script>
-import { ref, computed, watch, watchEffect } from 'vue'
+import { ref, computed, watch, watchEffect, onMounted } from 'vue'
 import { useStore } from 'vuex'
-import { getFXData, deleteFXRate, getFXDetails } from '@/services/api'
+import { getFXData, deleteFXRate, getFXDetails, getEffectiveCurrentDate } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
@@ -180,6 +180,7 @@ export default {
     ])
 
     const fetchFXData = async () => {
+      if (!dateTo.value) return
 
       console.log('Fetching FX data with:', {
         startDate: dateFrom.value,
@@ -210,13 +211,23 @@ export default {
       }
     }
 
-    const initializeDateRange = () => {
+    const initializeDateRange = async () => {
       console.log('Initializing date range')
       console.log('effectiveCurrentDate:', effectiveCurrentDate.value)
       console.log('dateRange:', dateRange.value)
       
+      if (!effectiveCurrentDate.value) {
+        try {
+          const fetchedDate = await getEffectiveCurrentDate()
+          store.commit('SET_EFFECTIVE_CURRENT_DATE', fetchedDate.effective_current_date)
+        } catch (error) {
+          console.error('Failed to fetch effective current date:', error)
+          return // Exit the function if we can't get the effective current date
+        }
+      }
+
       if (effectiveCurrentDate.value) {
-        const { from, to } = calculateDateRange(dateRange.value, effectiveCurrentDate.value)
+        const { from, to } = calculateDateRange(dateRange.value, effectiveCurrentDate.value, dateFrom.value, dateTo.value)
         console.log('Calculated date range:', { from, to })
         
         dateFrom.value = from
@@ -228,22 +239,25 @@ export default {
           dateRange: dateRange.value,
           effectiveCurrentDate: effectiveCurrentDate.value
         })
+        
+        // Trigger table update after initialization
+        await fetchFXData()
       } else {
-        console.log('effectiveCurrentDate is not set')
+        console.error('effectiveCurrentDate is still not set after attempting to fetch it')
       }
     }
 
     const handleDateRangeChange = (newDateRange) => {
+      console.log('Date range changed:', newDateRange)
       dateRange.value = newDateRange.dateRange
       dateFrom.value = newDateRange.dateFrom
       dateTo.value = newDateRange.dateTo
-      console.log('Date range changed:', { dateRange: dateRange.value, dateFrom: dateFrom.value, dateTo: dateTo.value })
       fetchFXData()
     }
 
     watchEffect(async () => {
       if (effectiveCurrentDate.value) {
-        initializeDateRange()
+        await initializeDateRange()
         loading.value = false
       }
     })
@@ -254,9 +268,12 @@ export default {
       }
     })
 
-    // onMounted(() => {
-    //   console.log('Mounting FXPage')
-    // })
+    onMounted(async () => {
+      console.log('Mounting FXPage')
+      if (!effectiveCurrentDate.value) {
+        await initializeDateRange()
+      }
+    })
 
     const showFXDialog = ref(false)
     const showImportDialog = ref(false)

@@ -201,7 +201,7 @@ export const updateDashboardSettings = async (settings) => {
 }
 
 export const getEffectiveCurrentDate = async () => {
-  const response = await axiosInstance.get(`${API_URL}/api/effective-current-date/`)
+  const response = await axiosInstance.get('/api/effective-current-date/')
   return response.data
 }
 
@@ -226,7 +226,7 @@ export const getAssetTypes = async () => {
 export const getOpenPositions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
   console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy });
   try {
-    const response = await axiosInstance.post(`${API_URL}/open_positions/api/get_open_positions_table/`, {
+    const response = await axiosInstance.post('/open_positions/api/get_open_positions_table/', {
       dateFrom,
       dateTo,
       page,
@@ -365,9 +365,12 @@ export const getSecurityDetail = async (securityId) => {
   }
 }
 
-export const getSecurityPriceHistory = async (securityId) => {
+export const getSecurityPriceHistory = async (securityId, period) => {
   try {
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/price-history/`)
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/price-history/`, {
+      params: { period }
+    })
+    console.log('[api.js] Security price history:', response.data)
     return response.data
   } catch (error) {
     console.error('Error fetching security price history:', error)
@@ -375,9 +378,12 @@ export const getSecurityPriceHistory = async (securityId) => {
   }
 }
 
-export const getSecurityPositionHistory = async (securityId) => {
+export const getSecurityPositionHistory = async (securityId, period) => {
   try {
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/position-history/`)
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/position-history/`, {
+      params: { period }
+    })
+    console.log('[api.js] Security position history:', response.data)
     return response.data
   } catch (error) {
     console.error('Error fetching security position history:', error)
@@ -385,9 +391,17 @@ export const getSecurityPositionHistory = async (securityId) => {
   }
 }
 
-export const getSecurityTransactions = async (securityId) => {
+export const getSecurityTransactions = async (securityId, options, period) => {
   try {
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/transactions/`)
+    const { page, itemsPerPage } = options
+    const response = await axiosInstance.get(`/database/api/securities/${securityId}/transactions/`, {
+      params: {
+        page,
+        itemsPerPage,
+        period
+      }
+    })
+    console.log('[api.js] Security transactions:', response.data)
     return response.data
   } catch (error) {
     console.error('Error fetching security transactions:', error)
@@ -578,7 +592,7 @@ export const getSecurityDetails = async (id) => {
 
 export const getPriceImportFormStructure = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/price-import/`)
+    const response = await axiosInstance.get('/database/api/price-import/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -741,7 +755,7 @@ export const addFXRate = async (fxData) => {
 
 export const updateFXRate = async (fxId, fxData) => {
   try {
-    const response = await axiosInstance.put(`${API_URL}/database/api/fx/${fxId}/`, fxData)
+    const response = await axiosInstance.put(`/database/api/fx/${fxId}/`, fxData)
     return response.data
   } catch (error) {
     console.error('Error updating FX rate:', error)
@@ -751,7 +765,7 @@ export const updateFXRate = async (fxId, fxData) => {
 
 export const deleteFXRate = async (fxId) => {
   try {
-    const response = await axiosInstance.delete(`${API_URL}/database/api/fx/${fxId}/`)
+    const response = await axiosInstance.delete(`/database/api/fx/${fxId}/`)
     return response.data
   } catch (error) {
     console.error('Error deleting FX rate:', error)
@@ -761,7 +775,7 @@ export const deleteFXRate = async (fxId) => {
 
 export const getFXImportStats = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/fx/import_stats/`)
+    const response = await axiosInstance.get('/database/api/fx/import_stats/')
     console.log('GetFXImportStats API response:', response.data)
     return response.data
   } catch (error) {
@@ -770,13 +784,16 @@ export const getFXImportStats = async () => {
   }
 }
 
-export const importFXRates = async (importOption, signal) => {
+export const importFXRates = async (importData, signal) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/fx/import_fx_rates/`, 
-      { import_option: importOption },
+    const response = await axiosInstance.post('/database/api/fx-import/sse/', 
+      importData,
       {
         responseType: 'text',
         signal: signal,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         onDownloadProgress: (progressEvent) => {
           if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
             const dataChunk = progressEvent.event.currentTarget.response
@@ -812,7 +829,7 @@ export const importFXRates = async (importOption, signal) => {
 
 export const cancelFXImport = async () => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/database/api/fx/cancel_import/`)
+    const response = await axiosInstance.post('/database/api/fx/cancel_import/')
     return response.data
   } catch (error) {
     console.error('Error cancelling FX import:', error)
@@ -1009,3 +1026,4 @@ export async function getPortfolioBreakdownSummary(year) {
     throw error
   }
 }
+

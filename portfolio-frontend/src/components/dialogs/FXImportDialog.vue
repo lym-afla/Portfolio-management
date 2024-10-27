@@ -7,13 +7,22 @@
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
         
-        <v-row v-if="stats" class="mb-4">
+        <v-select
+          v-model="importType"
+          :items="importTypes"
+          item-title="text"
+          item-value="value"
+          label="Import Type"
+          :disabled="isImporting"
+        ></v-select>
+
+        <v-row v-if="importType === 'auto' && stats" class="mb-4">
           <v-col cols="12" sm="4">
-              <v-card elevation="2" class="pa-2 text-center">
-                  <v-icon color="primary" size="large" class="mb-2">mdi-calendar-range</v-icon>
-                  <v-card-title class="text-h6">{{ stats.total_dates }}</v-card-title>
-                  <v-card-subtitle>Total Dates</v-card-subtitle>
-              </v-card>
+            <v-card elevation="2" class="pa-2 text-center">
+              <v-icon color="primary" size="large" class="mb-2">mdi-calendar-range</v-icon>
+              <v-card-title class="text-h6">{{ stats.total_dates }}</v-card-title>
+              <v-card-subtitle>Total Dates</v-card-subtitle>
+            </v-card>
           </v-col>
           <v-col cols="12" sm="4">
             <v-card elevation="2" class="pa-2 text-center">
@@ -31,19 +40,71 @@
           </v-col>
         </v-row>
 
-        <v-select
-          v-model="importOption"
-          :items="importOptions"
-          item-title="text"
-          item-value="value"
-          label="Import Option"
-          :disabled="isImporting"
-        ></v-select>
+        <template v-if="importType === 'auto'">
+          <v-select
+            v-model="importOption"
+            :items="importOptions"
+            item-title="text"
+            item-value="value"
+            label="Import Option"
+            :disabled="isImporting"
+          ></v-select>
+        </template>
+
+        <template v-else-if="importType === 'manual'">
+          <v-radio-group v-model="dateType" row>
+            <v-radio label="Single Date" value="single"></v-radio>
+            <v-radio label="Date Range" value="range"></v-radio>
+          </v-radio-group>
+
+          <v-row v-if="dateType === 'single'">
+            <v-col cols="12">
+              <v-text-field
+                v-model="singleDate"
+                label="Date"
+                type="date"
+                :rules="[v => !!v || 'Date is required']"
+                :disabled="isImporting"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+
+          <v-row v-else>
+            <v-col cols="6">
+              <v-text-field
+                v-model="startDate"
+                label="Start Date"
+                type="date"
+                :rules="[v => !!v || 'Start date is required']"
+                :disabled="isImporting"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="6">
+              <v-text-field
+                v-model="endDate"
+                label="End Date"
+                type="date"
+                :rules="[v => !!v || 'End date is required']"
+                :disabled="isImporting"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+
+          <v-select
+            v-if="dateType === 'range'"
+            v-model="frequency"
+            :items="frequencyOptions"
+            item-title="text"
+            item-value="value"
+            label="Frequency"
+            :disabled="isImporting"
+          ></v-select>
+        </template>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="startImport" :loading="isImporting" :disabled="!importOption">Import</v-btn>
+        <v-btn color="blue darken-1" text @click="startImport" :loading="isImporting" :disabled="!isFormValid">Import</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -170,7 +231,7 @@
 </template>
   
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getFXImportStats, importFXRates, cancelFXImport } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 
@@ -210,15 +271,51 @@ export default {
     const abortController = ref(null)
     const showStopDialog = ref(false)
 
+    const importType = ref('auto')
+    const importTypes = [
+      { text: 'Auto Import', value: 'auto' },
+      { text: 'Manual Import', value: 'manual' }
+    ]
+    const dateType = ref('single')
+    const singleDate = ref(null)
+    const startDate = ref(null)
+    const endDate = ref(null)
+    const frequency = ref(null)
+    const frequencyOptions = [
+      { text: 'Daily', value: 'daily' },
+      { text: 'Weekly', value: 'weekly' },
+      { text: 'Monthly', value: 'monthly' },
+      { text: 'Quarterly', value: 'quarterly' },
+      { text: 'Yearly', value: 'yearly' }
+    ]
+
+    const isFormValid = computed(() => {
+      if (importType.value === 'auto') {
+        return !!importOption.value
+      } else {
+        if (dateType.value === 'single') {
+          return !!singleDate.value
+        } else {
+          return !!startDate.value && !!endDate.value && !!frequency.value
+        }
+      }
+    })
+
     const fetchStats = async () => {
-      try {
-        stats.value = await getFXImportStats()
-        console.log('Fetched stats:', stats.value)
-      } catch (err) {
-        error.value = 'Failed to fetch import statistics'
-        console.error('Error fetching stats:', err)
+      if (importType.value === 'auto') {
+        try {
+          stats.value = await getFXImportStats()
+          console.log('Fetched stats:', stats.value)
+        } catch (err) {
+          error.value = 'Failed to fetch import statistics'
+          console.error('Error fetching stats:', err)
+        }
+      } else {
+        stats.value = null
       }
     }
+
+    watch(importType, fetchStats)
 
     // watch(() => dialog.value, (newValue) => {
     //   if (newValue) {
@@ -243,7 +340,20 @@ export default {
       abortController.value = new AbortController()
       try {
         dialog.value = false // Close the FXImportDialog
-        await importFXRates(importOption.value, abortController.value.signal)
+        let importData
+        if (importType.value === 'auto') {
+          importData = { import_option: importOption.value }
+        } else {
+          importData = {
+            import_option: 'manual',
+            date_type: dateType.value,
+            single_date: singleDate.value,
+            start_date: startDate.value,
+            end_date: endDate.value,
+            frequency: frequency.value
+          }
+        }
+        await importFXRates(importData, abortController.value.signal)
       } catch (err) {
         if (err.name === 'AbortError') {
           error.value = 'Import process was stopped'
@@ -264,7 +374,7 @@ export default {
       }
       try {
         await cancelFXImport()
-        currentMessage.value = 'Cancelling import...'
+        currentMessage.value = 'Cancelling import'
         showProgress.value = false
         showStopDialog.value = true
       } catch (err) {
@@ -281,11 +391,14 @@ export default {
 
     const handleProgress = (event) => {
       const data = event.detail
-      if (data.progress) {
+      if (data.status === 'initializing') {
+        currentMessage.value = data.message
+        total.value = data.total
+      }
+      if (data.status === 'updating') {
         progress.value = data.progress
         current.value = data.current
-        total.value = data.total
-        currentMessage.value = `Importing FX rates (${current.value} / ${total.value})`
+        currentMessage.value = data.message
       }
       if (data.status === 'completed') {
         showProgress.value = false
@@ -336,7 +449,16 @@ export default {
       closeSuccessDialog,
       stopImport,
       showStopDialog,
-      closeStopDialog
+      closeStopDialog,
+      importType,
+      importTypes,
+      dateType,
+      singleDate,
+      startDate,
+      endDate,
+      frequency,
+      frequencyOptions,
+      isFormValid
     }
   }
 }

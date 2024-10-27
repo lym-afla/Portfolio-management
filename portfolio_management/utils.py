@@ -2414,8 +2414,8 @@ def calculate_performance_old_framework(user, start_date, end_date, selected_bro
 
         for asset in assets:
             asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
-            performance_data['price_change'] += asset_realized_gl["all_time"] if asset_realized_gl else 0
-            performance_data['price_change'] += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['price_change'] += asset_realized_gl["all_time"]["total"] if asset_realized_gl else 0
+            performance_data['price_change'] += asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)['total']
             performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
 
         # Calculate EOP NAV
