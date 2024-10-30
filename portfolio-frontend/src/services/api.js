@@ -977,7 +977,7 @@ export const deleteFXTransaction = async (id) => {
 
 export const analyzeFile = async (formData) => {
   try {
-    const response = await axiosInstance.post(`${API_URL}/transactions/api/analyze_file/`, formData, {
+    const response = await axiosInstance.post('/transactions/api/analyze_file/', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

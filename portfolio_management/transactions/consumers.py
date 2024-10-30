@@ -61,8 +61,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 file_id = text_data_json.get('file_id')
                 broker_id = text_data_json.get('broker_id')
                 confirm_every = text_data_json.get('confirm_every', False)
+                is_galaxy = text_data_json.get('is_galaxy', False)
+                galaxy_type = text_data_json.get('galaxy_type', None)
+                currency = text_data_json.get('currency', None)
                 if not self.import_task or self.import_task.done():
-                    self.import_task = asyncio.create_task(self.start_import(file_id, broker_id, confirm_every))  # Update this line
+                    self.import_task = asyncio.create_task(self.start_import(file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type))
                     logger.debug("Started import_task")
                 else:
                     logger.warning("Import task already running")
@@ -113,11 +116,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 'data': {'message': f'An error occurred: {str(e)}'}
             }))
 
-    async def start_import(self, file_id, broker_id, confirm_every):
+    async def start_import(self, file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type):
         logger.debug("Starting start_import")
         try:
             self.confirm_every = confirm_every
-            self.import_generator = self.view_set.import_transactions(self.user, file_id, broker_id, confirm_every)
+            self.import_generator = self.view_set.import_transactions(self.user, file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type)
             await self.process_import()
         except Exception as e:
             logger.error(f"Error in start_import: {str(e)}")

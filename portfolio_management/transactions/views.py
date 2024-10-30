@@ -24,7 +24,7 @@ from fuzzywuzzy import fuzz
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
 from core.transactions_utils import get_transactions_table_api
-from core.import_utils import get_broker, parse_charles_stanley_transactions
+from core.import_utils import get_broker, parse_charles_stanley_transactions, parse_galaxy_broker_cash_flows
 from constants import BROKER_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
 from .serializers import TransactionFormSerializer, FXTransactionFormSerializer
 from utils import broker_group_to_ids_old_approach, currency_format_old_structure
@@ -353,6 +353,14 @@ class TransactionViewSet(viewsets.ModelViewSet):
         logger.info(f"File saved at: {file_path}")
 
         try:
+            logger.debug(f"Request data: {request.data}")
+            if request.data.get('is_galaxy') == 'true':
+                return Response({
+                    'status': 'broker_not_identified',
+                    'message': 'Galaxy file detected.',
+                    'fileId': file_id
+                }, status=status.HTTP_200_OK)
+            
             content = self.search_keywords_in_excel(file_path)
             identified_broker = self.identify_broker(content, request.user)
 
@@ -373,14 +381,25 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-    async def import_transactions(self, user, file_id, broker_id, confirm_every):
+    async def import_transactions(self, user, file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type):
         logger.debug("Starting import_transactions")
         file_path = None
         try:
             file_path, broker_id = await self.validate_import_data(file_id, broker_id)
             broker = await get_broker(broker_id)
-            
-            if CHARLES_STANLEY_BROKER in broker.name:
+
+            if is_galaxy:
+                if not currency:
+                    raise ValueError("Currency is required for Galaxy imports")
+                    
+                if galaxy_type == 'cash':
+                    async for update in parse_galaxy_broker_cash_flows(file_path, currency, broker, user, confirm_every):
+                        yield update
+                # else:
+                #     async for update in parse_galaxy_transactions(file_path, currency, broker, user, confirm_every):
+                #         yield update
+
+            elif CHARLES_STANLEY_BROKER in broker.name:
                 async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, confirm_every):
                     # if isinstance(update, dict):
                     #     if update.get('status') == 'security_mapping':

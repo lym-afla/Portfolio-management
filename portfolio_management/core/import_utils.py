@@ -25,7 +25,7 @@ import aiohttp
 from asgiref.sync import sync_to_async
 import asyncio
 
-from constants import MUTUAL_FUNDS_IN_PENCES, TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL
+from constants import MUTUAL_FUNDS_IN_PENCES, TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_TAX
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -492,3 +492,130 @@ async def import_security_prices_from_yahoo(security, dates):
 
         yield result
 
+async def _process_galaxy_transaction(user, broker, date, currency, transaction_type, cash_flow=None, commission=None, tax=None):
+    """Helper function to process a single Galaxy transaction"""
+    transaction_data = {
+        'investor': user,
+        'broker': broker,
+        'date': date,
+        'type': transaction_type,
+        'currency': currency,
+        'cash_flow': round(Decimal(cash_flow), 2) if cash_flow is not None else None,
+        'commission': round(Decimal(commission), 2) if commission is not None else None,
+        'tax': round(Decimal(tax), 2) if tax is not None else None,
+    }
+
+    existing_transaction = await transaction_exists(transaction_data)
+    if existing_transaction:
+        return 'duplicate', transaction_data
+    return 'new', transaction_data
+
+async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, confirm_every):
+    """
+    Parse Galaxy broker cash flows with async support and progress tracking.
+    """
+    yield {
+        'status': 'initialization',
+        'message': 'Opening and reading Galaxy cash flow file',
+    }
+    logger.debug("Yielded progress message: Opening Galaxy cash flow file")
+
+    try:
+        # Read the Excel file
+        df = pd.read_excel(file_path, header=3)  # Line 4 has table headers
+        if df.empty:
+            raise ValueError("The Excel file is empty or could not be read.")
+        df = df[df['Дата'].notna()]  # Filter out rows without dates
+        total_rows = df.shape[0]
+        logger.debug(f"File read successfully. Total rows: {total_rows}")
+        
+        yield {
+            'status': 'initialization',
+            'message': 'File read successfully. Preparing for import',
+            'total_to_update': int(total_rows)
+        }
+    except Exception as e:
+        error_message = f"Error reading Excel file: {str(e)}"
+        logger.error(error_message)
+        yield {'error': error_message}
+        return
+
+    BATCH_SIZE = 1
+    total_transactions = 0
+    skipped_count = 0
+    duplicate_count = 0
+    import_errors = 0
+
+    # Iterate over each row in the DataFrame
+    for index, row in df.iterrows():
+        try:
+            date = row['Дата'].strftime("%Y-%m-%d")
+            transactions_to_process = []
+
+            # Collect all transactions from the row
+            if pd.notna(row['Инвестиции']):
+                transaction_type = TRANSACTION_TYPE_CASH_IN if row['Инвестиции'] > 0 else TRANSACTION_TYPE_CASH_OUT
+                transactions_to_process.append(('cash', transaction_type, row['Инвестиции']))
+
+            if pd.notna(row['Комиссия']):
+                transactions_to_process.append(('commission', TRANSACTION_TYPE_BROKER_COMMISSION, row['Комиссия']))
+
+            if 'Tax' in row and pd.notna(row['Tax']):
+                transactions_to_process.append(('tax', TRANSACTION_TYPE_TAX, row['Tax']))
+
+            total_transactions += len(transactions_to_process)
+
+            # Process each transaction
+            for trans_type, trans_name, value in transactions_to_process:
+                kwargs = {trans_type: value}
+                status, transaction_data = await _process_galaxy_transaction(
+                    user=user,
+                    broker=broker,
+                    date=date,
+                    currency=currency,
+                    transaction_type=trans_name,
+                    **kwargs
+                )
+
+                if status == 'duplicate':
+                    duplicate_count += 1
+                    logger.debug(f"Duplicate {trans_type} transaction found for row {index + 1}")
+                else:
+                    if confirm_every:
+                        yield {
+                            'status': 'transaction_confirmation',
+                            'data': transaction_data,
+                        }
+                    else:
+                        yield {
+                            'status': 'add_transaction',
+                            'data': transaction_data,
+                        }
+
+            # Report progress
+            if (index + 1) % BATCH_SIZE == 0 or index == total_rows - 1:
+                progress = min(((index + 1) / total_rows) * 100, 100)
+                yield {
+                    'status': 'progress', 
+                    'message': f'Processing row {index + 1} of {total_rows}', 
+                    'progress': progress,
+                    'current': index + 1,
+                }
+
+        except Exception as e:
+            logger.error(f"Error processing row {index + 1}: {str(e)}")
+            import_errors += 1
+            yield {'error': f'An unexpected error occurred while processing row {index + 1}: {str(e)}'}
+
+    # Final yield with import summary
+    yield {
+        'status': 'complete',
+        'data': {
+            'totalTransactions': total_transactions,
+            'importedTransactions': 0,  # Will be filled in the consumer
+            'skippedTransactions': skipped_count,
+            'duplicateTransactions': duplicate_count,
+            'importErrors': import_errors
+        },
+    }
+    logger.debug("Yielded completion of Galaxy cash flow import process")

@@ -11,8 +11,24 @@
           @change="handleFileChange"
           :disabled="isAnalyzed"
         ></v-file-input>
+        <v-checkbox
+          v-model="isGalaxy"
+          label="Galaxy"
+          class="mt-2"
+          :disabled="isAnalyzed"
+        ></v-checkbox>
+
+        <v-select
+          v-if="isGalaxy && isAnalyzed"
+          v-model="selectedCurrency"
+          :items="currencies"
+          label="Select Currency"
+          class="mt-2"
+          :rules="[v => !!v || 'Currency is required']"
+        ></v-select>
+
         <v-alert
-          v-if="isAnalyzed && brokerIdentificationComplete"
+          v-if="isAnalyzed && brokerIdentificationComplete && !isGalaxy"
           :type="brokerIdentified ? 'success' : 'info'"
           class="mt-4 mb-4"
         >
@@ -31,6 +47,23 @@
           :hint="brokerIdentified ? 'Suggested broker based on file analysis' : ''"
           persistent-hint
         ></v-autocomplete>
+
+        <v-radio-group
+          v-if="isGalaxy && isAnalyzed"
+          v-model="galaxyType"
+          inline
+          class="mt-4"
+        >
+          <v-radio
+            label="Cash"
+            value="cash"
+          ></v-radio>
+          <v-radio
+            label="Transactions"
+            value="transactions"
+          ></v-radio>
+        </v-radio-group>
+
         <v-checkbox
           v-model="confirmEveryTransaction"
           label="Confirm every transaction manually"
@@ -274,6 +307,15 @@ export default {
     })
 
     const confirmEveryTransaction = ref(false)
+    const isGalaxy = ref(false)
+    const galaxyType = ref('transactions')
+    const selectedCurrency = ref(null)
+    const currencies = [
+      { title: 'USD', value: 'USD' },
+      { title: 'EUR', value: 'EUR' },
+      { title: 'GBP', value: 'GBP' },
+      { title: 'RUB', value: 'RUB' }
+    ]
 
     const handleFileChange = (event) => {
       file.value = event.target.files[0]
@@ -292,6 +334,7 @@ export default {
       brokerIdentified.value = false
       identifiedBroker.value = null
       brokerIdentificationComplete.value = false
+      selectedCurrency.value = null
       resetProgressDialog()
     }
 
@@ -302,6 +345,7 @@ export default {
         try {
           const formData = new FormData()
           formData.append('file', file.value)
+          formData.append('is_galaxy', String(isGalaxy.value))
           const result = await analyzeFile(formData)
           isAnalyzed.value = true
           fileId.value = result.fileId
@@ -313,7 +357,6 @@ export default {
             selectedBroker.value = result.identifiedBroker.id
           }
           importState.setState('idle')
-          // startImport(result.file_id, confirmAllTransactions.value)
         } catch (error) {
           handleApiError(error)
           importState.setState('error', error.message)
@@ -333,6 +376,11 @@ export default {
         return
       }
 
+      if (isGalaxy.value && !selectedCurrency.value) {
+        importState.setState('error', 'Currency must be selected for Galaxy import')
+        return
+      }
+
       importState.setState('importing')
       showProgressDialog.value = true
       dialog.value = false
@@ -348,7 +396,10 @@ export default {
           type: 'start_import',
           file_id: fileId.value,
           broker_id: selectedBroker.value,
-          confirm_every: confirmEveryTransaction.value
+          confirm_every: confirmEveryTransaction.value,
+          is_galaxy: isGalaxy.value,
+          galaxy_type: isGalaxy.value ? galaxyType.value : null,
+          currency: isGalaxy.value ? selectedCurrency.value : null
         })
       } else {
         importError.value = 'WebSocket not connected. Please try again.'
@@ -565,7 +616,11 @@ export default {
       isConnected,
       showTransactionConfirmation,
       currentTransaction,
-      confirmEveryTransaction
+      confirmEveryTransaction,
+      isGalaxy,
+      galaxyType,
+      selectedCurrency,
+      currencies
     }
   }
 }
