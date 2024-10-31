@@ -32,7 +32,7 @@ def portfolio_at_date(user_id: int, to_date: date, brokers: List[int]) -> QueryS
         return Assets.objects.none()
     
     return Assets.objects.filter(
-        investor__id=user_id,
+        investors__id=user_id,
         transactions__date__lte=to_date, 
         transactions__broker_id__in=brokers
     ).annotate(
@@ -82,10 +82,10 @@ def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currenc
         if security_price is not None:
             security_price = security_price.price
         else:
-            security_price = security.calculate_buy_in_price(date, target_currency, broker_ids)
+            security_price = security.calculate_buy_in_price(date, user_id, target_currency, broker_ids)
         
         for broker in portfolio_brokers:
-            broker_position = security.position(date, [broker.id])
+            broker_position = security.position(date, user_id, [broker.id])
             broker_value = Decimal(broker_position * security_price)
             analysis['Total NAV'] += broker_value
 
@@ -121,9 +121,9 @@ def calculate_portfolio_value(user_id: int, date: date, currency: Optional[str] 
     if asset_id is None:
         portfolio_value = NAV_at_date(user_id, tuple(broker_id_list), date, currency)['Total NAV']
     else:
-        asset = Assets.objects.get(id=asset_id)
+        asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         try:
-            portfolio_value = Decimal(asset.price_at_date(date, currency).price * asset.position(date, broker_id_list))
+            portfolio_value = Decimal(asset.price_at_date(date, currency).price * asset.position(date, user_id, broker_id_list))
         except:
             portfolio_value = Decimal(0)
 
@@ -317,19 +317,19 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
             performance_data['commission'] += (transaction.commission or 0) * fx_rate
 
         # Calculate asset-based metrics
-        assets = Assets.objects.filter(investor=user, brokers=broker).prefetch_related('transactions')
+        assets = Assets.objects.filter(investors__id=user.id, brokers=broker).prefetch_related('transactions')
         if is_restricted is not None:
             assets = assets.filter(restricted=is_restricted)
 
         for asset in assets:
-            asset_realized_gl = asset.realized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
-            asset_unrealized_gl = asset.unrealized_gain_loss(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            asset_realized_gl = asset.realized_gain_loss(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            asset_unrealized_gl = asset.unrealized_gain_loss(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
     
             performance_data['price_change'] += asset_realized_gl['all_time']['price_appreciation'] if asset_realized_gl else 0
             alternative_fx_check += asset_realized_gl['all_time']['fx_effect']
             performance_data['price_change'] += asset_unrealized_gl['price_appreciation']
             alternative_fx_check += asset_unrealized_gl['fx_effect']
-            performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
 
         # Calculate EOP NAV
         eop_nav = NAV_at_date(user.id, tuple([broker.id]), end_date, currency_target)['Total NAV']
@@ -387,7 +387,7 @@ def get_last_exit_date_for_brokers(selected_brokers, date):
     # Step 1: Check the position of each security at the current date
     for broker in Brokers.objects.filter(id__in=selected_brokers):
         for security in broker.securities.all():
-            if security.position(date, [broker.id]) != 0:
+            if security.position(date, broker.investor, [broker.id]) != 0:
                 return date
 
     # Step 2: If positions for all securities at the current date are zero, find the latest transaction date

@@ -1,42 +1,42 @@
+from channels.middleware import BaseMiddleware
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
-from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import UntypedToken
+from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from jwt import decode as jwt_decode
-from django.conf import settings
+from django.contrib.auth import get_user_model
 import logging
 
 logger = logging.getLogger(__name__)
 
+User = get_user_model()
+
 @database_sync_to_async
-def get_user(user_id):
-    User = get_user_model()
+def get_user(token_key):
     try:
-        return User.objects.get(id=user_id)
-    except User.DoesNotExist:
+        access_token = AccessToken(token_key)
+        user = User.objects.get(id=access_token['user_id'])
+        return user
+    except (InvalidToken, TokenError, User.DoesNotExist):
         return AnonymousUser()
 
-class TokenAuthMiddleware:
-    def __init__(self, inner):
-        self.inner = inner
-
+class TokenAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
-        headers = dict(scope['headers'])
-        if b'authorization' in headers:
-            try:
-                token = headers[b'authorization'].decode().split()[1]
-                # This will raise an error if the token is invalid
-                UntypedToken(token)
-                # Decode the token
-                decoded_data = jwt_decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-                user_id = decoded_data['user_id']
-                scope['user'] = await get_user(user_id)
-                logger.debug(f"Authenticated user: {scope['user']}")
-            except (InvalidToken, TokenError, KeyError) as e:
-                logger.error(f"Invalid token: {str(e)}")
+        try:
+            # Extract token from query string
+            query_string = scope.get('query_string', b'').decode()
+            query_params = dict(param.split('=') for param in query_string.split('&') if param)
+            token = query_params.get('token', None)
+
+            if token:
+                scope['user'] = await get_user(token)
+            else:
                 scope['user'] = AnonymousUser()
-        else:
+
+            # Add this debug logging
+            logger.debug(f"User authenticated: {scope['user']}")
+            
+            return await super().__call__(scope, receive, send)
+        except Exception as e:
+            logger.error(f"Authentication error: {str(e)}")
             scope['user'] = AnonymousUser()
-        
-        return await self.inner(scope, receive, send)
+            return await super().__call__(scope, receive, send)

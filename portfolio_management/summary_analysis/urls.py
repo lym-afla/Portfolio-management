@@ -12,5 +12,5 @@ urlpatterns = [
     path('', include(router.urls)),
 
     # API methods
-    path('exposure-table/', views.exposure_table_update, name='exposure_table_update'),
+    # path('exposure-table/', views.exposure_table_update, name='exposure_table_update'),
 ]

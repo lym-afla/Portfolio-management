@@ -14,6 +14,7 @@ import json
 import structlog
 import asyncio
 import logging
+from channels.db import database_sync_to_async
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         # Initialize queues to handle confirmations and mappings
         self.confirmation_events = asyncio.Queue()
         self.mapping_events = asyncio.Queue()
+        self.security_events = asyncio.Queue()
         self.stop_event = asyncio.Event()
         self.import_task = None  # Track the import task
         self.view_set = TransactionViewSet()  # Initialize your view set
@@ -35,14 +37,20 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         self.duplicate_count = 0
 
     async def connect(self):
+        # Get the authenticated user from the scope
         self.user = self.scope["user"]
-        if self.user.is_authenticated:
-            await self.accept()
-            logger.debug("WebSocket connection opened")
-        else:
+        
+        if self.user.is_anonymous:
+            # Reject the connection if user is not authenticated
             await self.close()
+            return
+        
+        await self.accept()
+        logger.info(f"WebSocket connected for user: {self.user}")
 
     async def disconnect(self, close_code):
+        logger.info(f"WebSocket disconnected with code: {close_code}")
+        self.stop_event.set()
         logger.debug("WebSocket connection closed")
         if self.import_task and not self.import_task.done():
             self.import_task.cancel()
@@ -86,13 +94,37 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 confirmed = text_data_json.get('confirmed', False)
                 await self.confirmation_events.put(confirmed)
                 logger.debug(f"Put confirmation event: {confirmed}. Queue size: {self.confirmation_events.qsize()}")
-
+            elif message_type == 'security_confirmation':
+                # Handle security creation confirmation
+                security_id = text_data_json.get('security_id')
+                if security_id:
+                    await self.security_events.put(security_id)
+                else:
+                    await self.security_events.put(None)  # Skip this security
             elif message_type == 'stop_import':
                 self.stop_event.set()
                 logger.debug("Stop event set for import")
                 self.transactions_to_create = []
                 self.transactions_skipped = 0
                 self.duplicate_count = 0
+                
+                # Send stop confirmation to frontend
+                await self.send(text_data=json.dumps({
+                    'type': 'import_stopped',
+                    'data': {
+                        'message': 'Import process was stopped by user',
+                        'stats': {
+                            'totalTransactions': 0,
+                            'importedTransactions': 0,
+                            'skippedTransactions': self.transactions_skipped,
+                            'duplicateTransactions': self.duplicate_count,
+                            'importErrors': 0
+                        }
+                    }
+                }))
+                
+                # Close the WebSocket connection
+                await self.close()
 
             else:
                 logger.warning(f"Unhandled message type: {message_type}")
@@ -131,14 +163,68 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def process_import(self):
         logger.debug("Starting process_import")
-        import_results = {}
+        import_results = {
+            'totalTransactions': 0,
+            'importedTransactions': 0,
+            'skippedTransactions': 0,
+            'duplicateTransactions': 0,
+            'importErrors': 0
+        }
         security_cache = defaultdict(lambda: None)
         try:
             async for update in self.import_generator:
-                if 'error' in update:
+                if self.stop_event.is_set():
+                    break
+
+                if update.get('status') == 'security_creation_needed':
+                    # Create a sync function to handle the database query
+                    @database_sync_to_async
+                    def get_existing_security(isin, name):
+                        return Assets.objects.filter(ISIN=isin, name=name).first()
+
+                    # Call the async function
+                    existing_security = await get_existing_security(
+                        update['data']['isin'],
+                        update['data']['name']
+                    )
+                    
+                    if existing_security:
+                        # If security exists, add user to investors
+                        @database_sync_to_async
+                        def add_user_to_security(security, user):
+                            security.investors.add(user)
+                            return security.id
+
+                        security_id = await add_user_to_security(existing_security, self.user)
+                    else:
+                        # Send creation needed message
+                        await self.send(text_data=json.dumps({
+                            'type': 'security_creation_needed',
+                            'data': {
+                                'security_info': update['data'],
+                                'exists_in_db': False,
+                                'security_data': None
+                            }
+                        }))
+                        
+                        security_id = await self.security_events.get()
+
+                    # Send security_id back to the generator
+                    try:
+                        await self.import_generator.asend(security_id)
+                    except StopAsyncIteration:
+                        break
+
+                elif 'error' in update:
+                    import_results['importErrors'] += 1
                     await self.send(text_data=json.dumps({
                         'type': 'import_error',
                         'data': {'error': update['error']}
+                    }))
+                elif update['status'] == 'critical_error':
+                    await self.send(text_data=json.dumps({
+                        'type': 'critical_error',
+                        'data': {'error': update['message']}
                     }))
                 elif update['status'] == 'transaction_confirmation':
                     await self.handle_transaction_confirmation(update['data'])
@@ -230,13 +316,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             # After processing all transactions, save confirmed transactions
             if self.transactions_to_create:
                 try:
-                    await self.view_set.save_transactions(self.transactions_to_create)
                     # Sending final confirmation message after the update
                     logger.debug(f"Stats before finalising import. Imported: {import_results['importedTransactions']} || {len(self.transactions_to_create)}. Skipped: {import_results['skippedTransactions']} || {self.transactions_skipped}. Duplicate:. {import_results['duplicateTransactions']} || {self.duplicate_count}")
                     import_results['importedTransactions'] = len(self.transactions_to_create)
                     import_results['skippedTransactions'] += self.transactions_skipped
                     import_results['duplicateTransactions'] += self.duplicate_count
                     logger.debug(f"Import results: {import_results}")
+                    await self.view_set.save_transactions(self.transactions_to_create)
                     await self.send(text_data=json.dumps({
                         'type': 'import_complete',
                         'data': import_results,
@@ -250,7 +336,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     }))
             else:
                 logger.debug("No transactions to save")
-                logger.debug(f"Stats before finalising import. Imported: {import_results['importedTransactions']} || {len(self.transactions_to_create)}. Skipped: {import_results['skippedTransactions']} || {self.transactions_skipped}. Duplicate:. {import_results['duplicateTransactions']} || {self.duplicate_count}")
+                # logger.debug(f"Stats before finalising import. Imported: {import_results['importedTransactions']} || {len(self.transactions_to_create)}. Skipped: {import_results['skippedTransactions']} || {self.transactions_skipped}. Duplicate:. {import_results['duplicateTransactions']} || {self.duplicate_count}")
                 import_results['skippedTransactions'] += self.transactions_skipped
                 import_results['duplicateTransactions'] += self.duplicate_count
                 logger.debug(f"Import results: {import_results}")

@@ -38,7 +38,7 @@ def get_securities_table_api(request):
     }
 
 def _filter_securities(user, search):
-    securities = Assets.objects.filter(investor=user)
+    securities = Assets.objects.filter(investors__id=user.id)
     if search:
         securities = securities.filter(name__icontains=search)
     return securities
@@ -51,13 +51,13 @@ def _get_securities_data(user, securities, effective_current_date):
             'type': security.type,
             'ISIN': security.ISIN,
             'name': security.name,
-            'first_investment': security.investment_date() or 'None',
+            'first_investment': security.investment_date(user) or 'None',
             'currency': security.currency,
-            'open_position': security.position(effective_current_date),
+            'open_position': security.position(effective_current_date, user),
             'current_value': Decimal(0),
-            'realized': security.realized_gain_loss(effective_current_date)['all_time']['total'],
-            'unrealized': security.unrealized_gain_loss(effective_current_date)['total'],
-            'capital_distribution': security.get_capital_distribution(effective_current_date),
+            'realized': security.realized_gain_loss(effective_current_date, user)['all_time']['total'],
+            'unrealized': security.unrealized_gain_loss(effective_current_date, user)['total'],
+            'capital_distribution': security.get_capital_distribution(effective_current_date, user),
             'irr': None
         }
 
@@ -76,20 +76,20 @@ def get_security_detail(request, security_id):
     currency_target = user.default_currency
     number_of_digits = user.digits
 
-    security = get_object_or_404(Assets, id=security_id, investor=user)
+    security = get_object_or_404(Assets, id=security_id, investors__id=user.id)
     
     security_data = {
         'id': security.id,
         'type': security.type,
         'ISIN': security.ISIN,
         'name': security.name,
-        'first_investment': security.investment_date() or 'None',
+        'first_investment': security.investment_date(user) or 'None',
         'currency': security.currency,
-        'open_position': security.position(effective_current_date),
+        'open_position': security.position(effective_current_date, user),
         'current_value': Decimal(0),
-        'realized': security.realized_gain_loss(effective_current_date)['all_time']['total'],
-        'unrealized': security.unrealized_gain_loss(effective_current_date)['total'],
-        'capital_distribution': security.get_capital_distribution(effective_current_date),
+        'realized': security.realized_gain_loss(effective_current_date, user)['all_time']['total'],
+        'unrealized': security.unrealized_gain_loss(effective_current_date, user)['total'],
+        'capital_distribution': security.get_capital_distribution(effective_current_date, user),
         'irr': None,
         'data_source': security.data_source,
         'update_link': security.update_link,

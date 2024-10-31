@@ -60,7 +60,7 @@ def import_transactions(request):
             securities, transactions = parse_excel_file_transactions(file, currency, broker_id)
             
             for security in securities:
-                if not Assets.objects.filter(investor=user, name=security['name'], ISIN=security['isin']).exists():
+                if not Assets.objects.filter(investors=user, name=security['name'], ISIN=security['isin']).exists():
                     return JsonResponse({'status': 'missing_security', 'security': security})
                 
         elif import_type == 'cash':
@@ -88,7 +88,7 @@ def process_import_transactions(request):
             
         if quantity is not None or request.POST.get('type') == 'Dividend':
             try:
-                security = Assets.objects.get(name=request.POST.get('security_name'), investor=request.user)
+                security = Assets.objects.get(name=request.POST.get('security_name'), investors=request.user)
             except Assets.DoesNotExist:
                 return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
         else:
@@ -210,7 +210,7 @@ def api_get_securities(request):
     asset_types = request.GET.get('asset_types', '').split(',')
     broker_id = request.GET.get('broker_id')
 
-    securities = Assets.objects.filter(investor=user)
+    securities = Assets.objects.filter(investors=user)
 
     if asset_types and asset_types != ['']:
         securities = securities.filter(type__in=asset_types)
@@ -253,7 +253,7 @@ def api_get_security_price_history(request, security_id):
 @api_view(['GET'])
 def api_get_security_position_history(request, security_id):
     try:
-        security = Assets.objects.get(id=security_id)
+        security = Assets.objects.get(id=security_id, investors=request.user)
         period = request.GET.get('period', '1Y')
         effective_current_date = request.session.get('effective_current_date', datetime.now().date().isoformat())
         
@@ -262,12 +262,13 @@ def api_get_security_position_history(request, security_id):
         transactions = Transactions.objects.filter(
             security=security,
             investor=request.user,
-            date__lte=effective_current_date
+            date__lte=effective_current_date,
+            quantity__isnull=False
         ).order_by('date')
 
         if start_date:
             transactions = transactions.filter(date__gt=start_date)
-            current_position = security.position(start_date)
+            current_position = security.position(start_date, request.user)
             position_history = [{'date': start_date, 'position': current_position}]
         else:
             current_position = 0
@@ -405,7 +406,7 @@ def api_create_security(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_get_security_details_for_editing(request, security_id):
-    security = get_object_or_404(Assets, id=security_id, investor=request.user)
+    security = get_object_or_404(Assets, id=security_id, investors=request.user)
     return Response({
         'id': security.id,
         'name': security.name,
@@ -425,7 +426,7 @@ def api_get_security_details_for_editing(request, security_id):
 @permission_classes([IsAuthenticated])
 def api_update_security(request, security_id):
     try:
-        security = Assets.objects.get(id=security_id, investor=request.user)
+        security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
         return Response({'error': 'Security not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -438,7 +439,7 @@ def api_update_security(request, security_id):
 @permission_classes([IsAuthenticated])
 def api_delete_security(request, security_id):
     try:
-        security = Assets.objects.get(id=security_id, investor=request.user)
+        security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
         return Response({'error': 'Security not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -504,7 +505,7 @@ import asyncio
 class PriceImportView(APIView):
     def get(self, request):
         user = request.user
-        securities = Assets.objects.filter(investor=user)
+        securities = Assets.objects.filter(investors=user)
         brokers = Brokers.objects.filter(investor=user)
         
         serializer = PriceImportSerializer()

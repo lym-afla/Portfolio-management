@@ -231,10 +231,10 @@ class PriceImportConsumer(AsyncHttpConsumer):
             securities = await get_securities_from_brokers()
             securities = [
                 security for security in securities
-                if await database_sync_to_async(security.position)(effective_current_date) > 0
+                if await database_sync_to_async(security.position)(effective_current_date, user) > 0
             ]
         else:
-            securities = await database_sync_to_async(list)(Assets.objects.filter(investor=user, id__in=security_ids))
+            securities = await database_sync_to_async(list)(Assets.objects.filter(investors__id=user.id, id__in=security_ids))
 
         print(f"Filtered securities: {[security.name for security in securities]}")  # For debugging
 
@@ -248,7 +248,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
             try:
                 # If security is not an Asset object, fetch it
                 if not isinstance(security, Assets):
-                    security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
+                    security = await database_sync_to_async(Assets.objects.get)(id=security.id, investors__id=user.id)
                 
                 if security.data_source == 'FT' and security.update_link:
                     price_generator = import_security_prices_from_ft(security, dates)

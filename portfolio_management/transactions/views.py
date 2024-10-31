@@ -24,7 +24,7 @@ from fuzzywuzzy import fuzz
 from common.models import Brokers, FXTransaction, Transactions
 from common.forms import DashboardForm_old_setup
 from core.transactions_utils import get_transactions_table_api
-from core.import_utils import get_broker, parse_charles_stanley_transactions, parse_galaxy_broker_cash_flows
+from core.import_utils import get_broker, parse_charles_stanley_transactions, parse_galaxy_broker_cash_flows, parse_galaxy_broker_security_transactions
 from constants import BROKER_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
 from .serializers import TransactionFormSerializer, FXTransactionFormSerializer
 from utils import broker_group_to_ids_old_approach, currency_format_old_structure
@@ -395,30 +395,19 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 if galaxy_type == 'cash':
                     async for update in parse_galaxy_broker_cash_flows(file_path, currency, broker, user, confirm_every):
                         yield update
-                # else:
-                #     async for update in parse_galaxy_transactions(file_path, currency, broker, user, confirm_every):
-                #         yield update
+                else:
+                    async for update in parse_galaxy_broker_security_transactions(file_path, currency, broker, user, confirm_every):
+                        yield update
 
             elif CHARLES_STANLEY_BROKER in broker.name:
                 async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_id, user.id, confirm_every):
-                    # if isinstance(update, dict):
-                    #     if update.get('status') == 'security_mapping':
-                    #         logger.debug(f"Security mapping required for {update.get('security')}")
-                    #         security = yield update
-                    #         update = await self.handle_security_mapping(security)
                     yield update
-
-                # yield {
-                #     'status': 'complete',
-                #     'message': 'Transactions imported successfully.',
-                #     'importResults': update
-                # }
             else:
-                yield {'error': f'Unsupported broker for import: {broker.name}'}
+                yield {'status': 'critical_error', 'message': f'Unsupported broker for import: {broker.name}'}
 
         except Exception as e:
             logger.error(f"Error in import_transactions: {str(e)}", exc_info=True)
-            yield {'status': 'error', 'message': f'An error occurred during import: {str(e)}'}
+            yield {'status': 'critical_error', 'message': f'An error occurred during import: {str(e)}'}
         finally:
             logger.debug("Finishing import_transactions")
             if file_path and os.path.exists(file_path):

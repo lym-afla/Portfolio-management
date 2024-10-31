@@ -59,7 +59,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         return [{'value': str(broker.pk), 'text': broker.name} for broker in Brokers.objects.filter(investor=investor).order_by('name')]
 
     def get_security_choices(self, investor):
-        choices = [{'value': str(security.pk), 'text': security.name} for security in Assets.objects.filter(investor=investor).order_by('name')]
+        choices = [{'value': str(security.pk), 'text': security.name} for security in Assets.objects.filter(investors=investor).order_by('name')]
         return choices
 
 # class FXTransactionSerializer(serializers.ModelSerializer):

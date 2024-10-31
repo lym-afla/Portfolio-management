@@ -44,7 +44,8 @@
           </v-col>
         </v-row>
         <slot></slot>
-        <v-alert v-for="(error, index) in errors" :key="index" type="error" class="mt-4">
+        <!-- <v-alert v-for="(error, index) in errors" :key="index" type="error" class="mt-4"> -->
+        <v-alert v-if="error" type="error" class="mt-4">
           {{ error }}
         </v-alert>
       </v-card-text>

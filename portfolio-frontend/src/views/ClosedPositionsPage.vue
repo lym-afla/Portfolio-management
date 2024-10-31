@@ -15,6 +15,15 @@
       <span v-else>-</span>
     </template>
 
+    <template #[`item.name`]="{ item }">
+      <router-link
+        :to="{ name: 'SecurityDetail', params: { id: item.id } }"
+        class="text-decoration-none"
+      >
+        {{ item.name }}
+      </router-link>
+    </template>
+
     <template #tfoot>
       <tfoot>
         <tr class="font-weight-bold">

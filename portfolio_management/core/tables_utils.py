@@ -61,8 +61,8 @@ def calculate_closed_table_output_for_api(
     
     for asset in portfolio:
         
-        exit_dates = list(asset.exit_dates(end_date, selected_brokers, start_date))
-        entry_dates = list(asset.entry_dates(end_date, selected_brokers))
+        exit_dates = list(asset.exit_dates(end_date, user_id, selected_brokers, start_date))
+        entry_dates = list(asset.entry_dates(end_date, user_id, selected_brokers))
         
         for i, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
@@ -77,7 +77,7 @@ def calculate_closed_table_output_for_api(
             }
 
             # Determine entry_date
-            first_entry_date = asset.entry_dates(exit_date, selected_brokers)[-1]
+            first_entry_date = asset.entry_dates(exit_date, user_id, selected_brokers)[-1]
             entry_date = start_date if start_date and start_date >= first_entry_date else first_entry_date
             position['investment_date'] = entry_date
 
@@ -104,7 +104,7 @@ def calculate_closed_table_output_for_api(
 
             # Calculate entry value and quantity
             if start_date is not None:
-                entry_quantity = asset.position(entry_date - timedelta(days=1), selected_brokers)
+                entry_quantity = asset.position(entry_date - timedelta(days=1), user_id, selected_brokers)
                 entry_value = asset.price_at_date(entry_date - timedelta(days=1), currency_used).price * entry_quantity
             else:
                 entry_value = Decimal(0)
@@ -136,15 +136,15 @@ def calculate_closed_table_output_for_api(
             # Calculate capital distribution including dividends after exit_date but before next_entry_date
             if 'capital_distribution' in categories:
                 position['capital_distribution'] = (
-                    asset.get_capital_distribution(exit_date, currency_used, selected_brokers, entry_date) +
-                    asset.get_capital_distribution(next_entry_date, currency_used, selected_brokers, exit_date + timedelta(days=1))
+                    asset.get_capital_distribution(exit_date, user_id, currency_used, selected_brokers, entry_date) +
+                    asset.get_capital_distribution(next_entry_date, user_id, currency_used, selected_brokers, exit_date + timedelta(days=1))
                 )
                 position['capital_distribution_percentage'] = Decimal(position['capital_distribution'] / position['entry_value']) if position['entry_value'] > 0 else 'N/R'
             else:
                 position['capital_distribution'] = Decimal(0)
 
             if 'commission' in categories:
-                position['commission'] = asset.get_commission(exit_date, currency_used, selected_brokers, entry_date)
+                position['commission'] = asset.get_commission(exit_date, user_id, currency_used, selected_brokers, entry_date)
                 position['commission_percentage'] = position['commission'] / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
             else:
                 position['commission'] = Decimal(0)
@@ -220,21 +220,21 @@ def calculate_open_table_output_for_api(
             'currency': currency_format(None, asset.currency)
         }
 
-        position['current_position'] = asset.position(end_date, selected_brokers)
+        position['current_position'] = asset.position(end_date, user_id, selected_brokers)
 
         if position['current_position'] == 0:
             print(f"The position is zero for {asset.name}. Skipping this asset.")
             continue
 
-        position_entry_date = asset.entry_dates(end_date, selected_brokers)[-1]
+        position_entry_date = asset.entry_dates(end_date, user_id, selected_brokers)[-1]
         if 'investment_date' in categories:
             position['investment_date'] = position_entry_date
 
         asset_start_date = start_date if start_date is not None else position_entry_date
             
-        position['entry_price'] = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers, asset_start_date)
+        position['entry_price'] = asset.calculate_buy_in_price(end_date, user_id, currency_used, selected_brokers, asset_start_date)
         if position['entry_price'] == 0:
-            position['entry_price'] = asset.calculate_buy_in_price(end_date, currency_used, selected_brokers)
+            position['entry_price'] = asset.calculate_buy_in_price(end_date, user_id, currency_used, selected_brokers)
         position['entry_value'] = Decimal(position['entry_price'] * position['current_position'])
         
         if 'current_value' in categories:
@@ -248,25 +248,25 @@ def calculate_open_table_output_for_api(
             portfolio_open_totals['all_assets_share_of_portfolio_percentage'] += position['share_of_portfolio']
         
         if 'realized_gl' in categories:
-            position['realized_gl'] = asset.realized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)['current_position']['total']
+            position['realized_gl'] = asset.realized_gain_loss(end_date, user_id, currency_used, selected_brokers, asset_start_date)['current_position']['total']
         else:
             position['realized_gl'] = Decimal(0)
 
         if 'unrealized_gl' in categories:
-            position['unrealized_gl'] = asset.unrealized_gain_loss(end_date, currency_used, selected_brokers, asset_start_date)['total']
+            position['unrealized_gl'] = asset.unrealized_gain_loss(end_date, user_id, currency_used, selected_brokers, asset_start_date)['total']
         else:
             position['unrealized_gl'] = Decimal(0)
         
         position['price_change_percentage'] = (position['realized_gl'] + position['unrealized_gl']) / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
         
         if 'capital_distribution' in categories:
-            position['capital_distribution'] = asset.get_capital_distribution(end_date, currency_used, selected_brokers, asset_start_date)
+            position['capital_distribution'] = asset.get_capital_distribution(end_date, user_id, currency_used, selected_brokers, asset_start_date)
             position['capital_distribution_percentage'] = position['capital_distribution'] / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
         else:
             position['capital_distribution'] = Decimal(0)
 
         if 'commission' in categories:
-            position['commission'] = asset.get_commission(end_date, currency_used, selected_brokers, asset_start_date)
+            position['commission'] = asset.get_commission(end_date, user_id, currency_used, selected_brokers, asset_start_date)
             position['commission_percentage'] = position['commission'] / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
         else:
             position['commission'] = Decimal(0)
@@ -294,13 +294,13 @@ def calculate_open_table_output_for_api(
                 elif key == 'current_value':
                     addition = position['current_value']
                 elif key == 'realized_gl':
-                    addition = asset.realized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['current_position']['total']
+                    addition = asset.realized_gain_loss(end_date, user_id, currency_target, selected_brokers, asset_start_date)['current_position']['total']
                 elif key == 'unrealized_gl':
-                    addition = asset.unrealized_gain_loss(end_date, currency_target, selected_brokers, asset_start_date)['total']
+                    addition = asset.unrealized_gain_loss(end_date, user_id, currency_target, selected_brokers, asset_start_date)['total']
                 elif key == 'capital_distribution':
-                    addition = asset.get_capital_distribution(end_date, currency_target, selected_brokers, asset_start_date)
+                    addition = asset.get_capital_distribution(end_date, user_id, currency_target, selected_brokers, asset_start_date)
                 elif key == 'commission':
-                    addition = asset.get_commission(end_date, currency_target, selected_brokers, asset_start_date)
+                    addition = asset.get_commission(end_date, user_id, currency_target, selected_brokers, asset_start_date)
                 else:
                     addition = Decimal(0)
 

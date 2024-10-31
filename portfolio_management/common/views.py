@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.views.decorators.csrf import ensure_csrf_cookie
 from datetime import datetime
 from constants import YTD, ALL_TIME
+from core.portfolio_utils import broker_group_to_ids, get_last_exit_date_for_brokers
 from utils import broker_group_to_ids_old_approach, get_last_exit_date_for_brokers_old_approach
 from common.models import Transactions
 
@@ -12,7 +13,7 @@ from common.models import Transactions
 # @ensure_csrf_cookie
 def get_year_options_api(request):
     user = request.user
-    selected_brokers = broker_group_to_ids_old_approach(user.custom_brokers, user)
+    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
     effective_current_date_str = request.session.get('effective_current_date')
     print(f"views. common. 16. Effective current date from session: {effective_current_date_str}")
     
@@ -27,7 +28,7 @@ def get_year_options_api(request):
     if first_year:
         first_year = first_year.date.year
 
-    last_exit_date = get_last_exit_date_for_brokers_old_approach(selected_brokers, effective_current_date)
+    last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
 
     if first_year is not None:

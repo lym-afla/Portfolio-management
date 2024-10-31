@@ -26,8 +26,8 @@ class TransactionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
         if investor is not None:
-            self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
-            security_choices = [(security.pk, security.name) for security in Assets.objects.filter(investor=investor).order_by('name')]
+            self.fields['broker'].choices = [(broker.pk, broker.name) for broker in Brokers.objects.filter(investors__id=investor.id).order_by('name')]
+            security_choices = [(security.pk, security.name) for security in Assets.objects.filter(investors__id=investor.id).order_by('name')]
             # Add empty choice for securities
             security_choices.insert(0, ('', '--- Select Security ---'))
             self.fields['security'].choices = security_choices
@@ -95,7 +95,7 @@ class PriceForm(forms.ModelForm):
         investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
-        self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investor=investor).order_by('name').all()]
+        self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investors__id=investor.id).order_by('name').all()]
 
 class SecurityForm(forms.ModelForm):
 
@@ -285,5 +285,5 @@ class PriceImportForm(forms.Form):
         user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         if user:
-            self.fields['securities'].queryset = Assets.objects.filter(investor=user).order_by('name')
+            self.fields['securities'].queryset = Assets.objects.filter(investors=user).order_by('name')
             self.fields['broker'].queryset = Brokers.objects.filter(investor=user).order_by('name')

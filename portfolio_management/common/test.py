@@ -15,12 +15,12 @@ class AssetsBuyInPriceTestCase(TestCase):
 
         # Create an asset
         self.asset = Assets.objects.create(
-            investor=self.user,
             type='Stock',
             ISIN='US0378331005',
             name='Apple Inc.',
             currency='USD'
         )
+        self.asset.investors.add(self.user)
 
         self.base_date = date(2023, 1, 1)
 
@@ -71,32 +71,32 @@ class AssetsBuyInPriceTestCase(TestCase):
 
     def test_calculate_buy_in_price_basic_1(self):
         # Test basic functionality
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 4, 1))
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 4, 1), self.user)
         self.assertAlmostEqual(buy_in_price, Decimal('4.1818'), places=4)
 
     def test_calculate_buy_in_price_basic_2(self):
         # Test basic functionality
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 6, 5))
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 6, 5), self.user)
         self.assertAlmostEqual(buy_in_price, Decimal('6.1364'), places=4)
 
     def test_calculate_buy_in_price_basic_3(self):
         # Test basic functionality
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 6, 15))
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 6, 15), self.user)
         self.assertAlmostEqual(buy_in_price, Decimal('6.1364'), places=4)
 
     def test_calculate_buy_in_price_basic_4(self):
         # Test basic functionality
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 7, 30))
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 7, 30), self.user)
         self.assertAlmostEqual(buy_in_price, Decimal('9.5260'), places=4)
 
     def test_calculate_buy_in_price_with_currency_conversion_1(self):
         # Test with currency conversion
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 1, 1), currency='EUR')
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 1, 1), self.user, currency='EUR')
         self.assertAlmostEqual(buy_in_price, Decimal('1.8182'), places=4)
 
     def test_calculate_buy_in_price_with_currency_conversion_2(self):
         # Test with currency conversion
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 5, 30), currency='EUR')
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 5, 30), self.user, currency='EUR')
         self.assertAlmostEqual(buy_in_price, Decimal('5.1758'), places=4)
 
 
@@ -115,6 +115,7 @@ class AssetsBuyInPriceTestCase(TestCase):
         )
         buy_in_price = self.asset.calculate_buy_in_price(
             date(2023, 6, 15),
+            self.user,
             broker_id_list=[self.broker.id]
         )
         self.assertAlmostEqual(buy_in_price, Decimal('6.1364'), places=4)
@@ -123,6 +124,7 @@ class AssetsBuyInPriceTestCase(TestCase):
         # Test with start date
         buy_in_price = self.asset.calculate_buy_in_price(
             date(2023, 7, 23),
+            self.user,
             start_date=date(2023, 5, 1)
         )
         # Expected: (4*2 + 7*4) / 6
@@ -132,22 +134,22 @@ class AssetsBuyInPriceTestCase(TestCase):
     def test_calculate_buy_in_price_no_transactions(self):
         # Test when there are no transactions
         empty_asset = Assets.objects.create(
-            investor=self.user,
             type='Stock',
             ISIN='US5949181045',
             name='Microsoft Corp.',
             currency='USD'
         )
-        buy_in_price = empty_asset.calculate_buy_in_price(self.base_date)
+        empty_asset.investors.add(self.user)
+        buy_in_price = empty_asset.calculate_buy_in_price(self.base_date, self.user)
         self.assertIsNone(buy_in_price)
 
     def test_calculate_buy_in_price_short_position(self):
         # Test for short position
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 9, 15))
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 9, 15), self.user)
         self.assertAlmostEqual(buy_in_price, Decimal('18.9000'), places=4)
 
     # Additional test for long position after short
     def test_calculate_buy_in_price_long_after_short(self):
         # Test for long position after being short
-        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 11, 21))
+        buy_in_price = self.asset.calculate_buy_in_price(date(2023, 11, 21), self.user)
         self.assertAlmostEqual(buy_in_price, Decimal('20.5000'), places=4)

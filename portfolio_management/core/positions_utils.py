@@ -159,7 +159,7 @@ def _filter_assets(user, end_date, selected_brokers, is_closed: bool, search: st
     :return: List of filtered Asset objects
     """
     assets = Assets.objects.filter(
-        investor=user,
+        investors__id=user.id,
         transactions__date__lte=end_date,
         transactions__broker_id__in=selected_brokers,
         transactions__quantity__isnull=False
@@ -169,7 +169,7 @@ def _filter_assets(user, end_date, selected_brokers, is_closed: bool, search: st
         assets = assets.filter(Q(name__icontains=search) | Q(type__icontains=search))
 
     if is_closed:
-        return [asset for asset in assets if len(asset.exit_dates(end_date)) != 0]
+        return [asset for asset in assets if len(asset.exit_dates(end_date, user)) != 0]
     else:
         return assets.annotate(
             abs_total_quantity=Abs(Sum('transactions__quantity'))

@@ -78,8 +78,9 @@ export default {
   props: {
     modelValue: Boolean,
     editItem: Object,
+    isImport: Boolean,
   },
-  emits: ['update:modelValue', 'security-added', 'security-updated'],
+  emits: ['update:modelValue', 'security-added', 'security-updated', 'security-skipped'],
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
@@ -131,6 +132,9 @@ export default {
     }, { immediate: true })
 
     const closeDialog = () => {
+      if (props.isImport) {
+        emit('security-skipped')
+      }
       dialog.value = false
       initializeForm()
       generalError.value = ''
@@ -151,7 +155,11 @@ export default {
           emit('security-updated', response)
         } else {
           response = await createSecurity(form.value)
-          emit('security-added', response)
+          if (props.isImport) {
+            emit('security-added', { id: response.id, name: response.name })
+          } else {
+            emit('security-added', response)
+          }
         }
         closeDialog()
       } catch (error) {

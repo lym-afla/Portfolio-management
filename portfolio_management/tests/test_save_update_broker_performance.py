@@ -32,7 +32,6 @@ def broker(user):
 @pytest.fixture
 def transactions(user, broker):
     asset = Assets.objects.create(
-        investor=user,
         type='Stock',
         ISIN='US0378331005',
         name='Apple Inc.',
@@ -40,6 +39,7 @@ def transactions(user, broker):
         exposure='Equity',
         restricted=False
     )
+    asset.investors.add(user)
     asset.brokers.add(broker)
 
     Transactions.objects.create(
@@ -269,7 +269,6 @@ def test_update_broker_performance_streaming(api_client, user, broker, transacti
 @pytest.mark.django_db
 def test_get_last_exit_date_for_brokers(user, broker):
     asset = Assets.objects.create(
-        investor=user,
         type='Stock',
         ISIN='US1234567890',
         name='Test Stock',
@@ -277,6 +276,7 @@ def test_get_last_exit_date_for_brokers(user, broker):
         exposure='Equity',
         restricted=False
     )
+    asset.investors.add(user)
     asset.brokers.add(broker)
     
     transaction_date = datetime.now().date() - timedelta(days=30)
@@ -317,7 +317,6 @@ def test_calculate_performance(user, broker, caplog):
     caplog.set_level(logging.DEBUG)
     
     asset = Assets.objects.create(
-        investor=user,
         type='Stock',
         ISIN='US1234567890',
         name='Test Stock',
@@ -325,6 +324,7 @@ def test_calculate_performance(user, broker, caplog):
         exposure='Equity',
         restricted=False
     )
+    asset.investors.add(user)
     asset.brokers.add(broker)
     
     start_date = datetime(2022, 1, 1).date()
@@ -378,7 +378,7 @@ def test_calculate_performance(user, broker, caplog):
     for t in Transactions.objects.filter(investor=user, broker=broker):
         print(f"Transaction: {t.date} {t.type} {t.quantity} {t.price} {t.currency}")
 
-    print(f"Price change: {asset.realized_gain_loss(end_date, 'USD', broker_id_list=[broker.id], start_date=start_date)}")
+    print(f"Price change: {asset.realized_gain_loss(end_date, user, 'USD', broker_id_list=[broker.id], start_date=start_date)}")
     
     assert 'bop_nav' in performance_data
     assert 'eop_nav' in performance_data
@@ -404,7 +404,6 @@ def test_update_broker_performance_skip_existing(api_client, user, broker, fx_ra
 
     # Create transactions for different years
     asset = Assets.objects.create(
-        investor=user,
         type='Stock',
         ISIN='US0378331005',
         name='Apple Inc.',
@@ -412,6 +411,7 @@ def test_update_broker_performance_skip_existing(api_client, user, broker, fx_ra
         exposure='Equity',
         restricted=False
     )
+    asset.investors.add(user)
     asset.brokers.add(broker)
 
     years = [2021, 2022, 2023]

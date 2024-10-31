@@ -51,8 +51,8 @@ def get_security(security_id):
 @database_sync_to_async
 def transaction_exists(transaction_data):
     query = Q()
-    required_fields = ['investor', 'broker', 'date', 'currency', 'type', 'security']
-    optional_fields = ['quantity', 'price', 'cash_flow', 'commission']
+    required_fields = ['investor', 'broker', 'date', 'currency', 'type']
+    optional_fields = ['security', 'quantity', 'price', 'cash_flow', 'commission']
 
     # Add required fields to the query
     for field in required_fields:
@@ -80,7 +80,7 @@ def read_excel_file(file_path):
 @database_sync_to_async
 def _find_security(stock_description, investor, broker):
     
-    securities = list(Assets.objects.filter(investor=investor, brokers=broker))
+    securities = list(Assets.objects.filter(investors=investor, brokers=broker))
     
     # Check for exact match
     security = next((s for s in securities if s.name == stock_description), None)
@@ -492,7 +492,7 @@ async def import_security_prices_from_yahoo(security, dates):
 
         yield result
 
-async def _process_galaxy_transaction(user, broker, date, currency, transaction_type, cash_flow=None, commission=None, tax=None):
+async def _process_galaxy_transaction(user, broker, date, currency, transaction_type, cash_flow=None, commission=None):
     """Helper function to process a single Galaxy transaction"""
     transaction_data = {
         'investor': user,
@@ -502,7 +502,6 @@ async def _process_galaxy_transaction(user, broker, date, currency, transaction_
         'currency': currency,
         'cash_flow': round(Decimal(cash_flow), 2) if cash_flow is not None else None,
         'commission': round(Decimal(commission), 2) if commission is not None else None,
-        'tax': round(Decimal(tax), 2) if tax is not None else None,
     }
 
     existing_transaction = await transaction_exists(transaction_data)
@@ -555,13 +554,13 @@ async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, conf
             # Collect all transactions from the row
             if pd.notna(row['Инвестиции']):
                 transaction_type = TRANSACTION_TYPE_CASH_IN if row['Инвестиции'] > 0 else TRANSACTION_TYPE_CASH_OUT
-                transactions_to_process.append(('cash', transaction_type, row['Инвестиции']))
+                transactions_to_process.append(('cash_flow', transaction_type, row['Инвестиции']))
 
             if pd.notna(row['Комиссия']):
                 transactions_to_process.append(('commission', TRANSACTION_TYPE_BROKER_COMMISSION, row['Комиссия']))
 
             if 'Tax' in row and pd.notna(row['Tax']):
-                transactions_to_process.append(('tax', TRANSACTION_TYPE_TAX, row['Tax']))
+                transactions_to_process.append(('cash_flow', TRANSACTION_TYPE_TAX, row['Tax']))
 
             total_transactions += len(transactions_to_process)
 
@@ -619,3 +618,163 @@ async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, conf
         },
     }
     logger.debug("Yielded completion of Galaxy cash flow import process")
+
+async def parse_galaxy_broker_security_transactions(file_path, currency, broker, user, confirm_every=False):
+    """Async generator for parsing Galaxy broker security transactions"""
+    try:
+        df = pd.read_excel(file_path, header=None)
+        
+        # Find transactions_start once
+        transactions_start = None
+        for i in range(len(df.columns)):
+            if pd.notna(df.iloc[1, i]):
+                date_row_index = df[df.iloc[:, i] == 'Дата'].index
+                if date_row_index.size > 0:
+                    transactions_start = date_row_index[0] + 1
+                    break
+        
+        if transactions_start is None:
+            yield {'error': 'Could not find transaction start row in the file'}
+            return
+
+        # Calculate total number of potential transactions
+        total_columns = sum(1 for i in range(len(df.columns)) if pd.notna(df.iloc[1, i]))
+        rows_per_security = len(df) - transactions_start
+        total_potential_transactions = int(total_columns * rows_per_security)  # Convert to int for proper serialization
+        
+        # Send initialization message
+        yield {
+            'status': 'initialization',
+            'total_to_update': total_potential_transactions,
+            'message': 'Starting Galaxy transactions import'
+        }
+
+        quantity_field = Transactions._meta.get_field('quantity')
+        quantity_decimal_places = quantity_field.decimal_places
+        price_field = Transactions._meta.get_field('price')
+        price_decimal_places = price_field.decimal_places
+
+        processed = 0
+        import_errors = 0
+        duplicate_count = 0
+        i = 0
+        while i < len(df.columns):
+            if pd.notna(df.iloc[1, i]):
+                security_name = df.iloc[1, i]
+                isin = df.iloc[2, i]
+
+                # Check if security exists
+                try:
+                    security = await database_sync_to_async(Assets.objects.get)(
+                        name=security_name, 
+                        ISIN=isin, 
+                        investors=user
+                    )
+                except Assets.DoesNotExist:
+                    # Return security creation request
+                    yield {
+                        'status': 'security_creation_needed',
+                        'data': {
+                            'name': security_name,
+                            'isin': isin,
+                            'currency': currency,
+                        }
+                    }
+                    # Wait for security creation confirmation
+                    security_id = yield
+                    if not security_id:
+                        i += 1
+                        continue
+                    security = await database_sync_to_async(Assets.objects.get)(id=security_id)
+
+                for row in range(transactions_start, len(df)):
+                    if pd.isna(df.iloc[row, i]):
+                        processed += 1
+                        continue
+
+                    try:
+                        date = df.iloc[row, i].strftime("%Y-%m-%d")
+                        price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places) if not pd.isna(df.iloc[row, i + 1]) else None
+                        quantity = round(Decimal(df.iloc[row, i + 2]), quantity_decimal_places) if not pd.isna(df.iloc[row, i + 2]) else None
+                        dividend = round(Decimal(df.iloc[row, i + 3]), 2) if not pd.isna(df.iloc[row, i + 3]) else None
+                        commission = round(Decimal(df.iloc[row, i + 4]), 2) if not pd.isna(df.iloc[row, i + 4]) else None
+
+                        if quantity is None and dividend is None and commission is None:
+                            processed += 1
+                            logger.debug(f"Skipping empty row for security: {security_name}")
+                            continue
+
+                        transaction_type = None
+                        if quantity is not None:
+                            transaction_type = TRANSACTION_TYPE_BUY if quantity > 0 else TRANSACTION_TYPE_SELL
+                        elif dividend is not None:
+                            transaction_type = TRANSACTION_TYPE_DIVIDEND
+
+                        transaction_data = {
+                            'investor': user,
+                            'broker': broker,
+                            'security': security,  # Use actual security object
+                            'date': date,
+                            'type': transaction_type,
+                            'currency': currency,
+                            'price': price,
+                            'quantity': quantity,
+                            'cash_flow': dividend,
+                            'commission': commission,
+                        }
+
+                        # Check for duplicates
+                        exists = await transaction_exists(transaction_data)
+
+                        processed += 1
+                        yield {
+                            'status': 'progress',
+                            'current': processed,
+                            'progress': (processed / total_potential_transactions) * 100,
+                            'message': f'Processing transaction {processed}'
+                        }
+
+                        if exists:
+                            duplicate_count += 1
+                            continue
+
+                        if confirm_every:
+                            # processed += 1
+                            yield {
+                                'status': 'transaction_confirmation',
+                                'data': transaction_data
+                            }
+                        else:
+                            yield {
+                                'status': 'add_transaction',
+                                'data': transaction_data,
+                            }
+
+                    except Exception as e:
+                        import_errors += 1
+                        yield {'error': f'Error processing transaction: {str(e)}'}
+                        continue
+
+                i += 1
+                while i < len(df.columns) and pd.isna(df.iloc[1, i]):
+                    i += 1
+            else:
+                i += 1
+
+        yield {
+            'status': 'complete',
+            'data': {
+                'totalTransactions': total_potential_transactions,
+                'importedTransactions': 0,
+                'skippedTransactions': 0,
+                'duplicateTransactions': duplicate_count,
+                'importErrors': import_errors
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in parse_galaxy_broker_security_transactions: {str(e)}")
+        yield {
+            'status': 'critical_error',
+            'message': f'Error during import: {str(e)}'
+        }

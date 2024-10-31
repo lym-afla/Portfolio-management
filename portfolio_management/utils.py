@@ -54,7 +54,7 @@ def portfolio_at_date_old_structure(user_id, to_date, brokers):
     
     # Filter Assets objects based on transactions with the given date and brokers
     return Assets.objects.filter(
-        investor__id=user_id,
+        investors__id=user_id,
         transactions__date__lte=to_date, 
         transactions__broker_id__in=brokers
     ).annotate(total_quantity=Sum('transactions__quantity')).exclude(total_quantity=0)
@@ -87,7 +87,7 @@ def NAV_at_date_old_structure(user_id, broker_ids, date, target_currency, breakd
     item_type = {'Asset type': 'type', 'Currency': 'currency', 'Asset class': 'exposure'}
 
     for security in portfolio:
-        current_value = Decimal(security.position(date, broker_ids) * security.price_at_date(date, target_currency).price)
+        current_value = Decimal(security.position(date, user_id, broker_ids) * security.price_at_date(date, target_currency).price)
 
         if 'Broker' in breakdown:
             for broker in get_brokers_for_security_old_structure(user_id, security.id):
@@ -227,11 +227,11 @@ def calculate_portfolio_value_old_structure(user_id, date, currency=None, asset_
     if asset_id is None:
         portfolio_value = NAV_at_date_old_structure(user_id, broker_id_list, date, currency, [])['Total NAV']
     else:
-        asset = Assets.objects.get(id=asset_id)
+        asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         # print(f"utils.py. line 188. Asset: {asset.name}, {asset.id}, {user_id}, {date}, {currency}, {asset_id}, {broker_id_list}")
         # print(f"utils.py. line 201. Asset data: {asset.price_at_date(date, currency).price}, {asset.position(date, broker_id_list)}")
         try:
-            portfolio_value = round(asset.price_at_date(date, currency).price * asset.position(date, broker_id_list), 2)
+            portfolio_value = round(asset.price_at_date(date, currency).price * asset.position(date, user_id, broker_id_list), 2)
         except:
             portfolio_value = 0
 
@@ -632,7 +632,7 @@ def calculate_from_date(to_date, timeline):
 def create_price_table(security_type, user):
     
     # Get security IDs by security type
-    selected_ids = Assets.objects.filter(type=security_type, investor=user).values_list('id', flat=True)
+    selected_ids = Assets.objects.filter(type=security_type, investors=user).values_list('id', flat=True)
 
     # Initialize table as a dictionary of lists with dates as keys
     price_data = defaultdict(lambda: [None] * len(selected_ids))
@@ -821,8 +821,8 @@ def calculate_closed_table_output(user_id, portfolio, end_date, categories, use_
     portfolio_closed_totals = {}
     
     for asset in portfolio:
-        exit_dates = list(asset.exit_dates(end_date, selected_brokers, start_date))
-        entry_dates = list(asset.entry_dates(end_date, selected_brokers))
+        exit_dates = list(asset.exit_dates(end_date, user_id, selected_brokers, start_date))
+        entry_dates = list(asset.entry_dates(end_date, user_id, selected_brokers))
         
         for i, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
@@ -1194,7 +1194,7 @@ def import_asset_prices_from_csv(file_path, investor_id):
     # Check if assets exist for the investor and create the mapping
     for asset_name in asset_names:
         try:
-            asset = Assets.objects.get(investor_id=investor_id, name=asset_name)
+            asset = Assets.objects.get(investors_id=investor_id, name=asset_name)
             asset_name_to_id[asset_name] = asset.id
         except Assets.DoesNotExist:
             print(f"Warning: Asset '{asset_name}' not found for investor {investor_id}")
@@ -1289,7 +1289,7 @@ def get_last_exit_date_for_brokers_old_approach(selected_brokers, date):
     # Step 1: Check the position of each security at the current date
     for broker in Brokers.objects.filter(id__in=selected_brokers):
         for security in broker.securities.all():
-            if security.position(date, [broker.id]) != 0:
+            if security.position(date, broker.investor, [broker.id]) != 0:
                 return date
 
     # Step 2: If positions for all securities at the current date are zero, find the latest transaction date
@@ -2408,7 +2408,7 @@ def calculate_performance_old_framework(user, start_date, end_date, selected_bro
                                               transactions_df[transactions_df['type'] == 'Tax']['fx_rate']).sum(), 2)
         
         # Calculate asset-based metrics
-        assets = Assets.objects.filter(investor=user, brokers=broker)
+        assets = Assets.objects.filter(investors=user, brokers=broker)
         if is_restricted is not None:
             assets = assets.filter(restricted=is_restricted)
 
@@ -2467,7 +2467,7 @@ def end_of_year_price_correction(user, year, broker_name, target_nav, asset_name
     if not price_at_end_of_year:
         return {"error": f"No price found for asset {asset_name} at the end of {year}."}
 
-    position_at_end_of_year = asset.position(end_of_year_date, [broker.id])
+    position_at_end_of_year = asset.position(end_of_year_date, user.id, [broker.id])
 
     # Calculate new price
     old_price = price_at_end_of_year.price
@@ -2532,7 +2532,7 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
         
         def find_best_matching_security(description):
             securities = Assets.objects.filter(
-                Q(investor=investor) & Q(brokers=broker)
+                Q(investors=investor) & Q(brokers=broker)
             )
             security_names = [security.name for security in securities]
             best_match = process.extractOne(description, security_names, score_cutoff=60)
@@ -2575,7 +2575,7 @@ def parse_charles_stanley_transactions(file, currency, broker_id, investor_id):
                 # Check for an exact match with the user input
                 try:
                     security = Assets.objects.get(
-                        Q(investor=investor) & Q(brokers=broker) & Q(name__iexact=user_input)
+                        Q(investors=investor) & Q(brokers=broker) & Q(name__iexact=user_input)
                     )
                     print(f"Security '{security.name}' found and selected.")
                      # Cache the user-defined mapping

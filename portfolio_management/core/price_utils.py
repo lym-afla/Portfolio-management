@@ -1,6 +1,6 @@
 from datetime import datetime
 from django.db.models import Q
-from common.models import Prices, Assets
+from common.models import Prices
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
 from core.formatting_utils import format_table_data, currency_format

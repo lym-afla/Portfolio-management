@@ -238,6 +238,61 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog v-model="showErrorDialog" max-width="500px">
+    <v-card>
+      <v-card-title class="text-h5 error--text">
+        <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
+        Import Error
+      </v-card-title>
+      <v-card-text class="pt-4 text-body-1" style="white-space: pre-wrap;">
+        {{ errorMessage }}
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="error" @click="closeErrorDialog">Close</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <SecurityFormDialog
+    v-model="showSecurityDialog"
+    :edit-item="securityFormData"
+    :is-import="true"
+    @security-added="handleSecurityAdded"
+    @security-skipped="handleSecuritySkipped"
+  />
+
+  <v-dialog v-model="confirmDialog" max-width="600px">
+    <v-card>
+      <v-card-title>{{ confirmTitle }}</v-card-title>
+      <v-card-text>
+        <p>{{ confirmMessage }}</p>
+        
+        <!-- Show readonly security data if it exists -->
+        <template v-if="securityFormData?.readonly">
+          <v-list dense>
+            <v-list-item>
+              <v-list-item-title>Name:</v-list-item-title>
+              <v-list-item-subtitle>{{ securityFormData.name }}</v-list-item-subtitle>
+            </v-list-item>
+            <v-list-item>
+              <v-list-item-title>ISIN:</v-list-item-title>
+              <v-list-item-subtitle>{{ securityFormData.ISIN }}</v-list-item-subtitle>
+            </v-list-item>
+            <!-- Add other relevant fields -->
+          </v-list>
+        </template>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn color="error" @click="handleSecurityConfirm(false)">Skip</v-btn>
+        <v-btn color="primary" @click="handleSecurityConfirm(true)">
+          {{ securityFormData?.readonly ? 'Add to Portfolio' : 'Create' }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script>
@@ -249,13 +304,15 @@ import { analyzeFile, getBrokers } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import SecurityMappingDialog from './SecurityMappingDialog.vue'
 import TransactionImportProgress from '../TransactionImportProgress.vue'
+import SecurityFormDialog from './SecurityFormDialog.vue'
 
 export default {
   name: 'TransactionImportDialog',
   components: {
     ProgressDialog,
     SecurityMappingDialog,
-    TransactionImportProgress
+    TransactionImportProgress,
+    SecurityFormDialog,
   },
   props: {
     modelValue: Boolean,
@@ -293,6 +350,15 @@ export default {
       duplicateTransactions: 0,
       importErrors: 0
     })
+    const errorMessage = ref('')
+    const showErrorDialog = ref(false)
+
+    const showSecurityDialog = ref(false)
+    const securityFormData = ref(null)
+
+    const confirmDialog = ref(false)
+    const confirmTitle = ref('')
+    const confirmMessage = ref('')
 
     const importState = useImportState()
     const { handleApiError } = useErrorHandler()
@@ -328,13 +394,7 @@ export default {
     }
 
     const closeDialog = () => {
-      dialog.value = false
-      file.value = null
-      isAnalyzed.value = false
-      brokerIdentified.value = false
-      identifiedBroker.value = null
-      brokerIdentificationComplete.value = false
-      selectedCurrency.value = null
+      resetInitialDialog()
       resetProgressDialog()
     }
 
@@ -419,25 +479,60 @@ export default {
     }
 
     const stopImport = () => {
-      if (isConnected.value) {
-        sendMessage({ type: 'stop_import' })
-      }
-      importState.setState('idle')
-      showProgressDialog.value = false
-      resetProgressDialog()
-      resetConfirmationState()
+      sendMessage({
+        type: 'stop_import'
+      })
+      canStopImport.value = false // Disable stop button while processing
     }
 
     const handleWebSocketMessage = (message) => {
       if (message.type === 'initialization') {
         totalToImport.value = message.total_to_update
         currentImportMessage.value = message.message
+      } else if (message.type === 'security_creation_needed') {
+        // Show confirmation dialog first
+        const securityInfo = message.data.security_info
+        const confirmText = `Security ${securityInfo.name} (ISIN: ${securityInfo.isin}) does not exist in your portfolio.`
+        
+        if (message.data.exists_in_db) {
+          // Security exists in database but not for this user
+          showSecurityConfirmDialog(
+            confirmText,
+            'This security exists in the database. Would you like to add it to your portfolio?',
+            message.data.security_data,
+            securityInfo
+          )
+        } else {
+          // Security doesn't exist at all
+          showSecurityConfirmDialog(
+            confirmText,
+            'Would you like to create this security?',
+            null,
+            securityInfo
+          )
+        }
       } else if (message.type === 'import_update') {
         handleImportUpdate(message.data)
       } else if (message.type === 'import_error' || message.type === 'save_error') {
         handleImportError(message.data.error)
+      } else if (message.type === 'critical_error') {
+        showProgressDialog.value = false
+        showSuccessDialog.value = false
+        showSecurityMapping.value = false
+        showTransactionConfirmation.value = false
+        
+        errorMessage.value = message.data.error
+        showErrorDialog.value = true
+        
+        disconnect()
+        
+        resetInitialDialog()
+        resetProgressDialog()
+        resetConfirmationState()
       } else if (message.type === 'import_complete') {
         handleImportSuccess(message.data)
+      } else if (message.type === 'import_stopped') {
+        handleImportStopped(message.data)
       } else if (message.type === 'transaction_confirmation') {
         handleTransactionConfirmation(message.data)
       }
@@ -451,18 +546,18 @@ export default {
         importState.setState('importing', update.message)
       } else if (update.status === 'security_mapping') {
         handleSecurityMapping(update)
-        // importState.setSecurityToMap(update.security)
       } else if (update.status === 'transaction_confirmation') {
         handleTransactionConfirmation(update)
       } else if (update.error) {
-        importError.value = update.error
-        importState.setState('error', update.error)
+        handleImportError(update.error)
       }
     }
 
     const handleImportError = (error) => {
       importError.value = error
       importState.setState('error', error)
+      
+      handleApiError({ message: error })
     }
 
     const handleSecurityMapping = (data) => {
@@ -542,6 +637,14 @@ export default {
       canStopImport.value = true
       importState.setProgress(0)
       importState.setState('idle')
+
+      // Disconnect WebSocket
+      disconnect()
+      
+      // Reset states
+      resetProgressDialog()
+      resetConfirmationState()
+      
     }
 
     const closeSuccessDialog = () => {
@@ -557,6 +660,16 @@ export default {
       resetProgressDialog()
     }
 
+    const resetInitialDialog = () => {
+      dialog.value = false
+      file.value = null
+      isAnalyzed.value = false
+      brokerIdentified.value = false
+      identifiedBroker.value = null
+      brokerIdentificationComplete.value = false
+      selectedCurrency.value = null
+    }
+
     const resetProgressDialog = () => {
       currentImported.value = 0
       totalToImport.value = 0
@@ -565,6 +678,23 @@ export default {
       canStopImport.value = true
       importState.setProgress(0)
       importState.setState('idle')
+    }
+
+    const handleImportStopped = (data) => {
+      showProgressDialog.value = false
+      currentImportMessage.value = data.message
+      importStats.value = data.stats
+      
+      // Show a notification that import was stopped
+      showErrorDialog.value = true
+      errorMessage.value = 'Import process was stopped by user'
+      
+      // Disconnect WebSocket
+      disconnect()
+      
+      // Reset states
+      resetProgressDialog()
+      resetConfirmationState()
     }
 
     watch(lastMessage, (newMessage) => {
@@ -580,6 +710,69 @@ export default {
     onUnmounted(() => {
       disconnect()
     })
+
+    const closeErrorDialog = () => {
+      showErrorDialog.value = false
+      errorMessage.value = ''
+      dialog.value = false // Close the main dialog as well
+    }
+
+    const handleSecurityAdded = (securityData) => {
+      sendMessage({
+        type: 'security_confirmation',
+        security_id: securityData.id
+      })
+    }
+
+    const handleSecuritySkipped = () => {
+      sendMessage({
+        type: 'security_confirmation',
+        security_id: null
+      })
+    }
+
+    const showSecurityConfirmDialog = (title, message, existingData, securityInfo) => {
+      confirmDialog.value = true
+      confirmTitle.value = title
+      confirmMessage.value = message
+      
+      if (existingData) {
+        // Show readonly security data
+        securityFormData.value = { ...existingData, readonly: true }
+      } else {
+        // Show empty form with prefilled data from import
+        securityFormData.value = {
+          name: securityInfo.name,
+          ISIN: securityInfo.isin,
+          currency: securityInfo.currency,
+          type: 'Stock',  // Default values
+          exposure: 'Equity'
+        }
+      }
+    }
+
+    const handleSecurityConfirm = (confirmed) => {
+      confirmDialog.value = false
+      
+      if (confirmed) {
+        if (securityFormData.value.readonly) {
+          // Existing security - send confirmation directly
+          sendMessage({
+            type: 'security_confirmation',
+            security_id: securityFormData.value.id
+          })
+        } else {
+          // Show form to create new security
+          showSecurityDialog.value = true
+        }
+      } else {
+        // Skip security creation
+        sendMessage({
+          type: 'security_confirmation',
+          security_id: null
+        })
+      }
+    }
 
     return {
       dialog,
@@ -620,7 +813,18 @@ export default {
       isGalaxy,
       galaxyType,
       selectedCurrency,
-      currencies
+      currencies,
+      showErrorDialog,
+      errorMessage,
+      closeErrorDialog,
+      handleSecurityAdded,
+      handleSecuritySkipped,
+      showSecurityDialog,
+      securityFormData,
+      confirmDialog,
+      confirmTitle,
+      confirmMessage,
+      handleSecurityConfirm,
     }
   }
 }

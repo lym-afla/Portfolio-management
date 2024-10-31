@@ -21,7 +21,8 @@ async def setup_data():
     unique_username = f"testuser_{uuid.uuid4().hex[:8]}"
     investor = await database_sync_to_async(User.objects.create_user)(username=unique_username, password='12345')
     broker = await database_sync_to_async(Brokers.objects.create)(name='Charles Stanley Test', investor=investor)
-    asset = await database_sync_to_async(Assets.objects.create)(name='Test Asset', investor=investor, type='Stock', currency='GBP')
+    asset = await database_sync_to_async(Assets.objects.create)(name='Test Asset', type='Stock', currency='GBP')
+    await database_sync_to_async(asset.investors.add)(investor)
     await database_sync_to_async(asset.brokers.add)(broker)
     return investor, broker, asset
 
