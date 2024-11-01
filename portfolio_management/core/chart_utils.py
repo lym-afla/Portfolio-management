@@ -18,8 +18,8 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
     
     dates = _chart_dates(from_date, to_date, frequency)
 
-    logger.info(f"Chart dates: {dates}")
-    logger.info(f"Breakdown: {breakdown}")
+    # logger.info(f"Chart dates: {dates}")
+    # logger.info(f"Breakdown: {breakdown}")
     
     chart_data = {
         'labels': _chart_labels(dates, frequency),

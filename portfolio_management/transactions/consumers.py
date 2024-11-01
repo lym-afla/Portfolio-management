@@ -60,10 +60,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 logger.debug("Import task cancelled upon disconnect")
 
     async def receive(self, text_data):
-        logger.debug(f"Received WebSocket message: {text_data}")
+        logger.debug(f"Raw WebSocket message received: {text_data}")
         try:
             text_data_json = json.loads(text_data)
             message_type = text_data_json['type']
+            logger.debug(f"Processing message type: {message_type} with data: {text_data_json}")
 
             if message_type == 'start_import':
                 file_id = text_data_json.get('file_id')
@@ -95,12 +96,17 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 await self.confirmation_events.put(confirmed)
                 logger.debug(f"Put confirmation event: {confirmed}. Queue size: {self.confirmation_events.qsize()}")
             elif message_type == 'security_confirmation':
-                # Handle security creation confirmation
+                # Clear any pending security events before adding new one
+                while not self.security_events.empty():
+                    try:
+                        self.security_events.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                        
                 security_id = text_data_json.get('security_id')
-                if security_id:
-                    await self.security_events.put(security_id)
-                else:
-                    await self.security_events.put(None)  # Skip this security
+                logger.debug(f"Security confirmation received. ID: {security_id}, Queue size before: {self.security_events.qsize()}")
+                await self.security_events.put(security_id)
+                logger.debug(f"Security confirmation queued. Queue size after: {self.security_events.qsize()}")
             elif message_type == 'stop_import':
                 self.stop_event.set()
                 logger.debug("Stop event set for import")
@@ -177,43 +183,37 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     break
 
                 if update.get('status') == 'security_creation_needed':
-                    # Create a sync function to handle the database query
-                    @database_sync_to_async
-                    def get_existing_security(isin, name):
-                        return Assets.objects.filter(ISIN=isin, name=name).first()
-
-                    # Call the async function
-                    existing_security = await get_existing_security(
-                        update['data']['isin'],
-                        update['data']['name']
-                    )
+                    logger.debug("Security creation needed, current state:")
+                    logger.debug(f"- Security info: {update.get('data')}")
+                    logger.debug(f"- Queue size: {self.security_events.qsize()}")
                     
-                    if existing_security:
-                        # If security exists, add user to investors
-                        @database_sync_to_async
-                        def add_user_to_security(security, user):
-                            security.investors.add(user)
-                            return security.id
-
-                        security_id = await add_user_to_security(existing_security, self.user)
-                    else:
-                        # Send creation needed message
+                    try:
                         await self.send(text_data=json.dumps({
                             'type': 'security_creation_needed',
-                            'data': {
-                                'security_info': update['data'],
-                                'exists_in_db': False,
-                                'security_data': None
-                            }
+                            'security_info': update['data'],
                         }))
                         
                         security_id = await self.security_events.get()
-
-                    # Send security_id back to the generator
-                    try:
-                        await self.import_generator.asend(security_id)
-                    except StopAsyncIteration:
-                        break
+                        logger.debug(f"Got security confirmation from queue: {security_id}")
+                        logger.debug(f"Queue size after get: {self.security_events.qsize()}")
+                        
+                        # Add more detailed logging around asend
+                        try:
+                            logger.debug(f"About to send security_id {security_id} to generator")
+                            result = await self.import_generator.asend(security_id)
+                            logger.debug(f"Generator asend result: {result}")
+                        except StopAsyncIteration:
+                            logger.debug("Generator stopped during asend")
+                            raise
+                        except Exception as e:
+                            logger.error(f"Error during generator asend: {str(e)}", exc_info=True)
+                            raise
+                        
+                        logger.debug("Security ID sent to generator successfully")
+                        
+                    except Exception as e:
+                        logger.error(f"Error in security creation flow: {str(e)}", exc_info=True)
+                        continue
 
                 elif 'error' in update:
                     import_results['importErrors'] += 1

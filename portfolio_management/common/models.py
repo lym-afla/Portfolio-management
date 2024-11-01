@@ -191,7 +191,7 @@ class Assets(models.Model):
     investors = models.ManyToManyField(CustomUser, related_name='assets', blank=True)
     type = models.CharField(max_length=15, choices=ASSET_TYPE_CHOICES, null=False)
     ISIN = models.CharField(max_length=12)
-    name = models.CharField(max_length=50, null=False)
+    name = models.CharField(max_length=70, null=False)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False)
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default='Equity')
     restricted = models.BooleanField(default=False, null=False)
@@ -204,15 +204,16 @@ class Assets(models.Model):
     data_source = models.CharField(max_length=10, choices=[('', 'None')] + DATA_SOURCE_CHOICES, blank=True, null=True)
     update_link = models.URLField(null=True, blank=True) # For FT
     yahoo_symbol = models.CharField(max_length=50, blank=True, null=True)  # For Yahoo Finance symbol
+    fund_fee = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
         logger.debug(f"Fetching price for {self.name} as of {price_date} in currency {currency}")
         quote = self.prices.filter(date__lte=price_date).order_by('-date').first()
         if quote is None:
-            logger.warning(f"No price quote found for {self.name} as of {price_date}. Checking last transaction.")
+            # logger.debug(f"No price quote found for {self.name} as of {price_date}. Checking last transaction.")
             # If no quote is found, take the price from the last transaction
-            last_transaction = self.transactions.filter(date__lte=price_date).order_by('-date').first()
+            last_transaction = self.transactions.filter(date__lte=price_date, quantity__isnull=False).order_by('-date').first()
             if last_transaction:
                 logger.debug(f"Using last transaction price for {self.name} as of {last_transaction.date}")
                 quote = type('obj', (object,), {'price': last_transaction.price, 'date': last_transaction.date})

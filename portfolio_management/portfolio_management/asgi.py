@@ -17,7 +17,7 @@ application = ProtocolTypeRouter({
             # Route for SSE POST requests
             path("database/api/update-broker-performance/sse/", UpdateBrokerPerformanceConsumer.as_asgi()),
             path("database/api/price-import/sse/", PriceImportConsumer.as_asgi()),
-            path("database/api/fx-import/sse/", FXImportConsumer.as_asgi()),  # Add this line
+            path("database/api/fx-import/sse/", FXImportConsumer.as_asgi()),
             # Route all other HTTP requests to Django
             re_path(r"", django_asgi_app),  # This should be the last route
         ])

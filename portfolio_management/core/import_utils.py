@@ -118,8 +118,18 @@ async def _process_transaction_row(row, investor, broker, currency):
         credit = Decimal(str(row['Credit'])) if not pd.isna(row['Credit']) else Decimal('0')
 
         SKIP_DESCRIPTIONS = {'* BALANCE B/F *', 'Cash Transfers ISA'}
-        COMMISSION_DESCRIPTIONS = {'Funds Platform Fee', 'Govt Flat Rate Int Charge'}
-        CASH_IN_DESCRIPTIONS = {'Stocks & Shares Subs', 'ISA Subscription'}
+        COMMISSION_DESCRIPTIONS = {'Funds Platform Fee',
+                                   'Govt Flat Rate Int Charge',
+                                   'Platform Charge',
+                                   'Stocks & Shares Custody Fee',
+                                   'Stocks & Shares Platform Fee'
+                                   }
+        CASH_IN_DESCRIPTIONS = {'Stocks & Shares Subs',
+                                'ISA Subscription',
+                                'Sage Pay Debit Card',
+                                'DIRECT CREDIT',
+                                'WIRED'
+                                }
         CASH_OUT_DESCRIPTIONS = { "BACS P'MNT"}
         ### Try to use regex for the below two. Relevant for Gross interest and Tax Credit
         INTEREST_INCOME_DESCRIPTIONS = {'Gross interest'}
@@ -662,30 +672,68 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
             if pd.notna(df.iloc[1, i]):
                 security_name = df.iloc[1, i]
                 isin = df.iloc[2, i]
+                logger.debug(f"Processing security: {security_name} ({isin})")
 
                 # Check if security exists
                 try:
+                    # First try to get security with all conditions
                     security = await database_sync_to_async(Assets.objects.get)(
                         name=security_name, 
                         ISIN=isin, 
-                        investors=user
+                        investors=user,
+                        brokers=broker
                     )
+                    logger.debug(f"Found existing security with all conditions: {security}")
                 except Assets.DoesNotExist:
-                    # Return security creation request
-                    yield {
-                        'status': 'security_creation_needed',
-                        'data': {
-                            'name': security_name,
-                            'isin': isin,
-                            'currency': currency,
+                    try:
+                        # Check if security exists without investor and broker relationships
+                        security = await database_sync_to_async(Assets.objects.get)(
+                            name=security_name,
+                            ISIN=isin
+                        )
+                        
+                        # If found, add the relationships
+                        @database_sync_to_async
+                        def add_relationships(security, user, broker):
+                            security.investors.add(user)
+                            security.brokers.add(broker)
+                            return security
+
+                        security = await add_relationships(security, user, broker)
+                        logger.debug(f"Added relationships for existing security: {security_name}")
+                        
+                    except Assets.DoesNotExist:
+                        logger.debug(f"Security not found with all conditions, yielding creation request")
+                    
+                        # First yield for security creation request
+                        creation_result = yield {
+                            'status': 'security_creation_needed',
+                            'data': {
+                                'name': security_name,
+                                'isin': isin,
+                                'currency': currency,
+                            }
                         }
-                    }
-                    # Wait for security creation confirmation
-                    security_id = yield
-                    if not security_id:
-                        i += 1
-                        continue
-                    security = await database_sync_to_async(Assets.objects.get)(id=security_id)
+                        logger.debug(f"After first yield, got: {creation_result}")
+                        
+                        # Second yield to receive security_id
+                        try:
+                            logger.debug("About to yield for security_id")
+                            security_id = yield
+                            logger.debug(f"After second yield, received security_id: {security_id}")
+                            
+                            if not isinstance(security_id, (int, type(None))):
+                                logger.error(f"Received unexpected type for security_id: {type(security_id)}")
+                                security_id = None
+                                
+                        except Exception as e:
+                            logger.error(f"Error during security_id yield: {str(e)}", exc_info=True)
+                            security_id = None
+                        
+                        if security_id is None:
+                            logger.debug(f"Security creation was skipped, moving to next security")
+                            i += 1
+                            continue
 
                 for row in range(transactions_start, len(df)):
                     if pd.isna(df.iloc[row, i]):

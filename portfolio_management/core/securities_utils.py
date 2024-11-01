@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 from common.models import Assets
 from core.portfolio_utils import IRR
 from .sorting_utils import sort_entries
@@ -40,7 +41,13 @@ def get_securities_table_api(request):
 def _filter_securities(user, search):
     securities = Assets.objects.filter(investors__id=user.id)
     if search:
-        securities = securities.filter(name__icontains=search)
+        # Create Q objects for each field we want to search
+        search_query = Q(name__icontains=search) | \
+                      Q(ISIN__icontains=search) | \
+                      Q(currency__icontains=search)
+        
+        securities = securities.filter(search_query)
+    
     return securities
 
 def _get_securities_data(user, securities, effective_current_date):

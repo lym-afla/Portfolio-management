@@ -71,19 +71,73 @@ MUTUAL_FUNDS_IN_PENCES = [
     'Legal & General Global Technology Index',
     'Fidelity Index Emerging Markets',
     'Rathbone Ethical Bond',
-    'iShares Physical Platinum ETC'
+    'iShares Physical Platinum ETC',
+    'VT Garraway Absolute Equity',
+    'ES River & Mercantile Global Recovery',
+    'Baillie Gifford Japanese Smaller Companies',
+    'Invesco MSCI World',
+    'iShares Global Property Securities Equity',
+    'Legal & General International Index Trust',
+    'iShares Overseas Corporate Bond',
+    'iShares Emerging Markets Equity',
+    'Legal & General Pacific Index Trust',
+    'iShares Pacific ex Japan Equity',
+    'Fidelity Multi Asset Allocator',
+    'Ninety One UK Smaller Companies',
 ]
 
 # Broker identifiers for transaction import
 BROKER_IDENTIFIERS = {
-    'Charles Stanley': {
+    # 'Charles Stanley': {
+    #     'keywords': ['Charles Stanley & Co. Limited',
+    #                  '1903304',
+    #                  'Contract Reference',
+    #                  'Sedol',
+    #                  'Stocks & Shares Subs'
+    #                  ],
+    #     'fuzzy_threshold': 59  # Adjust this threshold as needed
+    # },
+    'Charles Stanley – JISA || TL': {
         'keywords': ['Charles Stanley & Co. Limited',
                      '1903304',
-                     'Contract Reference',
-                     'Sedol',
-                     'Stocks & Shares Subs'
+                     'JISA - MASTER TIMOTHY LINIK',
+                     '4682720'
                      ],
-        'fuzzy_threshold': 59  # Adjust this threshold as needed
+        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    },
+    'Charles Stanley – JISA || LL': {
+        'keywords': ['Charles Stanley & Co. Limited',
+                     '1903304',
+                     'JISA - MASTER LEO LINIK',
+                     '4682719'
+                     ],
+        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    },
+    'Charles Stanley – ISA': {
+        'keywords': ['Charles Stanley & Co. Limited',
+                     '1903304',
+                     'Mr Y Linik',
+                     '4681921'
+                     ],
+        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    },
+    'Charles Stanley – Investment': {
+        'keywords': ['Charles Stanley & Co. Limited',
+                     '1903304',
+                     'Mr Y Linik',
+                     'Investment',
+                     '4432757'
+                     ],
+        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    },
+    'Charles Stanley – SIPP': {
+        'keywords': ['Charles Stanley & Co. Limited',
+                     '1903304',
+                     'Charles Stanley Direct Sipp',
+                     'SIPP',
+                     '4455068'
+                     ],
+        'fuzzy_threshold': 65  # Adjust this threshold as needed
     },
     # Add more brokers here
     # 'Broker Name': {

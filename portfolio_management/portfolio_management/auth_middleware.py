@@ -22,10 +22,23 @@ def get_user(token_key):
 class TokenAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
         try:
-            # Extract token from query string
-            query_string = scope.get('query_string', b'').decode()
-            query_params = dict(param.split('=') for param in query_string.split('&') if param)
-            token = query_params.get('token', None)
+            token = None
+
+            # Check if it's a WebSocket connection
+            if scope["type"] == "websocket":
+                # Extract token from query string
+                query_string = scope.get('query_string', b'').decode()
+                query_params = dict(param.split('=') for param in query_string.split('&') if param)
+                token = query_params.get('token', None)
+
+            # Check if it's a HTTP connection
+            elif scope["type"] == "http":
+                # Extract token from headers
+                headers = dict(scope['headers'])
+                if b'authorization' in headers:
+                    auth_header = headers[b'authorization'].decode()
+                    if auth_header.startswith('Bearer '):
+                        token = auth_header.split()[1]
 
             if token:
                 scope['user'] = await get_user(token)

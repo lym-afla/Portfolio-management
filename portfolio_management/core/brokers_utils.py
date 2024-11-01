@@ -50,7 +50,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
             'name': broker.name,
             'country': broker.country,
             'currencies': ', '.join(broker.get_currencies()),
-            'no_of_securities': sum(1 for security in broker.securities.filter(investor=user) if security.position(effective_current_date, user, [broker.id]) != 0),
+            'no_of_securities': sum(1 for security in broker.securities.filter(investors=user) if security.position(effective_current_date, user, [broker.id]) != 0),
             'first_investment': Transactions.objects.filter(investor=user, broker=broker).order_by('date').values_list('date', flat=True).first() or 'None',
             'nav': NAV_at_date(user.id, tuple([broker.id]), effective_current_date, currency_target)['Total NAV'],
             'cash_old': broker.balance(effective_current_date),

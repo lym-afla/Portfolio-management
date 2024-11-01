@@ -50,6 +50,13 @@
               chips
               :error-messages="errorMessages[field.name]"
             ></v-select>
+            <v-text-field
+              v-else-if="field.type === 'numberinput' && shouldShowField(field.name)"
+              v-model="form[field.name]"
+              :label="field.label"
+              :required="field.required"
+              :error-messages="errorMessages[field.name]"
+            ></v-text-field>
           </template>
         </v-form>
         <v-alert
@@ -97,6 +104,7 @@ export default {
       try {
         const structure = await getSecurityFormStructure()
         formFields.value = structure.fields
+        console.log("SecurityFormDialog formFields", formFields.value)
         initializeForm()
       } catch (error) {
         console.error('Error fetching form structure:', error)
@@ -132,7 +140,9 @@ export default {
     }, { immediate: true })
 
     const closeDialog = () => {
-      if (props.isImport) {
+      // Only emit security-skipped if it's an import AND the dialog is closed via Cancel button
+      if (props.isImport && !isSubmitting.value) {
+        console.log('Emitting security-skipped from Cancel button')  // Debug log
         emit('security-skipped')
       }
       dialog.value = false
@@ -150,7 +160,7 @@ export default {
 
       try {
         let response
-        if (isEdit.value) {
+        if (isEdit.value && !props.isImport) {
           response = await updateSecurity(props.editItem.id, form.value)
           emit('security-updated', response)
         } else {
@@ -185,6 +195,9 @@ export default {
         return false
       }
       if (fieldName === 'update_link' && form.value.data_source !== 'FT') {
+        return false
+      }
+      if (fieldName === 'fund_fee' && (form.value.type !== 'Mutual fund' && form.value.type !== 'ETF')) {
         return false
       }
       return true

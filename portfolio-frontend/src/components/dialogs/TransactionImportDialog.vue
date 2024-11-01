@@ -287,9 +287,7 @@
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn color="error" @click="handleSecurityConfirm(false)">Skip</v-btn>
-        <v-btn color="primary" @click="handleSecurityConfirm(true)">
-          {{ securityFormData?.readonly ? 'Add to Portfolio' : 'Create' }}
-        </v-btn>
+        <v-btn color="primary" @click="handleSecurityConfirm(true)">Create</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -486,31 +484,33 @@ export default {
     }
 
     const handleWebSocketMessage = (message) => {
+      console.log('Received WebSocket message in dialog:', message)
       if (message.type === 'initialization') {
         totalToImport.value = message.total_to_update
         currentImportMessage.value = message.message
       } else if (message.type === 'security_creation_needed') {
-        // Show confirmation dialog first
-        const securityInfo = message.data.security_info
-        const confirmText = `Security ${securityInfo.name} (ISIN: ${securityInfo.isin}) does not exist in your portfolio.`
+        const securityInfo = message.security_info
+        // const confirmText = `Security ${securityInfo.name} (ISIN: ${securityInfo.isin}) does not exist in your portfolio.`
         
-        if (message.data.exists_in_db) {
-          // Security exists in database but not for this user
-          showSecurityConfirmDialog(
-            confirmText,
-            'This security exists in the database. Would you like to add it to your portfolio?',
-            message.data.security_data,
-            securityInfo
-          )
-        } else {
-          // Security doesn't exist at all
-          showSecurityConfirmDialog(
-            confirmText,
-            'Would you like to create this security?',
-            null,
-            securityInfo
-          )
+        // if (message.data.exists_in_db) {
+        //   // Security exists in database but not for this user
+        //   showSecurityConfirmDialog(
+        //     confirmText,
+        //     'This security exists in the database. Would you like to add it to your portfolio?',
+        //     message.data.security_data,
+        //     securityInfo
+        //   )
+        // } else {
+          // Show empty form with prefilled data from import
+        securityFormData.value = {
+          name: securityInfo.name,
+          ISIN: securityInfo.isin,
+          currency: securityInfo.currency,
+          type: 'Stock', // Default values
+          exposure: 'Equity' // Default values
         }
+        showSecurityDialog.value = true
+        // }
       } else if (message.type === 'import_update') {
         handleImportUpdate(message.data)
       } else if (message.type === 'import_error' || message.type === 'save_error') {
@@ -718,6 +718,10 @@ export default {
     }
 
     const handleSecurityAdded = (securityData) => {
+      console.log('handleSecurityAdded called with:', securityData)
+      showSecurityDialog.value = false
+      securityFormData.value = null
+      
       sendMessage({
         type: 'security_confirmation',
         security_id: securityData.id
@@ -725,52 +729,52 @@ export default {
     }
 
     const handleSecuritySkipped = () => {
+      console.log('handleSecuritySkipped called')
+      showSecurityDialog.value = false
+      securityFormData.value = null
+      
       sendMessage({
         type: 'security_confirmation',
         security_id: null
       })
     }
 
-    const showSecurityConfirmDialog = (title, message, existingData, securityInfo) => {
-      confirmDialog.value = true
-      confirmTitle.value = title
-      confirmMessage.value = message
+    // const showSecurityConfirmDialog = (title, message, existingData, securityInfo) => {
+    //   confirmDialog.value = true
+    //   confirmTitle.value = title
+    //   confirmMessage.value = message
       
-      if (existingData) {
-        // Show readonly security data
-        securityFormData.value = { ...existingData, readonly: true }
-      } else {
-        // Show empty form with prefilled data from import
-        securityFormData.value = {
-          name: securityInfo.name,
-          ISIN: securityInfo.isin,
-          currency: securityInfo.currency,
-          type: 'Stock',  // Default values
-          exposure: 'Equity'
-        }
-      }
-    }
+    //   if (existingData) {
+    //     // Show readonly security data
+    //     securityFormData.value = { ...existingData, readonly: true }
+    //   } else {
+    //     // Show empty form with prefilled data from import
+    //     securityFormData.value = {
+    //       name: securityInfo.name,
+    //       ISIN: securityInfo.isin,
+    //       currency: securityInfo.currency,
+    //       type: 'Stock',  // Default values
+    //       exposure: 'Equity'
+    //     }
+    //   }
+    // }
 
     const handleSecurityConfirm = (confirmed) => {
+      console.log('handleSecurityConfirm called with:', confirmed)
       confirmDialog.value = false
       
       if (confirmed) {
+        console.log('Security confirmed, formData:', securityFormData.value)
         if (securityFormData.value.readonly) {
-          // Existing security - send confirmation directly
           sendMessage({
             type: 'security_confirmation',
             security_id: securityFormData.value.id
           })
         } else {
-          // Show form to create new security
           showSecurityDialog.value = true
         }
       } else {
-        // Skip security creation
-        sendMessage({
-          type: 'security_confirmation',
-          security_id: null
-        })
+        handleSecuritySkipped()
       }
     }
 

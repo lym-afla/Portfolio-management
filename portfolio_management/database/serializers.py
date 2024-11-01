@@ -134,7 +134,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_value(self, obj):
         if obj.quantity and obj.price:
-            value = Decimal(obj.quantity) * Decimal(obj.price)
+            value = -Decimal(obj.quantity) * Decimal(obj.price)
             return format_value(value, 'value', obj.currency, self.get_digits())
         return None
 

@@ -232,54 +232,54 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "plain_console",
         },
-        "json_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": os.path.join(LOG_DIR, "json.log"),
-            "formatter": "json_formatter",
-            "maxBytes": 5242880,
-            "backupCount": 5,
-        },
+        # "json_file": {
+        #     "class": "logging.handlers.RotatingFileHandler",
+        #     "filename": os.path.join(LOG_DIR, "json.log"),
+        #     "formatter": "json_formatter",
+        #     "maxBytes": 5242880,
+        #     "backupCount": 5,
+        # },
     },
     "loggers": {
         "django": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "INFO",
         },
         "django.server": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         },
         "uvicorn": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         },
         "transactions": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         },
         "channels": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         },
         "summary_analysis": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         },
         "core": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
             # "propagate": True
         },
         "common": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "INFO",
         },
         "database": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         },
         "dashboard": {
-            "handlers": ["console", "json_file"],
+            "handlers": ["console"],
             "level": "DEBUG",
         }
     },

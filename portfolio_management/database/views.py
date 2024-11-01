@@ -384,8 +384,11 @@ def api_create_security(request):
     form = SecurityForm(request.data, investor=request.user)
     if form.is_valid():
         security = form.save(commit=False)
-        security.investor = request.user
+        # First save the security to get an ID
         security.save()
+        
+        # Now add the many-to-many relationships
+        security.investors.add(request.user)
         
         # Handle custom_brokers (many-to-many relationship)
         custom_brokers = form.cleaned_data.get('custom_brokers')
@@ -430,10 +433,31 @@ def api_update_security(request, security_id):
     except Assets.DoesNotExist:
         return Response({'error': 'Security not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    for key, value in request.data.items():
+    # Handle broker updates separately
+    custom_brokers = request.data.get('custom_brokers', [])
+    
+    # Remove custom_brokers from request.data to avoid direct attribute setting
+    data_to_update = {k: v for k, v in request.data.items() if k != 'custom_brokers'}
+    
+    # Update regular fields
+    for key, value in data_to_update.items():
         setattr(security, key, value)
+    
+    # Save the security first
     security.save()
-    return Response({'id': security.id, 'name': security.name})
+    
+    # Update brokers relationship
+    if custom_brokers:
+        security.brokers.set(custom_brokers)  # This replaces all existing brokers
+    
+    logger.debug(f"Security updated. {security} with brokers {custom_brokers}")
+    
+    return Response({
+        'success': True,
+        'message': 'Security updated successfully',
+        'id': security.id,
+        'name': security.name
+    })
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])

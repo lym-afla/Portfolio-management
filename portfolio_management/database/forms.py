@@ -117,7 +117,7 @@ class SecurityForm(forms.ModelForm):
 
     class Meta:
         model = Assets
-        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'data_source', 'yahoo_symbol', 'update_link', 'comment']
+        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'data_source', 'yahoo_symbol', 'update_link', 'fund_fee', 'comment']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'ISIN': forms.TextInput(attrs={'class': 'form-control'}),
@@ -129,6 +129,7 @@ class SecurityForm(forms.ModelForm):
             'data_source': forms.Select(attrs={'class': 'form-select'}),
             'yahoo_symbol': forms.TextInput(attrs={'class': 'form-control'}),
             'update_link': forms.URLInput(attrs={'class': 'form-control'}),
+            'fund_fee': forms.NumberInput(attrs={'class': 'form-control'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -144,7 +145,8 @@ class SecurityForm(forms.ModelForm):
         self.fields['data_source'].choices = [('', 'None')] + Assets.DATA_SOURCE_CHOICES
         self.fields['yahoo_symbol'].required = False
         self.fields['update_link'].required = False
-
+        self.fields['fund_fee'].required = False
+        
         # If instance exists, pre-select the current brokers
         if self.instance.pk:
             self.fields['custom_brokers'].initial = [broker.id for broker in self.instance.brokers.all()]

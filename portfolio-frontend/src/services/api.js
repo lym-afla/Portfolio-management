@@ -574,7 +574,7 @@ export const updatePrice = async (priceId, priceData) => {
 
 export const getSecurityFormStructure = async () => {
   try {
-    const response = await axiosInstance.get(`${API_URL}/database/api/security-form-structure/`)
+    const response = await axiosInstance.get('/database/api/security-form-structure/')
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message

@@ -204,7 +204,7 @@ def get_dashboard_summary_api(request):
     summary = {}
 
     # Calculate NAV
-    summary['Current NAV'] = NAV_at_date(user.id, tuple (selected_brokers), effective_current_date, currency_target)['Total NAV']
+    summary['Current NAV'] = NAV_at_date(user.id, tuple(selected_brokers), effective_current_date, currency_target)['Total NAV']
 
     # Calculate Invested and Cash-out
     summary['Invested'] = Decimal(0)

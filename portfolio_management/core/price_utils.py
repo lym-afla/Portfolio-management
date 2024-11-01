@@ -48,7 +48,7 @@ def get_prices_table_api(request):
     }
 
 def _filter_prices(user, start_date, end_date, selected_asset_types, selected_broker, selected_securities, search):
-    prices_query = Prices.objects.filter(security__investor=user).select_related('security')
+    prices_query = Prices.objects.filter(security__investors=user).select_related('security')
 
     if start_date:
         prices_query = prices_query.filter(date__gte=start_date)
