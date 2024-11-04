@@ -199,6 +199,7 @@ class Assets(models.Model):
     DATA_SOURCE_CHOICES = [
         ('FT', 'Financial Times'),
         ('YAHOO', 'Yahoo Finance'),
+        ('MICEX', 'MICEX')
         # Add more sources as needed
     ]
     data_source = models.CharField(max_length=10, choices=[('', 'None')] + DATA_SOURCE_CHOICES, blank=True, null=True)

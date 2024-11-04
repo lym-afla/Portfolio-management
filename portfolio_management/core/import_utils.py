@@ -703,10 +703,10 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
                         logger.debug(f"Added relationships for existing security: {security_name}")
                         
                     except Assets.DoesNotExist:
-                        logger.debug(f"Security not found with all conditions, yielding creation request")
-                    
-                        # First yield for security creation request
-                        creation_result = yield {
+                        logger.debug(f"Security not found with all conditions, yielding creation request for {security_name}")
+                        
+                        # First yield sends the creation request AND receives the security_id
+                        security_id = yield {
                             'status': 'security_creation_needed',
                             'data': {
                                 'name': security_name,
@@ -714,21 +714,7 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
                                 'currency': currency,
                             }
                         }
-                        logger.debug(f"After first yield, got: {creation_result}")
-                        
-                        # Second yield to receive security_id
-                        try:
-                            logger.debug("About to yield for security_id")
-                            security_id = yield
-                            logger.debug(f"After second yield, received security_id: {security_id}")
-                            
-                            if not isinstance(security_id, (int, type(None))):
-                                logger.error(f"Received unexpected type for security_id: {type(security_id)}")
-                                security_id = None
-                                
-                        except Exception as e:
-                            logger.error(f"Error during security_id yield: {str(e)}", exc_info=True)
-                            security_id = None
+                        logger.debug(f"Received security_id directly from yield: {security_id}")
                         
                         if security_id is None:
                             logger.debug(f"Security creation was skipped, moving to next security")

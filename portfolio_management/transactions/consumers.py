@@ -188,11 +188,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     logger.debug(f"- Queue size: {self.security_events.qsize()}")
                     
                     try:
+                        # Send request to frontend
                         await self.send(text_data=json.dumps({
                             'type': 'security_creation_needed',
                             'security_info': update['data'],
                         }))
                         
+                        # Wait for security confirmation
                         security_id = await self.security_events.get()
                         logger.debug(f"Got security confirmation from queue: {security_id}")
                         logger.debug(f"Queue size after get: {self.security_events.qsize()}")
@@ -200,8 +202,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         # Add more detailed logging around asend
                         try:
                             logger.debug(f"About to send security_id {security_id} to generator")
-                            result = await self.import_generator.asend(security_id)
-                            logger.debug(f"Generator asend result: {result}")
+                            await self.import_generator.asend(security_id)
+                            
                         except StopAsyncIteration:
                             logger.debug("Generator stopped during asend")
                             raise
