@@ -182,42 +182,42 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 if self.stop_event.is_set():
                     break
 
-                if update.get('status') == 'security_creation_needed':
-                    logger.debug("Security creation needed, current state:")
-                    logger.debug(f"- Security info: {update.get('data')}")
-                    logger.debug(f"- Queue size: {self.security_events.qsize()}")
+                # if update.get('status') == 'security_creation_needed':
+                #     logger.debug("Security creation needed, current state:")
+                #     logger.debug(f"- Security info: {update.get('data')}")
+                #     logger.debug(f"- Queue size: {self.security_events.qsize()}")
                     
-                    try:
-                        # Send request to frontend
-                        await self.send(text_data=json.dumps({
-                            'type': 'security_creation_needed',
-                            'security_info': update['data'],
-                        }))
+                #     try:
+                #         # Send request to frontend
+                #         await self.send(text_data=json.dumps({
+                #             'type': 'security_creation_needed',
+                #             'security_info': update['data'],
+                #         }))
                         
-                        # Wait for security confirmation
-                        security_id = await self.security_events.get()
-                        logger.debug(f"Got security confirmation from queue: {security_id}")
-                        logger.debug(f"Queue size after get: {self.security_events.qsize()}")
+                #         # Wait for security confirmation
+                #         security_id = await self.security_events.get()
+                #         logger.debug(f"Got security confirmation from queue: {security_id}")
+                #         logger.debug(f"Queue size after get: {self.security_events.qsize()}")
                         
-                        # Add more detailed logging around asend
-                        try:
-                            logger.debug(f"About to send security_id {security_id} to generator")
-                            await self.import_generator.asend(security_id)
+                #         # Add more detailed logging around asend
+                #         try:
+                #             logger.debug(f"About to send security_id {security_id} to generator")
+                #             await self.import_generator.asend(security_id)
                             
-                        except StopAsyncIteration:
-                            logger.debug("Generator stopped during asend")
-                            raise
-                        except Exception as e:
-                            logger.error(f"Error during generator asend: {str(e)}", exc_info=True)
-                            raise
+                #         except StopAsyncIteration:
+                #             logger.debug("Generator stopped during asend")
+                #             raise
+                #         except Exception as e:
+                #             logger.error(f"Error during generator asend: {str(e)}", exc_info=True)
+                #             raise
                         
-                        logger.debug("Security ID sent to generator successfully")
+                #         logger.debug("Security ID sent to generator successfully")
                         
-                    except Exception as e:
-                        logger.error(f"Error in security creation flow: {str(e)}", exc_info=True)
-                        continue
+                #     except Exception as e:
+                #         logger.error(f"Error in security creation flow: {str(e)}", exc_info=True)
+                #         continue
 
-                elif 'error' in update:
+                if 'error' in update:
                     import_results['importErrors'] += 1
                     await self.send(text_data=json.dumps({
                         'type': 'import_error',

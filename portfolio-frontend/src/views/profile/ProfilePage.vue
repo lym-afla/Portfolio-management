@@ -98,14 +98,31 @@
 </template>
 
 <script>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getUserProfile, changePassword as apiChangePassword } from '@/services/api'
+import { changePassword as apiChangePassword } from '@/services/api'
+import { useStore } from 'vuex'
 
 export default {
   setup() {
+    const componentId = Date.now()
+    console.log(`[ProfilePage][${componentId}] Component setup started`)
+
     const router = useRouter()
-    const userInfo = ref([])
+    const store = useStore()
+
+    // Get user data from store
+    const userInfo = computed(() => {
+      const user = store.state.user
+      console.log(`[ProfilePage][${componentId}] Computing userInfo, user exists:`, !!user)
+      if (!user) return {}
+      return {
+        username: user.username,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name
+      }
+    })
 
     const formatLabel = (key) => {
       return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -142,10 +159,10 @@ export default {
       successDialog.value = true
     }
 
-    const showErrorMessage = (message) => {
-      errorMessage.value = message
-      errorDialog.value = true
-    }
+    // const showErrorMessage = (message) => {
+    //   errorMessage.value = message
+    //   errorDialog.value = true
+    // }
 
     const setPasswordErrors = (newErrors) => {
       if (typeof newErrors === 'string') {
@@ -195,22 +212,19 @@ export default {
       Object.keys(passwordErrors).forEach(key => passwordErrors[key] = [])
     }
 
-    const fetchUserDetails = async () => {
-      try {
-        console.log('Fetching user profile...')
-        const response = await getUserProfile()
-        console.log('Received response:', response)
-        // if (response && response.user_info) {
-          userInfo.value = response
-        // } else {
-        //   console.error('Unexpected response format:', response)
-        //   showErrorMessage('Unexpected response format')
-        // }
-      } catch (error) {
-        console.error('Error fetching user details:', error)
-        showErrorMessage(`Failed to fetch user details: ${error.message || 'Unknown error'}`)
+    const fetchProfile = async () => {
+      if (!store.state.user) {
+        console.log(`[ProfilePage][${componentId}] No user data, fetching profile...`)
+        await store.dispatch('fetchUserData')
+      } else {
+        console.log(`[ProfilePage][${componentId}] User data exists, skipping fetch`)
       }
     }
+
+    onMounted(() => {
+      console.log(`[ProfilePage][${componentId}] Component mounted`)
+      fetchProfile()
+    })
 
     const editProfile = () => {
       router.push('/profile/edit')
@@ -235,13 +249,9 @@ export default {
       clearPasswordError,
       changePassword,
       closeChangePasswordDialog,
-      fetchUserDetails,
       editProfile,
       showChangePasswordDialog,
     }
-  },
-  mounted() {
-    this.fetchUserDetails()
   },
 }
 </script>

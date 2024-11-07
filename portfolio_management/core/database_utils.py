@@ -11,7 +11,7 @@ from core.portfolio_utils import get_last_exit_date_for_brokers, calculate_perfo
 logger = logging.getLogger(__name__)
 
 async def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
-    logger.info(f"Starting performance calculation for {brokers_or_group}, {currency_target}, is_restricted={is_restricted}")
+    logger.info(f"Starting performance calculation for {brokers_or_group}, {currency_target}, is_restricted={is_restricted}, skip_existing_years={skip_existing_years}")
     
     selected_brokers_ids = await database_sync_to_async(broker_group_to_ids)(brokers_or_group, user)
     

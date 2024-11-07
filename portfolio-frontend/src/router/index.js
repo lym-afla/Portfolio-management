@@ -132,18 +132,43 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  if (to.matched.some(record => record.meta.requiresAuth)) {
-    const initResult = await store.dispatch('initializeApp')
-    if (!initResult.success) {
-      next({ name: 'Login' })
-    } else {
-      console.log('[index.js. Router] isAuthenticated. Running next()')
-      next()
-    }
-  } else {
-    console.log('[index.js. Router] not requiresAuth. Running next()')
-    next()
+  const guardId = Date.now()
+  console.log(`[Router][${guardId}] Navigation from ${from.path} to ${to.path}`)
+  
+  // Always ensure app is initialized
+  if (!store.state.isInitialized) {
+    console.log(`[Router][${guardId}] Initializing app...`)
+    const result = await store.dispatch('initializeApp')
+    console.log(`[Router][${guardId}] Initialization result:`, result)
   }
+
+  const isAuthenticated = store.getters.isAuthenticated
+  console.log(`[Router][${guardId}] Auth state:`, {
+    isAuthenticated,
+    hasToken: !!store.state.accessToken,
+    hasUser: !!store.state.user,
+    toPath: to.path,
+    requiresAuth: to.matched.some(record => record.meta.requiresAuth)
+  })
+
+  // Handle auth-required routes
+  if (to.matched.some(record => record.meta.requiresAuth)) {
+    if (!isAuthenticated) {
+      console.log(`[Router][${guardId}] Auth required but not authenticated, redirecting to login`)
+      next({ name: 'Login' })
+      return
+    }
+  }
+
+  // Redirect authenticated users away from login/register
+  if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated) {
+    console.log(`[Router][${guardId}] Already authenticated, redirecting to profile`)
+    next({ name: 'Profile' })
+    return
+  }
+
+  console.log(`[Router][${guardId}] Proceeding with navigation`)
+  next()
 })
 
 export default router

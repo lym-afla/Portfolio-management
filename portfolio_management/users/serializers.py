@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
+from users.models import InteractiveBrokersApiToken, TinkoffApiToken
 
 User = get_user_model()
 
@@ -86,3 +87,28 @@ class DashboardSettingsSerializer(serializers.ModelSerializer):
 
 class DashboardSettingsChoicesSerializer(serializers.Serializer):
     default_currency = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
+
+# Add new serializers for token management
+class BaseApiTokenSerializer(serializers.ModelSerializer):
+    token = serializers.CharField(write_only=True)  # For accepting plain token
+    
+    class Meta:
+        abstract = True
+        fields = ['id', 'is_active', 'token', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def create(self, validated_data):
+        token = validated_data.pop('token')
+        instance = super().create(validated_data)
+        instance.set_token(token)
+        return instance
+
+class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
+    class Meta(BaseApiTokenSerializer.Meta):
+        model = TinkoffApiToken
+        fields = BaseApiTokenSerializer.Meta.fields + ['token_type', 'sandbox_mode']
+
+class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
+    class Meta(BaseApiTokenSerializer.Meta):
+        model = InteractiveBrokersApiToken
+        fields = BaseApiTokenSerializer.Meta.fields + ['account_id', 'paper_trading']

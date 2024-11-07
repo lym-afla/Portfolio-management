@@ -320,7 +320,7 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
         assets = Assets.objects.filter(investors__id=user.id, brokers=broker).prefetch_related('transactions')
         if is_restricted is not None:
             assets = assets.filter(restricted=is_restricted)
-
+            
         for asset in assets:
             asset_realized_gl = asset.realized_gain_loss(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
             asset_unrealized_gl = asset.unrealized_gain_loss(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)

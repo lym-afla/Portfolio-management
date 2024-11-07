@@ -6,7 +6,7 @@ from asgiref.sync import sync_to_async
 from django.utils.dateparse import parse_date
 import asyncio
 from common.models import Assets, Brokers, FX, Transactions
-from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo
+from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo, import_security_prices_from_micex
 
 from constants import CURRENCY_CHOICES
 from .forms import BrokerPerformanceForm
@@ -254,6 +254,8 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     price_generator = import_security_prices_from_ft(security, dates)
                 elif security.data_source == 'YAHOO' and security.yahoo_symbol:
                     price_generator = import_security_prices_from_yahoo(security, dates)
+                elif security.data_source == 'MICEX' and security.secid:
+                    price_generator = import_security_prices_from_micex(security, dates)
                 else:
                     error_message = f"No valid data source or update information for {security.name}"
                     results.append({

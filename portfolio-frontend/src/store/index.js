@@ -32,7 +32,9 @@ export default createStore({
       dateRange: 'ytd',
       dateFrom: null,
       dateTo: null
-    }
+    },
+    isInitialized: false,
+    isInitializing: false,
   },
   mutations: {
     SET_TOKENS(state, { accessToken, refreshToken }) {
@@ -82,6 +84,12 @@ export default createStore({
     },
     SET_USER(state, user) {
       state.user = user
+    },
+    SET_INITIALIZED(state, value) {
+      state.isInitialized = value
+    },
+    SET_STATE(state, payload) {
+      Object.assign(state, payload)
     }
   },
   actions: {
@@ -169,36 +177,85 @@ export default createStore({
         router.push('/login')
       }
     },
-    async fetchUserData({ commit }) {
+    async fetchUserData({ commit, state }) {
+      const requestId = Date.now()
+      // Don't fetch if we already have user data
+      if (state.user) {
+        console.log(`[Store][${requestId}] User data already exists, skipping fetch`)
+        return state.user
+      }
+
       try {
+        console.log(`[Store][${requestId}] Starting user data fetch`)
         const userData = await api.getUserProfile()
+        console.log(`[Store][${requestId}] User data fetched:`, userData)
         commit('SET_USER', userData)
+        return userData
       } catch (error) {
-        console.error('Failed to fetch user data', error)
+        console.error(`[Store][${requestId}] Failed to fetch user data:`, error)
         throw error
       }
     },
-    async initializeApp({ commit, dispatch, state }) {
-      if (state.accessToken && !state.user) {
-        try {
-          await dispatch('fetchUserData')
-          return { success: true }
-        } catch (error) {
-          console.error('Failed to initialize app:', error)
-          const refreshResult = await dispatch('refreshToken')
-          if (!refreshResult.success) {
+    async initializeApp({ commit, state, dispatch }) {
+      const requestId = Date.now()
+      console.log(`[Store][${requestId}] Starting initializeApp`)
+      
+      // Check if already initialized
+      if (state.isInitialized) {
+        console.log(`[Store][${requestId}] App already initialized`)
+        return { success: !!state.user }
+      }
+
+      // Check if initialization is in progress
+      if (state.isInitializing) {
+        console.log(`[Store][${requestId}] Initialization already in progress, waiting...`)
+        // Wait for current initialization to complete
+        while (state.isInitializing) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        return { success: !!state.user }
+      }
+
+      try {
+        commit('SET_STATE', { isInitializing: true })
+        
+        const token = localStorage.getItem('accessToken')
+        if (!token) {
+          console.log(`[Store][${requestId}] No token found`)
+          commit('SET_INITIALIZED', true)
+          return { success: false }
+        }
+
+        if (!state.accessToken) {
+          commit('SET_TOKENS', {
+            accessToken: token,
+            refreshToken: localStorage.getItem('refreshToken')
+          })
+        }
+
+        if (!state.user) {
+          try {
+            await dispatch('fetchUserData')
+          } catch (error) {
+            console.error(`[Store][${requestId}] Error fetching user data:`, error)
             commit('CLEAR_TOKENS')
             commit('SET_USER', null)
             return { success: false }
           }
-          return { success: true }
         }
+
+        return { success: true }
+      } finally {
+        commit('SET_INITIALIZED', true)
+        commit('SET_STATE', { isInitializing: false })
+        console.log(`[Store][${requestId}] Initialization complete`)
       }
-      return { success: !!state.user }
     }
   },
   getters: {
-    isAuthenticated: state => !!state.accessToken && !!state.user,
+    isAuthenticated: (state) => {
+      return !!state.accessToken && !!state.user
+    },
     currentUser: state => state.user,
     effectiveCurrentDate: state => state.effectiveCurrentDate,
     tableSettings: state => state.tableSettings,

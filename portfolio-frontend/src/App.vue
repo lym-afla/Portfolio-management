@@ -120,14 +120,8 @@ export default {
       return route.meta.paddingTop || '140px' // Default padding
     })
 
-    const init = async () => {
-      layoutLoading.value = true
-      await store.dispatch('initializeApp')
-      layoutLoading.value = false
-    }
-
     onMounted(() => {
-      init()
+      layoutLoading.value = false
     })
 
     const errorSnackbar = ref(false)

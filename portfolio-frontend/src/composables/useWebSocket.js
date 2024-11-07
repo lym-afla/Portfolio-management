@@ -6,6 +6,7 @@ export function useWebSocket(baseUrl) {
   const socket = ref(null)
   const isConnected = ref(false)
   const lastMessage = ref(null)
+  const intentionalClose = ref(false)
 
   const getWebSocketUrl = (baseUrl) => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -19,6 +20,10 @@ export function useWebSocket(baseUrl) {
   }
 
   const connect = () => {
+    if (intentionalClose.value) {
+      return
+    }
+
     const url = getWebSocketUrl(baseUrl)
     console.log('Attempting to connect to WebSocket:', url)
     
@@ -41,12 +46,14 @@ export function useWebSocket(baseUrl) {
 
     socket.value.onclose = () => {
       isConnected.value = false
-      console.log('WebSocket connection closed')
-    // Attempt reconnection after a delay
-      setTimeout(() => {
-        console.log('Reconnecting WebSocket...')
-        connect()
-      }, 5000)
+      console.log('WebSocket connection closed, intentional:', intentionalClose.value)
+      
+      if (!intentionalClose.value) {
+        setTimeout(() => {
+          console.log('Reconnecting WebSocket...')
+          connect()
+        }, 5000)
+      }
     }
 
     socket.value.onerror = (error) => {
@@ -57,8 +64,13 @@ export function useWebSocket(baseUrl) {
 
   const disconnect = () => {
     if (socket.value) {
+      intentionalClose.value = true
       socket.value.close()
     }
+  }
+
+  const reset = () => {
+    intentionalClose.value = false
   }
 
   const sendMessage = (message) => {
@@ -76,6 +88,7 @@ export function useWebSocket(baseUrl) {
     lastMessage,
     sendMessage,
     connect,
-    disconnect
+    disconnect,
+    reset
   }
 }

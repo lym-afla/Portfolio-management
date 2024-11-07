@@ -1,103 +1,111 @@
 <template>
-  <v-card>
-    <v-card-title>User Settings</v-card-title>
-    <v-card-text>
-      <v-progress-circular
-        v-if="loading"
-        indeterminate
-        color="primary"
-      ></v-progress-circular>
-      <v-form v-else @submit.prevent="saveSettings">
-        <v-select
-          v-model="settingsForm.default_currency"
-          :items="currencyChoices"
-          label="Default currency"
-          :error-messages="fieldErrors.default_currency"
-        >
-          <template v-slot:item="{ item, props }">
-            <v-list-item v-bind="props" :title="null">
-              {{ item.title }}
-            </v-list-item>
-          </template>
-        </v-select>
-        
-        <v-checkbox
-          v-model="settingsForm.use_default_currency_where_relevant"
-          label="Use default currency where relevant"
-          :error-messages="fieldErrors.use_default_currency_where_relevant"
-        ></v-checkbox>
-        
-        <v-select
-          v-model="settingsForm.chart_frequency"
-          :items="frequencyChoices"
-          label="Chart frequency"
-          :error-messages="fieldErrors.chart_frequency"
-        >
-          <template v-slot:item="{ item, props }">
-            <v-list-item v-bind="props" :title="null">
-              {{ item.title }}
-            </v-list-item>
-          </template>
-        </v-select>
-        
-        <v-select
-          v-model="settingsForm.chart_timeline"
-          :items="timelineChoices"
-          label="Chart timeline"
-          :error-messages="fieldErrors.chart_timeline"
-        >
-          <template v-slot:item="{ item, props }">
-            <v-list-item v-bind="props" :title="null">
-              {{ item.title }}
-            </v-list-item>
-          </template>
-        </v-select>
-        
-        <v-select
-          v-model="settingsForm.NAV_barchart_default_breakdown"
-          :items="navBreakdownChoices"
-          label="Default NAV timeline breakdown"
-          :error-messages="fieldErrors.NAV_barchart_default_breakdown"
-        >
-          <template v-slot:item="{ item, props }">
-            <v-list-item v-bind="props" :title="null">
-              {{ item.title }}
-            </v-list-item>
-          </template>
-        </v-select>
-        
-        <v-text-field
-          v-model.number="settingsForm.digits"
-          type="number"
-          label="Number of digits"
-          :rules="[v => v >= 0 && v <= 6 || 'The value for digits must be between 0 and 6']"
-          :error-messages="fieldErrors.digits"
-        ></v-text-field>
-        
-        <v-select
-          v-model="settingsForm.custom_brokers"
-          :items="brokerChoices"
-          item-title="title"
-          item-value="value"
-          label="Brokers"
-          :error-messages="fieldErrors.custom_brokers"
-        >
-          <template v-slot:item="{ item, props }">
-            <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
-              {{ item.title }}
-            </v-list-item>
-            <v-divider v-else-if="item.raw.type === 'divider'" />
-            <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
-              {{ item.title }}
-            </v-list-subheader>
-          </template>
-        </v-select>
-        
-        <v-card-actions>
-          <v-btn type="submit" color="primary">Save Settings</v-btn>
-        </v-card-actions>
-      </v-form>
-    </v-card-text>
+  <div>
+    <v-card>
+      <v-card-title>User Settings</v-card-title>
+      <v-card-text>
+        <v-progress-circular
+          v-if="loading"
+          indeterminate
+          color="primary"
+        ></v-progress-circular>
+        <v-form v-else @submit.prevent="saveSettings">
+          <v-select
+            v-model="settingsForm.default_currency"
+            :items="currencyChoices"
+            label="Default currency"
+            :error-messages="fieldErrors.default_currency"
+          >
+            <template v-slot:item="{ item, props }">
+              <v-list-item v-bind="props" :title="null">
+                {{ item.title }}
+              </v-list-item>
+            </template>
+          </v-select>
+          
+          <v-checkbox
+            v-model="settingsForm.use_default_currency_where_relevant"
+            label="Use default currency where relevant"
+            :error-messages="fieldErrors.use_default_currency_where_relevant"
+          ></v-checkbox>
+          
+          <v-select
+            v-model="settingsForm.chart_frequency"
+            :items="frequencyChoices"
+            label="Chart frequency"
+            :error-messages="fieldErrors.chart_frequency"
+          >
+            <template v-slot:item="{ item, props }">
+              <v-list-item v-bind="props" :title="null">
+                {{ item.title }}
+              </v-list-item>
+            </template>
+          </v-select>
+          
+          <v-select
+            v-model="settingsForm.chart_timeline"
+            :items="timelineChoices"
+            label="Chart timeline"
+            :error-messages="fieldErrors.chart_timeline"
+          >
+            <template v-slot:item="{ item, props }">
+              <v-list-item v-bind="props" :title="null">
+                {{ item.title }}
+              </v-list-item>
+            </template>
+          </v-select>
+          
+          <v-select
+            v-model="settingsForm.NAV_barchart_default_breakdown"
+            :items="navBreakdownChoices"
+            label="Default NAV timeline breakdown"
+            :error-messages="fieldErrors.NAV_barchart_default_breakdown"
+          >
+            <template v-slot:item="{ item, props }">
+              <v-list-item v-bind="props" :title="null">
+                {{ item.title }}
+              </v-list-item>
+            </template>
+          </v-select>
+          
+          <v-text-field
+            v-model.number="settingsForm.digits"
+            type="number"
+            label="Number of digits"
+            :rules="[v => v >= 0 && v <= 6 || 'The value for digits must be between 0 and 6']"
+            :error-messages="fieldErrors.digits"
+          ></v-text-field>
+          
+          <v-select
+            v-model="settingsForm.custom_brokers"
+            :items="brokerChoices"
+            item-title="title"
+            item-value="value"
+            label="Brokers"
+            :error-messages="fieldErrors.custom_brokers"
+          >
+            <template v-slot:item="{ item, props }">
+              <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
+                {{ item.title }}
+              </v-list-item>
+              <v-divider v-else-if="item.raw.type === 'divider'" />
+              <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
+                {{ item.title }}
+              </v-list-subheader>
+            </template>
+          </v-select>
+          
+          <v-card-actions>
+            <v-btn type="submit" color="primary">Save Settings</v-btn>
+          </v-card-actions>
+        </v-form>
+      </v-card-text>
+    </v-card>
+
+    <BrokerTokenManager
+      class="mt-4"
+      @error="showErrorMessage"
+      @success="showSuccessMessage"
+    />
 
     <!-- Error Snackbar -->
     <v-snackbar v-model="snackbar" :timeout="3000" :color="snackbarColor">
@@ -106,14 +114,27 @@
         <v-btn color="white" text @click="snackbar = false">Close</v-btn>
       </template>
     </v-snackbar>
-  </v-card>
+  </div>
 </template>
 
 <script>
+import { provide } from 'vue'
 import { getUserSettings, updateUserSettings, getSettingsChoices } from '@/services/api'
 import { formatBrokerChoices } from '@/utils/brokerUtils'
+import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 
 export default {
+  components: {
+    BrokerTokenManager
+  },
+
+  setup() {
+    // Provide error handling function for child components
+    provide('showError', (message) => {
+      this.showErrorMessage(message)
+    })
+  },
+
   data() {
     return {
       loading: true,
@@ -142,16 +163,15 @@ export default {
       },
       snackbar: false,
       snackbarMessage: '',
+      snackbarColor: 'success',
     }
   },
-  computed: {
-    snackbarColor() {
-      return this.snackbarMessage.toLowerCase().includes('error') ? 'error' : 'success';
-    }
-  },
+
   async mounted() {
+    console.log('ProfileSettings component mounted')
     await this.loadData();
   },
+
   methods: {
     async loadData() {
       try {
@@ -208,10 +228,12 @@ export default {
     },
     showSuccessMessage(message) {
       this.snackbarMessage = message;
+      this.snackbarColor = 'success';
       this.snackbar = true;
     },
     showErrorMessage(message) {
       this.snackbarMessage = message;
+      this.snackbarColor = 'error';
       this.snackbar = true;
     },
   }

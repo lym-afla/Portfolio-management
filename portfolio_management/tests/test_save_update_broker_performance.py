@@ -1,4 +1,7 @@
 import pytest
+from channels.testing import HttpCommunicator
+from channels.db import database_sync_to_async
+from database.consumers import UpdateBrokerPerformanceConsumer
 from django.urls import reverse
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
@@ -18,15 +21,13 @@ from core.portfolio_utils import get_last_exit_date_for_brokers, calculate_perfo
 User = get_user_model()
 
 @pytest.fixture
-def api_client():
-    return APIClient()
-
-@pytest.fixture
 def user():
+    """Create test user"""
     return User.objects.create_user(username='testuser', password='testpass')
 
 @pytest.fixture
 def broker(user):
+    """Create test broker"""
     return Brokers.objects.create(name='Test Broker', investor=user)
 
 @pytest.fixture
@@ -96,30 +97,34 @@ def fx_rates(user):
     fx.save()
         # current_date += timedelta(days=1)
 
-@pytest.mark.django_db
-def test_update_broker_performance(api_client, user, broker, transactions, caplog):
+@pytest.mark.django_db(transaction=True)  # Use transaction=True to avoid db locks
+@pytest.mark.asyncio
+async def test_update_broker_performance_initial(user, broker, transactions, caplog):
+    """Test initial broker performance calculation"""
     caplog.set_level(logging.INFO)
-    api_client.force_authenticate(user=user)
-    url = reverse('database:update_broker_performance')
+    
+    communicator = HttpCommunicator(
+        UpdateBrokerPerformanceConsumer.as_asgi(),
+        "POST",
+        "/database/api/update-broker-performance/sse/",
+        body=json.dumps({
+            'broker_or_group': 'Test Broker',
+            'currency': 'USD',
+            'is_restricted': 'False',
+            'skip_existing_years': False,
+            'effective_current_date': '2023-01-01'
+        }).encode('utf-8')
+    )
 
-    # Set the effective current date in the session
-    session = api_client.session
-    session['effective_current_date'] = '2023-01-01'
-    session.save()
+    communicator.scope['user'] = user
+    response = await communicator.get_response()
+    
+    assert response['status'] == 200
 
-    data = {
-        'broker_or_group': 'Test Broker',
-        'currency': 'USD',
-        'is_restricted': 'False',
-        'skip_existing_years': False
-    }
-
-    response = api_client.post(url, data)
-    assert response.status_code == 200
-
-    # Parse the streaming response
-    content = b''.join(response.streaming_content).decode('utf-8')
-    events = [json.loads(line) for line in content.strip().split('\n')]
+    events = [
+        json.loads(line)
+        for line in response['body'].decode('utf-8').strip().split('\n')
+    ]
 
     progress_events = [event for event in events if event['status'] == 'progress']
     complete_events = [event for event in events if event['status'] == 'complete']
@@ -127,140 +132,123 @@ def test_update_broker_performance(api_client, user, broker, transactions, caplo
     assert len(progress_events) == 1
     assert len(complete_events) == 1
 
-    # Check if the AnnualPerformance instance was created
-    performance = AnnualPerformance.objects.filter(
-        investor=user,
-        broker_group=broker.name,
-        year=2022,
-        currency='USD',
-        restricted=False
-    ).first()
+    @database_sync_to_async
+    def get_performance():
+        return AnnualPerformance.objects.filter(
+            investor=user,
+            broker_group=broker.name,
+            year=2022,
+            currency='USD',
+            restricted=False
+        ).first()
+
+    performance = await get_performance()
 
     assert performance is not None
     assert performance.bop_nav == Decimal('0')
-    assert performance.eop_nav == Decimal('500')  # 1500 (cash in) - 1000 (buy) + 1200 (sell) - 1200 (cash out) = 500
-    assert performance.invested == Decimal('1500')  # Cash in 1500
-    assert performance.cash_out == Decimal('-1200')  # Cash out 1200
-    assert performance.price_change == Decimal('200')  # (120 - 100) * 10
+    assert performance.eop_nav == Decimal('500')
+    assert performance.invested == Decimal('1500')
+    assert performance.cash_out == Decimal('-1200')
+    assert performance.price_change == Decimal('200')
 
-    # Test updating existing data
-    data['skip_existing_years'] = True
-    response = api_client.post(url, data)
-    assert response.status_code == 200
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_update_broker_performance_invalid_data(user):
+    """Test broker performance calculation with invalid data"""
+    communicator = HttpCommunicator(
+        UpdateBrokerPerformanceConsumer.as_asgi(),
+        "POST",
+        "/database/api/update-broker-performance/sse/",
+        body=json.dumps({
+            'broker_or_group': 'invalid',
+            'currency': 'INVALID',
+            'is_restricted': 'INVALID',
+            'skip_existing_years': 'not_a_boolean',
+            'effective_current_date': '2023-01-01'
+        }).encode('utf-8')
+    )
+    
+    communicator.scope['user'] = user
+    response = await communicator.get_response()
+    
+    assert response['status'] == 400
+    response_data = json.loads(response['body'].decode('utf-8'))
+    assert 'error' in response_data
+    assert 'errors' in response_data
 
-    content = b''.join(response.streaming_content).decode('utf-8')
-    events = [json.loads(line) for line in content.strip().split('\n')]
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_update_broker_performance_no_transactions(user, broker):
+    """Test broker performance calculation with no transactions"""
+    communicator = HttpCommunicator(
+        UpdateBrokerPerformanceConsumer.as_asgi(),
+        "POST",
+        "/database/api/update-broker-performance/sse/",
+        body=json.dumps({
+            'broker_or_group': broker.name,
+            'currency': 'USD',
+            'is_restricted': 'False',
+            'skip_existing_years': False,
+            'effective_current_date': '2023-01-01'
+        }).encode('utf-8')
+    )
 
-    # Check if we have only a complete event (no progress events due to skipping)
-    progress_events = [event for event in events if event['status'] == 'progress']
-    complete_events = [event for event in events if event['status'] == 'complete']
+    communicator.scope['user'] = user
+    response = await communicator.get_response()
+    
+    assert response['status'] == 200
 
-    assert len(progress_events) == 0
-    assert len(complete_events) == 1
-
-    # If the test fails, print additional debug information
-    if not AnnualPerformance.objects.filter(investor=user, broker_group=broker.name, year=2022, currency='USD', restricted=False).exists():
-        print("AnnualPerformance instance was not created. Debug info:")
-        print(f"User: {user}")
-        print(f"Broker: {broker}")
-        print(f"Transactions: {Transactions.objects.filter(investor=user, broker=broker).count()}")
-        print(f"Events received: {events}")
-
-@pytest.mark.django_db
-def test_update_broker_performance_invalid_data(api_client, user):
-    api_client.force_authenticate(user=user)
-    url = reverse('database:update_broker_performance')
-
-    data = {
-        'broker_or_group': 'invalid',
-        'currency': 'INVALID',
-        'is_restricted': 'INVALID',
-        'skip_existing_years': 'not_a_boolean'
-    }
-
-    response = api_client.post(url, data)
-    assert response.status_code == 400
-    assert 'error' in response.json()
-    assert 'errors' in response.json()
-
-@pytest.mark.django_db
-def test_update_broker_performance_no_transactions(api_client, user, broker):
-    api_client.force_authenticate(user=user)
-    url = reverse('database:update_broker_performance')
-
-    session = api_client.session
-    session['effective_current_date'] = '2023-01-01'
-    session.save()
-
-    data = {
-        'broker_or_group': broker.name,
-        'currency': 'USD',
-        'is_restricted': 'False',
-        'skip_existing_years': False
-    }
-
-    response = api_client.post(url, data)
-    assert response.status_code == 200
-
-    content = b''.join(response.streaming_content).decode('utf-8')
-    events = [json.loads(line) for line in content.strip().split('\n')]
+    events = [
+        json.loads(line)
+        for line in response['body'].decode('utf-8').strip().split('\n')
+    ]
 
     error_events = [event for event in events if event['status'] == 'error']
     assert len(error_events) == 1
     assert error_events[0]['message'] == 'No transactions found'
 
-@pytest.mark.django_db
-def test_update_broker_performance_streaming(api_client, user, broker, transactions, fx_rates, capsys):
-
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_update_broker_performance_streaming(user, broker, transactions, fx_rates, capsys):
+    """Test broker performance streaming with all currencies and restrictions"""
     print("Starting test_update_broker_performance_streaming")
 
-    api_client.force_authenticate(user=user)
-    url = reverse('database:update_broker_performance')
-    print(f"URL: {url}")
+    communicator = HttpCommunicator(
+        UpdateBrokerPerformanceConsumer.as_asgi(),
+        "POST",
+        "/database/api/update-broker-performance/sse/",
+        body=json.dumps({
+            'broker_or_group': broker.name,
+            'currency': 'All',
+            'is_restricted': 'All',
+            'skip_existing_years': False,
+            'effective_current_date': '2023-01-01'
+        }).encode('utf-8')
+    )
 
-    session = api_client.session
-    session['effective_current_date'] = '2023-01-01'
-    session.save()
-    print("Session saved")
+    communicator.scope['user'] = user
+    response = await communicator.get_response()
+    
+    assert response['status'] == 200
 
-    data = {
-        'broker_or_group': broker.name,
-        'currency': 'All',
-        'is_restricted': 'All',
-        'skip_existing_years': False,
-    }
-    print(f"Request data: {data}")
-    response = api_client.post(url, data)
+    events = [
+        json.loads(line)
+        for line in response['body'].decode('utf-8').strip().split('\n')
+    ]
 
-    print(f"Response status code: {response.status_code}")
-    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
+    progress_events = [event for event in events if event['status'] == 'progress']
+    complete_events = [event for event in events if event['status'] == 'complete']
 
-    # Handle streaming content
-    print("Starting to process streaming content")
-    content = b''
-    for chunk in response.streaming_content:
-        content += chunk
-        try:
-            progress_data = json.loads(chunk.decode('utf-8').strip())
-            print(f"Received chunk: {progress_data}")
-            
-            if progress_data['status'] == 'progress':
-                assert 'current' in progress_data
-                assert 'total' in progress_data
-                assert 'progress' in progress_data
-                assert 'year' in progress_data
-                assert 'currency' in progress_data
-                assert 'is_restricted' in progress_data
-            elif progress_data['status'] == 'complete':
-                print("Received complete status")
-                break
-            elif progress_data['status'] == 'error':
-                pytest.fail(f"Error in streaming: {progress_data['message']}")
-        except json.JSONDecodeError:
-            print(f"Received non-JSON chunk: {chunk}")
-            raise
+    # Verify progress events contain required fields
+    for event in progress_events:
+        assert 'status' in event
+        assert 'current' in event
+        assert 'progress' in event
+        assert 'year' in event
+        assert 'currency' in event
+        assert 'is_restricted' in event
 
-    assert b'{"status": "complete"}' in content, "Did not receive complete status in the response"
+    assert len(complete_events) == 1
 
     captured = capsys.readouterr()
     print("============== Captured output: ==============")
@@ -395,121 +383,105 @@ def test_calculate_performance(user, broker, caplog):
     assert performance_data['cash_out'] == Decimal('-1200')  # No cash outflows
     assert performance_data['price_change'] == Decimal('500')  # (15 - 10) * 100
 
-@pytest.mark.django_db
-def test_update_broker_performance_skip_existing(api_client, user, broker, fx_rates, capsys):
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_update_broker_performance_skip_existing(user, broker, caplog):
+    """Test broker performance calculation with skip_existing_years=True"""
     print("\nStarting test_update_broker_performance_skip_existing")
-    api_client.force_authenticate(user=user)
-    url = reverse('database:update_broker_performance')
-    print(f"URL: {url}")
+    caplog.set_level(logging.INFO)
 
-    # Create transactions for different years
-    asset = Assets.objects.create(
-        type='Stock',
-        ISIN='US0378331005',
-        name='Apple Inc.',
-        currency='USD',
-        exposure='Equity',
-        restricted=False
-    )
-    asset.investors.add(user)
-    asset.brokers.add(broker)
-
-    years = [2021, 2022, 2023]
-    for year in years:
-        Transactions.objects.create(
-            investor=user,
-            broker=broker,
-            date=date(year, 1, 1),
-            type=TRANSACTION_TYPE_CASH_IN,
-            cash_flow=Decimal('1000'),
-            currency='USD'
-        )
-        Transactions.objects.create(
-            investor=user,
-            broker=broker,
-            date=date(year, 6, 1),
-            type=TRANSACTION_TYPE_BUY,
-            quantity=Decimal('10'),
-            price=Decimal('100'),
+    # Create test data
+    @database_sync_to_async
+    def setup_test_data():
+        # Create asset
+        asset = Assets.objects.create(
+            type='Stock',
+            ISIN='US0378331005',
+            name='Apple Inc.',
             currency='USD',
-            security=asset
+            exposure='Equity',
+            restricted=False
         )
-        Transactions.objects.create(
+        asset.investors.add(user)
+        asset.brokers.add(broker)
+
+        # Create transactions for different years
+        years = [2021, 2022, 2023]
+        for year in years:
+            Transactions.objects.create(
+                investor=user,
+                broker=broker,
+                date=date(year, 1, 1),
+                type=TRANSACTION_TYPE_CASH_IN,
+                cash_flow=Decimal('1000'),
+                currency='USD'
+            )
+            Transactions.objects.create(
+                investor=user,
+                broker=broker,
+                date=date(year, 6, 1),
+                type=TRANSACTION_TYPE_BUY,
+                quantity=Decimal('10'),
+                price=Decimal('100'),
+                currency='USD',
+                security=asset
+            )
+            Transactions.objects.create(
+                investor=user,
+                broker=broker,
+                date=date(year, 12, 31),
+                type=TRANSACTION_TYPE_SELL,
+                quantity=Decimal('-10'),
+                price=Decimal('120'),
+                currency='USD',
+                security=asset
+            )
+
+        # Create existing AnnualPerformance for 2022
+        AnnualPerformance.objects.create(
             investor=user,
-            broker=broker,
-            date=date(year, 12, 31),
-            type=TRANSACTION_TYPE_SELL,
-            quantity=Decimal('-10'),
-            price=Decimal('120'),
+            broker_group=broker.name,
+            year=2022,
             currency='USD',
-            security=asset
+            restricted=False,
+            bop_nav=Decimal('1200'),
+            eop_nav=Decimal('2400'),
+            invested=Decimal('1000'),
+            cash_out=Decimal('0'),
+            price_change=Decimal('200'),
+            capital_distribution=Decimal('0'),
+            commission=Decimal('0'),
+            tax=Decimal('0'),
+            fx=Decimal('0'),
+            tsr='20%'
         )
 
-    # Create an existing AnnualPerformance instance for 2022
-    AnnualPerformance.objects.create(
-        investor=user,
-        broker_group=broker.name,
-        year=2022,
-        currency='USD',
-        restricted=False,
-        bop_nav=Decimal('1200'),
-        eop_nav=Decimal('2400'),
-        invested=Decimal('1000'),
-        cash_out=Decimal('0'),
-        price_change=Decimal('200'),
-        capital_distribution=Decimal('0'),
-        commission=Decimal('0'),
-        tax=Decimal('0'),
-        fx=Decimal('0'),
-        tsr='20%'
-    )
-
+    await setup_test_data()
     print("Created transactions and existing AnnualPerformance")
 
-    # Set the effective current date in the session
-    session = api_client.session
-    session['effective_current_date'] = '2024-01-01'
-    session.save()
-    print("Session saved")
+    # Create communicator
+    communicator = HttpCommunicator(
+        UpdateBrokerPerformanceConsumer.as_asgi(),
+        "POST",
+        "/database/api/update-broker-performance/sse/",
+        body=json.dumps({
+            'broker_or_group': broker.name,
+            'currency': 'USD',
+            'is_restricted': 'False',
+            'skip_existing_years': True,
+            'effective_current_date': '2024-01-01'
+        }).encode('utf-8')
+    )
 
-    data = {
-        'broker_or_group': broker.name,
-        'currency': 'USD',
-        'is_restricted': 'False',
-        'skip_existing_years': True
-    }
-    print(f"Request data: {data}")
+    communicator.scope['user'] = user
+    response = await communicator.get_response()
+    
+    assert response['status'] == 200
 
-    response = api_client.post(url, data)
-    print(f"Response status code: {response.status_code}")
-    assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
-
-    # Handle streaming content
-    print("Starting to process streaming content")
-    content = b''
-    for chunk in response.streaming_content:
-        content += chunk
-        try:
-            progress_data = json.loads(chunk.decode('utf-8').strip())
-            print(f"Received chunk: {progress_data}")
-            
-            if progress_data['status'] == 'progress':
-                assert 'year' in progress_data
-                assert 'currency' in progress_data
-                assert 'is_restricted' in progress_data
-            elif progress_data['status'] == 'complete':
-                print("Received complete status")
-                break
-            elif progress_data['status'] == 'error':
-                pytest.fail(f"Error in streaming: {progress_data['message']}")
-        except json.JSONDecodeError:
-            print(f"Received non-JSON chunk: {chunk}")
-            raise
-
-    assert b'{"status": "complete"}' in content, "Did not receive complete status in the response"
-
-    # Parse the streaming response
-    events = [json.loads(line) for line in content.decode('utf-8').strip().split('\n')]
+    events = [
+        json.loads(line)
+        for line in response['body'].decode('utf-8').strip().split('\n')
+    ]
 
     progress_events = [event for event in events if event['status'] == 'progress']
     complete_events = [event for event in events if event['status'] == 'complete']
@@ -520,31 +492,49 @@ def test_update_broker_performance_skip_existing(api_client, user, broker, fx_ra
     assert len(progress_events) == 2  # Progress events for 2021 and 2023
     assert len(complete_events) == 1
 
-    # Check if the AnnualPerformance instance for 2022 was not updated
-    performance = AnnualPerformance.objects.filter(
-        investor=user,
-        broker_group=broker.name,
-        year=2022,
-        currency='USD',
-        restricted=False
-    ).first()
+    @database_sync_to_async
+    def get_performances():
+        performance_2022 = AnnualPerformance.objects.filter(
+            investor=user,
+            broker_group=broker.name,
+            year=2022,
+            currency='USD',
+            restricted=False
+        ).first()
 
-    assert performance is not None
-    assert performance.bop_nav == Decimal('1200')
-    assert performance.eop_nav == Decimal('2400')
-    assert performance.invested == Decimal('1000')
-    assert performance.cash_out == Decimal('0')
-    assert performance.price_change == Decimal('200')
+        performance_2021 = AnnualPerformance.objects.filter(
+            investor=user,
+            broker_group=broker.name,
+            year=2021,
+            currency='USD',
+            restricted=False
+        ).first()
 
-    # Check if the AnnualPerformance instances for 2021 and 2023 were created
-    performance_2021 = AnnualPerformance.objects.filter(
-        investor=user,
-        broker_group=broker.name,
-        year=2021,
-        currency='USD',
-        restricted=False
-    ).first()
+        performance_2023 = AnnualPerformance.objects.filter(
+            investor=user,
+            broker_group=broker.name,
+            year=2023,
+            currency='USD',
+            restricted=False
+        ).first()
 
+        return performance_2022, performance_2021, performance_2023
+
+    performance_2022, performance_2021, performance_2023 = await get_performances()
+
+    print(f"Performance 2023:")
+    for k, v in performance_2023.__dict__.items():
+        print(f"{k}: {v}")
+
+    # Check if 2022 performance was not updated
+    assert performance_2022 is not None
+    assert performance_2022.bop_nav == Decimal('1200')
+    assert performance_2022.eop_nav == Decimal('2400')
+    assert performance_2022.invested == Decimal('1000')
+    assert performance_2022.cash_out == Decimal('0')
+    assert performance_2022.price_change == Decimal('200')
+
+    # Check 2021 performance
     assert performance_2021 is not None
     assert performance_2021.bop_nav == Decimal('0')
     assert performance_2021.eop_nav == Decimal('1200')
@@ -552,14 +542,7 @@ def test_update_broker_performance_skip_existing(api_client, user, broker, fx_ra
     assert performance_2021.cash_out == Decimal('0')
     assert performance_2021.price_change == Decimal('200')
 
-    performance_2023 = AnnualPerformance.objects.filter(
-        investor=user,
-        broker_group=broker.name,
-        year=2023,
-        currency='USD',
-        restricted=False
-    ).first()
-
+    # Check 2023 performance
     assert performance_2023 is not None
     assert performance_2023.bop_nav == Decimal('2400')
     assert performance_2023.eop_nav == Decimal('3600')

@@ -42,6 +42,7 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env.production
 
 # Log files
 npm-debug.log*
@@ -70,3 +71,4 @@ Thumbs.db
 portfolio_management/db.sqlite3 (backup)
 db.sqlite3 (backup)
 portfolio_management/temp_files
+portfolio_management/secrets.json

@@ -117,7 +117,7 @@ class SecurityForm(forms.ModelForm):
 
     class Meta:
         model = Assets
-        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'data_source', 'yahoo_symbol', 'update_link', 'fund_fee', 'comment']
+        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'custom_brokers', 'data_source', 'yahoo_symbol', 'update_link', 'secid', 'fund_fee', 'comment']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'ISIN': forms.TextInput(attrs={'class': 'form-control'}),
@@ -129,6 +129,7 @@ class SecurityForm(forms.ModelForm):
             'data_source': forms.Select(attrs={'class': 'form-select'}),
             'yahoo_symbol': forms.TextInput(attrs={'class': 'form-control'}),
             'update_link': forms.URLInput(attrs={'class': 'form-control'}),
+            'secid': forms.TextInput(attrs={'class': 'form-control'}),
             'fund_fee': forms.NumberInput(attrs={'class': 'form-control'}),
         }
 
@@ -146,7 +147,8 @@ class SecurityForm(forms.ModelForm):
         self.fields['yahoo_symbol'].required = False
         self.fields['update_link'].required = False
         self.fields['fund_fee'].required = False
-        
+        self.fields['secid'].required = False
+
         # If instance exists, pre-select the current brokers
         if self.instance.pk:
             self.fields['custom_brokers'].initial = [broker.id for broker in self.instance.brokers.all()]
@@ -156,11 +158,14 @@ class SecurityForm(forms.ModelForm):
         data_source = cleaned_data.get('data_source')
         yahoo_symbol = cleaned_data.get('yahoo_symbol')
         update_link = cleaned_data.get('update_link')
+        secid = cleaned_data.get('secid')
 
         if data_source == 'YAHOO' and not yahoo_symbol:
             self.add_error('yahoo_symbol', 'Yahoo symbol is required for Yahoo Finance data source.')
         elif data_source == 'FT' and not update_link:
             self.add_error('update_link', 'Update link is required for Financial Times data source.')
+        elif data_source == 'MICEX' and not secid:
+            self.add_error('secid', 'Secid is required for MICEX data source.')
 
         return cleaned_data
 

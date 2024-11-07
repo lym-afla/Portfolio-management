@@ -360,7 +360,7 @@ export default {
 
     const importState = useImportState()
     const { handleApiError } = useErrorHandler()
-    const { isConnected, lastMessage, sendMessage, connect, disconnect } = useWebSocket('/ws/transactions/')
+    const { isConnected, lastMessage, sendMessage, connect, disconnect, reset } = useWebSocket('/ws/transactions/')
     
     watch(() => props.modelValue, (newValue) => {
       dialog.value = newValue
@@ -429,6 +429,7 @@ export default {
     }
 
     const startImport = async () => {
+      reset()
       if (!fileId.value || !selectedBroker.value) {
         importState.setState('error', 'File and broker must be selected')
         return
@@ -638,7 +639,7 @@ export default {
       importState.setProgress(0)
       importState.setState('idle')
 
-      // Disconnect WebSocket
+      // Disconnect WebSocket without reconnection
       disconnect()
       
       // Reset states
@@ -708,6 +709,7 @@ export default {
     })
 
     onUnmounted(() => {
+      // Ensure intentional disconnect on unmount
       disconnect()
     })
 

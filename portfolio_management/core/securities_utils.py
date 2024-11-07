@@ -110,7 +110,7 @@ def get_security_detail(request, security_id):
         security_data['current_value'] = security_data['open_position'] * price.price
         security_data['irr'] = IRR(user.id, effective_current_date, security.currency, asset_id=security.id)
 
-    return format_table_data([security_data], currency_target, number_of_digits)[0]
+    return format_table_data([security_data], security.currency, number_of_digits)[0]
 
 def get_security_transactions(request, security_id):
     # Implement logic to fetch and return recent transactions data

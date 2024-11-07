@@ -502,6 +502,135 @@ async def import_security_prices_from_yahoo(security, dates):
 
         yield result
 
+async def import_security_prices_from_micex(security, dates):
+    if not security.secid:
+        yield {
+            "security_name": security.name,
+            "status": "error",
+            "message": f"No MICEX symbol specified for {security.name}"
+        }
+        return
+    
+    for date in dates:
+        result = {
+            "security_name": security.name,
+            "date": date.strftime('%Y-%m-%d'),
+            "status": "skipped"
+        }
+
+        # Check if price already exists
+        price_exists_func = database_sync_to_async(
+            Prices.objects.filter(security=security, date=date).exists
+        )
+        price_exists = await price_exists_func()
+        
+        if price_exists:
+            yield result
+            continue
+
+        # Get wide enough interval to fetch data
+        target_date = pd.Timestamp(date)
+        end_date = (target_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')  # Include next day
+        start_date = (target_date - pd.Timedelta(days=7)).strftime('%Y-%m-%d')
+
+        # Constants for MICEX API
+        selected_engine = 'stock'
+        selected_market = 'shares'
+        selected_board = 'TQBR'
+
+        url = (
+            f'https://iss.moex.com/iss/history/engines/{selected_engine}/markets/{selected_market}/boards/'
+            f'{selected_board}/securities/{security.secid}.json'
+            f'?from={start_date}&till={end_date}'
+        )
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        error_msg = f"MOEX API error: {response.status}"
+                        yield {
+                            "security_name": security.name,
+                            "date": date.strftime('%Y-%m-%d'),
+                            "status": "error",
+                            "message": error_msg
+                        }
+                        continue
+
+                    data = await response.json()
+
+            if 'history' in data and data['history']['data']:
+                df = pd.DataFrame(
+                    data['history']['data'],
+                    columns=data['history']['columns']
+                )
+                # Convert date strings to datetime
+                df['TRADEDATE'] = pd.to_datetime(df['TRADEDATE'])
+                df.set_index('TRADEDATE', inplace=True)
+                df = df.sort_index()  # Ensure chronological order
+
+                if not df.empty:
+                    # Find the closest trading day (preference to previous days)
+                    closest_date = None
+                    
+                    # First try to find exact date
+                    if target_date in df.index:
+                        closest_date = target_date
+                    else:
+                        # Find the closest previous trading day
+                        prev_dates = df.index[df.index <= target_date]
+                        if not prev_dates.empty:
+                            closest_date = prev_dates[-1]
+                    
+                    if closest_date is not None:
+                        price = df.loc[closest_date, 'CLOSE']
+                        if pd.notna(price):
+                            create_price_func = database_sync_to_async(
+                                Prices.objects.create
+                            )
+                            await create_price_func(
+                                security=security,
+                                date=date,  # Use original date
+                                price=float(price)
+                            )
+                            result.update({
+                                "status": "updated",
+                                "message": f"Used price from {closest_date.strftime('%Y-%m-%d')}"
+                                if closest_date != target_date else None
+                            })
+                        else:
+                            result.update({
+                                "status": "error",
+                                "message": "No closing price available for the closest date"
+                            })
+                    else:
+                        result.update({
+                            "status": "error",
+                            "message": "No suitable trading day found in the date range"
+                        })
+                else:
+                    result.update({
+                        "status": "error",
+                        "message": "No data available in the date range"
+                    })
+            else:
+                result.update({
+                    "status": "error",
+                    "message": "No data available from MOEX"
+                })
+
+            yield result
+
+        except Exception as e:
+            logger.exception(f"Error fetching MOEX data for {security.name}")
+            yield {
+                "security_name": security.name,
+                "date": date.strftime('%Y-%m-%d'),
+                "status": "error",
+                "message": f"Unexpected error: {str(e)}"
+            }
+
+
 async def _process_galaxy_transaction(user, broker, date, currency, transaction_type, cash_flow=None, commission=None):
     """Helper function to process a single Galaxy transaction"""
     transaction_data = {
@@ -632,6 +761,13 @@ async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, conf
 async def parse_galaxy_broker_security_transactions(file_path, currency, broker, user, confirm_every=False):
     """Async generator for parsing Galaxy broker security transactions"""
     try:
+        # Send initialization message
+        yield {
+            'status': 'initialization',
+            # 'total_to_update': total_potential_transactions,
+            'message': 'Starting Galaxy transactions import'
+        }
+        
         df = pd.read_excel(file_path, header=None)
         
         # Find transactions_start once
@@ -647,153 +783,144 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
             yield {'error': 'Could not find transaction start row in the file'}
             return
 
-        # Calculate total number of potential transactions
-        total_columns = sum(1 for i in range(len(df.columns)) if pd.notna(df.iloc[1, i]))
-        rows_per_security = len(df) - transactions_start
-        total_potential_transactions = int(total_columns * rows_per_security)  # Convert to int for proper serialization
-        
-        # Send initialization message
-        yield {
-            'status': 'initialization',
-            'total_to_update': total_potential_transactions,
-            'message': 'Starting Galaxy transactions import'
-        }
-
         quantity_field = Transactions._meta.get_field('quantity')
         quantity_decimal_places = quantity_field.decimal_places
         price_field = Transactions._meta.get_field('price')
         price_decimal_places = price_field.decimal_places
 
+        yield {
+            'status': 'initialization',
+            # 'total_to_update': total_potential_transactions,
+            'message': 'Starting security processing'
+        }
+
+        # Process securities first
+        valid_columns = None
+        async for update in _process_galaxy_securities(df, user, broker):
+            if update['status'] == 'security_processing_complete':
+                valid_columns = update['valid_columns']
+                yield {
+                    'status': 'progress',
+                    'message': 'Security processing complete',
+                }
+            else:
+                yield update
+
+        logger.debug(f"Valid columns: {valid_columns}")
+            
+        if not valid_columns:
+            yield {
+                'status': 'complete',
+                'data': {
+                    'totalTransactions': 0,
+                    'importedTransactions': 0,
+                    'skippedTransactions': 0,
+                    'duplicateTransactions': 0,
+                    'importErrors': 0,
+                    'message': 'No valid securities found'
+                }
+            }
+            return
+
+        # Calculate total number of potential transactions
+        total_columns = len(valid_columns)
+        rows_per_security = len(df) - transactions_start
+        total_potential_transactions = int(total_columns * rows_per_security)  # Convert to int for proper serialization
+
+        yield {
+            'status': 'initialization',
+            'total_to_update': total_potential_transactions,
+            'message': f'Starting processing {total_potential_transactions} transactions'
+        }
+
+        # Now process transactions only for valid columns
         processed = 0
         import_errors = 0
         duplicate_count = 0
-        i = 0
-        while i < len(df.columns):
-            if pd.notna(df.iloc[1, i]):
-                security_name = df.iloc[1, i]
-                isin = df.iloc[2, i]
-                logger.debug(f"Processing security: {security_name} ({isin})")
+        
+        for i in valid_columns:
+            security_name = df.iloc[1, i]
+            isin = df.iloc[2, i]
+            logger.debug(f"Processing transactions for security: {security_name} ({isin})")
 
-                # Check if security exists
+            try:
+                security = await database_sync_to_async(Assets.objects.get)(
+                    name=security_name, 
+                    ISIN=isin, 
+                    investors=user,
+                    brokers=broker
+                )
+            except Assets.DoesNotExist:
+                logger.debug(f"Security not found with all conditions, yielding creation request for {security_name}.")
+                continue
+
+            for row in range(transactions_start, len(df)):
+                if pd.isna(df.iloc[row, i]):
+                    processed += 1
+                    continue
+
                 try:
-                    # First try to get security with all conditions
-                    security = await database_sync_to_async(Assets.objects.get)(
-                        name=security_name, 
-                        ISIN=isin, 
-                        investors=user,
-                        brokers=broker
-                    )
-                    logger.debug(f"Found existing security with all conditions: {security}")
-                except Assets.DoesNotExist:
-                    try:
-                        # Check if security exists without investor and broker relationships
-                        security = await database_sync_to_async(Assets.objects.get)(
-                            name=security_name,
-                            ISIN=isin
-                        )
-                        
-                        # If found, add the relationships
-                        @database_sync_to_async
-                        def add_relationships(security, user, broker):
-                            security.investors.add(user)
-                            security.brokers.add(broker)
-                            return security
+                    date = df.iloc[row, i].strftime("%Y-%m-%d")
+                    price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places) if not pd.isna(df.iloc[row, i + 1]) else None
+                    quantity = round(Decimal(df.iloc[row, i + 2]), quantity_decimal_places) if not pd.isna(df.iloc[row, i + 2]) else None
+                    dividend = round(Decimal(df.iloc[row, i + 3]), 2) if not pd.isna(df.iloc[row, i + 3]) else None
+                    commission = round(Decimal(df.iloc[row, i + 4]), 2) if not pd.isna(df.iloc[row, i + 4]) else None
 
-                        security = await add_relationships(security, user, broker)
-                        logger.debug(f"Added relationships for existing security: {security_name}")
-                        
-                    except Assets.DoesNotExist:
-                        logger.debug(f"Security not found with all conditions, yielding creation request for {security_name}")
-                        
-                        # First yield sends the creation request AND receives the security_id
-                        security_id = yield {
-                            'status': 'security_creation_needed',
-                            'data': {
-                                'name': security_name,
-                                'isin': isin,
-                                'currency': currency,
-                            }
-                        }
-                        logger.debug(f"Received security_id directly from yield: {security_id}")
-                        
-                        if security_id is None:
-                            logger.debug(f"Security creation was skipped, moving to next security")
-                            i += 1
-                            continue
-
-                for row in range(transactions_start, len(df)):
-                    if pd.isna(df.iloc[row, i]):
+                    if quantity is None and dividend is None and commission is None:
                         processed += 1
+                        logger.debug(f"Skipping empty row for security: {security_name}")
                         continue
 
-                    try:
-                        date = df.iloc[row, i].strftime("%Y-%m-%d")
-                        price = round(Decimal(df.iloc[row, i + 1]), price_decimal_places) if not pd.isna(df.iloc[row, i + 1]) else None
-                        quantity = round(Decimal(df.iloc[row, i + 2]), quantity_decimal_places) if not pd.isna(df.iloc[row, i + 2]) else None
-                        dividend = round(Decimal(df.iloc[row, i + 3]), 2) if not pd.isna(df.iloc[row, i + 3]) else None
-                        commission = round(Decimal(df.iloc[row, i + 4]), 2) if not pd.isna(df.iloc[row, i + 4]) else None
+                    transaction_type = None
+                    if quantity is not None:
+                        transaction_type = TRANSACTION_TYPE_BUY if quantity > 0 else TRANSACTION_TYPE_SELL
+                    elif dividend is not None:
+                        transaction_type = TRANSACTION_TYPE_DIVIDEND
 
-                        if quantity is None and dividend is None and commission is None:
-                            processed += 1
-                            logger.debug(f"Skipping empty row for security: {security_name}")
-                            continue
+                    transaction_data = {
+                        'investor': user,
+                        'broker': broker,
+                        'security': security,  # Use actual security object
+                        'date': date,
+                        'type': transaction_type,
+                        'currency': currency,
+                        'price': price,
+                        'quantity': quantity,
+                        'cash_flow': dividend,
+                        'commission': commission,
+                    }
 
-                        transaction_type = None
-                        if quantity is not None:
-                            transaction_type = TRANSACTION_TYPE_BUY if quantity > 0 else TRANSACTION_TYPE_SELL
-                        elif dividend is not None:
-                            transaction_type = TRANSACTION_TYPE_DIVIDEND
+                    # Check for duplicates
+                    exists = await transaction_exists(transaction_data)
 
-                        transaction_data = {
-                            'investor': user,
-                            'broker': broker,
-                            'security': security,  # Use actual security object
-                            'date': date,
-                            'type': transaction_type,
-                            'currency': currency,
-                            'price': price,
-                            'quantity': quantity,
-                            'cash_flow': dividend,
-                            'commission': commission,
-                        }
+                    processed += 1
+                    yield {
+                        'status': 'progress',
+                        'current': processed,
+                        'progress': (processed / total_potential_transactions) * 100,
+                        'message': f'Processing transaction {processed}'
+                    }
 
-                        # Check for duplicates
-                        exists = await transaction_exists(transaction_data)
+                    if exists:
+                        duplicate_count += 1
+                        continue
 
-                        processed += 1
+                    if confirm_every:
+                        # processed += 1
                         yield {
-                            'status': 'progress',
-                            'current': processed,
-                            'progress': (processed / total_potential_transactions) * 100,
-                            'message': f'Processing transaction {processed}'
+                            'status': 'transaction_confirmation',
+                            'data': transaction_data
+                        }
+                    else:
+                        yield {
+                            'status': 'add_transaction',
+                            'data': transaction_data,
                         }
 
-                        if exists:
-                            duplicate_count += 1
-                            continue
-
-                        if confirm_every:
-                            # processed += 1
-                            yield {
-                                'status': 'transaction_confirmation',
-                                'data': transaction_data
-                            }
-                        else:
-                            yield {
-                                'status': 'add_transaction',
-                                'data': transaction_data,
-                            }
-
-                    except Exception as e:
-                        import_errors += 1
-                        yield {'error': f'Error processing transaction: {str(e)}'}
-                        continue
-
-                i += 1
-                while i < len(df.columns) and pd.isna(df.iloc[1, i]):
-                    i += 1
-            else:
-                i += 1
+                except Exception as e:
+                    import_errors += 1
+                    yield {'error': f'Error processing transaction: {str(e)}'}
+                    continue
 
         yield {
             'status': 'complete',
@@ -812,3 +939,152 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
             'status': 'critical_error',
             'message': f'Error during import: {str(e)}'
         }
+
+async def _process_galaxy_securities(df, user, broker):
+    """Process all securities in the Excel file before handling transactions."""
+    security_columns = []
+    
+    logger.debug("Starting security processing phase")
+    for i in range(len(df.columns)):
+        if pd.notna(df.iloc[1, i]):
+            security_name = df.iloc[1, i]
+            isin = df.iloc[2, i]
+            logger.debug(f"Processing security: {security_name} ({isin})")
+            
+            try:
+                # First try to get security with all conditions
+                security = await database_sync_to_async(Assets.objects.get)(
+                    name=security_name, 
+                    ISIN=isin, 
+                    investors=user,
+                    brokers=broker
+                )
+                logger.debug(f"Found existing security with all relationships: {security}")
+                security_columns.append(i)
+                
+                # Yield progress update
+                yield {
+                    'status': 'progress',
+                    'message': f'Checked existing security: {security_name}',
+                    # 'security': security_name
+                }
+                
+            except Assets.DoesNotExist:
+                try:
+                    # Check if security exists without relationships
+                    security = await database_sync_to_async(Assets.objects.get)(
+                        name=security_name,
+                        ISIN=isin
+                    )
+                    
+                    # Add relationships
+                    @database_sync_to_async
+                    def add_relationships(security, user, broker):
+                        security.investors.add(user)
+                        security.brokers.add(broker)
+                        return security
+
+                    await add_relationships(security, user, broker)
+                    security_columns.append(i)
+                    logger.debug(f"Added relationships for existing security: {security_name}")
+                    
+                    # Yield progress update
+                    yield {
+                        'status': 'progress',
+                        'message': f'Added: {security_name}',
+                        # 'security': security_name
+                    }
+                    
+                except Assets.DoesNotExist:
+                    # Try to create security using MICEX data
+                    security = await create_security_from_micex(security_name, isin, user, broker)
+                    if security:
+                        security_columns.append(i)
+                        yield {
+                            'status': 'progress',
+                            'message': f'Created new security: {security_name}',
+                            # 'security': security_name
+                        }
+                    else:
+                        yield {
+                            'status': 'progress',
+                            'message': f'Failed to create security: {security_name}',
+                            # 'security': security_name,
+                            # 'error': True
+                        }
+                        continue
+    
+    # Return list of valid column indices
+    yield {
+        'status': 'security_processing_complete',
+        'valid_columns': security_columns,
+        'message': f'Found {len(security_columns)} valid securities'
+    }
+
+async def create_security_from_micex(security_name, isin, user, broker):
+    """Create a new security using MICEX API data"""
+    try:
+        # Constants for MICEX API
+        selected_engine = 'stock'
+        selected_market = 'shares'
+        selected_board = 'TQBR'
+        
+        # First, get the securities list and find our security
+        url = f'https://iss.moex.com/iss/engines/{selected_engine}/markets/{selected_market}/boards/{selected_board}/securities.json'
+        response = requests.get(url)
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch securities list from MICEX: {response.status_code}")
+            return None
+            
+        data = response.json()
+        securities_df = pd.DataFrame(data['securities']['data'], 
+                                   columns=data['securities']['columns'])
+        
+        # Try to find the security by ISIN first (more reliable)
+        security = securities_df[securities_df['ISIN'] == isin]
+        if security.empty:
+            # If not found by ISIN, try by name
+            security = securities_df[securities_df['SECNAME'].str.contains(security_name, case=False, na=False)]
+        
+        if security.empty:
+            logger.error(f"Security not found in MICEX: {security_name} ({isin})")
+            return None
+            
+        # Get the first match if multiple found
+        security = security.iloc[0]
+        
+        # Get detailed security info
+        ticker = security['SECID']
+        security_url = f'https://iss.moex.com/iss/engines/{selected_engine}/markets/{selected_market}/boards/{selected_board}/securities/{ticker}.json'
+        detail_response = requests.get(security_url)
+        if detail_response.status_code != 200:
+            logger.error(f"Failed to fetch security details from MICEX: {detail_response.status_code}")
+            return None
+            
+        detail_data = detail_response.json()
+        
+        # Create new asset
+        @database_sync_to_async
+        def create_asset():
+            asset = Assets.objects.create(
+                type='Stock',  # From ASSET_TYPE_CHOICES
+                ISIN=isin,
+                name=security_name,
+                currency='RUB' if security['CURRENCYID'] == 'SUR' else security['CURRENCYID'],
+                exposure='Equity',  # From EXPOSURE_CHOICES
+                restricted=False,
+                data_source='MICEX',
+                secid = security['SECID']
+            )
+            # Add both relationships in one transaction
+            asset.investors.add(user)
+            asset.brokers.add(broker)
+            return asset
+            
+        asset = await create_asset()
+        logger.info(f"Created new asset: {asset.name} ({asset.ISIN}) with user and broker relationships")
+        return asset
+        
+    except Exception as e:
+        logger.error(f"Error creating security from MICEX: {str(e)}")
+        return None

@@ -32,12 +32,12 @@ This application allows users to manage and analyze their investment portfolio. 
 ## Project Setup
 
 1. Clone the repository:
-   ```
+   ```bash
    git clone https://github.com/lym-afla/Portfolio-management.git
    ```
 
 2. Set up the backend:
-   ```
+   ```bash
    cd Portfolio-management/portfolio_management
    python -m venv venv
    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
@@ -47,10 +47,17 @@ This application allows users to manage and analyze their investment portfolio. 
    ```
 
 3. Set up the frontend:
-   ```
+   ```bash
    cd ../portfolio_frontend
    npm install
    ```
+
+4. Configure environment:
+   ```bash
+   cp .env.example .env.development
+   cp .env.example .env.production
+   ```
+   Edit the `.env.development` and `.env.production` files with your configuration.
 
 ### Development
 
@@ -291,3 +298,83 @@ For full API documentation, please refer to the backend codebase.
 
 ### Customize Configuration
 For detailed explanation on how things work, check out the [Configuration Reference](https://cli.vuejs.org/config/).
+
+## Environment Setup
+
+The frontend application uses Vue CLI for development and build tooling. Environment variables are managed through `.env` files in the `portfolio-frontend` directory.
+
+### Environment Files
+
+- `.env.development`: Used during development
+- `.env.production`: Used in production
+- `.env.example`: Example configuration (committed to repository)
+
+### Required Environment Variables
+
+The application uses Vue CLI, which requires environment variables to be prefixed with `VUE_APP_` to be exposed to the application.
+
+| Variable | Required Prefix | Description | Example |
+|----------|----------------|-------------|---------|
+| VUE_APP_API_URL | VUE_APP_ | Backend API URL | `http://localhost:8000` |
+
+> **Note**: Only variables prefixed with `VUE_APP_` will be available in your application code through `process.env.VUE_APP_*`
+
+Example usage in code:
+```javascript
+const apiUrl = process.env.VUE_APP_API_URL
+console.log(apiUrl) // http://localhost:8000
+```
+
+### Setup Instructions
+
+1. Navigate to the frontend directory:
+   ```bash
+   cd portfolio-frontend
+   ```
+
+2. Copy the example environment file:
+   ```bash
+   cp .env.example .env.development
+   cp .env.example .env.production
+   ```
+
+3. Edit the environment files according to your setup:
+   - `.env.development`: Configure for local development
+   - `.env.production`: Configure for production deployment
+
+> **Note**: Never commit `.env.production` to version control as it may contain sensitive information.
+
+### Environment Usage
+
+- Development: Uses `.env.development`
+  ```bash
+  npm run serve
+  ```
+
+- Production: Uses `.env.production`
+  ```bash
+  npm run build
+  ```
+
+### Frontend Directory Structure
+
+The environment files should be placed in the root of your frontend directory:
+
+```
+portfolio-frontend/
+├── .env.development    # Development environment variables
+├── .env.production    # Production environment variables (do not commit)
+├── .env.example       # Example environment file (committed)
+├── src/
+├── public/
+├── package.json
+└── ...
+```
+
+### About Vue CLI
+
+Vue CLI is the standard tooling for Vue.js development that:
+- Provides development server with hot-reload
+- Handles production builds with webpack
+- Manages environment variables
+- Provides extensible plugin system

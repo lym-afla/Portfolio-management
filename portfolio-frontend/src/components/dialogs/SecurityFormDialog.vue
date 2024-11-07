@@ -200,6 +200,9 @@ export default {
       if (fieldName === 'fund_fee' && (form.value.type !== 'Mutual fund' && form.value.type !== 'ETF')) {
         return false
       }
+      if (fieldName === 'secid' && form.value.data_source !== 'MICEX') {
+        return false
+      }
       return true
     }
 
