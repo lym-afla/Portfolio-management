@@ -1,183 +1,164 @@
-from datetime import datetime, timedelta, date
-from bs4 import BeautifulSoup
-from dateutil.relativedelta import relativedelta
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
-import json
 import logging
 from django import forms
-from django.core.exceptions import ObjectDoesNotExist
 from django.core.cache import cache
-from django.db import OperationalError
-from django.http import JsonResponse, StreamingHttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.urls import reverse
-from django.template.loader import render_to_string
-from django.views.decorators.http import require_http_methods
-from django.db.models import Q, F
+from django.db.models import Q
 from django.db.models.functions import Lower
-from django.utils.formats import date_format
-import pandas as pd
-import requests
-from requests.exceptions import RequestException
-from fake_useragent import UserAgent
-from io import StringIO
-
-import yfinance as yf
 
 from common.models import FX, Assets, Brokers, Prices, Transactions
-from common.forms import DashboardForm_old_setup
-from constants import ASSET_TYPE_CHOICES, CURRENCY_CHOICES, MUTUAL_FUNDS_IN_PENCES
+from constants import ASSET_TYPE_CHOICES
 from core.price_utils import get_prices_table_api
 from core.brokers_utils import get_brokers_table_api
-from core.securities_utils import get_securities_table_api, get_security_detail, get_security_transactions
+from core.securities_utils import get_securities_table_api, get_security_detail
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
-from core.database_utils import save_or_update_annual_broker_performance
 from core.date_utils import get_start_date
 
-from .forms import BrokerForm, BrokerPerformanceForm, FXTransactionForm, PriceForm, PriceImportForm, SecurityForm, TransactionForm
-from utils import Irr_old_structure, NAV_at_date_old_structure, broker_group_to_ids_old_approach, currency_format_dict_values, currency_format_old_structure, format_percentage_old_structure, get_last_exit_date_for_brokers_old_approach, parse_broker_cash_flows, parse_excel_file_transactions, save_or_update_annual_broker_performance_old
-from core.portfolio_utils import broker_group_to_ids, get_last_exit_date_for_brokers
+from .forms import PriceForm, SecurityForm, TransactionForm
+from utils import parse_broker_cash_flows, parse_excel_file_transactions
 
 logger = logging.getLogger(__name__)
 
-@login_required
-def import_transactions(request):
-    if request.method == 'POST':
-        broker_id = request.POST.get('broker')
-        currency = request.POST.get('currency')
-        confirm_each = request.POST.get('confirm_each') == 'on'
-        import_type = request.POST.get('cash_or_transaction')
-        skip_existing = request.POST.get('skip_existing') == 'on'
-        file = request.FILES['file']
+# @login_required
+# def import_transactions(request):
+#     if request.method == 'POST':
+#         broker_id = request.POST.get('broker')
+#         currency = request.POST.get('currency')
+#         confirm_each = request.POST.get('confirm_each') == 'on'
+#         import_type = request.POST.get('cash_or_transaction')
+#         skip_existing = request.POST.get('skip_existing') == 'on'
+#         file = request.FILES['file']
 
-        user = request.user
+#         user = request.user
 
-        if import_type == 'transaction':
+#         if import_type == 'transaction':
 
-            securities, transactions = parse_excel_file_transactions(file, currency, broker_id)
+#             securities, transactions = parse_excel_file_transactions(file, currency, broker_id)
             
-            for security in securities:
-                if not Assets.objects.filter(investors=user, name=security['name'], ISIN=security['isin']).exists():
-                    return JsonResponse({'status': 'missing_security', 'security': security})
+#             for security in securities:
+#                 if not Assets.objects.filter(investors=user, name=security['name'], ISIN=security['isin']).exists():
+#                     return JsonResponse({'status': 'missing_security', 'security': security})
                 
-        elif import_type == 'cash':
-            transactions = parse_broker_cash_flows(file, currency, broker_id)
+#         elif import_type == 'cash':
+#             transactions = parse_broker_cash_flows(file, currency, broker_id)
 
-        return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each, 'skip_existing': skip_existing})
+#         return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each, 'skip_existing': skip_existing})
 
-    return JsonResponse({'error': 'Invalid request method'}, status=400)
+#     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-@login_required
-def process_import_transactions(request):
-    if request.method == 'POST':
+# @login_required
+# def process_import_transactions(request):
+#     if request.method == 'POST':
 
-        # Convert fields to Decimal where applicable, handle invalid values
-        def to_decimal(value):
-            try:
-                return Decimal(value)
-            except (InvalidOperation, TypeError, ValueError):
-                return None
+#         # Convert fields to Decimal where applicable, handle invalid values
+#         def to_decimal(value):
+#             try:
+#                 return Decimal(value)
+#             except (InvalidOperation, TypeError, ValueError):
+#                 return None
         
-        price = to_decimal(request.POST.get('price'))
-        quantity = to_decimal(request.POST.get('quantity'))
-        cash_flow = to_decimal(request.POST.get('dividend'))
-        commission = to_decimal(request.POST.get('commission'))
+#         price = to_decimal(request.POST.get('price'))
+#         quantity = to_decimal(request.POST.get('quantity'))
+#         cash_flow = to_decimal(request.POST.get('dividend'))
+#         commission = to_decimal(request.POST.get('commission'))
             
-        if quantity is not None or request.POST.get('type') == 'Dividend':
-            try:
-                security = Assets.objects.get(name=request.POST.get('security_name'), investors=request.user)
-            except Assets.DoesNotExist:
-                return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
-        else:
-            security = None
+#         if quantity is not None or request.POST.get('type') == 'Dividend':
+#             try:
+#                 security = Assets.objects.get(name=request.POST.get('security_name'), investors=request.user)
+#             except Assets.DoesNotExist:
+#                 return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
+#         else:
+#             security = None
 
-        # Filter out None values to avoid passing invalid data to the filter
-        filter_kwargs = {
-            'investor': request.user,
-            'broker': request.POST.get('broker'),
-            'security': security,
-            'date': request.POST.get('date'),
-            'type': request.POST.get('type'),
-            'currency': request.POST.get('currency'),
-        }
+#         # Filter out None values to avoid passing invalid data to the filter
+#         filter_kwargs = {
+#             'investor': request.user,
+#             'broker': request.POST.get('broker'),
+#             'security': security,
+#             'date': request.POST.get('date'),
+#             'type': request.POST.get('type'),
+#             'currency': request.POST.get('currency'),
+#         }
 
-        if price is not None:
-            filter_kwargs['price'] = price
-        if quantity is not None:
-            filter_kwargs['quantity'] = quantity
-        if cash_flow is not None:
-            filter_kwargs['cash_flow'] = cash_flow
-        if commission is not None:
-            filter_kwargs['commission'] = commission
+#         if price is not None:
+#             filter_kwargs['price'] = price
+#         if quantity is not None:
+#             filter_kwargs['quantity'] = quantity
+#         if cash_flow is not None:
+#             filter_kwargs['cash_flow'] = cash_flow
+#         if commission is not None:
+#             filter_kwargs['commission'] = commission
 
-        existing_transactions = Transactions.objects.filter(**filter_kwargs)
-        # print("views. database. line 445", existing_transactions)
+#         existing_transactions = Transactions.objects.filter(**filter_kwargs)
+#         # print("views. database. line 445", existing_transactions)
 
-        # If there are any matching transactions, return 'check_required'
-        if existing_transactions.exists():
-            if request.POST.get('skip_existing'):
-                return JsonResponse({'status': 'success'})
-            else:
-                return JsonResponse({'status': 'check_required'})
+#         # If there are any matching transactions, return 'check_required'
+#         if existing_transactions.exists():
+#             if request.POST.get('skip_existing'):
+#                 return JsonResponse({'status': 'success'})
+#             else:
+#                 return JsonResponse({'status': 'check_required'})
 
-        # Prepare form data with security id
-        form_data = request.POST.dict()
-        if quantity is not None:
-            form_data['security'] = security.id
+#         # Prepare form data with security id
+#         form_data = request.POST.dict()
+#         if quantity is not None:
+#             form_data['security'] = security.id
 
-        form = TransactionForm(form_data, investor=request.user.id)
+#         form = TransactionForm(form_data, investor=request.user.id)
 
-        if form.is_valid():
-            transaction = form.save(commit=False)  # Don't save to the database yet
-            transaction.investor = request.user     # Set the investor field
-            transaction.save()
+#         if form.is_valid():
+#             transaction = form.save(commit=False)  # Don't save to the database yet
+#             transaction.investor = request.user     # Set the investor field
+#             transaction.save()
             
-            # When adding new transaction update FX rates from Yahoo
-            # FX.update_fx_rate(transaction.date, request.user)
+#             # When adding new transaction update FX rates from Yahoo
+#             # FX.update_fx_rate(transaction.date, request.user)
 
-            if quantity is not None:
-                price_instance = Prices(
-                    date=transaction.date,
-                    security=transaction.security,
-                    price=transaction.price,
-                )
-                price_instance.save()
+#             if quantity is not None:
+#                 price_instance = Prices(
+#                     date=transaction.date,
+#                     security=transaction.security,
+#                     price=transaction.price,
+#                 )
+#                 price_instance.save()
 
-            return JsonResponse({'status': 'success'})
-        else:
-            print("Form errors. database. 479", form.errors)
-            return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
+#             return JsonResponse({'status': 'success'})
+#         else:
+#             print("Form errors. database. 479", form.errors)
+#             return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
 
-    return JsonResponse({'error': 'Invalid request method'}, status=400)
+#     return JsonResponse({'error': 'Invalid request method'}, status=400)
 
-def update_FX(request):
-    if request.method == 'POST':
-        date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d')
-        if date:
-            FX.update_fx_rate(date, request.user)
-            return JsonResponse({'success': True})
-        return JsonResponse({'error': 'Date not provided'}, status=400)
-    else:
-        return JsonResponse({'error': 'Invalid request method'}, status=400)
+# def update_FX(request):
+#     if request.method == 'POST':
+#         date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d')
+#         if date:
+#             FX.update_fx_rate(date, request.user)
+#             return JsonResponse({'success': True})
+#         return JsonResponse({'error': 'Date not provided'}, status=400)
+#     else:
+#         return JsonResponse({'error': 'Invalid request method'}, status=400)
     
-def get_update_fx_dates(request):
-    if request.method == 'GET':
-        dates = Transactions.objects.filter(investor=request.user).values_list('date', flat=True).distinct()
-        return JsonResponse({'success': True, 'dates': list(dates)})
-    else:
-        return JsonResponse({'error': 'Invalid request method'}, status=400)
+# def get_update_fx_dates(request):
+#     if request.method == 'GET':
+#         dates = Transactions.objects.filter(investor=request.user).values_list('date', flat=True).distinct()
+#         return JsonResponse({'success': True, 'dates': list(dates)})
+#     else:
+#         return JsonResponse({'error': 'Invalid request method'}, status=400)
 
     
-def get_broker_securities(request):
-    broker_id = request.GET.get('broker_id')
-    if broker_id:
-        broker = get_object_or_404(Brokers, id=broker_id, investor=request.user)
-        securities = broker.securities.values_list('id', flat=True)
-        return JsonResponse({'securities': list(securities)})
-    return JsonResponse({'securities': []})
+# def get_broker_securities(request):
+#     broker_id = request.GET.get('broker_id')
+#     if broker_id:
+#         broker = get_object_or_404(Brokers, id=broker_id, investor=request.user)
+#         securities = broker.securities.values_list('id', flat=True)
+#         return JsonResponse({'securities': list(securities)})
+#     return JsonResponse({'securities': []})
 
 from .serializers import BrokerPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer, BrokerSerializer, TransactionSerializer
 
@@ -189,19 +170,10 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from rest_framework import status, viewsets
 
-from django.core.paginator import Paginator
-
 @api_view(['GET'])
 def api_get_asset_types(request):
     asset_types = [{'value': value, 'text': text} for value, text in ASSET_TYPE_CHOICES]
     return Response(asset_types)
-
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def api_get_brokers(request):
-#     user = request.user
-#     brokers = Brokers.objects.filter(investor=user).order_by('name').values('id', 'name')
-#     return Response(list(brokers))
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -323,11 +295,6 @@ def api_get_security_transactions(request, security_id):
 @permission_classes([IsAuthenticated])
 def api_get_prices_table(request):
     return Response(get_prices_table_api(request))
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def api_get_brokers_table(request):
-#     return Response(get_brokers_table_api(request))
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -523,9 +490,6 @@ def api_update_price(request, price_id):
         print("Price update form errors:", form.errors)
         return Response({'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-from channels.db import database_sync_to_async
-import asyncio
-
 class PriceImportView(APIView):
     def get(self, request):
         user = request.user
@@ -539,134 +503,7 @@ class PriceImportView(APIView):
             'securities': [{'id': s.id, 'name': s.name} for s in securities],
             'brokers': [{'id': b.id, 'name': b.name} for b in brokers],
             'frequency_choices': [{'value': k, 'text': v} for k, v in frequency_choices.items()],
-        })
-
-    # def post(self, request):
-    #     serializer = PriceImportSerializer(data=request.data, context={'request': request})
-    #     if serializer.is_valid():
-    #         return StreamingHttpResponse(
-    #             self.import_prices(serializer.validated_data),
-    #             content_type='text/event-stream'
-    #         )
-    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    # async def import_prices(self, data, user):
-    #     securities = data.get('securities', [])
-    #     broker = data.get('broker')
-    #     start_date = data.get('start_date')
-    #     end_date = data.get('end_date')
-    #     frequency = data.get('frequency')
-    #     single_date = data.get('single_date')
-    #     effective_current_date = parse_date(data.get('effective_current_date'))
-
-    #     if not effective_current_date:
-    #         raise ValueError("Invalid or missing effective_current_date")
-
-    #     if single_date:
-    #         dates = [single_date]
-    #         start_date = end_date = single_date
-    #         frequency = 'single'
-    #     else:
-    #         dates = await database_sync_to_async(generate_dates)(start_date, end_date, frequency)
-
-    #     if broker:
-    #         all_securities = await database_sync_to_async(broker.securities.filter)(investor=user)
-    #         securities = [
-    #             security for security in all_securities
-    #             if await database_sync_to_async(security.position)(effective_current_date) > 0
-    #         ]
-
-    #     total_securities = len(securities)
-    #     total_dates = len(dates)
-    #     total_operations = total_securities * total_dates
-    #     current_operation = 0
-    #     results = []
-
-    #     for security in securities:
-    #         try:
-    #             security = await database_sync_to_async(Assets.objects.get)(id=security.id, investor=user)
-                
-    #             if security.data_source == 'FT' and security.update_link:
-    #                 price_generator = import_security_prices_from_ft(security, dates)
-    #             elif security.data_source == 'YAHOO' and security.yahoo_symbol:
-    #                 price_generator = import_security_prices_from_yahoo(security, dates)
-    #             else:
-    #                 error_message = f"No valid data source or update information for {security.name}"
-    #                 results.append({
-    #                     "security_name": security.name,
-    #                     "status": "skipped",
-    #                     "message": error_message
-    #                 })
-                    
-    #                 yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
-    #                 current_operation += len(dates)
-    #                 continue
-
-    #             security_result = {
-    #                 "security_name": security.name,
-    #                 "updated_dates": [],
-    #                 "skipped_dates": [],
-    #                 "errors": []
-    #             }
-
-    #             async for result in self.async_generator(price_generator):
-    #                 current_operation += 1
-
-    #                 if result["status"] == "updated":
-    #                     security_result["updated_dates"].append(result["date"])
-    #                 elif result["status"] == "skipped":
-    #                     security_result["skipped_dates"].append(result["date"])
-    #                 elif result["status"] == "error":
-    #                     security_result["errors"].append(f"{result['date']}: {result['message']}")
-
-    #                 yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
-
-    #             results.append(security_result)
-
-    #         except Assets.DoesNotExist:
-    #             error_message = f"Security with ID {security.id} not found"
-    #             results.append(error_message)
-    #             yield self.format_progress('error', current_operation, total_operations, message=error_message)
-    #             current_operation += len(dates)
-    #         except Exception as e:
-    #             error_message = f"Error updating prices for security {security.id}: {str(e)}"
-    #             results.append(error_message)
-    #             yield self.format_progress('error', current_operation, total_operations, message=error_message)
-    #             current_operation += len(dates)
-
-    #     yield self.format_progress('complete', current_operation, total_operations,
-    #                                message='Price import process completed',
-    #                                details=results,
-    #                                start_date=start_date.strftime('%Y-%m-%d'),
-    #                                end_date=end_date.strftime('%Y-%m-%d'),
-    #                                frequency=frequency,
-    #                                total_dates=len(dates))
-        
-    # @staticmethod
-    # def format_progress(status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
-    #     progress_data = {
-    #         'status': status,
-    #         'current': current,
-    #         'total': total,
-    #         'progress': (current / total) * 100,
-    #     }
-    #     if security_name:
-    #         progress_data['security_name'] = security_name
-    #     if date:
-    #         progress_data['date'] = date
-    #     if result:
-    #         progress_data['result'] = result
-    #     if message:
-    #         progress_data['message'] = message
-    #     progress_data.update(kwargs)
-    #     return json.dumps(progress_data) + '\n'
-
-    # @staticmethod
-    # async def async_generator(sync_generator):
-    #     for item in sync_generator:
-    #         yield item
-    #         await asyncio.sleep(0)  # Allow other coroutines to run
-            
+        })  
         
 class BrokerViewSet(viewsets.ModelViewSet):
     serializer_class = BrokerSerializer
@@ -678,14 +515,14 @@ class BrokerViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(investor=self.request.user)
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['POST'])
     def list_brokers(self, request, *args, **kwargs):
         return Response(get_brokers_table_api(request))
-    
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        data = queryset.values('id', 'name')
-        return Response(list(data))
 
     @action(detail=False, methods=['GET'])
     def form_structure(self, request):
@@ -725,77 +562,6 @@ class UpdateBrokerPerformanceView(APIView):
         serializer = BrokerPerformanceSerializer(investor=request.user)
         form_data = serializer.get_form_data()
         return Response(form_data)
-
-    # def post(self, request):
-    #     form = BrokerPerformanceForm(request.data, investor=request.user)
-    #     if form.is_valid():
-    #         effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
-    #         broker_or_group = form.cleaned_data['broker_or_group']
-    #         currency = form.cleaned_data['currency']
-    #         is_restricted_str = form.cleaned_data['is_restricted']
-    #         skip_existing_years = form.cleaned_data['skip_existing_years']
-    #         user = request.user
-
-    #         if is_restricted_str == 'None':
-    #             is_restricted_list = [None]  # This will be used to indicate both restricted and unrestricted
-    #         elif is_restricted_str == 'True':
-    #             is_restricted_list = [True]
-    #         elif is_restricted_str == 'False':
-    #             is_restricted_list = [False]
-    #         elif is_restricted_str == 'All':
-    #             is_restricted_list = [None, TrFue, False]
-    #         else:
-    #             return JsonResponse({'error': 'Invalid "is_restricted" value'}, status=400)
-            
-    #         def generate_progress():
-    #             currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
-    #             total_operations = len(currencies) * len(is_restricted_list) * _get_years_count(user, effective_current_date, broker_or_group)
-
-    #             # Send initial progress event
-    #             yield json.dumps({
-    #                 'status': 'initializing',
-    #                 'total': total_operations
-    #             }) + '\n'
-
-    #             current_operation = 0
-
-    #             try:
-    #                 for curr in currencies:
-    #                     for is_restricted in is_restricted_list:
-    #                         for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
-    #                             logger.info(f"Progress data: {progress_data}")
-    #                             if progress_data['status'] == 'progress':
-    #                                 current_operation += 1
-    #                                 progress = (current_operation / total_operations) * 100
-    #                                 event = {
-    #                                     'status': 'progress',
-    #                                     'current': current_operation,
-    #                                     # 'total': total_operations,
-    #                                     'progress': progress,
-    #                                     'year': progress_data['year'],
-    #                                     'currency': curr,
-    #                                     'is_restricted': str(is_restricted)
-    #                                 }
-    #                                 yield json.dumps(event) + '\n'
-    #                             elif progress_data['status'] == 'error':
-    #                                 yield json.dumps(progress_data) + '\n'
-    #                             elif progress_data['status'] == 'complete':
-    #                                 pass  # We'll yield the complete status at the end
-
-    #                 yield f"data: {json.dumps({'status': 'complete'})}\n\n"
-
-    #             except OperationalError as e:
-    #                 yield json.dumps({'status': 'error', 'message': f"Database error: {str(e)}"}) + '\n'
-    #             except Exception as e:
-    #                 yield json.dumps({'status': 'error', 'message': str(e)}) + '\n'
-
-    #         # response = StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
-    #         # response['Cache-Control'] = 'no-cache'
-    #         # response['X-Accel-Buffering'] = 'no'  # Disable buffering for Nginx
-    #         # return response
-    #         return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
-    #     else:
-    #         return JsonResponse({'error': 'Invalid form data', 'errors': form.errors}, status=400)
 
 class FXViewSet(viewsets.ModelViewSet):
     serializer_class = FXSerializer

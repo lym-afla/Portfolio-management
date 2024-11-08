@@ -8,16 +8,18 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from users.models import InteractiveBrokersApiToken, TinkoffApiToken
+from common.models import Brokers
+from users.models import BrokerGroup, InteractiveBrokersApiToken, TinkoffApiToken
 from users.serializers import TinkoffApiTokenSerializer, InteractiveBrokersApiTokenSerializer
 
-from .serializers import DashboardSettingsChoicesSerializer, DashboardSettingsSerializer, UserProfileSerializer, UserSerializer, UserSettingsChoicesSerializer, UserSettingsSerializer
+from .serializers import BrokerGroupSerializer, DashboardSettingsChoicesSerializer, DashboardSettingsSerializer, UserProfileSerializer, UserSerializer, UserSettingsChoicesSerializer, UserSettingsSerializer
 from django.contrib.auth import get_user_model
 
 from tinkoff.invest import Client
 from tinkoff.invest.exceptions import RequestError
 
 import logging
+import cryptography.fernet
 
 User = get_user_model()
 
@@ -231,7 +233,82 @@ class BaseApiTokenViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(user=self.request.user)
     
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        instance = serializer.save(user=self.request.user)
+        # Use set_token method to properly encrypt the token
+        instance.set_token(serializer.validated_data['token'], self.request.user)
+        instance.save()
+
+    def perform_update(self, serializer):
+        instance = serializer.save(user=self.request.user)
+        if 'token' in serializer.validated_data:
+            # Only update token if it was provided
+            instance.set_token(serializer.validated_data['token'], self.request.user)
+            instance.save()
+
+    @action(detail=True, methods=['POST'])
+    def test_connection(self, request, pk=None):
+        """Test connection with saved token"""
+        token_instance = self.get_object()
+        try:
+            # Get decrypted token
+            decrypted_token = token_instance.get_token(request.user)
+            logger.debug(f"Testing connection for token ID {pk}")
+            
+            # Create a mock request with the token
+            mock_request = type('MockRequest', (), {
+                'data': {'token': decrypted_token},
+                'user': request.user
+            })
+            
+            # Reuse verify_token method
+            response = self.verify_token(mock_request)
+            
+            # Update token status based on verification result
+            token_instance.is_active = response.status_code == 200
+            token_instance.save()
+            
+            # Add token data to response
+            response.data['token'] = self.get_serializer(token_instance).data
+            
+            return response
+            
+        except ValueError as e:
+            logger.error(f"Value error testing connection: {str(e)}")
+            token_instance.is_active = False
+            token_instance.save()
+            return Response({
+                'error': str(e),
+                'token': self.get_serializer(token_instance).data
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except cryptography.fernet.InvalidToken:
+            logger.error(f"Invalid token for user {request.user.id}, token ID {pk}")
+            token_instance.is_active = False
+            token_instance.save()
+            return Response({
+                'error': 'Unable to decrypt token. Please try saving the token again.',
+                'token': self.get_serializer(token_instance).data
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Error testing connection: {str(e)}")
+            token_instance.is_active = False
+            token_instance.save()
+            return Response({
+                'error': 'An error occurred while testing the connection',
+                'token': self.get_serializer(token_instance).data
+            }, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def destroy(self, request, *args, **kwargs):
+        """Only allow deletion of inactive tokens"""
+        instance = self.get_object()
+        if instance.is_active:
+            return Response(
+                {'error': 'Cannot delete active token. Deactivate it first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
     queryset = TinkoffApiToken.objects.all()
@@ -296,61 +373,113 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
 
     @action(detail=False, methods=['POST'])
     def save_read_only_token(self, request):
-        """Save read-only token after verification"""
-        token = request.data.get('token')
-        logger.info(f"Attempting to save read-only token for user {request.user.username}")
-
-        # First verify the token
-        verification = self.verify_token(request)
-        logger.info(f"Token verification response status: {verification.status_code}")
-        logger.debug(f"Verification response data: {verification.data}")
-        
-        if verification.status_code != 200:
-            logger.warning("Token verification failed, returning verification response")
-            return verification
-
-        data = {
-            'token': token,
-            'token_type': 'read_only',
-            'sandbox_mode': False  # Default to False since we're removing sandbox functionality
-        }
-        
-        # Check for existing token
-        existing_token = self.get_queryset().filter(
-            token_type='read_only'
-        ).first()
-        
-        if existing_token:
-            logger.info("Updating existing token")
-            serializer = self.get_serializer(existing_token, data=data, partial=True)
-        else:
-            logger.info("Creating new token")
-            serializer = self.get_serializer(data=data)
+        """Save read-only token after validation"""
+        try:
+            new_token = request.data.get('token')
+            token_type = request.data.get('token_type')
+            sandbox_mode = request.data.get('sandbox_mode')
             
-        if serializer.is_valid():
-            logger.info("Token data valid, saving")
-            serializer.save(user=request.user)
-            return Response({
-                'message': 'Token saved successfully',
-                'data': serializer.data
-            }, status=status.HTTP_200_OK)
-        
-        logger.error(f"Serializer validation failed: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Verify the new token first
+            response = self.verify_token(request)
+            if response.status_code != 200:
+                return response
 
-    @action(detail=True, methods=['POST'])
-    def test_connection(self, request, pk=None):
-        """Test connection with saved token"""
-        token = self.get_object()
-        # Create a mock request with the token
-        mock_request = type('MockRequest', (), {
-            'data': {'token': token.get_token()},
-            'user': request.user
-        })
-        
-        # Reuse verify_token method
-        return self.verify_token(mock_request)
+            # Check for existing identical token
+            existing_tokens = TinkoffApiToken.objects.filter(
+                user=request.user,
+                token_type=token_type,
+                sandbox_mode=sandbox_mode
+            )
+            
+            # Check if the exact same token already exists
+            for token in existing_tokens:
+                try:
+                    if token.get_token(request.user) == new_token:
+                        if not token.is_active:
+                            # Reactivate the token
+                            token.is_active = True
+                            token.save()  # Model's save method will handle deactivating other tokens
+                            return Response({
+                                'message': 'Existing token has been reactivated',
+                                'data': self.get_serializer(token).data,
+                                'id': token.id
+                            }, status=status.HTTP_200_OK)
+                        else:
+                            return Response({
+                                'message': 'This exact token is already active',
+                                'data': self.get_serializer(token).data
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                except Exception:
+                    continue  # Skip tokens that can't be decrypted
+
+            # Create new token if no existing token found
+            token_data = {
+                'token': new_token,
+                'token_type': token_type,
+                'sandbox_mode': sandbox_mode
+            }
+
+            serializer = self.get_serializer(data=token_data)
+            
+            if serializer.is_valid():
+                serializer.save(user=request.user)
+                return Response({
+                    'message': 'Token saved successfully',
+                    'data': serializer.data,
+                    'id': serializer.instance.id
+                }, status=status.HTTP_200_OK)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Error saving read-only token: {str(e)}")
+            return Response({
+                'error': 'An error occurred while saving the token'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class InteractiveBrokersApiTokenViewSet(BaseApiTokenViewSet):
     queryset = InteractiveBrokersApiToken.objects.all()
     serializer_class = InteractiveBrokersApiTokenSerializer
+
+class BrokerGroupViewSet(viewsets.ModelViewSet):
+    serializer_class = BrokerGroupSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return BrokerGroup.objects.filter(user=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        groups_data = self.get_serializer(queryset, many=True).data
+        
+        # Get available brokers for the user
+        available_brokers = Brokers.objects.filter(investor=request.user)
+        broker_choices = [
+            {'value': broker.id, 'title': broker.name}
+            for broker in available_brokers
+        ]
+
+        # Debug the groups_data
+        logger.info("Groups data:", groups_data)  # Add this line for debugging
+
+        return Response({
+            'groups': {
+                str(group['id']): {
+                    'name': group['name'],
+                    'brokers': group['brokers']
+                }
+                for group in groups_data
+            },
+            'available_brokers': broker_choices
+        })
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -1,6 +1,7 @@
 from django import forms
 from common.models import Assets, Brokers, FXTransaction, Prices, Transactions
-from constants import BROKER_GROUPS, CURRENCY_CHOICES
+from users.models import BrokerGroup
+from constants import CURRENCY_CHOICES
 from common.forms import GroupedSelect
 
 class TransactionForm(forms.ModelForm):
@@ -201,8 +202,6 @@ class BrokerPerformanceForm(forms.Form):
         investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
 
-        # self.fields['brokers'].choices = [(broker.id, broker.name) for broker in Brokers.objects.filter(investor=investor).order_by('name')]
-
         # Initialize broker choices
         broker_or_group_choices = [
             ('General', (('All brokers', 'All brokers'),)),
@@ -210,14 +209,18 @@ class BrokerPerformanceForm(forms.Form):
         ]
         
         if investor is not None:
+            # Add individual brokers
             brokers = Brokers.objects.filter(investor=investor).order_by('name')
             user_brokers = [(broker.name, broker.name) for broker in brokers]
             if user_brokers:
                 broker_or_group_choices.append(('Your Brokers', tuple(user_brokers)))
                 broker_or_group_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
-        
-        # Add BROKER_GROUPS keys
-        broker_or_group_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
+            
+            # Add user's broker groups
+            user_groups = BrokerGroup.objects.filter(user=investor).order_by('name')
+            group_choices = [(group.name, group.name) for group in user_groups]
+            if group_choices:
+                broker_or_group_choices.append(('Broker Groups', tuple(group_choices)))
 
         self.fields['broker_or_group'].choices = broker_or_group_choices
 

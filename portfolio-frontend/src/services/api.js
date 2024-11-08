@@ -962,7 +962,7 @@ export const saveTinkoffToken = async (tokenData) => {
     return response.data
   } catch (error) {
     console.error('Error saving Tinkoff token:', error.response?.data)
-    throw new Error(error.response?.data?.error || 'Failed to save Tinkoff token. Please try again.')
+    throw error
   }
 }
 
@@ -1010,6 +1010,66 @@ export const revokeToken = async (broker, tokenId) => {
     return response.data
   } catch (error) {
     console.error('Error revoking token:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteToken = async (broker, tokenId) => {
+  let brokerEndpoint
+  switch (broker) {
+    case 'tinkoff':
+      brokerEndpoint = 'tinkoff-tokens'
+      break
+    case 'ib':
+      brokerEndpoint = 'ib-tokens'
+      break
+    default:
+      throw new Error(`Unsupported broker type: ${broker}`)
+  }
+  
+  return await axiosInstance.delete(`/users/api/${brokerEndpoint}/${tokenId}/`)
+}
+
+export const getBrokerGroups = async () => {
+  try {
+    console.log('Fetching broker groups') // Debug log
+    const response = await axiosInstance.get('/users/api/broker-groups/')
+    console.log('Broker groups response:', response) // Debug log
+    return response.data
+  } catch (error) {
+    console.error('Error fetching broker groups:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const saveBrokerGroup = async (groupData) => {
+  try {
+    console.log('Saving broker group:', groupData) // Debug log
+    const response = await axiosInstance.post('/users/api/broker-groups/', groupData)
+    console.log('Save broker group response:', response) // Debug log
+    return response.data
+  } catch (error) {
+    console.error('Error saving broker group:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const updateBrokerGroup = async (groupData) => {
+  try {
+    const response = await axiosInstance.put(`/users/api/broker-groups/${groupData.id}/`, groupData)
+    return response.data
+  } catch (error) {
+    console.error('Error updating broker group:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const deleteBrokerGroup = async (groupId) => {
+  try {
+    const response = await axiosInstance.delete(`/users/api/broker-groups/${groupId}/`)
+    return response.data
+  } catch (error) {
+    console.error('Error deleting broker group:', error)
     throw error.response ? error.response.data : error.message
   }
 }

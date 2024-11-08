@@ -19,7 +19,7 @@ export default createStore({
     tableSettings: {
       dateFrom: null,
       dateTo: null,
-      timespan: 'ytd', // Set default timespan to 'ytd'
+      timespan: 'all_time', // Set default timespan to 'all_time'
       page: 1,
       itemsPerPage: 25,
       search: '',

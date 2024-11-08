@@ -45,7 +45,7 @@ async def get_security_by_uid(instrument_uid, user):
     try:
         token = await get_user_token(user)
         with Client(token) as client:
-            instrument = client.instruments.get_instrument_by(id_type=3, id=instrument_uid)
+            instrument = client.instruments.get_instrument_by(id_type=3, id=instrument_uid) # id_type=3 is uid
             return (
                 instrument.instrument.name,
                 instrument.instrument.isin

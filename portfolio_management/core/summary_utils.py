@@ -30,17 +30,6 @@ def brokers_summary_data(user, effective_date, brokers_or_group, currency_target
             'tsr': Decimal(0)
         } for year in ['YTD'] + years + ['All-time']}
 
-    # if isinstance(brokers_or_group, str):
-    #     # It's a group name
-    #     group_name = brokers_or_group
-    #     selected_brokers_ids = constants.BROKER_GROUPS.get(group_name)
-    #     if not selected_brokers_ids:
-    #         raise ValueError(f"Invalid group name: {group_name}")
-    # else:
-    #     # It's a list of broker IDs
-    #     selected_brokers_ids = brokers_or_group
-    #     group_name = None
-
     selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
 
     public_markets_context = initialize_context()

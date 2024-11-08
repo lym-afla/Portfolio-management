@@ -2,10 +2,10 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 
-from constants import BROKER_GROUPS, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from common.models import Brokers
 from common.forms import GroupedSelect
-from users.models import CustomUser
+from users.models import CustomUser, BrokerGroup
 
 class SignUpForm(UserCreationForm):
     email = forms.EmailField(required=True)
@@ -109,8 +109,12 @@ class UserSettingsForm(forms.ModelForm):
             if user_brokers:
                 broker_choices.append(('Your Brokers', tuple(user_brokers)))
                 broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
-        
-        broker_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
+            
+            user_groups = BrokerGroup.objects.filter(user=user).order_by('name')
+            group_choices = [(group.name, group.name) for group in user_groups]
+            if group_choices:
+                broker_choices.append(('Broker Groups', tuple(group_choices)))
+
         return broker_choices
 
     def clean_digits(self):

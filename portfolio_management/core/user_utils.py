@@ -1,5 +1,5 @@
 from common.models import Brokers
-from constants import BROKER_GROUPS
+from users.models import BrokerGroup
 
 FREQUENCY_CHOICES = [
     ('D', 'Daily'),
@@ -21,6 +21,12 @@ TIMELINE_CHOICES = [
 ]
 
 def get_broker_choices(user):
+    """
+    Get broker choices for a user, including individual brokers and broker groups.
+    
+    :param user: The user object
+    :return: List of tuples containing broker choices in grouped format
+    """
     broker_choices = [
         ('General', [('All brokers', 'All brokers')]),
         ('__SEPARATOR__', '__SEPARATOR__'),
@@ -32,7 +38,10 @@ def get_broker_choices(user):
         if user_brokers:
             broker_choices.append(('Your Brokers', user_brokers))
             broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
-    
-    broker_choices.append(('Broker Groups', [(group, group) for group in BROKER_GROUPS.keys()]))
+        
+        user_groups = BrokerGroup.objects.filter(user=user).order_by('name')
+        group_choices = [(group.name, group.name) for group in user_groups]
+        if group_choices:
+            broker_choices.append(('Broker Groups', group_choices))
 
     return broker_choices

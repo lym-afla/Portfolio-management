@@ -101,10 +101,17 @@
       </v-card-text>
     </v-card>
 
+    <BrokerGroupManager
+      class="mt-4"
+      @error="showErrorMessage"
+      @success="showSuccessMessage"
+    />
+
     <BrokerTokenManager
       class="mt-4"
       @error="showErrorMessage"
       @success="showSuccessMessage"
+      @info="showInfoMessage"
     />
 
     <!-- Error Snackbar -->
@@ -121,10 +128,12 @@
 import { provide } from 'vue'
 import { getUserSettings, updateUserSettings, getSettingsChoices } from '@/services/api'
 import { formatBrokerChoices } from '@/utils/brokerUtils'
+import BrokerGroupManager from '@/components/BrokerGroupManager.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 
 export default {
   components: {
+    BrokerGroupManager,
     BrokerTokenManager
   },
 
@@ -236,6 +245,11 @@ export default {
       this.snackbarColor = 'error';
       this.snackbar = true;
     },
+    showInfoMessage(message) {
+      this.snackbarMessage = message;
+      this.snackbarColor = 'info';
+      this.snackbar = true;
+    }
   }
 }
 </script>

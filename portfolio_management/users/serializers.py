@@ -5,7 +5,8 @@ from django.utils import timezone
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
-from users.models import InteractiveBrokersApiToken, TinkoffApiToken
+from users.models import InteractiveBrokersApiToken, TinkoffApiToken, BrokerGroup
+from common.models import Brokers
 
 User = get_user_model()
 
@@ -90,25 +91,80 @@ class DashboardSettingsChoicesSerializer(serializers.Serializer):
 
 # Add new serializers for token management
 class BaseApiTokenSerializer(serializers.ModelSerializer):
-    token = serializers.CharField(write_only=True)  # For accepting plain token
-    
+    token = serializers.CharField(write_only=True)
+
     class Meta:
         abstract = True
-        fields = ['id', 'is_active', 'token', 'created_at', 'updated_at']
-        read_only_fields = ['created_at', 'updated_at']
+        fields = ['id', 'token']
+        read_only_fields = ['id']
 
     def create(self, validated_data):
         token = validated_data.pop('token')
+        user = validated_data.get('user')
         instance = super().create(validated_data)
-        instance.set_token(token)
+        instance.set_token(token, user)
         return instance
 
+    def update(self, instance, validated_data):
+        if 'token' in validated_data:
+            token = validated_data.pop('token')
+            user = validated_data.get('user')
+            instance = super().update(instance, validated_data)
+            instance.set_token(token, user)
+            return instance
+        return super().update(instance, validated_data)
+
 class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
+    token_type = serializers.ChoiceField(choices=[
+        ('read_only', 'Read Only'),
+        ('full_access', 'Full Access'),
+    ])
+    sandbox_mode = serializers.BooleanField(default=False)
+    is_active = serializers.BooleanField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
     class Meta(BaseApiTokenSerializer.Meta):
         model = TinkoffApiToken
-        fields = BaseApiTokenSerializer.Meta.fields + ['token_type', 'sandbox_mode']
+        fields = BaseApiTokenSerializer.Meta.fields + [
+            'token_type', 
+            'sandbox_mode', 
+            'is_active',
+            'created_at', 
+            'updated_at'
+        ]
 
 class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
     class Meta(BaseApiTokenSerializer.Meta):
         model = InteractiveBrokersApiToken
-        fields = BaseApiTokenSerializer.Meta.fields + ['account_id', 'paper_trading']
+        fields = BaseApiTokenSerializer.Meta.fields
+
+class BrokerGroupSerializer(serializers.ModelSerializer):
+    brokers = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Brokers.objects.all()
+    )
+
+    class Meta:
+        model = BrokerGroup
+        fields = ['id', 'name', 'brokers', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, data):
+        # Ensure user can only add their own brokers to groups
+        request = self.context.get('request')
+        if request and request.user:
+            user_brokers = Brokers.objects.filter(investor=request.user)
+            invalid_brokers = set(data['brokers']) - set(user_brokers)
+            
+            if invalid_brokers:
+                raise serializers.ValidationError({
+                    'brokers': 'You can only add your own brokers to groups'
+                })
+        
+        return data
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['user'] = user
+        return super().create(validated_data)

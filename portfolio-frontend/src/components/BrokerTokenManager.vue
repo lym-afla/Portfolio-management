@@ -74,7 +74,7 @@
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        icon="mdi-refresh"
+                        icon="mdi-lock-check"
                         variant="text"
                         color="primary"
                         @click="testConnection('tinkoff', token.id)"
@@ -88,13 +88,26 @@
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        icon="mdi-delete"
+                        icon="mdi-key-remove"
                         variant="text"
                         color="error"
                         @click="revokeToken('tinkoff', token.id)"
                       ></v-btn>
                     </template>
-                    Revoke token
+                    Deactivate token
+                  </v-tooltip>
+
+                  <v-tooltip v-if="!token.is_active" location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-delete"
+                        variant="text"
+                        color="error"
+                        @click="confirmDeleteToken('tinkoff', token.id)"
+                      ></v-btn>
+                    </template>
+                    Delete token permanently
                   </v-tooltip>
                 </template>
               </v-list-item>
@@ -165,7 +178,7 @@
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        icon="mdi-refresh"
+                        icon="mdi-lock-check"
                         variant="text"
                         color="primary"
                         @click="testConnection('ib', token.id)"
@@ -179,13 +192,26 @@
                     <template v-slot:activator="{ props }">
                       <v-btn
                         v-bind="props"
-                        icon="mdi-delete"
+                        icon="mdi-key-remove"
                         variant="text"
                         color="error"
                         @click="revokeToken('ib', token.id)"
                       ></v-btn>
                     </template>
-                    Revoke token
+                    Deactivate token
+                  </v-tooltip>
+
+                  <v-tooltip v-if="!token.is_active" location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-delete"
+                        variant="text"
+                        color="error"
+                        @click="confirmDeleteToken('ib', token.id)"
+                      ></v-btn>
+                    </template>
+                    Delete token permanently
                   </v-tooltip>
                 </template>
               </v-list-item>
@@ -242,6 +268,24 @@
                 hide-details
               ></v-switch>
             </template>
+
+            <template v-if="newToken.broker === 'tinkoff'">
+              <v-select
+                v-model="newToken.token_type"
+                :items="tokenTypeOptions"
+                label="Token Type"
+                disabled
+                :rules="[v => v === 'read_only' || 'Only read-only tokens are currently supported']"
+              ></v-select>
+
+              <v-switch
+                v-model="newToken.sandbox_mode"
+                label="Sandbox Mode"
+                color="warning"
+                disabled
+                :rules="[v => v === false || 'Sandbox mode is not currently supported']"
+              ></v-switch>
+            </template>
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -263,16 +307,50 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Add this dialog to your template -->
+    <v-dialog v-model="showDeleteDialog" max-width="400">
+      <v-card>
+        <v-card-title>Delete Token</v-card-title>
+        <v-card-text>
+          Are you sure you want to permanently delete this token? This action cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="text" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn 
+            color="error" 
+            variant="text" 
+            @click="deleteToken"
+            :loading="isDeleting"
+          >
+            Delete
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Message Dialog -->
+    <v-dialog v-model="showMessageDialog" max-width="400">
+      <v-card>
+        <v-card-title>{{ messageDialogTitle }}</v-card-title>
+        <v-card-text>{{ messageDialogText }}</v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" @click="showMessageDialog = false">OK</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
 <script>
-import { getBrokerTokens, saveTinkoffToken, saveIBToken, testTinkoffConnection, testIBConnection, revokeToken } from '@/services/api'
+import { getBrokerTokens, saveTinkoffToken, saveIBToken, testTinkoffConnection, testIBConnection, revokeToken, deleteToken } from '@/services/api'
 
 export default {
   name: 'BrokerTokenManager',
   
-  emits: ['error', 'success'],
+  emits: ['error', 'success', 'info'],
   
   data() {
     return {
@@ -287,6 +365,8 @@ export default {
       newToken: {
         broker: '',
         token: '',
+        token_type: 'read_only',
+        sandbox_mode: false,
         account_id: '',
         paper_trading: false
       },
@@ -294,7 +374,18 @@ export default {
         { title: 'Tinkoff', value: 'tinkoff' },
         { title: 'Interactive Brokers', value: 'ib' }
       ],
-      showInactiveTokens: false
+      tokenTypeOptions: [
+        { title: 'Read Only', value: 'read_only' },
+        { title: 'Full Access', value: 'full_access' }
+      ],
+      showInactiveTokens: false,
+      showDeleteDialog: false,
+      isDeleting: false,
+      tokenToDelete: null,
+      brokerToDelete: null,
+      showMessageDialog: false,
+      messageDialogTitle: '',
+      messageDialogText: ''
     }
   },
 
@@ -314,14 +405,22 @@ export default {
 
   methods: {
     handleError(error) {
-      let errorMessage = 'An unexpected error occurred.'
-      
+      if (error.response?.status === 400 && error.response.data?.message?.includes('already active')) {
+        this.messageDialogTitle = 'Token Already Exists'
+        this.messageDialogText = error.response.data.message
+        this.showMessageDialog = true
+        this.showAddTokenDialog = false
+        return
+      }
+
+      let errorMessage = 'An unexpected error occurred'
+    
       if (error.response?.data?.error) {
         errorMessage = error.response.data.error
       } else if (error.response?.status === 403) {
-        errorMessage = 'You do not have permission to access this resource.'
+        errorMessage = 'You do not have permission to perform this action'
       } else if (error.request) {
-        errorMessage = 'The server did not respond. Please check your internet connection.'
+        errorMessage = 'The server did not respond. Please check your internet connection'
       } else if (error.message) {
         errorMessage = error.message
       }
@@ -348,37 +447,19 @@ export default {
       }
     },
 
-    async saveToken() {
-      this.isSaving = true
-      try {
-        if (this.newToken.broker === 'tinkoff') {
-          await saveTinkoffToken({
-            token: this.newToken.token
-          })
-        } else if (this.newToken.broker === 'ib') {
-          await saveIBToken({
-            token: this.newToken.token,
-            account_id: this.newToken.account_id,
-            paper_trading: this.newToken.paper_trading
-          })
-        }
-        await this.fetchTokens()
-        this.showAddTokenDialog = false
-        this.$refs.form?.reset()
-        this.$emit('success', 'Token saved successfully')
-      } catch (error) {
-        this.handleError(error)
-      } finally {
-        this.isSaving = false
-      }
-    },
-
     async testConnection(broker, tokenId) {
       const key = `${broker}-${tokenId}`
       this.isTestingConnection[key] = true
       try {
         if (broker === 'tinkoff') {
-          await testTinkoffConnection(tokenId)
+          const response = await testTinkoffConnection(tokenId)
+          if (response?.data?.token) {
+            const index = this.tinkoffTokens.findIndex(t => t.id === tokenId)
+            if (index !== -1) {
+              this.$set(this.tinkoffTokens, index, response.data.token)
+            }
+          }
+          await this.fetchTokens()
           this.$emit('success', 'Connection test successful')
         } else if (broker === 'ib') {
           await testIBConnection(tokenId)
@@ -386,6 +467,7 @@ export default {
         }
       } catch (error) {
         this.handleError(error)
+        await this.fetchTokens()
       } finally {
         this.isTestingConnection[key] = false
       }
@@ -401,14 +483,122 @@ export default {
       }
     },
 
+    async saveToken() {
+      if (!this.$refs.form.validate()) return
+
+      this.isSaving = true
+      try {
+        let response
+        if (this.newToken.broker === 'tinkoff') {
+          response = await saveTinkoffToken({
+            token: this.newToken.token,
+            token_type: this.newToken.token_type,
+            sandbox_mode: this.newToken.sandbox_mode
+          })
+          
+          if (response.message?.includes('reactivated')) {
+            this.messageDialogTitle = 'Token Reactivated'
+            this.messageDialogText = response.message
+            this.showMessageDialog = true
+            this.showAddTokenDialog = false
+            await this.fetchTokens()
+            return
+          }
+          
+          if (response.message) {
+            this.$emit('success', response.message)
+          }
+          
+          if (response.id) {
+            await this.testConnection('tinkoff', response.id)
+          }
+
+          this.showAddTokenDialog = false
+          this.$refs.form.reset()
+          this.newToken = {
+            broker: '',
+            token: '',
+            token_type: 'read_only',
+            sandbox_mode: false,
+            account_id: '',
+            paper_trading: false
+          }
+          
+          await this.fetchTokens()
+        } else if (this.newToken.broker === 'ib') {
+          await saveIBToken({
+            token: this.newToken.token,
+            account_id: this.newToken.account_id,
+            paper_trading: this.newToken.paper_trading
+          })
+        }
+      } catch (error) {
+        this.handleError(error)
+      } finally {
+        this.isSaving = false
+      }
+    },
+
     formatDate(dateString) {
-      const date = new Date(dateString)
-      return date.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      }).replace(/ /g, '-')
+      if (!dateString) return 'N/A'
+      try {
+        const date = new Date(dateString)
+        if (isNaN(date.getTime())) return 'Invalid Date'
+        return date.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      } catch (e) {
+        console.error('Date formatting error:', e)
+        return 'Invalid Date'
+      }
+    },
+
+    getTokenStatusText(token) {
+      if (!token.is_active) return 'Inactive'
+      return token.sandbox_mode ? 'Sandbox Mode' : 'Active'
+    },
+
+    getTokenStatusColor(token) {
+      if (!token.is_active) return 'error'
+      return token.sandbox_mode ? 'warning' : 'success'
+    },
+
+    watchBroker(newBroker) {
+      if (newBroker === 'tinkoff') {
+        this.newToken.token_type = 'read_only'
+        this.newToken.sandbox_mode = false
+      }
+    },
+
+    confirmDeleteToken(broker, tokenId) {
+      this.brokerToDelete = broker;
+      this.tokenToDelete = tokenId;
+      this.showDeleteDialog = true;
+    },
+
+    async deleteToken() {
+      this.isDeleting = true;
+      try {
+        await deleteToken(this.brokerToDelete, this.tokenToDelete);
+        await this.fetchTokens();
+        this.$emit('success', 'Token deleted successfully');
+        this.showDeleteDialog = false;
+      } catch (error) {
+        this.handleError(error);
+      } finally {
+        this.isDeleting = false;
+        this.brokerToDelete = null;
+        this.tokenToDelete = null;
+      }
     }
+  },
+
+  watch: {
+    'newToken.broker': 'watchBroker'
   },
 
   created() {

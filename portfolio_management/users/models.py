@@ -2,11 +2,22 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.conf import settings
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 import os
 import base64
+import logging
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+
+logger = logging.getLogger(__name__)
+
+def get_encryption_key(user):
+    """Generate a user-specific encryption key"""
+    # Combine the user's ID with the SECRET_KEY
+    key_material = f"{settings.SECRET_KEY}_{user.id}"
+    # Create a consistent key by hashing the combined material
+    key = base64.urlsafe_b64encode(key_material.encode()[:32].ljust(32, b'0'))
+    return key
 
 class CustomUser(AbstractUser):
     
@@ -27,85 +38,78 @@ class CustomUser(AbstractUser):
 
 class BaseApiToken(models.Model):
     """Abstract base class for all broker API tokens"""
-    user = models.ForeignKey(
-        'CustomUser',
-        on_delete=models.CASCADE,
-        related_name='%(class)s_tokens'
-    )
-    encrypted_token = models.BinaryField(
-        help_text="Encrypted API token"
-    )
-    key_part = models.BinaryField(
-        help_text="User-specific part of encryption key"
-    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    encrypted_token = models.BinaryField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Whether this token is currently active"
-    )
 
     class Meta:
         abstract = True
 
-    @classmethod
-    def get_encryption_key(cls, key_part):
-        """Combines server key with user-specific key part"""
-        server_key = base64.urlsafe_b64decode(settings.SERVER_ENCRYPTION_KEY)
-        combined_key = bytes([a ^ b for a, b in zip(server_key, key_part)])
-        return base64.urlsafe_b64encode(combined_key)
+    def set_token(self, token_value, user):
+        """Encrypt and save token value"""
+        try:
+            key = get_encryption_key(user)
+            f = Fernet(key)
+            self.encrypted_token = f.encrypt(token_value.encode())
+            self.save()
+        except Exception as e:
+            logger.error(f"Error encrypting token for user {user.id}: {str(e)}")
+            raise
 
-    def set_token(self, token):
-        """Encrypts and saves the API token"""
-        self.key_part = os.urandom(32)
-        
-        # Get the combined encryption key
-        encryption_key = self.get_encryption_key(self.key_part)
-        
-        # Create Fernet instance with combined key
-        f = Fernet(encryption_key)
-        
-        # Encrypt the token
-        self.encrypted_token = f.encrypt(token.encode())
-        self.save()
-
-    def get_token(self):
-        """
-        Decrypts and returns the API token
-        """
-        # Get the combined encryption key
-        encryption_key = self.get_encryption_key(self.key_part)
-        
-        # Create Fernet instance with combined key
-        f = Fernet(encryption_key)
-        
-        # Decrypt and return the token
-        return f.decrypt(self.encrypted_token).decode()
+    def get_token(self, user=None):
+        """Get decrypted token value"""
+        if not user:
+            raise ValueError("User is required to decrypt token")
+            
+        try:
+            key = get_encryption_key(user)
+            f = Fernet(key)
+            if not self.encrypted_token:
+                raise ValueError("No token stored")
+            return f.decrypt(self.encrypted_token).decode()
+        except Exception as e:
+            logger.error(f"Error decrypting token for user {user.id}: {str(e)}")
+            raise
 
     def __str__(self):
         return f"{self.__class__.__name__} for {self.user.username} ({'Active' if self.is_active else 'Inactive'})"
 
 class TinkoffApiToken(BaseApiToken):
     """Tinkoff-specific API token model"""
-    TOKEN_TYPE_CHOICES = [
+    token_type = models.CharField(max_length=20, choices=[
         ('read_only', 'Read Only'),
         ('full_access', 'Full Access'),
-    ]
-    
-    token_type = models.CharField(
-        max_length=20,
-        choices=TOKEN_TYPE_CHOICES,
-        default='read_only'
-    )
-    sandbox_mode = models.BooleanField(
-        default=False,
-        help_text="Whether this token is for sandbox environment"
-    )
+    ])
+    sandbox_mode = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=False)
 
     class Meta:
-        verbose_name = "Tinkoff API Token"
-        verbose_name_plural = "Tinkoff API Tokens"
-        unique_together = ['user', 'token_type', 'sandbox_mode']
+        verbose_name = 'Tinkoff API Token'
+        verbose_name_plural = 'Tinkoff API Tokens'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'token_type', 'sandbox_mode'],
+                condition=models.Q(is_active=True),
+                name='unique_active_token'
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.pk:  # New token
+            # Deactivate existing active tokens of same type
+            TinkoffApiToken.objects.filter(
+                user=self.user,
+                token_type=self.token_type,
+                sandbox_mode=self.sandbox_mode,
+                is_active=True
+            ).update(is_active=False)
+            # Set new token as active
+            self.is_active = True
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.get_token_type_display()} Token ({self.user.username})"
 
 class InteractiveBrokersApiToken(BaseApiToken):
     """Interactive Brokers-specific API token model"""
@@ -122,3 +126,17 @@ class InteractiveBrokersApiToken(BaseApiToken):
         verbose_name = "Interactive Brokers API Token"
         verbose_name_plural = "Interactive Brokers API Tokens"
         unique_together = ['user', 'account_id']
+
+class BrokerGroup(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='broker_groups')
+    name = models.CharField(max_length=50)
+    brokers = models.ManyToManyField('common.Brokers', related_name='groups')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['user', 'name']  # Prevent duplicate group names per user
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.user.username}'s {self.name} group"

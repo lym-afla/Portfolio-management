@@ -286,7 +286,7 @@ export default {
     } = useTableSettings()
 
     const dateRangeModel = ref({
-      dateRange: 'ytd',
+      dateRange: 'all_time',
       dateFrom: null,
       dateTo: null
     })

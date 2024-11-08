@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from common.models import Assets, Brokers, FX, Transactions
-from constants import BROKER_GROUPS, CURRENCY_CHOICES
+from users.models import BrokerGroup
+from constants import CURRENCY_CHOICES
 from decimal import Decimal
 
 from core.formatting_utils import format_value
@@ -79,9 +80,11 @@ class BrokerPerformanceSerializer(serializers.Serializer):
             if user_brokers:
                 broker_or_group_choices.extend(user_brokers)
                 broker_or_group_choices.append(('__SEPARATOR_2__', '__SEPARATOR__'))
-        
-        # Add BROKER_GROUPS keys
-        broker_or_group_choices.extend((group, group) for group in BROKER_GROUPS.keys())
+            
+            user_groups = BrokerGroup.objects.filter(user=investor).order_by('name')
+            group_choices = [(group.name, group.name) for group in user_groups]
+            if group_choices:
+                broker_or_group_choices.extend(group_choices)
 
         self.fields['broker_or_group'].choices = broker_or_group_choices
 

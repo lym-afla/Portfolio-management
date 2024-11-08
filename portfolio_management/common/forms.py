@@ -35,74 +35,74 @@ class GroupedSelect(forms.Select):
             return option_value in value
         return option_value == value
     
-class DashboardForm_old_setup(forms.ModelForm):
+# class DashboardForm_old_setup(forms.ModelForm):
 
-    custom_brokers = forms.ChoiceField(
-        choices=[],
-        widget=GroupedSelect(attrs={'class': 'form-select', 'id': 'inputDashboardBrokers'}),
-        label='Brokers',
-    )
+#     custom_brokers = forms.ChoiceField(
+#         choices=[],
+#         widget=GroupedSelect(attrs={'class': 'form-select', 'id': 'inputDashboardBrokers'}),
+#         label='Brokers',
+#     )
 
-    table_date = forms.DateField(
-        widget=forms.DateInput(attrs={'class': 'form-control',
-                                      'id': 'inputTableDate',
-                                      'type': 'date'
-                                      }),
-        label='Date'
-    )
+#     table_date = forms.DateField(
+#         widget=forms.DateInput(attrs={'class': 'form-control',
+#                                       'id': 'inputTableDate',
+#                                       'type': 'date'
+#                                       }),
+#         label='Date'
+#     )
 
-    class Meta:
-        model = CustomUser
-        fields = ['custom_brokers', 'default_currency', 'table_date', 'digits']
-        labels = {
-            'default_currency': 'Currency',
-            'digits': 'Number of digits',
-        }
-        widgets = {
-            'default_currency': forms.Select(attrs={'class': 'form-select', 'id': 'inputCurrency'}),
-            'digits': forms.NumberInput(attrs={'class': 'form-control', 'id': 'numberOfDigits'}),
-            # 'custom_brokers': forms.Select(attrs={'class': 'form-select', 'id': 'inputBrokers'}),
-        }
+#     class Meta:
+#         model = CustomUser
+#         fields = ['custom_brokers', 'default_currency', 'table_date', 'digits']
+#         labels = {
+#             'default_currency': 'Currency',
+#             'digits': 'Number of digits',
+#         }
+#         widgets = {
+#             'default_currency': forms.Select(attrs={'class': 'form-select', 'id': 'inputCurrency'}),
+#             'digits': forms.NumberInput(attrs={'class': 'form-control', 'id': 'numberOfDigits'}),
+#             # 'custom_brokers': forms.Select(attrs={'class': 'form-select', 'id': 'inputBrokers'}),
+#         }
 
-    def __init__(self, *args, **kwargs):
-        user = kwargs.get('instance')
-        super().__init__(*args, **kwargs)
-        # Retrieve the currency choices from the model and exclude the empty option
-        self.fields['default_currency'].choices = [(choice[0], choice[0]) for choice in CustomUser._meta.get_field('default_currency').choices if choice[0]]
+#     def __init__(self, *args, **kwargs):
+#         user = kwargs.get('instance')
+#         super().__init__(*args, **kwargs)
+#         # Retrieve the currency choices from the model and exclude the empty option
+#         self.fields['default_currency'].choices = [(choice[0], choice[0]) for choice in CustomUser._meta.get_field('default_currency').choices if choice[0]]
 
-        # Initialize broker choices
-        broker_choices = [
-            ('General', (('All brokers', 'All brokers'),)),
-            ('__SEPARATOR__', '__SEPARATOR__'),
-        ]
+#         # Initialize broker choices
+#         broker_choices = [
+#             ('General', (('All brokers', 'All brokers'),)),
+#             ('__SEPARATOR__', '__SEPARATOR__'),
+#         ]
         
-        if user is not None:
-            brokers = Brokers.objects.filter(investor=user).order_by('name')
-            user_brokers = [(broker.name, broker.name) for broker in brokers]
-            if user_brokers:
-                broker_choices.append(('Your Brokers', tuple(user_brokers)))
-                broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+#         if user is not None:
+#             brokers = Brokers.objects.filter(investor=user).order_by('name')
+#             user_brokers = [(broker.name, broker.name) for broker in brokers]
+#             if user_brokers:
+#                 broker_choices.append(('Your Brokers', tuple(user_brokers)))
+#                 broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
         
-        # Add BROKER_GROUPS keys
-        broker_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
+#         # Add BROKER_GROUPS keys
+#         broker_choices.append(('Broker Groups', tuple((group, group) for group in BROKER_GROUPS.keys())))
 
-        self.fields['custom_brokers'].choices = broker_choices
+#         self.fields['custom_brokers'].choices = broker_choices
         
-        if user is not None:
-            initial_value = user.custom_brokers
+#         if user is not None:
+#             initial_value = user.custom_brokers
             
-            # Check if the initial value is in the choices
-            all_choices = [choice[0] for group, choices in broker_choices for choice in choices if choices != '__SEPARATOR__']
-            if initial_value in all_choices:
-                self.fields['custom_brokers'].initial = initial_value
-            else:
-                logger.warning(f"Dashboard form. Initial value '{initial_value}' not found in choices. Defaulting to 'All'.")
-                self.fields['custom_brokers'].initial = 'All'
+#             # Check if the initial value is in the choices
+#             all_choices = [choice[0] for group, choices in broker_choices for choice in choices if choices != '__SEPARATOR__']
+#             if initial_value in all_choices:
+#                 self.fields['custom_brokers'].initial = initial_value
+#             else:
+#                 logger.warning(f"Dashboard form. Initial value '{initial_value}' not found in choices. Defaulting to 'All'.")
+#                 self.fields['custom_brokers'].initial = 'All'
 
-    def clean_custom_brokers(self):
-        value = self.cleaned_data['custom_brokers']
-        logger.debug(f"Cleaned value for custom_brokers: {value}")
-        return value
+#     def clean_custom_brokers(self):
+#         value = self.cleaned_data['custom_brokers']
+#         logger.debug(f"Cleaned value for custom_brokers: {value}")
+#         return value
 
 
 class DashboardForm(forms.ModelForm):

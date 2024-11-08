@@ -7,7 +7,7 @@ from django.db.models.functions import Coalesce
 import pandas as pd
 from pyxirr import xirr
 from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-from constants import BROKER_GROUPS
+# from constants import BROKER_GROUPS
 from functools import lru_cache
 
 import logging
@@ -242,16 +242,20 @@ def broker_group_to_ids(brokers_or_group: Union[str, List[int]], user) -> List[i
     if isinstance(brokers_or_group, str):
         if brokers_or_group == 'All brokers':
             return list(user_brokers)
-        elif brokers_or_group in BROKER_GROUPS:
-            group_brokers = set(BROKER_GROUPS[brokers_or_group])
-            return list(group_brokers & user_brokers)
         else:
-            # It might be an individual broker name
+            # Check if it's a broker group name
             try:
-                broker = Brokers.objects.get(investor=user, name=brokers_or_group)
-                return [broker.id]
-            except Brokers.DoesNotExist:
-                raise ValueError(f"Invalid broker or group name: {brokers_or_group}")
+                from users.models import BrokerGroup
+                group = BrokerGroup.objects.get(user=user, name=brokers_or_group)
+                group_brokers = set(group.brokers.values_list('id', flat=True))
+                return list(group_brokers & user_brokers)
+            except BrokerGroup.DoesNotExist:
+                # If not a group, try individual broker name
+                try:
+                    broker = Brokers.objects.get(investor=user, name=brokers_or_group)
+                    return [broker.id]
+                except Brokers.DoesNotExist:
+                    raise ValueError(f"Invalid broker or group name: {brokers_or_group}")
     elif isinstance(brokers_or_group, list):
         selected_brokers = set(brokers_or_group)
         if not selected_brokers.issubset(user_brokers):
