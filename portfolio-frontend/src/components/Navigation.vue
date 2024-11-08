@@ -114,7 +114,8 @@ export default {
     ]
 
     const databaseSubItems = [
-      { title: 'Brokers', icon: 'mdi-bank', to: '/database/brokers' },
+      { title: 'Brokers', icon: 'mdi-office-building', to: '/database/brokers' },
+      { title: 'Accounts', icon: 'mdi-bank', to: '/database/accounts' },
       { title: 'Prices', icon: 'mdi-file-document-outline', to: '/database/prices' },
       { title: 'Securities', icon: 'mdi-chart-line', to: '/database/securities' },
       { title: 'FX', icon: 'mdi-currency-usd', to: '/database/fx' },

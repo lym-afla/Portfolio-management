@@ -48,7 +48,7 @@ export default {
     },
     security: String,
     bestMatch: Object,
-    brokerId: Number
+    accountId: Number
   },
   emits: ['security-selected'],
   setup(props, { emit }) {
@@ -63,8 +63,8 @@ export default {
       loadingSecurities.value = true
       securityError.value = null
       try {
-        console.log('Fetching securities for brokerId:', props.brokerId)
-        const securities = await getSecurities([], props.brokerId)
+        console.log('Fetching securities for accountId:', props.accountId)
+        const securities = await getSecurities([], props.accountId)
         console.log('Fetched securities:', securities)
         if (Array.isArray(securities)) {
           securityOptions.value = securities.map(security => ({
@@ -85,8 +85,8 @@ export default {
       }
     }
 
-    watch(() => props.brokerId, (newValue) => {
-      console.log('brokerId changed:', newValue)
+    watch(() => props.accountId, (newValue) => {
+      console.log('accountId changed:', newValue)
       if (newValue) {
         fetchSecurities()
       }

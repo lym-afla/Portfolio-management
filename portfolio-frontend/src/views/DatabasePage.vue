@@ -8,6 +8,7 @@
           align-tabs="center"
         >
           <v-tab to="/database/brokers" value="brokers">Brokers</v-tab>
+          <v-tab to="/database/accounts" value="accounts">Accounts</v-tab>
           <v-tab to="/database/securities" value="securities">Securities</v-tab>
           <v-tab to="/database/prices" value="prices">Prices</v-tab>
           <v-tab to="/database/fx" value="fx">FX</v-tab>
@@ -35,7 +36,9 @@ export default {
 
     const updateActiveTab = () => {
       const path = route.path
-      if (path.includes('/brokers')) {
+      if (path.includes('/accounts')) {
+        activeTab.value = 'accounts'
+      } else if (path.includes('/brokers')) {
         activeTab.value = 'brokers'
       } else if (path.includes('/securities')) {
         activeTab.value = 'securities'
@@ -48,6 +51,8 @@ export default {
 
     const pageTitle = computed(() => {
       switch (activeTab.value) {
+        case 'accounts':
+          return 'Database – Accounts'
         case 'brokers':
           return 'Database – Brokers'
         case 'securities':

@@ -2,12 +2,9 @@ from collections import defaultdict
 from datetime import date, timedelta
 import datetime
 from functools import lru_cache
-from django.db.models import Sum, QuerySet, Case, When, F, DecimalField, Q
-from django.db.models.functions import Coalesce
-import pandas as pd
+from django.db.models import Sum, QuerySet, Q
 from pyxirr import xirr
-from common.models import FX, AnnualPerformance, Assets, Brokers, Transactions
-# from constants import BROKER_GROUPS
+from common.models import FX, AnnualPerformance, Assets, Transactions, BrokerAccounts
 from functools import lru_cache
 
 import logging
@@ -19,37 +16,37 @@ import logging
 
 from core.formatting_utils import format_percentage
 
-def portfolio_at_date(user_id: int, to_date: date, brokers: List[int]) -> QuerySet[Assets]:
+def _portfolio_at_date(user_id: int, to_date: date, broker_account_ids: List[int]) -> QuerySet[Assets]:
     """
-    Get the portfolio assets for a user at a specific date for given brokers.
+    Get the portfolio assets for a user at a specific date for given broker accounts.
 
     :param user_id: The ID of the user
     :param to_date: The date to calculate the portfolio for
-    :param brokers: List of broker IDs to filter by
+    :param broker_account_ids: List of broker account IDs to filter by
     :return: QuerySet of Assets with non-zero total quantity
     """
-    if not brokers:
+    if not broker_account_ids:
         return Assets.objects.none()
     
     return Assets.objects.filter(
         investors__id=user_id,
         transactions__date__lte=to_date, 
-        transactions__broker_id__in=brokers
+        transactions__broker_account_id__in=broker_account_ids
     ).annotate(
         total_quantity=Sum('transactions__quantity')
     ).exclude(total_quantity=0).distinct()
 
-# Get all the brokers associated with a given security
-def get_brokers_for_security(user_id: int, security_id: int) -> QuerySet[Brokers]:
+# Get all the broker accounts associated with a given security
+def get_broker_accounts_for_security(user_id: int, security_id: int) -> QuerySet[BrokerAccounts]:
     """
-    Get all brokers associated with a given security for a user.
+    Get all broker accounts associated with a given security for a user.
 
     :param user_id: The ID of the user
     :param security_id: The ID of the security
-    :return: QuerySet of Brokers
+    :return: QuerySet of BrokerAccounts
     """
-    return Brokers.objects.filter(
-        investor__id=user_id,
+    return BrokerAccounts.objects.filter(
+        broker__investor__id=user_id,
         transactions__security_id=security_id
     ).distinct()
 
@@ -65,14 +62,17 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
     return dict_3
 
 
-# Calculate NAV breakdown for selected brokers at certain date and in selected currency
+# Calculate NAV breakdown for selected broker accounts at certain date and in selected currency
 @lru_cache(maxsize=None)
-def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currency: str, breakdown: Tuple[str] = ()) -> Dict:
-    broker_ids = list(broker_ids)  # Convert tuple back to list for internal use
+def NAV_at_date(user_id: int, broker_account_ids: Tuple[int], date: date, target_currency: str, breakdown: Tuple[str] = ()) -> Dict:
+    broker_account_ids = list(broker_account_ids)  # Convert tuple back to list for internal use
     breakdown = list(breakdown)  # Convert tuple back to list for internal use
     
-    portfolio = portfolio_at_date(user_id, date, broker_ids)
-    portfolio_brokers = Brokers.objects.filter(investor__id=user_id, id__in=broker_ids)
+    portfolio = _portfolio_at_date(user_id, date, broker_account_ids)
+    portfolio_broker_accounts = BrokerAccounts.objects.filter(
+        broker__investor__id=user_id,
+        id__in=broker_account_ids
+    )
     analysis = defaultdict(lambda: defaultdict(Decimal))
     analysis['Total NAV'] = Decimal(0)
     item_type = {'asset_type': 'type', 'currency': 'currency', 'asset_class': 'exposure'}
@@ -82,31 +82,31 @@ def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currenc
         if security_price is not None:
             security_price = security_price.price
         else:
-            security_price = security.calculate_buy_in_price(date, user_id, target_currency, broker_ids)
+            security_price = security.calculate_buy_in_price(date, user_id, target_currency, broker_account_ids)
         
-        for broker in portfolio_brokers:
-            broker_position = security.position(date, user_id, [broker.id])
-            broker_value = Decimal(broker_position * security_price)
-            analysis['Total NAV'] += broker_value
+        for broker_account in portfolio_broker_accounts:
+            broker_account_position = security.position(date, user_id, [broker_account.id])
+            broker_account_value = Decimal(broker_account_position * security_price)
+            analysis['Total NAV'] += broker_account_value
 
-            if 'broker' in breakdown:
-                analysis['broker'][broker.name] += broker_value
+            if 'account' in breakdown:
+                analysis['account'][broker_account.name] += broker_account_value
             else:
 
                 for breakdown_type in breakdown:
                     key = getattr(security, item_type[breakdown_type])
-                    analysis[breakdown_type][key] += broker_value
+                    analysis[breakdown_type][key] += broker_account_value
 
     # Handle cash balances
-    for broker in portfolio_brokers:
-        broker_balance = broker.balance(date)
+    for broker_account in portfolio_broker_accounts:
+        broker_balance = broker_account.balance(date)
         for currency, balance in broker_balance.items():
             fx_rate = get_fx_rate(currency, target_currency, date)
             converted_balance = balance * fx_rate
             analysis['Total NAV'] += converted_balance
             
-            if 'broker' in breakdown:
-                analysis['broker'][broker.name] += converted_balance
+            if 'account' in breakdown:
+                analysis['account'][broker_account.name] += converted_balance
             if 'currency' in breakdown:
                 analysis['currency'][currency] += converted_balance
             if 'asset_type' in breakdown:
@@ -117,33 +117,38 @@ def NAV_at_date(user_id: int, broker_ids: Tuple[int], date: date, target_currenc
     return dict(analysis)
 
 # Helper for IRR calculation
-def calculate_portfolio_value(user_id: int, date: date, currency: Optional[str] = None, asset_id: Optional[int] = None, broker_id_list: Optional[List[int]] = None) -> Decimal:
+def _calculate_portfolio_value(user_id: int, date: date, currency: Optional[str] = None, 
+                            asset_id: Optional[int] = None, broker_account_ids: Optional[List[int]] = None) -> Decimal:
     if asset_id is None:
-        portfolio_value = NAV_at_date(user_id, tuple(broker_id_list), date, currency)['Total NAV']
+        portfolio_value = NAV_at_date(user_id, tuple(broker_account_ids), date, currency)['Total NAV']
     else:
         asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         try:
-            portfolio_value = Decimal(asset.price_at_date(date, currency).price * asset.position(date, user_id, broker_id_list))
+            portfolio_value = Decimal(asset.price_at_date(date, currency).price * 
+                                   asset.position(date, user_id, broker_account_ids))
         except:
             portfolio_value = Decimal(0)
 
     return portfolio_value
 
-def calculate_portfolio_cash(user_id: int, broker_ids: List[int], date: date, target_currency: str) -> Decimal:
+def calculate_portfolio_cash(user_id: int, broker_account_ids: List[int], date: date, target_currency: str) -> Decimal:
     """
-    Calculate the total cash balance for a user's portfolio across multiple brokers.
+    Calculate the total cash balance for a user's portfolio across multiple broker accounts.
 
     :param user_id: The ID of the user
-    :param broker_ids: List of broker IDs to include in the calculation
+    :param broker_account_ids: List of broker account IDs to include in the calculation
     :param date: The date for which to calculate the cash balance
     :param target_currency: The currency to convert all cash balances to
     :return: The total cash balance as a Decimal
     """
-    portfolio_brokers = Brokers.objects.filter(investor__id=user_id, id__in=broker_ids)
+    portfolio_accounts = BrokerAccounts.objects.filter(
+        broker__investor__id=user_id,
+        id__in=broker_account_ids
+    )
     
     cash_balance = {}
-    for broker in portfolio_brokers:
-        cash_balance = merge_dictionaries(cash_balance, broker.balance(date))
+    for account in portfolio_accounts:
+        cash_balance = merge_dictionaries(cash_balance, account.balance(date))
 
     cash = sum(
         balance * get_fx_rate(currency, target_currency, date)
@@ -156,7 +161,7 @@ MAX_IRR = Decimal('2')
 IRR_PRECISION = Decimal('0.0001')
 
 def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Optional[int] = None, 
-        broker_id_list: Optional[List[int]] = None, start_date: Optional[date] = None, cached_nav: Optional[Decimal] = None) -> Union[Decimal, str]:
+        broker_account_ids: Optional[List[int]] = None, start_date: Optional[date] = None, cached_nav: Optional[Decimal] = None) -> Union[Decimal, str]:
     """
     Calculate the Internal Rate of Return (IRR) for a given portfolio or asset.
 
@@ -164,7 +169,7 @@ def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Opti
     :param date: The end date for IRR calculation
     :param currency: The currency to use for calculations (optional)
     :param asset_id: The ID of the specific asset to calculate IRR for (optional)
-    :param broker_id_list: List of broker IDs to include in the calculation (optional)
+    :param broker_account_ids: List of broker account IDs to include in the calculation (optional)
     :param start_date: The start date for IRR calculation (optional)
     :param cached_nav: Precalculated NAV value (optional)
     :return: The calculated IRR as a Decimal, or 'N/R' if not relevant, or 'N/A' if calculation fails
@@ -172,7 +177,7 @@ def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Opti
     if cached_nav is not None:
         portfolio_value = cached_nav
     else:
-        portfolio_value = calculate_portfolio_value(user_id, date, currency, asset_id, broker_id_list)
+        portfolio_value = _calculate_portfolio_value(user_id, date, currency, asset_id, broker_account_ids)
 
     # Not relevant for short positions
     if portfolio_value < 0:
@@ -183,15 +188,15 @@ def IRR(user_id: int, date: date, currency: Optional[str] = None, asset_id: Opti
 
     transactions = Transactions.objects.filter(investor__id=user_id, date__lte=date, security_id=asset_id)
 
-    if broker_id_list is not None:
-        transactions = transactions.filter(broker_id__in=broker_id_list)
+    if broker_account_ids is not None:
+        transactions = transactions.filter(broker_account_id__in=broker_account_ids)
 
     if start_date is not None:
         transactions = transactions.filter(date__gte=start_date)
 
         # Calculate start portfolio value if provided
         initial_value_date = start_date - timedelta(days=1)
-        start_portfolio_value = calculate_portfolio_value(user_id, initial_value_date, currency, asset_id, broker_id_list)
+        start_portfolio_value = _calculate_portfolio_value(user_id, initial_value_date, currency, asset_id, broker_account_ids)
         
         if asset_id is not None:
             first_transaction = transactions.order_by('date').first()
@@ -231,36 +236,50 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
 
 def broker_group_to_ids(brokers_or_group: Union[str, List[int]], user) -> List[int]:
     """
-    Convert a broker group name, individual broker name, or list of broker IDs to a list of broker IDs for a user.
+    Convert a broker group name, broker account name, or list of broker account IDs 
+    to a list of broker account IDs for a user.
 
-    :param brokers_or_group: A string (group name or individual broker name) or list of broker IDs
+    :param brokers_or_group: A string (group name, broker account name, or broker name) or list of broker account IDs
     :param user: The user object
-    :return: A list of broker IDs
+    :return: A list of broker account IDs
     """
-    user_brokers = set(Brokers.objects.filter(investor=user).values_list('id', flat=True))
+    from common.models import BrokerAccounts
+    from users.models import AccountGroup
+
+    user_accounts = set(BrokerAccounts.objects.filter(investor=user).values_list('id', flat=True))
 
     if isinstance(brokers_or_group, str):
-        if brokers_or_group == 'All brokers':
-            return list(user_brokers)
-        else:
-            # Check if it's a broker group name
+        if brokers_or_group == 'All accounts':
+            return list(user_accounts)
+        
+        # Check if it's a broker group name
+        try:
+            group = AccountGroup.objects.get(user=user, name=brokers_or_group)
+            group_accounts = set(group.broker_accounts.values_list('id', flat=True))
+            return list(group_accounts & user_accounts)
+        except AccountGroup.DoesNotExist:
+            # Try broker account name
             try:
-                from users.models import BrokerGroup
-                group = BrokerGroup.objects.get(user=user, name=brokers_or_group)
-                group_brokers = set(group.brokers.values_list('id', flat=True))
-                return list(group_brokers & user_brokers)
-            except BrokerGroup.DoesNotExist:
-                # If not a group, try individual broker name
+                account = BrokerAccounts.objects.get(investor=user, name=brokers_or_group)
+                return [account.id]
+            except BrokerAccounts.DoesNotExist:
+                # Try broker name
                 try:
-                    broker = Brokers.objects.get(investor=user, name=brokers_or_group)
-                    return [broker.id]
-                except Brokers.DoesNotExist:
-                    raise ValueError(f"Invalid broker or group name: {brokers_or_group}")
+                    broker_accounts = BrokerAccounts.objects.filter(
+                        investor=user, 
+                        broker__name=brokers_or_group
+                    ).values_list('id', flat=True)
+                    if broker_accounts:
+                        return list(broker_accounts)
+                    raise ValueError(f"Invalid broker, account, or group name: {brokers_or_group}")
+                except Exception:
+                    raise ValueError(f"Invalid broker, account, or group name: {brokers_or_group}")
+
     elif isinstance(brokers_or_group, list):
-        selected_brokers = set(brokers_or_group)
-        if not selected_brokers.issubset(user_brokers):
-            logging.warning("Some of the provided broker IDs do not belong to the user")
-        return list(selected_brokers & user_brokers)
+        selected_accounts = set(brokers_or_group)
+        if not selected_accounts.issubset(user_accounts):
+            logging.warning("Some of the provided broker account IDs do not belong to the user")
+        return list(selected_accounts & user_accounts)
 
 def calculate_performance(user, start_date, end_date, brokers_or_group, currency_target, is_restricted=None):
     performance_data = defaultdict(Decimal)
@@ -271,9 +290,8 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
 
     alternative_fx_check = Decimal('0')
 
-    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
-    
-    brokers = Brokers.objects.filter(id__in=selected_brokers_ids, investor=user).select_related('investor')
+    selected_account_ids = broker_group_to_ids(brokers_or_group, user)
+    accounts = BrokerAccounts.objects.filter(id__in=selected_account_ids, investor=user).select_related('investor')
 
     bop_nav = AnnualPerformance.objects.filter(
         investor=user, 
@@ -286,15 +304,15 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
 
     # bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
 
-    for broker in brokers:
+    for account in accounts:
         # bop_nav = bop_nav_dict.get(broker.id)
         if not bop_nav:
-            bop_nav_broker = NAV_at_date(user.id, tuple([broker.id]), start_date - timedelta(days=1), currency_target)['Total NAV']
-            performance_data['bop_nav'] += bop_nav_broker
+            bop_nav_account = NAV_at_date(user.id, tuple([account.id]), start_date - timedelta(days=1), currency_target)['Total NAV']
+            performance_data['bop_nav'] += bop_nav_account
 
         transactions = Transactions.objects.filter(
             investor=user,
-            broker_id=broker.id,
+            broker_account=account,
             date__gte=start_date,
             date__lte=end_date,
         )
@@ -321,22 +339,35 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
             performance_data['commission'] += (transaction.commission or 0) * fx_rate
 
         # Calculate asset-based metrics
-        assets = Assets.objects.filter(investors__id=user.id, brokers=broker).prefetch_related('transactions')
+        assets = Assets.objects.filter(
+            investors__id=user.id,
+            broker_accounts__broker__investor=user,
+            broker_accounts=account
+        ).prefetch_related('transactions')
+        
         if is_restricted is not None:
             assets = assets.filter(restricted=is_restricted)
             
         for asset in assets:
-            asset_realized_gl = asset.realized_gain_loss(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
-            asset_unrealized_gl = asset.unrealized_gain_loss(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            asset_realized_gl = asset.realized_gain_loss(
+                end_date, user, currency_target, 
+                broker_account_ids=[account.id], 
+                start_date=start_date
+            )
+            asset_unrealized_gl = asset.unrealized_gain_loss(
+                end_date, user, currency_target,
+                broker_account_ids=[account.id],
+                start_date=start_date
+            )
     
             performance_data['price_change'] += asset_realized_gl['all_time']['price_appreciation'] if asset_realized_gl else 0
             alternative_fx_check += asset_realized_gl['all_time']['fx_effect']
             performance_data['price_change'] += asset_unrealized_gl['price_appreciation']
             alternative_fx_check += asset_unrealized_gl['fx_effect']
-            performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, user, currency_target, broker_id_list=[broker.id], start_date=start_date)
+            performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, user, currency_target, broker_account_ids=[account.id], start_date=start_date)
 
         # Calculate EOP NAV
-        eop_nav = NAV_at_date(user.id, tuple([broker.id]), end_date, currency_target)['Total NAV']
+        eop_nav = NAV_at_date(user.id, tuple([account.id]), end_date, currency_target)['Total NAV']
         performance_data['eop_nav'] += eop_nav
 
     if bop_nav:
@@ -347,7 +378,7 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
     performance_data['fx'] += performance_data['eop_nav'] - components_sum
 
     # Calculate TSR
-    performance_data['tsr'] = format_percentage(IRR(user.id, end_date, currency_target, broker_id_list=selected_brokers_ids, start_date=start_date), digits=1)
+    performance_data['tsr'] = format_percentage(IRR(user.id, end_date, currency_target, broker_account_ids=selected_account_ids, start_date=start_date), digits=1)
 
     # Adjust FX for rounding errors
     performance_data['fx'] = Decimal('0') if abs(performance_data['fx']) < 0.1 else performance_data['fx']
@@ -373,31 +404,37 @@ def calculate_percentage_shares(data_dict, selected_keys):
             except ZeroDivisionError or DecimalInvalidOperation:
                 data_dict[percentage_key][key] = '–'
 
-def get_last_exit_date_for_brokers(selected_brokers, date):
+def get_last_exit_date_for_broker_accounts(account_ids: List[int], effective_current_date: date) -> Optional[date]:
     """
-    Calculate the last date after which all activities ended and no asset was opened for the selected brokers.
+    Determines the last relevant date for a set of broker accounts, considering both open positions and transaction history.
+
+    If any account has open positions, returns the effective_current_date.
+    If all positions are closed, returns the date of the last transaction.
+    If no transactions exist, returns the effective_current_date.
 
     Args:
-        selected_brokers (list): List of broker IDs to include in the calculation.
-        date (date or str): The current date to use as a reference.
+        account_ids (List[int]): List of broker account IDs to analyze
+        effective_current_date (date): The reference date for position calculations
 
     Returns:
-        date: The last date after which all activities ended and no asset was opened for the selected brokers.
+        Optional[date]: 
+            - effective_current_date if any positions are open or no transactions exist
+            - date of the last transaction if all positions are closed
     """
     # Ensure date is a date object
-    if isinstance(date, str):
-        date = datetime.strptime(date, '%Y-%m-%d').date()
+    if isinstance(effective_current_date, str):
+        effective_current_date = datetime.strptime(date, '%Y-%m-%d').date()
 
     # Step 1: Check the position of each security at the current date
-    for broker in Brokers.objects.filter(id__in=selected_brokers):
-        for security in broker.securities.all():
-            if security.position(date, broker.investor, [broker.id]) != 0:
-                return date
+    for broker_account in BrokerAccounts.objects.filter(id__in=account_ids):
+        for security in broker_account.securities.all():
+            if security.position(effective_current_date, broker_account.investor, [broker_account.id]) != 0:
+                return effective_current_date
 
     # Step 2: If positions for all securities at the current date are zero, find the latest transaction date
-    latest_transaction_date = Transactions.objects.filter(broker_id__in=selected_brokers, date__lte=date).order_by('-date').values_list('date', flat=True).first()
+    latest_transaction_date = Transactions.objects.filter(broker_account_id__in=account_ids, date__lte=effective_current_date).order_by('-date').values_list('date', flat=True).first()
     
     if latest_transaction_date is None:
-        return date
+        return effective_current_date
     
     return latest_transaction_date

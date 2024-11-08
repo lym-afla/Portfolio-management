@@ -1,7 +1,7 @@
 import pytest
 from channels.testing import HttpCommunicator
 from channels.db import database_sync_to_async
-from database.consumers import UpdateBrokerPerformanceConsumer
+from database.consumers import UpdateAccountPerformanceConsumer
 from django.urls import reverse
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
@@ -16,7 +16,7 @@ from constants import (
 import json
 import logging
 
-from core.portfolio_utils import get_last_exit_date_for_brokers, calculate_performance
+from core.portfolio_utils import get_last_exit_date_for_broker_accounts, calculate_performance
 
 User = get_user_model()
 
@@ -104,7 +104,7 @@ async def test_update_broker_performance_initial(user, broker, transactions, cap
     caplog.set_level(logging.INFO)
     
     communicator = HttpCommunicator(
-        UpdateBrokerPerformanceConsumer.as_asgi(),
+        UpdateAccountPerformanceConsumer.as_asgi(),
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
@@ -156,7 +156,7 @@ async def test_update_broker_performance_initial(user, broker, transactions, cap
 async def test_update_broker_performance_invalid_data(user):
     """Test broker performance calculation with invalid data"""
     communicator = HttpCommunicator(
-        UpdateBrokerPerformanceConsumer.as_asgi(),
+        UpdateAccountPerformanceConsumer.as_asgi(),
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
@@ -181,7 +181,7 @@ async def test_update_broker_performance_invalid_data(user):
 async def test_update_broker_performance_no_transactions(user, broker):
     """Test broker performance calculation with no transactions"""
     communicator = HttpCommunicator(
-        UpdateBrokerPerformanceConsumer.as_asgi(),
+        UpdateAccountPerformanceConsumer.as_asgi(),
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
@@ -214,7 +214,7 @@ async def test_update_broker_performance_streaming(user, broker, transactions, f
     print("Starting test_update_broker_performance_streaming")
 
     communicator = HttpCommunicator(
-        UpdateBrokerPerformanceConsumer.as_asgi(),
+        UpdateAccountPerformanceConsumer.as_asgi(),
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
@@ -280,7 +280,7 @@ def test_get_last_exit_date_for_brokers(user, broker):
     )
     
     current_date = datetime.now().date()
-    last_exit_date = get_last_exit_date_for_brokers([broker.id], current_date)
+    last_exit_date = get_last_exit_date_for_broker_accounts([broker.id], current_date)
     
     assert last_exit_date == current_date
 
@@ -296,7 +296,7 @@ def test_get_last_exit_date_for_brokers(user, broker):
         currency='USD'
     )
     
-    last_exit_date = get_last_exit_date_for_brokers([broker.id], current_date)
+    last_exit_date = get_last_exit_date_for_broker_accounts([broker.id], current_date)
     assert last_exit_date == current_date - timedelta(days=1)
 
 @pytest.mark.django_db
@@ -461,7 +461,7 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
 
     # Create communicator
     communicator = HttpCommunicator(
-        UpdateBrokerPerformanceConsumer.as_asgi(),
+        UpdateAccountPerformanceConsumer.as_asgi(),
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({

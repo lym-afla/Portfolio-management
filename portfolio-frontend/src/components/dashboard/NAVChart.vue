@@ -83,7 +83,7 @@ export default {
     const dateTo = ref(navChartParams.value.dateTo)
 
     const breakdownOptions = [
-      { title: 'Broker', value: 'broker' },
+      { title: 'Account', value: 'account' },
       { title: 'Asset Type', value: 'asset_type' },
       { title: 'Asset Class', value: 'asset_class' },
       { title: 'Currency', value: 'currency' },

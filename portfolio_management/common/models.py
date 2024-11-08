@@ -144,12 +144,40 @@ class FX(models.Model):
 
 # Brokers
 class Brokers(models.Model):
+    """Represents a broker entity (e.g., Tinkoff, Interactive Brokers)"""
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='brokers')
     name = models.CharField(max_length=30, null=False)
     country = models.CharField(max_length=20)
-    securities = models.ManyToManyField('Assets', related_name='brokers')
     comment = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['investor', 'name']
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class BrokerAccounts(models.Model):
+    """Represents a specific account at a broker"""
+    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='accounts')
+    native_id = models.CharField(max_length=100, help_text="Native account ID from broker's system")
+    name = models.CharField(max_length=100, help_text="Account name or description")
+    securities = models.ManyToManyField('Assets', related_name='broker_accounts')
     restricted = models.BooleanField(default=False, null=False, blank=False)
+    comment = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['broker', 'native_id']
+        ordering = ['broker', 'name']
+
+    def __str__(self):
+        return f"{self.broker.name} - {self.name}"
 
     # List of currencies used
     def get_currencies(self):
@@ -175,16 +203,12 @@ class Brokers(models.Model):
             balance[fx_transaction.from_currency] = balance.get(fx_transaction.from_currency, Decimal(0)) - fx_transaction.from_amount
             balance[fx_transaction.to_currency] = balance.get(fx_transaction.to_currency, Decimal(0)) + fx_transaction.to_amount
             if fx_transaction.commission:
-                # commission_currency = fx_transaction.from_currency  # Assume commission is in the source currency
                 balance[fx_transaction.commission_currency] = balance.get(fx_transaction.commission_currency, Decimal(0)) + fx_transaction.commission
             
         for key, value in balance.items():
             balance[key] = round(Decimal(value), 2)
 
         return balance
-    
-    def __str__(self):
-        return self.name  # Define how the broker is represented as a string
 
 # Public assets
 class Assets(models.Model):
@@ -231,28 +255,28 @@ class Assets(models.Model):
         return quote
 
     # Define position at date by summing all movements to date
-    def position(self, date, investor, broker_id_list=None):
+    def position(self, date, investor, broker_account_ids=None):
         query = self.transactions.filter(date__lte=date, investor=investor)
-        if broker_id_list is not None:
-            query = query.filter(broker_id__in=broker_id_list)
+        if broker_account_ids is not None:
+            query = query.filter(broker_account_id__in=broker_account_ids)
         total_quantity = query.aggregate(total=models.Sum('quantity'))['total']
         return round(Decimal(total_quantity), 6) if total_quantity else Decimal(0)
 
     # The very first investment date
-    def investment_date(self, investor, broker_id_list=None):
+    def investment_date(self, investor, broker_account_ids=None):
         queryset = self.transactions.filter(investor=investor)
-        if broker_id_list:
-            queryset = queryset.filter(broker_id__in=broker_id_list)
+        if broker_account_ids:
+            queryset = queryset.filter(broker_account_id__in=broker_account_ids)
         query = queryset.order_by('date').values_list('date', flat=True).first()
         return query
 
-    def entry_dates(self, date, investor, broker_id_list=None, start_date=None):
+    def entry_dates(self, date, investor, broker_account_ids=None, start_date=None):
         """
         Returns a list of dates when the position changes from 0 to non-zero.
         """
         transactions = self.transactions.filter(date__lte=date, quantity__isnull=False, investor=investor)
-        if broker_id_list is not None:
-            transactions = transactions.filter(broker_id__in=broker_id_list)
+        if broker_account_ids is not None:
+            transactions = transactions.filter(broker_account_id__in=broker_account_ids)
         
         transactions = transactions.order_by('date')
 
@@ -271,13 +295,13 @@ class Assets(models.Model):
 
         return entry_dates
 
-    def exit_dates(self, end_date, investor, broker_id_list=None, start_date=None):
+    def exit_dates(self, end_date, investor, broker_account_ids=None, start_date=None):
         """
         Returns a list of dates when the position changes from non-zero to 0.
         """
         transactions = self.transactions.filter(date__lte=end_date, quantity__isnull=False, investor=investor)
-        if broker_id_list is not None:
-            transactions = transactions.filter(broker_id__in=broker_id_list)
+        if broker_account_ids is not None:
+            transactions = transactions.filter(broker_account_id__in=broker_account_ids)
         if start_date is not None:
             transactions = transactions.filter(date__gte=start_date)
         
@@ -285,7 +309,7 @@ class Assets(models.Model):
 
         exit_dates = []
         if start_date is not None:
-            position = self.position(start_date, investor, broker_id_list)
+            position = self.position(start_date, investor, broker_account_ids)
         else:
             position = 0
 
@@ -297,21 +321,21 @@ class Assets(models.Model):
 
         return exit_dates
 
-    def calculate_buy_in_price(self, date, investor, currency=None, broker_id_list=None, start_date=None):
+    def calculate_buy_in_price(self, date, investor, currency=None, broker_account_ids=None, start_date=None):
         """
-        Calculates the buy-in price for the given date, currency, broker ID list, and start date.
+        Calculates the buy-in price for the given date, currency, broker account IDs, and start date.
 
         Args:
             date (datetime.date): The date for which to calculate the buy-in price.
             currency (str): The currency in which to calculate the buy-in price.
-            broker_id_list (Optional[List[str]]): A list of broker IDs to filter the transactions by. Defaults to None.
+            broker_account_ids (Optional[List[str]]): A list of broker account IDs to filter the transactions by. Defaults to None.
             start_date (Optional[datetime.date]): The start date for the calculation. Defaults to None.
 
         Returns:
             float: The calculated buy-in price. Returns None if an error occurs.
         """
         logger.debug(f"Calculating buy-in price for {self.name} as of {date}")
-        logger.debug(f"Parameters: currency={currency}, broker_id_list={broker_id_list}, start_date={start_date}")
+        logger.debug(f"Parameters: currency={currency}, broker_account_ids={broker_account_ids}, start_date={start_date}")
 
         is_long_position = None
 
@@ -321,8 +345,8 @@ class Assets(models.Model):
             date__lte=date
         ).order_by('date')
 
-        if broker_id_list is not None:
-            transactions = transactions.filter(broker_id__in=broker_id_list)
+        if broker_account_ids is not None:
+            transactions = transactions.filter(broker_account_id__in=broker_account_ids)
         
         logger.debug(f"Number of transactions: {transactions.count()}")
 
@@ -331,7 +355,7 @@ class Assets(models.Model):
             return None
 
         # Get latest entry date
-        entry_dates = self.entry_dates(date, investor, broker_id_list)
+        entry_dates = self.entry_dates(date, investor, broker_account_ids)
         if not entry_dates:
             logger.warning("No entry dates found")
             return None
@@ -341,7 +365,7 @@ class Assets(models.Model):
         if start_date and start_date > entry_date:
             # Add artificial transaction at start_date
             logger.debug(f"Start date {start_date} is after latest entry date {entry_date}")
-            position = self.position(start_date, investor, broker_id_list)
+            position = self.position(start_date, investor, broker_account_ids)
             logger.debug(f"Position at start date: {position}")
             if position != 0:
                 price_at_start = self.price_at_date(start_date)
@@ -403,7 +427,7 @@ class Assets(models.Model):
         logger.debug(f"Final buy-in price: {final_price}")
         return final_price
     
-    def realized_gain_loss(self, date, investor, currency=None, broker_id_list=None, start_date=None):
+    def realized_gain_loss(self, date, investor, currency=None, broker_account_ids=None, start_date=None):
         def calculate_position_gain_loss(start, end, investor):
             result = {
                 "price_appreciation": Decimal(0),
@@ -417,10 +441,10 @@ class Assets(models.Model):
                 quantity__isnull=False,
                 investor=investor
             ).order_by('date')
-            if broker_id_list is not None:
-                transactions = transactions.filter(broker_id__in=broker_id_list)
+            if broker_account_ids is not None:
+                transactions = transactions.filter(broker_account_id__in=broker_account_ids)
 
-            position = self.position(start - timedelta(days=1), investor, broker_id_list)
+            position = self.position(start - timedelta(days=1), investor, broker_account_ids)
             logger.info(f"Starting position at {start}: {position}")
 
             for transaction in transactions:
@@ -430,8 +454,8 @@ class Assets(models.Model):
                    (position < 0 and transaction.type == TRANSACTION_TYPE_BUY) or \
                    (position == 0):  # This handles same-day open and close
 
-                    buy_in_price_target_currency = self.calculate_buy_in_price(transaction.date, investor, currency, broker_id_list, start)
-                    buy_in_price_lcl_currency = self.calculate_buy_in_price(transaction.date, investor, transaction.currency, broker_id_list, start)
+                    buy_in_price_target_currency = self.calculate_buy_in_price(transaction.date, investor, currency, broker_account_ids, start)
+                    buy_in_price_lcl_currency = self.calculate_buy_in_price(transaction.date, investor, transaction.currency, broker_account_ids, start)
 
                     logger.info(f"Buy-in price in target currency: {buy_in_price_target_currency}, in LCL currency: {buy_in_price_lcl_currency}")
                     
@@ -468,8 +492,8 @@ class Assets(models.Model):
         }
 
         # Calculate all-time realized gain/loss
-        exit_dates = self.exit_dates(date, investor, broker_id_list, start_date)
-        entry_dates = self.entry_dates(date, investor, broker_id_list, start_date)
+        exit_dates = self.exit_dates(date, investor, broker_account_ids, start_date)
+        entry_dates = self.entry_dates(date, investor, broker_account_ids, start_date)
 
         if start_date is not None and len(entry_dates) == 0:
             entry_dates = [start_date]
@@ -517,7 +541,7 @@ class Assets(models.Model):
 
         return result
 
-    def unrealized_gain_loss(self, date, investor, currency=None, broker_id_list=None, start_date=None):
+    def unrealized_gain_loss(self, date, investor, currency=None, broker_account_ids=None, start_date=None):
         """
         Calculates the unrealized gain/loss for an asset and breaks it down into components: 
         price appreciation, and FX effect.
@@ -526,7 +550,7 @@ class Assets(models.Model):
             asset (Asset): The asset object for which unrealized gain/loss is calculated.
             date (datetime.date): The date as of which the calculation is performed.
             currency (str, optional): The reporting currency. Defaults to None.
-            broker_id_list (list, optional): List of broker IDs to filter transactions. Defaults to None.
+            broker_account_ids (list, optional): List of broker account IDs to filter transactions. Defaults to None.
             start_date (datetime.date, optional): The start date for calculating buy-in price. Defaults to None.
         
         Returns:
@@ -539,12 +563,12 @@ class Assets(models.Model):
         price_appreciation = 0
         fx_effect = 0
 
-        current_position = self.position(date, investor, broker_id_list)
+        current_position = self.position(date, investor, broker_account_ids)
         
         current_price_in_lcl_cur = self.price_at_date(date, currency=None).price if self.price_at_date(date) else 0
         current_price_in_target_cur = self.price_at_date(date, currency).price if self.price_at_date(date) else 0
-        buy_in_price_in_lcl_cur = self.calculate_buy_in_price(date, investor, currency=None, broker_id_list=broker_id_list, start_date=start_date)
-        buy_in_price_in_target_cur = self.calculate_buy_in_price(date, investor, currency, broker_id_list, start_date)
+        buy_in_price_in_lcl_cur = self.calculate_buy_in_price(date, investor, currency=None, broker_account_ids=broker_account_ids, start_date=start_date)
+        buy_in_price_in_target_cur = self.calculate_buy_in_price(date, investor, currency, broker_account_ids, start_date)
 
         fx_rate_eop = FX.get_rate(self.currency, currency, date)['FX'] if currency else 1
 
@@ -559,7 +583,7 @@ class Assets(models.Model):
              'total': round(Decimal(unrealized_gain_loss), 2)
         }
     
-    def get_capital_distribution(self, date, investor, currency=None, broker_id_list=None, start_date=None):
+    def get_capital_distribution(self, date, investor, currency=None, broker_account_ids=None, start_date=None):
         """
         Calculate the capital distribution (dividends) for this asset.
         Capital distribution is the total cash flow from 'dividend' type transactions.
@@ -567,8 +591,8 @@ class Assets(models.Model):
         total_dividends = 0
         dividend_transactions = self.transactions.filter(type='Dividend', date__lte=date, investor=investor)
 
-        if broker_id_list is not None:
-            dividend_transactions = dividend_transactions.filter(broker_id__in=broker_id_list)
+        if broker_account_ids is not None:
+            dividend_transactions = dividend_transactions.filter(broker_account_id__in=broker_account_ids)
 
         if start_date is not None:
             dividend_transactions = dividend_transactions.filter(date__gte=start_date)
@@ -585,15 +609,15 @@ class Assets(models.Model):
         else:
             return Decimal(0)
         
-    def get_commission(self, date, investor, currency=None, broker_id_list=None, start_date=None):
+    def get_commission(self, date, investor, currency=None, broker_account_ids=None, start_date=None):
         """
         Calculate the comission for this asset.
         """
         total_commission = 0
         commission_transactions = self.transactions.filter(commission__isnull=False, date__lte=date, investor=investor)
 
-        if broker_id_list is not None:
-            commission_transactions = commission_transactions.filter(broker_id__in=broker_id_list)
+        if broker_account_ids is not None:
+            commission_transactions = commission_transactions.filter(broker_account_id__in=broker_account_ids)
 
         if start_date is not None:
             commission_transactions = commission_transactions.filter(date__gte=start_date)
@@ -616,7 +640,7 @@ class Assets(models.Model):
 # Table with public asset transactions
 class Transactions(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='transactions')
-    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='transactions')
+    broker_account = models.ForeignKey(BrokerAccounts, on_delete=models.CASCADE, related_name='transactions')
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name='transactions', null=True, blank=True)
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD', null=False, blank=False)
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
@@ -707,7 +731,6 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
 # Model to store the annual performance data
 class AnnualPerformance(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, null=True, blank=True)
     broker_group = models.CharField(max_length=100, null=True, blank=True)
     year = models.IntegerField()
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
@@ -727,18 +750,6 @@ class AnnualPerformance(models.Model):
 
         # Add constraints
         constraints = [
-            models.CheckConstraint(
-                check=models.Q(broker__isnull=False) | models.Q(broker_group__isnull=False),
-                name='either_broker_or_group'
-            ),
-            models.CheckConstraint(
-                check=~(models.Q(broker__isnull=False) & models.Q(broker_group__isnull=False)),
-                name='not_both_broker_and_group'
-            ),
-            models.UniqueConstraint(
-                fields=['investor', 'year', 'currency', 'restricted', 'broker'],
-                name='unique_investor_broker_year_currency'
-            ),
             models.UniqueConstraint(
                 fields=['investor', 'year', 'currency', 'restricted', 'broker_group'],
                 name='unique_investor_broker_group_year_currency'
@@ -747,7 +758,7 @@ class AnnualPerformance(models.Model):
 
 class FXTransaction(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='fx_transactions')
-    broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='fx_transactions')
+    broker_account = models.ForeignKey(BrokerAccounts, on_delete=models.CASCADE, related_name='fx_transactions')
     date = models.DateField(null=False)
     from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)

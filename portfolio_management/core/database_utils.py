@@ -6,17 +6,21 @@ from channels.db import database_sync_to_async
 
 from core.portfolio_utils import broker_group_to_ids
 from common.models import Transactions, AnnualPerformance
-from core.portfolio_utils import get_last_exit_date_for_brokers, calculate_performance
+from core.portfolio_utils import get_last_exit_date_for_broker_accounts, calculate_performance
 
 logger = logging.getLogger(__name__)
 
 async def save_or_update_annual_broker_performance(user, effective_date, brokers_or_group, currency_target, is_restricted=None, skip_existing_years=False):
     logger.info(f"Starting performance calculation for {brokers_or_group}, {currency_target}, is_restricted={is_restricted}, skip_existing_years={skip_existing_years}")
     
-    selected_brokers_ids = await database_sync_to_async(broker_group_to_ids)(brokers_or_group, user)
+    selected_account_ids = await database_sync_to_async(broker_group_to_ids)(brokers_or_group, user)
     
     # Determine the starting year
-    first_transaction = await database_sync_to_async(lambda: Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first())()
+    first_transaction = await database_sync_to_async(lambda: Transactions.objects.filter(
+        broker_account_id__in=selected_account_ids, 
+        date__lte=effective_date
+    ).order_by('date').first())()
+    
     if not first_transaction:
         error_msg = 'No transactions found'
         logger.error(error_msg)
@@ -24,7 +28,7 @@ async def save_or_update_annual_broker_performance(user, effective_date, brokers
         return
     
     start_year = first_transaction.date.year
-    last_exit_date = await database_sync_to_async(get_last_exit_date_for_brokers)(selected_brokers_ids, effective_date)
+    last_exit_date = await database_sync_to_async(get_last_exit_date_for_broker_accounts)(selected_account_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
@@ -32,22 +36,35 @@ async def save_or_update_annual_broker_performance(user, effective_date, brokers
 
     for i, year in enumerate(years, 1):
         if skip_existing_years:
-            exists = await database_sync_to_async(lambda: AnnualPerformance.objects.filter(investor=user, broker_group=brokers_or_group, year=year, currency=currency_target, restricted=is_restricted).exists())()
+            exists = await database_sync_to_async(lambda: AnnualPerformance.objects.filter(
+                investor=user, 
+                broker_group=brokers_or_group, 
+                year=year, 
+                currency=currency_target, 
+                restricted=is_restricted
+            ).exists())()
+            
             if exists:
                 logger.info(f"Skipping existing year {year}")
                 continue
 
         try:
-            performance_data = await database_sync_to_async(calculate_performance)(user, date(year, 1, 1), date(year, 12, 31), brokers_or_group, currency_target, is_restricted)
+            performance_data = await database_sync_to_async(calculate_performance)(
+                user, 
+                date(year, 1, 1), 
+                date(year, 12, 31), 
+                brokers_or_group, 
+                currency_target, 
+                is_restricted
+            )
             
             # Use a separate function to save the data
             await save_annual_performance(user, brokers_or_group, year, currency_target, is_restricted, performance_data)
             
-            progress_data = {
+            yield {
                 'status': 'progress',
                 'year': year,
             }
-            yield progress_data
         except ValueError as e:
             if "No FX rate found" in str(e):
                 error_msg = f"Missing FX rate processing year {year}: {str(e)}"
@@ -90,11 +107,17 @@ async def save_annual_performance(user, brokers_or_group, year, currency_target,
     raise OperationalError(f"Database locked, unable to save data for year {year}")
 
 def get_years_count(user, effective_date, brokers_or_group):
-    selected_brokers_ids = broker_group_to_ids(brokers_or_group, user)
-    first_transaction = Transactions.objects.filter(broker_id__in=selected_brokers_ids, date__lte=effective_date).order_by('date').first()
+    selected_account_ids = broker_group_to_ids(brokers_or_group, user)
+    first_transaction = Transactions.objects.filter(
+        broker_account_id__in=selected_account_ids, 
+        date__lte=effective_date
+    ).order_by('date').first()
+    
     if not first_transaction:
         return 0
+        
     start_year = first_transaction.date.year
-    last_exit_date = get_last_exit_date_for_brokers(selected_brokers_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_broker_accounts(selected_account_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
+    
     return last_year - start_year + 1

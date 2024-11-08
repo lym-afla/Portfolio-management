@@ -4,19 +4,19 @@
       {{ error }}
     </v-alert>
 
-    <!-- Broker performance breakdown table -->
+    <!-- Account performance breakdown table -->
     <v-card class="mt-4">
-      <v-card-title>Broker performance breakdown</v-card-title>
+      <v-card-title>Account performance breakdown</v-card-title>
       <v-card-text>
         <v-skeleton-loader
-          v-if="loading.brokerPerformance"
+          v-if="loading.accountPerformance"
           type="table"
         ></v-skeleton-loader>
         <div v-else class="table-wrapper">
-          <table class="v-data-table broker-performance-table">
+          <table class="v-data-table account-performance-table">
             <thead>
               <tr>
-                <th rowspan="2" class="text-left no-wrap">Broker</th>
+                <th rowspan="2" class="text-left no-wrap">Account</th>
                 <th 
                   v-for="year in years" 
                   :key="year" 
@@ -44,7 +44,7 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="(group, groupIndex) in brokerPerformanceData" :key="groupIndex">
+              <template v-for="(group, groupIndex) in accountPerformanceData" :key="groupIndex">
                 <tr class="group-header">
                   <td :colspan="years.length * subHeaders.length + 1">
                     {{ group.name === 'public_markets_context' ? 'Public Markets' : 'Restricted Investments' }}
@@ -195,7 +195,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { getBrokerPerformanceSummary, getYearOptions, getPortfolioBreakdownSummary } from '@/services/api'
+import { getAccountPerformanceSummary, getYearOptions, getPortfolioBreakdownSummary } from '@/services/api'
 
 export default {
   name: 'SummaryPage',
@@ -205,18 +205,18 @@ export default {
     const router = useRouter()
     const { handleApiError } = useErrorHandler()
     const loading = ref({
-      brokerPerformance: true,
+      accountPerformance: true,
       portfolioBreakdown: true,
     })
-    const brokerPerformanceData = ref([])
+    const accountPerformanceData = ref([])
     const portfolioBreakdownData = ref([])
     const years = ref([])
     const currentYear = new Date().getFullYear()
     const selectedYear = ref(currentYear.toString())
     const yearOptions = ref([])
 
-    const brokerPerformanceHeaders = computed(() => [
-      { text: 'Broker', value: 'name', sortable: false, rowspan: 2 },
+    const accountPerformanceHeaders = computed(() => [
+      { text: 'Account', value: 'name', sortable: false, rowspan: 2 },
       ...years.value.map(year => ({
         text: year === 'YTD' ? currentYear : year,
         value: year,
@@ -227,7 +227,7 @@ export default {
       }))
     ])
 
-    const brokerPerformanceSubHeaders = computed(() => 
+    const accountPerformanceSubHeaders = computed(() => 
       years.value.flatMap(year => 
         subHeaders.value.map(subheader => ({
           text: subheader.text,
@@ -288,12 +288,12 @@ export default {
       }
     }
 
-    const fetchBrokerPerformanceData = async () => {
+    const fetchAccountPerformanceData = async () => {
       try {
-        loading.value.brokerPerformance = true
-        const data = await getBrokerPerformanceSummary()
+        loading.value.accountPerformance = true
+        const data = await getAccountPerformanceSummary()
         if (data && data.public_markets_context && data.restricted_investments_context && data.total_context) {
-          brokerPerformanceData.value = [
+          accountPerformanceData.value = [
             {
               name: 'public_markets_context',
               lines: data.public_markets_context.lines,
@@ -317,7 +317,7 @@ export default {
           handleApiError(error)
         }
       } finally {
-        loading.value.brokerPerformance = false
+        loading.value.accountPerformance = false
       }
     }
 
@@ -362,7 +362,7 @@ export default {
     onMounted(async () => {
       emit('update-page-title', 'Summary Analysis')
       await fetchYearOptions()
-      await fetchBrokerPerformanceData()
+      await fetchAccountPerformanceData()
       await fetchPortfolioBreakdown(selectedYear.value)
     })
 
@@ -370,14 +370,14 @@ export default {
     watch(
       () => store.state.dataRefreshTrigger,
       () => {
-        fetchBrokerPerformanceData()
+        fetchAccountPerformanceData()
         fetchPortfolioBreakdown(selectedYear.value)
       }
     )
 
-    // This watch is used to update the year options when the selected broker changes.
+    // This watch is used to update the year options when the selected account changes.
     watch(
-      () => store.state.selectedBroker,
+      () => store.state.selectedAccount,
       () => {
         fetchYearOptions()
       }
@@ -385,10 +385,10 @@ export default {
 
     return {
       loading,
-      brokerPerformanceData,
+      accountPerformanceData: accountPerformanceData,
       portfolioBreakdownData,
-      brokerPerformanceHeaders,
-      brokerPerformanceSubHeaders,
+      accountPerformanceHeaders,
+      accountPerformanceSubHeaders,
       portfolioBreakdownHeaders,
       portfolioBreakdownSubHeaders,
       portfolioBreakdownCategories,
@@ -454,17 +454,17 @@ export default {
 }
 
 /* Add vertical lines between year groups in the main part of the first table */
-.broker-performance-table :deep(tbody td:nth-child(8n+1):not(:first-child):not(:last-child)) {
+.account-performance-table :deep(tbody td:nth-child(8n+1):not(:first-child):not(:last-child)) {
   border-right: 2px solid #bdbdbd;
 }
 
 /* Add vertical lines for the first header row (years) in the first table */
-.broker-performance-table :deep(thead tr:first-child th:nth-child(n+3)) {
+.account-performance-table :deep(thead tr:first-child th:nth-child(n+3)) {
   border-left: 2px solid #bdbdbd;
 }
 
 /* Add vertical lines for the second header row (subheaders) in the first table */
-.broker-performance-table :deep(thead tr:nth-child(2) th:nth-child(8n+1):not(:first-child)) {
+.account-performance-table :deep(thead tr:nth-child(2) th:nth-child(8n+1):not(:first-child)) {
   border-left: 2px solid #bdbdbd;
 }
 
@@ -496,7 +496,7 @@ export default {
 }
 
 /* Highlight YTD and All-time columns in the header */
-.broker-performance-table :deep(thead th.highlight-column) {
+.account-performance-table :deep(thead th.highlight-column) {
   background-color: rgba(0, 0, 0, 0.03);
 }
 

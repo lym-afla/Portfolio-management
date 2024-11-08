@@ -11,10 +11,10 @@ logger = logging.getLogger('dashboard')
 from common.models import Transactions
 from django.db.models import Sum, Min
 
-def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency, breakdown):
-    # If from_date is None, get the earliest date for the set of brokers
+def get_nav_chart_data(user_id, broker_account_ids, frequency, from_date, to_date, currency, breakdown):
+    # If from_date is None, get the earliest date for the set of broker accounts
     if from_date is None:
-        from_date = _get_earliest_date_for_brokers(user_id, brokers)
+        from_date = _get_earliest_date_for_accounts(user_id, broker_account_ids)
     
     dates = _chart_dates(from_date, to_date, frequency)
 
@@ -53,16 +53,16 @@ def get_nav_chart_data(user_id, brokers, frequency, from_date, to_date, currency
         ])
 
     for d in dates:
-        NAV_data = NAV_at_date(user_id, tuple(brokers), d, currency, tuple([breakdown]) if breakdown not in ['none', 'value_contributions'] else ())
+        NAV_data = NAV_at_date(user_id, tuple(broker_account_ids), d, currency, tuple([breakdown]) if breakdown not in ['none', 'value_contributions'] else ())
         NAV = NAV_data['Total NAV'] / 1000
 
-        IRR_value = IRR(user_id, d, currency, broker_id_list=brokers, cached_nav=NAV * 1000)
-        IRR_rolling = IRR(user_id, d, currency, broker_id_list=brokers, start_date=previous_date, cached_nav=NAV * 1000)
+        IRR_value = IRR(user_id, d, currency, broker_account_ids=broker_account_ids, cached_nav=NAV * 1000)
+        IRR_rolling = IRR(user_id, d, currency, broker_account_ids=broker_account_ids, start_date=previous_date, cached_nav=NAV * 1000)
 
         if breakdown == 'none':
             add_no_breakdown_data(chart_data, NAV, IRR_value, IRR_rolling)
         elif breakdown == 'value_contributions':
-            add_contributions_data(chart_data, user_id, brokers, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date, currency)
+            add_contributions_data(chart_data, user_id, broker_account_ids, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date, currency)
         else:
             breakdown_data = NAV_data.get(breakdown, {})
             add_breakdown_data(chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d)
@@ -80,8 +80,8 @@ def add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
     chart_data['datasets'][1]['data'].append(IRR)
     chart_data['datasets'][2]['data'].append(IRR_rolling)
 
-def add_contributions_data(chart_data, user_id, brokers, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date, currency):
-    contributions = calculate_contributions(user_id, brokers, d, previous_date, currency)
+def add_contributions_data(chart_data, user_id, broker_account_ids, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date, currency):
+    contributions = _calculate_contributions(user_id, broker_account_ids, d, previous_date, currency)
     return_amount = NAV - NAV_previous_date - contributions
 
     chart_data['datasets'][0]['data'].append(NAV_previous_date)
@@ -166,10 +166,10 @@ def get_color(index):
     colors = ['rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)']
     return colors[index % len(colors)]
 
-def calculate_contributions(user_id, brokers, d, previous_date, target_currency):
+def _calculate_contributions(user_id, broker_account_ids, d, previous_date, target_currency):
     filter_conditions = {
         'investor__id': user_id,
-        'broker__in': brokers,
+        'broker_account_id__in': broker_account_ids,
         'type__in': ['Cash in', 'Cash out']
     }
     
@@ -245,10 +245,10 @@ def _chart_labels(dates, frequency):
     if frequency == 'Y':
         return [d.strftime("%Y") for d in dates]
     
-def _get_earliest_date_for_brokers(user_id, brokers):
+def _get_earliest_date_for_accounts(user_id, broker_account_ids):
     earliest_date = Transactions.objects.filter(
         investor__id=user_id,
-        broker_id__in=brokers
+        broker_account_id__in=broker_account_ids
     ).aggregate(Min('date'))['date__min']
     
     return earliest_date.isoformat() if earliest_date else None

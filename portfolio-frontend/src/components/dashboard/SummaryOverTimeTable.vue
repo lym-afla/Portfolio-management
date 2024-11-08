@@ -27,27 +27,27 @@
           </tr>
         </tbody>
       </v-table>
-      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Broker Performance</v-btn>
+      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Account Performance</v-btn>
     </v-card-text>
   </v-card>
   <v-card v-else>
     <v-card-title>Summary Over Time</v-card-title>
     <v-card-text>
       <v-alert type="info">
-        No data available for the selected broker.
+        No data available for the selected account.
       </v-alert>
-      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Broker Performance</v-btn>
+      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Account Performance</v-btn>
     </v-card-text>
   </v-card>
 
-  <UpdateBrokerPerformanceDialog
+  <UpdateAccountPerformanceDialog
     v-model="showDialog"
     @update-started="handleUpdateStarted"
     @update-error="handleUpdateError"
   />
   <ProgressDialog
     v-model="showProgressDialog"
-    :title="'Updating Broker Performance'"
+    :title="'Updating Account Performance'"
     :progress="updateProgress"
     :current="currentOperation"
     :total="totalOperations"
@@ -59,14 +59,14 @@
 
 <script>
 import { ref, onMounted, onUnmounted } from 'vue'
-import UpdateBrokerPerformanceDialog from '@/components/dialogs/UpdateBrokerPerformanceDialog.vue'
+import UpdateAccountPerformanceDialog from '@/components/dialogs/UpdateAccountPerformanceDialog.vue'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
-import { updateBrokerPerformance } from '@/services/api'
+import { updateAccountPerformance } from '@/services/api'
 
 export default {
   name: 'SummaryOverTimeTable',
   components: {
-    UpdateBrokerPerformanceDialog,
+    UpdateAccountPerformanceDialog,
     ProgressDialog
   },
   props: {
@@ -111,7 +111,7 @@ export default {
       errors.value = []
 
       try {
-        await updateBrokerPerformance(formData)
+        await updateAccountPerformance(formData)
       } catch (error) {
         handleUpdateError(error.message)
       }
@@ -153,11 +153,11 @@ export default {
     }
 
     onMounted(() => {
-      window.addEventListener('brokerPerformanceUpdateProgress', handleProgress)
+      window.addEventListener('accountPerformanceUpdateProgress', handleProgress)
     })
 
     onUnmounted(() => {
-      window.removeEventListener('brokerPerformanceUpdateProgress', handleProgress)
+      window.removeEventListener('accountPerformanceUpdateProgress', handleProgress)
     })
 
     return {

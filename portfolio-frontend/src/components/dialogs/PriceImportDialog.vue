@@ -14,7 +14,7 @@
             item-value="id"
             multiple
             clearable
-            :disabled="brokers.length > 0"
+            :disabled="accounts.length > 0"
             :error-messages="errors.securities"
             >
             <template v-slot:prepend-item>
@@ -31,22 +31,22 @@
           </v-autocomplete>
 
           <v-autocomplete
-            v-model="brokers"
-            :items="brokersList"
-            label="Brokers"
+            v-model="accounts"
+            :items="accountsList"
+            label="Accounts"
             item-title="name"
             item-value="id"
             multiple
             clearable
             :disabled="securities.length > 0"
-            :error-messages="errors.brokers"
+            :error-messages="errors.accounts"
             >
             <template v-slot:prepend-item>
-              <v-list-item title="Select All" @click="toggleSelectAllBrokers">
+              <v-list-item title="Select All" @click="toggleSelectAllAccounts">
                 <template v-slot:prepend>
                   <v-checkbox-btn
-                    :model-value="brokersAllSelected"
-                    :indeterminate="brokersIndeterminate"
+                    :model-value="accountsAllSelected"
+                    :indeterminate="accountsIndeterminate"
                   ></v-checkbox-btn>
                 </template>
               </v-list-item>
@@ -199,13 +199,13 @@ export default {
 
     const dateType = ref('range')
     const securitiesList = ref([])
-    const brokersList = ref([])
+    const accountsList = ref([])
     const frequencyChoices = ref([])
 
     const { handleSubmit, resetForm, errors } = useForm({
       initialValues: {
         securities: [],
-        brokers: [],
+        accounts: [],
         startDate: null,
         endDate: null,
         frequency: null,
@@ -214,15 +214,15 @@ export default {
       validationSchema: {
         securities: (value) => {
           if (!value) return true; // Allow undefined during cleanup
-          if (value.length === 0 && brokers.value.length === 0) {
-            return 'Either securities or brokers must be selected'
+          if (value.length === 0 && accounts.value.length === 0) {
+            return 'Either securities or accounts must be selected'
           }
           return true
         },
-        brokers: (value) => {
+        accounts: (value) => {
           if (!value) return true; // Allow undefined during cleanup
           if (value.length === 0 && securities.value.length === 0) {
-            return 'Either securities or brokers must be selected'
+            return 'Either securities or accounts must be selected'
           }
           return true
         },
@@ -254,7 +254,7 @@ export default {
     })
 
     const { value: securities, errorMessage: securitiesError } = useField('securities')
-    const { value: brokers, errorMessage: brokersError } = useField('brokers')
+    const { value: accounts, errorMessage: accountsError } = useField('accounts')
     const { value: startDate, errorMessage: startDateError } = useField('startDate')
     const { value: endDate, errorMessage: endDateError } = useField('endDate')
     const { value: frequency, errorMessage: frequencyError } = useField('frequency')
@@ -279,7 +279,7 @@ export default {
       try {
         const structure = await getPriceImportFormStructure()
         securitiesList.value = structure.securities
-        brokersList.value = structure.brokers
+        accountsList.value = structure.accounts
         frequencyChoices.value = structure.frequency_choices
       } catch (error) {
         console.error('Error fetching form structure:', error)
@@ -295,12 +295,12 @@ export default {
       return securities.value.length > 0 && !securitiesAllSelected.value
     })
 
-    const brokersAllSelected = computed(() => {
-      return brokers.value.length === brokersList.value.length
+    const accountsAllSelected = computed(() => {
+      return accounts.value.length === accountsList.value.length
     })
 
-    const brokersIndeterminate = computed(() => {
-      return brokers.value.length > 0 && !brokersAllSelected.value
+    const accountsIndeterminate = computed(() => {
+      return accounts.value.length > 0 && !accountsAllSelected.value
     })
 
     const toggleSelectAllSecurities = () => {
@@ -311,11 +311,11 @@ export default {
       }
     }
 
-    const toggleSelectAllBrokers = () => {
-      if (brokersAllSelected.value) {
-        brokers.value = []
+    const toggleSelectAllAccounts = () => {
+      if (accountsAllSelected.value) {
+        accounts.value = []
       } else {
-        brokers.value = brokersList.value.map(b => b.id)
+        accounts.value = accountsList.value.map(a => a.id)
       }
     }
 
@@ -362,7 +362,7 @@ export default {
     const cleanupForm = () => {
       resetForm()
       securities.value = []
-      brokers.value = []
+      accounts.value = []
       startDate.value = null
       endDate.value = null
       frequency.value = null
@@ -401,7 +401,7 @@ export default {
         // Prepare the data based on the date type
         const submitData = { 
           securities: values.securities,
-          brokers: values.brokers,
+          accounts: values.accounts,
           frequency: values.frequency
         }
 
@@ -446,17 +446,17 @@ export default {
     return {
       dialog,
       securities,
-      brokers,
+      accounts,
       dateType,
       startDate,
       endDate,
       frequency,
       singleDate,
       securitiesList,
-      brokersList,
+      accountsList,
       frequencyChoices,
       securitiesError,
-      brokersError,
+      accountsError,
       startDateError,
       endDateError,
       frequencyError,
@@ -470,10 +470,10 @@ export default {
       generalErrorSummary,
       securitiesAllSelected,
       securitiesIndeterminate,
-      brokersAllSelected,
-      brokersIndeterminate,
+      accountsAllSelected,
+      accountsIndeterminate,
       toggleSelectAllSecurities,
-      toggleSelectAllBrokers,
+      toggleSelectAllAccounts,
       submitForm,
       errors,
       showProgressDialog,

@@ -8,7 +8,7 @@ app_name = 'users' # Optional, but useful for namespacing
 
 # Create a separate router for broker groups
 broker_router = DefaultRouter()
-broker_router.register(r'broker-groups', views.BrokerGroupViewSet, basename='broker-groups')
+broker_router.register(r'account-groups', views.AccountGroupViewSet, basename='account-groups')
 
 # Create main router for other viewsets
 router = DefaultRouter()

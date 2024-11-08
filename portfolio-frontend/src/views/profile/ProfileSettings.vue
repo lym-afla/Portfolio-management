@@ -76,12 +76,12 @@
           ></v-text-field>
           
           <v-select
-            v-model="settingsForm.custom_brokers"
-            :items="brokerChoices"
+            v-model="settingsForm.custom_broker_accounts"
+            :items="accountChoices"
             item-title="title"
             item-value="value"
-            label="Brokers"
-            :error-messages="fieldErrors.custom_brokers"
+            label="Account or Account group"
+            :error-messages="fieldErrors.custom_broker_accounts"
           >
             <template v-slot:item="{ item, props }">
               <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
@@ -101,7 +101,7 @@
       </v-card-text>
     </v-card>
 
-    <BrokerGroupManager
+    <AccountGroupManager
       class="mt-4"
       @error="showErrorMessage"
       @success="showSuccessMessage"
@@ -127,13 +127,13 @@
 <script>
 import { provide } from 'vue'
 import { getUserSettings, updateUserSettings, getSettingsChoices } from '@/services/api'
-import { formatBrokerChoices } from '@/utils/brokerUtils'
-import BrokerGroupManager from '@/components/BrokerGroupManager.vue'
+import { formatAccountChoices } from '@/utils/accountUtils'
+import AccountGroupManager from '@/components/AccountGroupManager.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 
 export default {
   components: {
-    BrokerGroupManager,
+    AccountGroupManager,
     BrokerTokenManager
   },
 
@@ -154,13 +154,13 @@ export default {
         chart_timeline: '',
         NAV_barchart_default_breakdown: '',
         digits: 0,
-        custom_brokers: '',
+        custom_broker_accounts: '',
       },
       currencyChoices: [],
       frequencyChoices: [],
       timelineChoices: [],
       navBreakdownChoices: [],
-      brokerChoices: [],
+      accountChoices: [],
       fieldErrors: {
         default_currency: [],
         use_default_currency_where_relevant: [],
@@ -168,7 +168,7 @@ export default {
         chart_timeline: [],
         NAV_barchart_default_breakdown: [],
         digits: [],
-        custom_brokers: [],
+        custom_broker_accounts: [],
       },
       snackbar: false,
       snackbarMessage: '',
@@ -194,7 +194,7 @@ export default {
         this.frequencyChoices = this.formatChoices(choices.frequency_choices)
         this.timelineChoices = this.formatChoices(choices.timeline_choices)
         this.navBreakdownChoices = this.formatChoices(choices.nav_breakdown_choices)
-        this.brokerChoices = formatBrokerChoices(choices.broker_choices)
+        this.accountChoices = formatAccountChoices(choices.account_choices)
       } catch (error) {
         console.error('Error loading settings data:', error)
         this.showErrorMessage('Failed to load settings. Please try again.')

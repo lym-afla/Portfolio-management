@@ -1,11 +1,13 @@
-from datetime import datetime
 from django.db.models import Q
 from common.models import Prices
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
-from core.formatting_utils import format_table_data, currency_format
+from core.formatting_utils import format_table_data
 
 def get_prices_table_api(request):
+    """
+    Get prices table data for API response.
+    """
     data = request.data
     start_date = data.get('startDate')
     end_date = data.get('endDate')
@@ -14,14 +16,17 @@ def get_prices_table_api(request):
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
     selected_asset_types = data.get('assetTypes', [])
-    selected_broker = data.get('broker')
+    selected_broker_account = data.get('broker_account')  # Updated from broker
     selected_securities = data.get('securities', [])
 
     user = request.user
     currency_target = user.default_currency
     number_of_digits = user.digits
 
-    prices = _filter_prices(user, start_date, end_date, selected_asset_types, selected_broker, selected_securities, search)
+    prices = _filter_prices(
+        user, start_date, end_date, selected_asset_types, 
+        selected_broker_account, selected_securities, search
+    )
     
     prices_data = [
         {
@@ -47,7 +52,19 @@ def get_prices_table_api(request):
         'total_pages': pagination_data['total_pages'],
     }
 
-def _filter_prices(user, start_date, end_date, selected_asset_types, selected_broker, selected_securities, search):
+def _filter_prices(user, start_date, end_date, selected_asset_types, selected_broker_account, selected_securities, search):
+    """
+    Filter prices based on user criteria.
+    
+    Args:
+        user: The user requesting the prices
+        start_date: Start date for filtering
+        end_date: End date for filtering
+        selected_asset_types: List of asset types to filter by
+        selected_broker_account: Selected broker account ID
+        selected_securities: List of security IDs to filter by
+        search: Search string for security name or type
+    """
     prices_query = Prices.objects.filter(security__investors=user).select_related('security')
 
     if start_date:
@@ -56,8 +73,8 @@ def _filter_prices(user, start_date, end_date, selected_asset_types, selected_br
         prices_query = prices_query.filter(date__lte=end_date)
     if selected_asset_types:
         prices_query = prices_query.filter(security__type__in=selected_asset_types)
-    if selected_broker:
-        prices_query = prices_query.filter(security__brokers__id=selected_broker)
+    if selected_broker_account:
+        prices_query = prices_query.filter(security__broker_accounts__id=selected_broker_account)
     if selected_securities:
         prices_query = prices_query.filter(security__id__in=selected_securities)
     if search:

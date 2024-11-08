@@ -2,8 +2,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.conf import settings
-from cryptography.fernet import Fernet, InvalidToken
-import os
+from cryptography.fernet import Fernet
 import base64
 import logging
 
@@ -34,7 +33,7 @@ class CustomUser(AbstractUser):
             'min_value': 'The value for digits must be greater than or equal to 0.',
             }
         )
-    custom_brokers = models.JSONField(default=list, blank=True)  # Store list of broker IDs as JSON
+    custom_broker_accounts = models.CharField(max_length=255, blank=True)
 
 class BaseApiToken(models.Model):
     """Abstract base class for all broker API tokens"""
@@ -127,15 +126,15 @@ class InteractiveBrokersApiToken(BaseApiToken):
         verbose_name_plural = "Interactive Brokers API Tokens"
         unique_together = ['user', 'account_id']
 
-class BrokerGroup(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='broker_groups')
+class AccountGroup(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='account_groups')
     name = models.CharField(max_length=50)
-    brokers = models.ManyToManyField('common.Brokers', related_name='groups')
+    broker_accounts = models.ManyToManyField('common.BrokerAccounts', related_name='groups')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['user', 'name']  # Prevent duplicate group names per user
+        unique_together = ['user', 'name']
         ordering = ['name']
 
     def __str__(self):

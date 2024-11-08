@@ -46,9 +46,9 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-autocomplete
-              v-model="selectedBroker"
-              :items="brokers"
-              label="Brokers"
+              v-model="selectedAccount"
+              :items="accounts"
+              label="Accounts"
               item-title="name"
               item-value="id"
               clearable
@@ -277,7 +277,7 @@
 <script>
 import { ref, watch, computed, onMounted, inject } from 'vue'
 import { useStore } from 'vuex'
-import { getAssetTypes, getBrokers, getSecurities, getPrices, deletePrice, getPriceDetails } from '@/services/api'
+import { getAssetTypes, getAccounts, getSecurities, getPrices, deletePrice, getPriceDetails } from '@/services/api'
 import debounce from 'lodash/debounce'
 import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
@@ -312,10 +312,10 @@ export default {
     } = useTableSettings()
 
     const assetTypes = ref([])
-    const brokers = ref([])
+    const accounts = ref([])
     const securities = ref([])
     const selectedAssetTypes = ref([])
-    const selectedBroker = ref(null)
+    const selectedAccount = ref(null)
     const selectedSecurities = ref([])
     const priceData = ref([])
     const loading = ref(false)
@@ -376,16 +376,16 @@ export default {
 
     onMounted(async () => {
       try {
-        const [assetTypesData, brokersData, securitiesData] = await Promise.all([
+        const [assetTypesData, accountsData, securitiesData] = await Promise.all([
           getAssetTypes(),
-          getBrokers(),
+          getAccounts(),
           getSecurities(),
         ])
-        console.log('brokersData', brokersData)
+        console.log('accountsData', accountsData)
         console.log('securitiesData', securitiesData)
         console.log('assetTypesData', assetTypesData)
         assetTypes.value = assetTypesData
-        brokers.value = brokersData
+        accounts.value = accountsData
         securities.value = securitiesData
 
         await handleTimespanChange('ytd')
@@ -397,13 +397,13 @@ export default {
 
     const fetchSecurities = debounce(async () => {
       try {
-        securities.value = await getSecurities(selectedAssetTypes.value, selectedBroker.value)
+        securities.value = await getSecurities(selectedAssetTypes.value, selectedAccount.value)
         // Reset securities if they are no longer in the list
         selectedSecurities.value = selectedSecurities.value.filter(id =>
           securities.value.some(security => security.id === id)
         )
-        // Automatically select all securities if a broker is selected
-        if (selectedBroker.value) {
+        // Automatically select all securities if a account is selected
+        if (selectedAccount.value) {
           selectedSecurities.value = securities.value.map(item => item.id);
         }
       } catch (error) {
@@ -411,7 +411,7 @@ export default {
       }
     }, 300) // 300ms debounce
 
-    watch([selectedAssetTypes, selectedBroker], () => {
+    watch([selectedAssetTypes, selectedAccount], () => {
       fetchSecurities()
     })
 
@@ -420,7 +420,7 @@ export default {
       try {
         const response = await getPrices({
           assetTypes: selectedAssetTypes.value,
-          broker: selectedBroker.value,
+          account: selectedAccount.value,
           securities: selectedSecurities.value,
           startDate: dateFrom.value,
           endDate: dateTo.value,
@@ -687,10 +687,10 @@ export default {
 
     return {
       assetTypes,
-      brokers,
+      accounts,
       securities,
       selectedAssetTypes,
-      selectedBroker,
+      selectedAccount,
       selectedSecurities,
       dateFrom,
       dateTo,

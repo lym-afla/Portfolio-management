@@ -13,7 +13,7 @@ def calculate_positions_table_output(
     categories: List[str],
     use_default_currency: bool,
     currency_target: str,
-    selected_brokers: List[int],
+    selected_account_ids: List[int],
     start_date: Union[date, None],
     is_closed: bool
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -24,12 +24,12 @@ def calculate_positions_table_output(
     if is_closed:
         return calculate_closed_table_output_for_api(
             user_id, assets, end_date, categories, use_default_currency,
-            currency_target, selected_brokers, start_date
+            currency_target, selected_account_ids, start_date
         )
     else:
         return calculate_open_table_output_for_api(
             user_id, assets, end_date, categories, use_default_currency,
-            currency_target, selected_brokers, start_date
+            currency_target, selected_account_ids, start_date
         )
 
 def calculate_closed_table_output_for_api(
@@ -39,7 +39,7 @@ def calculate_closed_table_output_for_api(
     categories: List[str],
     use_default_currency: bool,
     currency_target: str,
-    selected_brokers: List[int],
+    selected_account_ids: List[int],
     start_date: Optional[date] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
@@ -51,7 +51,7 @@ def calculate_closed_table_output_for_api(
     :param categories: List of categories to include in the output
     :param use_default_currency: Whether to use the default currency
     :param currency_target: The target currency for calculations
-    :param selected_brokers: List of selected broker IDs
+    :param selected_account_ids: List of selected broker account IDs
     :param start_date: The start date for calculations (optional)
     :return: A tuple containing a list of closed position dictionaries and a dictionary of totals
     """
@@ -61,8 +61,8 @@ def calculate_closed_table_output_for_api(
     
     for asset in portfolio:
         
-        exit_dates = list(asset.exit_dates(end_date, user_id, selected_brokers, start_date))
-        entry_dates = list(asset.entry_dates(end_date, user_id, selected_brokers))
+        exit_dates = list(asset.exit_dates(end_date, user_id, selected_account_ids, start_date))
+        entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
         
         for i, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
@@ -77,7 +77,7 @@ def calculate_closed_table_output_for_api(
             }
 
             # Determine entry_date
-            first_entry_date = asset.entry_dates(exit_date, user_id, selected_brokers)[-1]
+            first_entry_date = asset.entry_dates(exit_date, user_id, selected_account_ids)[-1]
             entry_date = start_date if start_date and start_date >= first_entry_date else first_entry_date
             position['investment_date'] = entry_date
 
@@ -88,7 +88,7 @@ def calculate_closed_table_output_for_api(
                 investor__id=user_id,
                 date__gte=entry_date,
                 date__lte=exit_date,
-                broker__in=selected_brokers,
+                broker_account_id__in=selected_account_ids,
                 quantity__isnull=False
             ).order_by('-date')
 
@@ -104,7 +104,7 @@ def calculate_closed_table_output_for_api(
 
             # Calculate entry value and quantity
             if start_date is not None:
-                entry_quantity = asset.position(entry_date - timedelta(days=1), user_id, selected_brokers)
+                entry_quantity = asset.position(entry_date - timedelta(days=1), user_id, selected_account_ids)
                 entry_value = asset.price_at_date(entry_date - timedelta(days=1), currency_used).price * entry_quantity
             else:
                 entry_value = Decimal(0)
@@ -136,15 +136,15 @@ def calculate_closed_table_output_for_api(
             # Calculate capital distribution including dividends after exit_date but before next_entry_date
             if 'capital_distribution' in categories:
                 position['capital_distribution'] = (
-                    asset.get_capital_distribution(exit_date, user_id, currency_used, selected_brokers, entry_date) +
-                    asset.get_capital_distribution(next_entry_date, user_id, currency_used, selected_brokers, exit_date + timedelta(days=1))
+                    asset.get_capital_distribution(exit_date, user_id, currency_used, selected_account_ids, entry_date) +
+                    asset.get_capital_distribution(next_entry_date, user_id, currency_used, selected_account_ids, exit_date + timedelta(days=1))
                 )
                 position['capital_distribution_percentage'] = Decimal(position['capital_distribution'] / position['entry_value']) if position['entry_value'] > 0 else 'N/R'
             else:
                 position['capital_distribution'] = Decimal(0)
 
             if 'commission' in categories:
-                position['commission'] = asset.get_commission(exit_date, user_id, currency_used, selected_brokers, entry_date)
+                position['commission'] = asset.get_commission(exit_date, user_id, currency_used, selected_account_ids, entry_date)
                 position['commission_percentage'] = position['commission'] / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
             else:
                 position['commission'] = Decimal(0)
@@ -154,7 +154,14 @@ def calculate_closed_table_output_for_api(
 
             # Calculate IRR
             currency_used = asset.currency if use_default_currency else currency_target
-            position['irr'] = IRR(user_id, exit_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=entry_date)
+            position['irr'] = IRR(
+                user_id, 
+                exit_date, 
+                currency_used, 
+                asset_id=asset.id, 
+                broker_account_ids=selected_account_ids,
+                start_date=entry_date
+            )
 
             closed_positions.append(position)
             
@@ -181,7 +188,7 @@ def calculate_open_table_output_for_api(
     categories: List[str],
     use_default_currency: bool,
     currency_target: str,
-    selected_brokers: List[int],
+    selected_account_ids: List[int],
     start_date: Optional[date] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
@@ -193,13 +200,13 @@ def calculate_open_table_output_for_api(
     :param categories: List of categories to include in the output
     :param use_default_currency: Whether to use the default currency
     :param currency_target: The target currency for calculations
-    :param selected_brokers: List of selected broker IDs
+    :param selected_account_ids: List of selected broker account IDs
     :param start_date: The start date for calculations (optional)
     :return: A tuple containing a list of open position dictionaries and a dictionary of totals
     """
     start_time = time.time()  # Start timing the overall function
-    portfolio_NAV = NAV_at_date(user_id, tuple(selected_brokers), end_date, currency_target)['Total NAV']
-    portfolio_cash = calculate_portfolio_cash(user_id, selected_brokers, end_date, currency_target)
+    portfolio_NAV = NAV_at_date(user_id, tuple(selected_account_ids), end_date, currency_target)['Total NAV']
+    portfolio_cash = calculate_portfolio_cash(user_id, selected_account_ids, end_date, currency_target)
     
     totals = ['entry_value', 'current_value', 'realized_gl', 'unrealized_gl', 'capital_distribution', 'commission']
     open_positions = []
@@ -220,21 +227,21 @@ def calculate_open_table_output_for_api(
             'currency': currency_format(None, asset.currency)
         }
 
-        position['current_position'] = asset.position(end_date, user_id, selected_brokers)
+        position['current_position'] = asset.position(end_date, user_id, selected_account_ids)
 
         if position['current_position'] == 0:
             print(f"The position is zero for {asset.name}. Skipping this asset.")
             continue
 
-        position_entry_date = asset.entry_dates(end_date, user_id, selected_brokers)[-1]
+        position_entry_date = asset.entry_dates(end_date, user_id, selected_account_ids)[-1]
         if 'investment_date' in categories:
             position['investment_date'] = position_entry_date
 
         asset_start_date = start_date if start_date is not None else position_entry_date
             
-        position['entry_price'] = asset.calculate_buy_in_price(end_date, user_id, currency_used, selected_brokers, asset_start_date)
+        position['entry_price'] = asset.calculate_buy_in_price(end_date, user_id, currency_used, selected_account_ids, asset_start_date)
         if position['entry_price'] == 0:
-            position['entry_price'] = asset.calculate_buy_in_price(end_date, user_id, currency_used, selected_brokers)
+            position['entry_price'] = asset.calculate_buy_in_price(end_date, user_id, currency_used, selected_account_ids)
         position['entry_value'] = Decimal(position['entry_price'] * position['current_position'])
         
         if 'current_value' in categories:
@@ -248,25 +255,25 @@ def calculate_open_table_output_for_api(
             portfolio_open_totals['all_assets_share_of_portfolio_percentage'] += position['share_of_portfolio']
         
         if 'realized_gl' in categories:
-            position['realized_gl'] = asset.realized_gain_loss(end_date, user_id, currency_used, selected_brokers, asset_start_date)['current_position']['total']
+            position['realized_gl'] = asset.realized_gain_loss(end_date, user_id, currency_used, selected_account_ids, asset_start_date)['current_position']['total']
         else:
             position['realized_gl'] = Decimal(0)
 
         if 'unrealized_gl' in categories:
-            position['unrealized_gl'] = asset.unrealized_gain_loss(end_date, user_id, currency_used, selected_brokers, asset_start_date)['total']
+            position['unrealized_gl'] = asset.unrealized_gain_loss(end_date, user_id, currency_used, selected_account_ids, asset_start_date)['total']
         else:
             position['unrealized_gl'] = Decimal(0)
         
         position['price_change_percentage'] = (position['realized_gl'] + position['unrealized_gl']) / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
         
         if 'capital_distribution' in categories:
-            position['capital_distribution'] = asset.get_capital_distribution(end_date, user_id, currency_used, selected_brokers, asset_start_date)
+            position['capital_distribution'] = asset.get_capital_distribution(end_date, user_id, currency_used, selected_account_ids, asset_start_date)
             position['capital_distribution_percentage'] = position['capital_distribution'] / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
         else:
             position['capital_distribution'] = Decimal(0)
 
         if 'commission' in categories:
-            position['commission'] = asset.get_commission(end_date, user_id, currency_used, selected_brokers, asset_start_date)
+            position['commission'] = asset.get_commission(end_date, user_id, currency_used, selected_account_ids, asset_start_date)
             position['commission_percentage'] = position['commission'] / position['entry_value'] if position['entry_value'] > 0 else 'N/R'
         else:
             position['commission'] = Decimal(0)
@@ -276,7 +283,7 @@ def calculate_open_table_output_for_api(
         
         # Calculate IRR for security
         currency_used = asset.currency if use_default_currency else currency_target
-        position['irr'] = IRR(user_id, end_date, currency_used, asset_id=asset.id, broker_id_list=selected_brokers, start_date=asset_start_date)
+        position['irr'] = IRR(user_id, end_date, currency_used, asset_id=asset.id, broker_account_ids=selected_account_ids, start_date=asset_start_date)
 
         # Log time taken for processing the asset
         asset_duration = time.time() - asset_start_time
@@ -294,13 +301,13 @@ def calculate_open_table_output_for_api(
                 elif key == 'current_value':
                     addition = position['current_value']
                 elif key == 'realized_gl':
-                    addition = asset.realized_gain_loss(end_date, user_id, currency_target, selected_brokers, asset_start_date)['current_position']['total']
+                    addition = asset.realized_gain_loss(end_date, user_id, currency_target, selected_account_ids, asset_start_date)['current_position']['total']
                 elif key == 'unrealized_gl':
-                    addition = asset.unrealized_gain_loss(end_date, user_id, currency_target, selected_brokers, asset_start_date)['total']
+                    addition = asset.unrealized_gain_loss(end_date, user_id, currency_target, selected_account_ids, asset_start_date)['total']
                 elif key == 'capital_distribution':
-                    addition = asset.get_capital_distribution(end_date, user_id, currency_target, selected_brokers, asset_start_date)
+                    addition = asset.get_capital_distribution(end_date, user_id, currency_target, selected_account_ids, asset_start_date)
                 elif key == 'commission':
-                    addition = asset.get_commission(end_date, user_id, currency_target, selected_brokers, asset_start_date)
+                    addition = asset.get_commission(end_date, user_id, currency_target, selected_account_ids, asset_start_date)
                 else:
                     addition = Decimal(0)
 
@@ -326,7 +333,14 @@ def calculate_open_table_output_for_api(
 
     portfolio_open_totals['cash'] = portfolio_cash
     portfolio_open_totals['total_nav'] = portfolio_NAV
-    portfolio_open_totals['irr'] = IRR(user_id, end_date, currency_target, asset_id=None, broker_id_list=selected_brokers, start_date=total_irr_start_date)
+    portfolio_open_totals['irr'] = IRR(
+        user_id, 
+        end_date, 
+        currency_target, 
+        asset_id=None, 
+        broker_account_ids=selected_account_ids,
+        start_date=total_irr_start_date
+    )
 
     if portfolio_NAV == 0:
         portfolio_open_totals['cash_share_of_portfolio'] = 'N/A'

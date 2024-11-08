@@ -1,5 +1,5 @@
-from common.models import Brokers
-from users.models import BrokerGroup
+from common.models import BrokerAccounts
+from users.models import AccountGroup
 
 FREQUENCY_CHOICES = [
     ('D', 'Daily'),
@@ -20,28 +20,91 @@ TIMELINE_CHOICES = [
     ('Custom', 'Custom'),
 ]
 
-def get_broker_choices(user):
+def get_broker_account_choices(user):
     """
-    Get broker choices for a user, including individual brokers and broker groups.
+    Get broker account choices for a user, including individual accounts and account groups.
     
-    :param user: The user object
-    :return: List of tuples containing broker choices in grouped format
+    Args:
+        user: The CustomUser object
+    
+    Returns:
+        List of tuples containing broker account choices in grouped format:
+        [
+            ('General', [('All accounts', 'All accounts')]),
+            ('Your Accounts', [(account.name, account.id), ...]),
+            ('Account Groups', [(group.name, group.id), ...])
+        ]
     """
-    broker_choices = [
-        ('General', [('All brokers', 'All brokers')]),
+    account_choices = [
+        ('General', [('All accounts', 'All accounts')]),
         ('__SEPARATOR__', '__SEPARATOR__'),
     ]
     
     if user is not None:
-        brokers = Brokers.objects.filter(investor=user).order_by('name')
-        user_brokers = [(broker.name, broker.name) for broker in brokers]
-        if user_brokers:
-            broker_choices.append(('Your Brokers', user_brokers))
-            broker_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+        # Get individual broker accounts
+        accounts = BrokerAccounts.objects.filter(broker__investor=user).order_by('name')
+        user_accounts = [(account.name, account.name) for account in accounts]
+        if user_accounts:
+            account_choices.append(('Your Accounts', user_accounts))
+            account_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
         
-        user_groups = BrokerGroup.objects.filter(user=user).order_by('name')
+        # Get broker account groups
+        user_groups = AccountGroup.objects.filter(user=user).order_by('name')
         group_choices = [(group.name, group.name) for group in user_groups]
         if group_choices:
-            broker_choices.append(('Broker Groups', group_choices))
+            account_choices.append(('Account Groups', group_choices))
 
-    return broker_choices
+    return account_choices
+
+def get_broker_account_ids_from_choice(user, choice):
+    """
+    Convert a broker account choice to a list of account IDs.
+    
+    Args:
+        user: The CustomUser object
+        choice: String representing the selected choice (account ID, group ID, or 'All accounts')
+    
+    Returns:
+        List of broker account IDs
+    """
+    if not choice or choice == 'All accounts':
+        return list(BrokerAccounts.objects.filter(broker__investor=user).values_list('id', flat=True))
+    
+    if choice.startswith('group_'):
+        group_id = int(choice.replace('group_', ''))
+        try:
+            group = AccountGroup.objects.get(id=group_id, user=user)
+            return list(group.broker_accounts.values_list('id', flat=True))
+        except AccountGroup.DoesNotExist:
+            return []
+    
+    try:
+        account_id = int(choice)
+        if BrokerAccounts.objects.filter(id=account_id, broker__investor=user).exists():
+            return [account_id]
+    except (ValueError, TypeError):
+        pass
+    
+    return []
+
+def get_account_display_name(user, account_id):
+    """
+    Get display name for a broker account.
+    
+    Args:
+        user: The CustomUser object
+        account_id: The broker account ID
+    
+    Returns:
+        String: Account name or group name
+    """
+    try:
+        if isinstance(account_id, str) and account_id.startswith('group_'):
+            group_id = int(account_id.replace('group_', ''))
+            group = AccountGroup.objects.get(id=group_id, user=user)
+            return f"Group: {group.name}"
+        else:
+            account = BrokerAccounts.objects.get(id=account_id, broker__investor=user)
+            return account.name
+    except (BrokerAccounts.DoesNotExist, AccountGroup.DoesNotExist, ValueError):
+        return "Unknown Account"

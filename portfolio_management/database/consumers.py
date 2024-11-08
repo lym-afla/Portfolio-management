@@ -5,11 +5,11 @@ from asgiref.sync import sync_to_async
 
 from django.utils.dateparse import parse_date
 import asyncio
-from common.models import Assets, Brokers, FX, Transactions
+from common.models import Assets, BrokerAccounts, FX, Transactions
 from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo, import_security_prices_from_micex
 
 from constants import CURRENCY_CHOICES
-from .forms import BrokerPerformanceForm
+from .forms import AccountPerformanceForm
 from core.database_utils import get_years_count, save_or_update_annual_broker_performance
 from django.conf import settings
 from datetime import datetime
@@ -21,7 +21,7 @@ from django.db.models import Prefetch
 
 logger = logging.getLogger(__name__)
 
-class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
+class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
     async def handle(self, body):
         headers = [
             (b"Access-Control-Allow-Origin", b"http://localhost:8080"),  # Adjust this to match your frontend URL
@@ -65,7 +65,7 @@ class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
                 return
 
             # Validate the form data
-            form = await database_sync_to_async(BrokerPerformanceForm)(data, investor=self.scope['user'])
+            form = await database_sync_to_async(AccountPerformanceForm)(data, investor=self.scope['user'])
             if not await database_sync_to_async(form.is_valid)():
                 errors = form.errors.as_json()
                 await self.send_response(400, json.dumps({'error': 'Invalid form data', 'errors': form.errors}).encode('utf-8'), headers=headers + [
@@ -73,7 +73,7 @@ class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
                 ])
                 return
 
-            broker_or_group = form.cleaned_data['broker_or_group']
+            account_or_group = form.cleaned_data['broker_or_group']
             currency = form.cleaned_data['currency']
             is_restricted_str = form.cleaned_data['is_restricted']
             skip_existing_years = form.cleaned_data['skip_existing_years']
@@ -101,7 +101,7 @@ class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
             await self.send_headers(headers=sse_headers)
 
             currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
-            total_operations = len(currencies) * len(is_restricted_list) * await database_sync_to_async(get_years_count)(user, effective_current_date, broker_or_group)
+            total_operations = len(currencies) * len(is_restricted_list) * await database_sync_to_async(get_years_count)(user, effective_current_date, account_or_group)
 
             # Send initial progress event
             initial_event = {
@@ -115,7 +115,7 @@ class UpdateBrokerPerformanceConsumer(AsyncHttpConsumer):
             try:
                 for curr in currencies:
                     for is_restricted in is_restricted_list:
-                        async for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, broker_or_group, curr, is_restricted, skip_existing_years):
+                        async for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, account_or_group, curr, is_restricted, skip_existing_years):
                             if progress_data['status'] == 'progress':
                                 current_operation += 1
                                 progress = (current_operation / total_operations) * 100
@@ -191,122 +191,139 @@ class PriceImportConsumer(AsyncHttpConsumer):
             ])
 
     async def import_prices(self, data, user):
-        security_ids = data.get('securities', [])
-        brokers = data.get('brokers')
-        start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d').date() if data.get('start_date') else None
-        end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d').date() if data.get('end_date') else None
-        frequency = data.get('frequency')
-        single_date = datetime.strptime(data.get('single_date'), '%Y-%m-%d').date() if data.get('single_date') else None
-        effective_current_date = parse_date(data.get('effective_current_date'))
+        try:
+            security_ids = data.get('securities', [])
+            broker_account_ids = data.get('accounts')
+            start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d').date() if data.get('start_date') else None
+            end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d').date() if data.get('end_date') else None
+            frequency = data.get('frequency')
+            single_date = datetime.strptime(data.get('single_date'), '%Y-%m-%d').date() if data.get('single_date') else None
+            effective_current_date = parse_date(data.get('effective_current_date'))
 
-        if not effective_current_date:
-            raise ValueError("Invalid or missing effective_current_date")
+            if not effective_current_date:
+                raise ValueError("Invalid or missing effective_current_date")
 
-        if single_date:
-            dates = [single_date]
-            start_date = end_date = single_date
-            frequency = 'single'
-        else:
-            dates = await sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
-            
-        if len(dates) == 0:
-            yield self.format_progress('complete', 0, 0,
-                                       message='No dates to import',
-                                       start_date=start_date.strftime('%Y-%m-%d'),
-                                       end_date=end_date.strftime('%Y-%m-%d'),
-                                       frequency=frequency)
-            return
-
-        if brokers:
-            @database_sync_to_async
-            def get_securities_from_brokers():
-                broker_queryset = Brokers.objects.filter(id__in=brokers, investor=user).prefetch_related(
-                    Prefetch('securities', queryset=Assets.objects.all(), to_attr='all_securities')
-                )
-                securities = []
-                for broker in broker_queryset:
-                    securities.extend(broker.all_securities)
-                return securities
-
-            securities = await get_securities_from_brokers()
-            securities = [
-                security for security in securities
-                if await database_sync_to_async(security.position)(effective_current_date, user) > 0
-            ]
-        else:
-            securities = await database_sync_to_async(list)(Assets.objects.filter(investors__id=user.id, id__in=security_ids))
-
-        print(f"Filtered securities: {[security.name for security in securities]}")  # For debugging
-
-        total_securities = len(securities)
-        total_dates = len(dates)
-        total_operations = total_securities * total_dates
-        current_operation = 0
-        results = []
-
-        for security in securities:
-            try:
-                # If security is not an Asset object, fetch it
-                if not isinstance(security, Assets):
-                    security = await database_sync_to_async(Assets.objects.get)(id=security.id, investors__id=user.id)
+            if single_date:
+                dates = [single_date]
+                start_date = end_date = single_date
+                frequency = 'single'
+            else:
+                dates = await sync_to_async(generate_dates_for_price_import)(start_date, end_date, frequency)
                 
-                if security.data_source == 'FT' and security.update_link:
-                    price_generator = import_security_prices_from_ft(security, dates)
-                elif security.data_source == 'YAHOO' and security.yahoo_symbol:
-                    price_generator = import_security_prices_from_yahoo(security, dates)
-                elif security.data_source == 'MICEX' and security.secid:
-                    price_generator = import_security_prices_from_micex(security, dates)
-                else:
-                    error_message = f"No valid data source or update information for {security.name}"
-                    results.append({
-                        "security_name": security.name,
-                        "status": "skipped",
-                        "message": error_message
-                    })
+            if len(dates) == 0:
+                yield self.format_progress('complete', 0, 0,
+                                        message='No dates to import',
+                                        start_date=start_date.strftime('%Y-%m-%d'),
+                                        end_date=end_date.strftime('%Y-%m-%d'),
+                                        frequency=frequency)
+                return
+
+            if broker_account_ids:
+                @database_sync_to_async
+                def get_securities_from_accounts():
+                    broker_accounts = BrokerAccounts.objects.filter(
+                        id__in=broker_account_ids, 
+                        broker__investor=user
+                    ).prefetch_related(
+                        Prefetch('securities', queryset=Assets.objects.all(), to_attr='all_securities')
+                    )
+                    securities = []
+                    for account in broker_accounts:
+                        securities.extend(account.all_securities)
+                    return list(set(securities))  # Remove duplicates
+
+                securities = await get_securities_from_accounts()
+                # Filter securities with positive positions
+                securities = [
+                    security for security in securities
+                    if await database_sync_to_async(security.position)(
+                        effective_current_date, 
+                        user, 
+                        broker_account_ids  # Added broker_account_ids parameter
+                    ) > 0
+                ]
+            else:
+                securities = await database_sync_to_async(list)(
+                    Assets.objects.filter(
+                        investors__id=user.id,
+                        id__in=security_ids
+                    )
+                )
+
+            print(f"Filtered securities: {[security.name for security in securities]}")  # For debugging
+
+            total_securities = len(securities)
+            total_dates = len(dates)
+            total_operations = total_securities * total_dates
+            current_operation = 0
+            results = []
+
+            for security in securities:
+                try:
+                    # If security is not an Asset object, fetch it
+                    if not isinstance(security, Assets):
+                        security = await database_sync_to_async(Assets.objects.get)(id=security.id, investors__id=user.id)
                     
+                    if security.data_source == 'FT' and security.update_link:
+                        price_generator = import_security_prices_from_ft(security, dates)
+                    elif security.data_source == 'YAHOO' and security.yahoo_symbol:
+                        price_generator = import_security_prices_from_yahoo(security, dates)
+                    elif security.data_source == 'MICEX' and security.secid:
+                        price_generator = import_security_prices_from_micex(security, dates)
+                    else:
+                        error_message = f"No valid data source or update information for {security.name}"
+                        results.append({
+                            "security_name": security.name,
+                            "status": "skipped",
+                            "message": error_message
+                        })
+                        
+                        yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
+                        current_operation += len(dates)
+                        continue
+
+                    security_result = {
+                        "security_name": security.name,
+                        "updated_dates": [],
+                        "skipped_dates": [],
+                        "errors": []
+                    }
+
+                    async for result in price_generator:
+                        current_operation += 1
+
+                        if result["status"] == "updated":
+                            security_result["updated_dates"].append(result["date"])
+                        elif result["status"] == "skipped":
+                            security_result["skipped_dates"].append(result["date"])
+                        elif result["status"] == "error":
+                            security_result["errors"].append(f"{result['date']}: {result['message']}")
+
+                        yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
+
+                    results.append(security_result)
+
+                except Assets.DoesNotExist:
+                    error_message = f"Security with ID {security.id} not found"
+                    results.append(error_message)
                     yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
                     current_operation += len(dates)
-                    continue
+                except Exception as e:
+                    error_message = f"Error updating prices for security {security.name}: {str(e)}"
+                    results.append(error_message)
+                    yield self.format_progress('error', current_operation, total_operations, security_name=security.name, message=error_message)
+                    current_operation += len(dates)
 
-                security_result = {
-                    "security_name": security.name,
-                    "updated_dates": [],
-                    "skipped_dates": [],
-                    "errors": []
-                }
+            yield self.format_progress('complete', current_operation, total_operations,
+                                    message='Price import process completed',
+                                    details=results,
+                                    start_date=start_date.strftime('%Y-%m-%d'),
+                                    end_date=end_date.strftime('%Y-%m-%d'),
+                                    frequency=frequency,
+                                    total_dates=len(dates))
 
-                async for result in price_generator:
-                    current_operation += 1
-
-                    if result["status"] == "updated":
-                        security_result["updated_dates"].append(result["date"])
-                    elif result["status"] == "skipped":
-                        security_result["skipped_dates"].append(result["date"])
-                    elif result["status"] == "error":
-                        security_result["errors"].append(f"{result['date']}: {result['message']}")
-
-                    yield self.format_progress('progress', current_operation, total_operations, security.name, date=result["date"], result=result["status"])
-
-                results.append(security_result)
-
-            except Assets.DoesNotExist:
-                error_message = f"Security with ID {security.id} not found"
-                results.append(error_message)
-                yield self.format_progress('error', current_operation, total_operations, security.name, message=error_message)
-                current_operation += len(dates)
-            except Exception as e:
-                error_message = f"Error updating prices for security {security.name}: {str(e)}"
-                results.append(error_message)
-                yield self.format_progress('error', current_operation, total_operations, security_name=security.name, message=error_message)
-                current_operation += len(dates)
-
-        yield self.format_progress('complete', current_operation, total_operations,
-                                   message='Price import process completed',
-                                   details=results,
-                                   start_date=start_date.strftime('%Y-%m-%d'),
-                                   end_date=end_date.strftime('%Y-%m-%d'),
-                                   frequency=frequency,
-                                   total_dates=len(dates))
+        except Exception as e:
+            yield self.format_progress('error', 0, 0, message=f"Global error: {str(e)}")                                    
 
     def format_progress(self, status, current, total, security_name=None, date=None, result=None, message=None, **kwargs):
         progress_data = {
@@ -326,12 +343,6 @@ class PriceImportConsumer(AsyncHttpConsumer):
         progress_data.update(kwargs)
         print(f"Progress data: {progress_data}")
         return json.dumps(progress_data) + '\n'
-
-    # @staticmethod
-    # async def async_generator(sync_generator):
-    #     for item in sync_generator:
-    #         yield item
-    #         await asyncio.sleep(0)  # Allow other coroutines to run
 
 class FXImportConsumer(AsyncHttpConsumer):
     async def handle(self, body):

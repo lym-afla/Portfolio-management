@@ -1,28 +1,21 @@
-import datetime
-from functools import lru_cache
 from io import StringIO
 import json
 from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 import requests
-from common.models import Brokers, Assets, Prices, Transactions
+from common.models import BrokerAccounts, Assets, Prices, Transactions
 from decimal import Decimal, InvalidOperation
 import pandas as pd
 from django.core.files.storage import default_storage
-from collections import defaultdict
 from fuzzywuzzy import process
-import structlog
 import logging
 from channels.db import database_sync_to_async
-from django.forms.models import model_to_dict
 from django.db.models import Q
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from fake_useragent import UserAgent
-from requests.exceptions import RequestException
 import yfinance as yf
 import aiohttp
-from asgiref.sync import sync_to_async
 import asyncio
 
 from constants import MUTUAL_FUNDS_IN_PENCES, TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_TAX
@@ -37,8 +30,8 @@ def get_investor(investor_id):
     return CustomUser.objects.get(id=investor_id)
 
 @database_sync_to_async
-def get_broker(broker_id):
-    return Brokers.objects.get(id=broker_id)
+def get_broker_account(account_id):
+    return BrokerAccounts.objects.get(id=account_id)
 
 @database_sync_to_async
 def get_security(security_id):
@@ -51,7 +44,7 @@ def get_security(security_id):
 @database_sync_to_async
 def transaction_exists(transaction_data):
     query = Q()
-    required_fields = ['investor', 'broker', 'date', 'currency', 'type']
+    required_fields = ['investor', 'broker_account', 'date', 'currency', 'type']
     optional_fields = ['security', 'quantity', 'price', 'cash_flow', 'commission']
 
     # Add required fields to the query
@@ -78,9 +71,9 @@ def read_excel_file(file_path):
         raise ValueError(f'An error occurred while reading the file: {str(e)}')
 
 @database_sync_to_async
-def _find_security(stock_description, investor, broker):
+def _find_security(stock_description, investor, broker_account):
     
-    securities = list(Assets.objects.filter(investors=investor, brokers=broker))
+    securities = list(Assets.objects.filter(investors=investor, broker_accounts=broker_account))
     
     # Check for exact match
     security = next((s for s in securities if s.name == stock_description), None)
@@ -101,7 +94,7 @@ def _find_security(stock_description, investor, broker):
     # No match found
     return None, None
 
-async def _process_transaction_row(row, investor, broker, currency):
+async def _process_transaction_row(row, investor, broker_account, currency):
 
     quantity_decimal_places = Transactions._meta.get_field('quantity').decimal_places
     price_decimal_places = Transactions._meta.get_field('price').decimal_places
@@ -148,11 +141,11 @@ async def _process_transaction_row(row, investor, broker, currency):
             transaction_type = TRANSACTION_TYPE_CASH_OUT
         elif any(keyword in description for keyword in DIVIDEND_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_DIVIDEND
-            security, best_match = await _find_security(stock_description, investor, broker)
+            security, best_match = await _find_security(stock_description, investor, broker_account)
         elif any(keyword in description for keyword in INTEREST_INCOME_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_INTEREST_INCOME
         elif pd.notna(stock_description):
-            security, best_match = await _find_security(stock_description, investor, broker)
+            security, best_match = await _find_security(stock_description, investor, broker_account)
             if debit > 0:
                 transaction_type = TRANSACTION_TYPE_BUY
             elif credit > 0:
@@ -162,7 +155,7 @@ async def _process_transaction_row(row, investor, broker, currency):
 
         transaction_data = {
             'investor': investor,
-            'broker': broker,
+            'broker_account': broker_account,
             'security': security,
             'currency': currency,
             'type': transaction_type,
@@ -217,9 +210,17 @@ async def _process_transaction_row(row, investor, broker, currency):
         logger.error(f"Unexpected error in process_transaction_row {str(e)}, {row}")
         return None, 'error'
 
-async def parse_charles_stanley_transactions(file_path, currency, broker_id, user_id, confirm_every):
+async def parse_charles_stanley_transactions(file_path, currency, broker_account_id, user_id, confirm_every):
     """
     Refactored to ONLY yield messages without awaiting confirmations.
+    Parse Charles Stanley transaction file. 
+    
+    Args:
+        file_path: Path to the transaction file
+        currency: Transaction currency
+        broker_account_id: ID of the broker account
+        user_id: ID of the user
+        confirm_every: Whether to confirm each transaction
     """
     yield {
         'status': 'initialization',
@@ -247,11 +248,11 @@ async def parse_charles_stanley_transactions(file_path, currency, broker_id, use
 
     try:
         investor = await get_investor(user_id)
-        broker = await get_broker(broker_id)
-        logger.debug("Retrieved investor and broker")
+        broker_account = await get_broker_account(broker_account_id)
+        logger.debug("Retrieved investor and broker account")
     except Exception as e:
-        logger.error(f"Error getting investor or broker: {str(e)}")
-        yield {'error': f'An unexpected error occurred while getting investor or broker: {str(e)}'}
+        logger.error(f"Error getting investor or broker account: {str(e)}")
+        yield {'error': f'An unexpected error occurred while getting investor or broker account: {str(e)}'}
         return
 
     BATCH_SIZE = 1
@@ -269,7 +270,7 @@ async def parse_charles_stanley_transactions(file_path, currency, broker_id, use
         try:
             total_transactions += 1
             transaction_data, status = await _process_transaction_row(
-                row, investor, broker, currency
+                row, investor, broker_account, currency
             )
             
             logger.debug(f"Row {index + 1} processed. Status: {status}")
@@ -631,11 +632,22 @@ async def import_security_prices_from_micex(security, dates):
             }
 
 
-async def _process_galaxy_transaction(user, broker, date, currency, transaction_type, cash_flow=None, commission=None):
-    """Helper function to process a single Galaxy transaction"""
+async def _process_galaxy_transaction(user, broker_account, date, currency, transaction_type, cash_flow=None, commission=None):
+    """
+    Process a Galaxy transaction.
+    
+    Args:
+        user: User object
+        broker_account: BrokerAccounts object
+        date: Transaction date
+        currency: Transaction currency
+        transaction_type: Type of transaction
+        cash_flow: Cash flow amount
+        commission: Commission amount
+    """
     transaction_data = {
         'investor': user,
-        'broker': broker,
+        'broker_account': broker_account,
         'date': date,
         'type': transaction_type,
         'currency': currency,
@@ -648,9 +660,9 @@ async def _process_galaxy_transaction(user, broker, date, currency, transaction_
         return 'duplicate', transaction_data
     return 'new', transaction_data
 
-async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, confirm_every):
+async def parse_galaxy_broker_account_cash_flows(file_path, currency, broker_account, user, confirm_every):
     """
-    Parse Galaxy broker cash flows with async support and progress tracking.
+    Parse Galaxy broker account cash flows with async support and progress tracking.
     """
     yield {
         'status': 'initialization',
@@ -708,7 +720,7 @@ async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, conf
                 kwargs = {trans_type: value}
                 status, transaction_data = await _process_galaxy_transaction(
                     user=user,
-                    broker=broker,
+                    broker_account=broker_account,
                     date=date,
                     currency=currency,
                     transaction_type=trans_name,
@@ -758,8 +770,8 @@ async def parse_galaxy_broker_cash_flows(file_path, currency, broker, user, conf
     }
     logger.debug("Yielded completion of Galaxy cash flow import process")
 
-async def parse_galaxy_broker_security_transactions(file_path, currency, broker, user, confirm_every=False):
-    """Async generator for parsing Galaxy broker security transactions"""
+async def parse_galaxy_broker_account_security_transactions(file_path, currency, broker_account, user, confirm_every=False):
+    """Async generator for parsing Galaxy broker account security transactions"""
     try:
         # Send initialization message
         yield {
@@ -796,7 +808,7 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
 
         # Process securities first
         valid_columns = None
-        async for update in _process_galaxy_securities(df, user, broker):
+        async for update in _process_galaxy_securities(df, user, broker_account):
             if update['status'] == 'security_processing_complete':
                 valid_columns = update['valid_columns']
                 yield {
@@ -848,7 +860,7 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
                     name=security_name, 
                     ISIN=isin, 
                     investors=user,
-                    brokers=broker
+                    broker_accounts=broker_account
                 )
             except Assets.DoesNotExist:
                 logger.debug(f"Security not found with all conditions, yielding creation request for {security_name}.")
@@ -879,7 +891,7 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
 
                     transaction_data = {
                         'investor': user,
-                        'broker': broker,
+                        'broker_account': broker_account,
                         'security': security,  # Use actual security object
                         'date': date,
                         'type': transaction_type,
@@ -934,13 +946,13 @@ async def parse_galaxy_broker_security_transactions(file_path, currency, broker,
         }
 
     except Exception as e:
-        logger.error(f"Error in parse_galaxy_broker_security_transactions: {str(e)}")
+        logger.error(f"Error in parse_galaxy_broker_account_security_transactions: {str(e)}")
         yield {
             'status': 'critical_error',
             'message': f'Error during import: {str(e)}'
         }
 
-async def _process_galaxy_securities(df, user, broker):
+async def _process_galaxy_securities(df, user, broker_account):
     """Process all securities in the Excel file before handling transactions."""
     security_columns = []
     
@@ -957,7 +969,7 @@ async def _process_galaxy_securities(df, user, broker):
                     name=security_name, 
                     ISIN=isin, 
                     investors=user,
-                    brokers=broker
+                    broker_accounts=broker_account
                 )
                 logger.debug(f"Found existing security with all relationships: {security}")
                 security_columns.append(i)
@@ -979,12 +991,12 @@ async def _process_galaxy_securities(df, user, broker):
                     
                     # Add relationships
                     @database_sync_to_async
-                    def add_relationships(security, user, broker):
+                    def add_relationships(security, user, broker_account):
                         security.investors.add(user)
-                        security.brokers.add(broker)
+                        security.broker_accounts.add(broker_account)
                         return security
 
-                    await add_relationships(security, user, broker)
+                    await add_relationships(security, user, broker_account)
                     security_columns.append(i)
                     logger.debug(f"Added relationships for existing security: {security_name}")
                     
@@ -997,7 +1009,7 @@ async def _process_galaxy_securities(df, user, broker):
                     
                 except Assets.DoesNotExist:
                     # Try to create security using MICEX data
-                    security = await create_security_from_micex(security_name, isin, user, broker)
+                    security = await create_security_from_micex(security_name, isin, user, broker_account)
                     if security:
                         security_columns.append(i)
                         yield {
@@ -1021,7 +1033,7 @@ async def _process_galaxy_securities(df, user, broker):
         'message': f'Found {len(security_columns)} valid securities'
     }
 
-async def create_security_from_micex(security_name, isin, user, broker):
+async def create_security_from_micex(security_name, isin, user, broker_account):
     """Create a new security using MICEX API data"""
     try:
         # Constants for MICEX API
@@ -1078,11 +1090,11 @@ async def create_security_from_micex(security_name, isin, user, broker):
             )
             # Add both relationships in one transaction
             asset.investors.add(user)
-            asset.brokers.add(broker)
+            asset.broker_accounts.add(broker_account)
             return asset
             
         asset = await create_asset()
-        logger.info(f"Created new asset: {asset.name} ({asset.ISIN}) with user and broker relationships")
+        logger.info(f"Created new asset: {asset.name} ({asset.ISIN}) with user and broker account relationships")
         return asset
         
     except Exception as e:

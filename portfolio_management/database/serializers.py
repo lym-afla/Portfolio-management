@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from common.models import Assets, Brokers, FX, Transactions
-from users.models import BrokerGroup
+from common.models import Assets, BrokerAccounts, FX, Brokers, Transactions
+from users.models import AccountGroup
 from constants import CURRENCY_CHOICES
 from decimal import Decimal
 
@@ -12,8 +12,8 @@ class PriceImportSerializer(serializers.Serializer):
         many=True,
         required=False
     )
-    brokers = serializers.PrimaryKeyRelatedField(
-        queryset=Brokers.objects.all(),
+    broker_accounts = serializers.PrimaryKeyRelatedField(
+        queryset=BrokerAccounts.objects.all(),
         many=True,
         required=False
     )
@@ -28,11 +28,11 @@ class PriceImportSerializer(serializers.Serializer):
 
     def validate(self, data):
         print("Received data:", data)
-        if not data.get('securities') and not data.get('brokers'):
-            raise serializers.ValidationError(f"Either securities or brokers must be selected.")
+        if not data.get('securities') and not data.get('broker_accounts'):
+            raise serializers.ValidationError(f"Either securities or broker accounts must be selected.")
         
-        if data.get('securities') and data.get('brokers'):
-            raise serializers.ValidationError("Only one of securities or brokers can be selected.")
+        if data.get('securities') and data.get('broker_accounts'):
+            raise serializers.ValidationError("Only one of securities or broker accounts can be selected.")
         
         if (data.get('start_date') or data.get('end_date') or data.get('frequency')) and data.get('single_date'):
             raise serializers.ValidationError("Either date range or single date should be provided, not both.")
@@ -48,14 +48,40 @@ class PriceImportSerializer(serializers.Serializer):
 
         return data
     
-class BrokerSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Brokers
-        fields = ['id', 'name', 'country', 'comment', 'restricted']
-        read_only_fields = ['id']
+class BrokerAccountSerializer(serializers.ModelSerializer):
+    broker = serializers.SerializerMethodField()
 
-class BrokerPerformanceSerializer(serializers.Serializer):
-    broker_or_group = serializers.ChoiceField(choices=[])
+    class Meta:
+        model = BrokerAccounts
+        fields = ['id', 'name', 'broker', 'restricted', 'comment']
+
+    def get_broker(self, obj):
+        if obj.broker:
+            return {
+                'value': obj.broker.id,
+                'text': obj.broker.name
+            }
+        return None
+
+    def to_representation(self, instance):
+        # For GET requests, include the formatted broker data
+        data = super().to_representation(instance)
+        return data
+
+    def to_internal_value(self, data):
+        # For POST/PUT requests, handle the broker ID
+        internal_data = super().to_internal_value(data)
+        broker_id = data.get('broker')
+        if broker_id:
+            try:
+                broker = Brokers.objects.get(id=broker_id)
+                internal_data['broker'] = broker
+            except Brokers.DoesNotExist:
+                raise serializers.ValidationError({'broker': 'Invalid broker ID'})
+        return internal_data
+
+class AccountPerformanceSerializer(serializers.Serializer):
+    account_or_group = serializers.ChoiceField(choices=[])
     currency = serializers.ChoiceField(choices=CURRENCY_CHOICES + (('All', 'All Currencies'),))
     is_restricted = serializers.ChoiceField(choices=[
         ('All', 'All'),
@@ -69,28 +95,28 @@ class BrokerPerformanceSerializer(serializers.Serializer):
         investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
 
-        broker_or_group_choices = [
-            ('All brokers', 'All brokers'),
+        account_choices = [
+            ('All accounts', 'All accounts'),
             ('__SEPARATOR_1__', '__SEPARATOR__'),
         ]
         
         if investor is not None:
-            brokers = Brokers.objects.filter(investor=investor).order_by('name')
-            user_brokers = [(broker.name, broker.name) for broker in brokers]
-            if user_brokers:
-                broker_or_group_choices.extend(user_brokers)
-                broker_or_group_choices.append(('__SEPARATOR_2__', '__SEPARATOR__'))
+            accounts = BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')
+            user_accounts = [(account.name, account.name) for account in accounts]
+            if user_accounts:
+                account_choices.extend(user_accounts)
+                account_choices.append(('__SEPARATOR_2__', '__SEPARATOR__'))
             
-            user_groups = BrokerGroup.objects.filter(user=investor).order_by('name')
+            user_groups = AccountGroup.objects.filter(user=investor).order_by('name')
             group_choices = [(group.name, group.name) for group in user_groups]
             if group_choices:
-                broker_or_group_choices.extend(group_choices)
+                account_choices.extend(group_choices)
 
-        self.fields['broker_or_group'].choices = broker_or_group_choices
+        self.fields['account_or_group'].choices = account_choices
 
     def get_form_data(self):
         return {
-            'broker_or_group_choices': self.fields['broker_or_group'].choices,
+            'account_choices': self.fields['account_or_group'].choices,
             'currency_choices': self.fields['currency'].choices,
             'is_restricted_choices': self.fields['is_restricted'].choices,
         }
@@ -117,10 +143,11 @@ class TransactionSerializer(serializers.ModelSerializer):
     currency = serializers.CharField()
     security_name = serializers.SerializerMethodField()
     security_id = serializers.SerializerMethodField()
+    broker_account = serializers.SerializerMethodField()
 
     class Meta:
         model = Transactions
-        fields = ['date', 'type', 'quantity', 'price', 'value', 'cash_flow', 'commission', 'currency', 'security_name', 'security_id']
+        fields = ['date', 'type', 'quantity', 'price', 'value', 'cash_flow', 'commission', 'currency', 'security_name', 'security_id', 'broker_account']
 
     def get_digits(self):
         return self.context.get('digits', 2)  # Default to 2 if not provided
@@ -152,3 +179,14 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_security_id(self, obj):
         return obj.security.id if obj.security else None
+
+    def get_broker_account(self, obj):
+        return {
+            'id': obj.broker_account.id,
+            'name': obj.broker_account.name
+        } if obj.broker_account else None
+
+class BrokerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brokers
+        fields = ['id', 'name', 'country', 'comment']

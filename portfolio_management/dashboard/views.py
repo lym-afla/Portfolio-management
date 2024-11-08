@@ -8,7 +8,7 @@ from django.db.models import Sum
 
 from common.models import AnnualPerformance, Transactions, FX
 from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.portfolio_utils import IRR, NAV_at_date, broker_group_to_ids, calculate_percentage_shares, calculate_performance, get_last_exit_date_for_brokers
+from core.portfolio_utils import IRR, NAV_at_date, broker_group_to_ids, calculate_percentage_shares, calculate_performance, get_last_exit_date_for_broker_accounts
 from core.chart_utils import get_nav_chart_data
 
 from rest_framework.decorators import api_view, permission_classes
@@ -26,12 +26,17 @@ def get_dashboard_summary_api(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
 
     summary = {}
 
     # Calculate NAV
-    summary['Current NAV'] = NAV_at_date(user.id, tuple(selected_brokers), effective_current_date, currency_target)['Total NAV']
+    summary['Current NAV'] = NAV_at_date(
+        user.id, 
+        tuple(selected_account_ids), 
+        effective_current_date, 
+        currency_target
+    )['Total NAV']
 
     # Calculate Invested and Cash-out
     summary['Invested'] = Decimal(0)
@@ -39,7 +44,7 @@ def get_dashboard_summary_api(request):
 
     transactions = Transactions.objects.filter(
         investor=user,
-        broker__in=selected_brokers,
+        broker_account_id__in=selected_account_ids,
         date__lte=effective_current_date,
         type__in=['Cash in', 'Cash out']
     ).values('currency', 'type', 'cash_flow', 'date').annotate(
@@ -59,10 +64,15 @@ def get_dashboard_summary_api(request):
     except ZeroDivisionError:
         summary['total_return'] = None
 
-    summary['irr'] = IRR(user.id, effective_current_date, currency_target, asset_id=None, broker_id_list=selected_brokers)
+    summary['irr'] = IRR(
+        user.id, 
+        effective_current_date, 
+        currency_target, 
+        asset_id=None, 
+        broker_account_ids=selected_account_ids
+    )
 
     summary = format_table_data(summary, currency_target, number_of_digits)
-    
     return Response(summary)
 
 @api_view(['GET'])
@@ -73,9 +83,15 @@ def get_dashboard_breakdown_api(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
 
-    analysis = NAV_at_date(user.id, tuple(selected_brokers), effective_current_date, currency_target, tuple(['asset_type', 'currency', 'asset_class']))
+    analysis = NAV_at_date(
+        user.id, 
+        tuple(selected_account_ids), 
+        effective_current_date, 
+        currency_target, 
+        tuple(['asset_type', 'currency', 'asset_class'])
+    )
     
     # Remove 'Total NAV' from the analysis
     total_nav = analysis.pop('Total NAV', None)
@@ -110,12 +126,12 @@ def get_dashboard_summary_over_time_api(request):
         effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
         
         currency_target = user.default_currency
-        selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+        selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
 
         # Determine the starting year
         stored_data = AnnualPerformance.objects.select_related('investor').filter(
             investor=user,
-            broker_group=user.custom_brokers,
+            broker_group=user.custom_broker_accounts,
             currency=currency_target,
             restricted=None
         )
@@ -125,7 +141,7 @@ def get_dashboard_summary_over_time_api(request):
             return Response({"message": "No data available for the selected period."}, status=status.HTTP_404_NOT_FOUND)
         
         start_year = first_entry.year
-        last_exit_date = get_last_exit_date_for_brokers(selected_brokers, effective_current_date)
+        last_exit_date = get_last_exit_date_for_broker_accounts(selected_account_ids, effective_current_date)
         last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
         years = list(range(start_year, last_year + 1))
 
@@ -152,7 +168,13 @@ def get_dashboard_summary_over_time_api(request):
 
         # Calculate YTD for the current year
         current_year = effective_current_date.year
-        ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_current_date, selected_brokers, currency_target)
+        ytd_data = calculate_performance(
+            user, 
+            date(current_year, 1, 1), 
+            effective_current_date, 
+            selected_account_ids, 
+            currency_target
+        )
 
         for line_name in line_names:
             ytd_field_name = line_name.lower().replace(' ', '_')
@@ -163,7 +185,7 @@ def get_dashboard_summary_over_time_api(request):
             if line_name != 'TSR':
                 line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if year != "All-time")
 
-        lines['TSR']["data"]["All-time"] = format_percentage(IRR(user.id, effective_current_date, currency_target, broker_id_list=selected_brokers), digits=1)
+        lines['TSR']["data"]["All-time"] = format_percentage(IRR(user.id, effective_current_date, currency_target, broker_account_ids=selected_account_ids), digits=1)
         lines['BoP NAV']['data']['All-time'] = Decimal(0)
         lines['EoP NAV']["data"]["All-time"] = lines['EoP NAV']["data"].get("YTD", Decimal(0))
 
@@ -204,7 +226,7 @@ def api_nav_chart_data(request):
     to_date = request.GET.get('dateTo')
     breakdown = request.GET.get('breakdown')
     currency = user.default_currency
-    brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
 
     # If to_date is not provided, use the effective current date
     if not to_date:
@@ -212,12 +234,20 @@ def api_nav_chart_data(request):
 
     # from_date can be None, it will be handled in get_nav_chart_data
     
-    logger.info(f"Received request for NAV chart data with frequency: {frequency}, from date: {from_date}, to date: {to_date}, breakdown: {breakdown}, currency: {currency}, brokers: {user.custom_brokers}")
+    logger.info(f"Received request for NAV chart data with frequency: {frequency}, from date: {from_date}, to date: {to_date}, breakdown: {breakdown}, currency: {currency}, accounts: {selected_account_ids}")
 
-    # try:
-    chart_data = get_nav_chart_data(user.id, brokers, frequency, from_date, to_date, currency, breakdown)
-    return Response(chart_data)
-    # except ValueError as e:
-    #     return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    # except Exception as e:
-    #     return Response({'error': 'An unexpected error occurred: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    try:
+        chart_data = get_nav_chart_data(
+            user.id, 
+            selected_account_ids, 
+            frequency, 
+            from_date, 
+            to_date, 
+            currency, 
+            breakdown
+        )
+        return Response(chart_data)
+    except ValueError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': 'An unexpected error occurred: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -87,7 +87,7 @@ MUTUAL_FUNDS_IN_PENCES = [
 ]
 
 # Broker identifiers for transaction import
-BROKER_IDENTIFIERS = {
+BROKER_ACCOUNT_IDENTIFIERS = {
     # 'Charles Stanley': {
     #     'keywords': ['Charles Stanley & Co. Limited',
     #                  '1903304',
@@ -139,7 +139,7 @@ BROKER_IDENTIFIERS = {
                      ],
         'fuzzy_threshold': 65  # Adjust this threshold as needed
     },
-    # Add more brokers here
+    # Add more broker accounts here
     # 'Broker Name': {
     #     'keywords': ['Keyword 1', 'Keyword 2', 'Registration Number'],
     #     'fuzzy_threshold': 85

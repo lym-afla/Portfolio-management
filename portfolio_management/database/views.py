@@ -1,166 +1,27 @@
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
 import logging
 from django import forms
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.db.models.functions import Lower
 
-from common.models import FX, Assets, Brokers, Prices, Transactions
+from common.models import FX, Assets, BrokerAccounts, Brokers, Prices, Transactions
 from constants import ASSET_TYPE_CHOICES
 from core.price_utils import get_prices_table_api
-from core.brokers_utils import get_brokers_table_api
+from core.brokers_utils import get_accounts_table_api
 from core.securities_utils import get_securities_table_api, get_security_detail
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
 from core.date_utils import get_start_date
 
-from .forms import PriceForm, SecurityForm, TransactionForm
-from utils import parse_broker_cash_flows, parse_excel_file_transactions
+from .forms import PriceForm, SecurityForm
 
 logger = logging.getLogger(__name__)
 
-# @login_required
-# def import_transactions(request):
-#     if request.method == 'POST':
-#         broker_id = request.POST.get('broker')
-#         currency = request.POST.get('currency')
-#         confirm_each = request.POST.get('confirm_each') == 'on'
-#         import_type = request.POST.get('cash_or_transaction')
-#         skip_existing = request.POST.get('skip_existing') == 'on'
-#         file = request.FILES['file']
-
-#         user = request.user
-
-#         if import_type == 'transaction':
-
-#             securities, transactions = parse_excel_file_transactions(file, currency, broker_id)
-            
-#             for security in securities:
-#                 if not Assets.objects.filter(investors=user, name=security['name'], ISIN=security['isin']).exists():
-#                     return JsonResponse({'status': 'missing_security', 'security': security})
-                
-#         elif import_type == 'cash':
-#             transactions = parse_broker_cash_flows(file, currency, broker_id)
-
-#         return JsonResponse({'status': 'success', 'transactions': transactions, 'confirm_each': confirm_each, 'skip_existing': skip_existing})
-
-#     return JsonResponse({'error': 'Invalid request method'}, status=400)
-
-# @login_required
-# def process_import_transactions(request):
-#     if request.method == 'POST':
-
-#         # Convert fields to Decimal where applicable, handle invalid values
-#         def to_decimal(value):
-#             try:
-#                 return Decimal(value)
-#             except (InvalidOperation, TypeError, ValueError):
-#                 return None
-        
-#         price = to_decimal(request.POST.get('price'))
-#         quantity = to_decimal(request.POST.get('quantity'))
-#         cash_flow = to_decimal(request.POST.get('dividend'))
-#         commission = to_decimal(request.POST.get('commission'))
-            
-#         if quantity is not None or request.POST.get('type') == 'Dividend':
-#             try:
-#                 security = Assets.objects.get(name=request.POST.get('security_name'), investors=request.user)
-#             except Assets.DoesNotExist:
-#                 return JsonResponse({'status': 'error', 'errors': {'security_name': ['Security not found']}}, status=400)
-#         else:
-#             security = None
-
-#         # Filter out None values to avoid passing invalid data to the filter
-#         filter_kwargs = {
-#             'investor': request.user,
-#             'broker': request.POST.get('broker'),
-#             'security': security,
-#             'date': request.POST.get('date'),
-#             'type': request.POST.get('type'),
-#             'currency': request.POST.get('currency'),
-#         }
-
-#         if price is not None:
-#             filter_kwargs['price'] = price
-#         if quantity is not None:
-#             filter_kwargs['quantity'] = quantity
-#         if cash_flow is not None:
-#             filter_kwargs['cash_flow'] = cash_flow
-#         if commission is not None:
-#             filter_kwargs['commission'] = commission
-
-#         existing_transactions = Transactions.objects.filter(**filter_kwargs)
-#         # print("views. database. line 445", existing_transactions)
-
-#         # If there are any matching transactions, return 'check_required'
-#         if existing_transactions.exists():
-#             if request.POST.get('skip_existing'):
-#                 return JsonResponse({'status': 'success'})
-#             else:
-#                 return JsonResponse({'status': 'check_required'})
-
-#         # Prepare form data with security id
-#         form_data = request.POST.dict()
-#         if quantity is not None:
-#             form_data['security'] = security.id
-
-#         form = TransactionForm(form_data, investor=request.user.id)
-
-#         if form.is_valid():
-#             transaction = form.save(commit=False)  # Don't save to the database yet
-#             transaction.investor = request.user     # Set the investor field
-#             transaction.save()
-            
-#             # When adding new transaction update FX rates from Yahoo
-#             # FX.update_fx_rate(transaction.date, request.user)
-
-#             if quantity is not None:
-#                 price_instance = Prices(
-#                     date=transaction.date,
-#                     security=transaction.security,
-#                     price=transaction.price,
-#                 )
-#                 price_instance.save()
-
-#             return JsonResponse({'status': 'success'})
-#         else:
-#             print("Form errors. database. 479", form.errors)
-#             return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
-
-#     return JsonResponse({'error': 'Invalid request method'}, status=400)
-
-# def update_FX(request):
-#     if request.method == 'POST':
-#         date = datetime.strptime(request.POST.get('date'), '%Y-%m-%d')
-#         if date:
-#             FX.update_fx_rate(date, request.user)
-#             return JsonResponse({'success': True})
-#         return JsonResponse({'error': 'Date not provided'}, status=400)
-#     else:
-#         return JsonResponse({'error': 'Invalid request method'}, status=400)
-    
-# def get_update_fx_dates(request):
-#     if request.method == 'GET':
-#         dates = Transactions.objects.filter(investor=request.user).values_list('date', flat=True).distinct()
-#         return JsonResponse({'success': True, 'dates': list(dates)})
-#     else:
-#         return JsonResponse({'error': 'Invalid request method'}, status=400)
-
-    
-# def get_broker_securities(request):
-#     broker_id = request.GET.get('broker_id')
-#     if broker_id:
-#         broker = get_object_or_404(Brokers, id=broker_id, investor=request.user)
-#         securities = broker.securities.values_list('id', flat=True)
-#         return JsonResponse({'securities': list(securities)})
-#     return JsonResponse({'securities': []})
-
-from .serializers import BrokerPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer, BrokerSerializer, TransactionSerializer
+from .serializers import AccountPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer, BrokerAccountSerializer, TransactionSerializer, BrokerSerializer
 
 
 from rest_framework.views import APIView
@@ -180,16 +41,16 @@ def api_get_asset_types(request):
 def api_get_securities(request):
     user = request.user
     asset_types = request.GET.get('asset_types', '').split(',')
-    broker_id = request.GET.get('broker_id')
+    account_id = request.GET.get('account_id')
 
     securities = Assets.objects.filter(investors=user)
 
     if asset_types and asset_types != ['']:
         securities = securities.filter(type__in=asset_types)
 
-    if broker_id:
-        broker = get_object_or_404(Brokers, id=broker_id, investor=user)
-        securities = securities.filter(brokers=broker)
+    if account_id:
+        account = get_object_or_404(BrokerAccounts, id=account_id, broker__investor=user)
+        securities = securities.filter(broker_accounts=account)
 
     securities = securities.order_by(Lower('name')).values('id', 'name', 'type')
     return Response(list(securities))
@@ -322,8 +183,8 @@ def api_security_form_structure(request):
         }
 
         if hasattr(field, 'choices'):
-            if field_name == 'custom_brokers':
-                field_data['choices'] = [{'value': broker.id, 'text': broker.name} for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+            if field_name == 'broker_accounts':
+                field_data['choices'] = [{'value': account.id, 'text': account.name} for account in BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')]
             else:
                 field_data['choices'] = [{'value': choice[0], 'text': choice[1]} for choice in field.choices]
         
@@ -358,9 +219,9 @@ def api_create_security(request):
         security.investors.add(request.user)
         
         # Handle custom_brokers (many-to-many relationship)
-        custom_brokers = form.cleaned_data.get('custom_brokers')
-        if custom_brokers:
-            security.brokers.set(custom_brokers)
+        broker_accounts = form.cleaned_data.get('broker_accounts')
+        if broker_accounts:
+            security.broker_accounts.set(broker_accounts)
         
         return Response({
             'success': True,
@@ -385,7 +246,7 @@ def api_get_security_details_for_editing(request, security_id):
         'currency': security.currency,
         'exposure': security.exposure,
         'restricted': security.restricted,
-        'custom_brokers': list(security.brokers.values_list('id', flat=True)),
+        'broker_accounts': list(security.broker_accounts.values_list('id', flat=True)),
         'data_source': security.data_source,
         'yahoo_symbol': security.yahoo_symbol,
         'update_link': security.update_link,
@@ -401,10 +262,10 @@ def api_update_security(request, security_id):
         return Response({'error': 'Security not found'}, status=status.HTTP_404_NOT_FOUND)
 
     # Handle broker updates separately
-    custom_brokers = request.data.get('custom_brokers', [])
+    broker_accounts = request.data.get('broker_accounts', [])
     
-    # Remove custom_brokers from request.data to avoid direct attribute setting
-    data_to_update = {k: v for k, v in request.data.items() if k != 'custom_brokers'}
+    # Remove broker_accounts from request.data to avoid direct attribute setting
+    data_to_update = {k: v for k, v in request.data.items() if k != 'broker_accounts'}
     
     # Update regular fields
     for key, value in data_to_update.items():
@@ -414,10 +275,10 @@ def api_update_security(request, security_id):
     security.save()
     
     # Update brokers relationship
-    if custom_brokers:
-        security.brokers.set(custom_brokers)  # This replaces all existing brokers
+    if broker_accounts:
+        security.broker_accounts.set(broker_accounts)  # This replaces all existing brokers
     
-    logger.debug(f"Security updated. {security} with brokers {custom_brokers}")
+    logger.debug(f"Security updated. {security} with brokers {broker_accounts}")
     
     return Response({
         'success': True,
@@ -494,26 +355,26 @@ class PriceImportView(APIView):
     def get(self, request):
         user = request.user
         securities = Assets.objects.filter(investors=user)
-        brokers = Brokers.objects.filter(investor=user)
+        accounts = BrokerAccounts.objects.filter(broker__investor=user)
         
         serializer = PriceImportSerializer()
         frequency_choices = dict(serializer.fields['frequency'].choices)
         
         return Response({
             'securities': [{'id': s.id, 'name': s.name} for s in securities],
-            'brokers': [{'id': b.id, 'name': b.name} for b in brokers],
+            'accounts': [{'id': a.id, 'name': a.name} for a in accounts],
             'frequency_choices': [{'value': k, 'text': v} for k, v in frequency_choices.items()],
         })  
         
-class BrokerViewSet(viewsets.ModelViewSet):
-    serializer_class = BrokerSerializer
+class AccountViewSet(viewsets.ModelViewSet):
+    serializer_class = BrokerAccountSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Brokers.objects.filter(investor=self.request.user).order_by('name')
+        return BrokerAccounts.objects.filter(broker__investor=self.request.user).order_by('name')
 
     def perform_create(self, serializer):
-        serializer.save(investor=self.request.user)
+        serializer.save()
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -521,8 +382,8 @@ class BrokerViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['POST'])
-    def list_brokers(self, request, *args, **kwargs):
-        return Response(get_brokers_table_api(request))
+    def list_accounts(self, request, *args, **kwargs):
+        return Response(get_accounts_table_api(request))
 
     @action(detail=False, methods=['GET'])
     def form_structure(self, request):
@@ -535,10 +396,14 @@ class BrokerViewSet(viewsets.ModelViewSet):
                     'required': True,
                 },
                 {
-                    'name': 'country',
-                    'label': 'Country',
-                    'type': 'textinput',
+                    'name': 'broker',
+                    'label': 'Broker',
+                    'type': 'select',
                     'required': True,
+                    'choices': [
+                        {'value': broker.id, 'text': broker.name}
+                        for broker in Brokers.objects.filter(investor=request.user)
+                    ],
                 },
                 {
                     'name': 'restricted',
@@ -555,11 +420,11 @@ class BrokerViewSet(viewsets.ModelViewSet):
             ]
         })
         
-class UpdateBrokerPerformanceView(APIView):
+class UpdateAccountPerformanceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        serializer = BrokerPerformanceSerializer(investor=request.user)
+        serializer = AccountPerformanceSerializer(investor=request.user)
         form_data = serializer.get_form_data()
         return Response(form_data)
 
@@ -713,79 +578,70 @@ class FXViewSet(viewsets.ModelViewSet):
         logger.info(f"FX import stats for user {user.id}: {stats}")
         return Response(stats)
     
-    # @action(detail=False, methods=['POST'])
-    # def import_fx_rates(self, request):
-    #     import_option = request.data.get('import_option')
-    #     user = request.user
-    #     import_id = f"fx_import_{user.id}"
-    #     cache.set(import_id, "running", timeout=3600)  # Set a running flag with 1 hour timeout
-
-    #     def generate_progress():
-    #         transaction_dates = Transactions.objects.filter(investor=user).values_list('date', flat=True).distinct()
-            
-    #         # Pre-filter dates based on import_option
-    #         dates_to_update = []
-    #         for date in transaction_dates:
-    #             fx_instance = FX.objects.filter(date=date).first()
-    #             if import_option in ['missing', 'both'] and (not fx_instance or user not in fx_instance.investors.all()):
-    #                 dates_to_update.append(date)
-    #             elif import_option in ['incomplete', 'both'] and fx_instance and any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
-    #                 dates_to_update.append(date)
-
-    #         total_dates = len(dates_to_update)
-            
-    #         missing_filled = 0
-    #         incomplete_updated = 0
-    #         existing_linked = 0
-
-    #         yield f"data: {json.dumps({'status': 'checking', 'message': 'Checking database for existing FX rates'})}\n\n"
-
-    #         for i, date in enumerate(dates_to_update):
-    #             if cache.get(import_id) != "running":
-    #                 yield f"data: {json.dumps({'status': 'cancelled'})}\n\n"
-    #                 break
-
-    #             fx_instance = FX.objects.filter(date=date).first()
-    #             if not fx_instance:
-    #                 yield f"data: {json.dumps({'status': 'updating', 'message': f'Updating FX rates for {date}'})}\n\n"
-    #                 FX.update_fx_rate(date, user)
-    #                 missing_filled += 1
-    #                 action = "Added"
-    #             elif user not in fx_instance.investors.all():
-    #                 fx_instance.investors.add(user)
-    #                 existing_linked += 1
-    #                 action = "Linked existing"
-    #             elif any(getattr(fx_instance, field) is None for field in ['USDEUR', 'USDGBP', 'CHFGBP', 'RUBUSD', 'PLNUSD']):
-    #                 yield f"data: {json.dumps({'status': 'updating', 'message': f'Updating incomplete FX rates for {date}'})}\n\n"
-    #                 FX.update_fx_rate(date, user)
-    #                 incomplete_updated += 1
-    #                 action = "Updated"
-    #             else:
-    #                 action = "Skipped"
-                
-    #             progress = (i + 1) / total_dates * 100
-    #             formatted_date = date_format(date, "F j, Y")  # Format date as "Month Day, Year"
-    #             message = f"{action} FX rates for {formatted_date}"
-    #             yield f"data: {json.dumps({'progress': progress, 'current': i + 1, 'total': total_dates, 'message': message})}\n\n"
-
-    #         if cache.get(import_id) == "running":
-    #             stats = {
-    #                 'totalImported': missing_filled + incomplete_updated + existing_linked,
-    #                 'missingFilled': missing_filled,
-    #                 'incompleteUpdated': incomplete_updated,
-    #                 'existingLinked': existing_linked
-    #             }
-    #             yield f"data: {json.dumps({'status': 'completed', 'stats': stats})}\n\n"
-
-    #         cache.delete(import_id)  # Clean up the cache entry
-
-    #     return StreamingHttpResponse(generate_progress(), content_type='text/event-stream')
-    
     @action(detail=False, methods=['POST'])
     def cancel_import(self, request):
         user = request.user
         import_id = f"fx_import_{user.id}"
         cache.delete(import_id)  # This will cause the import to stop
         return JsonResponse({"status": "Import cancelled"})
+
+class BrokerViewSet(viewsets.ModelViewSet):
+    serializer_class = BrokerSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Brokers.objects.filter(investor=self.request.user).order_by('name')
+
+    def perform_create(self, serializer):
+        serializer.save(investor=self.request.user)
+
+    @action(detail=False, methods=['POST'])
+    def list_brokers(self, request):
+        page = int(request.data.get('page', 1))
+        items_per_page = int(request.data.get('itemsPerPage', 10))
+        search = request.data.get('search', '')
+
+        queryset = self.get_queryset()
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(country__icontains=search)
+            )
+
+        total_items = queryset.count()
+        start_idx = (page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        brokers = queryset[start_idx:end_idx]
+
+        serializer = self.get_serializer(brokers, many=True)
+        return Response({
+            'items': serializer.data,
+            'total_items': total_items
+        })
+
+    @action(detail=False, methods=['GET'])
+    def form_structure(self, request):
+        return Response({
+            'fields': [
+                {
+                    'name': 'name',
+                    'label': 'Name',
+                    'type': 'textinput',
+                    'required': True,
+                },
+                {
+                    'name': 'country',
+                    'label': 'Country',
+                    'type': 'textinput',
+                    'required': True,
+                },
+                {
+                    'name': 'comment',
+                    'label': 'Comment',
+                    'type': 'textarea',
+                    'required': False,
+                },
+            ]
+        })
 
 

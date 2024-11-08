@@ -1,19 +1,31 @@
 from rest_framework import serializers
-from common.models import Transactions, FXTransaction, Assets, Brokers
-from constants import CURRENCY_CHOICES
-
-# class TransactionSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Transactions
-#         fields = ['id', 'investor', 'broker', 'security', 'currency', 'type', 'date', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
-#         read_only_fields = ['id', 'investor']
+from common.models import BrokerAccounts, Transactions, FXTransaction, Assets
+from constants import CURRENCY_CHOICES, TRANSACTION_TYPE_CHOICES
 
 class TransactionFormSerializer(serializers.ModelSerializer):
+    broker_account = serializers.PrimaryKeyRelatedField(
+        queryset=BrokerAccounts.objects.all(),
+        required=True,
+        error_messages={
+            'required': 'Please select a broker account.',
+            'does_not_exist': 'Invalid broker account selected.'
+        }
+    )
+
     class Meta:
         model = Transactions
-        fields = ['id', 'broker', 'security', 'currency', 'type', 'date', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
+        fields = ['id', 'broker_account', 'security', 'currency', 'type', 
+                 'date', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
+        
+    def validate_broker_account(self, value):
+        """Ensure broker account belongs to the current user through broker"""
+        user = self.context.get('user')
+        if user and value.broker.investor != user:
+            raise serializers.ValidationError("Invalid broker account selected.")
+        return value
 
     def validate(self, data):
+        # Existing validation logic remains the same
         transaction_type = data.get('type')
         cash_flow = data.get('cash_flow')
         price = data.get('price')
@@ -21,9 +33,19 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         commission = data.get('commission')
         security = data.get('security')
 
-        # Validate security field based on transaction type
+        # Add broker account specific validation if needed
+        broker_account = data.get('broker_account')
+        if broker_account and security:
+            if security not in broker_account.assets.all():
+                raise serializers.ValidationError({
+                    'security': 'This security is not associated with the selected broker account.'
+                })
+
+        # Rest of the validation remains the same
         if transaction_type in ['Buy', 'Sell', 'Dividend'] and not security:
-            raise serializers.ValidationError({'security': 'Security must be selected for Buy, Sell, or Dividend transactions.'})
+            raise serializers.ValidationError({
+                'security': 'Security must be selected for Buy, Sell, or Dividend transactions.'
+            })
         
         if transaction_type in ['Cash in', 'Cash out'] and security:
             raise serializers.ValidationError({'security': 'Security must not be selected for Cash in or Cash out transactions.'})
@@ -50,30 +72,73 @@ class TransactionFormSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['broker'] = {'id': instance.broker.id, 'name': instance.broker.name}
+        representation['broker_account'] = {
+            'id': instance.broker_account.id,
+            'name': instance.broker_account.name,
+        }
         if instance.security:
-            representation['security'] = {'id': instance.security.id, 'name': instance.security.name}
+            representation['security'] = {
+                'id': instance.security.id,
+                'name': instance.security.name,
+            }
         return representation
 
-    def get_broker_choices(self, investor):
-        return [{'value': str(broker.pk), 'text': broker.name} for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+    def get_form_structure(self, investor):
+        """Return complete form structure including broker accounts"""
+        return {
+            'broker_account_choices': self.get_broker_account_choices(investor),
+            'security_choices': self.get_security_choices(investor),
+            'currency_choices': [{'value': c[0], 'text': c[1]} for c in CURRENCY_CHOICES],
+            'transaction_type_choices': [{'value': t[0], 'text': t[1]} for t in TRANSACTION_TYPE_CHOICES]
+        }
+
+    def get_broker_account_choices(self, investor):
+        return [
+            {'value': str(broker_account.pk), 'text': broker_account.name} 
+            for broker_account in BrokerAccounts.objects.filter(
+                broker__investor=investor
+            ).order_by('name')
+        ]
 
     def get_security_choices(self, investor):
         choices = [{'value': str(security.pk), 'text': security.name} for security in Assets.objects.filter(investors=investor).order_by('name')]
         return choices
 
-# class FXTransactionSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = FXTransaction
-#         fields = ['id', 'investor', 'broker', 'date', 'from_currency', 'to_currency', 'from_amount', 'to_amount', 'exchange_rate', 'commission', 'comment']
-#         read_only_fields = ['id', 'investor']
-
 class FXTransactionFormSerializer(serializers.ModelSerializer):
+    broker_account = serializers.PrimaryKeyRelatedField(
+        queryset=BrokerAccounts.objects.all(),
+        required=True,
+        error_messages={
+            'required': 'Please select a broker account.',
+            'does_not_exist': 'Invalid broker account selected.'
+        }
+    )
+
     class Meta:
         model = FXTransaction
-        fields = ['id', 'broker', 'date', 'from_currency', 'to_currency', 'commission_currency', 'from_amount', 'to_amount', 'exchange_rate', 'commission', 'comment']
+        fields = ['id', 'broker_account', 'date', 'from_currency', 'to_currency', 
+                 'commission_currency', 'from_amount', 'to_amount', 'exchange_rate', 
+                 'commission', 'comment']
+
+    def validate_broker_account(self, value):
+        """Ensure broker account belongs to the current user through broker"""
+        user = self.context.get('user')
+        if user and value.broker.investor != user:
+            raise serializers.ValidationError("Invalid broker account selected.")
+        return value
 
     def validate(self, data):
+        # Existing validation with added broker account context
+        broker_account = data.get('broker_account')
+        from_currency = data.get('from_currency')
+        to_currency = data.get('to_currency')
+
+        # Add validation for currencies against broker account if needed
+        if broker_account and (from_currency or to_currency):
+            # Add any broker account specific currency validation here
+            pass
+
+        # Rest of the validation remains the same
         if data.get('from_amount') <= 0:
             raise serializers.ValidationError({'from_amount': 'From amount must be positive.'})
         if data.get('to_amount') <= 0:
@@ -87,15 +152,36 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
         if from_amount and to_amount:
             data['exchange_rate'] = from_amount / to_amount
         
+        if data.get('commission') is not None and data['commission'] >= 0:
+            raise serializers.ValidationError({'commission': 'Commission must be negative.'})
+
         return data
 
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        representation['broker'] = {'id': instance.broker.id, 'name': instance.broker.name}
-        return representation
+    def get_form_structure(self, investor):
+        """Return complete form structure including broker accounts"""
+        return {
+            'broker_account_choices': self.get_broker_account_choices(investor),
+            'currency_choices': self.get_currency_choices(),
+            'fields': self.get_fields_structure()
+        }
 
-    def get_broker_choices(self, investor):
-        return [{'value': str(broker.pk), 'text': broker.name} for broker in Brokers.objects.filter(investor=investor).order_by('name')]
+    def get_fields_structure(self):
+        """Return the structure of form fields"""
+        return {
+            'date': {'type': 'date', 'required': True},
+            'from_amount': {'type': 'number', 'required': True},
+            'to_amount': {'type': 'number', 'required': True},
+            'commission': {'type': 'number', 'required': False},
+            'comment': {'type': 'text', 'required': False}
+        }
+
+    def get_broker_account_choices(self, investor):
+        return [
+            {'value': str(broker_account.pk), 'text': broker_account.name} 
+            for broker_account in BrokerAccounts.objects.filter(
+                broker__investor=investor
+            ).order_by('name')
+        ]
 
     def get_currency_choices(self):
         return [{'value': currency[0], 'text': f"{currency[1]} ({currency[0]})"} for currency in CURRENCY_CHOICES]

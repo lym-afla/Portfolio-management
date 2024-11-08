@@ -12,12 +12,13 @@ import ClosedPositionsPage from '../views/ClosedPositionsPage.vue'
 import TransactionsPage from '../views/TransactionsPage.vue'
 import DatabasePage from '../views/DatabasePage.vue'
 import PricesPage from '../views/database/PricesPage.vue'
-import BrokersPage from '../views/database/BrokersPage.vue'
+import AccountsPage from '../views/database/AccountsPage.vue'
 import SecuritiesPage from '../views/database/SecuritiesPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import FXPage from '../views/database/FXPage.vue'
 import SummaryPage from '../views/SummaryPage.vue'
 import SecurityDetailPage from '../views/database/SecurityDetailPage.vue'
+import BrokersPage from '../views/database/BrokersPage.vue'
 
 // export const loading = ref(true)
 
@@ -90,6 +91,11 @@ const routes = [
         path: 'brokers',
         name: 'Brokers',
         component: BrokersPage,
+      },
+      {
+        path: 'accounts',
+        name: 'Accounts',
+        component: AccountsPage,
       },
       {
         path: 'prices',

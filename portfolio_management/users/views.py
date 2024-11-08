@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES, TINKOFF_ACCOUNT_STATUSES, TINKOFF_ACCOUNT_TYPES
-from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, get_broker_choices
+from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, get_broker_account_choices
 
 from rest_framework.response import Response
 from rest_framework import status, viewsets
@@ -8,11 +8,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from common.models import Brokers
-from users.models import BrokerGroup, InteractiveBrokersApiToken, TinkoffApiToken
-from users.serializers import TinkoffApiTokenSerializer, InteractiveBrokersApiTokenSerializer
+from common.models import BrokerAccounts
+from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
+from users.serializers import (
+    TinkoffApiTokenSerializer, InteractiveBrokersApiTokenSerializer,
+    AccountGroupSerializer, UserSettingsSerializer, UserSettingsChoicesSerializer
+)
 
-from .serializers import BrokerGroupSerializer, DashboardSettingsChoicesSerializer, DashboardSettingsSerializer, UserProfileSerializer, UserSerializer, UserSettingsChoicesSerializer, UserSettingsSerializer
+from .serializers import AccountGroupSerializer, DashboardSettingsChoicesSerializer, DashboardSettingsSerializer, UserProfileSerializer, UserSerializer, UserSettingsChoicesSerializer, UserSettingsSerializer
 from django.contrib.auth import get_user_model
 
 from tinkoff.invest import Client
@@ -93,7 +96,7 @@ class UserViewSet(viewsets.ModelViewSet):
             'frequency_choices': FREQUENCY_CHOICES,
             'timeline_choices': TIMELINE_CHOICES,
             'nav_breakdown_choices': NAV_BARCHART_CHOICES,
-            'broker_choices': get_broker_choices(request.user),
+            'account_choices': get_broker_account_choices(request.user),
         }
         serializer = UserSettingsChoicesSerializer(choices)
         return Response(serializer.data)
@@ -116,13 +119,13 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response({'success': True, 'message': 'Password changed successfully'})
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
-    def get_broker_choices(self, request):
+    def get_account_choices(self, request):
         user = request.user
-        broker_choices = get_broker_choices(user)
+        account_choices = get_broker_account_choices(user)
         
         return Response({
-            'options': broker_choices,
-            'custom_brokers': user.custom_brokers
+            'options': account_choices,
+            'custom_broker_accounts': user.custom_broker_accounts
         })
 
     @action(detail=False, methods=['DELETE'], permission_classes=[IsAuthenticated])
@@ -177,17 +180,17 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated])
-    def update_data_for_new_broker(self, request):
+    def update_data_for_new_account(self, request):
         user = request.user
         broker_or_group_name = request.data.get('broker_or_group_name')
         
         if broker_or_group_name:
-            user.custom_brokers = broker_or_group_name
+            user.custom_broker_accounts = broker_or_group_name
             user.save()
             return Response({
                 'success': True,
                 'message': 'Broker or group updated successfully',
-                'custom_brokers': user.custom_brokers
+                'custom_broker_accounts': user.custom_broker_accounts
             }, status=status.HTTP_200_OK)
         else:
             return Response({
@@ -441,36 +444,36 @@ class InteractiveBrokersApiTokenViewSet(BaseApiTokenViewSet):
     queryset = InteractiveBrokersApiToken.objects.all()
     serializer_class = InteractiveBrokersApiTokenSerializer
 
-class BrokerGroupViewSet(viewsets.ModelViewSet):
-    serializer_class = BrokerGroupSerializer
+class AccountGroupViewSet(viewsets.ModelViewSet):
+    serializer_class = AccountGroupSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return BrokerGroup.objects.filter(user=self.request.user)
+        return AccountGroup.objects.filter(user=self.request.user)
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         groups_data = self.get_serializer(queryset, many=True).data
         
-        # Get available brokers for the user
-        available_brokers = Brokers.objects.filter(investor=request.user)
-        broker_choices = [
-            {'value': broker.id, 'title': broker.name}
-            for broker in available_brokers
+        # Get available broker accounts for the user
+        available_accounts = BrokerAccounts.objects.filter(broker__investor=request.user)
+        account_choices = [
+            {
+                'value': account.id, 
+                'title': account.name,
+            }
+            for account in available_accounts
         ]
-
-        # Debug the groups_data
-        logger.info("Groups data:", groups_data)  # Add this line for debugging
 
         return Response({
             'groups': {
                 str(group['id']): {
                     'name': group['name'],
-                    'brokers': group['brokers']
+                    'accounts': group['broker_accounts']
                 }
                 for group in groups_data
             },
-            'available_brokers': broker_choices
+            'available_broker_accounts': account_choices
         })
 
     def perform_create(self, serializer):
@@ -483,3 +486,39 @@ class BrokerGroupViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['POST'])
+    def add_accounts(self, request, pk=None):
+        group = self.get_object()
+        account_ids = request.data.get('account_ids', [])
+        
+        try:
+            accounts = BrokerAccounts.objects.filter(
+                id__in=account_ids,
+                broker__investor=request.user
+            )
+            group.broker_accounts.add(*accounts)
+            return Response({'status': 'accounts added'})
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to add accounts: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['POST'])
+    def remove_accounts(self, request, pk=None):
+        group = self.get_object()
+        account_ids = request.data.get('account_ids', [])
+        
+        try:
+            accounts = BrokerAccounts.objects.filter(
+                id__in=account_ids,
+                broker__investor=request.user
+            )
+            group.broker_accounts.remove(*accounts)
+            return Response({'status': 'accounts removed'})
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to remove accounts: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

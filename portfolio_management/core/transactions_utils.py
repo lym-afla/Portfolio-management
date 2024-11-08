@@ -5,7 +5,7 @@ from operator import attrgetter
 from typing import List, Dict, Any
 
 from django.db.models import Q
-from common.models import Brokers, FXTransaction, Transactions
+from common.models import BrokerAccounts, FXTransaction, Transactions
 from .sorting_utils import sort_entries
 from .portfolio_utils import broker_group_to_ids
 from .formatting_utils import format_table_data, currency_format
@@ -25,25 +25,20 @@ def get_transactions_table_api(request):
 
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_brokers = broker_group_to_ids(user.custom_brokers, user)
+    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
 
     # Handle empty dates
     if not end_date:
         end_date = effective_current_date
 
-    # if not start_date:
-    #     start_date = date(end_date.year, 1, 1)  # Set start date to the beginning of the current year
-
-    transactions = _filter_transactions(user, start_date, end_date, selected_brokers, search)
+    transactions = _filter_transactions(user, start_date, end_date, selected_account_ids, search)
     
     transactions_data, currencies = _calculate_transactions_table_output(
-        user, transactions, selected_brokers, number_of_digits, start_date
+        user, transactions, selected_account_ids, number_of_digits, start_date
     )
 
     transactions_data = sort_entries(transactions_data, sort_by)
-
     paginated_transactions, pagination_data = paginate_table(transactions_data, page, items_per_page)
-
     formatted_transactions = format_table_data(paginated_transactions, currency_target, number_of_digits)
     
     return {
@@ -54,20 +49,21 @@ def get_transactions_table_api(request):
         'total_pages': pagination_data['total_pages'],
     }
 
-def _filter_transactions(user, start_date, end_date, selected_brokers, search):
+def _filter_transactions(user, start_date, end_date, selected_account_ids, search):
+    """Filter transactions based on user criteria."""
     transactions_query = Transactions.objects.filter(
         investor=user,
-        date__gte=start_date if start_date else date.min,  # Handle None by using the minimum date
+        date__gte=start_date if start_date else date.min,
         date__lte=end_date,
-        broker_id__in=selected_brokers
-    ).select_related('broker', 'security')
+        broker_account_id__in=selected_account_ids
+    ).select_related('broker_account', 'security')
 
     fx_transactions_query = FXTransaction.objects.filter(
         investor=user,
-        date__gte=start_date if start_date else date.min,  # Handle None by using the minimum date
+        date__gte=start_date if start_date else date.min,
         date__lte=end_date,
-        broker_id__in=selected_brokers
-    ).select_related('broker')
+        broker_account_id__in=selected_account_ids
+    ).select_related('broker_account')
 
     if search:
         transactions_query = transactions_query.filter(
@@ -79,32 +75,37 @@ def _filter_transactions(user, start_date, end_date, selected_brokers, search):
             Q(to_currency__icontains=search)
         )
 
-    all_transactions = sorted(
+    return sorted(
         chain(transactions_query, fx_transactions_query),
         key=attrgetter('date')
     )
-    return all_transactions
 
-def _calculate_transactions_table_output(user, transactions, selected_brokers, number_of_digits, start_date=None):
+def _calculate_transactions_table_output(user, transactions, selected_account_ids, number_of_digits, start_date=None):
+    """Calculate transaction table output with balances."""
     currencies = set()
-    for broker in Brokers.objects.filter(investor=user, id__in=selected_brokers):
-        currencies.update(broker.get_currencies())
+    for account in BrokerAccounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
+        currencies.update(account.get_currencies())
 
-    # Initialize balance with the starting balance for each currency and broker
+    # Initialize balance with the starting balance for each currency and account
     balance = {currency: Decimal(0) for currency in currencies}
     if start_date:
-        for broker_id in selected_brokers:
-            broker = Brokers.objects.get(id=broker_id)
-            broker_balance = broker.balance(start_date)
-            for currency, amount in broker_balance.items():
+        for account_id in selected_account_ids:
+            account = BrokerAccounts.objects.get(id=account_id)
+            account_balance = account.balance(start_date)
+            for currency, amount in account_balance.items():
                 balance[currency] += amount
 
     transactions_data = []
     
     for transaction in transactions:
-        transaction_data = {}
-        transaction_data['date'] = transaction.date
-        transaction_data['balances'] = {}
+        transaction_data = {
+            'date': transaction.date,
+            'balances': {},
+            'broker_account': {
+                'name': transaction.broker_account.name,
+                'id': transaction.broker_account.id
+            }
+        }
 
         if isinstance(transaction, Transactions):
             transaction_data.update(_process_regular_transaction(transaction, balance, number_of_digits))
@@ -119,6 +120,7 @@ def _calculate_transactions_table_output(user, transactions, selected_brokers, n
     return transactions_data, currencies
 
 def _process_regular_transaction(transaction, balance, number_of_digits):
+    """Process a regular transaction and update balances."""
     transaction_data = {
         'id': transaction.id,
         'transaction_type': 'regular',
@@ -146,6 +148,7 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
     return transaction_data
 
 def _process_fx_transaction(transaction, balance, number_of_digits):
+    """Process an FX transaction and update balances."""
     transaction_data = {
         'id': transaction.id,
         'transaction_type': 'fx',

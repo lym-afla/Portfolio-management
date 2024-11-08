@@ -28,23 +28,23 @@
         ></v-select>
 
         <v-alert
-          v-if="isAnalyzed && brokerIdentificationComplete && !isGalaxy"
-          :type="brokerIdentified ? 'success' : 'info'"
+          v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
+          :type="accountIdentified ? 'success' : 'info'"
           class="mt-4 mb-4"
         >
-          {{ brokerIdentified 
-            ? `Broker "${identifiedBroker.name}" was automatically identified. Please confirm or select a different broker.` 
-            : 'Broker could not be automatically identified. Please select a broker below.' }}
+          {{ accountIdentified 
+            ? `Broker account "${identifiedAccount.name}" was automatically identified. Please confirm or select a different broker account.` 
+            : 'Broker account could not be automatically identified. Please select a broker account below.' }}
         </v-alert>
         <v-autocomplete
           v-if="isAnalyzed"
-          v-model="selectedBroker"
-          :items="brokers"
+          v-model="selectedAccount"
+          :items="accounts"
           item-title="name"
           item-value="id"
-          label="Select Broker"
+          label="Select Broker Account"
           class="mt-4"
-          :hint="brokerIdentified ? 'Suggested broker based on file analysis' : ''"
+          :hint="accountIdentified ? 'Suggested broker account based on file analysis' : ''"
           persistent-hint
         ></v-autocomplete>
 
@@ -87,7 +87,7 @@
           color="blue darken-1"
           text
           @click="startImport"
-          :disabled="!isAnalyzed || !selectedBroker"
+          :disabled="!isAnalyzed || !selectedAccount"
         >
           Import Transactions
         </v-btn>
@@ -119,7 +119,7 @@
           :showSecurityMapping="showSecurityMapping"
           :security="securityToMap"
           :bestMatch="bestMatch"
-          :brokerId="selectedBroker"
+          :accountId="selectedAccount"
           @security-selected="handleSecuritySelected"
         />
 
@@ -298,7 +298,7 @@ import { ref, watch, onUnmounted } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useImportState } from '@/composables/useImportState'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { analyzeFile, getBrokers } from '@/services/api'
+import { analyzeFile, getAccounts } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import SecurityMappingDialog from './SecurityMappingDialog.vue'
 import TransactionImportProgress from '../TransactionImportProgress.vue'
@@ -321,12 +321,12 @@ export default {
     const file = ref(null)
     const isLoading = ref(false)
     const isAnalyzed = ref(false)
-    const selectedBroker = ref(null)
-    const brokers = ref([])
+    const selectedAccount = ref(null)
+    const accounts = ref([])
     const fileId = ref(null)
-    const brokerIdentified = ref(false)
-    const identifiedBroker = ref(null)
-    const brokerIdentificationComplete = ref(false)
+    const accountIdentified = ref(false)
+    const identifiedAccount = ref(null)
+    const accountIdentificationComplete = ref(false)
     const showProgressDialog = ref(false)
     const currentImported = ref(0)
     const totalToImport = ref(0)
@@ -384,10 +384,10 @@ export default {
     const handleFileChange = (event) => {
       file.value = event.target.files[0]
       isAnalyzed.value = false
-      brokerIdentified.value = false
-      selectedBroker.value = null
-      identifiedBroker.value = null
-      brokerIdentificationComplete.value = false
+      accountIdentified.value = false
+      selectedAccount.value = null
+      identifiedAccount.value = null
+      accountIdentificationComplete.value = false
       fileId.value = null
     }
 
@@ -407,12 +407,12 @@ export default {
           const result = await analyzeFile(formData)
           isAnalyzed.value = true
           fileId.value = result.fileId
-          brokers.value = await getBrokers()
+          accounts.value = await getAccounts()
           
-          if (result.status === 'broker_identified') {
-            brokerIdentified.value = true
-            identifiedBroker.value = result.identifiedBroker
-            selectedBroker.value = result.identifiedBroker.id
+          if (result.status === 'account_identified') {
+            accountIdentified.value = true
+            identifiedAccount.value = result.identifiedAccount
+            selectedAccount.value = result.identifiedAccount.id
           }
           importState.setState('idle')
         } catch (error) {
@@ -421,7 +421,7 @@ export default {
           importState.setState('idle')
         } finally {
           isLoading.value = false
-          brokerIdentificationComplete.value = true
+          accountIdentificationComplete.value = true
         }
       } else {
         importState.setState('error', 'No file selected')
@@ -430,8 +430,8 @@ export default {
 
     const startImport = async () => {
       reset()
-      if (!fileId.value || !selectedBroker.value) {
-        importState.setState('error', 'File and broker must be selected')
+      if (!fileId.value || !selectedAccount.value) {
+        importState.setState('error', 'File and account must be selected')
         return
       }
 
@@ -454,7 +454,7 @@ export default {
         sendMessage({
           type: 'start_import',
           file_id: fileId.value,
-          broker_id: selectedBroker.value,
+          account_id: selectedAccount.value,
           confirm_every: confirmEveryTransaction.value,
           is_galaxy: isGalaxy.value,
           galaxy_type: isGalaxy.value ? galaxyType.value : null,
@@ -652,11 +652,11 @@ export default {
       showSuccessDialog.value = false
       file.value = null
       isAnalyzed.value = false
-      brokerIdentified.value = false
-      identifiedBroker.value = null
-      brokerIdentificationComplete.value = false
+      accountIdentified.value = false
+      identifiedAccount.value = null
+      accountIdentificationComplete.value = false
       fileId.value = null
-      selectedBroker.value = null
+      selectedAccount.value = null
 
       resetProgressDialog()
     }
@@ -665,9 +665,9 @@ export default {
       dialog.value = false
       file.value = null
       isAnalyzed.value = false
-      brokerIdentified.value = false
-      identifiedBroker.value = null
-      brokerIdentificationComplete.value = false
+      accountIdentified.value = false
+      identifiedAccount.value = null
+      accountIdentificationComplete.value = false
       selectedCurrency.value = null
     }
 
@@ -785,12 +785,12 @@ export default {
       file,
       isLoading,
       isAnalyzed,
-      selectedBroker,
-      brokers,
+      selectedAccount,
+      accounts,
       fileId,
-      brokerIdentified,
-      identifiedBroker,
-      brokerIdentificationComplete,
+      accountIdentified,
+      identifiedAccount,
+      accountIdentificationComplete,
       showSuccessDialog,
       showProgressDialog,
       currentImported,

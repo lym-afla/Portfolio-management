@@ -2,7 +2,7 @@
   <v-dialog v-model="dialog" max-width="500px">
     <v-card>
       <v-card-title>
-        <span class="text-h5">{{ isEdit ? 'Edit Broker' : 'Add Broker' }}</span>
+        <span class="text-h5">{{ isEdit ? 'Edit Account' : 'Add Account' }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
@@ -57,17 +57,17 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
-import { createBroker, updateBroker, getBrokerFormStructure } from '@/services/api'
+import { ref, computed, watch, onMounted } from 'vue'
+import { createAccount, updateAccount, getAccountFormStructure } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
-  name: 'BrokerFormDialog',
+  name: 'AccountFormDialog',
   props: {
     modelValue: Boolean,
     editItem: Object,
   },
-  emits: ['update:modelValue', 'broker-added', 'broker-updated'],
+  emits: ['update:modelValue', 'account-added', 'account-updated'],
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
@@ -84,7 +84,7 @@ export default {
 
     const fetchFormStructure = async () => {
       try {
-        const structure = await getBrokerFormStructure()
+        const structure = await getAccountFormStructure()
         if (structure && structure.fields) {
           formFields.value = structure.fields
           initializeForm()
@@ -100,7 +100,7 @@ export default {
       if (formFields.value && formFields.value.length > 0) {
         form.value = formFields.value.reduce((acc, field) => {
           if (field.type === 'checkbox') {
-            acc[field.name] = false
+            acc[field.name] = false // Initialize checkboxes to false
           } else {
             acc[field.name] = ''
           }
@@ -115,11 +115,19 @@ export default {
       }
     }
 
+    onMounted(fetchFormStructure)
+
     watch(() => props.editItem, (newValue) => {
       if (newValue) {
         form.value = { ...newValue }
       } else {
         initializeForm()
+      }
+      if (formFields.value && formFields.value.length > 0) {
+        errorMessages.value = formFields.value.reduce((acc, field) => {
+          acc[field.name] = []
+          return acc
+        }, {})
       }
       generalError.value = ''
     }, { immediate: true })
@@ -138,18 +146,29 @@ export default {
       }, {})
       generalError.value = ''
 
+      // Prepare form data, ensuring boolean values for checkboxes
+      const formData = Object.keys(form.value).reduce((acc, key) => {
+        const field = formFields.value.find(f => f.name === key)
+        if (field && field.type === 'checkbox') {
+          acc[key] = Boolean(form.value[key]) // Ensure boolean value
+        } else {
+          acc[key] = form.value[key]
+        }
+        return acc
+      }, {})
+
       try {
         let response
         if (isEdit.value) {
-          response = await updateBroker(props.editItem.id, form.value)
-          emit('broker-updated', response)
+          response = await updateAccount(props.editItem.id, formData)
+          emit('account-updated', response)
         } else {
-          response = await createBroker(form.value)
-          emit('broker-added', response)
+          response = await createAccount(formData)
+          emit('account-added', response)
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting broker:', error)
+        console.error('Error submitting account:', error)
         if (error.response && error.response.status === 400 && error.response.data) {
           Object.keys(error.response.data).forEach(key => {
             if (Object.prototype.hasOwnProperty.call(errorMessages.value, key)) {
@@ -168,9 +187,6 @@ export default {
       }
     }
 
-    // Fetch form structure when component is mounted
-    fetchFormStructure()
-
     return {
       dialog,
       isEdit,
@@ -184,4 +200,4 @@ export default {
     }
   }
 }
-</script> 
+</script>

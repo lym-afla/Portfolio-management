@@ -3,15 +3,21 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 from datetime import date, timedelta
-from common.models import Assets, Brokers, Transactions, FX, Prices
+from common.models import Assets, Brokers, Transactions, FX, Prices, BrokerAccounts
 
 class AssetsBuyInPriceTestCase(TestCase):
     def setUp(self):
         # Create a user
         self.user = get_user_model().objects.create_user(username='testuser', password='12345')
 
-        # Create a broker
-        self.broker = Brokers.objects.create(investor=self.user, name='Test Broker')
+        # Create a broker and broker account
+        self.broker = Brokers.objects.create(name='Test Broker', country='US')
+        self.broker_account = BrokerAccounts.objects.create(
+            investor=self.user,
+            broker=self.broker,
+            name='Test Account',
+            native_id='test_123'
+        )
 
         # Create an asset
         self.asset = Assets.objects.create(
@@ -50,7 +56,7 @@ class AssetsBuyInPriceTestCase(TestCase):
         for transaction_date, quantity, price in transactions_data:
             Transactions.objects.create(
                 investor=self.user,
-                broker=self.broker,
+                broker_account=self.broker_account,
                 security=self.asset,
                 currency='USD',
                 type='Buy' if quantity > 0 else 'Sell',
@@ -65,9 +71,9 @@ class AssetsBuyInPriceTestCase(TestCase):
             )
 
         # Create FX rates
-        FX.objects.create(date=date(2023, 1, 1), investor=self.user, USDEUR=Decimal('1.1'))
-        FX.objects.create(date=date(2023, 3, 1), investor=self.user, USDEUR=Decimal('1.15'))
-        FX.objects.create(date=date(2023, 5, 1), investor=self.user, USDEUR=Decimal('1.25'))
+        FX.objects.create(date=date(2023, 1, 1), USDEUR=Decimal('1.1')).investors.add(self.user)
+        FX.objects.create(date=date(2023, 3, 1), USDEUR=Decimal('1.15')).investors.add(self.user)
+        FX.objects.create(date=date(2023, 5, 1), USDEUR=Decimal('1.25')).investors.add(self.user)
 
     def test_calculate_buy_in_price_basic_1(self):
         # Test basic functionality
@@ -102,10 +108,17 @@ class AssetsBuyInPriceTestCase(TestCase):
 
     def test_calculate_buy_in_price_with_broker_filter(self):
         # Test with broker filter
-        another_broker = Brokers.objects.create(investor=self.user, name='Another Broker')
-        Transactions.objects.create(
+        another_broker = Brokers.objects.create(name='Another Broker', country='US')
+        another_account = BrokerAccounts.objects.create(
             investor=self.user,
             broker=another_broker,
+            name='Another Account',
+            native_id='another_123'
+        )
+        
+        Transactions.objects.create(
+            investor=self.user,
+            broker_account=another_account,
             security=self.asset,
             currency='USD',
             type='Buy',
@@ -113,10 +126,11 @@ class AssetsBuyInPriceTestCase(TestCase):
             quantity=10,
             price=Decimal('5.00')
         )
+        
         buy_in_price = self.asset.calculate_buy_in_price(
             date(2023, 6, 15),
             self.user,
-            broker_id_list=[self.broker.id]
+            broker_id_list=[self.broker_account.broker.id]
         )
         self.assertAlmostEqual(buy_in_price, Decimal('6.1364'), places=4)
 

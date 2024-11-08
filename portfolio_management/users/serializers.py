@@ -5,8 +5,8 @@ from django.utils import timezone
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
-from users.models import InteractiveBrokersApiToken, TinkoffApiToken, BrokerGroup
-from common.models import Brokers
+from users.models import InteractiveBrokersApiToken, TinkoffApiToken, AccountGroup
+from common.models import BrokerAccounts
 
 User = get_user_model()
 
@@ -47,19 +47,29 @@ class UserSettingsSerializer(serializers.ModelSerializer):
     chart_frequency = serializers.ChoiceField(choices=FREQUENCY_CHOICES)
     chart_timeline = serializers.ChoiceField(choices=TIMELINE_CHOICES)
     NAV_barchart_default_breakdown = serializers.ChoiceField(choices=NAV_BARCHART_CHOICES)
-    custom_brokers = serializers.CharField(required=False)
+    custom_broker_accounts = serializers.CharField(required=False)
 
     class Meta:
         model = User
         fields = ['default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 
-                  'chart_timeline', 'NAV_barchart_default_breakdown', 'digits', 'custom_brokers']
+                  'chart_timeline', 'NAV_barchart_default_breakdown', 'digits', 'custom_broker_accounts']
 
     def validate_digits(self, value):
         if value > 6:
             raise serializers.ValidationError('The value for digits must be less than or equal to 6.')
         return value
 
-class BrokerChoiceSerializer(serializers.Serializer):
+    def validate_custom_broker_accounts(self, value):
+        if value:
+            user = self.context.get('request').user
+            if not value.startswith(('All', 'group_')):
+                try:
+                    BrokerAccounts.objects.get(id=value, broker__investor=user)
+                except BrokerAccounts.DoesNotExist:
+                    raise serializers.ValidationError('Invalid broker account selected.')
+        return value
+
+class BrokerAccountChoiceSerializer(serializers.Serializer):
     def to_representation(self, instance):
         if instance[0] == '__SEPARATOR__':
             return ['__SEPARATOR__', '__SEPARATOR__']
@@ -73,7 +83,7 @@ class UserSettingsChoicesSerializer(serializers.Serializer):
     frequency_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
     timeline_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
     nav_breakdown_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
-    broker_choices = BrokerChoiceSerializer(many=True)
+    account_choices = BrokerAccountChoiceSerializer(many=True)
 
 class DashboardSettingsSerializer(serializers.ModelSerializer):
     table_date = serializers.DateField(default=timezone.now().date())
@@ -139,30 +149,39 @@ class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
         model = InteractiveBrokersApiToken
         fields = BaseApiTokenSerializer.Meta.fields
 
-class BrokerGroupSerializer(serializers.ModelSerializer):
-    brokers = serializers.PrimaryKeyRelatedField(
+class AccountGroupSerializer(serializers.ModelSerializer):
+    broker_accounts = serializers.PrimaryKeyRelatedField(
         many=True,
-        queryset=Brokers.objects.all()
+        queryset=BrokerAccounts.objects.all()
     )
 
     class Meta:
-        model = BrokerGroup
-        fields = ['id', 'name', 'brokers', 'created_at', 'updated_at']
+        model = AccountGroup
+        fields = ['id', 'name', 'broker_accounts', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def validate(self, data):
-        # Ensure user can only add their own brokers to groups
+        # Ensure user can only add their own broker accounts to groups
         request = self.context.get('request')
         if request and request.user:
-            user_brokers = Brokers.objects.filter(investor=request.user)
-            invalid_brokers = set(data['brokers']) - set(user_brokers)
+            user_accounts = BrokerAccounts.objects.filter(broker__investor=request.user)
+            invalid_accounts = set(data['broker_accounts']) - set(user_accounts)
             
-            if invalid_brokers:
+            if invalid_accounts:
                 raise serializers.ValidationError({
-                    'brokers': 'You can only add your own brokers to groups'
+                    'broker_accounts': 'You can only add your own broker accounts to groups'
                 })
         
         return data
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Add broker account details to the response
+        representation['broker_accounts'] = [{
+            'id': account.id,
+            'name': account.name,
+        } for account in instance.broker_accounts.all()]
+        return representation
 
     def create(self, validated_data):
         user = self.context['request'].user

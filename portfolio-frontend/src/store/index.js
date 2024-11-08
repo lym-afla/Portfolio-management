@@ -11,9 +11,9 @@ export default createStore({
     pageTitle: '',
     loading: false,
     error: null,
-    customBrokerSelection: null,
+    customAccountSelection: null,
     dataRefreshTrigger: 0,
-    selectedBroker: null,
+    selectedAccount: null,
     effectiveCurrentDate: null,
     selectedCurrency: null,
     tableSettings: {
@@ -58,8 +58,8 @@ export default createStore({
     setError(state, error) {
       state.error = error
     },
-    SET_CUSTOM_BROKER_SELECTION(state, broker_choices) {
-      state.customBrokerSelection = broker_choices
+    SET_CUSTOM_ACCOUNT_SELECTION(state, account_choices) {
+      state.customAccountSelection = account_choices
     },
     SET_TABLE_SETTINGS(state, settings) {
       state.tableSettings = { ...state.tableSettings, ...settings }
@@ -67,9 +67,6 @@ export default createStore({
     INCREMENT_DATA_REFRESH_TRIGGER(state) {
       state.dataRefreshTrigger += 1
     },
-    // SET_SELECTED_BROKER(state, broker) {
-    //   state.selectedBroker = broker
-    // },
     SET_USER_SETTINGS(state, settings) {
       state.userSettings = { ...state.userSettings, ...settings }
     },
@@ -133,18 +130,15 @@ export default createStore({
     setError({ commit }, error) {
       commit('setError', error)
     },
-    async setCustomBrokers({ commit }) {
+    async setCustomAccounts({ commit }) {
       try {
-        const broker_choices = await api.getBrokerChoices()
-        commit('SET_CUSTOM_BROKER_SELECTION', broker_choices)
+        const account_choices = await api.getAccountChoices()
+        commit('SET_CUSTOM_ACCOUNT_SELECTION', account_choices)
       } catch (error) {
-        console.error('Failed to fetch brokers', error)
-        commit('setError', 'Failed to fetch brokers')
+        console.error('Failed to fetch accounts', error)
+        commit('setError', 'Failed to fetch accounts')
       }
     },
-    // updateSelectedBroker({ commit }, broker) {
-    //   commit('SET_SELECTED_BROKER', broker)
-    // },
     triggerDataRefresh({ commit }) {
       commit('INCREMENT_DATA_REFRESH_TRIGGER')
     },

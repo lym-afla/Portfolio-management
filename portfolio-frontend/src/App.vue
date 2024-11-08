@@ -16,7 +16,7 @@
             </div>
             <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
             <div v-if="showComponents" class="d-flex align-center mb-2">
-              <BrokerSelection class="flex-grow-1" />
+              <AccountSelection class="flex-grow-1" />
               <v-divider vertical class="mx-2" />
               <div>
                 <SettingsDialog/>
@@ -66,7 +66,7 @@
 <script>
 import { provide, ref, onMounted, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
-import BrokerSelection from './components/BrokerSelection.vue'
+import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useStore } from 'vuex'
@@ -75,7 +75,7 @@ export default {
   name: 'App',
   components: {
     Navigation,
-    BrokerSelection,
+    AccountSelection,
     SettingsDialog,
   },
   setup() {
@@ -92,20 +92,11 @@ export default {
     const isSummaryPage = computed(() => route.path === '/summary')
 
     const showComponents = computed(() => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value)
-    // const showBrokerSelection = computed(() => showComponents.value && !isSummaryPage.value)
     const showSettingsDialog = computed(() => isSummaryPage.value)
 
     const setUser = (userData) => {
       user.value = userData
     }
-
-    // const updateAuthStatus = () => {
-    //   if (!isAuthenticated.value && route.meta.requiresAuth) {
-    //     router.push('/login')
-    //   } else if (isAuthenticated.value && route.path === '/login') {
-    //     router.push('/profile')
-    //   }
-    // }
 
     const handleLogout = async () => {
       await store.dispatch('logout')

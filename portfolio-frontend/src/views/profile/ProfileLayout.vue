@@ -79,7 +79,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 // import store from '@/store'
-import { deleteAccount, logout } from '@/services/api'
+import { deleteUserAccount, logout } from '@/services/api'
 
 export default {
   setup() {
@@ -108,7 +108,7 @@ export default {
       }
       isLoading.value = true
       try {
-        await deleteAccount()
+        await deleteUserAccount()
         // Clear authentication state
         store.commit('CLEAR_TOKENS')        
         // Redirect to register page

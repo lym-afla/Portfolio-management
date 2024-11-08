@@ -2,7 +2,7 @@ import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.urls import path, re_path
-from database.consumers import UpdateBrokerPerformanceConsumer, PriceImportConsumer, FXImportConsumer
+from database.consumers import UpdateAccountPerformanceConsumer, PriceImportConsumer, FXImportConsumer
 from transactions.consumers import TransactionConsumer
 from channels.security.websocket import AllowedHostsOriginValidator
 from .auth_middleware import TokenAuthMiddleware
@@ -15,7 +15,7 @@ application = ProtocolTypeRouter({
     "http": TokenAuthMiddleware(
         URLRouter([
             # Route for SSE POST requests
-            path("database/api/update-broker-performance/sse/", UpdateBrokerPerformanceConsumer.as_asgi()),
+            path("database/api/update-account-performance/sse/", UpdateAccountPerformanceConsumer.as_asgi()),
             path("database/api/price-import/sse/", PriceImportConsumer.as_asgi()),
             path("database/api/fx-import/sse/", FXImportConsumer.as_asgi()),
             # Route all other HTTP requests to Django

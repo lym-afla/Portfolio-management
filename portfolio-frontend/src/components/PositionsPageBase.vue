@@ -239,10 +239,10 @@ export default {
       { deep: true }
     )
 
-    // This watch is used to update the year options when the selected broker changes.
-    // Data refresh is handled in BrokerSelection.vue, dispatching the dataRefreshTrigger action.
+    // This watch is used to update the year options when the selected account changes.
+    // Data refresh is handled in AccountSelection.vue, dispatching the dataRefreshTrigger action.
     watch(
-      () => store.state.selectedBroker,
+      () => store.state.selectedAccount,
       () => {
         fetchYearOptions()
       }

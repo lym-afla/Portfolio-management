@@ -68,13 +68,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
             if message_type == 'start_import':
                 file_id = text_data_json.get('file_id')
-                broker_id = text_data_json.get('broker_id')
+                broker_account_id = text_data_json.get('account_id')
                 confirm_every = text_data_json.get('confirm_every', False)
                 is_galaxy = text_data_json.get('is_galaxy', False)
                 galaxy_type = text_data_json.get('galaxy_type', None)
                 currency = text_data_json.get('currency', None)
                 if not self.import_task or self.import_task.done():
-                    self.import_task = asyncio.create_task(self.start_import(file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type))
+                    self.import_task = asyncio.create_task(self.start_import(file_id, broker_account_id, confirm_every, currency, is_galaxy, galaxy_type))
                     logger.debug("Started import_task")
                 else:
                     logger.warning("Import task already running")
@@ -154,11 +154,19 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 'data': {'message': f'An error occurred: {str(e)}'}
             }))
 
-    async def start_import(self, file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type):
+    async def start_import(self, file_id, broker_account_id, confirm_every, currency, is_galaxy, galaxy_type):
         logger.debug("Starting start_import")
         try:
             self.confirm_every = confirm_every
-            self.import_generator = self.view_set.import_transactions(self.user, file_id, broker_id, confirm_every, currency, is_galaxy, galaxy_type)
+            self.import_generator = self.view_set.import_transactions(
+                self.user, 
+                file_id, 
+                broker_account_id,
+                confirm_every, 
+                currency, 
+                is_galaxy, 
+                galaxy_type
+            )
             await self.process_import()
         except Exception as e:
             logger.error(f"Error in start_import: {str(e)}")
@@ -181,41 +189,6 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             async for update in self.import_generator:
                 if self.stop_event.is_set():
                     break
-
-                # if update.get('status') == 'security_creation_needed':
-                #     logger.debug("Security creation needed, current state:")
-                #     logger.debug(f"- Security info: {update.get('data')}")
-                #     logger.debug(f"- Queue size: {self.security_events.qsize()}")
-                    
-                #     try:
-                #         # Send request to frontend
-                #         await self.send(text_data=json.dumps({
-                #             'type': 'security_creation_needed',
-                #             'security_info': update['data'],
-                #         }))
-                        
-                #         # Wait for security confirmation
-                #         security_id = await self.security_events.get()
-                #         logger.debug(f"Got security confirmation from queue: {security_id}")
-                #         logger.debug(f"Queue size after get: {self.security_events.qsize()}")
-                        
-                #         # Add more detailed logging around asend
-                #         try:
-                #             logger.debug(f"About to send security_id {security_id} to generator")
-                #             await self.import_generator.asend(security_id)
-                            
-                #         except StopAsyncIteration:
-                #             logger.debug("Generator stopped during asend")
-                #             raise
-                #         except Exception as e:
-                #             logger.error(f"Error during generator asend: {str(e)}", exc_info=True)
-                #             raise
-                        
-                #         logger.debug("Security ID sent to generator successfully")
-                        
-                #     except Exception as e:
-                #         logger.error(f"Error in security creation flow: {str(e)}", exc_info=True)
-                #         continue
 
                 if 'error' in update:
                     import_results['importErrors'] += 1

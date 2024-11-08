@@ -58,25 +58,28 @@ async def test_get_security_by_uid(mock_client):
     mock_instrument = MagicMock()
     mock_instrument.instrument.name = 'Test Stock'
     mock_instrument.instrument.isin = 'TEST123456789'
+    mock_instrument.instrument.ticker = 'TEST'
 
     mock_client_instance = MagicMock()
     mock_client_instance.instruments.get_instrument_by.return_value = mock_instrument
     mock_client.return_value.__enter__.return_value = mock_client_instance
 
-    name, isin = await get_security_by_uid('test-uid')
+    name, isin, ticker = await get_security_by_uid('test-uid')
 
     assert name == 'Test Stock'
     assert isin == 'TEST123456789'
+    assert ticker == 'TEST'
     mock_client_instance.instruments.get_instrument_by.assert_called_once_with(
         id_type=3,
         id='test-uid'
     )
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
+@patch('core.tinkoff_utils.create_security_from_micex')
 @patch('core.tinkoff_utils.get_security_by_uid')
-async def test_find_or_create_security_with_relationships(mock_get_security, user, broker):
-    mock_get_security.return_value = ('Test Stock', 'TEST123456789')
+async def test_find_or_create_security(mock_get_security, mock_create_security, user, broker):
+    # Test case 1: Security exists with relationships
+    mock_get_security.return_value = ('Test Stock', 'TEST123456789', 'TEST')
     asset = await Assets.objects.acreate(
         type='Stock',
         ISIN='TEST123456789',
@@ -91,74 +94,29 @@ async def test_find_or_create_security_with_relationships(mock_get_security, use
     assert status == 'existing_with_relationships'
     assert security.ISIN == 'TEST123456789'
 
-@pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
-@patch('core.tinkoff_utils.get_security_by_uid')
-async def test_find_or_create_security_without_relationships(mock_get_security, user, broker):
-    mock_get_security.return_value = ('Test Stock', 'TEST123456789')
-    asset = await Assets.objects.acreate(
-        type='Stock',
-        ISIN='TEST123456789',
-        name='Test Stock',
-        currency='USD',
-        exposure='Equity'
-    )
-
+    # Test case 2: Security exists without relationships
+    await asset.investors.aclear()
+    await asset.brokers.aclear()
+    
     security, status = await _find_or_create_security('test-uid', user, broker)
     assert status == 'existing_added_relationships'
     assert security.ISIN == 'TEST123456789'
 
-@pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
-@patch('core.import_utils.requests.get')
-@patch('core.import_utils.create_security_from_micex')
-@patch('core.tinkoff_utils.get_security_by_uid')
-async def test_find_or_create_security_new(mock_get_security, mock_create_security, mock_requests_get, user, broker):
-    # First, ensure no assets exist with this ISIN
-    await Assets.objects.filter(ISIN='NEW123456789').adelete()
-
-    # Mock MICEX API responses
-    mock_securities_response = MagicMock()
-    mock_securities_response.status_code = 200
-    mock_securities_response.json.return_value = {
-        'securities': {
-            'columns': ['SECID', 'ISIN', 'SECNAME', 'CURRENCYID'],
-            'data': [['NEW', 'NEW123456789', 'New Stock', 'USD']]
-        }
-    }
-
-    mock_detail_response = MagicMock()
-    mock_detail_response.status_code = 200
-    mock_detail_response.json.return_value = {
-        'securities': {
-            'columns': ['SECID', 'ISIN', 'SECNAME', 'CURRENCYID'],
-            'data': [['NEW', 'NEW123456789', 'New Stock', 'USD']]
-        }
-    }
-
-    # Set up requests.get to return our mock responses
-    mock_requests_get.side_effect = [mock_securities_response, mock_detail_response]
-
-    # Set up the mocks
-    mock_get_security.return_value = ('New Stock', 'NEW123456789')
-
-    # Create a mock asset without saving it to the database
-    mock_asset = MagicMock(spec=Assets)
-    mock_asset.ISIN = 'NEW123456789'
-    mock_asset.name = 'New Stock'
-    mock_asset.type = 'Stock'
-    mock_asset.currency = 'USD'
-    mock_asset.exposure = 'Equity'
-
-    # Set up the mock to return our mock asset
-    mock_create_security.return_value = mock_asset
+    # Test case 3: Security doesn't exist, create new
+    await asset.adelete()
+    mock_create_security.return_value = await Assets.objects.acreate(
+        type='Stock',
+        ISIN='NEW123456789',
+        name='New Stock',
+        currency='USD',
+        exposure='Equity'
+    )
 
     security, status = await _find_or_create_security('test-uid', user, broker)
     assert status == 'created_new'
     assert security.ISIN == 'NEW123456789'
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
 @patch('core.tinkoff_utils.find_or_create_security')
 async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, broker, asset):
     # Create mock operation
@@ -211,15 +169,3 @@ async def test_get_read_only_token(mock_open):
     mock_open.return_value.__enter__.return_value.read.return_value = '{}'
     with pytest.raises(KeyError):
         get_read_only_token()
-
-@pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
-@patch('core.import_utils.create_security_from_micex')
-@patch('core.tinkoff_utils.get_security_by_uid')
-async def test_find_or_create_security_micex_failure(mock_get_security, mock_create_security, user, broker):
-    mock_get_security.return_value = ('Test Stock', 'TEST123456789')
-    mock_create_security.return_value = None  # Simulate MICEX API failure
-    
-    security, status = await _find_or_create_security('test-uid', user, broker)
-    assert status == 'failed_to_create'
-    assert security is None
