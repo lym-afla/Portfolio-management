@@ -62,6 +62,9 @@
         <tr>
           <td>{{ item.name }}</td>
           <td>{{ item.country }}</td>
+          <td class="text-right">{{ item.accounts_count }}</td>
+          <td class="text-right">{{ item.total_nav }}</td>
+          <td class="text-right">{{ item.irr }}</td>
           <td>{{ item.comment }}</td>
           <td class="text-right">
             <v-icon small class="mr-2" @click="editBroker(item)">
@@ -132,6 +135,9 @@ export default {
     const headers = [
       { title: 'Name', key: 'name', align: 'start' },
       { title: 'Country', key: 'country', align: 'start' },
+      { title: 'Accounts', key: 'accounts_count', align: 'end' },
+      { title: 'Total NAV', key: 'total_nav', align: 'end' },
+      { title: 'IRR', key: 'irr', align: 'end' },
       { title: 'Comment', key: 'comment', align: 'start' },
       { title: 'Actions', key: 'actions', align: 'end', sortable: false }
     ]

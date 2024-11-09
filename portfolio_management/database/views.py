@@ -31,6 +31,9 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from rest_framework import status, viewsets
 
+from core.portfolio_utils import NAV_at_date, IRR
+from decimal import Decimal
+
 @api_view(['GET'])
 def api_get_asset_types(request):
     asset_types = [{'value': value, 'text': text} for value, text in ASSET_TYPE_CHOICES]
@@ -600,6 +603,7 @@ class BrokerViewSet(viewsets.ModelViewSet):
         page = int(request.data.get('page', 1))
         items_per_page = int(request.data.get('itemsPerPage', 10))
         search = request.data.get('search', '')
+        effective_current_date = request.session.get('effective_current_date')
 
         queryset = self.get_queryset()
         if search:
@@ -608,14 +612,51 @@ class BrokerViewSet(viewsets.ModelViewSet):
                 Q(country__icontains=search)
             )
 
-        total_items = queryset.count()
+        brokers_data = []
+        for broker in queryset:
+            # Get all account IDs for this broker
+            account_ids = list(broker.accounts.values_list('id', flat=True))
+            accounts_count = len(account_ids)
+
+            # Calculate total NAV and IRR only if there are accounts
+            if accounts_count > 0:
+                nav_data = NAV_at_date(
+                    request.user.id,
+                    tuple(account_ids),
+                    effective_current_date,
+                    request.user.default_currency
+                )
+                total_nav = nav_data['Total NAV']
+                
+                irr = IRR(
+                    request.user.id,
+                    effective_current_date,
+                    request.user.default_currency,
+                    broker_account_ids=account_ids
+                )
+            else:
+                total_nav = Decimal('0')
+                irr = None
+
+            broker_data = {
+                'id': broker.id,
+                'name': broker.name,
+                'country': broker.country,
+                'comment': broker.comment,
+                'accounts_count': accounts_count,
+                'total_nav': f"{request.user.default_currency} {total_nav:,.2f}",
+                'irr': f"{irr:.1f}%" if irr is not None else "–"
+            }
+            brokers_data.append(broker_data)
+
+        # Handle pagination
+        total_items = len(brokers_data)
         start_idx = (page - 1) * items_per_page
         end_idx = start_idx + items_per_page
-        brokers = queryset[start_idx:end_idx]
+        paginated_brokers = brokers_data[start_idx:end_idx]
 
-        serializer = self.get_serializer(brokers, many=True)
         return Response({
-            'items': serializer.data,
+            'items': paginated_brokers,
             'total_items': total_items
         })
 
