@@ -20,19 +20,19 @@
               <tr>
                 <th class="text-left category-column"></th>
                 <th class="text-right font-weight-bold">{{ currency }}</th>
-                <th class="text-right font-weight-bold">%</th>
+                <th class="text-right font-weight-bold font-italic">%</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(item, index) in sortedData" :key="index">
                 <td class="text-left category-column">{{ item.label }}</td>
                 <td class="text-right">{{ item.value }}</td>
-                <td class="text-right">{{ item.percentage }}</td>
+                <td class="text-right font-italic">{{ item.percentage }}</td>
               </tr>
               <tr class="font-weight-bold">
                 <td class="text-left category-column">Total</td>
-                <td class="text-right">{{ props.data.totalNAV }}</td>
-                <td class="text-right">100%</td>
+                <td class="text-right">{{ props.totalNAV }}</td>
+                <td class="text-right font-italic">100%</td>
               </tr>
             </tbody>
           </v-table>
@@ -65,7 +65,10 @@ export default {
     },
     data: {
       type: Object,
-      required: true
+      default: () => ({})
+    },
+    totalNAV: {
+      type: String,
     },
     currency: {
       type: String,
@@ -83,7 +86,8 @@ export default {
 
     const sortedData = computed(() => {
       if (!hasData.value) return []
-      
+      console.log('sortedData', props.data)
+      console.log('totalNAV', props.totalNAV)
       return Object.entries(props.data.data)
         .map(([label, value]) => ({ 
           label, 
@@ -105,13 +109,11 @@ export default {
         }]
       }
     })
-
     onMounted(async () => {
       const { pieChartOptions: options, colorPalette: palette } = await getChartOptions()
       pieChartOptions.value = options
       colorPalette.value = palette
     })
-
     return {
       tab,
       chartData,
@@ -123,7 +125,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .chart-container {
   position: relative;

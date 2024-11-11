@@ -48,7 +48,6 @@ def asset(user, broker):
         exposure='Equity'
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
     return asset
 
 @pytest.mark.asyncio

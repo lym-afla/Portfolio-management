@@ -3,10 +3,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 
-from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from constants import (
+    CURRENCY_CHOICES, NAV_BARCHART_CHOICES, ACCOUNT_TYPE_BROKER, ACCOUNT_TYPE_GROUP,
+    ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_ALL
+)
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
 from users.models import InteractiveBrokersApiToken, TinkoffApiToken, AccountGroup
-from common.models import BrokerAccounts
+from common.models import BrokerAccounts, Brokers
 
 User = get_user_model()
 
@@ -38,52 +41,73 @@ class UserSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('username', 'first_name', 'last_name', 'email')
+        fields = ('username', 'first_name', 'last_name', 'email', 'default_currency')
         read_only_fields = ('username',)
 
 class UserSettingsSerializer(serializers.ModelSerializer):
-
     default_currency = serializers.ChoiceField(choices=CURRENCY_CHOICES)
     chart_frequency = serializers.ChoiceField(choices=FREQUENCY_CHOICES)
     chart_timeline = serializers.ChoiceField(choices=TIMELINE_CHOICES)
     NAV_barchart_default_breakdown = serializers.ChoiceField(choices=NAV_BARCHART_CHOICES)
-    custom_broker_accounts = serializers.CharField(required=False)
+    selected_account_type = serializers.ChoiceField(choices=ACCOUNT_TYPE_CHOICES)
+    selected_account_id = serializers.IntegerField(allow_null=True)
 
     class Meta:
         model = User
-        fields = ['default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 
-                  'chart_timeline', 'NAV_barchart_default_breakdown', 'digits', 'custom_broker_accounts']
+        fields = [
+            'default_currency',
+            'use_default_currency_where_relevant',
+            'chart_frequency',
+            'chart_timeline',
+            'NAV_barchart_default_breakdown',
+            'digits',
+            'selected_account_type',
+            'selected_account_id'
+        ]
 
     def validate_digits(self, value):
         if value > 6:
             raise serializers.ValidationError('The value for digits must be less than or equal to 6.')
         return value
 
-    def validate_custom_broker_accounts(self, value):
-        if value:
-            user = self.context.get('request').user
-            if not value.startswith(('All', 'group_')):
-                try:
-                    BrokerAccounts.objects.get(id=value, broker__investor=user)
-                except BrokerAccounts.DoesNotExist:
-                    raise serializers.ValidationError('Invalid broker account selected.')
-        return value
+    def validate(self, data):
+        """
+        Validate the combination of account_type and account_id
+        """
+        account_type = data.get('selected_account_type')
+        account_id = data.get('selected_account_id')
+        user = self.context.get('request').user
 
-class BrokerAccountChoiceSerializer(serializers.Serializer):
-    def to_representation(self, instance):
-        if instance[0] == '__SEPARATOR__':
-            return ['__SEPARATOR__', '__SEPARATOR__']
-        elif isinstance(instance[1], (list, tuple)):
-            return [instance[0], [list(subitem) for subitem in instance[1]]]
-        else:
-            return list(instance)
+        if account_type == ACCOUNT_TYPE_ALL:
+            if account_id is not None:
+                raise serializers.ValidationError({
+                    'selected_account_id': "'all' type should have null ID"
+                })
+        elif account_type and account_id is not None:
+            try:
+                if account_type == ACCOUNT_TYPE_INDIVIDUAL:
+                    BrokerAccounts.objects.get(id=account_id, broker__investor=user)
+                elif account_type == ACCOUNT_TYPE_GROUP:
+                    AccountGroup.objects.get(id=account_id, user=user)
+                elif account_type == ACCOUNT_TYPE_BROKER:
+                    Brokers.objects.get(id=account_id, investor=user)
+            except (BrokerAccounts.DoesNotExist, AccountGroup.DoesNotExist, Brokers.DoesNotExist):
+                raise serializers.ValidationError({
+                    'selected_account_id': f'Invalid {account_type} ID'
+                })
+        elif account_type and account_id is None:
+            raise serializers.ValidationError({
+                'selected_account_id': f'{account_type} type requires an ID'
+            })
+
+        return data
 
 class UserSettingsChoicesSerializer(serializers.Serializer):
     currency_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
     frequency_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
     timeline_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
     nav_breakdown_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
-    account_choices = BrokerAccountChoiceSerializer(many=True)
+    account_choices = serializers.ListField(child=serializers.ListField())
 
 class DashboardSettingsSerializer(serializers.ModelSerializer):
     table_date = serializers.DateField(default=timezone.now().date())

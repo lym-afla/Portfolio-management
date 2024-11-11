@@ -1,4 +1,4 @@
-from common.models import BrokerAccounts
+from common.models import BrokerAccounts, Brokers
 from users.models import AccountGroup
 
 FREQUENCY_CHOICES = [
@@ -20,41 +20,100 @@ TIMELINE_CHOICES = [
     ('Custom', 'Custom'),
 ]
 
-def get_broker_account_choices(user):
+def prepare_account_choices(user):
     """
-    Get broker account choices for a user, including individual accounts and account groups.
+    Get broker account choices for a user, including individual accounts, account groups, and brokers.
     
     Args:
         user: The CustomUser object
     
     Returns:
-        List of tuples containing broker account choices in grouped format:
-        [
-            ('General', [('All accounts', 'All accounts')]),
-            ('Your Accounts', [(account.name, account.id), ...]),
-            ('Account Groups', [(group.name, group.id), ...])
-        ]
+        Dictionary containing:
+        - options: List of tuples with sections and choices, including separators
+        - selected: Dictionary with type and id of current selection
     """
-    account_choices = [
-        ('General', [('All accounts', 'All accounts')]),
+    if user is None:
+        return {
+            'options': [],
+            'selected': {
+                'type': 'all',
+                'id': None
+            }
+        }
+
+    # Initialize options with 'All accounts'
+    options = [
+        ('General', [('All accounts', {'type': 'all', 'id': None})]),
         ('__SEPARATOR__', '__SEPARATOR__'),
     ]
-    
-    if user is not None:
-        # Get individual broker accounts
-        accounts = BrokerAccounts.objects.filter(broker__investor=user).order_by('name')
-        user_accounts = [(account.name, account.name) for account in accounts]
-        if user_accounts:
-            account_choices.append(('Your Accounts', user_accounts))
-            account_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
-        
-        # Get broker account groups
-        user_groups = AccountGroup.objects.filter(user=user).order_by('name')
-        group_choices = [(group.name, group.name) for group in user_groups]
-        if group_choices:
-            account_choices.append(('Account Groups', group_choices))
 
-    return account_choices
+    # Get individual accounts with their brokers
+    accounts = BrokerAccounts.objects.filter(
+        broker__investor=user
+    ).select_related('broker').order_by('broker__name', 'name')
+    
+    if accounts:
+        account_choices = [
+            (
+                f"{account.name}", 
+                {
+                    'type': 'account',
+                    'id': account.id,
+                    'display_name': f"{account.broker.name} – {account.name}"
+                }
+            ) for account in accounts
+        ]
+        options.extend([
+            ('Your Accounts', account_choices),
+            ('__SEPARATOR__', '__SEPARATOR__'),
+        ])
+
+    # Get brokers
+    brokers = Brokers.objects.filter(
+        investor=user
+    ).order_by('name')
+    
+    if brokers:
+        broker_choices = [
+            (
+                broker.name,
+                {
+                    'type': 'broker',
+                    'id': broker.id,
+                    'display_name': f"All {broker.name} accounts"
+                }
+            ) for broker in brokers
+        ]
+        options.extend([
+            ('Brokers', broker_choices),
+            ('__SEPARATOR__', '__SEPARATOR__'),
+        ])
+
+    # Get account groups
+    groups = AccountGroup.objects.filter(
+        user=user
+    ).order_by('name')
+    
+    if groups:
+        group_choices = [
+            (
+                group.name, 
+                {
+                    'type': 'group',
+                    'id': group.id,
+                    'display_name': group.name
+                }
+            ) for group in groups
+        ]
+        options.append(('Account Groups', group_choices))
+
+    return {
+        'options': options,
+        'selected': {
+            'type': user.selected_account_type,
+            'id': user.selected_account_id
+        }
+    }
 
 def get_broker_account_ids_from_choice(user, choice):
     """

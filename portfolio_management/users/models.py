@@ -33,7 +33,34 @@ class CustomUser(AbstractUser):
             'min_value': 'The value for digits must be greater than or equal to 0.',
             }
         )
-    custom_broker_accounts = models.CharField(max_length=255, blank=True)
+    ACCOUNT_TYPE_CHOICES = [
+        ('account', 'Individual Account'),
+        ('group', 'Account Group'),
+        ('broker', 'Broker'),
+        ('all', 'All Accounts')
+    ]
+    
+    selected_account_type = models.CharField(
+        max_length=50,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default='all'
+    )
+    selected_account_id = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="ID of the selected account, group, or broker (null for 'all')"
+    )
+
+    class Meta(AbstractUser.Meta):
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(selected_account_type='all', selected_account_id__isnull=True) |
+                    ~models.Q(selected_account_type='all') & models.Q(selected_account_id__isnull=False)
+                ),
+                name='valid_account_selection'
+            )
+        ]
 
 class BaseApiToken(models.Model):
     """Abstract base class for all broker API tokens"""

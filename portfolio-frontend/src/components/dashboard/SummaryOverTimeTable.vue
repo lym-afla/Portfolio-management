@@ -113,26 +113,35 @@ export default {
       try {
         await updateAccountPerformance(formData)
       } catch (error) {
-        handleUpdateError(error.message)
+        handleUpdateError(error)
       }
     }
 
     const handleProgress = (event) => {
       const data = event.detail
       console.log('Progress:', data)
-      if (data.status === 'initializing') {
-        totalOperations.value = data.total
-      } else if (data.status === 'progress') {
-        updateProgress.value = data.progress
-        currentOperation.value = data.current
-        // totalOperations.value = data.total
-        currentMessage.value = compileProgressMessage(data)
-      } else if (data.status === 'complete') {
-        // showProgressDialog.value = false
-        emit('refresh-data')
-      } else if (data.status === 'error') {
-        errors.value.push(data.message)
-        console.error('Update error:', data.message)
+      
+      switch(data.status) {
+        case 'initializing':
+          totalOperations.value = data.total
+          break
+          
+        case 'progress':
+          updateProgress.value = data.progress
+          currentOperation.value = data.current
+          currentMessage.value = compileProgressMessage(data)
+          break
+          
+        case 'complete':
+          emit('refresh-data')
+          setTimeout(() => {
+            showProgressDialog.value = false
+          }, 1000)
+          break
+          
+        case 'error':
+          handleUpdateError(data.message)
+          break
       }
     }
 
@@ -141,9 +150,10 @@ export default {
     }
 
     const handleUpdateError = (error) => {
-      console.error('Update error:', error)
-      errors.value.push(error)
-      currentMessage.value = `Error: ${error}`
+      console.error('[handleUpdateError] Update error:', error)
+      const errorMessage = error.message || error
+      errors.value.push(errorMessage)
+      currentMessage.value = `Error: ${errorMessage}`
     }
 
     const handleStopImport = () => {
@@ -154,10 +164,12 @@ export default {
 
     onMounted(() => {
       window.addEventListener('accountPerformanceUpdateProgress', handleProgress)
+      window.addEventListener('accountPerformanceUpdateError', handleUpdateError)
     })
 
     onUnmounted(() => {
       window.removeEventListener('accountPerformanceUpdateProgress', handleProgress)
+      window.removeEventListener('accountPerformanceUpdateError', handleUpdateError)
     })
 
     return {

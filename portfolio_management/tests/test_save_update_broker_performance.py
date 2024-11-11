@@ -41,7 +41,6 @@ def transactions(user, broker):
         restricted=False
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
 
     Transactions.objects.create(
         investor=user,
@@ -108,7 +107,7 @@ async def test_update_broker_performance_initial(user, broker, transactions, cap
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
-            'broker_or_group': 'Test Broker',
+            'account_or_group': 'Test Broker',
             'currency': 'USD',
             'is_restricted': 'False',
             'skip_existing_years': False,
@@ -136,7 +135,8 @@ async def test_update_broker_performance_initial(user, broker, transactions, cap
     def get_performance():
         return AnnualPerformance.objects.filter(
             investor=user,
-            broker_group=broker.name,
+            account_type='broker',
+            account_id=broker.id,
             year=2022,
             currency='USD',
             restricted=False
@@ -160,7 +160,7 @@ async def test_update_broker_performance_invalid_data(user):
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
-            'broker_or_group': 'invalid',
+            'account_or_group': 'invalid',
             'currency': 'INVALID',
             'is_restricted': 'INVALID',
             'skip_existing_years': 'not_a_boolean',
@@ -185,7 +185,7 @@ async def test_update_broker_performance_no_transactions(user, broker):
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
-            'broker_or_group': broker.name,
+            'account_or_group': broker.name,
             'currency': 'USD',
             'is_restricted': 'False',
             'skip_existing_years': False,
@@ -218,7 +218,7 @@ async def test_update_broker_performance_streaming(user, broker, transactions, f
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
-            'broker_or_group': broker.name,
+            'account_or_group': broker.name,
             'currency': 'All',
             'is_restricted': 'All',
             'skip_existing_years': False,
@@ -265,7 +265,6 @@ def test_get_last_exit_date_for_brokers(user, broker):
         restricted=False
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
     
     transaction_date = datetime.now().date() - timedelta(days=30)
     Transactions.objects.create(
@@ -313,7 +312,6 @@ def test_calculate_performance(user, broker, caplog):
         restricted=False
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
     
     start_date = datetime(2022, 1, 1).date()
     end_date = datetime(2022, 12, 31).date()
@@ -359,7 +357,8 @@ def test_calculate_performance(user, broker, caplog):
         user,
         start_date,
         end_date,
-        [broker.id],
+        'broker',
+        broker.id,
         'USD'
     )
 
@@ -403,7 +402,6 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
             restricted=False
         )
         asset.investors.add(user)
-        asset.brokers.add(broker)
 
         # Create transactions for different years
         years = [2021, 2022, 2023]
@@ -465,7 +463,7 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
         "POST",
         "/database/api/update-broker-performance/sse/",
         body=json.dumps({
-            'broker_or_group': broker.name,
+            'account_or_group': broker.name,
             'currency': 'USD',
             'is_restricted': 'False',
             'skip_existing_years': True,
@@ -496,7 +494,8 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
     def get_performances():
         performance_2022 = AnnualPerformance.objects.filter(
             investor=user,
-            broker_group=broker.name,
+            account_type='broker',
+            account_id=broker.id,
             year=2022,
             currency='USD',
             restricted=False
@@ -504,7 +503,8 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
 
         performance_2021 = AnnualPerformance.objects.filter(
             investor=user,
-            broker_group=broker.name,
+            account_type='broker',
+            account_id=broker.id,
             year=2021,
             currency='USD',
             restricted=False
@@ -512,7 +512,8 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
 
         performance_2023 = AnnualPerformance.objects.filter(
             investor=user,
-            broker_group=broker.name,
+            account_type='broker',
+            account_id=broker.id,
             year=2023,
             currency='USD',
             restricted=False

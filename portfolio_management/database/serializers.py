@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from common.models import Assets, BrokerAccounts, FX, Brokers, Transactions
+from core.user_utils import prepare_account_choices
 from users.models import AccountGroup
 from constants import CURRENCY_CHOICES
 from decimal import Decimal
@@ -95,30 +96,20 @@ class AccountPerformanceSerializer(serializers.Serializer):
         investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
 
-        account_choices = [
-            ('All accounts', 'All accounts'),
-            ('__SEPARATOR_1__', '__SEPARATOR__'),
-        ]
+        # Get choices data using prepare_account_choices
+        choices_data = prepare_account_choices(investor)
         
-        if investor is not None:
-            accounts = BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')
-            user_accounts = [(account.name, account.name) for account in accounts]
-            if user_accounts:
-                account_choices.extend(user_accounts)
-                account_choices.append(('__SEPARATOR_2__', '__SEPARATOR__'))
-            
-            user_groups = AccountGroup.objects.filter(user=investor).order_by('name')
-            group_choices = [(group.name, group.name) for group in user_groups]
-            if group_choices:
-                account_choices.extend(group_choices)
-
-        self.fields['account_or_group'].choices = account_choices
+        # Important: Don't set choices directly, we'll return raw options in get_form_data
+        self.choices_data = choices_data['options']
 
     def get_form_data(self):
+        """
+        Return the raw options array instead of processed choices
+        """
         return {
-            'account_choices': self.fields['account_or_group'].choices,
-            'currency_choices': self.fields['currency'].choices,
-            'is_restricted_choices': self.fields['is_restricted'].choices,
+            'account_choices': self.choices_data,  # Return raw options array
+            'currency_choices': dict(self.fields['currency'].choices),
+            'is_restricted_choices': dict(self.fields['is_restricted'].choices),
         }
 
 class FXSerializer(serializers.ModelSerializer):

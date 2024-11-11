@@ -53,7 +53,10 @@ export default {
   props: {
     chartData: {
       type: Object,
-      required: true
+      default: () => ({
+        labels: [],
+        datasets: []
+      })
     },
     loading: {
       type: Boolean,

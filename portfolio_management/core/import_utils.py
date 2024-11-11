@@ -18,7 +18,7 @@ import yfinance as yf
 import aiohttp
 import asyncio
 
-from constants import MUTUAL_FUNDS_IN_PENCES, TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_TAX
+from constants import ASSET_TYPE_CHOICES, EXPOSURE_CHOICES, MUTUAL_FUNDS_IN_PENCES, TRANSACTION_TYPE_BROKER_COMMISSION, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_TAX
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -993,7 +993,6 @@ async def _process_galaxy_securities(df, user, broker_account):
                     @database_sync_to_async
                     def add_relationships(security, user, broker_account):
                         security.investors.add(user)
-                        security.broker_accounts.add(broker_account)
                         return security
 
                     await add_relationships(security, user, broker_account)
@@ -1065,32 +1064,31 @@ async def create_security_from_micex(security_name, isin, user, broker_account):
         # Get the first match if multiple found
         security = security.iloc[0]
         
-        # Get detailed security info
-        ticker = security['SECID']
-        security_url = f'https://iss.moex.com/iss/engines/{selected_engine}/markets/{selected_market}/boards/{selected_board}/securities/{ticker}.json'
-        detail_response = requests.get(security_url)
-        if detail_response.status_code != 200:
-            logger.error(f"Failed to fetch security details from MICEX: {detail_response.status_code}")
-            return None
+        # # Get detailed security info
+        # ticker = security['SECID']
+        # security_url = f'https://iss.moex.com/iss/engines/{selected_engine}/markets/{selected_market}/boards/{selected_board}/securities/{ticker}.json'
+        # detail_response = requests.get(security_url)
+        # if detail_response.status_code != 200:
+        #     logger.error(f"Failed to fetch security details from MICEX: {detail_response.status_code}")
+        #     return None
             
-        detail_data = detail_response.json()
+        # detail_data = detail_response.json()
         
         # Create new asset
         @database_sync_to_async
         def create_asset():
             asset = Assets.objects.create(
-                type='Stock',  # From ASSET_TYPE_CHOICES
+                type=ASSET_TYPE_CHOICES[0][0], #'Stock' from ASSET_TYPE_CHOICES
                 ISIN=isin,
                 name=security_name,
                 currency='RUB' if security['CURRENCYID'] == 'SUR' else security['CURRENCYID'],
-                exposure='Equity',  # From EXPOSURE_CHOICES
+                exposure=EXPOSURE_CHOICES[0][0],  # 'Equity' from EXPOSURE_CHOICES
                 restricted=False,
                 data_source='MICEX',
                 secid = security['SECID']
             )
-            # Add both relationships in one transaction
+
             asset.investors.add(user)
-            asset.broker_accounts.add(broker_account)
             return asset
             
         asset = await create_asset()

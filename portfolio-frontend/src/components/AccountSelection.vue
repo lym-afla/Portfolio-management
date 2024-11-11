@@ -49,7 +49,7 @@
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
-import { getAccountChoices, updateForNewAccount } from '@/services/api'
+import { getAccountChoices } from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
 
 export default {
@@ -60,51 +60,75 @@ export default {
     const selectedAccount = ref(null)
 
     const currentIndex = computed(() => {
-      return accountOptions.value.findIndex(option => option.value === selectedAccount.value)
+      if (!selectedAccount.value) return -1
+      return accountOptions.value.findIndex(
+        option => option.type === 'option' && 
+        option.value.type === selectedAccount.value.type && 
+        option.value.id === selectedAccount.value.id
+      )
     })
 
     const canSwitchLeft = computed(() => {
-      return accountOptions.value.slice(0, currentIndex.value).some(option => option.type === 'option')
+      return accountOptions.value
+        .slice(0, currentIndex.value)
+        .some(option => option.type === 'option')
     })
 
     const canSwitchRight = computed(() => {
-      return accountOptions.value.slice(currentIndex.value + 1).some(option => option.type === 'option')
+      return accountOptions.value
+        .slice(currentIndex.value + 1)
+        .some(option => option.type === 'option')
     })
 
     const fetchAccounts = async () => {
       try {
         const data = await getAccountChoices()
         accountOptions.value = formatAccountChoices(data.options)
-        selectedAccount.value = data.custom_broker_accounts
+        // Find the option matching the selected type and id
+        const selected = data.selected
+        const matchingOption = accountOptions.value.find(
+          option => option.type === 'option' && 
+          option.value.type === selected.type && 
+          option.value.id === selected.id
+        )
+        selectedAccount.value = matchingOption?.value || null
+        store.dispatch('updateSelectedAccount', selectedAccount.value)
       } catch (error) {
-        console.error('Error fetching broker accounts:', error)
+        console.error('Error fetching accounts:', error)
       }
     }
 
     const handleAccountChange = async (newValue) => {
-      console.log('handleBrokerAccountChange called with:', newValue)
-      if (typeof newValue === 'object' && newValue !== null) {
-        selectedAccount.value = newValue.value
-        await updateDataForBrokerAccount(newValue.value)
-      } else {
-        selectedAccount.value = newValue
-        await updateDataForBrokerAccount(newValue)
-      }
+      console.log('handleAccountChange called with:', newValue)
+      selectedAccount.value = newValue
+      
+      await store.dispatch('updateAccountSelection', {
+        type: newValue.type,
+        id: newValue.id
+      })
+      
+      // Log the updated store state after the dispatch completes
+      console.log('[handleAccountChange] store.state.accountSelection:', store.state.accountSelection)
+      
+      // // Update data for the new account
+      // await updateDataForAccount(newValue)
     }
 
-    const updateDataForBrokerAccount = async (brokerAccountValue) => {
-      try {
-        console.log('updateDataForBrokerAccount called with:', brokerAccountValue)
-        const response = await updateForNewAccount(brokerAccountValue)
-        console.log('updateUserBrokerAccount response:', response)
-        store.dispatch('triggerDataRefresh')
-      } catch (error) {
-        console.error('Error updating broker account:', error)
-      }
-    }
+    // const updateDataForAccount = async (selection) => {
+    //   try {
+    //     console.log('updateDataForAccount called with:', selection)
+    //     const response = await updateUserDataForNewAccount({
+    //       type: selection.type,
+    //       id: selection.id
+    //     })
+    //     console.log('updateForNewAccount response:', response)
+    //     store.dispatch('triggerDataRefresh')
+    //   } catch (error) {
+    //     console.error('Error updating account selection:', error)
+    //   }
+    // }
 
     const switchAccount = (direction) => {
-      console.log('switchAccount called with direction:', direction)
       let newIndex = currentIndex.value + direction
 
       // Skip dividers and headers
@@ -118,9 +142,8 @@ export default {
 
       // Check if the new index is valid
       if (newIndex >= 0 && newIndex < accountOptions.value.length) {
-        const newBrokerAccount = accountOptions.value[newIndex]
-        console.log('Switching to broker account:', newBrokerAccount)
-        handleAccountChange(newBrokerAccount)
+        const newAccount = accountOptions.value[newIndex]
+        handleAccountChange(newAccount.value)
       }
     }
 

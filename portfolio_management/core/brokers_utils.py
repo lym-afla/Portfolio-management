@@ -1,12 +1,18 @@
-from common.models import BrokerAccounts, Transactions
+from common.models import Brokers, Assets, Transactions
 from .portfolio_utils import IRR, NAV_at_date
 from .sorting_utils import sort_entries
 from .pagination_utils import paginate_table
-from .formatting_utils import currency_format, format_table_data
+from .formatting_utils import format_table_data
 from datetime import datetime
 from django.db import models
+from decimal import Decimal
 
-def get_accounts_table_api(request):
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_brokers_table_api(request):
+    """Get brokers table data with pagination, sorting, and search"""
     data = request.data
     
     page = int(data.get('page'))
@@ -19,60 +25,147 @@ def get_accounts_table_api(request):
     currency_target = user.default_currency
     number_of_digits = user.digits
     
-    accounts_data = _filter_broker_accounts(user, search)
-    accounts_data = _get_broker_accounts_data(user, accounts_data, effective_current_date, currency_target)
-    accounts_data = sort_entries(accounts_data, sort_by)
-    paginated_accounts, pagination_data = paginate_table(accounts_data, page, items_per_page)
-    formatted_accounts = format_table_data(paginated_accounts, currency_target, number_of_digits)
+    brokers_data = _filter_brokers(user, search)
+    brokers_data = _get_brokers_data(user, brokers_data, effective_current_date, currency_target)
+    brokers_data = sort_entries(brokers_data, sort_by)
+    paginated_brokers, pagination_data = paginate_table(brokers_data, page, items_per_page)
+    formatted_brokers = format_table_data(paginated_brokers, currency_target, number_of_digits)
 
-    totals = _calculate_totals(accounts_data, user, effective_current_date, currency_target)
+    totals = _calculate_totals(brokers_data, user, effective_current_date, currency_target)
     totals = format_table_data(totals, currency_target, number_of_digits)
 
     return {
-        'accounts': formatted_accounts,
+        'items': formatted_brokers,
         'totals': totals,
         'total_items': pagination_data['total_items'],
         'current_page': pagination_data['current_page'],
         'total_pages': pagination_data['total_pages'],
     }
 
-def _filter_broker_accounts(user, search):
-    accounts = BrokerAccounts.objects.filter(broker__investor=user, is_active=True)
+def _filter_brokers(user, search):
+    """Filter brokers based on search criteria"""
+    brokers = Brokers.objects.filter(investor=user)
     if search:
-        accounts = accounts.filter(
+        brokers = brokers.filter(
             models.Q(name__icontains=search) |
-            models.Q(broker__name__icontains=search)
+            models.Q(country__icontains=search) |
+            models.Q(comment__icontains=search)
         )
-    return accounts
+    return brokers
 
-def _get_broker_accounts_data(user, accounts, effective_current_date, currency_target):
-    accounts_data = []
-    for account in accounts:
-        account_data = {
-            'id': account.id,
-            'name': account.name,
-            'broker_name': account.broker.name,
-            'country': account.broker.country,
-            'currencies': ', '.join(account.get_currencies()),
-            'no_of_securities': sum(1 for security in account.securities.filter(investors=user) 
-                                  if security.position(effective_current_date, user, [account.id]) != 0),
+def _get_brokers_data(user, brokers, effective_current_date, currency_target):
+    """Get detailed data for each broker"""
+    brokers_data = []
+    
+    # Get all broker account IDs upfront
+    broker_accounts = {
+        broker.id: list(broker.accounts.values_list('id', flat=True))
+        for broker in brokers
+    }
+
+    # Get all assets with non-zero positions at effective_current_date
+    active_assets = Assets.objects.filter(
+        transactions__broker_account__in=[
+            acc_id for acc_ids in broker_accounts.values() for acc_id in acc_ids
+        ],
+        transactions__date__lte=effective_current_date
+    ).distinct()
+
+    logger.info(f"Active assets: {active_assets}")
+
+    # # Calculate positions for active assets
+    # active_assets_with_positions = [
+    #     asset for asset in active_assets
+    #     if asset.position(effective_current_date, user, broker_account_ids=broker_accounts[asset.broker_account.id]) != 0
+    # ]
+
+    # logger.info(f"Active assets with positions: {active_assets_with_positions}")
+
+    for broker in brokers:
+        account_ids = broker_accounts[broker.id]
+        accounts_count = len(account_ids)
+
+        if accounts_count > 0:
+            nav_data = NAV_at_date(
+                user.id,
+                tuple(account_ids),
+                effective_current_date,
+                currency_target
+            )
+            total_nav = nav_data['Total NAV']
+            cash = nav_data.get('Cash', {}).get(currency_target, Decimal('0'))
+            
+            # Count securities with non-zero positions for this broker
+            securities_count = sum(
+                1 for asset in active_assets
+                if asset.transactions.filter(
+                    broker_account_id__in=account_ids
+                ).exists() and asset.position(
+                    effective_current_date,
+                    user,
+                    broker_account_ids=account_ids
+                ) != 0
+            )
+            
+            irr = IRR(
+                user.id,
+                effective_current_date,
+                currency_target,
+                broker_account_ids=account_ids
+            )
+        else:
+            total_nav = Decimal('0')
+            cash = Decimal('0')
+            securities_count = 0
+            irr = Decimal('0')
+
+        broker_data = {
+            'id': broker.id,
+            'name': broker.name,
+            'country': broker.country,
+            'comment': broker.comment,
+            'no_of_accounts': accounts_count,
+            'no_of_securities': securities_count,
             'first_investment': Transactions.objects.filter(
-                broker_account=account,
-                broker_account__broker__investor=user
+                broker_account__in=account_ids,
+                investor=user
             ).order_by('date').values_list('date', flat=True).first() or 'None',
-            'nav': NAV_at_date(user.id, tuple([account.id]), effective_current_date, currency_target)['Total NAV'],
-            'cash': {currency: currency_format(account.balance(effective_current_date)[currency], currency, digits=0) 
-                    for currency in account.get_currencies()},
-            'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None, broker_account_ids=[account.id])
+            'nav': total_nav,
+            'cash': cash,
+            'irr': irr
         }
-        accounts_data.append(account_data)
-    return accounts_data
+        brokers_data.append(broker_data)
+    return brokers_data
 
-def _calculate_totals(accounts_data, user, effective_current_date, currency_target):
+def _calculate_totals(brokers_data, user, effective_current_date, currency_target):
+    """Calculate totals for all brokers"""
+    broker_account_ids = []
+    for broker in Brokers.objects.filter(investor=user):
+        broker_account_ids.extend(list(broker.accounts.values_list('id', flat=True)))
+
+    # Calculate total NAV and cash
+    if broker_account_ids:
+        nav_data = NAV_at_date(
+            user.id,
+            tuple(broker_account_ids),
+            effective_current_date,
+            currency_target
+        )
+        total_nav = nav_data['Total NAV']
+        total_cash = nav_data.get('Cash', {}).get(currency_target, Decimal('0'))
+    else:
+        total_nav = Decimal('0')
+        total_cash = Decimal('0')
+
     totals = {
-        'no_of_securities': sum(account['no_of_securities'] for account in accounts_data),
-        'nav': sum(account['nav'] for account in accounts_data),
-        'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None, 
-                  broker_account_ids=[account['id'] for account in accounts_data])
+        'no_of_accounts': sum(broker['no_of_accounts'] for broker in brokers_data),
+        'nav': total_nav,
+        'cash': total_cash,
+        'irr': IRR(
+            user.id, 
+            effective_current_date, 
+            currency_target, 
+            broker_account_ids=broker_account_ids
+        ) if broker_account_ids else Decimal('0')
     }
     return totals

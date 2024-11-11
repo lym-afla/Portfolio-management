@@ -6,6 +6,19 @@ CURRENCY_CHOICES = (
     ('CHF', 'Fr')
 )
 
+# Account selection types
+ACCOUNT_TYPE_ALL = 'all'
+ACCOUNT_TYPE_INDIVIDUAL = 'account'
+ACCOUNT_TYPE_GROUP = 'group'
+ACCOUNT_TYPE_BROKER = 'broker'
+
+ACCOUNT_TYPE_CHOICES = [
+    (ACCOUNT_TYPE_ALL, 'All Accounts'),
+    (ACCOUNT_TYPE_INDIVIDUAL, 'Individual Account'),
+    (ACCOUNT_TYPE_GROUP, 'Account Group'),
+    (ACCOUNT_TYPE_BROKER, 'Broker')
+]
+
 TRANSACTION_TYPE_CASH_IN = 'Cash in'
 TRANSACTION_TYPE_CASH_OUT = 'Cash out'
 TRANSACTION_TYPE_BUY = 'Buy'

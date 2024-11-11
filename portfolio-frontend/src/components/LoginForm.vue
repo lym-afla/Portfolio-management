@@ -58,7 +58,11 @@ export default {
     const setErrors = (errors) => {
       console.log('Setting errors:', errors)
       if (typeof errors === 'string') {
-        generalError.value = errors
+        if (errors.includes('Proxy')) {
+          generalError.value = 'Proxy error. Please check your internet connection. Or application server is down.'
+        } else {
+          generalError.value = errors
+        }
       } else if (typeof errors === 'object') {
         Object.keys(errors).forEach(field => {
           if (field in fieldErrors) {

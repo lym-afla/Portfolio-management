@@ -11,9 +11,11 @@ export default createStore({
     pageTitle: '',
     loading: false,
     error: null,
-    customAccountSelection: null,
+    accountSelection: {
+      type: 'all',
+      id: null
+    },
     dataRefreshTrigger: 0,
-    selectedAccount: null,
     effectiveCurrentDate: null,
     selectedCurrency: null,
     tableSettings: {
@@ -58,8 +60,14 @@ export default createStore({
     setError(state, error) {
       state.error = error
     },
-    SET_CUSTOM_ACCOUNT_SELECTION(state, account_choices) {
-      state.customAccountSelection = account_choices
+    SET_ACCOUNT_SELECTION(state, { type, id }) {
+      state.accountSelection = { type, id }
+      
+      // If user exists, update their preferences
+      if (state.user) {
+        state.user.selected_account_type = type
+        state.user.selected_account_id = id
+      }
     },
     SET_TABLE_SETTINGS(state, settings) {
       state.tableSettings = { ...state.tableSettings, ...settings }
@@ -87,7 +95,7 @@ export default createStore({
     },
     SET_STATE(state, payload) {
       Object.assign(state, payload)
-    }
+    },
   },
   actions: {
     async login({ commit, dispatch }, credentials) {
@@ -130,13 +138,25 @@ export default createStore({
     setError({ commit }, error) {
       commit('setError', error)
     },
-    async setCustomAccounts({ commit }) {
+    async updateAccountSelection({ commit, dispatch }, selection) {
       try {
-        const account_choices = await api.getAccountChoices()
-        commit('SET_CUSTOM_ACCOUNT_SELECTION', account_choices)
+        // First update backend
+        await api.updateUserDataForNewAccount({
+          type: selection.type,
+          id: selection.id
+        })
+        
+        // Then update store
+        commit('SET_ACCOUNT_SELECTION', {
+          type: selection.type,
+          id: selection.id
+        })
+        
+        // Finally trigger refresh
+        dispatch('triggerDataRefresh')
       } catch (error) {
-        console.error('Failed to fetch accounts', error)
-        commit('setError', 'Failed to fetch accounts')
+        console.error('Failed to update account selection', error)
+        throw error
       }
     },
     triggerDataRefresh({ commit }) {
@@ -171,22 +191,20 @@ export default createStore({
         router.push('/login')
       }
     },
-    async fetchUserData({ commit, state }) {
-      const requestId = Date.now()
-      // Don't fetch if we already have user data
-      if (state.user) {
-        console.log(`[Store][${requestId}] User data already exists, skipping fetch`)
-        return state.user
-      }
-
+    async fetchUserData({ commit }) {
       try {
-        console.log(`[Store][${requestId}] Starting user data fetch`)
         const userData = await api.getUserProfile()
-        console.log(`[Store][${requestId}] User data fetched:`, userData)
         commit('SET_USER', userData)
+        
+        // Set initial account selection from user preferences
+        commit('SET_ACCOUNT_SELECTION', {
+          type: userData.selected_account_type || 'all',
+          id: userData.selected_account_id || null
+        })
+        
         return userData
       } catch (error) {
-        console.error(`[Store][${requestId}] Failed to fetch user data:`, error)
+        console.error('Failed to fetch user data:', error)
         throw error
       }
     },
@@ -253,5 +271,9 @@ export default createStore({
     currentUser: state => state.user,
     effectiveCurrentDate: state => state.effectiveCurrentDate,
     tableSettings: state => state.tableSettings,
+    currentAccountSelection: state => state.accountSelection,
+    isAllAccountsSelected: state => state.accountSelection.type === 'all',
+    selectedAccountType: state => state.accountSelection.type,
+    selectedAccountId: state => state.accountSelection.id,
   }
 })

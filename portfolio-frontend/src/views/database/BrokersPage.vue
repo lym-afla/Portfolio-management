@@ -27,7 +27,8 @@
       :sort-by="sortBy"
       @update:sort-by="handleSortChange"
       density="compact"
-      class="elevation-1"
+      disable-sort
+      class="elevation-1 nowrap-table"
     >
       <template #top>
         <v-toolbar flat class="bg-grey-lighten-4 border-b">
@@ -60,13 +61,15 @@
 
       <template #item="{ item }">
         <tr>
-          <td>{{ item.name }}</td>
-          <td>{{ item.country }}</td>
-          <td class="text-right">{{ item.accounts_count }}</td>
-          <td class="text-right">{{ item.total_nav }}</td>
-          <td class="text-right">{{ item.irr }}</td>
-          <td>{{ item.comment }}</td>
-          <td class="text-right">
+          <td :class="`text-${headerAlignments.name}`">{{ item.name }}</td>
+          <td :class="`text-${headerAlignments.country}`">{{ item.country }}</td>
+          <td :class="`text-${headerAlignments.no_of_accounts}`">{{ item.no_of_accounts }}</td>
+          <td :class="`text-${headerAlignments.no_of_securities}`">{{ item.no_of_securities }}</td>
+          <td :class="`text-${headerAlignments.first_investment}`">{{ item.first_investment }}</td>
+          <td :class="`text-${headerAlignments.nav}`">{{ item.nav }}</td>
+          <td :class="`text-${headerAlignments.cash}`">{{ item.cash }}</td>
+          <td :class="`text-${headerAlignments.irr} font-italic`">{{ item.irr }}</td>
+          <td :class="`text-${headerAlignments.actions}`">
             <v-icon small class="mr-2" @click="editBroker(item)">
               mdi-pencil
             </v-icon>
@@ -75,6 +78,21 @@
             </v-icon>
           </td>
         </tr>
+      </template>
+
+      <template #tfoot>
+        <tfoot>
+          <tr class="font-weight-bold">
+            <td v-for="header in headers" :key="header.key" :class="['text-' + header.align, header.key === 'irr' ? 'font-italic' : '']">
+              <template v-if="header.key === 'name'">
+                TOTAL
+              </template>
+              <template v-else-if="['no_of_accounts', 'no_of_securities', 'nav', 'cash', 'irr'].includes(header.key)">
+                {{ totals[header.key] }}
+              </template>
+            </td>
+          </tr>
+        </tfoot>
       </template>
 
       <template #bottom>
@@ -110,6 +128,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useStore } from 'vuex'
 import { getBrokersTable, deleteBroker } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import { useTableSettings } from '@/composables/useTableSettings'
 import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
 
 export default {
@@ -121,34 +140,45 @@ export default {
     const store = useStore()
     const { handleApiError } = useErrorHandler()
 
+    const {
+      itemsPerPage,
+      currentPage,
+      sortBy,
+      search,
+      handlePageChange,
+      handleItemsPerPageChange,
+      handleSortChange,
+    } = useTableSettings()
+
     const loading = ref(false)
     const tableLoading = ref(false)
     const brokers = ref([])
     const totalItems = ref(0)
-    const currentPage = ref(1)
-    const itemsPerPage = ref(10)
-    const search = ref('')
-    const sortBy = ref([])
     const showBrokerDialog = ref(false)
     const editingBroker = ref(null)
+    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+    const totals = ref({})
 
     const headers = [
-      { title: 'Name', key: 'name', align: 'start' },
-      { title: 'Country', key: 'country', align: 'start' },
-      { title: 'Accounts', key: 'accounts_count', align: 'end' },
-      { title: 'Total NAV', key: 'total_nav', align: 'end' },
-      { title: 'IRR', key: 'irr', align: 'end' },
-      { title: 'Comment', key: 'comment', align: 'start' },
+      { title: 'Name', key: 'name', align: 'start', sortable: true },
+      { title: 'Country', key: 'country', align: 'center', sortable: true },
+      { title: 'Accounts', key: 'no_of_accounts', align: 'center', sortable: true },
+      { title: 'Securities', key: 'no_of_securities', align: 'center', sortable: true },
+      { title: 'First Investment', key: 'first_investment', align: 'center', sortable: true },
+      { title: 'Total NAV', key: 'nav', align: 'center', sortable: true },
+      { title: 'Cash', key: 'cash', align: 'center', sortable: true },
+      { title: 'IRR', key: 'irr', align: 'center', sortable: true },
       { title: 'Actions', key: 'actions', align: 'end', sortable: false }
     ]
 
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
-
-    const handlePageChange = (value) => {
-      currentPage.value = value
-    }
+    const headerAlignments = computed(() => {
+      const alignments = {};
+      headers.forEach(header => {
+        alignments[header.key] = header.align || 'start';
+      });
+      return alignments;
+    });
 
     const fetchBrokers = async () => {
       tableLoading.value = true
@@ -156,25 +186,17 @@ export default {
         const response = await getBrokersTable({
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
-          search: search.value,
-          sortBy: sortBy.value
+          sortBy: sortBy.value[0] || {},
+          search: search.value
         })
         brokers.value = response.items
         totalItems.value = response.total_items
+        totals.value = response.totals
       } catch (error) {
         handleApiError(error)
       } finally {
         tableLoading.value = false
       }
-    }
-
-    const handleItemsPerPageChange = (value) => {
-      itemsPerPage.value = value
-      currentPage.value = 1
-    }
-
-    const handleSortChange = (value) => {
-      sortBy.value = value
     }
 
     const openAddDialog = () => {
@@ -245,7 +267,9 @@ export default {
       editBroker,
       processDeleteBroker,
       handleBrokerAdded,
-      handleBrokerUpdated
+      handleBrokerUpdated,
+      headerAlignments,
+      totals
     }
   }
 }

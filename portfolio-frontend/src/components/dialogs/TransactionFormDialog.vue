@@ -202,7 +202,7 @@ export default {
 
     const { handleSubmit, errors, resetForm, values: form, setValues, setFieldValue, setFieldError } = useForm({
       validationSchema: schema,
-      validateOnChange: true
+      validateOnChange: true,
     })
 
     const clearFieldError = (fieldName) => {

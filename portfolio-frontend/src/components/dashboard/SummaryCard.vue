@@ -3,6 +3,9 @@
     <v-card-title class="text-h5 font-weight-bold">
       <v-icon left color="primary" class="mr-2">mdi-chart-box</v-icon>
       Portfolio Summary
+      <div class="text-subtitle-2 mt-1">
+        {{ formatAccountSelection }}
+      </div>
     </v-card-title>
     <v-card-text class="pa-0">
       <v-table density="compact">
@@ -24,6 +27,9 @@
 </template>
 
 <script>
+import { computed } from 'vue'
+import { useStore } from 'vuex'
+
 export default {
   name: 'SummaryCard',
   props: {
@@ -37,12 +43,32 @@ export default {
     }
   },
   setup(props) {
+    const store = useStore()
     
     const formatKey = (key) => {
       return key.replace('_', ' ').replace(/^./, (str) => str.toUpperCase()).replace('Irr', 'IRR')
     }
+
+    const formatAccountSelection = computed(() => {
+      console.log("[SummaryCard]", store.state.accountSelection, store.state.selectedCurrency, store.state.user)
+      const selection = store.state.accountSelection
+      if (selection.type === 'all') {
+        return 'All Accounts'
+      } else if (selection.type === 'broker') {
+        return `All accounts for broker`
+      } else if (selection.type === 'group') {
+        return `Account group`
+      } else if (selection.type === 'account') {
+        return `Individual account`
+      }
+      return ''
+    })
     
-    return { props, formatKey }
+    return { 
+      props, 
+      formatKey,
+      formatAccountSelection
+    }
   }
 }
 </script>
@@ -60,6 +86,11 @@ export default {
   font-size: 1.5rem !important;
   padding-top: 16px;
   padding-bottom: 16px;
+}
+
+.text-subtitle-2 {
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 0.875rem;
 }
 
 .summary-card .v-table {

@@ -2,12 +2,11 @@ from datetime import datetime, date
 from decimal import Decimal
 from itertools import chain
 from operator import attrgetter
-from typing import List, Dict, Any
 
 from django.db.models import Q
 from common.models import BrokerAccounts, FXTransaction, Transactions
 from .sorting_utils import sort_entries
-from .portfolio_utils import broker_group_to_ids
+from .portfolio_utils import get_selected_account_ids
 from .formatting_utils import format_table_data, currency_format
 from .pagination_utils import paginate_table
 
@@ -25,7 +24,11 @@ def get_transactions_table_api(request):
 
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+    selected_account_ids = get_selected_account_ids(
+        user,
+        user.selected_account_type,
+        user.selected_account_id
+    )
 
     # Handle empty dates
     if not end_date:

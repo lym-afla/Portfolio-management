@@ -62,8 +62,7 @@
       <template #item="{ item }">
         <tr>
           <td :class="`text-${headerAlignments.name}`">{{ item.name }}</td>
-          <td :class="`text-${headerAlignments.country}`">{{ item.country }}</td>
-          <td :class="`text-${headerAlignments.currencies}`">{{ item.currencies }}</td>
+          <td :class="`text-${headerAlignments.broker_name}`">{{ item.broker_name }}</td>
           <td :class="`text-${headerAlignments.no_of_securities}`">{{ item.no_of_securities }}</td>
           <td :class="`text-${headerAlignments.first_investment}`">{{ item.first_investment }}</td>
           <td :class="`text-${headerAlignments.nav}`">{{ item.nav }}</td>
@@ -165,8 +164,7 @@ export default {
 
     const headers = computed(() => [
       { title: 'Name', key: 'name', align: 'start', sortable: true },
-      { title: 'Country', key: 'country', align: 'center', sortable: true },
-      { title: 'Currencies', key: 'currencies', align: 'center', sortable: false },
+      { title: 'Broker', key: 'broker_name', align: 'center', sortable: true },
       { title: 'Number of securities', key: 'no_of_securities', align: 'center', sortable: true },
       { title: 'First investment', key: 'first_investment', align: 'center', sortable: true },
       { title: 'Current NAV', key: 'nav', align: 'center', sortable: true },

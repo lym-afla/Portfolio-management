@@ -8,7 +8,7 @@ import requests
 import yfinance as yf
 import logging
 
-from constants import CURRENCY_CHOICES, ASSET_TYPE_CHOICES, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CHOICES, EXPOSURE_CHOICES, TRANSACTION_TYPE_SELL
+from constants import CURRENCY_CHOICES, ASSET_TYPE_CHOICES, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CHOICES, EXPOSURE_CHOICES, TRANSACTION_TYPE_SELL, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_ALL
 # from .utils import update_FX_database
 from users.models import CustomUser
 
@@ -165,7 +165,6 @@ class BrokerAccounts(models.Model):
     broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='accounts')
     native_id = models.CharField(max_length=100, help_text="Native account ID from broker's system")
     name = models.CharField(max_length=100, help_text="Account name or description")
-    securities = models.ManyToManyField('Assets', related_name='broker_accounts')
     restricted = models.BooleanField(default=False, null=False, blank=False)
     comment = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -445,10 +444,10 @@ class Assets(models.Model):
                 transactions = transactions.filter(broker_account_id__in=broker_account_ids)
 
             position = self.position(start - timedelta(days=1), investor, broker_account_ids)
-            logger.info(f"Starting position at {start}: {position}")
+            logger.debug(f"Starting position at {start}: {position}")
 
             for transaction in transactions:
-                logger.info(f"Transaction: {transaction.date}, {transaction.type}, Quantity: {transaction.quantity}, Price: {transaction.price}")
+                logger.debug(f"Transaction: {transaction.date}, {transaction.type}, Quantity: {transaction.quantity}, Price: {transaction.price}")
 
                 if (position > 0 and transaction.type == TRANSACTION_TYPE_SELL) or \
                    (position < 0 and transaction.type == TRANSACTION_TYPE_BUY) or \
@@ -470,12 +469,12 @@ class Assets(models.Model):
                         result["price_appreciation"] += Decimal(price_appreciation)
                         result["fx_effect"] += Decimal(fx_effect)
 
-                        logger.info(f"Realized G/L for this transaction: {gl_target_currency}")
+                        logger.debug(f"Realized G/L for this transaction: {gl_target_currency}")
 
                 position += transaction.quantity
-                logger.info(f"Position after transaction: {position}")
+                logger.debug(f"Position after transaction: {position}")
 
-            logger.info(f"Final position at {end}: {position}")
+            logger.debug(f"Final position at {end}: {position}")
             return result
 
         result = {
@@ -517,13 +516,13 @@ class Assets(models.Model):
                 exit_date = date
             adjusted_pairs.append((entry_date, exit_date))
 
-        logger.info(f"Adjusted date pairs: {adjusted_pairs}")
+        logger.debug(f"Adjusted date pairs: {adjusted_pairs}")
 
         # Calculate gain/loss for each position
         for position_start, position_end in adjusted_pairs:
-            logger.info(f"Calculating for position: {position_start} to {position_end}")
+            logger.debug(f"Calculating for position: {position_start} to {position_end}")
             position_result = calculate_position_gain_loss(position_start, position_end, investor)
-            logger.info(f"Position result: {position_result}")
+            logger.debug(f"Position result: {position_result}")
             
             for key in result["all_time"]:
                 result["all_time"][key] += position_result[key]
@@ -532,7 +531,7 @@ class Assets(models.Model):
             if position_end == date and position_end not in exit_dates:
                 result["current_position"] = position_result.copy()
             
-            logger.info(f"Current position result: {result['current_position']}")
+            logger.debug(f"Current position result: {result['current_position']}")
 
         # Round all results to 2 decimal places
         for period in result:
@@ -731,7 +730,12 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
 # Model to store the annual performance data
 class AnnualPerformance(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    broker_group = models.CharField(max_length=100, null=True, blank=True)
+    account_type = models.CharField(
+        max_length=50,
+        choices=ACCOUNT_TYPE_CHOICES,  # From constants.py
+        default=ACCOUNT_TYPE_ALL
+    )
+    account_id = models.IntegerField(null=True, blank=True)
     year = models.IntegerField()
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     bop_nav = models.DecimalField(max_digits=20, decimal_places=2)
@@ -743,17 +747,22 @@ class AnnualPerformance(models.Model):
     tax = models.DecimalField(max_digits=20, decimal_places=2)
     fx = models.DecimalField(max_digits=20, decimal_places=2)
     eop_nav = models.DecimalField(max_digits=20, decimal_places=2)
-    tsr = models.CharField(max_length=10) # Can be non numeric
+    tsr = models.CharField(max_length=10)  # Can be non numeric
     restricted = models.BooleanField(default=False, null=True, blank=True)
 
     class Meta:
-
-        # Add constraints
         constraints = [
             models.UniqueConstraint(
-                fields=['investor', 'year', 'currency', 'restricted', 'broker_group'],
-                name='unique_investor_broker_group_year_currency'
+                fields=['investor', 'year', 'currency', 'restricted', 'account_type', 'account_id'],
+                name='unique_annual_performance'
             ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(account_type=ACCOUNT_TYPE_ALL, account_id__isnull=True) |
+                    ~models.Q(account_type=ACCOUNT_TYPE_ALL) & models.Q(account_id__isnull=False)
+                ),
+                name='valid_annual_performance_selection'
+            )
         ]
 
 class FXTransaction(models.Model):

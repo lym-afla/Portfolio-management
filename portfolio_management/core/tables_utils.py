@@ -22,17 +22,17 @@ def calculate_positions_table_output(
 
     """
     if is_closed:
-        return calculate_closed_table_output_for_api(
+        return _calculate_closed_table_output_for_api(
             user_id, assets, end_date, categories, use_default_currency,
             currency_target, selected_account_ids, start_date
         )
     else:
-        return calculate_open_table_output_for_api(
+        return _calculate_open_table_output_for_api(
             user_id, assets, end_date, categories, use_default_currency,
             currency_target, selected_account_ids, start_date
         )
 
-def calculate_closed_table_output_for_api(
+def _calculate_closed_table_output_for_api(
     user_id: int,
     portfolio: List[Any],
     end_date: date,
@@ -181,7 +181,7 @@ def calculate_closed_table_output_for_api(
     
     return closed_positions, portfolio_closed_totals
 
-def calculate_open_table_output_for_api(
+def _calculate_open_table_output_for_api(
     user_id: int,
     portfolio: List[Any],
     end_date: date,

@@ -3,6 +3,8 @@ from common.models import Assets, BrokerAccounts, FXTransaction, Prices
 from users.models import AccountGroup
 from constants import CURRENCY_CHOICES
 from common.forms import GroupedSelect
+from constants import ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_ALL
+from core.user_utils import prepare_account_choices
     
 class PriceForm(forms.ModelForm):
     class Meta:
@@ -23,25 +25,25 @@ class PriceForm(forms.ModelForm):
 
 class SecurityForm(forms.ModelForm):
 
-    broker_accounts = forms.MultipleChoiceField(
-        choices=[],
-        widget=forms.SelectMultiple(
-            attrs={
-                'class': 'selectpicker show-tick',
-                'data-actions-box': 'true',
-                'data-width': '100%',
-                'title': 'Choose broker account',
-                'data-selected-text-format': 'count',
-            }
-        ),
-        label='Broker Accounts'
-    )
+    # broker_accounts = forms.MultipleChoiceField(
+    #     choices=[],
+    #     widget=forms.SelectMultiple(
+    #         attrs={
+    #             'class': 'selectpicker show-tick',
+    #             'data-actions-box': 'true',
+    #             'data-width': '100%',
+    #             'title': 'Choose broker account',
+    #             'data-selected-text-format': 'count',
+    #         }
+    #     ),
+    #     label='Broker Accounts'
+    # )
 
     update_link = forms.URLField(required=False, assume_scheme='http')  # Specify the default scheme
 
     class Meta:
         model = Assets
-        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'broker_accounts', 'data_source', 'yahoo_symbol', 'update_link', 'secid', 'fund_fee', 'comment']
+        fields = ['name', 'ISIN', 'type', 'currency', 'exposure', 'restricted', 'data_source', 'yahoo_symbol', 'update_link', 'secid', 'fund_fee', 'comment']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'ISIN': forms.TextInput(attrs={'class': 'form-control'}),
@@ -56,18 +58,19 @@ class SecurityForm(forms.ModelForm):
             'secid': forms.TextInput(attrs={'class': 'form-control'}),
             'fund_fee': forms.NumberInput(attrs={'class': 'form-control'}),
         }
+        
 
     def __init__(self, *args, **kwargs):
-        investor = kwargs.pop('investor', None)
+        # investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
         self.fields['type'].choices = [(choice[0], choice[0]) for choice in Assets._meta.get_field('type').choices if choice[0]]
         
-        # Filter broker accounts based on the investor
-        self.fields['broker_accounts'].choices = [
-            (account.id, account.name) 
-            for account in BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')
-        ]
+        # # Filter broker accounts based on the investor
+        # self.fields['broker_accounts'].choices = [
+        #     (account.id, account.name) 
+        #     for account in BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')
+        # ]
         
         # self.fields['data_source'].widget = forms.Select(choices=Assets.DATA_SOURCE_CHOICES)
         self.fields['data_source'].choices = [('', 'None')] + Assets.DATA_SOURCE_CHOICES
@@ -76,11 +79,7 @@ class SecurityForm(forms.ModelForm):
         self.fields['fund_fee'].required = False
         self.fields['secid'].required = False
 
-        # If instance exists, pre-select the current broker accounts
-        if self.instance.pk:
-            self.fields['broker_accounts'].initial = [
-                account.id for account in self.instance.broker_accounts.all()
-            ]
+        self.fields['update_link'].label = 'Update link (Financial Times)'
 
     def clean(self):
         cleaned_data = super().clean()
@@ -102,24 +101,34 @@ class SecurityForm(forms.ModelForm):
 EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (('All', 'All Currencies'),)
 
 class AccountPerformanceForm(forms.Form):
-
-    account_or_group = forms.ChoiceField(
+    selection_account_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    selection_account_id = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    
+    account_selection = forms.ChoiceField(
         choices=[],
         widget=GroupedSelect(attrs={'class': 'form-select'}),
-        label='Broker Accounts',
+        label='Account Selection',
     )
+    
     currency = forms.ChoiceField(
         choices=EXTENDED_CURRENCY_CHOICES,
         widget=forms.Select(
             attrs={'class': 'form-select'}
         )
     )
+    
     is_restricted = forms.ChoiceField(
-        choices=(('All', 'All'), ('None', 'No flag'), ('True', 'Restricted'), ('False', 'Not restricted')),
+        choices=(
+            ('All', 'All'),
+            ('None', 'No flag'),
+            ('True', 'Restricted'),
+            ('False', 'Not restricted')
+        ),
         widget=forms.Select(
             attrs={'class': 'form-select'}
         )
     )
+    
     skip_existing_years = forms.BooleanField(
         required=False,
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -130,26 +139,49 @@ class AccountPerformanceForm(forms.Form):
         investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
 
-        account_or_group_choices = [
-            ('General', (('All accounts', 'All accounts'),)),
-            ('__SEPARATOR__', '__SEPARATOR__'),
-        ]
-        
         if investor is not None:
-            # Add individual broker accounts
-            accounts = BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')
-            user_accounts = [(account.name, account.name) for account in accounts]
-            if user_accounts:
-                account_or_group_choices.append(('Your Accounts', tuple(user_accounts)))
-                account_or_group_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+            # Get structured account choices
+            choices_data = prepare_account_choices(investor)
             
-            # Add user's account groups
-            user_groups = AccountGroup.objects.filter(user=investor).order_by('name')
-            group_choices = [(group.name, group.name) for group in user_groups]
-            if group_choices:
-                account_or_group_choices.append(('Account Groups', tuple(group_choices)))
+            # Convert the structured choices to form choices format
+            account_choices = []
+            for section, items in choices_data['options']:
+                if section == '__SEPARATOR__':
+                    account_choices.append(('__SEPARATOR__', '__SEPARATOR__'))
+                else:
+                    formatted_items = []
+                    for item_label, item_data in items:
+                        # Create a composite value that can be parsed later
+                        value = f"{item_data['type']}:{item_data.get('id', '')}"
+                        formatted_items.append((value, item_label))
+                    account_choices.append((section, tuple(formatted_items)))
+            
+            self.fields['account_selection'].choices = account_choices
 
-        self.fields['account_or_group'].choices = account_or_group_choices
+    def clean(self):
+        cleaned_data = super().clean()
+        account_selection = cleaned_data.get('account_selection')
+
+        if account_selection:
+            try:
+                selection_type, selection_id = account_selection.split(':')
+                cleaned_data['selection_type'] = selection_type
+                cleaned_data['selection_id'] = int(selection_id) if selection_id else None
+            except ValueError:
+                raise forms.ValidationError('Invalid account selection format')
+
+        return cleaned_data
+
+    def get_selection_data(self):
+        """
+        Returns the cleaned selection type and ID for use in queries
+        """
+        if self.is_valid():
+            return {
+                'selection_type': self.cleaned_data['selection_type'],
+                'selection_id': self.cleaned_data['selection_id']
+            }
+        return None
 
 class FXTransactionForm(forms.ModelForm):
     class Meta:

@@ -27,7 +27,6 @@ def asset(user, broker):
         restricted=False
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
     return asset
 
 @pytest.fixture
@@ -195,7 +194,6 @@ class TestAssetsModel:
 
         # Create another broker for testing broker filtering
         broker2 = Brokers.objects.create(name='Test Broker 2', investor=user)
-        asset.brokers.add(broker2)
 
         # Test basic functionality
         test_dates = [

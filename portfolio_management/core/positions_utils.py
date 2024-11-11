@@ -14,7 +14,7 @@ from .sorting_utils import sort_entries
 from .tables_utils import calculate_positions_table_output
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import broker_group_to_ids
+from .portfolio_utils import get_selected_account_ids
 
 import logging
 logger = logging.getLogger(__name__)
@@ -40,7 +40,11 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
-    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+    selected_account_ids = get_selected_account_ids(
+        user,
+        user.selected_account_type,
+        user.selected_account_id
+    )
 
     # Handle empty dates
     if not end_date:
@@ -92,8 +96,11 @@ def _get_cash_balances_for_api(user: CustomUser, target_date: date, selected_acc
     :param selected_account_ids: The list of selected account IDs
     :return: Dictionary of formatted cash balances
     """
-    selected_account_ids = selected_account_ids or broker_group_to_ids(user.custom_broker_accounts, user)
-    logger.info(f"Getting cash balances for accounts {selected_account_ids} on {target_date} for {user}")
+    selected_account_ids = (
+        selected_account_ids
+        or get_selected_account_ids(user, user.selected_account_type, user.selected_account_id)
+    )
+    logger.debug(f"Getting cash balances for accounts {selected_account_ids} on {target_date} for {user}")
     
     aggregated_balances = defaultdict(Decimal)
     
@@ -124,10 +131,8 @@ def _filter_assets(user: CustomUser, end_date: date, selected_account_ids: List[
     :return: List of filtered Asset objects
     """
     assets = Assets.objects.filter(
-        investors__id=user.id,
         transactions__date__lte=end_date,
-        transactions__broker_account_id__in=selected_account_ids,
-        transactions__quantity__isnull=False
+        transactions__broker_account__id__in=selected_account_ids,
     ).distinct()
 
     if search:
@@ -136,8 +141,4 @@ def _filter_assets(user: CustomUser, end_date: date, selected_account_ids: List[
     if is_closed:
         return [asset for asset in assets if len(asset.exit_dates(end_date, user, selected_account_ids)) != 0]
     else:
-        return assets.annotate(
-            abs_total_quantity=Abs(Sum('transactions__quantity'))
-        ).exclude(
-            abs_total_quantity__lt=TOLERANCE
-        )
+        return [asset for asset in assets if asset.position(end_date, user, selected_account_ids) != 0]

@@ -76,20 +76,20 @@
           ></v-text-field>
           
           <v-select
-            v-model="settingsForm.custom_broker_accounts"
+            v-model="settingsForm.selected_account"
             :items="accountChoices"
             item-title="title"
             item-value="value"
-            label="Account or Account group"
-            :error-messages="fieldErrors.custom_broker_accounts"
+            label="Default Account Selection"
+            :error-messages="fieldErrors.selected_account"
           >
             <template v-slot:item="{ item, props }">
               <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
-                {{ item.title }}
+                {{ item.raw.title }}
               </v-list-item>
               <v-divider v-else-if="item.raw.type === 'divider'" />
               <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
-                {{ item.title }}
+                {{ item.raw.title }}
               </v-list-subheader>
             </template>
           </v-select>
@@ -154,7 +154,10 @@ export default {
         chart_timeline: '',
         NAV_barchart_default_breakdown: '',
         digits: 0,
-        custom_broker_accounts: '',
+        selected_account: {
+          type: 'all',
+          id: null
+        },
       },
       currencyChoices: [],
       frequencyChoices: [],
@@ -168,7 +171,7 @@ export default {
         chart_timeline: [],
         NAV_barchart_default_breakdown: [],
         digits: [],
-        custom_broker_accounts: [],
+        selected_account: [],
       },
       snackbar: false,
       snackbarMessage: '',
@@ -189,12 +192,30 @@ export default {
           getUserSettings(),
           getSettingsChoices()
         ])
-        this.settingsForm = settings
+        
+        // Format all choices first
         this.currencyChoices = this.formatChoices(choices.currency_choices)
         this.frequencyChoices = this.formatChoices(choices.frequency_choices)
         this.timelineChoices = this.formatChoices(choices.timeline_choices)
         this.navBreakdownChoices = this.formatChoices(choices.nav_breakdown_choices)
         this.accountChoices = formatAccountChoices(choices.account_choices)
+
+        // Find the matching account option
+        const matchingAccount = this.accountChoices.find(
+          option => option.type === 'option' && 
+                    option.value.type === settings.selected_account_type && 
+                    option.value.id === settings.selected_account_id
+        )
+
+        // Update form with settings
+        this.settingsForm = {
+          ...settings,
+          selected_account: matchingAccount?.value || {
+            type: 'all',
+            id: null
+          }
+        }
+
       } catch (error) {
         console.error('Error loading settings data:', error)
         this.showErrorMessage('Failed to load settings. Please try again.')
@@ -210,7 +231,15 @@ export default {
     },
     async saveSettings() {
       try {
-        const response = await updateUserSettings(this.settingsForm)
+        // Transform the data before sending
+        const settingsToSave = {
+          ...this.settingsForm,
+          selected_account_type: this.settingsForm.selected_account.type,
+          selected_account_id: this.settingsForm.selected_account.id,
+        }
+        delete settingsToSave.selected_account  // Remove the combined field
+
+        const response = await updateUserSettings(settingsToSave)
         if (response.success) {
           this.showSuccessMessage('Settings saved successfully')
         } else {

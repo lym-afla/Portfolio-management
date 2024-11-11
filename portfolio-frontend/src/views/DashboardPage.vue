@@ -1,56 +1,69 @@
 <template>
   <v-container fluid class="pa-0">
-    <v-row class="equal-height-row">
-      <v-col cols="12" md="3">
-        <v-skeleton-loader v-if="loading.summary" type="card" class="h-100" />
-        <SummaryCard v-else-if="!error.summary" :summary="summary" :currency="currency" class="h-100" />
-        <v-alert v-else type="error" class="h-100">{{ error.summary }}</v-alert>
-      </v-col>
-      <v-col cols="12" md="9">
-        <v-row class="equal-height-row h-100">
-          <v-col v-for="(chart, index) in chartTypes" :key="index" cols="12" md="4">
-            <v-skeleton-loader v-if="loading.breakdownCharts" type="card" class="h-100" />
-            <BreakdownChart 
-              v-else-if="!error.breakdownCharts" 
-              :title="chartTitles[chart]" 
-              :data="breakdownData[chart]" 
-              :currency="currency"
-              class="h-100" 
-            />
-            <v-alert v-else type="error" class="h-100">{{ error.breakdownCharts }}</v-alert>
-          </v-col>
-        </v-row>
-      </v-col>
-    </v-row>
+    <v-skeleton-loader
+      v-if="isEffectiveDateLoading"
+      type="article"
+      class="my-4"
+    />
+    <template v-else>
+      <v-row class="equal-height-row">
+        <v-col cols="12" md="3">
+          <v-skeleton-loader v-if="loading.summary" type="card" class="h-100" />
+          <SummaryCard 
+            v-else-if="!error.summary" 
+            :summary="summary" 
+            :currency="userCurrency" 
+            class="h-100" 
+          />
+          <v-alert v-else type="error" class="h-100">{{ error.summary }}</v-alert>
+        </v-col>
+        <v-col cols="12" md="9">
+          <v-row class="equal-height-row h-100">
+            <v-col v-for="(chart, index) in chartTypes" :key="index" cols="12" md="4">
+              <v-skeleton-loader v-if="loading.breakdownCharts" type="card" class="h-100" />
+              <BreakdownChart 
+                v-else-if="!error.breakdownCharts" 
+                :title="chartTitles[chart]" 
+                :data="breakdownData[chart]" 
+                :currency="userCurrency"
+                :totalNAV="totalNAV"
+                class="h-100" 
+              />
+              <v-alert v-else type="error" class="h-100">{{ error.breakdownCharts }}</v-alert>
+            </v-col>
+          </v-row>
+        </v-col>
+      </v-row>
 
-    <v-row>
-      <v-col cols="12">
-        <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
-        <SummaryOverTimeTable
-          v-else-if="!error.summaryOverTime"
-          :lines="summaryOverTimeData ? summaryOverTimeData.lines : []"
-          :years="summaryOverTimeData ? summaryOverTimeData.years : []"
-          :currentYear="summaryOverTimeData ? summaryOverTimeData.currentYear : ''"
-          @refresh-data="fetchSummaryOverTimeData"
-        />
-        <v-alert v-else type="error">{{ error.summaryOverTime }}</v-alert>
-      </v-col>
-    </v-row>
+      <v-row>
+        <v-col cols="12">
+          <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
+          <SummaryOverTimeTable
+            v-else-if="!error.summaryOverTime"
+            :lines="summaryOverTimeData ? summaryOverTimeData.lines : []"
+            :years="summaryOverTimeData ? summaryOverTimeData.years : []"
+            :currentYear="summaryOverTimeData ? summaryOverTimeData.currentYear : ''"
+            @refresh-data="fetchSummaryOverTimeData"
+          />
+          <v-alert v-else type="error">{{ error.summaryOverTime }}</v-alert>
+        </v-col>
+      </v-row>
 
-    <v-row>
-      <v-col cols="12">
-        <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
-        <NAVChart 
-          v-else
-          :chartData="navChartData"
-          :loading="updating.navChart"
-          :initialParams="navChartInitialParams"
-          :effectiveCurrentDate="effectiveCurrentDate"
-          @update-params="fetchNAVChartData"
-        />
-        <v-alert v-if="error.navChart" type="error" class="mt-2">{{ error.navChart }}</v-alert>
-      </v-col>
-    </v-row>
+      <v-row>
+        <v-col cols="12">
+          <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
+          <!-- <NAVChart 
+            v-else
+            :chartData="navChartData"
+            :loading="updating.navChart"
+            :initialParams="navChartInitialParams"
+            :effectiveCurrentDate="effectiveCurrentDate"
+            @update-params="fetchNAVChartData"
+          /> -->
+          <v-alert v-if="error.navChart" type="error" class="mt-2">{{ error.navChart }}</v-alert>
+        </v-col>
+      </v-row>
+    </template>
   </v-container>
 </template>
 
@@ -61,7 +74,7 @@ import { calculateDateRange } from '@/utils/dateRangeUtils'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
-import NAVChart from '@/components/dashboard/NAVChart.vue'
+// import NAVChart from '@/components/dashboard/NAVChart.vue'
 import { getDashboardSummary, getDashboardBreakdown, getDashboardSummaryOverTime, getNAVChartData } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
@@ -71,7 +84,7 @@ export default {
     SummaryCard,
     BreakdownChart,
     SummaryOverTimeTable,
-    NAVChart,
+    // NAVChart,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -79,7 +92,7 @@ export default {
     const { handleApiError } = useErrorHandler()
     const clearErrors = inject('clearErrors')
     const summary = ref({})
-    const currency = ref('USD')
+
     const breakdownData = ref({
       assetType: {},
       assetClass: {},
@@ -87,14 +100,23 @@ export default {
     })
     const totalNAV = ref('')
     const summaryOverTimeData = ref({})
-    const navChartData = ref(null)
+    const navChartData = ref({
+      labels: [],
+      datasets: []
+    })
     // const navChartInitialParams = computed(() => store.state.navChartParams)
     
     const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
 
+    const isEffectiveDateLoading = ref(true)
+
     const navChartInitialParams = computed(() => {
       const params = store.state.navChartParams
       const defaultDateRange = 'ytd'
+
+      if (!effectiveCurrentDate.value) {
+        return params
+      }
 
       if (!params.dateFrom || !params.dateTo) {
         const calculatedRange = calculateDateRange(params.dateRange || defaultDateRange, effectiveCurrentDate.value)
@@ -108,10 +130,10 @@ export default {
       return params
     })
     const loading = ref({
-      summary: true,
-      breakdownCharts: true,
-      summaryOverTime: true,
-      navChart: true,
+      summary: false,
+      breakdownCharts: false,
+      summaryOverTime: false,
+      navChart: false
     })
     const updating = ref({ navChart: false })
     const error = ref({
@@ -127,6 +149,8 @@ export default {
       assetClass: 'Asset Class',
       currency: 'Currency',
     }
+
+    const userCurrency = computed(() => store.state.selectedCurrency)
 
     const fetchSummaryData = async () => {
       try {
@@ -144,25 +168,20 @@ export default {
       }
     }
 
-    const fetchBreakdownData = async () => {
-      try {
-        clearErrors()
-        loading.value.breakdownCharts = true
-        console.log('Fetching dashboard breakdown...')
-        const data = await getDashboardBreakdown()
-        console.log('Received breakdown data:', data)
-        breakdownData.value = {
-          assetType: { ...data.assetType, totalNAV: data.totalNAV },
-          assetClass: { ...data.assetClass, totalNAV: data.totalNAV },
-          currency: { ...data.currency, totalNAV: data.totalNAV },
-        }
-        totalNAV.value = data.totalNAV
-        loading.value.breakdownCharts = false
-      } catch (err) {
-        console.error('Error fetching breakdown:', err)
-        error.value.breakdownCharts = handleApiError(err)
-        loading.value.breakdownCharts = false
-      }
+    const fetchBreakdownData = () => {
+      loading.value.breakdownCharts = true
+      getDashboardBreakdown()
+        .then(data => {
+          breakdownData.value = data
+          totalNAV.value = data.totalNAV
+        })
+        .catch(err => {
+          console.error('Error fetching breakdown data:', err)
+          error.value.breakdownCharts = handleApiError(err)
+        })
+        .finally(() => {
+          loading.value.breakdownCharts = false
+        })
     }
 
     const fetchSummaryOverTimeData = async () => {
@@ -208,41 +227,63 @@ export default {
       }
     }
 
-    const refreshAllData = async () => {
+    const initializeData = async () => {
+      try {
+        if (!effectiveCurrentDate.value) {
+          await store.dispatch('fetchEffectiveCurrentDate')
+        }
+
+        if (!store.state.navChartParams.dateFrom || !store.state.navChartParams.dateTo) {
+          const defaultDateRange = 'ytd'
+          const calculatedDateRange = calculateDateRange(defaultDateRange, effectiveCurrentDate.value)
+          await store.dispatch('updateNavChartParams', {
+            dateRange: defaultDateRange,
+            dateFrom: calculatedDateRange.from,
+            dateTo: calculatedDateRange.to
+          })
+        }
+      } catch (error) {
+        console.error('Error initializing dashboard:', error)
+      } finally {
+        isEffectiveDateLoading.value = false
+      }
+    }
+
+    const refreshAllData = () => {
+      // Clear previous data to default state
+      summary.value = {}
+      breakdownData.value = {
+        assetType: {},
+        assetClass: {},
+        currency: {}
+      }
+      summaryOverTimeData.value = {}
+      navChartData.value = {
+        labels: [],
+        datasets: []
+      }
+
+      // Then fetch new data
       fetchSummaryData()
       fetchBreakdownData()
       fetchSummaryOverTimeData()
       fetchNAVChartData()
     }
 
-    // Watch for changes in the store that should trigger a data refresh
+    // Replace the account selection watcher with dataRefreshTrigger watcher
     watch(
-      [
-        () => store.state.dataRefreshTrigger,
-      ],
-      async () => {
-        console.log('Dashboard detected a change that requires data refresh')
-        await refreshAllData()
+      () => store.state.dataRefreshTrigger,
+      () => {
+        console.log('Data refresh triggered, refreshing dashboard data...')
+        refreshAllData()
       }
     )
 
     onMounted(async () => {
       emit('update-page-title', 'Dashboard')
-
-      if (!effectiveCurrentDate.value) {
-        await store.dispatch('fetchEffectiveCurrentDate')
-      }
-
-      if (!store.state.navChartParams.dateFrom || !store.state.navChartParams.dateTo) {
-        const defaultDateRange = 'ytd'
-        const calculatedDateRange = calculateDateRange(defaultDateRange, effectiveCurrentDate.value)
-        await store.dispatch('updateNavChartParams', { dateRange: defaultDateRange, dateFrom: calculatedDateRange.from, dateTo: calculatedDateRange.to })
-      }
-      console.log('Date range:', navChartInitialParams.value)
-      await fetchSummaryData()
-      await fetchBreakdownData()
-      await fetchSummaryOverTimeData()
-      await fetchNAVChartData(navChartInitialParams.value)
+      await initializeData()
+      // Initial data load
+      refreshAllData()
     })
 
     onUnmounted(() => {
@@ -251,7 +292,7 @@ export default {
 
     return {
       summary,
-      currency,
+      userCurrency,
       breakdownData,
       totalNAV,
       summaryOverTimeData,
@@ -266,6 +307,7 @@ export default {
       fetchSummaryOverTimeData,
       effectiveCurrentDate,
       refreshAllData,
+      isEffectiveDateLoading,
     }
   },
 }

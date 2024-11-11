@@ -28,6 +28,8 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
             (b"Access-Control-Allow-Headers", b"Content-Type, Authorization"),
             (b"Access-Control-Allow-Credentials", b"true"),
+            (b"Cache-Control", b"no-cache"),
+            (b"Content-Type", b"text/event-stream"),
         ]
 
         if self.scope['method'] == 'OPTIONS':
@@ -73,7 +75,8 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
                 ])
                 return
 
-            account_or_group = form.cleaned_data['broker_or_group']
+            selection_account_type = form.cleaned_data['selection_account_type']
+            selection_account_id = form.cleaned_data['selection_account_id']
             currency = form.cleaned_data['currency']
             is_restricted_str = form.cleaned_data['is_restricted']
             skip_existing_years = form.cleaned_data['skip_existing_years']
@@ -96,26 +99,38 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
             sse_headers = headers + [
                 (b"Cache-Control", b"no-cache"),
                 (b"Content-Type", b"text/event-stream"),
-                (b"Transfer-Encoding", b"chunked"),
             ]
             await self.send_headers(headers=sse_headers)
 
             currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
-            total_operations = len(currencies) * len(is_restricted_list) * await database_sync_to_async(get_years_count)(user, effective_current_date, account_or_group)
+            total_operations = len(currencies) * len(is_restricted_list) * await database_sync_to_async(get_years_count)(user, effective_current_date, selection_account_type, selection_account_id)
 
-            # Send initial progress event
-            initial_event = {
-                'status': 'initializing',
-                'total': total_operations
-            }
-            await self.send_body(json.dumps(initial_event).encode('utf-8') + b'\n', more_body=True)
+            # Modify how you send SSE messages
+            async def send_sse_message(self, data):
+                try:
+                    message = f"data: {json.dumps(data)}\n\n"
+                    await self.send_body(message.encode('utf-8'), more_body=True)
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.error(f"Error sending SSE message: {str(e)}")
+                    raise
 
-            current_operation = 0
-
+            # Update the progress sending code
             try:
+                # Send initial progress event
+                await send_sse_message(self, {
+                    'status': 'initializing',
+                    'total': total_operations
+                })
+
+                current_operation = 0
+
                 for curr in currencies:
                     for is_restricted in is_restricted_list:
-                        async for progress_data in save_or_update_annual_broker_performance(user, effective_current_date, account_or_group, curr, is_restricted, skip_existing_years):
+                        async for progress_data in save_or_update_annual_broker_performance(
+                            user, effective_current_date, selection_account_type,
+                            selection_account_id, curr, is_restricted, skip_existing_years
+                        ):
                             if progress_data['status'] == 'progress':
                                 current_operation += 1
                                 progress = (current_operation / total_operations) * 100
@@ -127,17 +142,23 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
                                     'currency': curr,
                                     'is_restricted': str(is_restricted)
                                 }
-                                await self.send_body(json.dumps(event).encode('utf-8') + b'\n', more_body=True)
+                                logger.info(f"Sending SSE message: {event} at: {progress_data['timestamp']}")
+                                await send_sse_message(self, event)
                             elif progress_data['status'] == 'error':
-                                await self.send_body(json.dumps(progress_data).encode('utf-8') + b'\n', more_body=True)
+                                await send_sse_message(self, progress_data)
 
                 # Send complete event
                 complete_event = {'status': 'complete'}
-                await self.send_body(json.dumps(complete_event).encode('utf-8') + b'\n', more_body=False)
+                await send_sse_message(self, complete_event)
+                await self.send_body(b'', more_body=False)
 
             except Exception as e:
-                error_event = {'status': 'error', 'message': str(e)}
-                await self.send_body(json.dumps(error_event).encode('utf-8') + b'\n', more_body=False)
+                logger.error(f"Error in consumer: {str(e)}", exc_info=True)
+                await send_sse_message(self, {
+                    'status': 'error',
+                    'message': str(e)
+                })
+                await self.send_body(b'', more_body=False)
 
         else:
             # Method not allowed
@@ -370,7 +391,6 @@ class FXImportConsumer(AsyncHttpConsumer):
             sse_headers = headers + [
                 (b"Cache-Control", b"no-cache"),
                 (b"Content-Type", b"text/event-stream"),
-                (b"Transfer-Encoding", b"chunked"),
             ]
             await self.send_headers(headers=sse_headers)
 

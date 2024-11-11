@@ -95,7 +95,6 @@ async def _find_or_create_security(instrument_uid, investor, broker_account):
             @database_sync_to_async
             def add_relationships(security, investor, broker_account):
                 security.investors.add(investor)
-                security.broker_accounts.add(broker_account)
                 return security
 
             security = await add_relationships(security, investor, broker_account)

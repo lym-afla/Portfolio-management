@@ -4,12 +4,12 @@ import logging
 
 from common.models import AnnualPerformance, BrokerAccounts
 
-from core.portfolio_utils import broker_group_to_ids, get_last_exit_date_for_broker_accounts, calculate_performance, IRR
+from core.portfolio_utils import get_selected_account_ids, get_last_exit_date_for_broker_accounts, calculate_performance, IRR
 from core.formatting_utils import currency_format_dict_values
 
 logger = logging.getLogger(__name__)
 
-def broker_accounts_summary_data(user, effective_date, brokers_or_group, currency_target, number_of_digits):
+def broker_accounts_summary_data(user, effective_date, account_group_type, account_group_id, currency_target, number_of_digits):
     def initialize_context():
         return {
             'years': [],
@@ -30,7 +30,11 @@ def broker_accounts_summary_data(user, effective_date, brokers_or_group, currenc
             'tsr': Decimal(0)
         } for year in ['YTD'] + years + ['All-time']}
 
-    selected_broker_account_ids = broker_group_to_ids(brokers_or_group, user)
+    selected_broker_account_ids = get_selected_account_ids(
+        user,
+        account_group_type,
+        account_group_id
+    )
 
     public_markets_context = initialize_context()
     restricted_investments_context = initialize_context()
@@ -90,7 +94,7 @@ def broker_accounts_summary_data(user, effective_date, brokers_or_group, currenc
 
             # Add YTD data
             try:
-                ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_date, [account.id], currency_target, is_restricted=restricted)
+                ytd_data = calculate_performance(user, date(current_year, 1, 1), effective_date, account_group_type, account_group_id, currency_target, is_restricted=restricted)
                 compiled_ytd_data = compile_summary_data(ytd_data, currency_target, number_of_digits)
                 line_data['data']['YTD'] = compiled_ytd_data
 

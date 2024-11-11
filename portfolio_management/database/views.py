@@ -10,18 +10,22 @@ from django.db.models.functions import Lower
 from common.models import FX, Assets, BrokerAccounts, Brokers, Prices, Transactions
 from constants import ASSET_TYPE_CHOICES
 from core.price_utils import get_prices_table_api
-from core.brokers_utils import get_accounts_table_api
+from core.accounts_utils import get_accounts_table_api
 from core.securities_utils import get_securities_table_api, get_security_detail
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
 from core.date_utils import get_start_date
+from core.brokers_utils import get_brokers_table_api
 
 from .forms import PriceForm, SecurityForm
 
 logger = logging.getLogger(__name__)
 
-from .serializers import AccountPerformanceSerializer, FXRateSerializer, FXSerializer, PriceImportSerializer, BrokerAccountSerializer, TransactionSerializer, BrokerSerializer
+from .serializers import (
+    AccountPerformanceSerializer, FXRateSerializer, FXSerializer,
+    PriceImportSerializer, BrokerAccountSerializer, TransactionSerializer, BrokerSerializer
+)
 
 
 from rest_framework.views import APIView
@@ -31,7 +35,6 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from rest_framework import status, viewsets
 
-from core.portfolio_utils import NAV_at_date, IRR
 from decimal import Decimal
 
 @api_view(['GET'])
@@ -169,7 +172,7 @@ def api_get_securities_table(request):
 @permission_classes([IsAuthenticated])
 def api_security_form_structure(request):
     investor = request.user
-    form = SecurityForm(investor=investor)
+    form = SecurityForm()
     structure = {
         'fields': []
     }
@@ -212,7 +215,7 @@ def api_security_form_structure(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_create_security(request):
-    form = SecurityForm(request.data, investor=request.user)
+    form = SecurityForm(request.data)
     if form.is_valid():
         security = form.save(commit=False)
         # First save the security to get an ID
@@ -220,11 +223,6 @@ def api_create_security(request):
         
         # Now add the many-to-many relationships
         security.investors.add(request.user)
-        
-        # Handle custom_brokers (many-to-many relationship)
-        broker_accounts = form.cleaned_data.get('broker_accounts')
-        if broker_accounts:
-            security.broker_accounts.set(broker_accounts)
         
         return Response({
             'success': True,
@@ -249,7 +247,6 @@ def api_get_security_details_for_editing(request, security_id):
         'currency': security.currency,
         'exposure': security.exposure,
         'restricted': security.restricted,
-        'broker_accounts': list(security.broker_accounts.values_list('id', flat=True)),
         'data_source': security.data_source,
         'yahoo_symbol': security.yahoo_symbol,
         'update_link': security.update_link,
@@ -277,9 +274,9 @@ def api_update_security(request, security_id):
     # Save the security first
     security.save()
     
-    # Update brokers relationship
-    if broker_accounts:
-        security.broker_accounts.set(broker_accounts)  # This replaces all existing brokers
+    # # Update brokers relationship
+    # if broker_accounts:
+    #     security.broker_accounts.set(broker_accounts)  # This replaces all existing brokers
     
     logger.debug(f"Security updated. {security} with brokers {broker_accounts}")
     
@@ -600,65 +597,7 @@ class BrokerViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['POST'])
     def list_brokers(self, request):
-        page = int(request.data.get('page', 1))
-        items_per_page = int(request.data.get('itemsPerPage', 10))
-        search = request.data.get('search', '')
-        effective_current_date = request.session.get('effective_current_date')
-
-        queryset = self.get_queryset()
-        if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(country__icontains=search)
-            )
-
-        brokers_data = []
-        for broker in queryset:
-            # Get all account IDs for this broker
-            account_ids = list(broker.accounts.values_list('id', flat=True))
-            accounts_count = len(account_ids)
-
-            # Calculate total NAV and IRR only if there are accounts
-            if accounts_count > 0:
-                nav_data = NAV_at_date(
-                    request.user.id,
-                    tuple(account_ids),
-                    effective_current_date,
-                    request.user.default_currency
-                )
-                total_nav = nav_data['Total NAV']
-                
-                irr = IRR(
-                    request.user.id,
-                    effective_current_date,
-                    request.user.default_currency,
-                    broker_account_ids=account_ids
-                )
-            else:
-                total_nav = Decimal('0')
-                irr = None
-
-            broker_data = {
-                'id': broker.id,
-                'name': broker.name,
-                'country': broker.country,
-                'comment': broker.comment,
-                'accounts_count': accounts_count,
-                'total_nav': f"{request.user.default_currency} {total_nav:,.2f}",
-                'irr': f"{irr:.1f}%" if irr is not None else "–"
-            }
-            brokers_data.append(broker_data)
-
-        # Handle pagination
-        total_items = len(brokers_data)
-        start_idx = (page - 1) * items_per_page
-        end_idx = start_idx + items_per_page
-        paginated_brokers = brokers_data[start_idx:end_idx]
-
-        return Response({
-            'items': paginated_brokers,
-            'total_items': total_items
-        })
+        return Response(get_brokers_table_api(request))
 
     @action(detail=False, methods=['GET'])
     def form_structure(self, request):

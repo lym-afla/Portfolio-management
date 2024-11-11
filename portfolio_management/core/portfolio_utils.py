@@ -4,7 +4,8 @@ import datetime
 from functools import lru_cache
 from django.db.models import Sum, QuerySet, Q
 from pyxirr import xirr
-from common.models import FX, AnnualPerformance, Assets, Transactions, BrokerAccounts
+from common.models import FX, AnnualPerformance, Assets, Transactions, BrokerAccounts, Brokers
+from users.models import AccountGroup
 from functools import lru_cache
 
 import logging
@@ -15,6 +16,7 @@ from typing import List, Dict, Optional, Tuple, Union
 import logging
 
 from core.formatting_utils import format_percentage
+from users.models import CustomUser
 
 def _portfolio_at_date(user_id: int, to_date: date, broker_account_ids: List[int]) -> QuerySet[Assets]:
     """
@@ -68,13 +70,33 @@ def NAV_at_date(user_id: int, broker_account_ids: Tuple[int], date: date, target
     broker_account_ids = list(broker_account_ids)  # Convert tuple back to list for internal use
     breakdown = list(breakdown)  # Convert tuple back to list for internal use
     
+    # Initialize analysis with default structure
+    analysis = defaultdict(lambda: defaultdict(Decimal))
+    analysis['Total NAV'] = Decimal(0)
+    
+    # Initialize breakdown categories even if empty
+    if 'asset_type' in breakdown:
+        analysis['asset_type'] = defaultdict(Decimal)
+    if 'currency' in breakdown:
+        analysis['currency'] = defaultdict(Decimal)
+    if 'asset_class' in breakdown:
+        analysis['asset_class'] = defaultdict(Decimal)
+    if 'account' in breakdown:
+        analysis['account'] = defaultdict(Decimal)
+
+    # If no broker accounts, return empty structure
+    if not broker_account_ids:
+        return dict(analysis)
+
     portfolio = _portfolio_at_date(user_id, date, broker_account_ids)
     portfolio_broker_accounts = BrokerAccounts.objects.filter(
         broker__investor__id=user_id,
         id__in=broker_account_ids
     )
-    analysis = defaultdict(lambda: defaultdict(Decimal))
-    analysis['Total NAV'] = Decimal(0)
+
+    if not portfolio.exists() and not portfolio_broker_accounts.exists():
+        return analysis
+
     item_type = {'asset_type': 'type', 'currency': 'currency', 'asset_class': 'exposure'}
 
     for security in portfolio:
@@ -92,7 +114,6 @@ def NAV_at_date(user_id: int, broker_account_ids: Tuple[int], date: date, target
             if 'account' in breakdown:
                 analysis['account'][broker_account.name] += broker_account_value
             else:
-
                 for breakdown_type in breakdown:
                     key = getattr(security, item_type[breakdown_type])
                     analysis[breakdown_type][key] += broker_account_value
@@ -234,54 +255,48 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     else:
         return transaction.cash_flow or (-transaction.quantity * transaction.price + (transaction.commission or 0))
 
-def broker_group_to_ids(brokers_or_group: Union[str, List[int]], user) -> List[int]:
+def get_selected_account_ids(user: CustomUser, selection_type: str, selection_id: Optional[int] = None) -> List[int]:
     """
-    Convert a broker group name, broker account name, or list of broker account IDs 
-    to a list of broker account IDs for a user.
-
-    :param brokers_or_group: A string (group name, broker account name, or broker name) or list of broker account IDs
-    :param user: The user object
-    :return: A list of broker account IDs
+    Get list of broker account IDs based on selection type and ID.
+    
+    Args:
+        user: CustomUser instance
+        selection_type: Type of selection ('all', 'account', 'group', 'broker')
+        selection_id: ID of selected item (None for 'all')
+    
+    Returns:
+        List of broker account IDs
     """
-    from common.models import BrokerAccounts
-    from users.models import AccountGroup
-
-    user_accounts = set(BrokerAccounts.objects.filter(investor=user).values_list('id', flat=True))
-
-    if isinstance(brokers_or_group, str):
-        if brokers_or_group == 'All accounts':
-            return list(user_accounts)
-        
-        # Check if it's a broker group name
+    if selection_type == 'all':
+        return list(BrokerAccounts.objects.filter(
+            broker__investor=user
+        ).values_list('id', flat=True))
+    
+    elif selection_type == 'account':
+        return [selection_id] if BrokerAccounts.objects.filter(
+            id=selection_id,
+            broker__investor=user
+        ).exists() else []
+    
+    elif selection_type == 'group':
         try:
-            group = AccountGroup.objects.get(user=user, name=brokers_or_group)
-            group_accounts = set(group.broker_accounts.values_list('id', flat=True))
-            return list(group_accounts & user_accounts)
+            group = AccountGroup.objects.get(id=selection_id, user=user)
+            return list(group.broker_accounts.values_list('id', flat=True))
         except AccountGroup.DoesNotExist:
-            # Try broker account name
-            try:
-                account = BrokerAccounts.objects.get(investor=user, name=brokers_or_group)
-                return [account.id]
-            except BrokerAccounts.DoesNotExist:
-                # Try broker name
-                try:
-                    broker_accounts = BrokerAccounts.objects.filter(
-                        investor=user, 
-                        broker__name=brokers_or_group
-                    ).values_list('id', flat=True)
-                    if broker_accounts:
-                        return list(broker_accounts)
-                    raise ValueError(f"Invalid broker, account, or group name: {brokers_or_group}")
-                except Exception:
-                    raise ValueError(f"Invalid broker, account, or group name: {brokers_or_group}")
+            return []
+    
+    elif selection_type == 'broker':
+        try:
+            broker = Brokers.objects.get(id=selection_id, investor=user)
+            return list(BrokerAccounts.objects.filter(
+                broker=broker
+            ).values_list('id', flat=True))
+        except Brokers.DoesNotExist:
+            return []
+    
+    return []
 
-    elif isinstance(brokers_or_group, list):
-        selected_accounts = set(brokers_or_group)
-        if not selected_accounts.issubset(user_accounts):
-            logging.warning("Some of the provided broker account IDs do not belong to the user")
-        return list(selected_accounts & user_accounts)
-
-def calculate_performance(user, start_date, end_date, brokers_or_group, currency_target, is_restricted=None):
+def calculate_performance(user, start_date, end_date, account_group_type, account_group_id, currency_target, is_restricted=None):
     performance_data = defaultdict(Decimal)
 
     # Initialize all required fields with Decimal(0)
@@ -290,12 +305,13 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
 
     alternative_fx_check = Decimal('0')
 
-    selected_account_ids = broker_group_to_ids(brokers_or_group, user)
-    accounts = BrokerAccounts.objects.filter(id__in=selected_account_ids, investor=user).select_related('investor')
+    selected_account_ids = get_selected_account_ids(user, account_group_type, account_group_id)
+    accounts = BrokerAccounts.objects.filter(id__in=selected_account_ids, broker__investor=user).select_related('broker')
 
     bop_nav = AnnualPerformance.objects.filter(
         investor=user, 
-        broker_group=brokers_or_group, 
+        account_type=account_group_type, 
+        account_id=account_group_id,
         year=start_date.year - 1, 
         currency=currency_target
     ).values_list('eop_nav', flat=True).first()
@@ -341,8 +357,7 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
         # Calculate asset-based metrics
         assets = Assets.objects.filter(
             investors__id=user.id,
-            broker_accounts__broker__investor=user,
-            broker_accounts=account
+            transactions__broker_account=account
         ).prefetch_related('transactions')
         
         if is_restricted is not None:
@@ -383,26 +398,29 @@ def calculate_performance(user, start_date, end_date, brokers_or_group, currency
     # Adjust FX for rounding errors
     performance_data['fx'] = Decimal('0') if abs(performance_data['fx']) < 0.1 else performance_data['fx']
 
-    logger.info(f"Alternative FX check: {alternative_fx_check}")
-    logger.info(f"FX effect: {performance_data['fx']}")
+    logger.debug(f"Alternative FX check: {alternative_fx_check}")
+    logger.debug(f"FX effect: {performance_data['fx']}")
 
     return dict(performance_data)
 
 # Add percentage shares to the dict
 def calculate_percentage_shares(data_dict, selected_keys):
+    """Calculate percentage shares for selected breakdown categories."""
+    if not data_dict:
+        return
 
-    # Calculate Total NAV based on one of the categories
-    total = sum(data_dict[selected_keys[0]].values())
+    total_nav = data_dict.get('Total NAV', Decimal(0))
     
-    # Add new dictionaries with percentage shares for selected categories
-    for category in selected_keys:
-        percentage_key = category + '_percentage'
+    for key in selected_keys:
+        percentage_key = key + '_percentage'
         data_dict[percentage_key] = {}
-        for key, value in data_dict[category].items():
-            try:
-                data_dict[percentage_key][key] = str(round(Decimal(value / total * 100), 1)) + '%'
-            except ZeroDivisionError or DecimalInvalidOperation:
-                data_dict[percentage_key][key] = '–'
+
+        for item in data_dict[key]:
+            if total_nav > 0:
+                percentage = (data_dict[key][item] / total_nav * 100)
+                data_dict[percentage_key][item] = format_percentage(percentage, digits=1)
+            else:
+                data_dict[percentage_key][item] = "–"
 
 def get_last_exit_date_for_broker_accounts(account_ids: List[int], effective_current_date: date) -> Optional[date]:
     """
@@ -427,8 +445,9 @@ def get_last_exit_date_for_broker_accounts(account_ids: List[int], effective_cur
 
     # Step 1: Check the position of each security at the current date
     for broker_account in BrokerAccounts.objects.filter(id__in=account_ids):
-        for security in broker_account.securities.all():
-            if security.position(effective_current_date, broker_account.investor, [broker_account.id]) != 0:
+        for security in Assets.objects.filter(transactions__broker_account=broker_account,
+                                              transactions__date__lte=effective_current_date):
+            if security.position(effective_current_date, broker_account.broker.investor, [broker_account.id]) != 0:
                 return effective_current_date
 
     # Step 2: If positions for all securities at the current date are zero, find the latest transaction date

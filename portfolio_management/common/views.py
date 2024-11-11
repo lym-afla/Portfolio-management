@@ -3,14 +3,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from datetime import datetime
 from constants import YTD, ALL_TIME
-from core.portfolio_utils import broker_group_to_ids, get_last_exit_date_for_broker_accounts
+from core.portfolio_utils import get_last_exit_date_for_broker_accounts, get_selected_account_ids
 from common.models import Transactions
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_year_options_api(request):
     user = request.user
-    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+    selected_account_ids = get_selected_account_ids(user, user.selected_account_type, user.selected_account_id)
     effective_current_date_str = request.session.get('effective_current_date')
     print(f"views. common. 16. Effective current date from session: {effective_current_date_str}")
     

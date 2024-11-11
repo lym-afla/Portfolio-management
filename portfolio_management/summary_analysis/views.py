@@ -25,7 +25,7 @@ class SummaryViewSet(viewsets.ViewSet):
         number_of_digits = user.digits
 
 
-        summary_data = broker_accounts_summary_data(user, effective_current_date, 'All accounts', currency_target, number_of_digits)
+        summary_data = broker_accounts_summary_data(user, effective_current_date, 'all', None, currency_target, number_of_digits)
 
         # Format the data
         formatted_data = {

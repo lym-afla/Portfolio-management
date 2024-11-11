@@ -55,9 +55,12 @@ export const getAccountChoices = async () => {
   }
 }
 
-export const updateForNewAccount = async (brokerOrGroupName) => {
+export const updateUserDataForNewAccount = async (selection) => {
   try {
-    const response = await axiosInstance.post('/users/api/update_data_for_new_account/', { broker_or_group_name: brokerOrGroupName })
+    const response = await axiosInstance.post('/users/api/update_user_data_for_new_account/', {
+      type: selection.type,
+      id: selection.id
+    })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -420,7 +423,6 @@ export const getAccountPerformanceFormData = async () => {
 
 export const updateAccountPerformance = async (formData) => {
   try {
-
     const effectiveCurrentDate = store.state.effectiveCurrentDate
     if (!effectiveCurrentDate) {
       throw new Error('Effective current date not set')
@@ -431,40 +433,45 @@ export const updateAccountPerformance = async (formData) => {
       effective_current_date: effectiveCurrentDate
     }
 
-    const response = await axiosInstance.post('/database/api/update-account-performance/sse/', dataToSend, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      responseType: 'text', // Important to set this to 'text' to handle SSE properly
-      onDownloadProgress: (progressEvent) => {
-        if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
-          const dataChunk = progressEvent.event.currentTarget.response
-          const lines = dataChunk.split('\n')
-          console.log('[api.js] accountPerformanceUpdateProgress 1:', lines)
-          lines.forEach((line) => {
-            if (line.trim()) {
+    // Use axios for the request (this will handle auth automatically)
+    const response = await axiosInstance.post('/database/api/update-account-performance/sse/', 
+      dataToSend,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        responseType: 'text',
+        onDownloadProgress: (progressEvent) => {
+          const rawText = progressEvent.event.currentTarget.response
+          const messages = rawText.split('\n\n')
+          
+          messages.forEach(message => {
+            if (message.startsWith('data: ')) {
               try {
-                const data = JSON.parse(line)
-                console.log('[api.js] accountPerformanceUpdateProgress 2:', data)
-                window.dispatchEvent(new CustomEvent('accountPerformanceUpdateProgress', { detail: data }))
+                const data = JSON.parse(message.substring(6))
+                console.log('[api.js] SSE message received:', data)
+                window.dispatchEvent(new CustomEvent('accountPerformanceUpdateProgress', { 
+                  detail: data 
+                }))
               } catch (error) {
-                console.error('Error parsing progress data:', error, 'Line:', line)
+                if (message.trim()) {
+                  console.error('Error parsing SSE message:', error, 'Message:', message)
+                }
               }
             }
           })
         }
       }
-    })
+    )
+
     return response.data
   } catch (error) {
     console.error('Error updating account performance:', error)
-    if (error.response) {
-      throw error.response.data
-    } else if (error.request) {
-      throw new Error('No response received from server')
-    } else {
-      throw new Error('Error setting up the request')
-    }
+    window.dispatchEvent(new CustomEvent('accountPerformanceUpdateError', { 
+      detail: { message: error.message || 'Unknown error occurred' } 
+    }))
+    throw error
   }
 }
 

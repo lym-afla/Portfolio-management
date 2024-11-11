@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+import decimal
 import logging
 from collections import defaultdict
 
@@ -8,7 +9,10 @@ from django.db.models import Sum
 
 from common.models import AnnualPerformance, Transactions, FX
 from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.portfolio_utils import IRR, NAV_at_date, broker_group_to_ids, calculate_percentage_shares, calculate_performance, get_last_exit_date_for_broker_accounts
+from core.portfolio_utils import (
+    IRR, NAV_at_date, calculate_percentage_shares, calculate_performance,
+    get_last_exit_date_for_broker_accounts, get_selected_account_ids
+)
 from core.chart_utils import get_nav_chart_data
 
 from rest_framework.decorators import api_view, permission_classes
@@ -26,7 +30,12 @@ def get_dashboard_summary_api(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+    
+    selected_account_ids = get_selected_account_ids(
+        user,
+        user.selected_account_type,
+        user.selected_account_id
+    )
 
     summary = {}
 
@@ -60,8 +69,11 @@ def get_dashboard_summary_api(request):
 
     # Calculate IRR and Return
     try:
-        summary['total_return'] = (summary['Current NAV'] - summary['Cash-out']) / summary['Invested'] - 1
-    except ZeroDivisionError:
+        if summary['Invested'] == 0:
+            summary['total_return'] = None
+        else:
+            summary['total_return'] = (summary['Current NAV'] - summary['Cash-out']) / summary['Invested'] - 1
+    except (ZeroDivisionError, decimal.InvalidOperation):
         summary['total_return'] = None
 
     summary['irr'] = IRR(
@@ -83,7 +95,11 @@ def get_dashboard_breakdown_api(request):
     
     currency_target = user.default_currency
     number_of_digits = user.digits
-    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+    selected_account_ids = get_selected_account_ids(
+        user,
+        user.selected_account_type,
+        user.selected_account_id
+    )
 
     analysis = NAV_at_date(
         user.id, 
@@ -92,9 +108,9 @@ def get_dashboard_breakdown_api(request):
         currency_target, 
         tuple(['asset_type', 'currency', 'asset_class'])
     )
-    
-    # Remove 'Total NAV' from the analysis
-    total_nav = analysis.pop('Total NAV', None)
+    print(f"Analysis: {analysis}")
+    # Extract 'Total NAV' from the analysis
+    total_nav = analysis.get('Total NAV', None)
     
     # Calculate percentage breakdowns
     calculate_percentage_shares(analysis, ['asset_type', 'currency', 'asset_class'])
@@ -126,12 +142,17 @@ def get_dashboard_summary_over_time_api(request):
         effective_current_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date()
         
         currency_target = user.default_currency
-        selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+        selected_account_ids = get_selected_account_ids(
+            user,
+            user.selected_account_type,
+            user.selected_account_id
+        )
 
         # Determine the starting year
         stored_data = AnnualPerformance.objects.select_related('investor').filter(
             investor=user,
-            broker_group=user.custom_broker_accounts,
+            account_type=user.selected_account_type,
+            account_id=user.selected_account_id,
             currency=currency_target,
             restricted=None
         )
@@ -172,7 +193,8 @@ def get_dashboard_summary_over_time_api(request):
             user, 
             date(current_year, 1, 1), 
             effective_current_date, 
-            selected_account_ids, 
+            user.selected_account_type,
+            user.selected_account_id,
             currency_target
         )
 
@@ -226,7 +248,11 @@ def api_nav_chart_data(request):
     to_date = request.GET.get('dateTo')
     breakdown = request.GET.get('breakdown')
     currency = user.default_currency
-    selected_account_ids = broker_group_to_ids(user.custom_broker_accounts, user)
+    selected_account_ids = get_selected_account_ids(
+        user,
+        user.selected_account_type,
+        user.selected_account_id
+    )
 
     # If to_date is not provided, use the effective current date
     if not to_date:

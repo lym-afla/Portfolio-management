@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES, TINKOFF_ACCOUNT_STATUSES, TINKOFF_ACCOUNT_TYPES
-from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, get_broker_account_choices
+from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, prepare_account_choices
 
 from rest_framework.response import Response
 from rest_framework import status, viewsets
@@ -8,8 +8,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from common.models import BrokerAccounts
-from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
+from common.models import BrokerAccounts, Brokers
+from users.models import AccountGroup, CustomUser, InteractiveBrokersApiToken, TinkoffApiToken
 from users.serializers import (
     TinkoffApiTokenSerializer, InteractiveBrokersApiTokenSerializer,
     AccountGroupSerializer, UserSettingsSerializer, UserSettingsChoicesSerializer
@@ -79,15 +79,30 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['GET', 'POST'], permission_classes=[IsAuthenticated])
     def user_settings(self, request):
+        """
+        GET: Retrieve user settings
+        POST: Update user settings
+        """
         if request.method == 'GET':
             serializer = UserSettingsSerializer(request.user)
             return Response(serializer.data)
         elif request.method == 'POST':
-            serializer = UserSettingsSerializer(request.user, data=request.data, partial=True)
+            serializer = UserSettingsSerializer(
+                request.user,
+                data=request.data,
+                partial=True,
+                context={'request': request}
+            )
             if serializer.is_valid():
                 serializer.save()
-                return Response({'success': True, 'data': serializer.data})
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    'success': True,
+                    'data': serializer.data
+                })
+            return Response({
+                'success': False,
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
     def user_settings_choices(self, request):
@@ -96,10 +111,9 @@ class UserViewSet(viewsets.ModelViewSet):
             'frequency_choices': FREQUENCY_CHOICES,
             'timeline_choices': TIMELINE_CHOICES,
             'nav_breakdown_choices': NAV_BARCHART_CHOICES,
-            'account_choices': get_broker_account_choices(request.user),
+            'account_choices': prepare_account_choices(request.user)['options'],  # Just get the options
         }
-        serializer = UserSettingsChoicesSerializer(choices)
-        return Response(serializer.data)
+        return Response(choices)
     
     @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated])
     def change_password(self, request):
@@ -120,13 +134,14 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
     def get_account_choices(self, request):
+        """
+        Get account choices for the current user.
+        Returns structured data with options and current selection.
+        """
         user = request.user
-        account_choices = get_broker_account_choices(user)
+        choices_data = prepare_account_choices(user)
         
-        return Response({
-            'options': account_choices,
-            'custom_broker_accounts': user.custom_broker_accounts
-        })
+        return Response(choices_data)
 
     @action(detail=False, methods=['DELETE'], permission_classes=[IsAuthenticated])
     def delete_account(self, request):
@@ -180,22 +195,65 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated])
-    def update_data_for_new_account(self, request):
+    def update_user_data_for_new_account(self, request):
         user = request.user
-        broker_or_group_name = request.data.get('broker_or_group_name')
+        account_type = request.data.get('type')
+        account_id = request.data.get('id')
         
-        if broker_or_group_name:
-            user.custom_broker_accounts = broker_or_group_name
-            user.save()
-            return Response({
-                'success': True,
-                'message': 'Broker or group updated successfully',
-                'custom_broker_accounts': user.custom_broker_accounts
-            }, status=status.HTTP_200_OK)
-        else:
+        if account_type not in dict(CustomUser.ACCOUNT_TYPE_CHOICES):
             return Response({
                 'success': False,
-                'error': 'Broker or group name not provided'
+                'error': f'Invalid account type: {account_type}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if account_type == 'all':
+                user.selected_account_type = 'all'
+                user.selected_account_id = None
+            else:
+                # Validate that the ID exists for the given type
+                if account_type == 'account':
+                    exists = BrokerAccounts.objects.filter(
+                        id=account_id, 
+                        broker__investor=user
+                    ).exists()
+                elif account_type == 'group':
+                    exists = AccountGroup.objects.filter(
+                        id=account_id, 
+                        user=user
+                    ).exists()
+                elif account_type == 'broker':
+                    exists = Brokers.objects.filter(
+                        id=account_id, 
+                        investor=user
+                    ).exists()
+                else:
+                    exists = False
+
+                if not exists:
+                    return Response({
+                        'success': False,
+                        'error': f'Invalid {account_type} ID: {account_id}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                user.selected_account_type = account_type
+                user.selected_account_id = account_id
+
+            user.save()
+            
+            return Response({
+                'success': True,
+                'message': 'Account selection updated successfully',
+                'selected': {
+                    'type': user.selected_account_type,
+                    'id': user.selected_account_id
+                }
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
