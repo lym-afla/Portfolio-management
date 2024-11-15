@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import uuid
 from django import forms
 from django.core.cache import cache
 from django.http import JsonResponse
@@ -18,13 +19,13 @@ from core.sorting_utils import sort_entries
 from core.date_utils import get_start_date
 from core.brokers_utils import get_brokers_table_api
 
-from .forms import PriceForm, SecurityForm
+from .forms import SecurityForm
 
 logger = logging.getLogger(__name__)
 
 from .serializers import (
     AccountPerformanceSerializer, FXRateSerializer, FXSerializer,
-    PriceImportSerializer, BrokerAccountSerializer, TransactionSerializer, BrokerSerializer
+    PriceImportSerializer, BrokerAccountSerializer, TransactionSerializer, BrokerSerializer, PriceSerializer
 )
 
 
@@ -301,11 +302,18 @@ def api_delete_security(request, security_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def api_add_price(request):
-    form = PriceForm(request.data, investor=request.user)
-    if form.is_valid():
-        price = form.save()
-        return Response({'success': True, 'message': 'Price added successfully', 'id': price.id}, status=status.HTTP_201_CREATED)
-    return Response({'success': False, 'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)
+    serializer = PriceSerializer(data=request.data, investor=request.user)
+    if serializer.is_valid():
+        price = serializer.save()
+        return Response({
+            'success': True, 
+            'message': 'Price added successfully', 
+            'id': price.id
+        }, status=status.HTTP_201_CREATED)
+    return Response({
+        'success': False, 
+        'errors': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
@@ -335,10 +343,18 @@ def api_get_price_details(request, price_id):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def api_update_price(request, price_id):
-    price = get_object_or_404(Prices, id=price_id, security__investor=request.user)
-    form = PriceForm(request.data, instance=price, investor=request.user)
-    if form.is_valid():
-        updated_price = form.save()
+    price = get_object_or_404(
+        Prices, 
+        id=price_id, 
+        security__investors=request.user
+    )
+    serializer = PriceSerializer(
+        instance=price,
+        data=request.data, 
+        investor=request.user
+    )
+    if serializer.is_valid():
+        updated_price = serializer.save()
         return Response({
             'id': updated_price.id,
             'date': updated_price.date.isoformat(),
@@ -347,9 +363,9 @@ def api_update_price(request, price_id):
             'security__currency': updated_price.security.currency,
             'price': str(updated_price.price),
         })
-    else:
-        print("Price update form errors:", form.errors)
-        return Response({'errors': form.errors}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({
+        'errors': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 class PriceImportView(APIView):
     def get(self, request):
@@ -420,13 +436,72 @@ class AccountViewSet(viewsets.ModelViewSet):
             ]
         })
         
-class UpdateAccountPerformanceView(APIView):
+class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def list(self, request):
+        """Get form structure and choices"""
         serializer = AccountPerformanceSerializer(investor=request.user)
         form_data = serializer.get_form_data()
         return Response(form_data)
+
+    @action(detail=False, methods=['post'])
+    def validate(self, request):
+        """Validate the input data"""
+        serializer = AccountPerformanceSerializer(
+            data=request.data,
+            investor=request.user
+        )
+        if not serializer.is_valid():
+            return Response({
+                'valid': False,
+                'type': 'validation',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            'valid': True
+        })
+
+    @action(detail=False, methods=['post'])
+    def start(self, request):
+        """Start the update process"""
+        serializer = AccountPerformanceSerializer(
+            data=request.data,
+            investor=request.user
+        )
+        if not serializer.is_valid():
+            return Response({
+                'valid': False,
+                'type': 'validation',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Use validated_data which includes parsed selection data
+            update_data = {
+                'user_id': request.user.id,
+                **serializer.validated_data
+            }
+
+            session_id = str(uuid.uuid4())
+            cache.set(
+                f'account_performance_update_{session_id}',
+                update_data,
+                timeout=3600
+            )
+
+            return Response({
+                'session_id': session_id,
+                'message': 'Update process started'
+            })
+
+        except Exception as e:
+            return Response({
+                'valid': False,
+                'type': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class FXViewSet(viewsets.ModelViewSet):
     serializer_class = FXSerializer

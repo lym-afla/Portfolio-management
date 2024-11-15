@@ -2,19 +2,19 @@ import pytest
 from channels.testing import HttpCommunicator
 from channels.db import database_sync_to_async
 from database.consumers import UpdateAccountPerformanceConsumer
-from django.urls import reverse
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from decimal import Decimal
-from django.utils import timezone
 from datetime import date, datetime, timedelta
-from common.models import FX, AnnualPerformance, Brokers, Transactions, Assets
+from common.models import FX, AnnualPerformance, Brokers, BrokerAccounts, Transactions, Assets
 from constants import (
-    CURRENCY_CHOICES, TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, 
+    TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, 
     TRANSACTION_TYPE_CASH_IN, TRANSACTION_TYPE_CASH_OUT
 )
 import json
 import logging
+from django.core.cache import cache
+from asgiref.sync import sync_to_async
 
 from core.portfolio_utils import get_last_exit_date_for_broker_accounts, calculate_performance
 
@@ -31,11 +31,23 @@ def broker(user):
     return Brokers.objects.create(name='Test Broker', investor=user)
 
 @pytest.fixture
-def transactions(user, broker):
+def broker_account(broker):
+    """Create test broker account"""
+    return BrokerAccounts.objects.create(
+        broker=broker,
+        name='Test Account',
+        native_id='TEST001',
+        restricted=False,
+        is_active=True
+    )
+
+@pytest.fixture
+def transactions(user, broker_account):
+    """Create test transactions"""
     asset = Assets.objects.create(
         type='Stock',
         ISIN='US0378331005',
-        name='Apple Inc.',
+        name='Generic Security',
         currency='USD',
         exposure='Equity',
         restricted=False
@@ -44,7 +56,7 @@ def transactions(user, broker):
 
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         date=date(2022, 1, 1),
         type=TRANSACTION_TYPE_CASH_IN,
         cash_flow=Decimal('1500'),
@@ -52,7 +64,7 @@ def transactions(user, broker):
     )
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         date=date(2022, 1, 2),
         type=TRANSACTION_TYPE_BUY,
         quantity=Decimal('10'),
@@ -62,7 +74,7 @@ def transactions(user, broker):
     )
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         date=date(2022, 8, 31),
         type=TRANSACTION_TYPE_SELL,
         quantity=Decimal('-10'),
@@ -72,7 +84,7 @@ def transactions(user, broker):
     )
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         date=date(2022, 9, 1),
         type=TRANSACTION_TYPE_CASH_OUT,
         cash_flow=Decimal('-1200'),
@@ -96,111 +108,139 @@ def fx_rates(user):
     fx.save()
         # current_date += timedelta(days=1)
 
-@pytest.mark.django_db(transaction=True)  # Use transaction=True to avoid db locks
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_update_broker_performance_initial(user, broker, transactions, caplog):
-    """Test initial broker performance calculation"""
-    caplog.set_level(logging.INFO)
+async def test_update_broker_performance_unauthorized(user, broker, broker_account):
+    """Test unauthorized access"""
+    session_id = 'test_session_123'
+    update_data = {
+        'user_id': user.id + 1,  # Different user ID
+        'selection_account_type': 'broker',
+        'selection_account_id': broker.id,
+        'currency': 'USD',
+        'is_restricted': 'False',
+        'skip_existing_years': False,
+        'effective_current_date': '2023-01-01'
+    }
     
+    await sync_to_async(cache.set)(f'account_performance_update_{session_id}', update_data)
+
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
-        "POST",
-        "/database/api/update-broker-performance/sse/",
-        body=json.dumps({
-            'account_or_group': 'Test Broker',
-            'currency': 'USD',
-            'is_restricted': 'False',
-            'skip_existing_years': False,
-            'effective_current_date': '2023-01-01'
-        }).encode('utf-8')
+        "GET",
+        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
     )
-
     communicator.scope['user'] = user
+
     response = await communicator.get_response()
     
-    assert response['status'] == 200
+    assert response['status'] == 403
+    response_data = json.loads(response['body'].decode('utf-8'))
+    assert response_data['status'] == 'error'
+    assert response_data['message'] == 'Unauthorized access to session'
 
-    events = [
-        json.loads(line)
-        for line in response['body'].decode('utf-8').strip().split('\n')
-    ]
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_update_broker_performance_missing_session(user, broker, broker_account):
+    """Test missing session ID"""
+    communicator = HttpCommunicator(
+        UpdateAccountPerformanceConsumer.as_asgi(),
+        "GET",
+        "/database/api/update-broker-performance/sse/",  # No session_id
+    )
+    communicator.scope['user'] = user
 
-    progress_events = [event for event in events if event['status'] == 'progress']
-    complete_events = [event for event in events if event['status'] == 'complete']
-
-    assert len(progress_events) == 1
-    assert len(complete_events) == 1
-
-    @database_sync_to_async
-    def get_performance():
-        return AnnualPerformance.objects.filter(
-            investor=user,
-            account_type='broker',
-            account_id=broker.id,
-            year=2022,
-            currency='USD',
-            restricted=False
-        ).first()
-
-    performance = await get_performance()
-
-    assert performance is not None
-    assert performance.bop_nav == Decimal('0')
-    assert performance.eop_nav == Decimal('500')
-    assert performance.invested == Decimal('1500')
-    assert performance.cash_out == Decimal('-1200')
-    assert performance.price_change == Decimal('200')
+    response = await communicator.get_response()
+    
+    assert response['status'] == 400
+    response_data = json.loads(response['body'].decode('utf-8'))
+    assert response_data['status'] == 'error'
+    assert response_data['message'] == 'Session ID is required'
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_invalid_data(user):
     """Test broker performance calculation with invalid data"""
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "POST",
-        "/database/api/update-broker-performance/sse/",
-        body=json.dumps({
-            'account_or_group': 'invalid',
-            'currency': 'INVALID',
-            'is_restricted': 'INVALID',
-            'skip_existing_years': 'not_a_boolean',
-            'effective_current_date': '2023-01-01'
-        }).encode('utf-8')
+    # Use DRF's APIClient instead of Django's client
+    client = APIClient()
+    await sync_to_async(client.force_authenticate)(user=user)
+    
+    # Step 1: Test validation endpoint
+    invalid_data = {
+        'selection_account_type': 'invalid',
+        'selection_account_id': 'INVALID',
+        'currency': 'INVALID',
+        'is_restricted': 'INVALID',
+        'skip_existing_years': 'not_a_boolean',
+        'effective_current_date': '2023-01-01'
+    }
+    
+    # First, test the validation endpoint
+    response = await sync_to_async(client.post)(
+        '/database/api/update-account-performance/validate/',
+        invalid_data,
+        format='json'  # Use format='json' instead of content_type
     )
     
-    communicator.scope['user'] = user
-    response = await communicator.get_response()
-    
-    assert response['status'] == 400
-    response_data = json.loads(response['body'].decode('utf-8'))
-    assert 'error' in response_data
+    assert response.status_code == 400
+    response_data = response.json()
+    assert response_data['valid'] is False
+    assert response_data['type'] == 'validation'
     assert 'errors' in response_data
+    
+    # Verify specific validation errors
+    errors = response_data['errors']
+    assert 'selection_account_type' in errors  # Invalid account type
+    assert 'currency' in errors  # Invalid currency
+    assert 'is_restricted' in errors  # Invalid restriction value
+    
+    # Step 2: Test that invalid data can't start the process
+    response = await sync_to_async(client.post)(
+        '/database/api/update-account-performance/start/',
+        invalid_data,
+        format='json'
+    )
+    
+    assert response.status_code == 400
+    response_data = response.json()
+    assert response_data['valid'] is False
+    assert response_data['type'] == 'validation'
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_no_transactions(user, broker):
     """Test broker performance calculation with no transactions"""
+
+    session_id = 'test_session_invalid'
+    update_data = {
+        'user_id': user.id,
+        'selection_account_type': 'broker',
+        'selection_account_id': broker.id,
+        'currency': 'USD',
+        'is_restricted': 'False',
+        'skip_existing_years': False,
+        'effective_current_date': '2023-01-01'
+    }
+    
+    await sync_to_async(cache.set)(f'account_performance_update_{session_id}', update_data)
+
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
-        "POST",
-        "/database/api/update-broker-performance/sse/",
-        body=json.dumps({
-            'account_or_group': broker.name,
-            'currency': 'USD',
-            'is_restricted': 'False',
-            'skip_existing_years': False,
-            'effective_current_date': '2023-01-01'
-        }).encode('utf-8')
+        "GET",
+        f"/database/api/update-account-performance/sse/?session_id={session_id}",
     )
 
     communicator.scope['user'] = user
     response = await communicator.get_response()
     
     assert response['status'] == 200
-
+    
+    # Parse SSE messages
+    response_body = response['body'].decode('utf-8')
     events = [
-        json.loads(line)
-        for line in response['body'].decode('utf-8').strip().split('\n')
+        json.loads(line.replace('data: ', ''))
+        for line in response_body.strip().split('\n\n')
+        if line.startswith('data: ')
     ]
 
     error_events = [event for event in events if event['status'] == 'error']
@@ -209,21 +249,28 @@ async def test_update_broker_performance_no_transactions(user, broker):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_update_broker_performance_streaming(user, broker, transactions, fx_rates, capsys):
+async def test_update_broker_performance_streaming(user, broker, broker_account, transactions, fx_rates, capsys):
     """Test broker performance streaming with all currencies and restrictions"""
     print("Starting test_update_broker_performance_streaming")
 
+    # Create session ID and cache the update data
+    session_id = 'test_session_streaming'
+    update_data = {
+        'user_id': user.id,
+        'selection_account_type': 'broker',
+        'selection_account_id': broker.id,
+        'currency': 'All',
+        'is_restricted': 'All',
+        'skip_existing_years': False,
+        'effective_current_date': '2023-01-01'
+    }
+    
+    await sync_to_async(cache.set)(f'account_performance_update_{session_id}', update_data)
+
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
-        "POST",
-        "/database/api/update-broker-performance/sse/",
-        body=json.dumps({
-            'account_or_group': broker.name,
-            'currency': 'All',
-            'is_restricted': 'All',
-            'skip_existing_years': False,
-            'effective_current_date': '2023-01-01'
-        }).encode('utf-8')
+        "GET",
+        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
     )
 
     communicator.scope['user'] = user
@@ -232,8 +279,9 @@ async def test_update_broker_performance_streaming(user, broker, transactions, f
     assert response['status'] == 200
 
     events = [
-        json.loads(line)
-        for line in response['body'].decode('utf-8').strip().split('\n')
+        json.loads(msg.decode('utf-8').replace('data: ', ''))
+        for msg in response['body'].split(b'\n\n')
+        if msg.startswith(b'data: ')
     ]
 
     progress_events = [event for event in events if event['status'] == 'progress']
@@ -255,7 +303,7 @@ async def test_update_broker_performance_streaming(user, broker, transactions, f
     print(captured.out)
 
 @pytest.mark.django_db
-def test_get_last_exit_date_for_brokers(user, broker):
+def test_get_last_exit_date_for_brokers(user, broker_account):
     asset = Assets.objects.create(
         type='Stock',
         ISIN='US1234567890',
@@ -269,7 +317,7 @@ def test_get_last_exit_date_for_brokers(user, broker):
     transaction_date = datetime.now().date() - timedelta(days=30)
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         security=asset,
         date=transaction_date,
         type=TRANSACTION_TYPE_BUY,
@@ -279,14 +327,14 @@ def test_get_last_exit_date_for_brokers(user, broker):
     )
     
     current_date = datetime.now().date()
-    last_exit_date = get_last_exit_date_for_broker_accounts([broker.id], current_date)
+    last_exit_date = get_last_exit_date_for_broker_accounts([broker_account.id], current_date)
     
     assert last_exit_date == current_date
 
     # Close the position
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         security=asset,
         date=current_date - timedelta(days=1),
         type=TRANSACTION_TYPE_SELL,
@@ -295,11 +343,11 @@ def test_get_last_exit_date_for_brokers(user, broker):
         currency='USD'
     )
     
-    last_exit_date = get_last_exit_date_for_broker_accounts([broker.id], current_date)
+    last_exit_date = get_last_exit_date_for_broker_accounts([broker_account.id], current_date)
     assert last_exit_date == current_date - timedelta(days=1)
 
 @pytest.mark.django_db
-def test_calculate_performance(user, broker, caplog):
+def test_calculate_performance(user, broker_account, caplog):
 
     caplog.set_level(logging.DEBUG)
     
@@ -318,7 +366,7 @@ def test_calculate_performance(user, broker, caplog):
     
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         date=start_date,
         type=TRANSACTION_TYPE_CASH_IN,
         cash_flow=Decimal('1000'),
@@ -326,7 +374,7 @@ def test_calculate_performance(user, broker, caplog):
     )
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         security=asset,
         date=start_date + timedelta(days=30),
         type=TRANSACTION_TYPE_BUY,
@@ -336,7 +384,7 @@ def test_calculate_performance(user, broker, caplog):
     )
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         security=asset,
         date=end_date - timedelta(days=30),
         type=TRANSACTION_TYPE_SELL,
@@ -346,7 +394,7 @@ def test_calculate_performance(user, broker, caplog):
     )
     Transactions.objects.create(
         investor=user,
-        broker=broker,
+        broker_account=broker_account,
         date=end_date,
         type=TRANSACTION_TYPE_CASH_OUT,
         cash_flow=Decimal('-1200'),
@@ -357,15 +405,15 @@ def test_calculate_performance(user, broker, caplog):
         user,
         start_date,
         end_date,
-        'broker',
-        broker.id,
+        'account',
+        broker_account.id,
         'USD'
     )
 
-    for t in Transactions.objects.filter(investor=user, broker=broker):
+    for t in Transactions.objects.filter(investor=user, broker_account=broker_account):
         print(f"Transaction: {t.date} {t.type} {t.quantity} {t.price} {t.currency}")
 
-    print(f"Price change: {asset.realized_gain_loss(end_date, user, 'USD', broker_id_list=[broker.id], start_date=start_date)}")
+    print(f"Price change: {asset.realized_gain_loss(end_date, user, 'USD', broker_account_ids=[broker_account.id], start_date=start_date)}")
     
     assert 'bop_nav' in performance_data
     assert 'eop_nav' in performance_data
@@ -384,31 +432,54 @@ def test_calculate_performance(user, broker, caplog):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_update_broker_performance_skip_existing(user, broker, caplog):
+async def test_update_broker_performance_skip_existing(user, broker, broker_account, caplog):
     """Test broker performance calculation with skip_existing_years=True"""
     print("\nStarting test_update_broker_performance_skip_existing")
     caplog.set_level(logging.INFO)
-
+    
+    # Create a new broker specifically for this test
+    @database_sync_to_async
+    def create_test_broker():
+        return Brokers.objects.create(
+            name='Test Broker Skip Existing',
+            investor=user
+        )
+    
+    test_broker = await create_test_broker()
+    
+    # Create a new broker account for this test
+    @database_sync_to_async
+    def create_test_account():
+        return BrokerAccounts.objects.create(
+            broker=test_broker,
+            name='Test Account Skip Existing',
+            native_id='TEST002',
+            restricted=False,
+            is_active=True
+        )
+    
+    test_account = await create_test_account()
+    
     # Create test data
     @database_sync_to_async
     def setup_test_data():
-        # Create asset
+        # Create asset with unique ISIN
         asset = Assets.objects.create(
             type='Stock',
-            ISIN='US0378331005',
-            name='Apple Inc.',
+            ISIN='US0378331006',  # Different ISIN
+            name='Test Stock Skip',
             currency='USD',
             exposure='Equity',
             restricted=False
         )
         asset.investors.add(user)
-
-        # Create transactions for different years
+        
+        # Create transactions using test_account
         years = [2021, 2022, 2023]
         for year in years:
             Transactions.objects.create(
                 investor=user,
-                broker=broker,
+                broker_account=test_account,
                 date=date(year, 1, 1),
                 type=TRANSACTION_TYPE_CASH_IN,
                 cash_flow=Decimal('1000'),
@@ -416,7 +487,7 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
             )
             Transactions.objects.create(
                 investor=user,
-                broker=broker,
+                broker_account=test_account,
                 date=date(year, 6, 1),
                 type=TRANSACTION_TYPE_BUY,
                 quantity=Decimal('10'),
@@ -426,7 +497,7 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
             )
             Transactions.objects.create(
                 investor=user,
-                broker=broker,
+                broker_account=test_account,
                 date=date(year, 12, 31),
                 type=TRANSACTION_TYPE_SELL,
                 quantity=Decimal('-10'),
@@ -438,7 +509,8 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
         # Create existing AnnualPerformance for 2022
         AnnualPerformance.objects.create(
             investor=user,
-            broker_group=broker.name,
+            account_type='broker',
+            account_id=test_broker.id,
             year=2022,
             currency='USD',
             restricted=False,
@@ -457,18 +529,24 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
     await setup_test_data()
     print("Created transactions and existing AnnualPerformance")
 
-    # Create communicator
+    # Create session ID and cache the update data
+    session_id = 'test_session_skip_existing'
+    update_data = {
+        'user_id': user.id,
+        'selection_account_type': 'broker',
+        'selection_account_id': test_broker.id,
+        'currency': 'USD',
+        'is_restricted': 'False',
+        'skip_existing_years': True,
+        'effective_current_date': '2024-01-01'
+    }
+    
+    await sync_to_async(cache.set)(f'account_performance_update_{session_id}', update_data)
+
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
-        "POST",
-        "/database/api/update-broker-performance/sse/",
-        body=json.dumps({
-            'account_or_group': broker.name,
-            'currency': 'USD',
-            'is_restricted': 'False',
-            'skip_existing_years': True,
-            'effective_current_date': '2024-01-01'
-        }).encode('utf-8')
+        "GET",
+        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
     )
 
     communicator.scope['user'] = user
@@ -477,8 +555,9 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
     assert response['status'] == 200
 
     events = [
-        json.loads(line)
-        for line in response['body'].decode('utf-8').strip().split('\n')
+        json.loads(msg.decode('utf-8').replace('data: ', ''))
+        for msg in response['body'].split(b'\n\n')
+        if msg.startswith(b'data: ')
     ]
 
     progress_events = [event for event in events if event['status'] == 'progress']
@@ -492,61 +571,148 @@ async def test_update_broker_performance_skip_existing(user, broker, caplog):
 
     @database_sync_to_async
     def get_performances():
-        performance_2022 = AnnualPerformance.objects.filter(
-            investor=user,
-            account_type='broker',
-            account_id=broker.id,
-            year=2022,
-            currency='USD',
-            restricted=False
-        ).first()
+        return {
+            '2022': AnnualPerformance.objects.filter(
+                investor=user,
+                account_type='broker',
+                account_id=test_broker.id,
+                year=2022,
+                currency='USD',
+                restricted=False
+            ).first(),
+            '2021': AnnualPerformance.objects.filter(
+                investor=user,
+                account_type='broker',
+                account_id=test_broker.id,
+                year=2021,
+                currency='USD',
+                restricted=False
+            ).first(),
+            '2023': AnnualPerformance.objects.filter(
+                investor=user,
+                account_type='broker',
+                account_id=test_broker.id,
+                year=2023,
+                currency='USD',
+                restricted=False
+            ).first()
+        }
 
-        performance_2021 = AnnualPerformance.objects.filter(
-            investor=user,
-            account_type='broker',
-            account_id=broker.id,
-            year=2021,
-            currency='USD',
-            restricted=False
-        ).first()
-
-        performance_2023 = AnnualPerformance.objects.filter(
-            investor=user,
-            account_type='broker',
-            account_id=broker.id,
-            year=2023,
-            currency='USD',
-            restricted=False
-        ).first()
-
-        return performance_2022, performance_2021, performance_2023
-
-    performance_2022, performance_2021, performance_2023 = await get_performances()
-
-    print(f"Performance 2023:")
-    for k, v in performance_2023.__dict__.items():
-        print(f"{k}: {v}")
+    performances = await get_performances()
 
     # Check if 2022 performance was not updated
-    assert performance_2022 is not None
-    assert performance_2022.bop_nav == Decimal('1200')
-    assert performance_2022.eop_nav == Decimal('2400')
-    assert performance_2022.invested == Decimal('1000')
-    assert performance_2022.cash_out == Decimal('0')
-    assert performance_2022.price_change == Decimal('200')
+    assert performances['2022'] is not None
+    assert performances['2022'].bop_nav == Decimal('1200')
+    assert performances['2022'].eop_nav == Decimal('2400')
+    assert performances['2022'].invested == Decimal('1000')
+    assert performances['2022'].cash_out == Decimal('0')
+    assert performances['2022'].price_change == Decimal('200')
 
     # Check 2021 performance
-    assert performance_2021 is not None
-    assert performance_2021.bop_nav == Decimal('0')
-    assert performance_2021.eop_nav == Decimal('1200')
-    assert performance_2021.invested == Decimal('1000')
-    assert performance_2021.cash_out == Decimal('0')
-    assert performance_2021.price_change == Decimal('200')
+    assert performances['2021'] is not None
+    assert performances['2021'].bop_nav == Decimal('0')
+    assert performances['2021'].eop_nav == Decimal('1200')
+    assert performances['2021'].invested == Decimal('1000')
+    assert performances['2021'].cash_out == Decimal('0')
+    assert performances['2021'].price_change == Decimal('200')
 
     # Check 2023 performance
-    assert performance_2023 is not None
-    assert performance_2023.bop_nav == Decimal('2400')
-    assert performance_2023.eop_nav == Decimal('3600')
-    assert performance_2023.invested == Decimal('1000')
-    assert performance_2023.cash_out == Decimal('0')
-    assert performance_2023.price_change == Decimal('200')
+    assert performances['2023'] is not None
+    assert performances['2023'].bop_nav == Decimal('2400')
+    assert performances['2023'].eop_nav == Decimal('3600')
+    assert performances['2023'].invested == Decimal('1000')
+    assert performances['2023'].cash_out == Decimal('0')
+    assert performances['2023'].price_change == Decimal('200')
+
+@pytest.mark.django_db(transaction=True)  # Use transaction=True to avoid db locks
+@pytest.mark.asyncio
+async def test_update_broker_performance_initial(user, broker, broker_account, transactions, caplog):
+    """Test initial broker performance calculation"""
+    caplog.set_level(logging.INFO)
+    
+    # Create a unique session ID for this test
+    session_id = 'test_initial_123'
+    
+    # Clean up any existing performance records for this broker
+    @database_sync_to_async
+    def cleanup_performances():
+        AnnualPerformance.objects.filter(
+            investor=user,
+            account_type='broker',
+            account_id=broker.id
+        ).delete()
+    
+    await cleanup_performances()
+    
+    update_data = {
+        'user_id': user.id,
+        'selection_account_type': 'broker',
+        'selection_account_id': broker.id,
+        'currency': 'USD',
+        'is_restricted': 'False',
+        'skip_existing_years': False,
+        'effective_current_date': '2023-01-01'
+    }
+    
+    await sync_to_async(cache.set)(f'account_performance_update_{session_id}', update_data)
+    
+    # Create communicator with session_id in query params
+    communicator = HttpCommunicator(
+        UpdateAccountPerformanceConsumer.as_asgi(),
+        "GET",  # Changed to GET since we're using query params
+        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
+    )
+    communicator.scope['user'] = user
+
+    response = await communicator.get_response()
+    
+    # Verify the response
+    assert response['status'] == 200
+    
+    # Parse SSE messages from response body
+    messages = [
+        json.loads(msg.decode('utf-8').replace('data: ', ''))
+        for msg in response['body'].split(b'\n\n')
+        if msg.startswith(b'data: ')
+    ]
+
+    # Verify the messages
+    assert any(msg['status'] == 'initializing' for msg in messages)
+    assert any(msg['status'] == 'progress' for msg in messages)
+    assert any(msg['status'] == 'complete' for msg in messages)
+
+    # Get performance record
+    # Verify performance records
+    @database_sync_to_async
+    def get_performance_count():
+        return AnnualPerformance.objects.filter(
+            investor=user,
+            account_type='broker',
+            account_id=broker.id,
+            currency='USD',
+            restricted=False,
+        ).count()
+
+    @database_sync_to_async
+    def get_performance():
+        return AnnualPerformance.objects.get(
+            investor=user,
+            account_type='broker',
+            account_id=broker.id,
+            currency='USD',
+            restricted=False,
+        )
+    
+    # First verify we have exactly one record
+    count = await get_performance_count()
+    assert count == 1
+
+    performance = await get_performance()
+    
+    # Verify performance record
+    assert performance is not None
+    assert performance.bop_nav == Decimal('0')
+    assert performance.eop_nav == Decimal('500')
+    assert performance.invested == Decimal('1500')
+    assert performance.cash_out == Decimal('-1200')
+    assert performance.price_change == Decimal('200')

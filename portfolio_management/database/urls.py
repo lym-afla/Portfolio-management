@@ -1,15 +1,15 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .import views
-from .views import PriceImportView, UpdateAccountPerformanceView, BrokerViewSet
+from . import views
+from .views import PriceImportView, UpdateAccountPerformanceViewSet, BrokerViewSet
 
-app_name = 'database' # Optional, but useful for namespacing
+app_name = 'database'
 
 router = DefaultRouter()
 router.register(r'accounts', views.AccountViewSet, basename='account')
 router.register(r'fx', views.FXViewSet, basename='fx')
 router.register(r'brokers', BrokerViewSet, basename='broker')
-
+router.register(r'update-account-performance', UpdateAccountPerformanceViewSet, basename='update-account-performance')
 
 urlpatterns = [
     path('api/get-asset-types/', views.api_get_asset_types, name='api_get_asset_types'),
@@ -31,5 +31,4 @@ urlpatterns = [
     path('api/securities/<int:security_id>/transactions/', views.api_get_security_transactions, name='api_get_security_transactions'),
     path('api/price-import/', PriceImportView.as_view(), name='price_import'),
     path('api/', include(router.urls)),
-    path('api/update-account-performance/', UpdateAccountPerformanceView.as_view(), name='update_account_performance'),
 ]

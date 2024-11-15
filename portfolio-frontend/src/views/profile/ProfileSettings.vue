@@ -126,6 +126,7 @@
 
 <script>
 import { provide } from 'vue'
+import { useStore } from 'vuex'
 import { getUserSettings, updateUserSettings, getSettingsChoices } from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
 import AccountGroupManager from '@/components/AccountGroupManager.vue'
@@ -138,10 +139,12 @@ export default {
   },
 
   setup() {
+    const store = useStore()
     // Provide error handling function for child components
     provide('showError', (message) => {
       this.showErrorMessage(message)
     })
+    return { store }
   },
 
   data() {
@@ -193,8 +196,16 @@ export default {
           getSettingsChoices()
         ])
         
-        // Format all choices first
+        // Format choices and set initial currency in store
         this.currencyChoices = this.formatChoices(choices.currency_choices)
+        const selectedCurrencyOption = this.currencyChoices.find(
+          option => option.value === settings.default_currency
+        )
+        if (selectedCurrencyOption) {
+          this.store.commit('SET_SELECTED_CURRENCY', selectedCurrencyOption.title)
+        }
+
+        // Format all choices first
         this.frequencyChoices = this.formatChoices(choices.frequency_choices)
         this.timelineChoices = this.formatChoices(choices.timeline_choices)
         this.navBreakdownChoices = this.formatChoices(choices.nav_breakdown_choices)
@@ -241,6 +252,14 @@ export default {
 
         const response = await updateUserSettings(settingsToSave)
         if (response.success) {
+          // Update store with new currency
+          const selectedCurrencyOption = this.currencyChoices.find(
+            option => option.value === this.settingsForm.default_currency
+          )
+          if (selectedCurrencyOption) {
+            this.store.commit('SET_SELECTED_CURRENCY', selectedCurrencyOption.title)
+          }
+
           this.showSuccessMessage('Settings saved successfully')
         } else {
           this.handleFieldErrors(response.errors)

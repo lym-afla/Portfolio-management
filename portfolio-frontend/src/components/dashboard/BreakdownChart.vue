@@ -86,8 +86,6 @@ export default {
 
     const sortedData = computed(() => {
       if (!hasData.value) return []
-      console.log('sortedData', props.data)
-      console.log('totalNAV', props.totalNAV)
       return Object.entries(props.data.data)
         .map(([label, value]) => ({ 
           label, 

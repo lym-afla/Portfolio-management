@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.db import connection
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from common.models import Brokers, Assets, Transactions, FX
+from common.models import Brokers, Assets, Transactions, FX, BrokerAccounts
 from core.import_utils import parse_charles_stanley_transactions
 from constants import TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_DIVIDEND, TRANSACTION_TYPE_INTEREST_INCOME
 import pandas as pd
@@ -23,8 +23,17 @@ async def setup_data():
     broker = await database_sync_to_async(Brokers.objects.create)(name='Charles Stanley Test', investor=investor)
     asset = await database_sync_to_async(Assets.objects.create)(name='Test Asset', type='Stock', currency='GBP')
     await database_sync_to_async(asset.investors.add)(investor)
-    await database_sync_to_async(asset.brokers.add)(broker)
-    return investor, broker, asset
+    
+    # Create broker account
+    broker_account = await database_sync_to_async(BrokerAccounts.objects.create)(
+        broker=broker,
+        native_id='TEST001',
+        name='Test Account',
+        restricted=False,
+        is_active=True
+    )
+    
+    return investor, broker, asset, broker_account
 
 @pytest.fixture(autouse=True)
 def close_db_connection():
@@ -47,7 +56,7 @@ async def clear_database(django_db_setup, django_db_blocker):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_parse_charles_stanley_transactions(setup_data):
-    investor, broker, asset = setup_data
+    investor, broker, asset, broker_account = setup_data
     
     mock_data = {
         'Date': ['01-Jan-2023'],
@@ -60,12 +69,16 @@ async def test_parse_charles_stanley_transactions(setup_data):
     mock_df = pd.DataFrame(mock_data)
 
     with patch('core.import_utils.read_excel_file', return_value=mock_df):
-        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker.id, investor.id, confirm_every=False)
+        generator = parse_charles_stanley_transactions(
+            'dummy.xlsx', 
+            'GBP', 
+            broker_account.id, 
+            investor.id, 
+            confirm_every=False
+        )
         
         transactions = []
         async for item in generator:
-            # Check the structure of the yielded item and adjust accordingly
-            # print(item)  # This will help us see the actual structure
             if isinstance(item, dict) and 'data' in item and item.get('status') == 'add_transaction':
                 transactions.append(item['data'])
 
@@ -74,15 +87,16 @@ async def test_parse_charles_stanley_transactions(setup_data):
     assert transactions[0]['quantity'] == Decimal('10')
     assert transactions[0]['price'] == Decimal('100')
     assert transactions[0]['security'] == asset
+    assert transactions[0]['broker_account'] == broker_account
 
 @pytest.mark.asyncio
 async def test_skip_existing_transaction(setup_data):
-    investor, broker, asset = setup_data
+    investor, broker, asset, broker_account = setup_data
     
-    # Create an existing transaction
+    # Create an existing transaction with broker_account
     await database_sync_to_async(Transactions.objects.create)(
         investor=investor,
-        broker=broker,
+        broker_account=broker_account,
         security=asset,
         currency='GBP',
         type=TRANSACTION_TYPE_BUY,
@@ -102,7 +116,7 @@ async def test_skip_existing_transaction(setup_data):
     mock_df = pd.DataFrame(mock_data)
 
     with patch('core.import_utils.read_excel_file', return_value=mock_df):
-        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker.id, investor.id, confirm_every=False)
+        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker_account.id, investor.id, confirm_every=False)
         
         transactions = []
         async for item in generator:
@@ -113,7 +127,7 @@ async def test_skip_existing_transaction(setup_data):
 
 @pytest.mark.asyncio
 async def test_different_transaction_types(setup_data):
-    investor, broker, asset = setup_data
+    investor, broker, asset, broker_account = setup_data
     
     mock_data = {
         'Date': ['01-Jan-2023', '02-Jan-2023', '03-Jan-2023'],
@@ -126,7 +140,7 @@ async def test_different_transaction_types(setup_data):
     mock_df = pd.DataFrame(mock_data)
 
     with patch('core.import_utils.read_excel_file', return_value=mock_df):
-        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker.id, investor.id, confirm_every=False)
+        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker_account.id, investor.id, confirm_every=False)
         
         transactions = []
         async for item in generator:
@@ -140,7 +154,7 @@ async def test_different_transaction_types(setup_data):
 
 @pytest.mark.asyncio
 async def test_security_mapping(setup_data):
-    investor, broker, _ = setup_data
+    investor, broker, asset, broker_account = setup_data
     
     mock_data = {
         'Date': ['01-Jan-2023'],
@@ -153,7 +167,7 @@ async def test_security_mapping(setup_data):
     mock_df = pd.DataFrame(mock_data)
 
     with patch('core.import_utils.read_excel_file', return_value=mock_df):
-        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker.id, investor.id, confirm_every=False)
+        generator = parse_charles_stanley_transactions('dummy.xlsx', 'GBP', broker_account.id, investor.id, confirm_every=False)
         
         mapping_required = False
         async for item in generator:
@@ -173,7 +187,7 @@ async def test_invalid_excel_file():
 
 @pytest.mark.asyncio
 async def test_progress_reporting(setup_data):
-    investor, broker, asset = setup_data
+    investor, broker, asset, broker_account = setup_data
     
     mock_data = {
         'Date': ['01-Jan-2023'] * 100,

@@ -102,7 +102,7 @@ export default {
     }
 
     const handleUpdateStarted = async (formData) => {
-      console.log('Update started', formData)
+      showDialog.value = false
       showProgressDialog.value = true
       currentMessage.value = 'Starting update'
       updateProgress.value = 0
@@ -112,6 +112,7 @@ export default {
 
       try {
         await updateAccountPerformance(formData)
+        emit('refresh-data')
       } catch (error) {
         handleUpdateError(error)
       }
@@ -120,6 +121,10 @@ export default {
     const handleProgress = (event) => {
       const data = event.detail
       console.log('Progress:', data)
+      
+      if (!showProgressDialog.value) {
+        showProgressDialog.value = true
+      }
       
       switch(data.status) {
         case 'initializing':
@@ -151,7 +156,7 @@ export default {
 
     const handleUpdateError = (error) => {
       console.error('[handleUpdateError] Update error:', error)
-      const errorMessage = error.message || error
+      const errorMessage = error.response?.data?.message || error.message || String(error)
       errors.value.push(errorMessage)
       currentMessage.value = `Error: ${errorMessage}`
     }

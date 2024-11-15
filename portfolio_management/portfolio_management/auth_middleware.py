@@ -23,33 +23,36 @@ class TokenAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
         try:
             token = None
+            logger.debug(f"Processing {scope['type']} request")
+            
+            # First check query parameters for token (works for both HTTP and WebSocket)
+            query_string = scope.get('query_string', b'').decode()
+            query_params = dict(param.split('=') for param in query_string.split('&') if param)
+            token = query_params.get('token')
+            logger.debug(f"Token from query params: {token}")
 
-            # Check if it's a WebSocket connection
-            if scope["type"] == "websocket":
-                # Extract token from query string
-                query_string = scope.get('query_string', b'').decode()
-                query_params = dict(param.split('=') for param in query_string.split('&') if param)
-                token = query_params.get('token', None)
-
-            # Check if it's a HTTP connection
-            elif scope["type"] == "http":
-                # Extract token from headers
+            # If no token in query params and it's HTTP, check headers
+            if not token and scope["type"] == "http":
                 headers = dict(scope['headers'])
+                logger.debug(f"Headers received: {headers}")
+                
                 if b'authorization' in headers:
                     auth_header = headers[b'authorization'].decode()
+                    logger.debug(f"Authorization header found: {auth_header}")
                     if auth_header.startswith('Bearer '):
                         token = auth_header.split()[1]
+                        logger.debug(f"Bearer token extracted: {token}")
 
             if token:
+                logger.debug("Attempting to get user from token")
                 scope['user'] = await get_user(token)
+                logger.debug(f"User authentication result: {not isinstance(scope['user'], AnonymousUser)}")
             else:
+                logger.debug("No token found, setting AnonymousUser")
                 scope['user'] = AnonymousUser()
 
-            # Add this debug logging
-            logger.debug(f"User authenticated: {scope['user']}")
-            
             return await super().__call__(scope, receive, send)
         except Exception as e:
-            logger.error(f"Authentication error: {str(e)}")
+            logger.error(f"Authentication error: {str(e)}", exc_info=True)
             scope['user'] = AnonymousUser()
             return await super().__call__(scope, receive, send)

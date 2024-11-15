@@ -28,7 +28,7 @@ async def get_user_token(user, sandbox_mode=False):
             sandbox_mode=sandbox_mode,
             is_active=True
         )
-        return token.get_token()
+        return token.get_token(user)
     except TinkoffApiToken.DoesNotExist:
         raise ValueError("No active Tinkoff API token found for user")
     except Exception as e:
@@ -61,7 +61,7 @@ async def get_security_by_uid(instrument_uid, user):
         logger.error(f"Error getting security details from Tinkoff: {str(e)}")
         return None, None
 
-async def _find_or_create_security(instrument_uid, investor, broker_account):
+async def _find_or_create_security(instrument_uid, investor):
     """
     Find existing security or create new one using Tinkoff API data.
     
@@ -82,8 +82,7 @@ async def _find_or_create_security(instrument_uid, investor, broker_account):
         # Try to find security with all relationships
         security = await database_sync_to_async(Assets.objects.get)(
             ISIN=isin,
-            investors=investor,
-            broker_accounts=broker_account
+            investors=investor
         )
         return security, "existing_with_relationships"
     except Assets.DoesNotExist:
@@ -93,15 +92,15 @@ async def _find_or_create_security(instrument_uid, investor, broker_account):
             
             # Add relationships
             @database_sync_to_async
-            def add_relationships(security, investor, broker_account):
+            def add_relationships(security, investor):
                 security.investors.add(investor)
                 return security
 
-            security = await add_relationships(security, investor, broker_account)
+            security = await add_relationships(security, investor)
             return security, "existing_added_relationships"
         except Assets.DoesNotExist:
             # Create new security using MICEX data
-            security = await create_security_from_micex(name, isin, investor, broker_account)
+            security = await create_security_from_micex(name, isin, investor)
             if security:
                 return security, "created_new"
             return None, "failed_to_create"
@@ -146,8 +145,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, broker_accou
     if operation.instrument_uid:
         security, status = await _find_or_create_security(
             operation.instrument_uid,
-            investor,
-            broker_account
+            investor
         )
         if security:
             transaction_data['security'] = security

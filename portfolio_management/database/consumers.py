@@ -4,24 +4,28 @@ from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
 
 from django.utils.dateparse import parse_date
-import asyncio
 from common.models import Assets, BrokerAccounts, FX, Transactions
 from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo, import_security_prices_from_micex
 
-from constants import CURRENCY_CHOICES
-from .forms import AccountPerformanceForm
+from constants import CURRENCY_CHOICES, ACCOUNT_TYPE_ALL, ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_GROUP, ACCOUNT_TYPE_BROKER
 from core.database_utils import get_years_count, save_or_update_annual_broker_performance
-from django.conf import settings
-from datetime import datetime
+from datetime import date, datetime
 import logging
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.utils.formats import date_format
 from django.db.models import Prefetch
 
+from database.serializers import AccountPerformanceSerializer
+
 logger = logging.getLogger(__name__)
 
 class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
+    async def send_sse_message(self, data):
+        """Helper function to send SSE messages"""
+        message = f"data: {json.dumps(data)}\n\n"
+        await self.send_body(message.encode('utf-8'), more_body=True)
+
     async def handle(self, body):
         headers = [
             (b"Access-Control-Allow-Origin", b"http://localhost:8080"),  # Adjust this to match your frontend URL
@@ -38,48 +42,78 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
             return
 
         if isinstance(self.scope['user'], AnonymousUser):
-            await self.send_response(401, json.dumps({'error': 'Authentication required'}).encode('utf-8'), headers=headers + [
+            await self.send_response(401, json.dumps({
+                'status': 'error',
+                'type': 'authentication',
+                'message': 'Authentication required'
+            }).encode('utf-8'), headers=headers + [
                 (b'Content-Type', b'application/json'),
             ])
             return
 
-        elif self.scope['method'] == 'POST':
+        # Get session_id from query parameters
+        query_string = self.scope.get('query_string', b'').decode('utf-8')
+        query_params = dict(param.split('=') for param in query_string.split('&') if param)
+        session_id = query_params.get('session_id')
 
-            # Parse the request body
-            try:
-                data = json.loads(body.decode('utf-8'))
-            except json.JSONDecodeError:
-                await self.send_response(400, json.dumps({'error': 'Invalid JSON'}).encode('utf-8'), headers=headers + [
-                    (b'Content-Type', b'application/json'),
-                ])
+        if not session_id:
+            await self.send_response(400, json.dumps({
+                'status': 'error',
+                'message': 'Session ID is required'
+            }).encode('utf-8'), headers=headers)
+            return
+
+        try:
+            # Get update data from cache
+            cache_key = f'account_performance_update_{session_id}'
+            update_data = await sync_to_async(cache.get)(cache_key)
+
+            if not update_data:
+                await self.send_response(404, json.dumps({
+                    'status': 'error',
+                    'message': 'Session not found or expired'
+                }).encode('utf-8'), headers=headers)
                 return
 
-            # Extract effective_current_date from the request data
-            effective_current_date_str = data.get('effective_current_date')
-            if not effective_current_date_str:
-                await self.send_response(400, json.dumps({'error': 'Missing effective_current_date'}).encode('utf-8'))
+            # Verify user matches the cached data
+            if update_data['user_id'] != self.scope['user'].id:
+                await self.send_response(403, json.dumps({
+                    'status': 'error',
+                    'message': 'Unauthorized access to session'
+                }).encode('utf-8'), headers=headers)
                 return
 
-            try:
-                effective_current_date = datetime.strptime(effective_current_date_str, '%Y-%m-%d').date()
-            except ValueError:
-                await self.send_response(400, b'Invalid "effective_current_date" format')
+            # Handle effective_current_date
+            effective_current_date = update_data.get('effective_current_date')
+            if isinstance(effective_current_date, str):
+                try:
+                    effective_current_date = datetime.strptime(effective_current_date, '%Y-%m-%d').date()
+                except ValueError as e:
+                    await self.send_sse_message({
+                        'status': 'error',
+                        'message': f'Invalid date format: {str(e)}'
+                    })
+                    return
+            elif not isinstance(effective_current_date, date):
+                await self.send_sse_message({
+                    'status': 'error',
+                    'message': f'Invalid date type: expected string or date, got {type(effective_current_date)}'
+                })
                 return
 
-            # Validate the form data
-            form = await database_sync_to_async(AccountPerformanceForm)(data, investor=self.scope['user'])
-            if not await database_sync_to_async(form.is_valid)():
-                errors = form.errors.as_json()
-                await self.send_response(400, json.dumps({'error': 'Invalid form data', 'errors': form.errors}).encode('utf-8'), headers=headers + [
-                    (b'Content-Type', b'application/json'),
-                ])
-                return
+            # Set headers for SSE
+            sse_headers = headers + [
+                (b"Cache-Control", b"no-cache"),
+                (b"Content-Type", b"text/event-stream"),
+            ]
+            await self.send_headers(headers=sse_headers)
 
-            selection_account_type = form.cleaned_data['selection_account_type']
-            selection_account_id = form.cleaned_data['selection_account_id']
-            currency = form.cleaned_data['currency']
-            is_restricted_str = form.cleaned_data['is_restricted']
-            skip_existing_years = form.cleaned_data['skip_existing_years']
+            # Extract remaining data from cache
+            selection_account_type = update_data['selection_account_type']
+            selection_account_id = update_data['selection_account_id']
+            currency = update_data['currency']
+            is_restricted_str = update_data['is_restricted']
+            skip_existing_years = update_data['skip_existing_years']
             user = self.scope['user']
 
             # Determine is_restricted_list
@@ -92,79 +126,60 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
             elif is_restricted_str == 'All':
                 is_restricted_list = [None, True, False]
             else:
-                await self.send_response(400, b'Invalid "is_restricted" value')
+                await self.send_sse_message({
+                    'status': 'error',
+                    'message': 'Invalid "is_restricted" value'
+                })
                 return
-
-            # Set headers for SSE
-            sse_headers = headers + [
-                (b"Cache-Control", b"no-cache"),
-                (b"Content-Type", b"text/event-stream"),
-            ]
-            await self.send_headers(headers=sse_headers)
 
             currencies = [currency] if currency != 'All' else [choice[0] for choice in CURRENCY_CHOICES]
             total_operations = len(currencies) * len(is_restricted_list) * await database_sync_to_async(get_years_count)(user, effective_current_date, selection_account_type, selection_account_id)
 
-            # Modify how you send SSE messages
-            async def send_sse_message(self, data):
-                try:
-                    message = f"data: {json.dumps(data)}\n\n"
-                    await self.send_body(message.encode('utf-8'), more_body=True)
-                    await asyncio.sleep(0.1)
-                except Exception as e:
-                    logger.error(f"Error sending SSE message: {str(e)}")
-                    raise
+            # Send initial progress event
+            await self.send_sse_message({
+                'status': 'initializing',
+                'total': total_operations
+            })
 
-            # Update the progress sending code
-            try:
-                # Send initial progress event
-                await send_sse_message(self, {
-                    'status': 'initializing',
-                    'total': total_operations
-                })
+            current_operation = 0
 
-                current_operation = 0
+            for curr in currencies:
+                for is_restricted in is_restricted_list:
+                    async for progress_data in save_or_update_annual_broker_performance(
+                        user, effective_current_date, selection_account_type,
+                        selection_account_id, curr, is_restricted, skip_existing_years
+                    ):
+                        if progress_data['status'] == 'progress':
+                            current_operation += 1
+                            progress = (current_operation / total_operations) * 100
+                            event = {
+                                'status': 'progress',
+                                'current': current_operation,
+                                'progress': progress,
+                                'year': progress_data.get('year'),
+                                'currency': curr,
+                                'is_restricted': str(is_restricted)
+                            }
+                            logger.info(f"Sending SSE message: {event} at: {progress_data['timestamp']}")
+                            await self.send_sse_message(event)
+                        elif progress_data['status'] == 'error':
+                            await self.send_sse_message(progress_data)
 
-                for curr in currencies:
-                    for is_restricted in is_restricted_list:
-                        async for progress_data in save_or_update_annual_broker_performance(
-                            user, effective_current_date, selection_account_type,
-                            selection_account_id, curr, is_restricted, skip_existing_years
-                        ):
-                            if progress_data['status'] == 'progress':
-                                current_operation += 1
-                                progress = (current_operation / total_operations) * 100
-                                event = {
-                                    'status': 'progress',
-                                    'current': current_operation,
-                                    'progress': progress,
-                                    'year': progress_data.get('year'),
-                                    'currency': curr,
-                                    'is_restricted': str(is_restricted)
-                                }
-                                logger.info(f"Sending SSE message: {event} at: {progress_data['timestamp']}")
-                                await send_sse_message(self, event)
-                            elif progress_data['status'] == 'error':
-                                await send_sse_message(self, progress_data)
+            # Send complete event
+            await self.send_sse_message({'status': 'complete'})
+            await self.send_body(b'', more_body=False)
 
-                # Send complete event
-                complete_event = {'status': 'complete'}
-                await send_sse_message(self, complete_event)
-                await self.send_body(b'', more_body=False)
-
-            except Exception as e:
-                logger.error(f"Error in consumer: {str(e)}", exc_info=True)
-                await send_sse_message(self, {
-                    'status': 'error',
-                    'message': str(e)
-                })
-                await self.send_body(b'', more_body=False)
-
-        else:
-            # Method not allowed
-            await self.send_response(405, json.dumps({'error': 'Method Not Allowed'}).encode('utf-8'), headers=headers + [
-                (b'Content-Type', b'application/json'),
-            ])
+        except Exception as e:
+            logger.error(f"Error processing update: {str(e)}", exc_info=True)
+            await self.send_sse_message({
+                'status': 'error',
+                'message': f'Error processing update: {str(e)}'
+            })
+            return
+        finally:
+            # Clean up cache
+            await sync_to_async(cache.delete)(cache_key)
+            await self.send_body(b'', more_body=False)
 
 class PriceImportConsumer(AsyncHttpConsumer):
     async def handle(self, body):

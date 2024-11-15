@@ -1,8 +1,8 @@
 from rest_framework import serializers
-from common.models import Assets, BrokerAccounts, FX, Brokers, Transactions
+from common.models import Assets, BrokerAccounts, FX, Brokers, Transactions, Prices
 from core.user_utils import prepare_account_choices
 from users.models import AccountGroup
-from constants import CURRENCY_CHOICES
+from constants import CURRENCY_CHOICES, ACCOUNT_TYPE_ALL, ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_GROUP, ACCOUNT_TYPE_BROKER
 from decimal import Decimal
 
 from core.formatting_utils import format_value
@@ -64,50 +64,97 @@ class BrokerAccountSerializer(serializers.ModelSerializer):
             }
         return None
 
-    def to_representation(self, instance):
-        # For GET requests, include the formatted broker data
-        data = super().to_representation(instance)
-        return data
-
     def to_internal_value(self, data):
-        # For POST/PUT requests, handle the broker ID
         internal_data = super().to_internal_value(data)
-        broker_id = data.get('broker')
+        
+        # Handle broker field consistently
+        broker_data = data.get('broker')
+        broker_id = None
+        
+        if isinstance(broker_data, dict):
+            broker_id = broker_data.get('value')
+        elif isinstance(broker_data, (int, str)):
+            broker_id = int(broker_data)
+            
         if broker_id:
             try:
                 broker = Brokers.objects.get(id=broker_id)
                 internal_data['broker'] = broker
             except Brokers.DoesNotExist:
                 raise serializers.ValidationError({'broker': 'Invalid broker ID'})
+        
         return internal_data
 
 class AccountPerformanceSerializer(serializers.Serializer):
-    account_or_group = serializers.ChoiceField(choices=[])
-    currency = serializers.ChoiceField(choices=CURRENCY_CHOICES + (('All', 'All Currencies'),))
-    is_restricted = serializers.ChoiceField(choices=[
-        ('All', 'All'),
-        ('None', 'No flag'),
-        ('True', 'Restricted'),
-        ('False', 'Not restricted')
-    ])
-    skip_existing_years = serializers.BooleanField(required=False)
+    selection_account_type = serializers.ChoiceField(
+        choices=[ACCOUNT_TYPE_ALL, ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_GROUP, ACCOUNT_TYPE_BROKER]
+    )
+    selection_account_id = serializers.IntegerField(required=False, allow_null=True)
+    currency = serializers.ChoiceField(
+        choices=CURRENCY_CHOICES + (('All', 'All Currencies'),)
+    )
+    is_restricted = serializers.ChoiceField(
+        choices=[
+            ('All', 'All'),
+            ('None', 'No flag'),
+            ('True', 'Restricted'),
+            ('False', 'Not restricted')
+        ]
+    )
+    skip_existing_years = serializers.BooleanField(required=False, default=False)
+    effective_current_date = serializers.DateField(required=True)
 
     def __init__(self, *args, **kwargs):
-        investor = kwargs.pop('investor', None)
+        self.investor = kwargs.pop('investor', None)
         super().__init__(*args, **kwargs)
-
-        # Get choices data using prepare_account_choices
-        choices_data = prepare_account_choices(investor)
         
-        # Important: Don't set choices directly, we'll return raw options in get_form_data
+        # Get choices data using prepare_account_choices
+        choices_data = prepare_account_choices(self.investor)
         self.choices_data = choices_data['options']
 
+    def validate(self, data):
+        """
+        Validate the complete data set.
+        Called after individual field validation and only if all fields are valid.
+        """
+        account_type = data.get('selection_account_type')
+        account_id = data.get('selection_account_id')
+
+        # Special case for 'all' type
+        if account_type == 'all':
+            if account_id is not None:
+                raise serializers.ValidationError({
+                    'selection_account_id': 'Should be null when type is "all"'
+                })
+            return data
+
+        # For other types, account_id is required
+        if account_id is None:
+            raise serializers.ValidationError({
+                'selection_account_id': 'Required when type is not "all"'
+            })
+
+        # Check if the account type and ID combination exists in choices_data
+        valid_selection = False
+        for section, items in self.choices_data:
+            if section != '__SEPARATOR__':
+                for _, item_data in items:
+                    if (item_data['type'] == account_type and 
+                        item_data.get('id') == account_id):
+                        valid_selection = True
+                        break
+
+        if not valid_selection:
+            raise serializers.ValidationError({
+                'selection_account_type': 'Invalid account selection'
+            })
+
+        return data
+
     def get_form_data(self):
-        """
-        Return the raw options array instead of processed choices
-        """
+        """Return the form structure for frontend"""
         return {
-            'account_choices': self.choices_data,  # Return raw options array
+            'account_choices': self.choices_data,
             'currency_choices': dict(self.fields['currency'].choices),
             'is_restricted_choices': dict(self.fields['is_restricted'].choices),
         }
@@ -181,3 +228,18 @@ class BrokerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Brokers
         fields = ['id', 'name', 'country', 'comment']
+
+class PriceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prices
+        fields = ['id', 'date', 'security', 'price']
+
+    def __init__(self, *args, **kwargs):
+        self.investor = kwargs.pop('investor', None)
+        super().__init__(*args, **kwargs)
+        
+        if self.investor:
+            # Filter securities by investor and order by name
+            self.fields['security'].queryset = Assets.objects.filter(
+                investors__id=self.investor.id
+            ).order_by('name')

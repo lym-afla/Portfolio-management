@@ -71,9 +71,9 @@ def read_excel_file(file_path):
         raise ValueError(f'An error occurred while reading the file: {str(e)}')
 
 @database_sync_to_async
-def _find_security(stock_description, investor, broker_account):
+def _find_security(stock_description, investor):
     
-    securities = list(Assets.objects.filter(investors=investor, broker_accounts=broker_account))
+    securities = list(Assets.objects.filter(investors=investor))
     
     # Check for exact match
     security = next((s for s in securities if s.name == stock_description), None)
@@ -141,11 +141,11 @@ async def _process_transaction_row(row, investor, broker_account, currency):
             transaction_type = TRANSACTION_TYPE_CASH_OUT
         elif any(keyword in description for keyword in DIVIDEND_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_DIVIDEND
-            security, best_match = await _find_security(stock_description, investor, broker_account)
+            security, best_match = await _find_security(stock_description, investor)
         elif any(keyword in description for keyword in INTEREST_INCOME_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_INTEREST_INCOME
         elif pd.notna(stock_description):
-            security, best_match = await _find_security(stock_description, investor, broker_account)
+            security, best_match = await _find_security(stock_description, investor)
             if debit > 0:
                 transaction_type = TRANSACTION_TYPE_BUY
             elif credit > 0:
@@ -1032,7 +1032,7 @@ async def _process_galaxy_securities(df, user, broker_account):
         'message': f'Found {len(security_columns)} valid securities'
     }
 
-async def create_security_from_micex(security_name, isin, user, broker_account):
+async def create_security_from_micex(security_name, isin, user):
     """Create a new security using MICEX API data"""
     try:
         # Constants for MICEX API

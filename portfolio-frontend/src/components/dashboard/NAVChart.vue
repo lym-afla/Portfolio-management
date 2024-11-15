@@ -27,29 +27,32 @@
           />
         </v-col>
       </v-row>
-      <div class="chart-wrapper">
-        <canvas ref="chartRef"></canvas>
+      <div class="chart-wrapper" v-if="!isEmptyData">
+        <StackedBarLineChart
+          v-if="!loading && chartDataComputed && chartOptionsComputed"
+          :chart-data="chartDataComputed"
+          :options="chartOptionsComputed"
+        />
         <div v-if="loading" class="chart-overlay">
           <v-progress-circular indeterminate color="primary" size="64" />
         </div>
       </div>
+      <v-alert v-else type="info" text="No data available"></v-alert>
     </v-card-text>
   </v-card>
 </template>
 
 <script>
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useStore } from 'vuex'
-import { Chart, registerables } from 'chart.js'
+import StackedBarLineChart from '@/components/charts/StackedBarLineChart.vue'
 import { getChartOptions } from '@/config/chartConfig'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 // import { calculateDateRange } from '@/utils/dateRangeUtils'
 
-Chart.register(...registerables)
-
 export default {
   name: 'NAVChart',
-  components: { DateRangeSelector },
+  components: { StackedBarLineChart, DateRangeSelector },
   props: {
     chartData: {
       type: Object,
@@ -74,8 +77,7 @@ export default {
   emits: ['update-params'],
   setup(props, { emit }) {
     const store = useStore()
-    const chartRef = ref(null)
-    const chartInstance = ref(null)
+    const chartOptions = ref(null)
 
     const navChartParams = computed(() => store.state.navChartParams)
 
@@ -91,7 +93,8 @@ export default {
       { title: 'Asset Class', value: 'asset_class' },
       { title: 'Currency', value: 'currency' },
       { title: 'No breakdown', value: 'none' },
-      { title: 'Value Contributions', value: 'value_contributions' }
+      { title: 'Value Contributions', value: 'value_contributions' },
+      { title: 'Cumulative Value', value: 'value_contributions_cumulative' }
     ]
 
     const updateParams = () => {
@@ -113,39 +116,93 @@ export default {
       updateParams()
     }
 
-    onMounted(() => {
-      initChart()
-    })
-
-    const initChart = async () => {
-      if (!chartRef.value || !props.chartData) return
-      const ctx = chartRef.value.getContext('2d')
-      const { navChartOptions, colorPalette } = await getChartOptions(props.chartData.currency)
-      if (chartInstance.value) {
-        chartInstance.value.destroy()
+    // Add isEmptyData computed property
+    const isEmptyData = computed(() => {
+      // Case 1: Explicit empty flag
+      if (props.chartData?.empty === true) {
+        return true
       }
 
-      const datasets = props.chartData.datasets.map((dataset, index) => ({
-        ...dataset,
-        backgroundColor: dataset.type === 'bar' ? colorPalette[index % colorPalette.length] : dataset.backgroundColor,
-        // Set order for line charts to be higher (will be drawn last)
-        order: dataset.type === 'line' ? 0 : index + 1
-      }))
+      // Case 2: No datasets or labels
+      if (!props.chartData?.datasets?.length || !props.chartData?.labels?.length) {
+        return true
+      }
 
-      chartInstance.value = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          ...props.chartData,
-          datasets: datasets,
-        },
-        options: navChartOptions,
+      // Case 3: Check if all data points are empty/zero/N/A
+      const hasValidData = props.chartData.datasets.some(dataset => {
+        return dataset.data.some(value => {
+          if (typeof value === 'number') {
+            return value !== 0
+          }
+          return value !== 'N/A'
+        })
       })
+
+      return !hasValidData
+    })
+
+    // Initialize chart options
+    const initChartOptions = async () => {
+      chartOptions.value = await getChartOptions(props.chartData.currency)
     }
 
-    watch(() => props.chartData, initChart, { deep: true })
+    // Watch for both currency changes and entire chartData changes
+    watch([
+      () => props.chartData?.currency,
+      () => props.chartData
+    ], async ([newCurrency]) => {
+      if (newCurrency) {
+        await initChartOptions()
+      }
+    }, { deep: true, immediate: true }) // Added immediate: true to run on mount
+
+    const chartDataComputed = computed(() => {
+      if (!props.chartData?.datasets || !chartOptions.value) {
+        return {
+          labels: [],
+          datasets: []
+        }
+      }
+      
+      const { colorPalette } = chartOptions.value
+      
+      return {
+        labels: props.chartData.labels,
+        datasets: props.chartData.datasets.map((dataset, index) => ({
+          ...dataset,
+          backgroundColor: dataset.type === 'bar' ? colorPalette[index % colorPalette.length] : dataset.backgroundColor,
+          borderColor: dataset.type === 'line' ? colorPalette[index % colorPalette.length] : undefined,
+          order: dataset.type === 'line' ? 0 : index + 1,
+          yAxisID: dataset.type === 'line' ? 'y1' : 'y'
+        }))
+      }
+    })
+
+    const chartOptionsComputed = computed(() => {
+      if (!chartOptions.value) {
+        return {}
+      }
+      
+      return {
+        ...chartOptions.value.navChartOptions,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          ...chartOptions.value.navChartOptions.scales,
+          y: {
+            ...chartOptions.value.navChartOptions.scales.y,
+            title: {
+              ...chartOptions.value.navChartOptions.scales.y.title,
+              text: props.chartData?.currency
+            }
+          }
+        }
+      }
+    })
 
     return {
-      chartRef,
+      chartDataComputed,
+      chartOptionsComputed,
       selectedBreakdown,
       selectedFrequency,
       dateRange,
@@ -159,6 +216,7 @@ export default {
         dateFrom: dateFrom.value,
         dateTo: dateTo.value
       })),
+      isEmptyData,
     }
   }
 }
@@ -169,6 +227,7 @@ export default {
   position: relative;
   width: 100%;
   height: 600px;
+  padding: 16px;  /* Add some padding */
 }
 
 .chart-overlay {

@@ -52,14 +52,14 @@
       <v-row>
         <v-col cols="12">
           <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
-          <!-- <NAVChart 
+          <NAVChart 
             v-else
             :chartData="navChartData"
             :loading="updating.navChart"
             :initialParams="navChartInitialParams"
             :effectiveCurrentDate="effectiveCurrentDate"
             @update-params="fetchNAVChartData"
-          /> -->
+          />
           <v-alert v-if="error.navChart" type="error" class="mt-2">{{ error.navChart }}</v-alert>
         </v-col>
       </v-row>
@@ -74,7 +74,7 @@ import { calculateDateRange } from '@/utils/dateRangeUtils'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
-// import NAVChart from '@/components/dashboard/NAVChart.vue'
+import NAVChart from '@/components/dashboard/NAVChart.vue'
 import { getDashboardSummary, getDashboardBreakdown, getDashboardSummaryOverTime, getNAVChartData } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
@@ -84,7 +84,7 @@ export default {
     SummaryCard,
     BreakdownChart,
     SummaryOverTimeTable,
-    // NAVChart,
+    NAVChart,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -205,10 +205,16 @@ export default {
       }
     }
 
-    const fetchNAVChartData = async (params = navChartInitialParams.value) => {
+    const fetchNAVChartData = async (params = navChartInitialParams.value, isInitialLoad = false) => {
       try {
         clearErrors()
-        updating.value.navChart = true
+        // Use skeleton loader for initial load/account change, overlay for chart updates
+        if (isInitialLoad) {
+          loading.value.navChart = true
+        } else {
+          updating.value.navChart = true
+        }
+        
         console.log('Fetching NAV chart data...')
         const data = await getNAVChartData(
           params.breakdown,
@@ -267,7 +273,7 @@ export default {
       fetchSummaryData()
       fetchBreakdownData()
       fetchSummaryOverTimeData()
-      fetchNAVChartData()
+      fetchNAVChartData(navChartInitialParams.value, true) // Pass true for initial load
     }
 
     // Replace the account selection watcher with dataRefreshTrigger watcher

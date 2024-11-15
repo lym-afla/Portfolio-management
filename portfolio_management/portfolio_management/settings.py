@@ -163,69 +163,19 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# LOGGING = {
-#     'version': 1,
-#     'disable_existing_loggers': False,
-#     'formatters': {
-#         'verbose': {
-#             'format': '{asctime} {levelname} {name} {message}',
-#             'style': '{',
-#         },
-#     },
-#     'handlers': {
-#         'console': {
-#             'class': 'logging.StreamHandler',
-#             'formatter': 'verbose',
-#         },
-#         'file': {
-#             'class': 'logging.FileHandler',
-#             'filename': 'debug.log',
-#             'formatter': 'verbose',
-#         },
-#     },
-#     'loggers': {
-#         'django': {
-#             'handlers': ['console', 'file'],
-#             'level': 'INFO',
-#         },
-#         'users': {
-#             'handlers': ['console', 'file'],
-#             'level': 'DEBUG',
-#             'propagate': True,
-#         },
-#         'transactions': {
-#             'handlers': ['console', 'file'],
-#             'level': 'DEBUG',
-#             'propagate': True,
-#         },
-#         'django.request': {
-#             'handlers': ['console', 'file'],
-#             'level': 'DEBUG',
-#             'propagate': False,
-#         },
-#         'channels': {
-#             'handlers': ['console', 'file'],
-#             'level': 'DEBUG',
-#             'propagate': False,
-#         }
-#     },
-#     'root': {
-#         'handlers': ['console', 'file'],
-#         'level': 'DEBUG',
-#     },
-# }
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "json_formatter": {
-            "()": structlog.stdlib.ProcessorFormatter,
-            "processor": structlog.processors.JSONRenderer(),
-        },
         "plain_console": {
             "()": structlog.stdlib.ProcessorFormatter,
-            "processor": structlog.dev.ConsoleRenderer(),
+            "processor": structlog.dev.ConsoleRenderer(colors=True),
+            "foreign_pre_chain": [
+                structlog.processors.TimeStamper(fmt="iso"),
+                structlog.stdlib.add_logger_name,
+                structlog.stdlib.add_log_level,
+                structlog.stdlib.PositionalArgumentsFormatter(),
+            ],
         },
     },
     "handlers": {
@@ -233,18 +183,32 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "plain_console",
         },
-        # "json_file": {
-        #     "class": "logging.handlers.RotatingFileHandler",
-        #     "filename": os.path.join(LOG_DIR, "json.log"),
-        #     "formatter": "json_formatter",
-        #     "maxBytes": 5242880,
-        #     "backupCount": 5,
-        # },
     },
     "loggers": {
         "django": {
             "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+        "portfolio_management.auth_middleware": {
+            "handlers": ["console"],
             "level": "INFO",
+            "propagate": True,
+        },
+        "portfolio_management": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+        "django.auth": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+        "asgi": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
         },
         "django.server": {
             "handlers": ["console"],

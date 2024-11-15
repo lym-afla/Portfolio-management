@@ -11,7 +11,7 @@ export default createStore({
     pageTitle: '',
     loading: false,
     error: null,
-    accountSelection: {
+    accountSelection: JSON.parse(localStorage.getItem('accountSelection')) || {
       type: 'all',
       id: null
     },
@@ -62,6 +62,9 @@ export default createStore({
     },
     SET_ACCOUNT_SELECTION(state, { type, id }) {
       state.accountSelection = { type, id }
+      
+      // Save to localStorage
+      localStorage.setItem('accountSelection', JSON.stringify({ type, id }))
       
       // If user exists, update their preferences
       if (state.user) {
@@ -138,7 +141,7 @@ export default createStore({
     setError({ commit }, error) {
       commit('setError', error)
     },
-    async updateAccountSelection({ commit, dispatch }, selection) {
+    async updateAccountSelection({ commit, dispatch, state }, selection) {
       try {
         // First update backend
         await api.updateUserDataForNewAccount({
@@ -151,6 +154,8 @@ export default createStore({
           type: selection.type,
           id: selection.id
         })
+
+        console.log('[Store] Account selection updated', state.accountSelection)
         
         // Finally trigger refresh
         dispatch('triggerDataRefresh')
@@ -196,11 +201,13 @@ export default createStore({
         const userData = await api.getUserProfile()
         commit('SET_USER', userData)
         
-        // Set initial account selection from user preferences
-        commit('SET_ACCOUNT_SELECTION', {
-          type: userData.selected_account_type || 'all',
-          id: userData.selected_account_id || null
-        })
+        // Set account selection from user preferences or localStorage
+        const savedSelection = JSON.parse(localStorage.getItem('accountSelection'))
+        const selection = {
+          type: userData.selected_account_type || savedSelection?.type || 'all',
+          id: userData.selected_account_id || savedSelection?.id || null
+        }
+        commit('SET_ACCOUNT_SELECTION', selection)
         
         return userData
       } catch (error) {
@@ -231,6 +238,12 @@ export default createStore({
       try {
         commit('SET_STATE', { isInitializing: true })
         
+        // Load saved account selection from localStorage
+        const savedSelection = JSON.parse(localStorage.getItem('accountSelection'))
+        if (savedSelection) {
+          commit('SET_ACCOUNT_SELECTION', savedSelection)
+        }
+
         const token = localStorage.getItem('accessToken')
         if (!token) {
           console.log(`[Store][${requestId}] No token found`)

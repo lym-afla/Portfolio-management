@@ -5,6 +5,7 @@ from .pagination_utils import paginate_table
 from .formatting_utils import currency_format, format_table_data
 from datetime import datetime
 from django.db import models
+from django.db.models import Sum, Q
 
 def get_accounts_table_api(request):
     data = request.data
@@ -50,33 +51,51 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
     for account in accounts:
         # Get all assets that have transactions for this account
         assets = Assets.objects.filter(
+            investors__id=user.id,  # Add user filter here
             transactions__broker_account=account,
             transactions__date__lte=effective_current_date
+        ).annotate(
+            total_quantity=Sum('transactions__quantity',
+                filter=Q(
+                    transactions__date__lte=effective_current_date,
+                    transactions__broker_account=account
+                )
+            )
+        ).exclude(
+            total_quantity=0
         ).distinct()
         
-        # Count only assets with non-zero positions
-        securities_count = sum(
-            1 for asset in assets
-            if asset.position(
-                effective_current_date,
-                user,
-                broker_account_ids=[account.id]
-            ) != 0
-        )
+        # Now we can directly count the assets since we've already filtered for non-zero positions
+        securities_count = assets.count()
+
+        # Get first investment date efficiently
+        first_investment = Transactions.objects.filter(
+            broker_account=account,
+            investor=user
+        ).values('date').order_by('date').first()
 
         account_data = {
             'id': account.id,
             'name': account.name,
             'broker_name': account.broker.name,
             'no_of_securities': securities_count,
-            'first_investment': Transactions.objects.filter(
-                broker_account=account,
-                investor=user
-            ).order_by('date').values_list('date', flat=True).first() or 'None',
+            'first_investment': first_investment['date'] if first_investment else 'None',
             'nav': NAV_at_date(user.id, tuple([account.id]), effective_current_date, currency_target)['Total NAV'],
-            'cash': {currency: currency_format(account.balance(effective_current_date)[currency], currency, digits=0) 
-                    for currency in account.get_currencies()},
-            'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None, broker_account_ids=[account.id])
+            'cash': {
+                currency: currency_format(
+                    account.balance(effective_current_date)[currency], 
+                    currency, 
+                    digits=0
+                ) 
+                for currency in account.get_currencies()
+            },
+            'irr': IRR(
+                user.id, 
+                effective_current_date, 
+                currency_target, 
+                asset_id=None, 
+                broker_account_ids=[account.id]
+            )
         }
         accounts_data.append(account_data)
     return accounts_data

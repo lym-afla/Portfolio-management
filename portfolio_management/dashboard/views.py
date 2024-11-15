@@ -242,27 +242,32 @@ def get_dashboard_summary_over_time_api(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_nav_chart_data(request):
-    user = request.user
-    frequency = request.GET.get('frequency')
-    from_date = request.GET.get('dateFrom')
-    to_date = request.GET.get('dateTo')
-    breakdown = request.GET.get('breakdown')
-    currency = user.default_currency
-    selected_account_ids = get_selected_account_ids(
-        user,
-        user.selected_account_type,
-        user.selected_account_id
-    )
-
-    # If to_date is not provided, use the effective current date
-    if not to_date:
-        to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date().isoformat()
-
-    # from_date can be None, it will be handled in get_nav_chart_data
-    
-    logger.info(f"Received request for NAV chart data with frequency: {frequency}, from date: {from_date}, to date: {to_date}, breakdown: {breakdown}, currency: {currency}, accounts: {selected_account_ids}")
-
     try:
+        user = request.user
+        frequency = request.GET.get('frequency')
+        from_date = request.GET.get('dateFrom')
+        to_date = request.GET.get('dateTo')
+        breakdown = request.GET.get('breakdown')
+        currency = user.default_currency
+        selected_account_ids = get_selected_account_ids(
+            user,
+            user.selected_account_type,
+            user.selected_account_id
+        )
+
+        # Handle case where no accounts are selected
+        if not selected_account_ids:
+            return Response({
+                'labels': [],
+                'datasets': [],
+                'currency': currency + 'k',
+                'empty': True
+            })
+
+        if not to_date:
+            to_date = datetime.strptime(request.session['effective_current_date'], '%Y-%m-%d').date().isoformat()
+
+        # from_date can be None, it will be handled in get_nav_chart_data
         chart_data = get_nav_chart_data(
             user.id, 
             selected_account_ids, 
@@ -273,7 +278,12 @@ def api_nav_chart_data(request):
             breakdown
         )
         return Response(chart_data)
-    except ValueError as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
     except Exception as e:
-        return Response({'error': 'An unexpected error occurred: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Error generating NAV chart data: {e}")
+        return Response({
+            'labels': [],
+            'datasets': [],
+            'currency': currency + 'k',
+            'empty': True
+        })

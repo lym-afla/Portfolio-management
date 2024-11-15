@@ -114,6 +114,15 @@ export default {
         const response = await updateDashboardSettings(formData)
         if (response.success) {
           console.log('Settings updated successfully:', response)
+          
+          // Update store with new currency
+          const selectedCurrencyOption = currencyChoices.value.find(
+            option => option.value === formData.default_currency
+          )
+          if (selectedCurrencyOption) {
+            store.commit('SET_SELECTED_CURRENCY', selectedCurrencyOption.text)
+          }
+
           store.dispatch('updateEffectiveCurrentDate', response.table_date)
           
           // Get the current state from the store

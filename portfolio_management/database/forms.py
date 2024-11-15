@@ -6,22 +6,22 @@ from common.forms import GroupedSelect
 from constants import ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_ALL
 from core.user_utils import prepare_account_choices
     
-class PriceForm(forms.ModelForm):
-    class Meta:
-        model = Prices
-        fields = '__all__'
-        widgets = {
-            'date': forms.DateInput(attrs={'class': 'form-control',
-                                           'type': 'date'}),
-            'security': forms.Select(attrs={'class': 'form-select'}),
-            'price': forms.NumberInput(attrs={'class': 'form-control'}),
-        }
+# class PriceForm(forms.ModelForm):
+#     class Meta:
+#         model = Prices
+#         fields = '__all__'
+#         widgets = {
+#             'date': forms.DateInput(attrs={'class': 'form-control',
+#                                            'type': 'date'}),
+#             'security': forms.Select(attrs={'class': 'form-select'}),
+#             'price': forms.NumberInput(attrs={'class': 'form-control'}),
+#         }
 
-    def __init__(self, *args, **kwargs):
-        investor = kwargs.pop('investor', None)
-        super().__init__(*args, **kwargs)
-        # Set choices dynamically for broker, security, and type fields
-        self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investors__id=investor.id).order_by('name').all()]
+#     def __init__(self, *args, **kwargs):
+#         investor = kwargs.pop('investor', None)
+#         super().__init__(*args, **kwargs)
+#         # Set choices dynamically for broker, security, and type fields
+#         self.fields['security'].choices = [(security.pk, security.name) for security in Assets.objects.filter(investors__id=investor.id).order_by('name').all()]
 
 class SecurityForm(forms.ModelForm):
 
@@ -210,39 +210,39 @@ class FXTransactionForm(forms.ModelForm):
                 for account in BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')
             ]
 
-class PriceImportForm(forms.Form):
-    securities = forms.ModelMultipleChoiceField(
-        queryset=Assets.objects.all(),
-        required=False,
-        widget=forms.SelectMultiple(attrs={'class': 'form-control selectpicker', 'data-live-search': 'true'})
-    )
-    broker_account = forms.ModelChoiceField(
-        queryset=BrokerAccounts.objects.all(),
-        required=False,
-        empty_label="Select Broker Account",
-        widget=forms.Select(attrs={'class': 'form-control selectpicker', 'data-live-search': 'true'})
-    )
-    start_date = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
-    )
-    end_date = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
-    )
-    frequency = forms.ChoiceField(
-        required=False,
-        choices=[('monthly', 'Monthly'), ('quarterly', 'Quarterly'), ('annually', 'Annually')],
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    single_date = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
-    )
+# class PriceImportForm(forms.Form):
+#     securities = forms.ModelMultipleChoiceField(
+#         queryset=Assets.objects.all(),
+#         required=False,
+#         widget=forms.SelectMultiple(attrs={'class': 'form-control selectpicker', 'data-live-search': 'true'})
+#     )
+#     broker_account = forms.ModelChoiceField(
+#         queryset=BrokerAccounts.objects.all(),
+#         required=False,
+#         empty_label="Select Broker Account",
+#         widget=forms.Select(attrs={'class': 'form-control selectpicker', 'data-live-search': 'true'})
+#     )
+#     start_date = forms.DateField(
+#         required=False,
+#         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
+#     )
+#     end_date = forms.DateField(
+#         required=False,
+#         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
+#     )
+#     frequency = forms.ChoiceField(
+#         required=False,
+#         choices=[('monthly', 'Monthly'), ('quarterly', 'Quarterly'), ('annually', 'Annually')],
+#         widget=forms.Select(attrs={'class': 'form-control'})
+#     )
+#     single_date = forms.DateField(
+#         required=False,
+#         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'})
+#     )
 
-    def __init__(self, *args, **kwargs):
-        user = kwargs.pop('user', None)
-        super().__init__(*args, **kwargs)
-        if user:
-            self.fields['securities'].queryset = Assets.objects.filter(investors=user).order_by('name')
-            self.fields['broker_account'].queryset = BrokerAccounts.objects.filter(broker__investor=user).order_by('name')
+#     def __init__(self, *args, **kwargs):
+#         user = kwargs.pop('user', None)
+#         super().__init__(*args, **kwargs)
+#         if user:
+#             self.fields['securities'].queryset = Assets.objects.filter(investors=user).order_by('name')
+#             self.fields['broker_account'].queryset = BrokerAccounts.objects.filter(broker__investor=user).order_by('name')

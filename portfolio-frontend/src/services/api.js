@@ -433,39 +433,70 @@ export const updateAccountPerformance = async (formData) => {
       effective_current_date: effectiveCurrentDate
     }
 
-    // Use axios for the request (this will handle auth automatically)
-    const response = await axiosInstance.post('/database/api/update-account-performance/sse/', 
-      dataToSend,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
-        responseType: 'text',
-        onDownloadProgress: (progressEvent) => {
-          const rawText = progressEvent.event.currentTarget.response
-          const messages = rawText.split('\n\n')
-          
-          messages.forEach(message => {
-            if (message.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(message.substring(6))
-                console.log('[api.js] SSE message received:', data)
-                window.dispatchEvent(new CustomEvent('accountPerformanceUpdateProgress', { 
-                  detail: data 
-                }))
-              } catch (error) {
-                if (message.trim()) {
-                  console.error('Error parsing SSE message:', error, 'Message:', message)
-                }
-              }
-            }
-          })
-        }
+    // Start the update process
+    const startResponse = await axiosInstance.post(
+      '/database/api/update-account-performance/start/',
+      dataToSend
+    )
+
+    const sessionId = startResponse.data.session_id
+
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      throw new Error('No authentication token available')
+    }
+
+    // Create EventSource with both session ID and token
+    const source = new EventSource(
+      `${process.env.VUE_APP_API_URL}/database/api/update-account-performance/sse/?session_id=${sessionId}&token=${token}`, {
+        withCredentials: false
       }
     )
 
-    return response.data
+    return new Promise((resolve, reject) => {
+      source.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          console.log('[api.js] SSE message received:', data)
+          
+          if (data.status === 'error' && data.type === 'authentication') {
+            source.close()
+            reject(new Error('Authentication failed'))
+            return
+          }
+
+          window.dispatchEvent(new CustomEvent('accountPerformanceUpdateProgress', { 
+            detail: data 
+          }))
+
+          if (data.status === 'complete') {
+            source.close()
+            resolve(data)
+          } else if (data.status === 'error') {
+            source.close()
+            reject(new Error(data.message))
+          }
+        } catch (error) {
+          console.error('Error parsing SSE message:', error)
+          source.close()
+          reject(error)
+        }
+      }
+
+      source.onerror = (error) => {
+        console.error('SSE connection error:', error)
+        source.close()
+        reject(new Error('SSE connection failed'))
+      }
+
+      // Handle authentication errors
+      source.addEventListener('error', (event) => {
+        if (event.target.readyState === EventSource.CLOSED) {
+          console.error('SSE connection closed due to error')
+          reject(new Error('Connection closed due to error'))
+        }
+      })
+    })
   } catch (error) {
     console.error('Error updating account performance:', error)
     window.dispatchEvent(new CustomEvent('accountPerformanceUpdateError', { 

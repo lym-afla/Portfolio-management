@@ -163,7 +163,7 @@ class Brokers(models.Model):
 class BrokerAccounts(models.Model):
     """Represents a specific account at a broker"""
     broker = models.ForeignKey(Brokers, on_delete=models.CASCADE, related_name='accounts')
-    native_id = models.CharField(max_length=100, help_text="Native account ID from broker's system")
+    native_id = models.CharField(max_length=100, help_text="Native account ID from broker's system", null=True, blank=True)
     name = models.CharField(max_length=100, help_text="Account name or description")
     restricted = models.BooleanField(default=False, null=False, blank=False)
     comment = models.TextField(null=True, blank=True)
@@ -176,6 +176,10 @@ class BrokerAccounts(models.Model):
         ordering = ['broker', 'name']
 
     def __str__(self):
+        return f"Account: {self.name}"
+
+    @property
+    def full_name(self):
         return f"{self.broker.name} - {self.name}"
 
     # List of currencies used

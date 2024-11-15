@@ -5,10 +5,9 @@ from typing import Dict, List, Any
 
 from django.http import HttpRequest
 from django.db.models import Q, Sum
-from django.db.models.functions import Abs
+from django.db.models.query import QuerySet
 
 from common.models import BrokerAccounts, Assets
-from constants import TOLERANCE
 from users.models import CustomUser
 from .sorting_utils import sort_entries
 from .tables_utils import calculate_positions_table_output
@@ -119,7 +118,7 @@ def _get_cash_balances_for_api(user: CustomUser, target_date: date, selected_acc
     }
 
 def _filter_assets(user: CustomUser, end_date: date, selected_account_ids: List[int], 
-                  is_closed: bool, search: str) -> List[Assets]:
+                  is_closed: bool, search: str) -> QuerySet[Assets]:
     """
     Filter assets based on user, date, broker accounts, closed status, and search query.
 
@@ -128,17 +127,34 @@ def _filter_assets(user: CustomUser, end_date: date, selected_account_ids: List[
     :param selected_account_ids: List of broker account IDs to filter by
     :param is_closed: Boolean indicating whether to filter for closed positions
     :param search: Search string for asset name or type
-    :return: List of filtered Asset objects
+    :return: QuerySet of filtered Asset objects
     """
-    assets = Assets.objects.filter(
+    base_query = Assets.objects.filter(
+        investors__id=user.id,
         transactions__date__lte=end_date,
         transactions__broker_account__id__in=selected_account_ids,
+    ).annotate(
+        total_quantity=Sum('transactions__quantity',
+            filter=Q(
+                transactions__date__lte=end_date,
+                transactions__broker_account__id__in=selected_account_ids
+            )
+        )
     ).distinct()
 
     if search:
-        assets = assets.filter(Q(name__icontains=search) | Q(type__icontains=search))
+        base_query = base_query.filter(Q(name__icontains=search) | Q(type__icontains=search))
 
+    # Get all assets that match our base criteria
+    assets = list(base_query)
+    
     if is_closed:
-        return [asset for asset in assets if len(asset.exit_dates(end_date, user, selected_account_ids)) != 0]
+        # Return assets that have at least one exit date and zero current position
+        return [
+            asset for asset in assets 
+            if len(asset.exit_dates(end_date, user, selected_account_ids)) > 0 
+            and asset.total_quantity == 0
+        ]
     else:
-        return [asset for asset in assets if asset.position(end_date, user, selected_account_ids) != 0]
+        # Return assets with non-zero positions
+        return [asset for asset in assets if asset.total_quantity != 0]

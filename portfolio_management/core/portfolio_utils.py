@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 import datetime
 from functools import lru_cache
-from django.db.models import Sum, QuerySet, Q
+from django.db.models import Sum, QuerySet, Q, Prefetch
 from pyxirr import xirr
 from common.models import FX, AnnualPerformance, Assets, Transactions, BrokerAccounts, Brokers
 from users.models import AccountGroup
@@ -35,7 +35,12 @@ def _portfolio_at_date(user_id: int, to_date: date, broker_account_ids: List[int
         transactions__date__lte=to_date, 
         transactions__broker_account_id__in=broker_account_ids
     ).annotate(
-        total_quantity=Sum('transactions__quantity')
+        total_quantity=Sum('transactions__quantity', 
+            filter=Q(
+                transactions__date__lte=to_date,
+                transactions__broker_account_id__in=broker_account_ids
+            )
+        )
     ).exclude(total_quantity=0).distinct()
 
 # Get all the broker accounts associated with a given security
@@ -298,6 +303,7 @@ def get_selected_account_ids(user: CustomUser, selection_type: str, selection_id
 
 def calculate_performance(user, start_date, end_date, account_group_type, account_group_id, currency_target, is_restricted=None):
     performance_data = defaultdict(Decimal)
+    logger.debug(f"Calculating performance for {user.username}, {account_group_type} {account_group_id} from {start_date} to {end_date}, currency {currency_target}, restricted {is_restricted}")
 
     # Initialize all required fields with Decimal(0)
     for field in ['bop_nav', 'invested', 'cash_out', 'price_change', 'capital_distribution', 'commission', 'tax', 'fx', 'eop_nav', 'tsr']:
@@ -316,7 +322,8 @@ def calculate_performance(user, start_date, end_date, account_group_type, accoun
         currency=currency_target
     ).values_list('eop_nav', flat=True).first()
 
-    logging.info(f"BOP NAV: {bop_nav}")
+    logger.info(f"BOP NAV: {bop_nav}")
+    logger.debug(f"Accounts: {accounts}")
 
     # bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
 
@@ -358,11 +365,23 @@ def calculate_performance(user, start_date, end_date, account_group_type, accoun
         assets = Assets.objects.filter(
             investors__id=user.id,
             transactions__broker_account=account
-        ).prefetch_related('transactions')
+        ).prefetch_related(
+            Prefetch(
+                'transactions',
+                queryset=Transactions.objects.filter(
+                    broker_account=account,
+                    date__gte=start_date,
+                    date__lte=end_date
+                ),
+                to_attr='period_transactions'
+            )
+        ).distinct()
         
         if is_restricted is not None:
             assets = assets.filter(restricted=is_restricted)
             
+        logger.debug(f"Assets: {assets}")
+
         for asset in assets:
             asset_realized_gl = asset.realized_gain_loss(
                 end_date, user, currency_target, 
@@ -376,10 +395,13 @@ def calculate_performance(user, start_date, end_date, account_group_type, accoun
             )
     
             performance_data['price_change'] += asset_realized_gl['all_time']['price_appreciation'] if asset_realized_gl else 0
+            logger.debug(f"Realized GL for {asset.name}: {asset_realized_gl}")
             alternative_fx_check += asset_realized_gl['all_time']['fx_effect']
             performance_data['price_change'] += asset_unrealized_gl['price_appreciation']
+            logger.debug(f"Unrealized GL for {asset.name}: {asset_unrealized_gl}")
             alternative_fx_check += asset_unrealized_gl['fx_effect']
             performance_data['capital_distribution'] += asset.get_capital_distribution(end_date, user, currency_target, broker_account_ids=[account.id], start_date=start_date)
+            logger.debug(f"Capital distribution for {asset.name}: {performance_data['capital_distribution']}")
 
         # Calculate EOP NAV
         eop_nav = NAV_at_date(user.id, tuple([account.id]), end_date, currency_target)['Total NAV']
@@ -441,19 +463,32 @@ def get_last_exit_date_for_broker_accounts(account_ids: List[int], effective_cur
     """
     # Ensure date is a date object
     if isinstance(effective_current_date, str):
-        effective_current_date = datetime.strptime(date, '%Y-%m-%d').date()
+        effective_current_date = datetime.strptime(effective_current_date, '%Y-%m-%d').date()
 
-    # Step 1: Check the position of each security at the current date
-    for broker_account in BrokerAccounts.objects.filter(id__in=account_ids):
-        for security in Assets.objects.filter(transactions__broker_account=broker_account,
-                                              transactions__date__lte=effective_current_date):
-            if security.position(effective_current_date, broker_account.broker.investor, [broker_account.id]) != 0:
-                return effective_current_date
+    # Step 1: Check for open positions using aggregation
+    open_positions = Assets.objects.filter(
+        transactions__broker_account_id__in=account_ids,
+        transactions__date__lte=effective_current_date
+    ).annotate(
+        total_quantity=Sum('transactions__quantity',
+            filter=Q(
+                transactions__date__lte=effective_current_date,
+                transactions__broker_account_id__in=account_ids
+            )
+        )
+    ).exclude(
+        total_quantity=0
+    ).exists()
 
-    # Step 2: If positions for all securities at the current date are zero, find the latest transaction date
-    latest_transaction_date = Transactions.objects.filter(broker_account_id__in=account_ids, date__lte=effective_current_date).order_by('-date').values_list('date', flat=True).first()
-    
-    if latest_transaction_date is None:
+    if open_positions:
         return effective_current_date
+
+    # Step 2: If no open positions, find the latest transaction date
+    latest_transaction_date = Transactions.objects.filter(
+        broker_account_id__in=account_ids,
+        date__lte=effective_current_date
+    ).order_by('-date').values_list(
+        'date', flat=True
+    ).first()
     
-    return latest_transaction_date
+    return latest_transaction_date or effective_current_date

@@ -146,11 +146,16 @@ export default {
       }, {})
       generalError.value = ''
 
-      // Prepare form data, ensuring boolean values for checkboxes
+      // Prepare form data with consistent broker format
       const formData = Object.keys(form.value).reduce((acc, key) => {
         const field = formFields.value.find(f => f.name === key)
         if (field && field.type === 'checkbox') {
-          acc[key] = Boolean(form.value[key]) // Ensure boolean value
+          acc[key] = Boolean(form.value[key])
+        } else if (key === 'broker') {
+          // Ensure consistent broker format
+          acc[key] = typeof form.value[key] === 'object' 
+            ? form.value[key].value  // Handle {value: id, text: name} format
+            : form.value[key]        // Handle direct ID format
         } else {
           acc[key] = form.value[key]
         }
