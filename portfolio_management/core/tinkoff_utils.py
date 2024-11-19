@@ -68,7 +68,7 @@ async def _find_or_create_security(instrument_uid, investor):
     Args:
         instrument_uid: Tinkoff instrument UID
         investor: CustomUser instance
-        broker_account: BrokerAccounts instance
+        account: Accounts instance
     
     Returns:
         tuple: (Assets instance, str status)
@@ -105,14 +105,14 @@ async def _find_or_create_security(instrument_uid, investor):
                 return security, "created_new"
             return None, "failed_to_create"
 
-async def map_tinkoff_operation_to_transaction(operation, investor, broker_account):
+async def map_tinkoff_operation_to_transaction(operation, investor, account):
     """
     Maps a Tinkoff API operation to our Transaction model format.
     
     Args:
         operation: Tinkoff API OperationItem
         investor: CustomUser instance
-        broker_account: BrokerAccounts instance
+        account: Accounts instance
     
     Returns:
         dict: Transaction data ready for creating a Transaction instance
@@ -120,7 +120,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, broker_accou
     # Initialize base transaction data
     transaction_data = {
         'investor': investor,
-        'broker_account': broker_account,
+        'account': account,
         'date': operation.date.date(),
         'comment': operation.description
     }
@@ -173,19 +173,19 @@ async def map_tinkoff_operation_to_transaction(operation, investor, broker_accou
 
     return transaction_data
 
-async def create_transaction_from_tinkoff(operation, investor, broker_account):
+async def create_transaction_from_tinkoff(operation, investor, account):
     """
     Creates a Transaction instance from Tinkoff operation data if it doesn't exist.
     
     Args:
         operation: Tinkoff API OperationItem
         investor: CustomUser instance
-        broker_account: BrokerAccounts instance
+        account: Accounts instance
     
     Returns:
         tuple: (Transaction instance or None, str status message)
     """
-    transaction_data = await map_tinkoff_operation_to_transaction(operation, investor, broker_account)
+    transaction_data = await map_tinkoff_operation_to_transaction(operation, investor, account)
     
     if not transaction_data:
         return None, "Unsupported operation type"
@@ -193,7 +193,7 @@ async def create_transaction_from_tinkoff(operation, investor, broker_account):
     # Check if similar transaction already exists
     existing = await database_sync_to_async(Transactions.objects.filter)(
         investor=investor,
-        broker_account=broker_account,
+        account=account,
         date=transaction_data['date'],
         type=transaction_data['type'],
         quantity=transaction_data.get('quantity'),

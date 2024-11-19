@@ -1,4 +1,4 @@
-from common.models import BrokerAccounts, Brokers
+from common.models import Accounts, Brokers
 from users.models import AccountGroup
 
 FREQUENCY_CHOICES = [
@@ -48,7 +48,7 @@ def prepare_account_choices(user):
     ]
 
     # Get individual accounts with their brokers
-    accounts = BrokerAccounts.objects.filter(
+    accounts = Accounts.objects.filter(
         broker__investor=user
     ).select_related('broker').order_by('broker__name', 'name')
     
@@ -115,7 +115,7 @@ def prepare_account_choices(user):
         }
     }
 
-def get_broker_account_ids_from_choice(user, choice):
+def get_account_ids_from_choice(user, choice):
     """
     Convert a broker account choice to a list of account IDs.
     
@@ -127,19 +127,19 @@ def get_broker_account_ids_from_choice(user, choice):
         List of broker account IDs
     """
     if not choice or choice == 'All accounts':
-        return list(BrokerAccounts.objects.filter(broker__investor=user).values_list('id', flat=True))
+        return list(Accounts.objects.filter(broker__investor=user).values_list('id', flat=True))
     
     if choice.startswith('group_'):
         group_id = int(choice.replace('group_', ''))
         try:
             group = AccountGroup.objects.get(id=group_id, user=user)
-            return list(group.broker_accounts.values_list('id', flat=True))
+            return list(group.accounts.values_list('id', flat=True))
         except AccountGroup.DoesNotExist:
             return []
     
     try:
         account_id = int(choice)
-        if BrokerAccounts.objects.filter(id=account_id, broker__investor=user).exists():
+        if Accounts.objects.filter(id=account_id, broker__investor=user).exists():
             return [account_id]
     except (ValueError, TypeError):
         pass
@@ -163,7 +163,7 @@ def get_account_display_name(user, account_id):
             group = AccountGroup.objects.get(id=group_id, user=user)
             return f"Group: {group.name}"
         else:
-            account = BrokerAccounts.objects.get(id=account_id, broker__investor=user)
+            account = Accounts.objects.get(id=account_id, broker__investor=user)
             return account.name
-    except (BrokerAccounts.DoesNotExist, AccountGroup.DoesNotExist, ValueError):
+    except (Accounts.DoesNotExist, AccountGroup.DoesNotExist, ValueError):
         return "Unknown Account"

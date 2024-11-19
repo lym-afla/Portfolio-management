@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.db.models.functions import Lower
 
-from common.models import FX, Assets, BrokerAccounts, Brokers, Prices, Transactions
+from common.models import FX, Assets, Accounts, Brokers, Prices, Transactions
 from constants import ASSET_TYPE_CHOICES
 from core.price_utils import get_prices_table_api
 from core.accounts_utils import get_accounts_table_api
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 from .serializers import (
     AccountPerformanceSerializer, FXRateSerializer, FXSerializer,
-    PriceImportSerializer, BrokerAccountSerializer, TransactionSerializer, BrokerSerializer, PriceSerializer
+    PriceImportSerializer, AccountSerializer, TransactionSerializer, BrokerSerializer, PriceSerializer
 )
 
 
@@ -48,7 +48,7 @@ def api_get_asset_types(request):
 def api_get_securities(request):
     user = request.user
     asset_types = request.GET.get('asset_types', '').split(',')
-    account_id = request.GET.get('account_id')
+    account_id = request.GET.get('account_id', None)
 
     securities = Assets.objects.filter(investors=user)
 
@@ -56,8 +56,8 @@ def api_get_securities(request):
         securities = securities.filter(type__in=asset_types)
 
     if account_id:
-        account = get_object_or_404(BrokerAccounts, id=account_id, broker__investor=user)
-        securities = securities.filter(broker_accounts=account)
+        account = get_object_or_404(Accounts, id=account_id, broker__investor=user)
+        securities = securities.filter(transactions__account=account).distinct()
 
     securities = securities.order_by(Lower('name')).values('id', 'name', 'type')
     return Response(list(securities))
@@ -172,7 +172,7 @@ def api_get_securities_table(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_security_form_structure(request):
-    investor = request.user
+
     form = SecurityForm()
     structure = {
         'fields': []
@@ -190,11 +190,8 @@ def api_security_form_structure(request):
         }
 
         if hasattr(field, 'choices'):
-            if field_name == 'broker_accounts':
-                field_data['choices'] = [{'value': account.id, 'text': account.name} for account in BrokerAccounts.objects.filter(broker__investor=investor).order_by('name')]
-            else:
-                field_data['choices'] = [{'value': choice[0], 'text': choice[1]} for choice in field.choices]
-        
+            field_data['choices'] = [{'value': choice[0], 'text': choice[1]} for choice in field.choices]
+    
         if field_name == 'type':
             field_data['choices'] = [{'value': choice[0], 'text': choice[0]} for choice in Assets._meta.get_field('type').choices if choice[0]]
         
@@ -261,25 +258,15 @@ def api_update_security(request, security_id):
         security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
         return Response({'error': 'Security not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Handle broker updates separately
-    broker_accounts = request.data.get('broker_accounts', [])
-    
-    # Remove broker_accounts from request.data to avoid direct attribute setting
-    data_to_update = {k: v for k, v in request.data.items() if k != 'broker_accounts'}
     
     # Update regular fields
-    for key, value in data_to_update.items():
+    for key, value in request.data.items():
         setattr(security, key, value)
     
     # Save the security first
     security.save()
     
-    # # Update brokers relationship
-    # if broker_accounts:
-    #     security.broker_accounts.set(broker_accounts)  # This replaces all existing brokers
-    
-    logger.debug(f"Security updated. {security} with brokers {broker_accounts}")
+    logger.debug(f"Security updated. {security}")
     
     return Response({
         'success': True,
@@ -371,7 +358,7 @@ class PriceImportView(APIView):
     def get(self, request):
         user = request.user
         securities = Assets.objects.filter(investors=user)
-        accounts = BrokerAccounts.objects.filter(broker__investor=user)
+        accounts = Accounts.objects.filter(broker__investor=user)
         
         serializer = PriceImportSerializer()
         frequency_choices = dict(serializer.fields['frequency'].choices)
@@ -383,11 +370,11 @@ class PriceImportView(APIView):
         })  
         
 class AccountViewSet(viewsets.ModelViewSet):
-    serializer_class = BrokerAccountSerializer
+    serializer_class = AccountSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return BrokerAccounts.objects.filter(broker__investor=self.request.user).order_by('name')
+        return Accounts.objects.filter(broker__investor=self.request.user).order_by('name')
 
     def perform_create(self, serializer):
         serializer.save()
@@ -665,7 +652,15 @@ class BrokerViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Brokers.objects.filter(investor=self.request.user).order_by('name')
+        queryset = Brokers.objects.filter(investor=self.request.user)
+        
+        # Add filter for brokers with active tokens if requested
+        if self.request.query_params.get('with_active_tokens'):
+            queryset = queryset.filter(
+                Q(tinkoff_tokens__is_active=True)
+            ).distinct()
+            
+        return queryset.order_by('name')
 
     def perform_create(self, serializer):
         serializer.save(investor=self.request.user)

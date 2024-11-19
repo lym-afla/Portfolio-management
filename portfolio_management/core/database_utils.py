@@ -6,7 +6,7 @@ from channels.db import database_sync_to_async
 
 from core.portfolio_utils import get_selected_account_ids
 from common.models import Transactions, AnnualPerformance
-from core.portfolio_utils import get_last_exit_date_for_broker_accounts, calculate_performance
+from core.portfolio_utils import get_last_exit_date_for_accounts, calculate_performance
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ async def save_or_update_annual_broker_performance(user, effective_date, account
     
     # Determine the starting year
     first_transaction = await database_sync_to_async(lambda: Transactions.objects.filter(
-        broker_account_id__in=selected_account_ids, 
+        account_id__in=selected_account_ids, 
         date__lte=effective_date
     ).order_by('date').first())()
     
@@ -28,7 +28,7 @@ async def save_or_update_annual_broker_performance(user, effective_date, account
         return
     
     start_year = first_transaction.date.year
-    last_exit_date = await database_sync_to_async(get_last_exit_date_for_broker_accounts)(selected_account_ids, effective_date)
+    last_exit_date = await database_sync_to_async(get_last_exit_date_for_accounts)(selected_account_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
@@ -117,7 +117,7 @@ def get_years_count(user, effective_date, account_group_type, account_group_id):
         account_group_id,
     )
     first_transaction = Transactions.objects.filter(
-        broker_account_id__in=selected_account_ids, 
+        account_id__in=selected_account_ids, 
         date__lte=effective_date
     ).order_by('date').first()
     
@@ -125,7 +125,7 @@ def get_years_count(user, effective_date, account_group_type, account_group_id):
         return 0
         
     start_year = first_transaction.date.year
-    last_exit_date = get_last_exit_date_for_broker_accounts(selected_account_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     
     return last_year - start_year + 1

@@ -8,8 +8,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
 from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.summary_utils import broker_accounts_summary_data
-from common.models import Assets, BrokerAccounts, Transactions
+from core.summary_utils import accounts_summary_data
+from common.models import Assets, Accounts, Transactions
 from core.portfolio_utils import get_fx_rate
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class SummaryViewSet(viewsets.ViewSet):
         number_of_digits = user.digits
 
 
-        summary_data = broker_accounts_summary_data(user, effective_current_date, 'all', None, currency_target, number_of_digits)
+        summary_data = accounts_summary_data(user, effective_current_date, 'all', None, currency_target, number_of_digits)
 
         # Format the data
         formatted_data = {
@@ -65,7 +65,7 @@ class SummaryViewSet(viewsets.ViewSet):
         return start_date, end_date
 
     def get_exposure_table_data(self, user, start_date, end_date, currency_target, number_of_digits):
-        broker_account_ids = BrokerAccounts.objects.filter(broker__investor=user).values_list('id', flat=True)
+        account_ids = Accounts.objects.filter(broker__investor=user).values_list('id', flat=True)
         assets = Assets.objects.filter(investors=user)
 
         # Initialize dictionaries to store the data for each category
@@ -90,17 +90,17 @@ class SummaryViewSet(viewsets.ViewSet):
             asset_category = self.categorize_asset(asset)
             
             # Calculate values
-            asset.current_position = asset.position(end_date, user, broker_account_ids)
-            asset.entry_price = asset.calculate_buy_in_price(end_date, user, currency_target, broker_account_ids, start_date) or Decimal(0)
+            asset.current_position = asset.position(end_date, user, account_ids)
+            asset.entry_price = asset.calculate_buy_in_price(end_date, user, currency_target, account_ids, start_date) or Decimal(0)
             cost = round(asset.entry_price * asset.current_position, 2)
 
             asset.current_price = Decimal(getattr(asset.price_at_date(end_date, currency_target), 'price', 0))
             market_value = round(asset.current_price * asset.current_position, 2)
             
-            unrealized = asset.unrealized_gain_loss(end_date, user, currency_target, broker_account_ids, start_date)['total']
-            realized = asset.realized_gain_loss(end_date, user, currency_target, broker_account_ids, start_date)['all_time']['total']
-            capital_distribution = asset.get_capital_distribution(end_date, user, currency_target, broker_account_ids, start_date)
-            commission = asset.get_commission(end_date, user, currency_target, broker_account_ids, start_date)
+            unrealized = asset.unrealized_gain_loss(end_date, user, currency_target, account_ids, start_date)['total']
+            realized = asset.realized_gain_loss(end_date, user, currency_target, account_ids, start_date)['all_time']['total']
+            capital_distribution = asset.get_capital_distribution(end_date, user, currency_target, account_ids, start_date)
+            commission = asset.get_commission(end_date, user, currency_target, account_ids, start_date)
 
             for cat in ['Consolidated', 'Restricted' if asset.restricted else 'Unrestricted']:
                 data[cat][asset_category]['cost'] += cost
@@ -118,7 +118,7 @@ class SummaryViewSet(viewsets.ViewSet):
                 totals[cat]['commission'] += commission
 
         # Calculate cash for all accounts
-        accounts = BrokerAccounts.objects.filter(broker__investor=user)
+        accounts = Accounts.objects.filter(broker__investor=user)
         for account in accounts:
             category = 'Restricted' if account.restricted else 'Unrestricted'
             cash_balances = account.balance(end_date).items()
@@ -131,7 +131,7 @@ class SummaryViewSet(viewsets.ViewSet):
             
             commission_transactions = Transactions.objects.filter(
                 investor=user,
-                broker_account=account,
+                account=account,
                 security__isnull=True,
                 commission__isnull=False,
                 date__range=[start_date, end_date] if start_date else [None, end_date]

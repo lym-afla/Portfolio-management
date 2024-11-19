@@ -9,7 +9,7 @@ from constants import (
 )
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
 from users.models import InteractiveBrokersApiToken, TinkoffApiToken, AccountGroup
-from common.models import BrokerAccounts, Brokers
+from common.models import Accounts, Brokers
 
 User = get_user_model()
 
@@ -86,12 +86,12 @@ class UserSettingsSerializer(serializers.ModelSerializer):
         elif account_type and account_id is not None:
             try:
                 if account_type == ACCOUNT_TYPE_INDIVIDUAL:
-                    BrokerAccounts.objects.get(id=account_id, broker__investor=user)
+                    Accounts.objects.get(id=account_id, broker__investor=user)
                 elif account_type == ACCOUNT_TYPE_GROUP:
                     AccountGroup.objects.get(id=account_id, user=user)
                 elif account_type == ACCOUNT_TYPE_BROKER:
                     Brokers.objects.get(id=account_id, investor=user)
-            except (BrokerAccounts.DoesNotExist, AccountGroup.DoesNotExist, Brokers.DoesNotExist):
+            except (Accounts.DoesNotExist, AccountGroup.DoesNotExist, Brokers.DoesNotExist):
                 raise serializers.ValidationError({
                     'selected_account_id': f'Invalid {account_type} ID'
                 })
@@ -149,6 +149,10 @@ class BaseApiTokenSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
+    broker = serializers.PrimaryKeyRelatedField(
+        queryset=Brokers.objects.all(),
+        write_only=True  # We only need it for writing
+    )
     token_type = serializers.ChoiceField(choices=[
         ('read_only', 'Read Only'),
         ('full_access', 'Full Access'),
@@ -161,6 +165,7 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
     class Meta(BaseApiTokenSerializer.Meta):
         model = TinkoffApiToken
         fields = BaseApiTokenSerializer.Meta.fields + [
+            'broker',
             'token_type', 
             'sandbox_mode', 
             'is_active',
@@ -168,32 +173,40 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
             'updated_at'
         ]
 
+    def validate_broker(self, value):
+        """
+        Check if the broker belongs to the user and is appropriate for the token type
+        """
+        if not value.investor == self.context['request'].user:
+            raise serializers.ValidationError("Invalid broker selection")
+        return value
+
 class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
     class Meta(BaseApiTokenSerializer.Meta):
         model = InteractiveBrokersApiToken
         fields = BaseApiTokenSerializer.Meta.fields
 
 class AccountGroupSerializer(serializers.ModelSerializer):
-    broker_accounts = serializers.PrimaryKeyRelatedField(
+    accounts = serializers.PrimaryKeyRelatedField(
         many=True,
-        queryset=BrokerAccounts.objects.all()
+        queryset=Accounts.objects.all()
     )
 
     class Meta:
         model = AccountGroup
-        fields = ['id', 'name', 'broker_accounts', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'accounts', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def validate(self, data):
         # Ensure user can only add their own broker accounts to groups
         request = self.context.get('request')
         if request and request.user:
-            user_accounts = BrokerAccounts.objects.filter(broker__investor=request.user)
-            invalid_accounts = set(data['broker_accounts']) - set(user_accounts)
+            user_accounts = Accounts.objects.filter(broker__investor=request.user)
+            invalid_accounts = set(data['accounts']) - set(user_accounts)
             
             if invalid_accounts:
                 raise serializers.ValidationError({
-                    'broker_accounts': 'You can only add your own broker accounts to groups'
+                    'accounts': 'You can only add your own broker accounts to groups'
                 })
         
         return data
@@ -201,10 +214,10 @@ class AccountGroupSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         # Add broker account details to the response
-        representation['broker_accounts'] = [{
+        representation['accounts'] = [{
             'id': account.id,
             'name': account.name,
-        } for account in instance.broker_accounts.all()]
+        } for account in instance.accounts.all()]
         return representation
 
     def create(self, validated_data):

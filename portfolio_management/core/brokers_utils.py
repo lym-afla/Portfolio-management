@@ -58,15 +58,15 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
     brokers_data = []
     
     # Get all broker account IDs upfront
-    broker_accounts = {
+    accounts = {
         broker.id: list(broker.accounts.values_list('id', flat=True))
         for broker in brokers
     }
 
     # Get all assets with non-zero positions at effective_current_date
     active_assets = Assets.objects.filter(
-        transactions__broker_account__in=[
-            acc_id for acc_ids in broker_accounts.values() for acc_id in acc_ids
+        transactions__account__in=[
+            acc_id for acc_ids in accounts.values() for acc_id in acc_ids
         ],
         transactions__date__lte=effective_current_date
     ).distinct()
@@ -76,13 +76,13 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
     # # Calculate positions for active assets
     # active_assets_with_positions = [
     #     asset for asset in active_assets
-    #     if asset.position(effective_current_date, user, broker_account_ids=broker_accounts[asset.broker_account.id]) != 0
+    #     if asset.position(effective_current_date, user, account_ids=accounts[asset.account.id]) != 0
     # ]
 
     # logger.info(f"Active assets with positions: {active_assets_with_positions}")
 
     for broker in brokers:
-        account_ids = broker_accounts[broker.id]
+        account_ids = accounts[broker.id]
         accounts_count = len(account_ids)
 
         if accounts_count > 0:
@@ -99,11 +99,11 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
             securities_count = sum(
                 1 for asset in active_assets
                 if asset.transactions.filter(
-                    broker_account_id__in=account_ids
+                    account_id__in=account_ids
                 ).exists() and asset.position(
                     effective_current_date,
                     user,
-                    broker_account_ids=account_ids
+                    account_ids=account_ids
                 ) != 0
             )
             
@@ -111,7 +111,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
                 user.id,
                 effective_current_date,
                 currency_target,
-                broker_account_ids=account_ids
+                account_ids=account_ids
             )
         else:
             total_nav = Decimal('0')
@@ -127,7 +127,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
             'no_of_accounts': accounts_count,
             'no_of_securities': securities_count,
             'first_investment': Transactions.objects.filter(
-                broker_account__in=account_ids,
+                account__in=account_ids,
                 investor=user
             ).order_by('date').values_list('date', flat=True).first() or 'None',
             'nav': total_nav,
@@ -139,15 +139,15 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
 
 def _calculate_totals(brokers_data, user, effective_current_date, currency_target):
     """Calculate totals for all brokers"""
-    broker_account_ids = []
+    account_ids = []
     for broker in Brokers.objects.filter(investor=user):
-        broker_account_ids.extend(list(broker.accounts.values_list('id', flat=True)))
+        account_ids.extend(list(broker.accounts.values_list('id', flat=True)))
 
     # Calculate total NAV and cash
-    if broker_account_ids:
+    if account_ids:
         nav_data = NAV_at_date(
             user.id,
-            tuple(broker_account_ids),
+            tuple(account_ids),
             effective_current_date,
             currency_target
         )
@@ -165,7 +165,7 @@ def _calculate_totals(brokers_data, user, effective_current_date, currency_targe
             user.id, 
             effective_current_date, 
             currency_target, 
-            broker_account_ids=broker_account_ids
-        ) if broker_account_ids else Decimal('0')
+            account_ids=account_ids
+        ) if account_ids else Decimal('0')
     }
     return totals

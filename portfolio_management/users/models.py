@@ -6,7 +6,10 @@ from cryptography.fernet import Fernet
 import base64
 import logging
 
+from django.forms import ValidationError
+
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from tinkoff.invest import Client, RequestError
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +106,11 @@ class BaseApiToken(models.Model):
 
 class TinkoffApiToken(BaseApiToken):
     """Tinkoff-specific API token model"""
+    broker = models.ForeignKey(
+        'common.Brokers',
+        on_delete=models.CASCADE,
+        related_name='tinkoff_tokens'
+    )
     token_type = models.CharField(max_length=20, choices=[
         ('read_only', 'Read Only'),
         ('full_access', 'Full Access'),
@@ -115,17 +123,39 @@ class TinkoffApiToken(BaseApiToken):
         verbose_name_plural = 'Tinkoff API Tokens'
         constraints = [
             models.UniqueConstraint(
-                fields=['user', 'token_type', 'sandbox_mode'],
+                fields=['user', 'broker', 'token_type', 'sandbox_mode'],
                 condition=models.Q(is_active=True),
                 name='unique_active_token'
             )
         ]
+
+    def clean(self):
+        """Validate token by attempting to connect to Tinkoff API"""
+        try:
+            token = self.get_token(self.user)
+            with Client(token) as client:
+                # Try to get accounts - this will fail if token is invalid
+                client.users.get_accounts()
+        except RequestError as e:
+            error_code = e.args[1] if len(e.args) > 1 else 'unknown'
+            metadata = e.args[2] if len(e.args) > 2 else None
+            error_message = metadata.message if metadata and hasattr(metadata, 'message') else 'Invalid token'
+            logger.error(f"Token validation failed: {error_message}")
+            raise ValidationError({
+                'encrypted_token': f'Invalid Tinkoff API token: {error_message}'
+            })
+        except Exception as e:
+            logger.error(f"Token validation failed with unexpected error: {str(e)}")
+            raise ValidationError({
+                'encrypted_token': 'Could not validate Tinkoff API token'
+            })
 
     def save(self, *args, **kwargs):
         if not self.pk:  # New token
             # Deactivate existing active tokens of same type
             TinkoffApiToken.objects.filter(
                 user=self.user,
+                broker=self.broker,
                 token_type=self.token_type,
                 sandbox_mode=self.sandbox_mode,
                 is_active=True
@@ -135,7 +165,7 @@ class TinkoffApiToken(BaseApiToken):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.get_token_type_display()} Token ({self.user.username})"
+        return f"{self.get_token_type_display()} Token ({self.user.username} - {self.broker.name})"
 
 class InteractiveBrokersApiToken(BaseApiToken):
     """Interactive Brokers-specific API token model"""
@@ -156,7 +186,7 @@ class InteractiveBrokersApiToken(BaseApiToken):
 class AccountGroup(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='account_groups')
     name = models.CharField(max_length=50)
-    broker_accounts = models.ManyToManyField('common.BrokerAccounts', related_name='groups')
+    accounts = models.ManyToManyField('common.Accounts', related_name='groups')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

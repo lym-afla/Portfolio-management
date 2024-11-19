@@ -7,7 +7,7 @@ from django.forms import model_to_dict
 
 from common.models import Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import get_security, transaction_exists
+from core.import_utils import get_security, transaction_exists, match_broker_account
 from users.models import CustomUser
 from .views import TransactionViewSet
 import json
@@ -66,22 +66,58 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             message_type = text_data_json['type']
             logger.debug(f"Processing message type: {message_type} with data: {text_data_json}")
 
-            if message_type == 'start_import':
+            if message_type == 'start_file_import':  # Renamed from 'start_import'
                 file_id = text_data_json.get('file_id')
-                broker_account_id = text_data_json.get('account_id')
+                account_id = text_data_json.get('account_id')
                 confirm_every = text_data_json.get('confirm_every', False)
                 is_galaxy = text_data_json.get('is_galaxy', False)
                 galaxy_type = text_data_json.get('galaxy_type', None)
                 currency = text_data_json.get('currency', None)
+                
                 if not self.import_task or self.import_task.done():
-                    self.import_task = asyncio.create_task(self.start_import(file_id, broker_account_id, confirm_every, currency, is_galaxy, galaxy_type))
-                    logger.debug("Started import_task")
+                    self.import_task = asyncio.create_task(
+                        self.start_file_import(  # Renamed method
+                            file_id, 
+                            account_id, 
+                            confirm_every, 
+                            currency, 
+                            is_galaxy, 
+                            galaxy_type
+                        )
+                    )
+                    logger.debug("Started file import task")
                 else:
                     logger.warning("Import task already running")
                     await self.send(text_data=json.dumps({
                         'type': 'import_warning',
                         'data': {'message': 'Import already in progress'}
                     }))
+
+            elif message_type == 'start_api_import':
+                data = text_data_json.get('data', {})
+                broker_id = data.get('broker_id')
+                
+                if not broker_id:
+                    await self.send_error("Broker ID is required")
+                    return
+
+                if not self.import_task or self.import_task.done():
+                    self.import_task = asyncio.create_task(
+                        self.start_api_import(
+                            broker_id=broker_id,
+                            confirm_every=data.get("confirm_every_transaction", False),
+                            date_from=data.get("date_from"),
+                            date_to=data.get("date_to")
+                        )
+                    )
+                    logger.debug("Started API import task")
+                else:
+                    logger.warning("Import task already running")
+                    await self.send(text_data=json.dumps({
+                        'type': 'import_warning',
+                        'data': {'message': 'Import already in progress'}
+                    }))
+
             elif message_type == 'security_mapped':
                 action = text_data_json.get('action')
                 security_id = text_data_json.get('security_id', None)
@@ -154,14 +190,14 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 'data': {'message': f'An error occurred: {str(e)}'}
             }))
 
-    async def start_import(self, file_id, broker_account_id, confirm_every, currency, is_galaxy, galaxy_type):
-        logger.debug("Starting start_import")
+    async def start_file_import(self, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type):
+        logger.debug("Starting file import")
         try:
             self.confirm_every = confirm_every
-            self.import_generator = self.view_set.import_transactions(
+            self.import_generator = self.view_set.import_transactions_from_file(
                 self.user, 
                 file_id, 
-                broker_account_id,
+                account_id,
                 confirm_every, 
                 currency, 
                 is_galaxy, 
@@ -169,11 +205,76 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             )
             await self.process_import()
         except Exception as e:
-            logger.error(f"Error in start_import: {str(e)}")
+            logger.error(f"Error in file import: {str(e)}")
             await self.send(text_data=json.dumps({
                 'type': 'import_error',
-                'data': {'error': f'An error occurred during import: {str(e)}'}
+                'data': {'error': f'An error occurred during file import: {str(e)}'}
             }))
+
+    async def send_error(self, message: str, error_type: str = 'critical_error'):
+        """
+        Send error message to client
+        
+        Args:
+            message: Error message
+            error_type: Type of error ('critical_error', 'import_error', 'save_error')
+        """
+        await self.send(text_data=json.dumps({
+            'type': error_type,
+            'data': {
+                'error': message
+            }
+        }))
+
+    async def send_message(self, message_type: str, data: dict):
+        """
+        Send formatted message to client
+        
+        Args:
+            message_type: Type of message
+            data: Message data
+        """
+        await self.send(text_data=json.dumps({
+            'type': message_type,
+            'data': data
+        }))
+
+    async def start_api_import(self, broker_id: int, confirm_every: bool = False, date_from: str = None, date_to: str = None):
+        """Handle API import process"""
+        try:
+            # Get broker instance
+            broker = await database_sync_to_async(Brokers.objects.get)(id=broker_id)
+            
+            # Try to match accounts
+            matched_account, tinkoff_accounts, db_accounts = await match_broker_account(broker, self.user)
+
+            if matched_account:
+                # Start import with matched account
+                self.import_task = asyncio.create_task(
+                    self.import_transactions_from_api(
+                        self.user,
+                        matched_account.id,
+                        confirm_every,
+                        date_from,
+                        date_to
+                    )
+                )
+                await self.process_import()
+            else:
+                # Send both account lists for selection
+                await self.send_message('account_selection_required', {
+                    'broker_id': broker_id,
+                    'tinkoff_accounts': tinkoff_accounts,
+                    'db_accounts': db_accounts,
+                    'message': 'Please match your account for import',
+                    'broker_name': broker.name
+                })
+
+        except Brokers.DoesNotExist:
+            await self.send_error('Invalid broker ID')
+        except Exception as e:
+            logger.error(f"Error in start_api_import: {str(e)}")
+            await self.send_error(f'Failed to start API import: {str(e)}')
 
     async def process_import(self):
         logger.debug("Starting process_import")

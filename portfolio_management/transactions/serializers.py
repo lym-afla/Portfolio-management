@@ -1,10 +1,10 @@
 from rest_framework import serializers
-from common.models import BrokerAccounts, Transactions, FXTransaction, Assets
+from common.models import Accounts, Transactions, FXTransaction, Assets
 from constants import CURRENCY_CHOICES, TRANSACTION_TYPE_CHOICES
 
 class TransactionFormSerializer(serializers.ModelSerializer):
-    broker_account = serializers.PrimaryKeyRelatedField(
-        queryset=BrokerAccounts.objects.all(),
+    account = serializers.PrimaryKeyRelatedField(
+        queryset=Accounts.objects.all(),
         required=True,
         error_messages={
             'required': 'Please select a broker account.',
@@ -14,10 +14,10 @@ class TransactionFormSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Transactions
-        fields = ['id', 'broker_account', 'security', 'currency', 'type', 
+        fields = ['id', 'account', 'security', 'currency', 'type', 
                  'date', 'quantity', 'price', 'cash_flow', 'commission', 'comment']
         
-    def validate_broker_account(self, value):
+    def validate_account(self, value):
         """Ensure broker account belongs to the current user through broker"""
         user = self.context.get('user')
         if user and value.broker.investor != user:
@@ -34,9 +34,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         security = data.get('security')
 
         # Add broker account specific validation if needed
-        broker_account = data.get('broker_account')
-        if broker_account and security:
-            if security not in broker_account.assets.all():
+        account = data.get('account')
+        if account and security:
+            if security not in account.assets.all():
                 raise serializers.ValidationError({
                     'security': 'This security is not associated with the selected broker account.'
                 })
@@ -72,9 +72,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['broker_account'] = {
-            'id': instance.broker_account.id,
-            'name': instance.broker_account.name,
+        representation['account'] = {
+            'id': instance.account.id,
+            'name': instance.account.name,
         }
         if instance.security:
             representation['security'] = {
@@ -86,16 +86,16 @@ class TransactionFormSerializer(serializers.ModelSerializer):
     def get_form_structure(self, investor):
         """Return complete form structure including broker accounts"""
         return {
-            'broker_account_choices': self.get_broker_account_choices(investor),
+            'account_choices': self.get_account_choices(investor),
             'security_choices': self.get_security_choices(investor),
             'currency_choices': [{'value': c[0], 'text': c[1]} for c in CURRENCY_CHOICES],
             'transaction_type_choices': [{'value': t[0], 'text': t[1]} for t in TRANSACTION_TYPE_CHOICES]
         }
 
-    def get_broker_account_choices(self, investor):
+    def get_account_choices(self, investor):
         return [
-            {'value': str(broker_account.pk), 'text': broker_account.name} 
-            for broker_account in BrokerAccounts.objects.filter(
+            {'value': str(account.pk), 'text': account.name} 
+            for account in Accounts.objects.filter(
                 broker__investor=investor
             ).order_by('name')
         ]
@@ -105,8 +105,8 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         return choices
 
 class FXTransactionFormSerializer(serializers.ModelSerializer):
-    broker_account = serializers.PrimaryKeyRelatedField(
-        queryset=BrokerAccounts.objects.all(),
+    account = serializers.PrimaryKeyRelatedField(
+        queryset=Accounts.objects.all(),
         required=True,
         error_messages={
             'required': 'Please select a broker account.',
@@ -116,11 +116,11 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FXTransaction
-        fields = ['id', 'broker_account', 'date', 'from_currency', 'to_currency', 
+        fields = ['id', 'account', 'date', 'from_currency', 'to_currency', 
                  'commission_currency', 'from_amount', 'to_amount', 'exchange_rate', 
                  'commission', 'comment']
 
-    def validate_broker_account(self, value):
+    def validate_account(self, value):
         """Ensure broker account belongs to the current user through broker"""
         user = self.context.get('user')
         if user and value.broker.investor != user:
@@ -129,12 +129,12 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         # Existing validation with added broker account context
-        broker_account = data.get('broker_account')
+        account = data.get('account')
         from_currency = data.get('from_currency')
         to_currency = data.get('to_currency')
 
         # Add validation for currencies against broker account if needed
-        if broker_account and (from_currency or to_currency):
+        if account and (from_currency or to_currency):
             # Add any broker account specific currency validation here
             pass
 
@@ -160,7 +160,7 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
     def get_form_structure(self, investor):
         """Return complete form structure including broker accounts"""
         return {
-            'broker_account_choices': self.get_broker_account_choices(investor),
+            'account_choices': self.get_account_choices(investor),
             'currency_choices': self.get_currency_choices(),
             'fields': self.get_fields_structure()
         }
@@ -175,10 +175,10 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
             'comment': {'type': 'text', 'required': False}
         }
 
-    def get_broker_account_choices(self, investor):
+    def get_account_choices(self, investor):
         return [
-            {'value': str(broker_account.pk), 'text': broker_account.name} 
-            for broker_account in BrokerAccounts.objects.filter(
+            {'value': str(account.pk), 'text': account.name} 
+            for account in Accounts.objects.filter(
                 broker__investor=investor
             ).order_by('name')
         ]

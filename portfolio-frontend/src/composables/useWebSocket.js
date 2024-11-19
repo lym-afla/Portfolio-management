@@ -20,46 +20,50 @@ export function useWebSocket(baseUrl) {
   }
 
   const connect = () => {
-    if (intentionalClose.value) {
-      return
-    }
-
-    const url = getWebSocketUrl(baseUrl)
-    console.log('Attempting to connect to WebSocket:', url)
-    
-    if (!store.state.accessToken) {
-      console.error('No access token available')
-      return
-    }
-
-    socket.value = new WebSocket(url)
-
-    socket.value.onopen = () => {
-      isConnected.value = true
-      console.log('WebSocket connection opened')
-    }
-
-    socket.value.onmessage = (event) => {
-      lastMessage.value = JSON.parse(event.data)
-      console.log('WebSocket message received:', lastMessage.value)
-    }
-
-    socket.value.onclose = () => {
-      isConnected.value = false
-      console.log('WebSocket connection closed, intentional:', intentionalClose.value)
-      
-      if (!intentionalClose.value) {
-        setTimeout(() => {
-          console.log('Reconnecting WebSocket...')
-          connect()
-        }, 5000)
+    return new Promise((resolve, reject) => {
+      if (intentionalClose.value) {
+        resolve(false)
+        return
       }
-    }
 
-    socket.value.onerror = (error) => {
-      console.error('WebSocket error:', error)
-      socket.value.close()
-    }
+      const url = getWebSocketUrl(baseUrl)
+      console.log('Attempting to connect to WebSocket:', url)
+      
+      if (!store.state.accessToken) {
+        console.error('No access token available')
+        reject(new Error('No access token available'))
+        return
+      }
+
+      socket.value = new WebSocket(url)
+
+      socket.value.onopen = () => {
+        console.log('WebSocket connection opened')
+        isConnected.value = true
+        resolve(true)
+      }
+
+      socket.value.onclose = () => {
+        console.log('WebSocket connection closed')
+        isConnected.value = false
+        if (!intentionalClose.value) {
+          setTimeout(connect, 3000) // Reconnect after 3 seconds if not intentional
+        }
+      }
+
+      socket.value.onerror = (error) => {
+        console.error('WebSocket error:', error)
+        reject(error)
+      }
+
+      socket.value.onmessage = (event) => {
+        try {
+          lastMessage.value = JSON.parse(event.data)
+        } catch (e) {
+          console.error('Error parsing WebSocket message:', e)
+        }
+      }
+    })
   }
 
   const disconnect = () => {
@@ -74,12 +78,14 @@ export function useWebSocket(baseUrl) {
   }
 
   const sendMessage = (message) => {
-    console.log('WebSocket readyState:', socket.value.readyState)
-    if (socket.value && isConnected.value && socket.value.readyState === WebSocket.OPEN) {
+    console.log('WebSocket readyState:', socket.value?.readyState)
+    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
       console.log('Sending message:', message)
       socket.value.send(JSON.stringify(message))
+      return true
     } else {
       console.error('Cannot send message: WebSocket is not connected')
+      return false
     }
   }
 

@@ -317,7 +317,7 @@ export default {
         this.accountGroups = response.groups
         
         // Update available accounts from response
-        this.availableAccounts = response.available_broker_accounts
+        this.availableAccounts = response.available_accounts
       } catch (error) {
         this.handleError(error)
       } finally {
@@ -330,7 +330,7 @@ export default {
       try {
         await saveAccountGroup({
           name: this.newGroup.name,
-          broker_accounts: this.newGroup.accounts
+          accounts: this.newGroup.accounts
         })
         await this.fetchGroups()
         this.showAddGroupDialog = false
@@ -383,7 +383,7 @@ export default {
         await updateAccountGroup({
           id: this.selectedGroup,
           name: group.name,
-          broker_accounts: [...currentAccountIds, ...this.selectedAccounts]
+          accounts: [...currentAccountIds, ...this.selectedAccounts]
         })
         await this.fetchGroups()
         this.showAddAccountToGroupDialog = false
@@ -405,7 +405,7 @@ export default {
         await updateAccountGroup({
           id: groupId,
           name: group.name,
-          broker_accounts: updatedAccounts
+          accounts: updatedAccounts
         })
         await this.fetchGroups()
         this.$emit('success', 'Account removed from group')
@@ -427,7 +427,7 @@ export default {
         await updateAccountGroup({
           id: this.renameData.groupId,
           name: this.renameData.newName,
-          broker_accounts: group.accounts.map(account => account.id)
+          accounts: group.accounts.map(account => account.id)
         })
         await this.fetchGroups()
         this.showRenameDialog = false

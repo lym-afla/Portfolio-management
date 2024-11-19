@@ -16,7 +16,7 @@ def get_prices_table_api(request):
     search = data.get('search', '')
     sort_by = data.get('sortBy', {})
     selected_asset_types = data.get('assetTypes', [])
-    selected_broker_account = data.get('broker_account')  # Updated from broker
+    selected_account = data.get('account')  # Updated from broker
     selected_securities = data.get('securities', [])
 
     user = request.user
@@ -25,7 +25,7 @@ def get_prices_table_api(request):
 
     prices = _filter_prices(
         user, start_date, end_date, selected_asset_types, 
-        selected_broker_account, selected_securities, search
+        selected_account, selected_securities, search
     )
     
     prices_data = [
@@ -52,7 +52,7 @@ def get_prices_table_api(request):
         'total_pages': pagination_data['total_pages'],
     }
 
-def _filter_prices(user, start_date, end_date, selected_asset_types, selected_broker_account, selected_securities, search):
+def _filter_prices(user, start_date, end_date, selected_asset_types, selected_account, selected_securities, search):
     """
     Filter prices based on user criteria.
     
@@ -61,7 +61,7 @@ def _filter_prices(user, start_date, end_date, selected_asset_types, selected_br
         start_date: Start date for filtering
         end_date: End date for filtering
         selected_asset_types: List of asset types to filter by
-        selected_broker_account: Selected broker account ID
+        selected_account: Selected broker account ID
         selected_securities: List of security IDs to filter by
         search: Search string for security name or type
     """
@@ -73,8 +73,8 @@ def _filter_prices(user, start_date, end_date, selected_asset_types, selected_br
         prices_query = prices_query.filter(date__lte=end_date)
     if selected_asset_types:
         prices_query = prices_query.filter(security__type__in=selected_asset_types)
-    if selected_broker_account:
-        prices_query = prices_query.filter(security__broker_accounts__id=selected_broker_account)
+    if selected_account:
+        prices_query = prices_query.filter(security__accounts__id=selected_account)
     if selected_securities:
         prices_query = prices_query.filter(security__id__in=selected_securities)
     if search:

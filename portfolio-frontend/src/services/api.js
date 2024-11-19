@@ -1098,6 +1098,16 @@ export const deleteAccountGroup = async (groupId) => {
   }
 }
 
+export const getAvailableBrokers = async () => {
+  try {
+    const response = await axiosInstance.get('/database/api/brokers/')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching brokers:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 export const getBrokersTable = async (params = {}) => {
   try {
     const response = await axiosInstance.post('/database/api/brokers/list_brokers/', params)
@@ -1147,4 +1157,17 @@ export const getBrokerFormStructure = async () => {
     throw error.response ? error.response.data : error.message
   }
 }
+
+export const getBrokersWithTokens = async () => {
+  try {
+    const response = await axiosInstance.get('/database/api/brokers/', {
+      params: { with_active_tokens: true }
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error fetching brokers with tokens:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 

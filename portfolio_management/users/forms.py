@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
 from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
-from common.models import BrokerAccounts
+from common.models import Accounts
 from common.forms import GroupedSelect
 from users.models import CustomUser, AccountGroup
 
@@ -71,15 +71,15 @@ class UserSettingsForm(forms.ModelForm):
         label='Default NAV timeline breakdown'
     )
 
-    custom_broker_accounts = forms.ChoiceField(
+    custom_accounts = forms.ChoiceField(
         choices=[],
-        widget=GroupedSelect(attrs={'class': 'form-select', 'id': 'inputBrokerAccounts'}),
+        widget=GroupedSelect(attrs={'class': 'form-select', 'id': 'inputAccounts'}),
         label='Broker Accounts',
     )
     
     class Meta:
         model = CustomUser
-        fields = ['custom_broker_accounts', 'default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
+        fields = ['custom_accounts', 'default_currency', 'use_default_currency_where_relevant', 'chart_frequency', 'chart_timeline', 'digits', 'NAV_barchart_default_breakdown']
         widgets = {
             'use_default_currency_where_relevant': forms.CheckboxInput(attrs={'class': 'form-check-input ml-0'}),
             'digits': forms.NumberInput(attrs={'class': 'form-control'}),
@@ -91,19 +91,19 @@ class UserSettingsForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         user = kwargs.get('instance')
         super().__init__(*args, **kwargs)
-        self.fields['custom_broker_accounts'].choices = self.get_broker_account_choices(user)
+        self.fields['custom_accounts'].choices = self.get_account_choices(user)
         
         if user is not None:
-            self.fields['custom_broker_accounts'].initial = user.custom_broker_accounts
+            self.fields['custom_accounts'].initial = user.custom_accounts
 
-    def get_broker_account_choices(self, user):
+    def get_account_choices(self, user):
         account_choices = [
             ('General', (('All accounts', 'All accounts'),)),
             ('__SEPARATOR__', '__SEPARATOR__'),
         ]
         
         if user is not None:
-            accounts = BrokerAccounts.objects.filter(broker__investor=user).order_by('name')
+            accounts = Accounts.objects.filter(broker__investor=user).order_by('name')
             user_accounts = [(account.name, account.name) for account in accounts]
             if user_accounts:
                 account_choices.append(('Your Accounts', tuple(user_accounts)))
@@ -122,11 +122,11 @@ class UserSettingsForm(forms.ModelForm):
             raise forms.ValidationError('The value for digits must be less than or equal to 6.')
         return digits
 
-    def clean_custom_broker_accounts(self):
-        accounts = self.cleaned_data.get('custom_broker_accounts')
+    def clean_custom_accounts(self):
+        accounts = self.cleaned_data.get('custom_accounts')
         if accounts and not accounts.startswith(('All', 'group_')):
             try:
-                BrokerAccounts.objects.get(id=accounts, broker__investor=self.instance)
-            except BrokerAccounts.DoesNotExist:
+                Accounts.objects.get(id=accounts, broker__investor=self.instance)
+            except Accounts.DoesNotExist:
                 raise forms.ValidationError('Invalid broker account selected.')
         return accounts

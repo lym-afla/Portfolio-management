@@ -1,79 +1,230 @@
 <template>
-  <v-dialog v-model="dialog" max-width="500px">
+  <v-dialog v-model="dialog" max-width="700px">
     <v-card>
       <v-card-title class="text-h5">Import Transactions</v-card-title>
+      
       <v-card-text>
-        <v-file-input
-          v-model="file"
-          label="Select Excel or CSV file to import"
-          accept=".csv, .xlsx, .xls"
-          :rules="[v => !!v || 'File is required']"
-          @change="handleFileChange"
-          :disabled="isAnalyzed"
-        ></v-file-input>
-        <v-checkbox
-          v-model="isGalaxy"
-          label="Galaxy"
-          class="mt-2"
-          :disabled="isAnalyzed"
-        ></v-checkbox>
+        <!-- Initial Method Selection -->
+        <v-fade-transition>
+          <v-row v-if="!importMethodSelected">
+            <!-- Direct Import Card -->
+            <v-col cols="6">
+              <v-tooltip
+                :disabled="hasConnectedBrokers"
+                text="Please add broker API tokens in User Settings to enable direct import"
+                location="top"
+                open-delay="200"
+              >
+                <template v-slot:activator="{ props }">
+                  <div v-bind="props">
+                    <v-card
+                      class="import-method-card"
+                      elevation="2"
+                      @click="selectMethod('api')"
+                      :class="{
+                        'selected': importMethod === 'api',
+                        'disabled': !hasConnectedBrokers
+                      }"
+                      :disabled="!hasConnectedBrokers"
+                    >
+                      <v-card-item>
+                        <v-avatar
+                          color="primary"
+                          size="64"
+                          class="mb-4"
+                        >
+                          <v-icon
+                            size="32"
+                            icon="mdi-api"
+                          ></v-icon>
+                        </v-avatar>
+                        <v-card-title>Direct Import</v-card-title>
+                        <v-card-subtitle class="text-wrap">
+                          Import transactions directly from your broker
+                          <v-chip
+                            size="x-small"
+                            color="primary"
+                            class="ml-2"
+                          >Recommended</v-chip>
+                        </v-card-subtitle>
+                        <v-card-text>
+                          <v-list density="compact">
+                            <v-list-item prepend-icon="mdi-check">
+                              Faster and more reliable
+                            </v-list-item>
+                            <v-list-item prepend-icon="mdi-check">
+                              No manual file preparation
+                            </v-list-item>
+                            <v-list-item prepend-icon="mdi-check">
+                              Automatic broker detection
+                            </v-list-item>
+                          </v-list>
+                        </v-card-text>
+                      </v-card-item>
+                    </v-card>
+                  </div>
+                </template>
+              </v-tooltip>
+            </v-col>
 
-        <v-select
-          v-if="isGalaxy && isAnalyzed"
-          v-model="selectedCurrency"
-          :items="currencies"
-          label="Select Currency"
-          class="mt-2"
-          :rules="[v => !!v || 'Currency is required']"
-        ></v-select>
+            <!-- File Import Card -->
+            <v-col cols="6">
+              <v-card
+                class="import-method-card"
+                elevation="2"
+                @click="selectMethod('file')"
+                :class="{'selected': importMethod === 'file'}"
+              >
+                <v-card-item>
+                  <v-avatar
+                    color="secondary"
+                    size="64"
+                    class="mb-4"
+                  >
+                    <v-icon
+                      size="32"
+                      icon="mdi-file-upload"
+                    ></v-icon>
+                  </v-avatar>
+                  <v-card-title>File Import</v-card-title>
+                  <v-card-subtitle>
+                    Import from Excel or CSV file
+                  </v-card-subtitle>
+                  <v-card-text>
+                    <v-list density="compact">
+                      <v-list-item prepend-icon="mdi-check">
+                        Works with any broker
+                      </v-list-item>
+                      <v-list-item prepend-icon="mdi-check">
+                        Custom file formats
+                      </v-list-item>
+                      <v-list-item prepend-icon="mdi-check">
+                        Historical data import
+                      </v-list-item>
+                    </v-list>
+                  </v-card-text>
+                </v-card-item>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-fade-transition>
 
-        <v-alert
-          v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
-          :type="accountIdentified ? 'success' : 'info'"
-          class="mt-4 mb-4"
-        >
-          {{ accountIdentified 
-            ? `Broker account "${identifiedAccount.name}" was automatically identified. Please confirm or select a different broker account.` 
-            : 'Broker account could not be automatically identified. Please select a broker account below.' }}
-        </v-alert>
-        <v-autocomplete
-          v-if="isAnalyzed"
-          v-model="selectedAccount"
-          :items="accounts"
-          item-title="name"
-          item-value="id"
-          label="Select Broker Account"
-          class="mt-4"
-          :hint="accountIdentified ? 'Suggested broker account based on file analysis' : ''"
-          persistent-hint
-        ></v-autocomplete>
+        <!-- API Import Form -->
+        <v-expand-transition>
+          <div v-if="importMethodSelected && importMethod === 'api'">
+            <v-select
+              v-model="selectedBrokerAccount"
+              :items="connectedBrokerAccounts"
+              item-title="name"
+              :item-value="item => item"
+              label="Select Broker Account"
+              :error-messages="showValidation && !selectedBrokerAccount?.id ? 'Please select a broker account' : ''"
+              required
+              class="mb-4"
+              @update:model-value="handleBrokerAccountChange"
+              return-object
+            ></v-select>
 
-        <v-radio-group
-          v-if="isGalaxy && isAnalyzed"
-          v-model="galaxyType"
-          inline
-          class="mt-4"
-        >
-          <v-radio
-            label="Cash"
-            value="cash"
-          ></v-radio>
-          <v-radio
-            label="Transactions"
-            value="transactions"
-          ></v-radio>
-        </v-radio-group>
+            <v-row>
+              <v-col cols="6">
+                <v-text-field
+                  v-model="dateRange.from"
+                  label="From Date (Optional)"
+                  type="date"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-text-field
+                  v-model="dateRange.to"
+                  label="To Date (Optional)"
+                  type="date"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+          </div>
+        </v-expand-transition>
 
-        <v-checkbox
-          v-model="confirmEveryTransaction"
-          label="Confirm every transaction manually"
-        ></v-checkbox>
+        <!-- File Import Form -->
+        <v-expand-transition>
+          <div v-if="importMethodSelected && importMethod === 'file'">
+            <v-file-input
+              v-model="file"
+              label="Select Excel or CSV file to import"
+              accept=".csv, .xlsx, .xls"
+              :rules="[v => !!v || 'File is required']"
+              @change="handleFileChange"
+              :disabled="isAnalyzed"
+            ></v-file-input>
+            
+            <v-checkbox
+              v-model="isGalaxy"
+              label="Galaxy"
+              class="mt-2"
+              :disabled="isAnalyzed"
+            ></v-checkbox>
+
+            <v-select
+              v-if="isGalaxy && isAnalyzed"
+              v-model="selectedCurrency"
+              :items="currencies"
+              label="Select Currency"
+              class="mt-2"
+              :rules="[v => !!v || 'Currency is required']"
+            ></v-select>
+
+            <v-alert
+              v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
+              :type="accountIdentified ? 'success' : 'info'"
+              class="mt-4 mb-4"
+            >
+              {{ accountIdentified 
+                ? `Broker account "${identifiedAccount.name}" was automatically identified. Please confirm or select a different broker account.` 
+                : 'Broker account could not be automatically identified. Please select a broker account below.' }}
+            </v-alert>
+          </div>
+        </v-expand-transition>
+
+        <!-- Common settings shown after method selection -->
+        <v-expand-transition>
+          <div v-if="importMethodSelected">
+            <v-checkbox
+              v-model="confirmEveryTransaction"
+              label="Confirm every transaction manually"
+              class="mt-4"
+            ></v-checkbox>
+          </div>
+        </v-expand-transition>
       </v-card-text>
+
       <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn color="error" text @click="closeDialog">Cancel</v-btn>
+        <v-btn
+          v-if="importMethodSelected"
+          color="secondary"
+          text
+          @click="backToSelection"
+          class="mr-auto"
+        >
+          <v-icon start>mdi-arrow-left</v-icon>
+          Back
+        </v-btn>
+        <v-spacer v-else></v-spacer>
         <v-btn 
-          v-if="!isAnalyzed" 
+          color="error" 
+          text 
+          @click="closeDialog"
+        >
+          Cancel
+        </v-btn>
+        <v-btn
+          v-if="!importMethodSelected"
+          color="primary"
+          @click="confirmMethod"
+          :disabled="!importMethod"
+        >
+          Continue
+        </v-btn>
+        <v-btn 
+          v-if="importMethodSelected && importMethod === 'file' && !isAnalyzed" 
           color="blue darken-1" 
           text 
           @click="submitFile" 
@@ -83,7 +234,17 @@
           Analyze File
         </v-btn>
         <v-btn
-          v-if="isAnalyzed"
+          v-if="importMethodSelected && importMethod === 'api'"
+          color="primary"
+          text
+          @click="startApiImport"
+          :disabled="!isApiImportValid || isLoading"
+          :loading="isLoading"
+        >
+          Import Transactions
+        </v-btn>
+        <v-btn
+          v-if="importMethodSelected && importMethod === 'file' && isAnalyzed"
           color="blue darken-1"
           text
           @click="startImport"
@@ -97,14 +258,15 @@
 
   <ProgressDialog
     v-model="showProgressDialog"
-    :title="'Importing Transactions'"
-    :progress="importState.progress.value"
+    :title="'Import Progress'"
+    :progress="(currentImported / totalToImport) * 100"
     :current="currentImported"
     :total="totalToImport"
-    :currentMessage="currentImportMessage"
-    :error="importError"
-    :canStop="canStopImport"
+    :current-message="currentImportMessage"
+    :error="errorMessage"
+    :can-stop="canStopImport"
     @stop-import="stopImport"
+    @reset="resetImport"
   >
 
     <v-card v-if="showSecurityMapping || showTransactionConfirmation">
@@ -119,7 +281,6 @@
           :showSecurityMapping="showSecurityMapping"
           :security="securityToMap"
           :bestMatch="bestMatch"
-          :accountId="selectedAccount"
           @security-selected="handleSecuritySelected"
         />
 
@@ -291,18 +452,52 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
-</template>
 
+  <!-- Add account selection dialog -->
+  <v-dialog v-model="showAccountSelection" max-width="500px">
+    <v-card>
+      <v-card-title>Select Account</v-card-title>
+      <v-card-text>
+        <p>Please select an account to import transactions from:</p>
+        <v-list>
+          <v-list-item
+            v-for="account in availableAccounts"
+            :key="account.id"
+            @click="selectAccount(account)"
+          >
+            <v-list-item-title>{{ account.name }}</v-list-item-title>
+            <v-list-item-subtitle>
+              ID: {{ account.id }} | Type: {{ account.type }}
+              <br>
+              Opened: {{ account.opened_date }}
+            </v-list-item-subtitle>
+          </v-list-item>
+        </v-list>
+      </v-card-text>
+    </v-card>
+  </v-dialog>
+
+  <!-- Add AccountMatchingDialog -->
+  <AccountMatchingDialog
+    v-model="showAccountMatching"
+    :broker-name="selectedBroker?.name"
+    :tinkoff-accounts="tinkoffAccounts"
+    :db-accounts="dbAccounts"
+    @account-matched="handleAccountMatched"
+    @create-account="handleAccountCreation"
+  />
+</template>
 <script>
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted, computed, onMounted } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useImportState } from '@/composables/useImportState'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { analyzeFile, getAccounts } from '@/services/api'
+import { analyzeFile, getAccounts, getBrokersWithTokens } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import SecurityMappingDialog from './SecurityMappingDialog.vue'
 import TransactionImportProgress from '../TransactionImportProgress.vue'
 import SecurityFormDialog from './SecurityFormDialog.vue'
+import AccountMatchingDialog from './AccountMatchingDialog.vue'
 
 export default {
   name: 'TransactionImportDialog',
@@ -311,6 +506,7 @@ export default {
     SecurityMappingDialog,
     TransactionImportProgress,
     SecurityFormDialog,
+    AccountMatchingDialog
   },
   props: {
     modelValue: Boolean,
@@ -536,6 +732,10 @@ export default {
         handleImportStopped(message.data)
       } else if (message.type === 'transaction_confirmation') {
         handleTransactionConfirmation(message.data)
+      } else if (message.type === 'account_selection_required') {
+        tinkoffAccounts.value = message.data.tinkoff_accounts
+        dbAccounts.value = message.data.db_accounts
+        showAccountMatching.value = true
       }
     }
 
@@ -780,6 +980,220 @@ export default {
       }
     }
 
+    // New refs for method selection and API import
+    const importMethod = ref(null)
+    const importMethodSelected = ref(false)
+    const selectedBrokerAccount = ref(null)
+    const connectedBrokerAccounts = ref([])
+    const dateRange = ref({
+      from: null,
+      to: null
+    })
+
+    // Load connected broker accounts on component mount
+    onMounted(async () => {
+      try {
+        isLoading.value = true
+        const brokers = await getBrokersWithTokens()
+        connectedBrokerAccounts.value = brokers.map(broker => ({
+          id: broker.id,
+          name: broker.name,
+          // Add any other needed broker properties
+        }))
+      } catch (error) {
+        console.error('Failed to load broker accounts:', error)
+        // Handle error - maybe show a notification
+      } finally {
+        isLoading.value = false
+      }
+    })
+
+    // Computed properties
+    const hasConnectedBrokers = computed(() => 
+      connectedBrokerAccounts.value.length > 0
+    )
+    
+    const isApiImportValid = computed(() => {
+      return !!selectedBrokerAccount.value
+    })
+
+    // Method selection handlers
+    const selectMethod = (method) => {
+      if (method === 'api' && !hasConnectedBrokers.value) return
+      importMethod.value = method
+    }
+
+    const confirmMethod = () => {
+      importMethodSelected.value = true
+    }
+
+    const backToSelection = () => {
+      importMethodSelected.value = false
+      importMethod.value = null
+      // Reset form data
+      file.value = null
+      selectedBrokerAccount.value = null
+      dateRange.value = { from: null, to: null }
+    }
+
+    // New method for API import
+    const startApiImport = async () => {
+      showValidation.value = true // Show validation on import attempt
+      
+      console.log('Starting import with account:', selectedBrokerAccount.value) // Debug import data
+      
+      if (!selectedBrokerAccount.value?.id) {
+        errorMessage.value = 'Please select a broker account'
+        return
+      }
+
+      isLoading.value = true
+      showProgressDialog.value = true
+      currentImportMessage.value = 'Initializing import...'
+      
+      try {
+        // Log selected account for debugging
+        console.log('Selected broker account:', selectedBrokerAccount.value)
+
+        // Connect to WebSocket
+        await connect()
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        if (!isConnected.value) {
+          throw new Error('Failed to establish WebSocket connection')
+        }
+        
+        currentImportMessage.value = 'Connecting to broker API...'
+        
+        const importData = {
+          broker_account_id: selectedBrokerAccount.value.id,
+          confirm_every_transaction: confirmEveryTransaction.value,
+          date_from: dateRange.value?.from || null,
+          date_to: dateRange.value?.to || null
+        }
+
+        console.log('Import data:', importData)
+
+        const messageSent = sendMessage({
+          type: 'start_api_import',
+          data: importData
+        })
+
+        if (!messageSent) {
+          throw new Error('Failed to send start message')
+        }
+
+      } catch (error) {
+        console.error('API import failed:', error)
+        currentImportMessage.value = ''
+        errorMessage.value = error.message
+        importError.value = error.message
+      }
+    }
+
+    // Add watcher for selectedBrokerAccount
+    watch(selectedBrokerAccount, (newValue) => {
+      console.log('Selected broker account changed:', newValue)
+    })
+
+    // Add this watch in the setup function
+    watch(lastMessage, (message) => {
+      if (!message) return
+
+      console.log('Received WebSocket message in dialog:', message)
+
+      if (message.type === 'error') {
+        importError.value = message.data.message
+        currentImportMessage.value = '' // Clear progress message
+        importState.setState('error', message.data.message)
+      } else if (message.type === 'progress') {
+        currentImportMessage.value = message.data.message
+        if (message.data.total) {
+          totalToImport.value = message.data.total
+        }
+        if (message.data.current) {
+          currentImported.value = message.data.current
+        }
+      }
+    })
+
+    // const handleProgressError = (error) => {
+    //   showProgressDialog.value = true
+    //   currentImportMessage.value = ''
+    //   errorMessage.value = error.message || 'An unknown error occurred'
+    // }
+
+    const resetImport = () => {
+      // Reset all import-related state
+      currentImported.value = 0
+      totalToImport.value = 0
+      currentImportMessage.value = ''
+      errorMessage.value = ''
+      importError.value = ''
+      showProgressDialog.value = false
+      importState.setState('idle')
+    }
+
+    // Add validation state
+    const showValidation = ref(false)
+
+    const handleBrokerAccountChange = (value) => {
+      console.log('Selected broker account:', value) // Debug selected value
+      selectedBrokerAccount.value = value
+      showValidation.value = true
+    }
+
+    const showAccountSelection = ref(false)
+    const availableAccounts = ref([])
+
+    // Handle WebSocket messages
+    watch(lastMessage, (message) => {
+      if (!message) return
+
+      if (message.type === 'account_selection_required') {
+        availableAccounts.value = message.data.available_accounts
+        showAccountSelection.value = true
+      }
+    })
+
+    const selectAccount = (account) => {
+      showAccountSelection.value = false
+      sendMessage({
+        type: 'select_account',
+        data: {
+          account_id: account.id,
+          confirm_every_transaction: confirmEveryTransaction.value,
+          date_from: dateRange.value?.from,
+          date_to: dateRange.value?.to
+        }
+      })
+    }
+
+    const showAccountMatching = ref(false)
+    const tinkoffAccounts = ref([])
+    const dbAccounts = ref([])
+
+    const handleAccountMatched = (selection) => {
+      sendMessage({
+        type: 'account_matched',
+        data: {
+          tinkoff_account_id: selection.tinkoffAccount.id,
+          db_account_id: selection.dbAccount.id
+        }
+      })
+    }
+
+    const handleAccountCreation = (data) => {
+      sendMessage({
+        type: 'create_account',
+        data: {
+          tinkoff_account_id: data.tinkoffAccount.id,
+          name: data.name,
+          comment: data.comment
+        }
+      })
+    }
+
     return {
       dialog,
       file,
@@ -831,7 +1245,61 @@ export default {
       confirmTitle,
       confirmMessage,
       handleSecurityConfirm,
+      importMethod,
+      importMethodSelected,
+      selectedBrokerAccount,
+      connectedBrokerAccounts,
+      dateRange,
+      hasConnectedBrokers,
+      isApiImportValid,
+      selectMethod,
+      confirmMethod,
+      backToSelection,
+      startApiImport,
+      resetImport,
+      showValidation,
+      handleBrokerAccountChange,
+      showAccountSelection,
+      availableAccounts,
+      selectAccount,
+      showAccountMatching,
+      tinkoffAccounts,
+      dbAccounts,
+      handleAccountMatched,
+      handleAccountCreation
     }
   }
 }
 </script>
+
+<style scoped>
+.import-method-card {
+  cursor: pointer;
+  transition: all 0.3s;
+  height: 100%;
+  border: 2px solid transparent;
+}
+
+.import-method-card:not(.disabled):hover {
+  transform: translateY(-4px);
+}
+
+.import-method-card.selected {
+  border-color: rgb(var(--v-theme-primary));
+}
+
+.import-method-card.disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
+.v-list-item {
+  min-height: 32px !important;
+}
+
+.text-wrap {
+  white-space: normal;
+  word-wrap: break-word;
+}
+</style>

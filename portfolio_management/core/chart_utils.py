@@ -11,14 +11,14 @@ logger = logging.getLogger('dashboard')
 from common.models import Transactions
 from django.db.models import Sum, Min
 
-def get_nav_chart_data(user_id, broker_account_ids, frequency, from_date, to_date, currency, breakdown):
+def get_nav_chart_data(user_id, account_ids, frequency, from_date, to_date, currency, breakdown):
     # Ensure dates are date objects first
     from_date = date.fromisoformat(from_date) if isinstance(from_date, str) else from_date
     to_date = date.fromisoformat(to_date) if isinstance(to_date, str) else to_date
 
     # Only get earliest date if from_date is None
     if from_date is None:
-        earliest_date = _get_earliest_date_for_accounts(user_id, broker_account_ids)
+        earliest_date = _get_earliest_date_for_accounts(user_id, account_ids)
         if not earliest_date:
             return {
                 'labels': [],
@@ -71,7 +71,7 @@ def get_nav_chart_data(user_id, broker_account_ids, frequency, from_date, to_dat
         # Fetch all transactions once at the beginning for cumulative calculations
         all_transactions = Transactions.objects.filter(
             investor__id=user_id,
-            broker_account_id__in=broker_account_ids,
+            account_id__in=account_ids,
             type__in=['Cash in', 'Cash out'],
             date__lte=to_date
         )
@@ -88,12 +88,12 @@ def get_nav_chart_data(user_id, broker_account_ids, frequency, from_date, to_dat
         ])
 
     for d in dates:
-        NAV_data = NAV_at_date(user_id, tuple(broker_account_ids), d, currency, 
+        NAV_data = NAV_at_date(user_id, tuple(account_ids), d, currency, 
                               tuple([breakdown]) if breakdown not in ['none', 'value_contributions', 'value_contributions_cumulative'] else ())
         NAV = NAV_data['Total NAV'] / 1000
 
-        IRR_value = IRR(user_id, d, currency, broker_account_ids=broker_account_ids, cached_nav=NAV * 1000)
-        IRR_rolling = IRR(user_id, d, currency, broker_account_ids=broker_account_ids, start_date=previous_date, cached_nav=NAV * 1000)
+        IRR_value = IRR(user_id, d, currency, account_ids=account_ids, cached_nav=NAV * 1000)
+        IRR_rolling = IRR(user_id, d, currency, account_ids=account_ids, start_date=previous_date, cached_nav=NAV * 1000)
 
         if breakdown == 'none':
             _add_no_breakdown_data(chart_data, NAV, IRR_value, IRR_rolling)
@@ -102,10 +102,10 @@ def get_nav_chart_data(user_id, broker_account_ids, frequency, from_date, to_dat
                 # Dummy assignment. Need to calculate NAV at the start of the period.
                 NAV_previous_date = 0
 
-            _add_contributions_data(chart_data, user_id, broker_account_ids, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date, currency)
+            _add_contributions_data(chart_data, user_id, account_ids, d, IRR_value, IRR_rolling, NAV, NAV_previous_date, previous_date, currency)
         elif breakdown == 'value_contributions_cumulative':
             _add_cumulative_contributions_data(
-                chart_data, user_id, broker_account_ids, d, IRR_value, 
+                chart_data, user_id, account_ids, d, IRR_value, 
                 IRR_rolling, NAV, currency, cached_transactions=all_transactions
             )
         else:
@@ -125,8 +125,8 @@ def _add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
     chart_data['datasets'][1]['data'].append(IRR)
     chart_data['datasets'][2]['data'].append(IRR_rolling)
 
-def _add_contributions_data(chart_data, user_id, broker_account_ids, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date, currency):
-    contributions = _calculate_contributions(user_id, broker_account_ids, d, previous_date, currency)
+def _add_contributions_data(chart_data, user_id, account_ids, d, IRR, IRR_rolling, NAV, NAV_previous_date, previous_date, currency):
+    contributions = _calculate_contributions(user_id, account_ids, d, previous_date, currency)
     return_amount = NAV - NAV_previous_date - contributions
 
     chart_data['datasets'][0]['data'].append(NAV_previous_date)
@@ -222,13 +222,13 @@ def get_color(index):
     colors = ['rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)']
     return colors[index % len(colors)]
 
-def _calculate_contributions(user_id, broker_account_ids, d, previous_date, target_currency, cumulative=False, cached_transactions=None):
+def _calculate_contributions(user_id, account_ids, d, previous_date, target_currency, cumulative=False, cached_transactions=None):
     if cumulative:
         if cached_transactions is None:
             # If no cache provided, fetch all transactions up to this date
             filter_conditions = {
                 'investor__id': user_id,
-                'broker_account_id__in': broker_account_ids,
+                'account_id__in': account_ids,
                 'type__in': ['Cash in', 'Cash out'],
                 'date__lte': d
             }
@@ -240,7 +240,7 @@ def _calculate_contributions(user_id, broker_account_ids, d, previous_date, targ
         # Original period-specific logic
         filter_conditions = {
             'investor__id': user_id,
-            'broker_account_id__in': broker_account_ids,
+            'account_id__in': account_ids,
             'type__in': ['Cash in', 'Cash out'],
             'date__lte': d
         }
@@ -260,10 +260,10 @@ def _calculate_contributions(user_id, broker_account_ids, d, previous_date, targ
 
     return total_contributions / 1000  # Convert to thousands
 
-def _add_cumulative_contributions_data(chart_data, user_id, broker_account_ids, d, IRR, IRR_rolling, NAV, currency, cached_transactions=None):
+def _add_cumulative_contributions_data(chart_data, user_id, account_ids, d, IRR, IRR_rolling, NAV, currency, cached_transactions=None):
     # Calculate cumulative contributions to date
     cumulative_contributions = _calculate_contributions(
-        user_id, broker_account_ids, d, None, currency, 
+        user_id, account_ids, d, None, currency, 
         cumulative=True, cached_transactions=cached_transactions
     )
     
@@ -326,11 +326,11 @@ def _chart_labels(dates, frequency):
     if frequency == 'Y':
         return [d.strftime("%Y") for d in dates]
     
-def _get_earliest_date_for_accounts(user_id, broker_account_ids):
+def _get_earliest_date_for_accounts(user_id, account_ids):
     try:
         earliest_date = Transactions.objects.filter(
             investor__id=user_id,
-            broker_account_id__in=broker_account_ids
+            account_id__in=account_ids
         ).aggregate(Min('date'))['date__min']
         
         return earliest_date or None

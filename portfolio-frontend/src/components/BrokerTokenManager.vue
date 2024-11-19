@@ -237,10 +237,13 @@
           <v-form ref="form" v-model="isFormValid">
             <v-select
               v-model="newToken.broker"
-              :items="brokerOptions"
-              label="Broker"
-              required
-            ></v-select>
+              :items="availableBrokers"
+              item-title="name"
+              item-value="id"
+              label="Select Broker"
+              :rules="[v => !!v || 'Broker is required']"
+              @update:model-value="handleBrokerSelection"
+            />
 
             <v-text-field
               v-model="newToken.token"
@@ -341,11 +344,38 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Broker Type Selection Dialog -->
+    <v-dialog v-model="showBrokerTypeDialog" max-width="400">
+      <v-card>
+        <v-card-title>Select Broker Type</v-card-title>
+        <v-card-text>
+          <p class="mb-4">Please specify the type of broker API for {{ selectedBrokerName }}</p>
+          <v-radio-group v-model="selectedBrokerType" mandatory>
+            <v-radio
+              label="Tinkoff API"
+              value="tinkoff"
+              color="primary"
+            ></v-radio>
+            <v-radio
+              label="Interactive Brokers API"
+              value="ib"
+              color="primary"
+            ></v-radio>
+          </v-radio-group>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="error" @click="cancelBrokerSelection">Cancel</v-btn>
+          <v-btn color="primary" @click="confirmBrokerType">Confirm</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
 <script>
-import { getBrokerTokens, saveTinkoffToken, saveIBToken, testTinkoffConnection, testIBConnection, revokeToken, deleteToken } from '@/services/api'
+import { getBrokerTokens, saveTinkoffToken, saveIBToken, testTinkoffConnection, testIBConnection, revokeToken, deleteToken, getAvailableBrokers } from '@/services/api'
 
 export default {
   name: 'BrokerTokenManager',
@@ -363,7 +393,7 @@ export default {
       tinkoffTokens: [],
       ibTokens: [],
       newToken: {
-        broker: '',
+        broker: null,
         token: '',
         token_type: 'read_only',
         sandbox_mode: false,
@@ -385,7 +415,12 @@ export default {
       brokerToDelete: null,
       showMessageDialog: false,
       messageDialogTitle: '',
-      messageDialogText: ''
+      messageDialogText: '',
+      availableBrokers: [],
+      showBrokerTypeDialog: false,
+      selectedBrokerType: null,
+      selectedBrokerName: '',
+      pendingBrokerId: null,
     }
   },
 
@@ -488,9 +523,13 @@ export default {
 
       this.isSaving = true
       try {
+        const broker = this.availableBrokers.find(b => b.id === this.newToken.broker)
+        if (!broker) throw new Error('Please select a broker')
+
         let response
-        if (this.newToken.broker === 'tinkoff') {
+        if (this.selectedBrokerType === 'tinkoff') {
           response = await saveTinkoffToken({
+            broker: broker.id,
             token: this.newToken.token,
             token_type: this.newToken.token_type,
             sandbox_mode: this.newToken.sandbox_mode
@@ -525,8 +564,9 @@ export default {
           }
           
           await this.fetchTokens()
-        } else if (this.newToken.broker === 'ib') {
+        } else if (this.selectedBrokerType === 'ib') {
           await saveIBToken({
+            broker: broker.id,
             token: this.newToken.token,
             account_id: this.newToken.account_id,
             paper_trading: this.newToken.paper_trading
@@ -594,7 +634,71 @@ export default {
         this.brokerToDelete = null;
         this.tokenToDelete = null;
       }
-    }
+    },
+
+    async loadBrokers() {
+      try {
+        const brokers = await getAvailableBrokers()
+        this.availableBrokers = brokers
+      } catch (error) {
+        this.handleError(error)
+      }
+    },
+
+    async handleBrokerSelection(brokerId) {
+      const broker = this.availableBrokers.find(b => b.id === brokerId)
+      if (!broker) return
+
+      const brokerName = broker.name.toLowerCase()
+      
+      // Clear existing form settings
+      this.newToken.token_type = 'read_only'
+      this.newToken.sandbox_mode = false
+      this.newToken.account_id = ''
+      this.newToken.paper_trading = false
+
+      // Automatically determine type if name contains known broker
+      if (brokerName.includes('tinkoff')) {
+        this.selectedBrokerType = 'tinkoff'
+        this.newToken.broker = brokerId
+      } else if (brokerName.includes('interactive brokers')) {
+        this.selectedBrokerType = 'ib'
+        this.newToken.broker = brokerId
+      } else {
+        // Show dialog for user to specify broker type
+        this.selectedBrokerName = broker.name
+        this.pendingBrokerId = brokerId
+        this.selectedBrokerType = null
+        this.showBrokerTypeDialog = true
+      }
+    },
+
+    cancelBrokerSelection() {
+      this.newToken.broker = null
+      this.pendingBrokerId = null
+      this.selectedBrokerType = null
+      this.showBrokerTypeDialog = false
+    },
+
+    async confirmBrokerType() {
+      if (!this.selectedBrokerType) {
+        this.$emit('error', 'Please select a broker type')
+        return
+      }
+
+      this.newToken.broker = this.pendingBrokerId
+      // Set appropriate defaults based on broker type
+      if (this.selectedBrokerType === 'tinkoff') {
+        this.newToken.token_type = 'read_only'
+        this.newToken.sandbox_mode = false
+      } else {
+        this.newToken.account_id = ''
+        this.newToken.paper_trading = false
+      }
+
+      this.showBrokerTypeDialog = false
+      this.pendingBrokerId = null
+    },
   },
 
   watch: {
@@ -607,6 +711,7 @@ export default {
 
   async mounted() {
     console.log('BrokerTokenManager component mounted')
+    await this.loadBrokers()
     await this.fetchTokens()
   }
 }

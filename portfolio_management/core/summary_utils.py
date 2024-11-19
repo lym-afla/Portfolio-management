@@ -2,14 +2,14 @@ from decimal import Decimal
 from datetime import date
 import logging
 
-from common.models import AnnualPerformance, BrokerAccounts
+from common.models import AnnualPerformance, Accounts
 
-from core.portfolio_utils import get_selected_account_ids, get_last_exit_date_for_broker_accounts, calculate_performance, IRR
+from core.portfolio_utils import get_selected_account_ids, get_last_exit_date_for_accounts, calculate_performance, IRR
 from core.formatting_utils import currency_format_dict_values
 
 logger = logging.getLogger(__name__)
 
-def broker_accounts_summary_data(user, effective_date, account_group_type, account_group_id, currency_target, number_of_digits):
+def accounts_summary_data(user, effective_date, account_group_type, account_group_id, currency_target, number_of_digits):
     def initialize_context():
         return {
             'years': [],
@@ -30,7 +30,7 @@ def broker_accounts_summary_data(user, effective_date, account_group_type, accou
             'tsr': Decimal(0)
         } for year in ['YTD'] + years + ['All-time']}
 
-    selected_broker_account_ids = get_selected_account_ids(
+    selected_account_ids = get_selected_account_ids(
         user,
         account_group_type,
         account_group_id
@@ -55,7 +55,7 @@ def broker_accounts_summary_data(user, effective_date, account_group_type, accou
         }
     
     start_year = first_entry.year
-    last_exit_date = get_last_exit_date_for_broker_accounts(selected_broker_account_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_date)
     last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_date.year else effective_date.year - 1
     years = list(range(start_year, last_year + 1))
 
@@ -65,15 +65,15 @@ def broker_accounts_summary_data(user, effective_date, account_group_type, accou
     public_totals = initialize_totals(years)
     restricted_totals = initialize_totals(years)
 
-    broker_accounts = BrokerAccounts.objects.filter(id__in=selected_broker_account_ids, broker__investor=user)
+    accounts = Accounts.objects.filter(id__in=selected_account_ids, broker__investor=user)
 
     for restricted in [False, True]:
         context = public_markets_context if not restricted else restricted_investments_context
         totals = public_totals if not restricted else restricted_totals
 
-        broker_accounts_subgroup = broker_accounts.filter(restricted=restricted)
+        accounts_subgroup = accounts.filter(restricted=restricted)
 
-        for account in broker_accounts_subgroup:
+        for account in accounts_subgroup:
             line_data = {'name': account.name, 'data': {}}
 
             # Initialize data for all years
@@ -136,7 +136,7 @@ def broker_accounts_summary_data(user, effective_date, account_group_type, accou
             # Add all-time TSR separately if account matches the restriction condition
             if account.restricted == restricted:
                 try:
-                    all_time_data['tsr'] = IRR(user.id, effective_date, currency_target, broker_account_ids=[account.id])
+                    all_time_data['tsr'] = IRR(user.id, effective_date, currency_target, account_ids=[account.id])
                 except Exception as e:
                     print(f"Error calculating all-time TSR for account {account.name}: {e}")
                     all_time_data['tsr'] = 'N/A'
@@ -158,11 +158,11 @@ def broker_accounts_summary_data(user, effective_date, account_group_type, accou
         sub_totals_line = {'name': 'Sub-total', 'data': {}}
         for year in ['YTD'] + years + ['All-time']:
             if year == 'YTD':
-                totals[year]['tsr'] = IRR(user.id, effective_date, currency_target, broker_account_ids=[account.id for account in broker_accounts_subgroup], start_date=date(effective_date.year, 1, 1))
+                totals[year]['tsr'] = IRR(user.id, effective_date, currency_target, account_ids=[account.id for account in accounts_subgroup], start_date=date(effective_date.year, 1, 1))
             elif year == 'All-time':
-                totals[year]['tsr'] = IRR(user.id, effective_date, currency_target, broker_account_ids=[account.id for account in broker_accounts_subgroup])
+                totals[year]['tsr'] = IRR(user.id, effective_date, currency_target, account_ids=[account.id for account in accounts_subgroup])
             else:
-                totals[year]['tsr'] = IRR(user.id, date(year, 12, 31), currency_target, broker_account_ids=[account.id for account in broker_accounts_subgroup], start_date=date(year, 1, 1))
+                totals[year]['tsr'] = IRR(user.id, date(year, 12, 31), currency_target, account_ids=[account.id for account in accounts_subgroup], start_date=date(year, 1, 1))
 
             sub_totals_line['data'][year] = compile_summary_data(totals[year], currency_target, number_of_digits)
         
@@ -194,11 +194,11 @@ def broker_accounts_summary_data(user, effective_date, account_group_type, accou
         
         try:
             if year == 'YTD':
-                totals_line['data'][year]['tsr'] = IRR(user.id, effective_date, currency_target, broker_account_ids=[account.id for account in broker_accounts], start_date=date(effective_date.year, 1, 1))
+                totals_line['data'][year]['tsr'] = IRR(user.id, effective_date, currency_target, account_ids=[account.id for account in accounts], start_date=date(effective_date.year, 1, 1))
             elif year == 'All-time':
-                totals_line['data'][year]['tsr'] = IRR(user.id, effective_date, currency_target, broker_account_ids=[account.id for account in broker_accounts])
+                totals_line['data'][year]['tsr'] = IRR(user.id, effective_date, currency_target, account_ids=[account.id for account in accounts])
             else:
-                totals_line['data'][year]['tsr'] = IRR(user.id, date(year, 12, 31), currency_target, broker_account_ids=[account.id for account in broker_accounts], start_date=date(year, 1, 1))
+                totals_line['data'][year]['tsr'] = IRR(user.id, date(year, 12, 31), currency_target, account_ids=[account.id for account in accounts], start_date=date(year, 1, 1))
         except Exception as e:
             print(f"Error calculating TSR for year {year}: {e}")
             totals_line['data'][year]['tsr'] = 'N/R'

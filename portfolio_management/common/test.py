@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 from datetime import date, timedelta
-from common.models import Assets, Brokers, Transactions, FX, Prices, BrokerAccounts
+from common.models import Assets, Brokers, Transactions, FX, Prices, Accounts
 
 class AssetsBuyInPriceTestCase(TestCase):
     def setUp(self):
@@ -12,7 +12,7 @@ class AssetsBuyInPriceTestCase(TestCase):
 
         # Create a broker and broker account
         self.broker = Brokers.objects.create(name='Test Broker', country='US')
-        self.broker_account = BrokerAccounts.objects.create(
+        self.account = Accounts.objects.create(
             investor=self.user,
             broker=self.broker,
             name='Test Account',
@@ -56,7 +56,7 @@ class AssetsBuyInPriceTestCase(TestCase):
         for transaction_date, quantity, price in transactions_data:
             Transactions.objects.create(
                 investor=self.user,
-                broker_account=self.broker_account,
+                account=self.account,
                 security=self.asset,
                 currency='USD',
                 type='Buy' if quantity > 0 else 'Sell',
@@ -109,7 +109,7 @@ class AssetsBuyInPriceTestCase(TestCase):
     def test_calculate_buy_in_price_with_broker_filter(self):
         # Test with broker filter
         another_broker = Brokers.objects.create(name='Another Broker', country='US')
-        another_account = BrokerAccounts.objects.create(
+        another_account = Accounts.objects.create(
             investor=self.user,
             broker=another_broker,
             name='Another Account',
@@ -118,7 +118,7 @@ class AssetsBuyInPriceTestCase(TestCase):
         
         Transactions.objects.create(
             investor=self.user,
-            broker_account=another_account,
+            account=another_account,
             security=self.asset,
             currency='USD',
             type='Buy',
@@ -130,7 +130,7 @@ class AssetsBuyInPriceTestCase(TestCase):
         buy_in_price = self.asset.calculate_buy_in_price(
             date(2023, 6, 15),
             self.user,
-            broker_id_list=[self.broker_account.broker.id]
+            account_ids=[self.account.id]
         )
         self.assertAlmostEqual(buy_in_price, Decimal('6.1364'), places=4)
 

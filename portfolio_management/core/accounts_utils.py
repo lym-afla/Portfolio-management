@@ -1,4 +1,4 @@
-from common.models import Assets, BrokerAccounts, Transactions
+from common.models import Assets, Accounts, Transactions
 from .portfolio_utils import IRR, NAV_at_date
 from .sorting_utils import sort_entries
 from .pagination_utils import paginate_table
@@ -38,7 +38,7 @@ def get_accounts_table_api(request):
     }
 
 def _filter_accounts(user, search):
-    accounts = BrokerAccounts.objects.filter(broker__investor=user, is_active=True)
+    accounts = Accounts.objects.filter(broker__investor=user, is_active=True)
     if search:
         accounts = accounts.filter(
             models.Q(name__icontains=search) |
@@ -52,13 +52,13 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
         # Get all assets that have transactions for this account
         assets = Assets.objects.filter(
             investors__id=user.id,  # Add user filter here
-            transactions__broker_account=account,
+            transactions__account=account,
             transactions__date__lte=effective_current_date
         ).annotate(
             total_quantity=Sum('transactions__quantity',
                 filter=Q(
                     transactions__date__lte=effective_current_date,
-                    transactions__broker_account=account
+                    transactions__account=account
                 )
             )
         ).exclude(
@@ -70,7 +70,7 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
 
         # Get first investment date efficiently
         first_investment = Transactions.objects.filter(
-            broker_account=account,
+            account=account,
             investor=user
         ).values('date').order_by('date').first()
 
@@ -94,7 +94,7 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
                 effective_current_date, 
                 currency_target, 
                 asset_id=None, 
-                broker_account_ids=[account.id]
+                account_ids=[account.id]
             )
         }
         accounts_data.append(account_data)
@@ -103,7 +103,6 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
 def _calculate_totals(accounts_data, user, effective_current_date, currency_target):
     totals = {
         'nav': sum(account['nav'] for account in accounts_data),
-        'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None, 
-                  broker_account_ids=[account['id'] for account in accounts_data])
+        'irr': IRR(user.id, effective_current_date, currency_target, asset_id=None, account_ids=[account['id'] for account in accounts_data])
     }
     return totals

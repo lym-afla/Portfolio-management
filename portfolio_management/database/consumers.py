@@ -4,7 +4,7 @@ from channels.db import database_sync_to_async
 from asgiref.sync import sync_to_async
 
 from django.utils.dateparse import parse_date
-from common.models import Assets, BrokerAccounts, FX, Transactions
+from common.models import Assets, Accounts, FX, Transactions
 from core.import_utils import generate_dates_for_price_import, import_security_prices_from_ft, import_security_prices_from_yahoo, import_security_prices_from_micex
 
 from constants import CURRENCY_CHOICES, ACCOUNT_TYPE_ALL, ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_GROUP, ACCOUNT_TYPE_BROKER
@@ -229,7 +229,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
     async def import_prices(self, data, user):
         try:
             security_ids = data.get('securities', [])
-            broker_account_ids = data.get('accounts')
+            account_ids = data.get('accounts')
             start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d').date() if data.get('start_date') else None
             end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d').date() if data.get('end_date') else None
             frequency = data.get('frequency')
@@ -254,17 +254,17 @@ class PriceImportConsumer(AsyncHttpConsumer):
                                         frequency=frequency)
                 return
 
-            if broker_account_ids:
+            if account_ids:
                 @database_sync_to_async
                 def get_securities_from_accounts():
-                    broker_accounts = BrokerAccounts.objects.filter(
-                        id__in=broker_account_ids, 
+                    accounts = Accounts.objects.filter(
+                        id__in=account_ids, 
                         broker__investor=user
                     ).prefetch_related(
                         Prefetch('securities', queryset=Assets.objects.all(), to_attr='all_securities')
                     )
                     securities = []
-                    for account in broker_accounts:
+                    for account in accounts:
                         securities.extend(account.all_securities)
                     return list(set(securities))  # Remove duplicates
 
@@ -275,7 +275,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     if await database_sync_to_async(security.position)(
                         effective_current_date, 
                         user, 
-                        broker_account_ids  # Added broker_account_ids parameter
+                        account_ids  # Added account_ids parameter
                     ) > 0
                 ]
             else:

@@ -36,7 +36,7 @@
 </template>
 
 <script>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { getSecurities } from '@/services/api'
 
 export default {
@@ -48,7 +48,6 @@ export default {
     },
     security: String,
     bestMatch: Object,
-    accountId: Number
   },
   emits: ['security-selected'],
   setup(props, { emit }) {
@@ -63,8 +62,7 @@ export default {
       loadingSecurities.value = true
       securityError.value = null
       try {
-        console.log('Fetching securities for accountId:', props.accountId)
-        const securities = await getSecurities([], props.accountId)
+        const securities = await getSecurities()
         console.log('Fetched securities:', securities)
         if (Array.isArray(securities)) {
           securityOptions.value = securities.map(security => ({
@@ -85,16 +83,18 @@ export default {
       }
     }
 
-    watch(() => props.accountId, (newValue) => {
-      console.log('accountId changed:', newValue)
-      if (newValue) {
-        fetchSecurities()
-      }
-    }, { immediate: true })
+    // watch(() => props.accountId, (newValue) => {
+    //   console.log('accountId changed:', newValue)
+    //   if (newValue) {
+    //     fetchSecurities()
+    //   }
+    // }, { immediate: true })
 
     watch(() => selectedSecurity.value, (newValue) => {
       emit('security-selected', newValue)
     })
+
+    onMounted(fetchSecurities)
 
     return {
       selectedSecurity,

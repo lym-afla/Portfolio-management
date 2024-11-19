@@ -11,7 +11,7 @@ from common.models import AnnualPerformance, Transactions, FX
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from core.portfolio_utils import (
     IRR, NAV_at_date, calculate_percentage_shares, calculate_performance,
-    get_last_exit_date_for_broker_accounts, get_selected_account_ids
+    get_last_exit_date_for_accounts, get_selected_account_ids
 )
 from core.chart_utils import get_nav_chart_data
 
@@ -53,7 +53,7 @@ def get_dashboard_summary_api(request):
 
     transactions = Transactions.objects.filter(
         investor=user,
-        broker_account_id__in=selected_account_ids,
+        account_id__in=selected_account_ids,
         date__lte=effective_current_date,
         type__in=['Cash in', 'Cash out']
     ).values('currency', 'type', 'cash_flow', 'date').annotate(
@@ -81,7 +81,7 @@ def get_dashboard_summary_api(request):
         effective_current_date, 
         currency_target, 
         asset_id=None, 
-        broker_account_ids=selected_account_ids
+        account_ids=selected_account_ids
     )
 
     summary = format_table_data(summary, currency_target, number_of_digits)
@@ -162,7 +162,7 @@ def get_dashboard_summary_over_time_api(request):
             return Response({"message": "No data available for the selected period."}, status=status.HTTP_404_NOT_FOUND)
         
         start_year = first_entry.year
-        last_exit_date = get_last_exit_date_for_broker_accounts(selected_account_ids, effective_current_date)
+        last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_current_date)
         last_year = last_exit_date.year if last_exit_date and last_exit_date.year < effective_current_date.year else effective_current_date.year - 1
         years = list(range(start_year, last_year + 1))
 
@@ -207,7 +207,7 @@ def get_dashboard_summary_over_time_api(request):
             if line_name != 'TSR':
                 line_data["data"]["All-time"] = sum(value for year, value in line_data["data"].items() if year != "All-time")
 
-        lines['TSR']["data"]["All-time"] = format_percentage(IRR(user.id, effective_current_date, currency_target, broker_account_ids=selected_account_ids), digits=1)
+        lines['TSR']["data"]["All-time"] = format_percentage(IRR(user.id, effective_current_date, currency_target, account_ids=selected_account_ids), digits=1)
         lines['BoP NAV']['data']['All-time'] = Decimal(0)
         lines['EoP NAV']["data"]["All-time"] = lines['EoP NAV']["data"].get("YTD", Decimal(0))
 

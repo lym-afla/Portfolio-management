@@ -100,7 +100,7 @@ MUTUAL_FUNDS_IN_PENCES = [
 ]
 
 # Broker identifiers for transaction import
-BROKER_ACCOUNT_IDENTIFIERS = {
+ACCOUNT_IDENTIFIERS = {
     # 'Charles Stanley': {
     #     'keywords': ['Charles Stanley & Co. Limited',
     #                  '1903304',

@@ -36,9 +36,17 @@ def user():
     )
 
 @pytest.fixture
-def tinkoff_token(user):
+def broker(user):
+    return Brokers.objects.create(
+        name='Test Broker',
+        investor=user
+    )
+
+@pytest.fixture
+def tinkoff_token(user, broker):
     token = TinkoffApiToken.objects.create(
         user=user,
+        broker=broker,
         token_type='read_only',
         sandbox_mode=False,
         is_active=True

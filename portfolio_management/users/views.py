@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from common.models import BrokerAccounts, Brokers
+from common.models import Accounts, Brokers
 from users.models import AccountGroup, CustomUser, InteractiveBrokersApiToken, TinkoffApiToken
 from users.serializers import (
     TinkoffApiTokenSerializer, InteractiveBrokersApiTokenSerializer,
@@ -213,7 +213,7 @@ class UserViewSet(viewsets.ModelViewSet):
             else:
                 # Validate that the ID exists for the given type
                 if account_type == 'account':
-                    exists = BrokerAccounts.objects.filter(
+                    exists = Accounts.objects.filter(
                         id=account_id, 
                         broker__investor=user
                     ).exists()
@@ -439,6 +439,16 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
             new_token = request.data.get('token')
             token_type = request.data.get('token_type')
             sandbox_mode = request.data.get('sandbox_mode')
+            broker_id = request.data.get('broker')  # Get broker ID from request
+            
+            # Verify broker exists and belongs to user
+            try:
+                broker = Brokers.objects.get(id=broker_id, investor=request.user)
+            except Brokers.DoesNotExist:
+                return Response(
+                    {'error': 'Invalid broker selection'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             # Verify the new token first
             response = self.verify_token(request)
@@ -448,6 +458,7 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
             # Check for existing identical token
             existing_tokens = TinkoffApiToken.objects.filter(
                 user=request.user,
+                broker=broker,  # Add broker to filter
                 token_type=token_type,
                 sandbox_mode=sandbox_mode
             )
@@ -475,6 +486,7 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
 
             # Create new token if no existing token found
             token_data = {
+                'broker': broker.id,  # Add broker ID
                 'token': new_token,
                 'token_type': token_type,
                 'sandbox_mode': sandbox_mode
@@ -514,7 +526,7 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         groups_data = self.get_serializer(queryset, many=True).data
         
         # Get available broker accounts for the user
-        available_accounts = BrokerAccounts.objects.filter(broker__investor=request.user)
+        available_accounts = Accounts.objects.filter(broker__investor=request.user)
         account_choices = [
             {
                 'value': account.id, 
@@ -527,11 +539,11 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
             'groups': {
                 str(group['id']): {
                     'name': group['name'],
-                    'accounts': group['broker_accounts']
+                    'accounts': group['accounts']
                 }
                 for group in groups_data
             },
-            'available_broker_accounts': account_choices
+            'available_accounts': account_choices
         })
 
     def perform_create(self, serializer):
@@ -551,11 +563,11 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         account_ids = request.data.get('account_ids', [])
         
         try:
-            accounts = BrokerAccounts.objects.filter(
+            accounts = Accounts.objects.filter(
                 id__in=account_ids,
                 broker__investor=request.user
             )
-            group.broker_accounts.add(*accounts)
+            group.accounts.add(*accounts)
             return Response({'status': 'accounts added'})
         except Exception as e:
             return Response(
@@ -569,11 +581,11 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         account_ids = request.data.get('account_ids', [])
         
         try:
-            accounts = BrokerAccounts.objects.filter(
+            accounts = Accounts.objects.filter(
                 id__in=account_ids,
                 broker__investor=request.user
             )
-            group.broker_accounts.remove(*accounts)
+            group.accounts.remove(*accounts)
             return Response({'status': 'accounts removed'})
         except Exception as e:
             return Response(

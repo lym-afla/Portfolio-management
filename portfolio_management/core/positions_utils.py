@@ -7,7 +7,7 @@ from django.http import HttpRequest
 from django.db.models import Q, Sum
 from django.db.models.query import QuerySet
 
-from common.models import BrokerAccounts, Assets
+from common.models import Accounts, Assets
 from users.models import CustomUser
 from .sorting_utils import sort_entries
 from .tables_utils import calculate_positions_table_output
@@ -105,11 +105,11 @@ def _get_cash_balances_for_api(user: CustomUser, target_date: date, selected_acc
     
     for account_id in selected_account_ids:
         try:
-            account = BrokerAccounts.objects.get(id=account_id, broker__investor=user)
+            account = Accounts.objects.get(id=account_id, broker__investor=user)
             for currency, balance in account.balance(target_date).items():
                 aggregated_balances[currency] += balance
             logger.debug(f"Aggregated balances after adding {account.name}: {aggregated_balances}")
-        except BrokerAccounts.DoesNotExist:
+        except Accounts.DoesNotExist:
             continue
 
     return {
@@ -132,12 +132,12 @@ def _filter_assets(user: CustomUser, end_date: date, selected_account_ids: List[
     base_query = Assets.objects.filter(
         investors__id=user.id,
         transactions__date__lte=end_date,
-        transactions__broker_account__id__in=selected_account_ids,
+        transactions__account__id__in=selected_account_ids,
     ).annotate(
         total_quantity=Sum('transactions__quantity',
             filter=Q(
                 transactions__date__lte=end_date,
-                transactions__broker_account__id__in=selected_account_ids
+                transactions__account__id__in=selected_account_ids
             )
         )
     ).distinct()

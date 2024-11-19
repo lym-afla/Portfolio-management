@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import uuid
+from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
@@ -11,10 +12,11 @@ import pandas as pd
 from channels.db import database_sync_to_async
 from fuzzywuzzy import fuzz
 
-from common.models import BrokerAccounts, FXTransaction, Transactions
+from common.models import Accounts, FXTransaction, Transactions
 from core.transactions_utils import get_transactions_table_api
-from core.import_utils import get_broker_account, parse_charles_stanley_transactions, parse_galaxy_broker_account_cash_flows, parse_galaxy_broker_account_security_transactions
-from constants import BROKER_ACCOUNT_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
+from core.import_utils import get_account, parse_charles_stanley_transactions, parse_galaxy_account_cash_flows, parse_galaxy_account_security_transactions, transaction_exists
+from constants import ACCOUNT_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
+from core.broker_api_utils import TinkoffAPIException, get_broker_api
 from .serializers import TransactionFormSerializer, FXTransactionFormSerializer
 
 from rest_framework.decorators import action
@@ -64,11 +66,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     'required': True,
                 },
                 {
-                    'name': 'broker_account',
+                    'name': 'account',
                     'label': 'Broker Account',
                     'type': 'select',
                     'required': True,
-                    'choices': form_serializer.get_broker_account_choices(request.user)
+                    'choices': form_serializer.get_account_choices(request.user)
                 },
                 {
                     'name': 'security',
@@ -140,7 +142,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         lower_content = content.lower()
         logger.debug(f"Content length: {len(lower_content)} characters")
 
-        for account_name, config in BROKER_ACCOUNT_IDENTIFIERS.items():
+        for account_name, config in ACCOUNT_IDENTIFIERS.items():
             logger.debug(f"Checking broker account: {account_name}")
             keywords = config['keywords']
             threshold = config['fuzzy_threshold']
@@ -183,11 +185,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if all_keywords_perfect:
                 logger.info(f"Perfect match found for all keywords of broker account {account_name}")
                 try:
-                    account = BrokerAccounts.objects.get(broker__investor=user, name__iexact=account_name)
+                    account = Accounts.objects.get(broker__investor=user, name__iexact=account_name)
                     logger.info(f"Returning perfectly matched broker account: {account.name} (ID: {account.id})")
                     return account
-                except BrokerAccounts.DoesNotExist:
-                    logger.warning(f"Perfect match found for {account_name}, but no corresponding BrokerAccounts object exists for this user")
+                except Accounts.DoesNotExist:
+                    logger.warning(f"Perfect match found for {account_name}, but no corresponding Accounts object exists for this user")
                     return None
 
             if avg_score > threshold and avg_score > best_score:
@@ -198,10 +200,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
         if best_match:
             logger.info(f"Best match found: {best_match} with average score {best_score}")
             try:
-                account = BrokerAccounts.objects.get(broker__investor=user, name__iexact=best_match)
+                account = Accounts.objects.get(broker__investor=user, name__iexact=best_match)
                 logger.info(f"Returning best matched broker account: {account.name} (ID: {account.id})")
                 return account
-            except BrokerAccounts.DoesNotExist:
+            except Accounts.DoesNotExist:
                 logger.warning(f"Best match {best_match} found, but no corresponding Broker object exists for this user")
                 return None
         
@@ -249,29 +251,29 @@ class TransactionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    async def import_transactions(self, user, file_id, broker_account_id, confirm_every, currency, is_galaxy, galaxy_type):
+    async def import_transactions_from_file(self, user, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type):
         logger.debug("Starting import_transactions")
         file_path = None
         try:
-            file_path, broker_account_id = await self.validate_import_data(file_id, broker_account_id)
-            broker_account = await get_broker_account(broker_account_id)
+            file_path, account_id = await self.validate_import_data(file_id, account_id)
+            account = await get_account(account_id)
 
             if is_galaxy:
                 if not currency:
                     raise ValueError("Currency is required for Galaxy imports")
                     
                 if galaxy_type == 'cash':
-                    async for update in parse_galaxy_broker_account_cash_flows(file_path, currency, broker_account, user, confirm_every):
+                    async for update in parse_galaxy_account_cash_flows(file_path, currency, account, user, confirm_every):
                         yield update
                 else:
-                    async for update in parse_galaxy_broker_account_security_transactions(file_path, currency, broker_account, user, confirm_every):
+                    async for update in parse_galaxy_account_security_transactions(file_path, currency, account, user, confirm_every):
                         yield update
 
-            elif CHARLES_STANLEY_BROKER in broker_account.broker.name:
-                async for update in parse_charles_stanley_transactions(file_path, 'GBP', broker_account_id, user.id, confirm_every):
+            elif CHARLES_STANLEY_BROKER in account.broker.name:
+                async for update in parse_charles_stanley_transactions(file_path, 'GBP', account_id, user.id, confirm_every):
                     yield update
             else:
-                yield {'status': 'critical_error', 'message': f'Unsupported broker for import: {broker_account.broker.name}'}
+                yield {'status': 'critical_error', 'message': f'Unsupported broker for import: {account.broker.name}'}
 
         except Exception as e:
             logger.error(f"Error in import_transactions: {str(e)}", exc_info=True)
@@ -283,13 +285,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 logger.debug(f"Temporary file deleted: {file_path}")
 
     @database_sync_to_async
-    def validate_import_data(self, file_id, broker_account_id):
+    def validate_import_data(self, file_id, account_id):
         """Validate import data"""
         if not file_id or not isinstance(file_id, str):
             raise ValidationError("Invalid file ID")
 
         try:
-            broker_account_id = int(broker_account_id)
+            account_id = int(account_id)
         except ValueError:
             raise ValidationError("Invalid broker account ID")
 
@@ -309,7 +311,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         if file_extension not in allowed_extensions:
             raise ValidationError(f"Invalid file type. Allowed types are: {', '.join(allowed_extensions)}")
 
-        return file_path, broker_account_id
+        return file_path, account_id
 
     @database_sync_to_async
     def save_transactions(self, transactions_to_create):
@@ -318,6 +320,154 @@ class TransactionViewSet(viewsets.ModelViewSet):
             Transactions.objects.bulk_create([
                 Transactions(**data) for data in transactions_to_create
             ])
+
+    async def import_transactions_from_api(self, user, broker_account_id, confirm_every, date_from=None, date_to=None):
+        """Import transactions from broker API"""
+        logger.debug("Starting API import")
+        broker_api = None
+        
+        try:
+            # Get account and validate
+            account = await get_account(broker_account_id)
+            if not account:
+                yield {'status': 'critical_error', 'message': 'Invalid broker account ID'}
+                return
+
+            # Set default date range if not provided
+            if not date_from:
+                date_from = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            if not date_to:
+                date_to = datetime.now().strftime('%Y-%m-%d')
+
+            # Initialize stats
+            stats = {
+                'totalTransactions': 0,
+                'importedTransactions': 0,
+                'skippedTransactions': 0,
+                'duplicateTransactions': 0,
+                'importErrors': 0
+            }
+
+            # Get appropriate broker API handler
+            broker_api = await get_broker_api(account.broker)
+            if not broker_api:
+                yield {
+                    'status': 'critical_error',
+                    'message': f'Unsupported broker API: {account.broker.name}'
+                }
+                return
+
+            # Initialize broker API connection
+            yield {
+                'status': 'initialization',
+                'message': 'Connecting to broker API...'
+            }
+            
+            # Connect to broker API
+            try:
+                connected = await broker_api.connect(user)
+                if not connected:
+                    yield {
+                        'status': 'critical_error',
+                        'message': 'Failed to connect to broker API'
+                    }
+                    return
+            except TinkoffAPIException as e:
+                yield {
+                    'status': 'critical_error',
+                    'message': f'Broker API connection error: {str(e)}'
+                }
+                return
+
+            # Fetch transactions from broker API
+            try:
+                async for transaction in broker_api.get_transactions(
+                    account=account,
+                    date_from=date_from,
+                    date_to=date_to
+                ):
+                    stats['totalTransactions'] += 1
+                    
+                    try:
+                        # Format transaction data
+                        transaction_data = {
+                            'date': transaction['date'],
+                            'type': transaction['type'],
+                            'security': transaction.get('security'),
+                            'quantity': transaction.get('quantity'),
+                            'price': transaction.get('price'),
+                            'currency': transaction.get('currency'),
+                            'cash_flow': transaction.get('cash_flow'),
+                            'commission': transaction.get('commission'),
+                            'account': account,
+                            'investor': user
+                        }
+
+                        # Process transaction based on status
+                        if transaction.get('needs_security_mapping'):
+                            yield {
+                                'status': 'security_mapping',
+                                'mapping_data': {
+                                    'stock_description': transaction['security_description'],
+                                    'isin': transaction.get('isin'),
+                                    'symbol': transaction.get('symbol')
+                                },
+                                'transaction_data': transaction_data
+                            }
+                            continue
+
+                        # Check for duplicates
+                        existing_transaction = await transaction_exists(transaction_data)
+                        if existing_transaction:
+                            stats['duplicateTransactions'] += 1
+                            continue
+
+                        # Handle confirmation if needed
+                        if confirm_every:
+                            yield {
+                                'status': 'transaction_confirmation',
+                                'data': transaction_data
+                            }
+                            continue
+
+                        # Add transaction
+                        yield {
+                            'status': 'add_transaction',
+                            'data': transaction_data
+                        }
+                        stats['importedTransactions'] += 1
+
+                    except Exception as e:
+                        logger.error(f"Error processing transaction: {str(e)}")
+                        stats['importErrors'] += 1
+                        yield {
+                            'status': 'progress',
+                            'message': f'Error processing transaction: {str(e)}'
+                        }
+
+            except TinkoffAPIException as e:
+                yield {
+                    'status': 'critical_error',
+                    'message': f'Error fetching transactions: {str(e)}'
+                }
+                return
+
+            # Return final stats
+            yield {
+                'status': 'complete',
+                'data': stats
+            }
+
+        except Exception as e:
+            logger.error(f"Error in API import: {str(e)}", exc_info=True)
+            yield {
+                'status': 'critical_error',
+                'message': f'An error occurred during API import: {str(e)}'
+            }
+        finally:
+            # Ensure broker API is disconnected
+            if broker_api:
+                await broker_api.disconnect()
 
 class FXTransactionViewSet(viewsets.ModelViewSet):
     serializer_class = FXTransactionFormSerializer
@@ -354,11 +504,11 @@ class FXTransactionViewSet(viewsets.ModelViewSet):
                     'required': True,
                 },
                 {
-                    'name': 'broker_account',
+                    'name': 'account',
                     'label': 'Broker Account',
                     'type': 'select',
                     'required': True,
-                    'choices': form_serializer.get_broker_account_choices(request.user)
+                    'choices': form_serializer.get_account_choices(request.user)
                 },
                 {
                     'name': 'from_currency',

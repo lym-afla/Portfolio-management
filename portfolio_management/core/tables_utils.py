@@ -88,7 +88,7 @@ def _calculate_closed_table_output_for_api(
                 investor__id=user_id,
                 date__gte=entry_date,
                 date__lte=exit_date,
-                broker_account_id__in=selected_account_ids,
+                account_id__in=selected_account_ids,
                 quantity__isnull=False
             ).order_by('-date')
 
@@ -159,7 +159,7 @@ def _calculate_closed_table_output_for_api(
                 exit_date, 
                 currency_used, 
                 asset_id=asset.id, 
-                broker_account_ids=selected_account_ids,
+                account_ids=selected_account_ids,
                 start_date=entry_date
             )
 
@@ -283,7 +283,7 @@ def _calculate_open_table_output_for_api(
         
         # Calculate IRR for security
         currency_used = asset.currency if use_default_currency else currency_target
-        position['irr'] = IRR(user_id, end_date, currency_used, asset_id=asset.id, broker_account_ids=selected_account_ids, start_date=asset_start_date)
+        position['irr'] = IRR(user_id, end_date, currency_used, asset_id=asset.id, account_ids=selected_account_ids, start_date=asset_start_date)
 
         # Log time taken for processing the asset
         asset_duration = time.time() - asset_start_time
@@ -338,7 +338,7 @@ def _calculate_open_table_output_for_api(
         end_date, 
         currency_target, 
         asset_id=None, 
-        broker_account_ids=selected_account_ids,
+        account_ids=selected_account_ids,
         start_date=total_irr_start_date
     )
 

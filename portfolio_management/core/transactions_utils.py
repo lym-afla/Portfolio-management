@@ -4,7 +4,7 @@ from itertools import chain
 from operator import attrgetter
 
 from django.db.models import Q
-from common.models import BrokerAccounts, FXTransaction, Transactions
+from common.models import Accounts, FXTransaction, Transactions
 from .sorting_utils import sort_entries
 from .portfolio_utils import get_selected_account_ids
 from .formatting_utils import format_table_data, currency_format
@@ -58,15 +58,15 @@ def _filter_transactions(user, start_date, end_date, selected_account_ids, searc
         investor=user,
         date__gte=start_date if start_date else date.min,
         date__lte=end_date,
-        broker_account_id__in=selected_account_ids
-    ).select_related('broker_account', 'security')
+        account_id__in=selected_account_ids
+    ).select_related('account', 'security')
 
     fx_transactions_query = FXTransaction.objects.filter(
         investor=user,
         date__gte=start_date if start_date else date.min,
         date__lte=end_date,
-        broker_account_id__in=selected_account_ids
-    ).select_related('broker_account')
+        account_id__in=selected_account_ids
+    ).select_related('account')
 
     if search:
         transactions_query = transactions_query.filter(
@@ -86,14 +86,14 @@ def _filter_transactions(user, start_date, end_date, selected_account_ids, searc
 def _calculate_transactions_table_output(user, transactions, selected_account_ids, number_of_digits, start_date=None):
     """Calculate transaction table output with balances."""
     currencies = set()
-    for account in BrokerAccounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
+    for account in Accounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
         currencies.update(account.get_currencies())
 
     # Initialize balance with the starting balance for each currency and account
     balance = {currency: Decimal(0) for currency in currencies}
     if start_date:
         for account_id in selected_account_ids:
-            account = BrokerAccounts.objects.get(id=account_id)
+            account = Accounts.objects.get(id=account_id)
             account_balance = account.balance(start_date)
             for currency, amount in account_balance.items():
                 balance[currency] += amount
@@ -104,9 +104,9 @@ def _calculate_transactions_table_output(user, transactions, selected_account_id
         transaction_data = {
             'date': transaction.date,
             'balances': {},
-            'broker_account': {
-                'name': transaction.broker_account.name,
-                'id': transaction.broker_account.id
+            'account': {
+                'name': transaction.account.name,
+                'id': transaction.account.id
             }
         }
 
