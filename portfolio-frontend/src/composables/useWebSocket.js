@@ -7,6 +7,7 @@ export function useWebSocket(baseUrl) {
   const isConnected = ref(false)
   const lastMessage = ref(null)
   const intentionalClose = ref(false)
+  const connectionAttempted = ref(false)
 
   const getWebSocketUrl = (baseUrl) => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -14,54 +15,87 @@ export function useWebSocket(baseUrl) {
     const port = 8000
     const token = store.state.accessToken
 
-    console.log('Token being used:', token)
+    console.log('Token being used:', token?.substring(0, 10) + '...')
 
     return `${protocol}://${host}:${port}${baseUrl}?token=${token}`
   }
 
   const connect = () => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
+      // Set a timeout to prevent hanging if connection fails
+      const connectionTimeout = setTimeout(() => {
+        console.warn('WebSocket connection attempt timed out')
+        resolve(false)
+      }, 3000)
+
+      // Only attempt once if already attempted
+      if (connectionAttempted.value) {
+        clearTimeout(connectionTimeout)
+        resolve(isConnected.value)
+        return
+      }
+
+      // Mark as attempted
+      connectionAttempted.value = true
+
       if (intentionalClose.value) {
+        clearTimeout(connectionTimeout)
         resolve(false)
         return
       }
 
-      const url = getWebSocketUrl(baseUrl)
-      console.log('Attempting to connect to WebSocket:', url)
-
+      // Don't attempt connection if no token is available
       if (!store.state.accessToken) {
-        console.error('No access token available')
-        reject(new Error('No access token available'))
+        console.warn('No access token available for WebSocket connection')
+        clearTimeout(connectionTimeout)
+        resolve(false)
         return
       }
 
-      socket.value = new WebSocket(url)
+      try {
+        const url = getWebSocketUrl(baseUrl)
+        console.log('Attempting to connect to WebSocket:', url)
 
-      socket.value.onopen = () => {
-        console.log('WebSocket connection opened')
-        isConnected.value = true
-        resolve(true)
-      }
+        socket.value = new WebSocket(url)
 
-      socket.value.onclose = () => {
-        console.log('WebSocket connection closed')
-        isConnected.value = false
-        if (!intentionalClose.value) {
-          setTimeout(connect, 3000) // Reconnect after 3 seconds if not intentional
+        socket.value.onopen = () => {
+          console.log('WebSocket connection opened')
+          isConnected.value = true
+          clearTimeout(connectionTimeout)
+          resolve(true)
         }
-      }
 
-      socket.value.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        reject(error)
-      }
-
-      socket.value.onmessage = (event) => {
-        try {
-          lastMessage.value = JSON.parse(event.data)
-        } catch (e) {
-          console.error('Error parsing WebSocket message:', e)
+        socket.value.onclose = () => {
+          console.log('WebSocket connection closed')
+          isConnected.value = false
+          if (!intentionalClose.value) {
+            // Only attempt reconnect if app is fully initialized
+            if (store.state.isInitialized) {
+              setTimeout(() => {
+                connectionAttempted.value = false  // Reset the flag to allow reconnect
+                connect()
+              }, 3000) // Reconnect after 3 seconds if not intentional
+            }
+          }
         }
+
+        socket.value.onerror = (error) => {
+          console.error('WebSocket error:', error)
+          clearTimeout(connectionTimeout)
+          resolve(false)
+        }
+
+        socket.value.onmessage = (event) => {
+          try {
+            lastMessage.value = JSON.parse(event.data)
+          } catch (e) {
+            console.error('Error parsing WebSocket message:', e)
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing WebSocket:', error)
+        clearTimeout(connectionTimeout)
+        resolve(false)
       }
     })
   }
@@ -75,18 +109,25 @@ export function useWebSocket(baseUrl) {
 
   const reset = () => {
     intentionalClose.value = false
+    connectionAttempted.value = false
   }
 
   const sendMessage = (message) => {
-    console.log('WebSocket readyState:', socket.value?.readyState)
     if (socket.value && socket.value.readyState === WebSocket.OPEN) {
       console.log('Sending message:', message)
       socket.value.send(JSON.stringify(message))
       return true
     } else {
-      console.error('Cannot send message: WebSocket is not connected')
+      console.warn('Cannot send message: WebSocket is not connected')
       return false
     }
+  }
+
+  // Only attempt to connect if the app is fully initialized
+  if (store.state.isInitialized) {
+    connect().catch(error => {
+      console.error('Failed to establish initial WebSocket connection:', error)
+    })
   }
 
   return {

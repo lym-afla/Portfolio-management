@@ -18,71 +18,107 @@
         </v-alert>
 
         <p class="text-body-1 mb-4">
-          Please select which accounts from {{ brokerName }} API correspond to
-          your database accounts:
+          Match {{ brokerName }} API accounts to your database accounts. You can
+          create multiple pairs by using the + button.
         </p>
 
-        <v-row>
-          <!-- Tinkoff API Accounts -->
-          <v-col cols="12" md="6">
-            <v-card variant="outlined" class="pa-4">
-              <div class="text-h6 mb-4">{{ brokerName }} API Accounts</div>
-              <v-checkbox-group v-model="selectedTinkoffAccounts">
-                <v-checkbox
-                  v-for="account in tinkoffAccounts"
-                  :key="account.id"
-                  :value="account"
-                  :label="account.name"
-                >
-                  <template v-slot:label>
-                    <div>
-                      <strong>{{ account.name }}</strong>
-                      <div class="text-caption">
-                        ID: {{ account.id }}
-                        <br />
-                        Type: {{ account.type }}
-                        <br />
-                        Opened: {{ account.opened_date }}
-                      </div>
-                    </div>
-                  </template>
-                </v-checkbox>
-              </v-checkbox-group>
-            </v-card>
-          </v-col>
+        <!-- Account Matching Pairs -->
+        <div
+          v-for="(pair, index) in accountPairs"
+          :key="index"
+          class="account-pair mb-4"
+        >
+          <v-card variant="outlined" class="pa-4">
+            <div class="d-flex align-center mb-2">
+              <h3 class="text-h6">Matching Pair #{{ index + 1 }}</h3>
+              <v-spacer />
+              <v-btn
+                v-if="index > 0"
+                icon="mdi-delete"
+                variant="text"
+                color="error"
+                density="compact"
+                @click="removePair(index)"
+              />
+            </div>
 
-          <!-- Database Accounts -->
-          <v-col cols="12" md="6">
-            <v-card variant="outlined" class="pa-4">
-              <div class="text-h6 mb-4">Your Portfolio Accounts</div>
-              <v-checkbox-group v-model="selectedDbAccounts">
-                <v-checkbox
-                  v-for="account in dbAccounts"
-                  :key="account.id"
-                  :value="account"
-                  :label="account.name"
+            <v-row>
+              <!-- Tinkoff Account -->
+              <v-col cols="12" md="5">
+                <v-select
+                  v-model="pair.tinkoffAccount"
+                  :items="availableTinkoffAccounts(index)"
+                  item-title="name"
+                  item-value="id"
+                  return-object
+                  label="Tinkoff API Account"
+                  :rules="[(v) => !!v || 'Please select an account']"
                 >
-                  <template v-slot:label>
-                    <div>
-                      <strong>{{ account.name }}</strong>
-                      <div class="text-caption">
-                        ID: {{ account.id }}
-                        <br />
-                        {{ account.comment || 'No comment' }}
-                        <br />
-                        {{
-                          account.native_id
-                            ? `API ID: ${account.native_id}`
-                            : 'No API ID set'
-                        }}
-                      </div>
-                    </div>
+                  <template v-slot:item="{ item, props }">
+                    <v-list-item v-bind="props">
+                      <template v-slot:prepend>
+                        <v-icon color="primary">mdi-bank</v-icon>
+                      </template>
+                      <v-list-item-subtitle>
+                        ID: {{ item.raw.id }} | Opened:
+                        {{ item.raw.opened_date }}
+                      </v-list-item-subtitle>
+                    </v-list-item>
                   </template>
-                </v-checkbox>
-              </v-checkbox-group>
-            </v-card>
-          </v-col>
-        </v-row>
+                </v-select>
+              </v-col>
+
+              <!-- Connection Arrow -->
+              <v-col
+                cols="12"
+                md="2"
+                class="d-flex justify-center align-center"
+              >
+                <v-icon size="x-large" color="primary"
+                  >mdi-arrow-right-bold</v-icon
+                >
+              </v-col>
+
+              <!-- Database Account -->
+              <v-col cols="12" md="5">
+                <v-select
+                  v-model="pair.dbAccount"
+                  :items="availableDbAccounts(index)"
+                  item-title="name"
+                  item-value="id"
+                  return-object
+                  label="Database Account"
+                  :rules="[(v) => !!v || 'Please select an account']"
+                >
+                  <template v-slot:item="{ item, props }">
+                    <v-list-item v-bind="props">
+                      <template v-slot:prepend>
+                        <v-icon color="secondary">mdi-database</v-icon>
+                      </template>
+                      <v-list-item-subtitle>
+                        ID: {{ item.raw.id }}
+                        {{ item.raw.comment ? `| ${item.raw.comment}` : '' }}
+                      </v-list-item-subtitle>
+                    </v-list-item>
+                  </template>
+                </v-select>
+              </v-col>
+            </v-row>
+          </v-card>
+        </div>
+
+        <!-- Add More Pairs Button -->
+        <v-btn
+          block
+          variant="outlined"
+          color="primary"
+          prepend-icon="mdi-plus"
+          @click="addPair"
+          :disabled="!canAddMorePairs"
+          class="mb-4"
+        >
+          Add Another Mapping
+        </v-btn>
 
         <!-- Create New Account Option -->
         <v-card variant="outlined" class="mt-4 pa-4">
@@ -94,12 +130,35 @@
 
           <v-expand-transition>
             <div v-if="createNewAccount">
+              <v-select
+                v-model="newAccountTinkoffAccount"
+                :items="remainingTinkoffAccounts"
+                item-title="name"
+                item-value="id"
+                return-object
+                label="Tinkoff API Account"
+                :rules="[(v) => !!v || 'Please select an account']"
+                class="mb-3"
+              >
+                <template v-slot:item="{ item, props }">
+                  <v-list-item v-bind="props">
+                    <template v-slot:prepend>
+                      <v-icon color="primary">mdi-bank</v-icon>
+                    </template>
+                    <v-list-item-subtitle>
+                      ID: {{ item.raw.id }} | Opened: {{ item.raw.opened_date }}
+                    </v-list-item-subtitle>
+                  </v-list-item>
+                </template>
+              </v-select>
+
               <v-text-field
                 v-model="newAccountName"
-                label="Account Name"
+                label="New Account Name"
                 :rules="[(v) => !!v || 'Name is required']"
                 required
               />
+
               <v-textarea
                 v-model="newAccountComment"
                 label="Comment (optional)"
@@ -133,7 +192,8 @@ export default {
     modelValue: Boolean,
     brokerName: {
       type: String,
-      required: true,
+      default: 'Broker',
+      required: false,
     },
     tinkoffAccounts: {
       type: Array,
@@ -148,11 +208,14 @@ export default {
   emits: ['update:modelValue', 'accounts-matched', 'create-account'],
 
   setup(props, { emit }) {
-    const selectedTinkoffAccounts = ref([])
-    const selectedDbAccounts = ref([])
+    // Account pairs for matching
+    const accountPairs = ref([{ tinkoffAccount: null, dbAccount: null }])
+
+    // Create new account fields
     const createNewAccount = ref(false)
     const newAccountName = ref('')
     const newAccountComment = ref('')
+    const newAccountTinkoffAccount = ref(null)
     const errorMessage = ref('')
 
     const dialogModel = computed({
@@ -160,63 +223,152 @@ export default {
       set: (value) => emit('update:modelValue', value),
     })
 
-    const isValid = computed(() => {
-      if (createNewAccount.value) {
-        return (
-          selectedTinkoffAccounts.value.length > 0 &&
-          newAccountName.value.trim()
+    // Function to check which Tinkoff accounts are available for a specific pair
+    const availableTinkoffAccounts = (pairIndex) => {
+      return props.tinkoffAccounts.filter((account) => {
+        // Check if this account is used in any other pair
+        return !accountPairs.value.some(
+          (pair, index) =>
+            index !== pairIndex &&
+            pair.tinkoffAccount &&
+            pair.tinkoffAccount.id === account.id
         )
-      }
+      })
+    }
+
+    // Function to check which DB accounts are available for a specific pair
+    const availableDbAccounts = (pairIndex) => {
+      return props.dbAccounts.filter((account) => {
+        // Check if this account is used in any other pair
+        return !accountPairs.value.some(
+          (pair, index) =>
+            index !== pairIndex &&
+            pair.dbAccount &&
+            pair.dbAccount.id === account.id
+        )
+      })
+    }
+
+    // Computed to get remaining Tinkoff accounts for creating new accounts
+    const remainingTinkoffAccounts = computed(() => {
+      return props.tinkoffAccounts.filter((account) => {
+        return !accountPairs.value.some(
+          (pair) => pair.tinkoffAccount && pair.tinkoffAccount.id === account.id
+        )
+      })
+    })
+
+    const canAddMorePairs = computed(() => {
+      // Can add more pairs if there are available accounts on both sides
       return (
-        selectedTinkoffAccounts.value.length > 0 &&
-        selectedDbAccounts.value.length > 0
+        remainingTinkoffAccounts.value.length > 0 &&
+        availableDbAccounts(accountPairs.value.length).length > 0
       )
     })
 
+    const isValid = computed(() => {
+      if (createNewAccount.value) {
+        return newAccountTinkoffAccount.value && newAccountName.value.trim()
+      }
+
+      // Check if all pairs have both accounts selected
+      return (
+        accountPairs.value.length > 0 &&
+        accountPairs.value.every(
+          (pair) => pair.tinkoffAccount && pair.dbAccount
+        )
+      )
+    })
+
+    const addPair = () => {
+      accountPairs.value.push({ tinkoffAccount: null, dbAccount: null })
+    }
+
+    const removePair = (index) => {
+      accountPairs.value.splice(index, 1)
+    }
+
     const handleCreateNewChange = (value) => {
       if (value) {
-        selectedDbAccounts.value = []
+        // Reset the pairs if switching to create mode
+        newAccountTinkoffAccount.value = null
       } else {
+        // Reset new account fields if switching back
         newAccountName.value = ''
         newAccountComment.value = ''
+        newAccountTinkoffAccount.value = null
       }
     }
 
     const confirmSelection = () => {
-      if (createNewAccount.value) {
-        emit('create-account', {
-          tinkoffAccounts: selectedTinkoffAccounts.value,
-          name: newAccountName.value,
-          comment: newAccountComment.value,
-        })
-      } else {
-        emit('accounts-matched', {
-          tinkoffAccounts: selectedTinkoffAccounts.value,
-          dbAccounts: selectedDbAccounts.value,
-        })
+      try {
+        if (createNewAccount.value) {
+          if (!newAccountTinkoffAccount.value) {
+            errorMessage.value = 'Please select a Tinkoff account'
+            return
+          }
+
+          emit('create-account', {
+            tinkoff_account: newAccountTinkoffAccount.value,
+            name: newAccountName.value,
+            comment: newAccountComment.value,
+          })
+        } else {
+          // Validate that we have at least one complete pair
+          if (
+            !accountPairs.value.some(
+              (pair) => pair.tinkoffAccount && pair.dbAccount
+            )
+          ) {
+            errorMessage.value =
+              'Please create at least one account matching pair'
+            return
+          }
+
+          // Format pairs as expected by the backend
+          const matchedPairs = accountPairs.value
+            .filter((pair) => pair.tinkoffAccount && pair.dbAccount)
+            .map((pair) => ({
+              tinkoff_account_id: pair.tinkoffAccount.id,
+              db_account_id: pair.dbAccount.id,
+            }))
+
+          emit('accounts-matched', {
+            pairs: matchedPairs,
+          })
+        }
+        closeDialog()
+      } catch (error) {
+        console.error('Error in confirmSelection:', error)
+        errorMessage.value = 'An error occurred while processing your selection'
       }
-      closeDialog()
     }
 
     const closeDialog = () => {
       dialogModel.value = false
-      selectedTinkoffAccounts.value = []
-      selectedDbAccounts.value = []
+      accountPairs.value = [{ tinkoffAccount: null, dbAccount: null }]
       createNewAccount.value = false
       newAccountName.value = ''
       newAccountComment.value = ''
+      newAccountTinkoffAccount.value = null
       errorMessage.value = ''
     }
 
     return {
       dialogModel,
-      selectedTinkoffAccounts,
-      selectedDbAccounts,
+      accountPairs,
       createNewAccount,
       newAccountName,
       newAccountComment,
+      newAccountTinkoffAccount,
       errorMessage,
       isValid,
+      canAddMorePairs,
+      availableTinkoffAccounts,
+      availableDbAccounts,
+      remainingTinkoffAccounts,
+      addPair,
+      removePair,
       handleCreateNewChange,
       confirmSelection,
       closeDialog,
@@ -224,3 +376,9 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.account-pair {
+  position: relative;
+}
+</style>

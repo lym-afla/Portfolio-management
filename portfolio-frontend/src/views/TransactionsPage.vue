@@ -46,6 +46,7 @@
           :server-items-length="totalItems"
           :items-length="totalItems"
           disable-sort
+          item-key="id"
         >
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">

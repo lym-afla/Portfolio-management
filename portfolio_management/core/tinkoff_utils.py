@@ -13,7 +13,9 @@ from constants import (
     TRANSACTION_TYPE_DIVIDEND,
     TRANSACTION_TYPE_SELL,
 )
-from core.import_utils import create_security_from_micex
+
+# Remove circular import
+# from core.import_utils import create_security_from_micex
 from users.models import TinkoffApiToken
 
 logger = logging.getLogger(__name__)
@@ -94,7 +96,9 @@ async def _find_or_create_security(instrument_uid, investor):
             security = await add_relationships(security, investor)
             return security, "existing_added_relationships"
         except Assets.DoesNotExist:
-            # Create new security using MICEX data
+            # Create new security using MICEX data - import function here to avoid circular imports
+            from core.import_utils import create_security_from_micex
+
             security = await create_security_from_micex(name, isin, investor)
             if security:
                 return security, "created_new"

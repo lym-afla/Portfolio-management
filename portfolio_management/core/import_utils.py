@@ -34,6 +34,7 @@ from constants import (
     TRANSACTION_TYPE_TAX,
 )
 from core.broker_api_utils import get_broker_api
+from core.tinkoff_utils import get_user_token
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -1227,21 +1228,27 @@ async def match_broker_account(
             raise ValueError(f"Failed to connect to {broker.name} API")
 
         try:
-            # Get accounts from Tinkoff API
-            accounts_response = await broker_api.client.users.get_accounts()
+            # Get accounts from Tinkoff API using proper context manager pattern
+            from tinkoff.invest import Client
+
+            token = await get_user_token(user)
+
             tinkoff_accounts = []
 
-            for acc in accounts_response.accounts:
-                tinkoff_accounts.append(
-                    {
-                        "id": acc.id,
-                        "name": acc.name,
-                        "type": str(acc.type).replace("ACCOUNT_TYPE_", ""),
-                        "status": str(acc.status).replace("ACCOUNT_STATUS_", ""),
-                        "opened_date": acc.opened_date.strftime("%Y-%m-%d"),
-                        "access_level": str(acc.access_level),
-                    }
-                )
+            with Client(token) as client:
+                accounts_response = client.users.get_accounts()
+
+                for acc in accounts_response.accounts:
+                    tinkoff_accounts.append(
+                        {
+                            "id": acc.id,
+                            "name": acc.name,
+                            "type": str(acc.type).replace("ACCOUNT_TYPE_", ""),
+                            "status": str(acc.status).replace("ACCOUNT_STATUS_", ""),
+                            "opened_date": acc.opened_date.strftime("%Y-%m-%d"),
+                            "access_level": str(acc.access_level),
+                        }
+                    )
 
             # Get existing database accounts
             db_accounts = await database_sync_to_async(list)(

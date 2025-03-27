@@ -10,7 +10,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.forms import model_to_dict
 
-from common.models import Assets, Brokers
+from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
 from core.import_utils import get_security, match_broker_account, transaction_exists
 from users.models import CustomUser
@@ -182,6 +182,78 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 # Close the WebSocket connection
                 await self.close()
 
+            elif message_type == "accounts_matched":
+                # Handle the account matching response from frontend
+                data = text_data_json.get("data", {})
+                pairs = data.get("pairs", [])
+
+                if not pairs:
+                    await self.send_error("No account pairs provided")
+                    return
+
+                # Get broker_id from the stored task or data
+                broker_id = getattr(self, "current_broker_id", None)
+                if not broker_id:
+                    await self.send_error("Broker ID not found. Please restart the import process.")
+                    return
+
+                # Process the matched accounts and start importing transactions
+                logger.debug(f"Starting API import with {len(pairs)} account pairs")
+
+                # Create a new task for importing transactions
+                if not self.import_task or self.import_task.done():
+                    self.import_task = asyncio.create_task(
+                        self.process_account_matches(broker_id, pairs)
+                    )
+                else:
+                    logger.warning("Import task already running")
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_warning",
+                                "data": {"message": "Import already in progress"},
+                            }
+                        )
+                    )
+
+            elif message_type == "create_account":
+                # Handle the create account request from frontend
+                data = text_data_json.get("data", {})
+                tinkoff_account = data.get("tinkoff_account")
+                name = data.get("name")
+                comment = data.get("comment", "")
+
+                if not tinkoff_account or not name:
+                    await self.send_error("Tinkoff account and name are required")
+                    return
+
+                # Get broker_id from the stored task or data
+                broker_id = getattr(self, "current_broker_id", None)
+                if not broker_id:
+                    await self.send_error("Broker ID not found. Please restart the import process.")
+                    return
+
+                # Create a new task for creating account and importing transactions
+                if not self.import_task or self.import_task.done():
+                    self.import_task = asyncio.create_task(
+                        self.create_account_and_import(
+                            broker_id=broker_id,
+                            tinkoff_account=tinkoff_account,
+                            name=name,
+                            comment=comment,
+                        )
+                    )
+                else:
+                    logger.warning("Import task already running")
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_warning",
+                                "data": {"message": "Import already in progress"},
+                            }
+                        )
+                    )
+
             else:
                 logger.warning(f"Unhandled message type: {message_type}")
 
@@ -255,6 +327,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
     ):
         """Handle API import process"""
         try:
+            # Store broker_id for later use in accounts_matched handler
+            self.current_broker_id = broker_id
+            self.confirm_every = confirm_every
+            self.date_from = date_from
+            self.date_to = date_to
+
             # Get broker instance
             broker = await database_sync_to_async(Brokers.objects.get)(id=broker_id)
 
@@ -281,6 +359,103 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error in start_api_import: {str(e)}")
             await self.send_error(f"Failed to start API import: {str(e)}")
+
+    async def process_account_matches(self, broker_id: int, pairs: list):
+        """
+        Process the account matches and start importing transactions
+
+        Args:
+            broker_id: ID of the broker
+            pairs: List of dicts with tinkoff_account_id and db_account_id
+        """
+        try:
+            logger.debug(f"Processing {len(pairs)} account matches for broker ID {broker_id}")
+
+            # Send progress update
+            await self.send_message(
+                "import_update",
+                {
+                    "status": "progress",
+                    "message": f"Starting import for {len(pairs)} account pairs",
+                    "progress": 0,
+                },
+            )
+
+            # Initialize statistics
+            total_imported = 0
+            total_skipped = 0
+            total_duplicates = 0
+            total_errors = 0
+
+            # Process each account pair
+            for i, pair in enumerate(pairs):
+                tinkoff_account_id = pair.get("tinkoff_account_id")
+                db_account_id = pair.get("db_account_id")
+
+                if not tinkoff_account_id or not db_account_id:
+                    logger.warning(f"Skipping invalid pair: {pair}")
+                    continue
+
+                # Update progress
+                await self.send_message(
+                    "import_update",
+                    {
+                        "status": "progress",
+                        "message": (
+                            f"Processing pair {i + 1}/{len(pairs)}: "
+                            f"Tinkoff account {tinkoff_account_id} "
+                            f"to DB account {db_account_id}"
+                        ),
+                        "progress": int((i / len(pairs)) * 100),
+                    },
+                )
+
+                # Start import for this pair
+                try:
+                    # Call the import method from view_set
+                    self.import_generator = self.view_set.import_transactions_from_api(
+                        self.user,
+                        db_account_id,  # Just pass db_account_id instead of multiple parameters
+                        confirm_every=self.confirm_every,
+                        date_from=self.date_from,
+                        date_to=self.date_to,
+                    )
+
+                    # Process the import
+                    pair_results = await self.process_import()
+
+                    # Update statistics
+                    total_imported += pair_results.get("importedTransactions", 0)
+                    total_skipped += pair_results.get("skippedTransactions", 0)
+                    total_duplicates += pair_results.get("duplicateTransactions", 0)
+                    total_errors += pair_results.get("importErrors", 0)
+
+                except Exception as e:
+                    logger.error(f"Error importing transactions for pair {pair}: {str(e)}")
+                    total_errors += 1
+
+            # Send final results
+            await self.send_message(
+                "import_complete",
+                {
+                    "message": "API import process completed",
+                    "totalTransactions": total_imported + total_skipped + total_duplicates,
+                    "importedTransactions": total_imported,
+                    "skippedTransactions": total_skipped,
+                    "duplicateTransactions": total_duplicates,
+                    "importErrors": total_errors,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error in process_account_matches: {str(e)}")
+            await self.send_error(f"Failed to process account matches: {str(e)}")
+
+        finally:
+            # Reset the stored data
+            self.current_broker_id = None
+            self.date_from = None
+            self.date_to = None
 
     async def process_import(self):
         logger.debug("Starting process_import")
@@ -493,6 +668,17 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 )
             )
         finally:
+            # Store results before clearing
+            results = {
+                "importedTransactions": len(self.transactions_to_create),
+                "skippedTransactions": self.transactions_skipped,
+                "duplicateTransactions": self.duplicate_count,
+                "importErrors": import_results["importErrors"],
+                "totalTransactions": len(self.transactions_to_create)
+                + self.transactions_skipped
+                + self.duplicate_count,
+            }
+
             if self.stop_event.is_set():
                 await self.send(
                     text_data=json.dumps(
@@ -503,6 +689,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             self.transactions_to_create = []
             self.transactions_skipped = 0
             self.duplicate_count = 0
+
+            return results
 
     async def handle_transaction_confirmation(self, transaction_data):
         # Check if transaction already exists
@@ -557,3 +745,88 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             return float(data)
         else:
             return data
+
+    async def create_account_and_import(self, broker_id, tinkoff_account, name, comment=""):
+        """
+        Create a new account in the database and import transactions
+
+        Args:
+            broker_id: ID of the broker
+            tinkoff_account: Dict with tinkoff account details
+            name: Name for the new account
+            comment: Optional comment for the new account
+        """
+        try:
+            logger.debug(f"Creating new account '{name}' for tinkoff account {tinkoff_account}")
+
+            # Send progress update
+            await self.send_message(
+                "import_update",
+                {
+                    "status": "progress",
+                    "message": f"Creating new account '{name}'",
+                    "progress": 10,
+                },
+            )
+
+            # Create new account
+            @database_sync_to_async
+            def create_account():
+                broker = Brokers.objects.get(id=broker_id)
+                account = Accounts.objects.create(
+                    name=name, broker=broker, investor=self.user, comment=comment
+                )
+                return account
+
+            new_account = await create_account()
+            logger.debug(f"Created new account with ID {new_account.id}")
+
+            # Now process the import with the new account
+            tinkoff_account_id = tinkoff_account.get("id")
+            if not tinkoff_account_id:
+                await self.send_error("Invalid Tinkoff account data")
+                return
+
+            # Update progress
+            await self.send_message(
+                "import_update",
+                {
+                    "status": "progress",
+                    "message": f"Starting import for new account '{name}'",
+                    "progress": 20,
+                },
+            )
+
+            # Start the import for this account
+            self.import_generator = self.view_set.import_transactions_from_api(
+                self.user,
+                new_account.id,  # Just pass the account ID directly
+                confirm_every=self.confirm_every,
+                date_from=self.date_from,
+                date_to=self.date_to,
+            )
+
+            # Process the import
+            import_results = await self.process_import()
+
+            # Send final results
+            await self.send_message(
+                "import_complete",
+                {
+                    "message": f"Import completed for new account '{name}'",
+                    "account_created": True,
+                    "account_id": new_account.id,
+                    "account_name": new_account.name,
+                    **import_results,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error in create_account_and_import: {str(e)}")
+            await self.send_error(f"Failed to create account and import: {str(e)}")
+
+        finally:
+            # Reset the stored data
+            self.current_broker_id = None
+            self.date_from = None
+            self.date_to = None

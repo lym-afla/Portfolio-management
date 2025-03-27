@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-// import { ref } from 'vue'
 import store from '@/store'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
@@ -144,8 +143,24 @@ router.beforeEach(async (to, from, next) => {
   // Always ensure app is initialized
   if (!store.state.isInitialized) {
     console.log(`[Router][${guardId}] Initializing app...`)
-    const result = await store.dispatch('initializeApp')
-    console.log(`[Router][${guardId}] Initialization result:`, result)
+    try {
+      // Add a timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Initialization timed out')), 10000);
+      });
+
+      // Race between initialization and timeout
+      const result = await Promise.race([
+        store.dispatch('initializeApp'),
+        timeoutPromise
+      ]);
+
+      console.log(`[Router][${guardId}] Initialization result:`, result)
+    } catch (error) {
+      console.error(`[Router][${guardId}] Initialization failed:`, error)
+      // Continue navigation even if initialization fails
+      store.commit('SET_INITIALIZED', true)
+    }
   }
 
   const isAuthenticated = store.getters.isAuthenticated

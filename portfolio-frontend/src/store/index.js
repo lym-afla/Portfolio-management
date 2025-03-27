@@ -224,9 +224,18 @@ export default createStore({
       const requestId = Date.now()
       console.log(`[Store][${requestId}] Starting initializeApp`)
 
+      // Set a timeout to prevent hanging indefinitely
+      const timeout = setTimeout(() => {
+        console.log(`[Store][${requestId}] Initialization timed out, continuing anyway`)
+        commit('SET_INITIALIZED', true)
+        commit('SET_STATE', { isInitializing: false })
+        return { success: false, timedOut: true }
+      }, 5000) // 5 second timeout
+
       // Check if already initialized
       if (state.isInitialized) {
         console.log(`[Store][${requestId}] App already initialized`)
+        clearTimeout(timeout)
         return { success: !!state.user }
       }
 
@@ -239,6 +248,7 @@ export default createStore({
         while (state.isInitializing) {
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
+        clearTimeout(timeout)
         return { success: !!state.user }
       }
 
@@ -257,6 +267,7 @@ export default createStore({
         if (!token) {
           console.log(`[Store][${requestId}] No token found`)
           commit('SET_INITIALIZED', true)
+          clearTimeout(timeout)
           return { success: false }
         }
 
@@ -277,15 +288,21 @@ export default createStore({
             )
             commit('CLEAR_TOKENS')
             commit('SET_USER', null)
+            clearTimeout(timeout)
             return { success: false }
           }
         }
 
+        console.log(`[Store][${requestId}] Initialization complete`)
+        clearTimeout(timeout)
         return { success: true }
+      } catch (error) {
+        console.error(`[Store][${requestId}] Initialization error:`, error)
+        clearTimeout(timeout)
+        return { success: false, error }
       } finally {
         commit('SET_INITIALIZED', true)
         commit('SET_STATE', { isInitializing: false })
-        console.log(`[Store][${requestId}] Initialization complete`)
       }
     },
   },

@@ -550,7 +550,7 @@ class Assets(models.Model):
                         transaction.date, investor, transaction.currency, account_ids, start
                     )
 
-                    logger.info(
+                    logger.debug(
                         f"Buy-in price in target currency: {buy_in_price_target_currency}, "
                         f"in LCL currency: {buy_in_price_lcl_currency}"
                     )

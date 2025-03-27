@@ -164,11 +164,10 @@ class TinkoffAPI(BrokerAPI):
         """Close connection to Tinkoff API"""
         self.logger.debug("Disconnecting from Tinkoff API")
         try:
-            if self.client:
-                self.client.close()
-                self.client = None
-                self.token = None
-                self.user = None
+            # Client object doesn't have a close method, just clean up references
+            self.client = None
+            self.token = None
+            self.user = None
         except Exception as e:
             self.logger.error(f"Error disconnecting from Tinkoff API: {str(e)}")
 
@@ -261,12 +260,16 @@ class TinkoffAPI(BrokerAPI):
     async def validate_connection(self) -> bool:
         """Validate API connection"""
         try:
-            if not self.client:
+            if not self.token:
                 return False
 
-            # Try to get user info as a validation check
-            self.client.users.get_info()
-            return True
+            # Use context manager for proper resource handling
+            from tinkoff.invest import Client
+
+            with Client(self.token) as client:
+                # Try to get user info as a validation check
+                client.users.get_info()
+                return True
 
         except Exception as e:
             self.logger.error(f"Connection validation failed: {str(e)}")

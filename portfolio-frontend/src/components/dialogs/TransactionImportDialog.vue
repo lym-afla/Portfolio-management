@@ -97,13 +97,13 @@
         <v-expand-transition>
           <div v-if="importMethodSelected && importMethod === 'api'">
             <v-select
-              v-model="selectedBrokerAccount"
-              :items="connectedBrokerAccounts"
+              v-model="selectedBroker"
+              :items="connectedBrokers"
               item-title="name"
               :item-value="(item) => item"
               label="Select Broker Account"
               :error-messages="
-                showValidation && !selectedBrokerAccount?.id
+                showValidation && !selectedBroker?.id
                   ? 'Please select a broker account'
                   : ''
               "
@@ -474,11 +474,12 @@
   <!-- Add AccountMatchingDialog -->
   <AccountMatchingDialog
     v-model="showAccountMatching"
-    :broker-name="selectedBroker?.name"
+    :broker-name="selectedBroker?.name || 'Broker'"
     :tinkoff-accounts="tinkoffAccounts"
     :db-accounts="dbAccounts"
     @accounts-matched="handleAccountsMatched"
     @create-account="handleAccountCreation"
+    @update:model-value="(value) => !value && closeAccountMatching()"
   />
 </template>
 <script>
@@ -647,37 +648,36 @@ export default {
       showProgressDialog.value = true
       dialog.value = false
 
-      if (!isConnected.value) {
-        connect()
-      }
+      try {
+        // Try to connect but don't block if it fails
+        await connect()
 
-      await waitForConnection()
+        // Wait a moment for connection to establish
+        await new Promise(resolve => setTimeout(resolve, 100))
 
-      if (isConnected.value) {
-        sendMessage({
-          type: 'start_import',
-          file_id: fileId.value,
-          account_id: selectedAccount.value,
-          confirm_every: confirmEveryTransaction.value,
-          is_galaxy: isGalaxy.value,
-          galaxy_type: isGalaxy.value ? galaxyType.value : null,
-          currency: isGalaxy.value ? selectedCurrency.value : null,
-        })
-      } else {
-        importError.value = 'WebSocket not connected. Please try again.'
-        importState.setState('error', importError.value)
-      }
-    }
+        if (isConnected.value) {
+          const messageSent = sendMessage({
+            type: 'start_file_import',
+            file_id: fileId.value,
+            account_id: selectedAccount.value,
+            confirm_every: confirmEveryTransaction.value,
+            is_galaxy: isGalaxy.value,
+            galaxy_type: isGalaxy.value ? galaxyType.value : null,
+            currency: isGalaxy.value ? selectedCurrency.value : null,
+          })
 
-    const waitForConnection = async () => {
-      await new Promise((resolve) => {
-        const checkConnection = setInterval(() => {
-          if (isConnected.value) {
-            clearInterval(checkConnection)
-            resolve()
+          if (!messageSent) {
+            throw new Error('Failed to send import start message')
           }
-        }, 100)
-      })
+        } else {
+          throw new Error('WebSocket not connected. Please try again.')
+        }
+      } catch (error) {
+        console.error('Import failed:', error)
+        importError.value = error.message
+        importState.setState('error', error.message)
+        showProgressDialog.value = false
+      }
     }
 
     const stopImport = () => {
@@ -694,18 +694,7 @@ export default {
         currentImportMessage.value = message.message
       } else if (message.type === 'security_creation_needed') {
         const securityInfo = message.security_info
-        // const confirmText = `Security ${securityInfo.name} (ISIN: ${securityInfo.isin}) does not exist in your portfolio.`
 
-        // if (message.data.exists_in_db) {
-        //   // Security exists in database but not for this user
-        //   showSecurityConfirmDialog(
-        //     confirmText,
-        //     'This security exists in the database. Would you like to add it to your portfolio?',
-        //     message.data.security_data,
-        //     securityInfo
-        //   )
-        // } else {
-        // Show empty form with prefilled data from import
         securityFormData.value = {
           name: securityInfo.name,
           ISIN: securityInfo.isin,
@@ -742,10 +731,17 @@ export default {
         handleImportStopped(message.data)
       } else if (message.type === 'transaction_confirmation') {
         handleTransactionConfirmation(message.data)
-      } else if (message.type === 'account_selection_required') {
-        tinkoffAccounts.value = message.data.tinkoff_accounts
-        dbAccounts.value = message.data.db_accounts
+      } else if (message.type === 'account_matching_required') {
+        // Handle the data correctly from backend message format
+        selectedBroker.value = {
+          id: message.data.broker_id,
+          name: message.data.broker_name,
+        }
+        tinkoffAccounts.value = message.data.unmatched_tinkoff
+        dbAccounts.value = message.data.unmatched_db
         showAccountMatching.value = true
+        // Hide the progress dialog while showing the account matching dialog
+        showProgressDialog.value = false
       }
     }
 
@@ -907,9 +903,33 @@ export default {
       resetConfirmationState()
     }
 
-    watch(lastMessage, (newMessage) => {
-      if (newMessage) {
-        handleWebSocketMessage(newMessage)
+    // Main watcher for WebSocket messages
+    watch(lastMessage, (message) => {
+      if (!message) return
+
+      console.log('Received WebSocket message in dialog:', message)
+
+      if (message.type === 'account_selection_required') {
+        availableAccounts.value = message.data.available_accounts
+        showAccountSelection.value = true
+      } else if (message.type === 'import_error' || message.type === 'critical_error') {
+        // Close the account matching dialog if open
+        showAccountMatching.value = false
+      } else if (message.type === 'error') {
+        importError.value = message.data.message
+        currentImportMessage.value = '' // Clear progress message
+        importState.setState('error', message.data.message)
+      } else if (message.type === 'progress') {
+        currentImportMessage.value = message.data.message
+        if (message.data.total) {
+          totalToImport.value = message.data.total
+        }
+        if (message.data.current) {
+          currentImported.value = message.data.current
+        }
+      } else {
+        // Handle other message types through the main handler
+        handleWebSocketMessage(message)
       }
     })
 
@@ -953,26 +973,6 @@ export default {
       })
     }
 
-    // const showSecurityConfirmDialog = (title, message, existingData, securityInfo) => {
-    //   confirmDialog.value = true
-    //   confirmTitle.value = title
-    //   confirmMessage.value = message
-
-    //   if (existingData) {
-    //     // Show readonly security data
-    //     securityFormData.value = { ...existingData, readonly: true }
-    //   } else {
-    //     // Show empty form with prefilled data from import
-    //     securityFormData.value = {
-    //       name: securityInfo.name,
-    //       ISIN: securityInfo.isin,
-    //       currency: securityInfo.currency,
-    //       type: 'Stock',  // Default values
-    //       exposure: 'Equity'
-    //     }
-    //   }
-    // }
-
     const handleSecurityConfirm = (confirmed) => {
       console.log('handleSecurityConfirm called with:', confirmed)
       confirmDialog.value = false
@@ -995,8 +995,8 @@ export default {
     // New refs for method selection and API import
     const importMethod = ref(null)
     const importMethodSelected = ref(false)
-    const selectedBrokerAccount = ref(null)
-    const connectedBrokerAccounts = ref([])
+    const selectedBroker = ref(null)
+    const connectedBrokers = ref([])
     const dateRange = ref({
       from: null,
       to: null,
@@ -1007,7 +1007,7 @@ export default {
       try {
         isLoading.value = true
         const brokers = await getBrokersWithTokens()
-        connectedBrokerAccounts.value = brokers.map((broker) => ({
+        connectedBrokers.value = brokers.map((broker) => ({
           id: broker.id,
           name: broker.name,
           // Add any other needed broker properties
@@ -1022,11 +1022,11 @@ export default {
 
     // Computed properties
     const hasConnectedBrokers = computed(
-      () => connectedBrokerAccounts.value.length > 0
+      () => connectedBrokers.value.length > 0
     )
 
     const isApiImportValid = computed(() => {
-      return !!selectedBrokerAccount.value
+      return !!selectedBroker.value
     })
 
     // Method selection handlers
@@ -1044,7 +1044,7 @@ export default {
       importMethod.value = null
       // Reset form data
       file.value = null
-      selectedBrokerAccount.value = null
+      selectedBroker.value = null
       dateRange.value = { from: null, to: null }
     }
 
@@ -1052,24 +1052,25 @@ export default {
     const startApiImport = async () => {
       showValidation.value = true // Show validation on import attempt
 
-      console.log('Starting import with account:', selectedBrokerAccount.value) // Debug import data
-
-      if (!selectedBrokerAccount.value?.id) {
+      if (!selectedBroker.value?.id) {
         errorMessage.value = 'Please select a broker account'
         return
       }
 
-      isLoading.value = true
+      importState.setState('importing')
       showProgressDialog.value = true
       currentImportMessage.value = 'Initializing import...'
+      dialog.value = false
 
       try {
         // Log selected account for debugging
-        console.log('Selected broker account:', selectedBrokerAccount.value)
+        console.log('Selected broker account:', selectedBroker.value)
 
-        // Connect to WebSocket
+        // Try to connect but don't block if it fails
         await connect()
-        await new Promise((resolve) => setTimeout(resolve, 100))
+
+        // Wait a moment for connection to establish
+        await new Promise(resolve => setTimeout(resolve, 100))
 
         if (!isConnected.value) {
           throw new Error('Failed to establish WebSocket connection')
@@ -1078,7 +1079,7 @@ export default {
         currentImportMessage.value = 'Connecting to broker API...'
 
         const importData = {
-          broker_account_id: selectedBrokerAccount.value.id,
+          broker_id: selectedBroker.value.id,
           confirm_every_transaction: confirmEveryTransaction.value,
           date_from: dateRange.value?.from || null,
           date_to: dateRange.value?.to || null,
@@ -1099,40 +1100,15 @@ export default {
         currentImportMessage.value = ''
         errorMessage.value = error.message
         importError.value = error.message
+        importState.setState('error', error.message)
+        showProgressDialog.value = false
       }
     }
 
-    // Add watcher for selectedBrokerAccount
-    watch(selectedBrokerAccount, (newValue) => {
+    // Add watcher for selectedBroker
+    watch(selectedBroker, (newValue) => {
       console.log('Selected broker account changed:', newValue)
     })
-
-    // Add this watch in the setup function
-    watch(lastMessage, (message) => {
-      if (!message) return
-
-      console.log('Received WebSocket message in dialog:', message)
-
-      if (message.type === 'error') {
-        importError.value = message.data.message
-        currentImportMessage.value = '' // Clear progress message
-        importState.setState('error', message.data.message)
-      } else if (message.type === 'progress') {
-        currentImportMessage.value = message.data.message
-        if (message.data.total) {
-          totalToImport.value = message.data.total
-        }
-        if (message.data.current) {
-          currentImported.value = message.data.current
-        }
-      }
-    })
-
-    // const handleProgressError = (error) => {
-    //   showProgressDialog.value = true
-    //   currentImportMessage.value = ''
-    //   errorMessage.value = error.message || 'An unknown error occurred'
-    // }
 
     const resetImport = () => {
       // Reset all import-related state
@@ -1150,22 +1126,12 @@ export default {
 
     const handleBrokerAccountChange = (value) => {
       console.log('Selected broker account:', value) // Debug selected value
-      selectedBrokerAccount.value = value
+      selectedBroker.value = value
       showValidation.value = true
     }
 
     const showAccountSelection = ref(false)
     const availableAccounts = ref([])
-
-    // Handle WebSocket messages
-    watch(lastMessage, (message) => {
-      if (!message) return
-
-      if (message.type === 'account_selection_required') {
-        availableAccounts.value = message.data.available_accounts
-        showAccountSelection.value = true
-      }
-    })
 
     const selectAccount = (account) => {
       showAccountSelection.value = false
@@ -1185,24 +1151,74 @@ export default {
     const dbAccounts = ref([])
 
     const handleAccountsMatched = (selection) => {
-      sendMessage({
-        type: 'accounts_matched',
-        data: {
-          tinkoff_account_ids: selection.tinkoffAccounts.map((acc) => acc.id),
-          db_account_ids: selection.dbAccounts.map((acc) => acc.id),
-        },
-      })
+      console.log('Account pairs selected:', selection.pairs)
+
+      // Validate that we have valid pairs data
+      if (!selection || !selection.pairs || !Array.isArray(selection.pairs)) {
+        console.error('Invalid account pairs data:', selection)
+        errorMessage.value = 'Invalid account pairing data received'
+        return
+      }
+
+      // Check if we have at least one pair
+      if (selection.pairs.length === 0) {
+        console.error('No account pairs provided')
+        errorMessage.value = 'No account pairs were provided'
+        return
+      }
+
+      // Send the data to the server
+      try {
+        sendMessage({
+          type: 'accounts_matched',
+          data: {
+            pairs: selection.pairs,
+          },
+        })
+        // Hide the account matching dialog and show progress
+        showAccountMatching.value = false
+        showProgressDialog.value = true
+      } catch (error) {
+        console.error('Error sending account matches:', error)
+        errorMessage.value = 'Error sending account matches to server'
+      }
     }
 
     const handleAccountCreation = (data) => {
-      sendMessage({
-        type: 'create_account',
-        data: {
-          tinkoff_account_ids: data.tinkoffAccounts.map((acc) => acc.id),
-          name: data.name,
-          comment: data.comment,
-        },
-      })
+      console.log('Creating new account with data:', data)
+
+      // Validate the data
+      if (!data || !data.tinkoff_account || !data.name) {
+        console.error('Invalid account creation data:', data)
+        errorMessage.value = 'Invalid account creation data'
+        return
+      }
+
+      try {
+        sendMessage({
+          type: 'create_account',
+          data: {
+            tinkoff_account: data.tinkoff_account,
+            name: data.name,
+            comment: data.comment || '',
+          },
+        })
+        // Hide the account matching dialog and show progress
+        showAccountMatching.value = false
+        showProgressDialog.value = true
+      } catch (error) {
+        console.error('Error sending account creation request:', error)
+        errorMessage.value = 'Error creating new account'
+      }
+    }
+
+    const closeAccountMatching = () => {
+      showAccountMatching.value = false
+      // Reset the WebSocket connection if needed
+      if (importError.value) {
+        disconnect()
+        resetImport()
+      }
     }
 
     return {
@@ -1258,8 +1274,8 @@ export default {
       handleSecurityConfirm,
       importMethod,
       importMethodSelected,
-      selectedBrokerAccount,
-      connectedBrokerAccounts,
+      selectedBroker: selectedBroker,
+      connectedBrokers: connectedBrokers,
       dateRange,
       hasConnectedBrokers,
       isApiImportValid,
@@ -1278,6 +1294,7 @@ export default {
       dbAccounts,
       handleAccountsMatched,
       handleAccountCreation,
+      closeAccountMatching,
     }
   },
 }
