@@ -13,7 +13,7 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-text-field>
+            />
             <v-select
               v-else-if="field.type === 'select'"
               v-model="form[field.name]"
@@ -23,34 +23,36 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-select>
+            />
             <v-checkbox
               v-else-if="field.type === 'checkbox'"
               v-model="form[field.name]"
               :label="field.label"
               :error-messages="errorMessages[field.name]"
-            ></v-checkbox>
+            />
             <v-textarea
               v-else-if="field.type === 'textarea'"
               v-model="form[field.name]"
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-textarea>
+            />
           </template>
         </v-form>
-        <v-alert
-          v-if="generalError"
-          type="error"
-          class="mt-3"
-        >
+        <v-alert v-if="generalError" type="error" class="mt-3">
           {{ generalError }}
         </v-alert>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="submitForm" :loading="isSubmitting">Save</v-btn>
+        <v-btn
+          color="blue darken-1"
+          text
+          @click="submitForm"
+          :loading="isSubmitting"
+          >Save</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -58,7 +60,11 @@
 
 <script>
 import { ref, computed, watch } from 'vue'
-import { createBroker, updateBroker, getBrokerFormStructure } from '@/services/api'
+import {
+  createBroker,
+  updateBroker,
+  getBrokerFormStructure,
+} from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
@@ -71,7 +77,7 @@ export default {
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
     const isEdit = computed(() => !!props.editItem)
     const form = ref({})
@@ -115,14 +121,18 @@ export default {
       }
     }
 
-    watch(() => props.editItem, (newValue) => {
-      if (newValue) {
-        form.value = { ...newValue }
-      } else {
-        initializeForm()
-      }
-      generalError.value = ''
-    }, { immediate: true })
+    watch(
+      () => props.editItem,
+      (newValue) => {
+        if (newValue) {
+          form.value = { ...newValue }
+        } else {
+          initializeForm()
+        }
+        generalError.value = ''
+      },
+      { immediate: true }
+    )
 
     const closeDialog = () => {
       dialog.value = false
@@ -150,11 +160,17 @@ export default {
         closeDialog()
       } catch (error) {
         console.error('Error submitting broker:', error)
-        if (error.response && error.response.status === 400 && error.response.data) {
-          Object.keys(error.response.data).forEach(key => {
-            if (Object.prototype.hasOwnProperty.call(errorMessages.value, key)) {
-              errorMessages.value[key] = Array.isArray(error.response.data[key]) 
-                ? error.response.data[key] 
+        if (
+          error.response &&
+          error.response.status === 400 &&
+          error.response.data
+        ) {
+          Object.keys(error.response.data).forEach((key) => {
+            if (
+              Object.prototype.hasOwnProperty.call(errorMessages.value, key)
+            ) {
+              errorMessages.value[key] = Array.isArray(error.response.data[key])
+                ? error.response.data[key]
                 : [error.response.data[key]]
             } else {
               generalError.value = `${key}: ${error.response.data[key]}`
@@ -182,6 +198,6 @@ export default {
       closeDialog,
       submitForm,
     }
-  }
+  },
 }
-</script> 
+</script>

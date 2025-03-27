@@ -27,37 +27,37 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: LoginPage,
-    meta: { requiresAuth: false, paddingTop: '0px' }
+    meta: { requiresAuth: false, paddingTop: '0px' },
   },
   {
     path: '/register',
     name: 'Register',
     component: RegisterPage,
-    meta: { requiresAuth: false, paddingTop: '0px' }
+    meta: { requiresAuth: false, paddingTop: '0px' },
   },
   {
     path: '/dashboard',
     name: 'Dashboard',
     component: DashboardPage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
   },
   {
     path: '/open-positions',
     name: 'OpenPositions',
     component: OpenPositionsPage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
   },
   {
     path: '/closed-positions',
     name: 'ClosedPositions',
     component: ClosedPositionsPage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
   },
   {
     path: '/transactions',
     name: 'Transactions',
     component: TransactionsPage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true },
   },
   {
     path: '/profile',
@@ -67,19 +67,19 @@ const routes = [
       {
         path: '',
         name: 'Profile',
-        component: ProfilePage
+        component: ProfilePage,
       },
       {
         path: 'edit',
         name: 'ProfileEdit',
-        component: ProfileEdit
+        component: ProfileEdit,
       },
       {
         path: 'settings',
         name: 'ProfileSettings',
-        component: ProfileSettings
-      }
-    ]
+        component: ProfileSettings,
+      },
+    ],
   },
   {
     path: '/database',
@@ -112,35 +112,35 @@ const routes = [
         name: 'FX',
         component: FXPage,
       },
-    ]
+    ],
   },
   {
     path: '/database/securities/:id',
     name: 'SecurityDetail',
     component: SecurityDetailPage,
-    meta: { requiresAuth: true, paddingTop: '70px' }
+    meta: { requiresAuth: true, paddingTop: '70px' },
   },
   {
     path: '/summary',
     name: 'Summary',
     component: SummaryPage,
-    meta: { requiresAuth: true, paddingTop: '70px' }
+    meta: { requiresAuth: true, paddingTop: '70px' },
   },
   {
     path: '/',
-    redirect: '/dashboard'
-  }
+    redirect: '/dashboard',
+  },
 ]
 
 const router = createRouter({
   history: createWebHistory(process.env.BASE_URL),
-  routes
+  routes,
 })
 
 router.beforeEach(async (to, from, next) => {
   const guardId = Date.now()
   console.log(`[Router][${guardId}] Navigation from ${from.path} to ${to.path}`)
-  
+
   // Always ensure app is initialized
   if (!store.state.isInitialized) {
     console.log(`[Router][${guardId}] Initializing app...`)
@@ -154,13 +154,15 @@ router.beforeEach(async (to, from, next) => {
     hasToken: !!store.state.accessToken,
     hasUser: !!store.state.user,
     toPath: to.path,
-    requiresAuth: to.matched.some(record => record.meta.requiresAuth)
+    requiresAuth: to.matched.some((record) => record.meta.requiresAuth),
   })
 
   // Handle auth-required routes
-  if (to.matched.some(record => record.meta.requiresAuth)) {
+  if (to.matched.some((record) => record.meta.requiresAuth)) {
     if (!isAuthenticated) {
-      console.log(`[Router][${guardId}] Auth required but not authenticated, redirecting to login`)
+      console.log(
+        `[Router][${guardId}] Auth required but not authenticated, redirecting to login`
+      )
       next({ name: 'Login' })
       return
     }
@@ -168,7 +170,9 @@ router.beforeEach(async (to, from, next) => {
 
   // Redirect authenticated users away from login/register
   if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated) {
-    console.log(`[Router][${guardId}] Already authenticated, redirecting to profile`)
+    console.log(
+      `[Router][${guardId}] Already authenticated, redirecting to profile`
+    )
     next({ name: 'Profile' })
     return
   }

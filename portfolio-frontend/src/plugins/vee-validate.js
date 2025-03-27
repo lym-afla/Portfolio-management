@@ -1,12 +1,12 @@
-import { defineRule, configure } from 'vee-validate';
-import { required, email, min, max } from '@vee-validate/rules';
-import { localize } from '@vee-validate/i18n';
+import { defineRule, configure } from 'vee-validate'
+import { required, email, min, max } from '@vee-validate/rules'
+import { localize } from '@vee-validate/i18n'
 
 // Define the rules you want to use
-defineRule('required', required);
-defineRule('email', email);
-defineRule('min', min);
-defineRule('max', max);
+defineRule('required', required)
+defineRule('email', email)
+defineRule('min', min)
+defineRule('max', max)
 
 // Configure Vee-Validate
 configure({
@@ -18,4 +18,4 @@ configure({
       max: '{field} must not be more than 0:{max} characters',
     },
   }),
-});
+})

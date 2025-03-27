@@ -1,5 +1,7 @@
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
+
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+
 
 def paginate_table(table: List[Any], page: int, items_per_page: int) -> Tuple[Any, Dict[str, int]]:
     """
@@ -19,7 +21,7 @@ def paginate_table(table: List[Any], page: int, items_per_page: int) -> Tuple[An
         paginated_table = paginator.page(paginator.num_pages)
 
     return paginated_table, {
-        'total_items': paginator.count,
-        'current_page': paginated_table.number,
-        'total_pages': paginator.num_pages,
+        "total_items": paginator.count,
+        "current_page": paginated_table.number,
+        "total_pages": paginator.num_pages,
     }

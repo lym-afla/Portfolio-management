@@ -1,12 +1,10 @@
 <template>
   <v-dialog v-model="dialog" max-width="600px">
     <v-card>
-      <v-card-title class="text-h5 pb-2">
-        Import FX Rates
-      </v-card-title>
+      <v-card-title class="text-h5 pb-2"> Import FX Rates </v-card-title>
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-        
+
         <v-select
           v-model="importType"
           :items="importTypes"
@@ -14,27 +12,39 @@
           item-value="value"
           label="Import Type"
           :disabled="isImporting"
-        ></v-select>
+        />
 
         <v-row v-if="importType === 'auto' && stats" class="mb-4">
           <v-col cols="12" sm="4">
             <v-card elevation="2" class="pa-2 text-center">
-              <v-icon color="primary" size="large" class="mb-2">mdi-calendar-range</v-icon>
-              <v-card-title class="text-h6">{{ stats.total_dates }}</v-card-title>
+              <v-icon color="primary" size="large" class="mb-2"
+                >mdi-calendar-range</v-icon
+              >
+              <v-card-title class="text-h6">{{
+                stats.total_dates
+              }}</v-card-title>
               <v-card-subtitle>Total Dates</v-card-subtitle>
             </v-card>
           </v-col>
           <v-col cols="12" sm="4">
             <v-card elevation="2" class="pa-2 text-center">
-              <v-icon color="error" size="large" class="mb-2">mdi-currency-usd-off</v-icon>
-              <v-card-title class="text-h6">{{ stats.missing_instances }}</v-card-title>
+              <v-icon color="error" size="large" class="mb-2"
+                >mdi-currency-usd-off</v-icon
+              >
+              <v-card-title class="text-h6">{{
+                stats.missing_instances
+              }}</v-card-title>
               <v-card-subtitle>Missing FX</v-card-subtitle>
             </v-card>
           </v-col>
           <v-col cols="12" sm="4">
             <v-card elevation="2" class="pa-2 text-center">
-              <v-icon color="warning" size="large" class="mb-2">mdi-currency-usd</v-icon>
-              <v-card-title class="text-h6">{{ stats.incomplete_instances }}</v-card-title>
+              <v-icon color="warning" size="large" class="mb-2"
+                >mdi-currency-usd</v-icon
+              >
+              <v-card-title class="text-h6">{{
+                stats.incomplete_instances
+              }}</v-card-title>
               <v-card-subtitle>Incomplete FX</v-card-subtitle>
             </v-card>
           </v-col>
@@ -48,13 +58,13 @@
             item-value="value"
             label="Import Option"
             :disabled="isImporting"
-          ></v-select>
+          />
         </template>
 
         <template v-else-if="importType === 'manual'">
           <v-radio-group v-model="dateType" row>
-            <v-radio label="Single Date" value="single"></v-radio>
-            <v-radio label="Date Range" value="range"></v-radio>
+            <v-radio label="Single Date" value="single" />
+            <v-radio label="Date Range" value="range" />
           </v-radio-group>
 
           <v-row v-if="dateType === 'single'">
@@ -63,9 +73,9 @@
                 v-model="singleDate"
                 label="Date"
                 type="date"
-                :rules="[v => !!v || 'Date is required']"
+                :rules="[(v) => !!v || 'Date is required']"
                 :disabled="isImporting"
-              ></v-text-field>
+              />
             </v-col>
           </v-row>
 
@@ -75,18 +85,18 @@
                 v-model="startDate"
                 label="Start Date"
                 type="date"
-                :rules="[v => !!v || 'Start date is required']"
+                :rules="[(v) => !!v || 'Start date is required']"
                 :disabled="isImporting"
-              ></v-text-field>
+              />
             </v-col>
             <v-col cols="6">
               <v-text-field
                 v-model="endDate"
                 label="End Date"
                 type="date"
-                :rules="[v => !!v || 'End date is required']"
+                :rules="[(v) => !!v || 'End date is required']"
                 :disabled="isImporting"
-              ></v-text-field>
+              />
             </v-col>
           </v-row>
 
@@ -98,13 +108,20 @@
             item-value="value"
             label="Frequency"
             :disabled="isImporting"
-          ></v-select>
+          />
         </template>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="startImport" :loading="isImporting" :disabled="!isFormValid">Import</v-btn>
+        <v-btn
+          color="blue darken-1"
+          text
+          @click="startImport"
+          :loading="isImporting"
+          :disabled="!isFormValid"
+          >Import</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -127,7 +144,7 @@
       </v-card-title>
       <v-card-text>
         <p>The import process was stopped.</p>
-        <v-divider class="my-3"></v-divider>
+        <v-divider class="my-3" />
         <v-row dense>
           <v-col cols="12">
             <v-card outlined>
@@ -140,7 +157,9 @@
                 <v-list-item-title class="text-h6">
                   {{ current }}
                 </v-list-item-title>
-                <v-list-item-subtitle>FX rates imported before stopping</v-list-item-subtitle>
+                <v-list-item-subtitle
+                  >FX rates imported before stopping</v-list-item-subtitle
+                >
               </v-list-item>
             </v-card>
           </v-col>
@@ -155,14 +174,16 @@
                 <v-list-item-title class="text-h6">
                   {{ total - current }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Remaining FX rates not imported</v-list-item-subtitle>
+                <v-list-item-subtitle
+                  >Remaining FX rates not imported</v-list-item-subtitle
+                >
               </v-list-item>
             </v-card>
           </v-col>
         </v-row>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="primary" @click="closeStopDialog">Close</v-btn>
       </v-card-actions>
     </v-card>
@@ -186,7 +207,9 @@
                 <v-list-item-title class="text-h6">
                   {{ importStats.totalImported }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Total FX rates imported</v-list-item-subtitle>
+                <v-list-item-subtitle
+                  >Total FX rates imported</v-list-item-subtitle
+                >
               </v-list-item>
             </v-card>
           </v-col>
@@ -223,13 +246,13 @@
         </v-row>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="primary" @click="closeSuccessDialog">Close</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
-  
+
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getFXImportStats, importFXRates, cancelFXImport } from '@/services/api'
@@ -245,7 +268,7 @@ export default {
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
     const stats = ref(null)
     const error = ref('')
@@ -253,7 +276,7 @@ export default {
     const importOptions = [
       { text: 'Import missing instances only', value: 'missing' },
       { text: 'Update incomplete instances only', value: 'incomplete' },
-      { text: 'Import missing and update incomplete', value: 'both' }
+      { text: 'Import missing and update incomplete', value: 'both' },
     ]
     const isImporting = ref(false)
     const showProgress = ref(false)
@@ -266,7 +289,7 @@ export default {
     const importStats = ref({
       totalImported: 0,
       missingFilled: 0,
-      incompleteUpdated: 0
+      incompleteUpdated: 0,
     })
     const abortController = ref(null)
     const showStopDialog = ref(false)
@@ -274,7 +297,7 @@ export default {
     const importType = ref('auto')
     const importTypes = [
       { text: 'Auto Import', value: 'auto' },
-      { text: 'Manual Import', value: 'manual' }
+      { text: 'Manual Import', value: 'manual' },
     ]
     const dateType = ref('single')
     const singleDate = ref(null)
@@ -286,7 +309,7 @@ export default {
       { text: 'Weekly', value: 'weekly' },
       { text: 'Monthly', value: 'monthly' },
       { text: 'Quarterly', value: 'quarterly' },
-      { text: 'Yearly', value: 'yearly' }
+      { text: 'Yearly', value: 'yearly' },
     ]
 
     const isFormValid = computed(() => {
@@ -350,7 +373,7 @@ export default {
             single_date: singleDate.value,
             start_date: startDate.value,
             end_date: endDate.value,
-            frequency: frequency.value
+            frequency: frequency.value,
           }
         }
         await importFXRates(importData, abortController.value.signal)
@@ -458,8 +481,8 @@ export default {
       endDate,
       frequency,
       frequencyOptions,
-      isFormValid
+      isFormValid,
     }
-  }
+  },
 }
 </script>

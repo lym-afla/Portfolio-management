@@ -5,7 +5,7 @@ export function useErrorHandler() {
 
   const handleApiError = (error) => {
     let errorMessage = 'An unexpected error occurred.'
-    console.log("handleApiError:", error)
+    console.log('handleApiError:', error)
 
     if (error.response) {
       if (error.response.data && error.response.data.error) {
@@ -14,7 +14,8 @@ export function useErrorHandler() {
         errorMessage = 'You do not have permission to access this resource.'
       }
     } else if (error.request) {
-      errorMessage = 'The server did not respond. Please check your internet connection.'
+      errorMessage =
+        'The server did not respond. Please check your internet connection.'
     } else if (error.message) {
       errorMessage = error.message
     }
@@ -23,6 +24,6 @@ export function useErrorHandler() {
   }
 
   return {
-    handleApiError
+    handleApiError,
   }
 }

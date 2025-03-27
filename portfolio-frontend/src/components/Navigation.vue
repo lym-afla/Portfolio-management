@@ -1,12 +1,8 @@
 <template>
   <v-navigation-drawer v-model="drawer" :rail="!extended" permanent>
-    <v-list-item
-      @click="toggleExtended"
-      prepend-icon="mdi-menu"
-      title="Menu"
-    ></v-list-item>
+    <v-list-item @click="toggleExtended" prepend-icon="mdi-menu" title="Menu" />
 
-    <v-divider></v-divider>
+    <v-divider />
 
     <v-list density="compact" nav>
       <v-list-item
@@ -16,10 +12,10 @@
         to="/summary"
         :active="isActive('/summary')"
         @click="goToPage('/summary')"
-      ></v-list-item>
+      />
     </v-list>
 
-    <v-divider></v-divider>
+    <v-divider />
 
     <v-list density="compact" nav>
       <v-list-item
@@ -31,10 +27,10 @@
         :to="item.to"
         :active="isActive(item.to)"
         @click="goToPage(item.to)"
-      ></v-list-item>
+      />
     </v-list>
 
-    <v-divider></v-divider>
+    <v-divider />
 
     <v-list density="compact" nav>
       <v-list-group value="database" :mandatory="false">
@@ -45,7 +41,7 @@
             title="Database"
             :active="isActive('/database')"
             @click="handleDatabaseClick"
-          ></v-list-item>
+          />
         </template>
 
         <template v-if="extended">
@@ -57,19 +53,19 @@
             :to="subItem.to"
             :active="isActive(subItem.to)"
             @click="goToPage(subItem.to)"
-          ></v-list-item>
+          />
         </template>
       </v-list-group>
     </v-list>
 
     <template v-slot:append>
-      <v-divider></v-divider>
+      <v-divider />
       <v-list density="compact" nav>
         <v-list-item
           prepend-icon="mdi-calendar"
           :title="effectiveCurrentDate || 'No date set'"
           value="effective-date"
-        ></v-list-item>
+        />
         <v-list-item
           prepend-icon="mdi-account-circle"
           title="Profile"
@@ -104,20 +100,54 @@ export default {
     const route = useRoute()
     const router = useRouter()
     const store = useStore()
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const effectiveCurrentDate = computed(
+      () => store.state.effectiveCurrentDate
+    )
 
     const menuItems = [
-      { title: 'Dashboard', icon: 'mdi-monitor-dashboard', value: 'dashboard', to: '/dashboard' },
-      { title: 'Open Positions', icon: 'mdi-clipboard-check', value: 'open', to: '/open-positions' },
-      { title: 'Closed Positions', icon: 'mdi-clipboard-remove', value: 'closed', to: '/closed-positions' },
-      { title: 'Transactions', icon: 'mdi-swap-horizontal', value: 'transactions', to: '/transactions' },
+      {
+        title: 'Dashboard',
+        icon: 'mdi-monitor-dashboard',
+        value: 'dashboard',
+        to: '/dashboard',
+      },
+      {
+        title: 'Open Positions',
+        icon: 'mdi-clipboard-check',
+        value: 'open',
+        to: '/open-positions',
+      },
+      {
+        title: 'Closed Positions',
+        icon: 'mdi-clipboard-remove',
+        value: 'closed',
+        to: '/closed-positions',
+      },
+      {
+        title: 'Transactions',
+        icon: 'mdi-swap-horizontal',
+        value: 'transactions',
+        to: '/transactions',
+      },
     ]
 
     const databaseSubItems = [
-      { title: 'Brokers', icon: 'mdi-office-building', to: '/database/brokers' },
+      {
+        title: 'Brokers',
+        icon: 'mdi-office-building',
+        to: '/database/brokers',
+      },
       { title: 'Accounts', icon: 'mdi-bank', to: '/database/accounts' },
-      { title: 'Prices', icon: 'mdi-file-document-outline', to: '/database/prices' },
-      { title: 'Securities', icon: 'mdi-chart-line', to: '/database/securities' },
+      {
+        title: 'Prices',
+        icon: 'mdi-file-document-outline',
+        to: '/database/prices',
+      },
+      {
+        title: 'Securities',
+        icon: 'mdi-chart-line',
+        to: '/database/securities',
+      },
       { title: 'FX', icon: 'mdi-currency-usd', to: '/database/fx' },
     ]
 
@@ -140,9 +170,9 @@ export default {
     const handleDatabaseClick = () => {
       if (!extended.value) {
         extended.value = true
-      // } else {
-      //   // If already extended, navigate to a default database page or toggle the group
-      //   router.push('/database') // or any default database route
+        // } else {
+        //   // If already extended, navigate to a default database page or toggle the group
+        //   router.push('/database') // or any default database route
       }
     }
 
@@ -157,6 +187,6 @@ export default {
       effectiveCurrentDate,
       handleDatabaseClick,
     }
-  }
+  },
 }
 </script>

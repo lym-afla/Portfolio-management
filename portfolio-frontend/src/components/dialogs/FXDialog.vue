@@ -2,7 +2,9 @@
   <v-dialog v-model="dialog" max-width="500px">
     <v-card>
       <v-card-title>
-        <span class="text-h5">{{ isEdit ? 'Edit FX Rate' : 'Add FX Rate' }}</span>
+        <span class="text-h5">{{
+          isEdit ? 'Edit FX Rate' : 'Add FX Rate'
+        }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
@@ -14,8 +16,8 @@
               type="date"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-              :disabled="isEdit && field.name === 'date'" 
-            ></v-text-field>
+              :disabled="isEdit && field.name === 'date'"
+            />
             <v-text-field
               v-else-if="field.type === 'number'"
               v-model="form[field.name]"
@@ -24,21 +26,23 @@
               step="0.0001"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-text-field>
+            />
           </template>
         </v-form>
-        <v-alert
-          v-if="generalError"
-          type="error"
-          class="mt-3"
-        >
+        <v-alert v-if="generalError" type="error" class="mt-3">
           {{ generalError }}
         </v-alert>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="submitForm" :loading="isSubmitting">Save</v-btn>
+        <v-btn
+          color="blue darken-1"
+          text
+          @click="submitForm"
+          :loading="isSubmitting"
+          >Save</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -58,7 +62,7 @@ export default {
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
     const isEdit = computed(() => !!props.editItem)
     const form = ref({})
@@ -99,34 +103,42 @@ export default {
 
     onMounted(fetchFormStructure)
 
-    watch(() => props.editItem, (newValue) => {
-      if (newValue) {
-        form.value = { ...newValue }
-        // Ensure the date is not editable when editing
-        if (formFields.value) {
-          const dateField = formFields.value.find(field => field.name === 'date')
-          if (dateField) {
-            dateField.disabled = true
+    watch(
+      () => props.editItem,
+      (newValue) => {
+        if (newValue) {
+          form.value = { ...newValue }
+          // Ensure the date is not editable when editing
+          if (formFields.value) {
+            const dateField = formFields.value.find(
+              (field) => field.name === 'date'
+            )
+            if (dateField) {
+              dateField.disabled = true
+            }
+          }
+        } else {
+          initializeForm()
+          // Reset the date field to be editable when adding new FX rate
+          if (formFields.value) {
+            const dateField = formFields.value.find(
+              (field) => field.name === 'date'
+            )
+            if (dateField) {
+              dateField.disabled = false
+            }
           }
         }
-      } else {
-        initializeForm()
-        // Reset the date field to be editable when adding new FX rate
-        if (formFields.value) {
-          const dateField = formFields.value.find(field => field.name === 'date')
-          if (dateField) {
-            dateField.disabled = false
-          }
+        if (formFields.value && formFields.value.length > 0) {
+          errorMessages.value = formFields.value.reduce((acc, field) => {
+            acc[field.name] = []
+            return acc
+          }, {})
         }
-      }
-      if (formFields.value && formFields.value.length > 0) {
-        errorMessages.value = formFields.value.reduce((acc, field) => {
-          acc[field.name] = []
-          return acc
-        }, {})
-      }
-      generalError.value = ''
-    }, { immediate: true })
+        generalError.value = ''
+      },
+      { immediate: true }
+    )
 
     const closeDialog = () => {
       dialog.value = false
@@ -163,7 +175,8 @@ export default {
             }
           })
         } else {
-          generalError.value = error.message || 'An unexpected error occurred. Please try again.'
+          generalError.value =
+            error.message || 'An unexpected error occurred. Please try again.'
         }
       } finally {
         isSubmitting.value = false
@@ -181,6 +194,6 @@ export default {
       closeDialog,
       submitForm,
     }
-  }
+  },
 }
 </script>

@@ -1,6 +1,9 @@
 import { nextTick } from 'vue'
 
-const getFontFamily = () => getComputedStyle(document.documentElement).getPropertyValue('--system-font').trim();
+const getFontFamily = () =>
+  getComputedStyle(document.documentElement)
+    .getPropertyValue('--system-font')
+    .trim()
 
 export const getChartOptions = async (currency) => {
   await nextTick()
@@ -50,13 +53,13 @@ export const getChartOptions = async (currency) => {
             size: 14,
           },
           formatter: (value, ctx) => {
-            let sum = 0;
-            let dataArr = ctx.chart.data.datasets[0].data;
-            dataArr.map(data => {
-              sum += data;
-            });
-            let percentage = (value * 100 / sum).toFixed(0) + "%";
-            return ctx.chart.data.labels[ctx.dataIndex] + ' ' + percentage;
+            let sum = 0
+            let dataArr = ctx.chart.data.datasets[0].data
+            dataArr.map((data) => {
+              sum += data
+            })
+            let percentage = ((value * 100) / sum).toFixed(0) + '%'
+            return ctx.chart.data.labels[ctx.dataIndex] + ' ' + percentage
           },
           anchor: 'end',
           align: 'end',
@@ -79,11 +82,11 @@ export const getChartOptions = async (currency) => {
         x: {
           stacked: true,
           grid: {
-            display: false
+            display: false,
           },
           ticks: {
-            font: axisFont
-          }
+            font: axisFont,
+          },
         },
         y: {
           grace: '5%',
@@ -91,14 +94,14 @@ export const getChartOptions = async (currency) => {
           title: {
             display: true,
             text: currency,
-            font: axisFont
+            font: axisFont,
           },
           grid: {
-            display: false
+            display: false,
           },
           ticks: {
-            font: axisFont
-          }
+            font: axisFont,
+          },
         },
         y1: {
           grace: '5%',
@@ -106,29 +109,47 @@ export const getChartOptions = async (currency) => {
           display: true,
           position: 'right',
           ticks: {
-            callback: value => (value * 100).toFixed(0) + '%',
-            font: axisFont
+            callback: (value) => (value * 100).toFixed(0) + '%',
+            font: axisFont,
           },
           grid: {
-            display: false
-          }
-        }
+            display: false,
+          },
+        },
       },
       plugins: {
         datalabels: {
           anchor: (context) => {
-            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const datasets = context.chart.data.datasets.filter(
+              (ds) => ds.type === 'bar'
+            )
             const dataIndex = context.dataIndex
-            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
-            const lastNegativeIndex = datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v < 0)
-            return sum >= 0 ? 'end' : (lastNegativeIndex !== -1 ? 'start' : 'end')
+            const sum = datasets.reduce(
+              (total, ds) => total + (ds.data[dataIndex] || 0),
+              0
+            )
+            const lastNegativeIndex = datasets
+              .map((ds) => ds.data[dataIndex] || 0)
+              .findLastIndex((v) => v < 0)
+            return sum >= 0 ? 'end' : lastNegativeIndex !== -1 ? 'start' : 'end'
           },
           align: (context) => {
-            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const datasets = context.chart.data.datasets.filter(
+              (ds) => ds.type === 'bar'
+            )
             const dataIndex = context.dataIndex
-            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
-            const lastPositiveIndex = datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v > 0)
-            return sum >= 0 ? (lastPositiveIndex !== -1 ? 'top' : 'bottom') : 'bottom'
+            const sum = datasets.reduce(
+              (total, ds) => total + (ds.data[dataIndex] || 0),
+              0
+            )
+            const lastPositiveIndex = datasets
+              .map((ds) => ds.data[dataIndex] || 0)
+              .findLastIndex((v) => v > 0)
+            return sum >= 0
+              ? lastPositiveIndex !== -1
+                ? 'top'
+                : 'bottom'
+              : 'bottom'
           },
           font: {
             family: fontFamily,
@@ -138,44 +159,61 @@ export const getChartOptions = async (currency) => {
             if (context.dataset.type === 'line') {
               return (value * 100).toFixed(1) + '%'
             }
-            
-            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+
+            const datasets = context.chart.data.datasets.filter(
+              (ds) => ds.type === 'bar'
+            )
             const dataIndex = context.dataIndex
-            
-            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
-            
-            const labelIndex = sum >= 0 
-              ? datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v > 0)
-              : datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v < 0)
-            
+
+            const sum = datasets.reduce(
+              (total, ds) => total + (ds.data[dataIndex] || 0),
+              0
+            )
+
+            const labelIndex =
+              sum >= 0
+                ? datasets
+                    .map((ds) => ds.data[dataIndex] || 0)
+                    .findLastIndex((v) => v > 0)
+                : datasets
+                    .map((ds) => ds.data[dataIndex] || 0)
+                    .findLastIndex((v) => v < 0)
+
             return context.datasetIndex === labelIndex ? sum.toFixed(1) : null
           },
           color: () => 'black', // Use black for all labels
           offset: (context) => {
-            const datasets = context.chart.data.datasets.filter(ds => ds.type === 'bar')
+            const datasets = context.chart.data.datasets.filter(
+              (ds) => ds.type === 'bar'
+            )
             const dataIndex = context.dataIndex
-            const sum = datasets.reduce((total, ds) => total + (ds.data[dataIndex] || 0), 0)
-            const lastPositiveIndex = datasets.map(ds => ds.data[dataIndex] || 0).findLastIndex(v => v > 0)
+            const sum = datasets.reduce(
+              (total, ds) => total + (ds.data[dataIndex] || 0),
+              0
+            )
+            const lastPositiveIndex = datasets
+              .map((ds) => ds.data[dataIndex] || 0)
+              .findLastIndex((v) => v > 0)
             return sum >= 0 ? (lastPositiveIndex !== -1 ? 5 : -5) : -5
           },
         },
         tooltip: {
           callbacks: {
-            label: function(context) {
-              let label = context.dataset.label || '';
-              let value = context.parsed.y;
+            label: function (context) {
+              let label = context.dataset.label || ''
+              let value = context.parsed.y
 
-              if (label === "IRR (RHS)" || label === "Rolling IRR (RHS)") {
+              if (label === 'IRR (RHS)' || label === 'Rolling IRR (RHS)') {
                 // For line charts (IRR), show percentage with one decimal point
-                return `${label}: ${(value * 100).toFixed(1)}%`;
+                return `${label}: ${(value * 100).toFixed(1)}%`
               } else {
                 // For bar charts (NAV and other categories), show number with one decimal point
-                return `${label}: ${value.toFixed(1)}`;
+                return `${label}: ${value.toFixed(1)}`
               }
-            }
-          }
+            },
+          },
         },
-      }
+      },
     },
     colorPalette: [
       '#1976D2', // primary (blue)
@@ -190,6 +228,6 @@ export const getChartOptions = async (currency) => {
       '#3F51B5', // indigo
       '#009688', // teal
       '#FFC107', // amber
-    ]
+    ],
   }
 }

@@ -4,7 +4,7 @@ export function calculateDateRangeFromTimespan(timespan, effectiveDate) {
   const parsedEffectiveDate = parseISO(effectiveDate)
   let dateFromValue, dateToValue
 
-  if (timespan === "") {
+  if (timespan === '') {
     dateFromValue = null
     dateToValue = parsedEffectiveDate
   } else if (timespan === 'ytd') {
@@ -25,7 +25,9 @@ export function calculateDateRangeFromTimespan(timespan, effectiveDate) {
   }
 
   return {
-    dateFrom: dateFromValue ? format(new Date(startOfDay(dateFromValue)), 'yyyy-MM-dd') : null,
-    dateTo: format(new Date(dateToValue), 'yyyy-MM-dd')
+    dateFrom: dateFromValue
+      ? format(new Date(startOfDay(dateFromValue)), 'yyyy-MM-dd')
+      : null,
+    dateTo: format(new Date(dateToValue), 'yyyy-MM-dd'),
   }
 }

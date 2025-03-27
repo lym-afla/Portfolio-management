@@ -11,7 +11,7 @@
       <v-table density="compact">
         <thead>
           <tr>
-            <th></th>
+            <th />
             <th class="text-right">{{ props.currency }}</th>
           </tr>
         </thead>
@@ -35,22 +35,30 @@ export default {
   props: {
     summary: {
       type: Object,
-      required: true
+      required: true,
     },
     currency: {
       type: String,
-      default: 'USD'
-    }
+      default: 'USD',
+    },
   },
   setup(props) {
     const store = useStore()
-    
+
     const formatKey = (key) => {
-      return key.replace('_', ' ').replace(/^./, (str) => str.toUpperCase()).replace('Irr', 'IRR')
+      return key
+        .replace('_', ' ')
+        .replace(/^./, (str) => str.toUpperCase())
+        .replace('Irr', 'IRR')
     }
 
     const formatAccountSelection = computed(() => {
-      console.log("[SummaryCard]", store.state.accountSelection, store.state.selectedCurrency, store.state.user)
+      console.log(
+        '[SummaryCard]',
+        store.state.accountSelection,
+        store.state.selectedCurrency,
+        store.state.user
+      )
       const selection = store.state.accountSelection
       if (selection.type === 'all') {
         return 'All Accounts'
@@ -63,13 +71,13 @@ export default {
       }
       return ''
     })
-    
-    return { 
-      props, 
+
+    return {
+      props,
       formatKey,
-      formatAccountSelection
+      formatAccountSelection,
     }
-  }
+  },
 }
 </script>
 

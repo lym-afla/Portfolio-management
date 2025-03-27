@@ -11,7 +11,7 @@
           :disabled="key === 'username'"
           :error-messages="formErrors[key]"
           @input="clearError(key)"
-        ></v-text-field>
+        />
         <v-card-actions>
           <v-btn type="submit" color="primary" :loading="isLoading">Save</v-btn>
           <v-btn @click="cancel" color="secondary">Cancel</v-btn>
@@ -45,7 +45,10 @@ export default {
     const snackbarColor = ref('success')
 
     const formatLabel = (key) => {
-      return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+      return key
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
     }
 
     const clearError = (field) => {
@@ -57,7 +60,7 @@ export default {
     const fetchUserDetails = async () => {
       try {
         const response = await getUserProfile()
-        Object.keys(response).forEach(key => {
+        Object.keys(response).forEach((key) => {
           profileForm[key] = response[key]
           formErrors[key] = []
         })
@@ -72,29 +75,33 @@ export default {
       try {
         await editUserProfile(profileForm)
         // if (response.success) {
-          showSuccessMessage('Profile updated successfully')
-          setTimeout(() => {
-            router.push('/profile')
-          }, 1000)
+        showSuccessMessage('Profile updated successfully')
+        setTimeout(() => {
+          router.push('/profile')
+        }, 1000)
         // } else {
         //   handleErrors(response.errors)
         // }
       } catch (error) {
         console.error('Error saving profile:', error)
-        handleErrors(error.errors || { general: ['An unexpected error occurred'] })
+        handleErrors(
+          error.errors || { general: ['An unexpected error occurred'] }
+        )
       } finally {
         isLoading.value = false
       }
     }
 
     const handleErrors = (errors) => {
-      Object.keys(formErrors).forEach(key => {
+      Object.keys(formErrors).forEach((key) => {
         formErrors[key] = errors[key] || []
       })
       if (errors.general) {
         showErrorMessage(errors.general[0])
       } else {
-        showErrorMessage('Failed to update profile. Please check the form for errors.')
+        showErrorMessage(
+          'Failed to update profile. Please check the form for errors.'
+        )
       }
     }
 

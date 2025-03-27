@@ -35,7 +35,7 @@
                   size="24"
                   width="2"
                   class="ml-2"
-                ></v-progress-circular>
+                />
                 <div class="text-body-2 ml-2">{{ currentMessage }}</div>
               </div>
             </v-card>
@@ -54,21 +54,17 @@
 
         <v-row no-gutters class="mb-4" v-if="!error">
           <v-col cols="12" class="text-center">
-            <v-btn 
-              color="error" 
-              @click="stopImport" 
-              :disabled="!canStop"
-            >
+            <v-btn color="error" @click="stopImport" :disabled="!canStop">
               Stop Import
             </v-btn>
           </v-col>
         </v-row>
 
-        <slot></slot>
+        <slot />
       </v-card-text>
-      
+
       <v-card-actions v-if="error">
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="primary" @click="closeDialog">Close</v-btn>
       </v-card-actions>
     </v-card>
@@ -84,32 +80,32 @@ export default {
     modelValue: Boolean,
     title: {
       type: String,
-      default: 'Progress'
+      default: 'Progress',
     },
     progress: {
       type: Number,
-      default: 0
+      default: 0,
     },
     current: {
       type: Number,
-      default: 0
+      default: 0,
     },
     total: {
       type: Number,
-      default: 0
+      default: 0,
     },
     currentMessage: {
       type: String,
-      default: ''
+      default: '',
     },
     error: {
       type: String,
-      default: ''
+      default: '',
     },
     canStop: {
       type: Boolean,
-      default: true
-    }
+      default: true,
+    },
   },
   emits: ['update:modelValue', 'stop-import', 'reset'],
   setup(props, { emit }) {
@@ -120,22 +116,28 @@ export default {
         if (!value) {
           emit('reset')
         }
-      }
+      },
     })
 
     // Watch for error changes
-    watch(() => props.error, (newError) => {
-      if (newError) {
-        console.log('ProgressDialog error changed:', newError)
+    watch(
+      () => props.error,
+      (newError) => {
+        if (newError) {
+          console.log('ProgressDialog error changed:', newError)
+        }
       }
-    })
+    )
 
     // Watch for message changes
-    watch(() => props.currentMessage, (newMessage) => {
-      if (newMessage) {
-        console.log('ProgressDialog: currentMessage changed to', newMessage)
+    watch(
+      () => props.currentMessage,
+      (newMessage) => {
+        if (newMessage) {
+          console.log('ProgressDialog: currentMessage changed to', newMessage)
+        }
       }
-    })
+    )
 
     return {
       dialogModel,
@@ -143,8 +145,8 @@ export default {
         dialogModel.value = false
         emit('reset')
       },
-      stopImport: () => emit('stop-import')
+      stopImport: () => emit('stop-import'),
     }
-  }
+  },
 }
 </script>

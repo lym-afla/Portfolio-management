@@ -7,7 +7,7 @@
       required
       :error-messages="fieldErrors.username"
       @input="clearError('username')"
-    ></v-text-field>
+    />
     <v-text-field
       v-model="password"
       label="Password"
@@ -16,9 +16,18 @@
       required
       :error-messages="fieldErrors.password"
       @input="clearError('password')"
-    ></v-text-field>
-    <v-btn type="submit" color="primary" block :loading="loading" :disabled="loading">Login</v-btn>
-    <v-alert v-if="generalError" type="error" class="mt-3">{{ generalError }}</v-alert>
+    />
+    <v-btn
+      type="submit"
+      color="primary"
+      block
+      :loading="loading"
+      :disabled="loading"
+      >Login</v-btn
+    >
+    <v-alert v-if="generalError" type="error" class="mt-3">{{
+      generalError
+    }}</v-alert>
   </v-form>
 </template>
 
@@ -59,16 +68,21 @@ export default {
       console.log('Setting errors:', errors)
       if (typeof errors === 'string') {
         if (errors.includes('Proxy')) {
-          generalError.value = 'Proxy error. Please check your internet connection. Or application server is down.'
+          generalError.value =
+            'Proxy error. Please check your internet connection. Or application server is down.'
         } else {
           generalError.value = errors
         }
       } else if (typeof errors === 'object') {
-        Object.keys(errors).forEach(field => {
+        Object.keys(errors).forEach((field) => {
           if (field in fieldErrors) {
-            fieldErrors[field] = Array.isArray(errors[field]) ? errors[field] : [errors[field]]
+            fieldErrors[field] = Array.isArray(errors[field])
+              ? errors[field]
+              : [errors[field]]
           } else if (field === 'non_field_errors') {
-            generalError.value = Array.isArray(errors[field]) ? errors[field][0] : errors[field]
+            generalError.value = Array.isArray(errors[field])
+              ? errors[field][0]
+              : errors[field]
           } else {
             generalError.value = errors[field]
           }
@@ -85,8 +99,8 @@ export default {
       generalError,
       submitForm,
       setErrors,
-      clearError
+      clearError,
     }
-  }
+  },
 }
 </script>

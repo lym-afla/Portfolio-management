@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
     <v-card class="mb-4">
@@ -19,17 +19,17 @@
             >
               <template v-slot:prepend-item>
                 <v-list-item
-                title="Select All"
-                @click="toggleSelectAllAssetTypes"
+                  title="Select All"
+                  @click="toggleSelectAllAssetTypes"
                 >
                   <template v-slot:prepend>
                     <v-checkbox-btn
                       :model-value="assetTypesAllSelected"
                       :indeterminate="assetTypesIndeterminate"
-                    ></v-checkbox-btn>
+                    />
                   </template>
                 </v-list-item>
-                <v-divider class="mt-2"></v-divider>
+                <v-divider class="mt-2" />
               </template>
               <template v-slot:selection="{ item, index }">
                 <v-chip v-if="index < 3">
@@ -52,7 +52,7 @@
               item-title="name"
               item-value="id"
               clearable
-            ></v-autocomplete>
+            />
           </v-col>
           <v-col cols="12" md="4">
             <v-autocomplete
@@ -66,17 +66,17 @@
             >
               <template v-slot:prepend-item>
                 <v-list-item
-                title="Select All"
-                @click="toggleSelectAllSecurities"
+                  title="Select All"
+                  @click="toggleSelectAllSecurities"
                 >
                   <template v-slot:prepend>
                     <v-checkbox-btn
                       :model-value="securitiesAllSelected"
                       :indeterminate="securitiesIndeterminate"
-                    ></v-checkbox-btn>
+                    />
                   </template>
                 </v-list-item>
-                <v-divider class="mt-2"></v-divider>
+                <v-divider class="mt-2" />
               </template>
               <template v-slot:selection="{ item, index }">
                 <v-chip v-if="index < 1">
@@ -94,18 +94,10 @@
         </v-row>
         <v-row class="mt-n6">
           <v-col cols="12" md="4">
-            <v-text-field
-              v-model="dateFrom"
-              label="Start Date"
-              type="date"
-            ></v-text-field>
+            <v-text-field v-model="dateFrom" label="Start Date" type="date" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field
-              v-model="dateTo"
-              label="End Date"
-              type="date"
-            ></v-text-field>
+            <v-text-field v-model="dateTo" label="End Date" type="date" />
           </v-col>
           <v-col cols="12" md="4" class="d-flex align-center">
             <v-btn color="primary" @click="applyFilters" block>
@@ -183,15 +175,15 @@
           </router-link>
         </template>
         <template #[`item.price`]="{ item }">
-          <span class="editable" @click="editPrice(item)">{{ item.price }}</span>
+          <span class="editable" @click="editPrice(item)">{{
+            item.price
+          }}</span>
         </template>
         <template #[`item.actions`]="{ item }">
           <v-icon small class="mr-2" @click="editPrice(item)">
             mdi-pencil
           </v-icon>
-          <v-icon small @click="openDeleteDialog(item)">
-            mdi-delete
-          </v-icon>
+          <v-icon small @click="openDeleteDialog(item)"> mdi-delete </v-icon>
         </template>
         <template v-slot:bottom>
           <v-row align="center" class="pa-4">
@@ -204,11 +196,13 @@
                 variant="outlined"
                 @update:model-value="handleItemsPerPageChange"
                 hide-details
-              ></v-select>
+              />
             </v-col>
             <v-col cols="12" sm="4" class="text-center">
               <span class="text-caption">
-                Showing {{ ((currentPage - 1) * itemsPerPage) + 1 }} - {{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }}
+                Showing {{ (currentPage - 1) * itemsPerPage + 1 }} -
+                {{ Math.min(currentPage * itemsPerPage, totalItems) }} of
+                {{ totalItems }}
               </span>
             </v-col>
             <v-col cols="12" sm="4">
@@ -218,7 +212,7 @@
                 rounded="circle"
                 :total-visible="7"
                 @update:model-value="handlePageChange"
-              ></v-pagination>
+              />
             </v-col>
           </v-row>
         </template>
@@ -233,22 +227,42 @@
           <v-list dense>
             <v-list-item>
               <v-list-item-title>Date:</v-list-item-title>
-              <v-list-item-subtitle>{{ deletedItem.date }}</v-list-item-subtitle>
+              <v-list-item-subtitle>{{
+                deletedItem.date
+              }}</v-list-item-subtitle>
             </v-list-item>
             <v-list-item>
               <v-list-item-title>Security:</v-list-item-title>
-              <v-list-item-subtitle>{{ deletedItem.security__name }}</v-list-item-subtitle>
+              <v-list-item-subtitle>{{
+                deletedItem.security__name
+              }}</v-list-item-subtitle>
             </v-list-item>
             <v-list-item>
               <v-list-item-title>Price:</v-list-item-title>
-              <v-list-item-subtitle>{{ deletedItem.price }} {{ deletedItem.security__currency }}</v-list-item-subtitle>
+              <v-list-item-subtitle
+                >{{ deletedItem.price }}
+                {{ deletedItem.security__currency }}</v-list-item-subtitle
+              >
             </v-list-item>
           </v-list>
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="closeDeleteDialog" :disabled="isDeleting">Cancel</v-btn>
-          <v-btn color="red darken-1" text @click="confirmDelete" :loading="isDeleting" :disabled="isDeleting">Delete</v-btn>
+          <v-spacer />
+          <v-btn
+            color="blue darken-1"
+            text
+            @click="closeDeleteDialog"
+            :disabled="isDeleting"
+            >Cancel</v-btn
+          >
+          <v-btn
+            color="red darken-1"
+            text
+            @click="confirmDelete"
+            :loading="isDeleting"
+            :disabled="isDeleting"
+            >Delete</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -261,23 +275,26 @@
       @price-updated="handlePriceUpdated"
     />
 
-    <SecurityFormDialog
-      v-model="showSecurityDialog"
-      :edit-item="null"
-    />
+    <SecurityFormDialog v-model="showSecurityDialog" :edit-item="null" />
 
     <PriceImportDialog
       v-model="showImportDialog"
       @prices-imported="handlePricesImported"
     />
-
   </div>
 </template>
 
 <script>
 import { ref, watch, computed, onMounted, inject } from 'vue'
 import { useStore } from 'vuex'
-import { getAssetTypes, getAccounts, getSecurities, getPrices, deletePrice, getPriceDetails } from '@/services/api'
+import {
+  getAssetTypes,
+  getAccounts,
+  getSecurities,
+  getPrices,
+  deletePrice,
+  getPriceDetails,
+} from '@/services/api'
 import debounce from 'lodash/debounce'
 import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
@@ -286,7 +303,13 @@ import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
 import { getChartOptions } from '@/config/chartConfig'
-import { subDays, subMonths, subYears, startOfYear, differenceInDays } from 'date-fns'
+import {
+  subDays,
+  subMonths,
+  subYears,
+  startOfYear,
+  differenceInDays,
+} from 'date-fns'
 
 export default {
   name: 'PricesPage',
@@ -308,7 +331,7 @@ export default {
       handlePageChange,
       handleItemsPerPageChange,
       handleSortChange,
-      handleTimespanChange
+      handleTimespanChange,
     } = useTableSettings()
 
     const assetTypes = ref([])
@@ -331,7 +354,9 @@ export default {
     const showError = inject('showError')
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+    const pageCount = computed(() =>
+      Math.ceil(totalItems.value / itemsPerPage.value)
+    )
 
     const headers = [
       { title: 'Date', key: 'date' },
@@ -362,7 +387,7 @@ export default {
       if (assetTypesAllSelected.value) {
         selectedAssetTypes.value = []
       } else {
-        selectedAssetTypes.value = assetTypes.value.map(item => item.value)
+        selectedAssetTypes.value = assetTypes.value.map((item) => item.value)
       }
     }
 
@@ -370,17 +395,14 @@ export default {
       if (securitiesAllSelected.value) {
         selectedSecurities.value = []
       } else {
-        selectedSecurities.value = securities.value.map(item => item.id)
+        selectedSecurities.value = securities.value.map((item) => item.id)
       }
     }
 
     onMounted(async () => {
       try {
-        const [assetTypesData, accountsData, securitiesData] = await Promise.all([
-          getAssetTypes(),
-          getAccounts(),
-          getSecurities(),
-        ])
+        const [assetTypesData, accountsData, securitiesData] =
+          await Promise.all([getAssetTypes(), getAccounts(), getSecurities()])
         console.log('accountsData', accountsData)
         console.log('securitiesData', securitiesData)
         console.log('assetTypesData', assetTypesData)
@@ -389,7 +411,6 @@ export default {
         securities.value = securitiesData
 
         await handleTimespanChange('ytd')
-
       } catch (error) {
         console.error('Error fetching initial data:', error)
       }
@@ -397,14 +418,17 @@ export default {
 
     const fetchSecurities = debounce(async () => {
       try {
-        securities.value = await getSecurities(selectedAssetTypes.value, selectedAccount.value)
+        securities.value = await getSecurities(
+          selectedAssetTypes.value,
+          selectedAccount.value
+        )
         // Reset securities if they are no longer in the list
-        selectedSecurities.value = selectedSecurities.value.filter(id =>
-          securities.value.some(security => security.id === id)
+        selectedSecurities.value = selectedSecurities.value.filter((id) =>
+          securities.value.some((security) => security.id === id)
         )
         // Automatically select all securities if a account is selected
         if (selectedAccount.value) {
-          selectedSecurities.value = securities.value.map(item => item.id);
+          selectedSecurities.value = securities.value.map((item) => item.id)
         }
       } catch (error) {
         console.error('Error fetching securities:', error)
@@ -426,7 +450,7 @@ export default {
           endDate: dateTo.value,
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
-          sortBy: sortBy.value[0] || {}
+          sortBy: sortBy.value[0] || {},
         })
         console.log('API Response:', response) // Log the response
         priceData.value = response.prices
@@ -485,7 +509,8 @@ export default {
         await deletePrice(deletedItem.value.id)
         await fetchPriceData()
       } catch (error) {
-        const errorMessage = error.response?.data?.message || error.message || 'Unknown error'
+        const errorMessage =
+          error.response?.data?.message || error.message || 'Unknown error'
         showError(`Failed to delete price: ${errorMessage}`)
       } finally {
         isDeleting.value = false
@@ -494,7 +519,7 @@ export default {
     }
 
     const handlePriceUpdated = (updatedPrice) => {
-      const index = priceData.value.findIndex(p => p.id === updatedPrice.id)
+      const index = priceData.value.findIndex((p) => p.id === updatedPrice.id)
       if (index !== -1) {
         priceData.value[index] = updatedPrice
       }
@@ -516,12 +541,7 @@ export default {
     }
 
     watch(
-      [
-        () => store.state.dataRefreshTrigger,
-        itemsPerPage,
-        currentPage,
-        sortBy,
-      ],
+      [() => store.state.dataRefreshTrigger, itemsPerPage, currentPage, sortBy],
       () => {
         if (!isApplyingFilters.value) {
           fetchPriceData()
@@ -535,19 +555,29 @@ export default {
     const selectedPeriod = ref('1Y')
     const chartOptionsLoaded = ref(false)
 
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const effectiveCurrentDate = computed(
+      () => store.state.effectiveCurrentDate
+    )
 
     const getStartDate = (period) => {
       const currentDate = new Date(effectiveCurrentDate.value)
       switch (period) {
-        case '7d': return subDays(currentDate, 7)
-        case '1m': return subMonths(currentDate, 1)
-        case '3m': return subMonths(currentDate, 3)
-        case '6m': return subMonths(currentDate, 6)
-        case '1Y': return subYears(currentDate, 1)
-        case '3Y': return subYears(currentDate, 3)
-        case '5Y': return subYears(currentDate, 5)
-        case 'All': return null
+        case '7d':
+          return subDays(currentDate, 7)
+        case '1m':
+          return subMonths(currentDate, 1)
+        case '3m':
+          return subMonths(currentDate, 3)
+        case '6m':
+          return subMonths(currentDate, 6)
+        case '1Y':
+          return subYears(currentDate, 1)
+        case '3Y':
+          return subYears(currentDate, 3)
+        case '5Y':
+          return subYears(currentDate, 5)
+        case 'All':
+          return null
         default:
           if (period.startsWith('YTD-')) {
             return startOfYear(currentDate)
@@ -559,12 +589,18 @@ export default {
     const filteredPriceData = computed(() => {
       const startDate = getStartDate(selectedPeriod.value)
       if (!startDate) return priceData.value
-      return priceData.value.filter(item => new Date(item.date) >= startDate)
+      return priceData.value.filter((item) => new Date(item.date) >= startDate)
     })
 
     const getLastAvailableDataPoint = (data, targetDate) => {
-      const sortedData = [...data].sort((a, b) => new Date(b.date) - new Date(a.date))
-      return sortedData.find(item => new Date(item.date) <= new Date(targetDate)) || sortedData[0]
+      const sortedData = [...data].sort(
+        (a, b) => new Date(b.date) - new Date(a.date)
+      )
+      return (
+        sortedData.find(
+          (item) => new Date(item.date) <= new Date(targetDate)
+        ) || sortedData[0]
+      )
     }
 
     const chartData = computed(() => {
@@ -577,20 +613,31 @@ export default {
       }, {})
 
       return {
-        datasets: Object.entries(groupedData).map(([securityName, data], index) => {
-          if (effectiveCurrentDate.value) {
-            const lastDataPoint = getLastAvailableDataPoint(data, effectiveCurrentDate.value)
-            if (lastDataPoint) {
-              data.push({ x: new Date(effectiveCurrentDate.value), y: lastDataPoint.y })
+        datasets: Object.entries(groupedData).map(
+          ([securityName, data], index) => {
+            if (effectiveCurrentDate.value) {
+              const lastDataPoint = getLastAvailableDataPoint(
+                data,
+                effectiveCurrentDate.value
+              )
+              if (lastDataPoint) {
+                data.push({
+                  x: new Date(effectiveCurrentDate.value),
+                  y: lastDataPoint.y,
+                })
+              }
+            }
+            return {
+              label: securityName,
+              data: data,
+              borderColor:
+                chartOptions.value?.colorPalette?.[
+                  index % (chartOptions.value?.colorPalette?.length || 1)
+                ] || 'rgba(75, 192, 192, 1)',
+              tension: 0.1,
             }
           }
-          return {
-            label: securityName,
-            data: data,
-            borderColor: chartOptions.value?.colorPalette?.[index % (chartOptions.value?.colorPalette?.length || 1)] || 'rgba(75, 192, 192, 1)',
-            tension: 0.1
-          }
-        })
+        ),
       }
     })
 
@@ -635,43 +682,46 @@ export default {
                 week: 'd MMM',
                 month: 'MMM yyyy',
                 quarter: 'QQQ yyyy',
-                year: 'yyyy'
-              }
+                year: 'yyyy',
+              },
             },
             grid: {
-              display: false
+              display: false,
             },
             title: {
-              display: false
+              display: false,
             },
-            max: effectiveCurrentDate.value
+            max: effectiveCurrentDate.value,
           },
           y: {
             beginAtZero: false,
             grid: {
-              display: true
+              display: true,
             },
             title: {
               display: true,
-              text: 'Price'
-            }
-          }
+              text: 'Price',
+            },
+          },
         },
         plugins: {
           legend: {
-            display: true
+            display: true,
           },
           tooltip: {
             callbacks: {
-              title: function(context) {
-                return new Date(context[0].parsed.x).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-              }
-            }
+              title: function (context) {
+                return new Date(context[0].parsed.x).toLocaleDateString(
+                  'en-US',
+                  { year: 'numeric', month: 'short', day: 'numeric' }
+                )
+              },
+            },
           },
           datalabels: {
-            display: false
-          }
-        }
+            display: false,
+          },
+        },
       }
       chartOptionsLoaded.value = true
     }
@@ -737,7 +787,7 @@ export default {
       chartOptions,
       selectedPeriod,
       effectiveCurrentDate,
-      chartOptionsLoaded
+      chartOptionsLoaded,
     }
   },
 }

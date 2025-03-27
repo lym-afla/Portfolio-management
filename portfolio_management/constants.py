@@ -1,102 +1,98 @@
-CURRENCY_CHOICES = (
-    ('USD', '$'),
-    ('EUR', '€'),
-    ('GBP', '£'),
-    ('RUB', '₽'),
-    ('CHF', 'Fr')
-)
+from tinkoff.invest import InstrumentType, OperationType
+
+CURRENCY_CHOICES = (("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr"))
 
 # Account selection types
-ACCOUNT_TYPE_ALL = 'all'
-ACCOUNT_TYPE_INDIVIDUAL = 'account'
-ACCOUNT_TYPE_GROUP = 'group'
-ACCOUNT_TYPE_BROKER = 'broker'
+ACCOUNT_TYPE_ALL = "all"
+ACCOUNT_TYPE_INDIVIDUAL = "account"
+ACCOUNT_TYPE_GROUP = "group"
+ACCOUNT_TYPE_BROKER = "broker"
 
 ACCOUNT_TYPE_CHOICES = [
-    (ACCOUNT_TYPE_ALL, 'All Accounts'),
-    (ACCOUNT_TYPE_INDIVIDUAL, 'Individual Account'),
-    (ACCOUNT_TYPE_GROUP, 'Account Group'),
-    (ACCOUNT_TYPE_BROKER, 'Broker')
+    (ACCOUNT_TYPE_ALL, "All Accounts"),
+    (ACCOUNT_TYPE_INDIVIDUAL, "Individual Account"),
+    (ACCOUNT_TYPE_GROUP, "Account Group"),
+    (ACCOUNT_TYPE_BROKER, "Broker"),
 ]
 
-TRANSACTION_TYPE_CASH_IN = 'Cash in'
-TRANSACTION_TYPE_CASH_OUT = 'Cash out'
-TRANSACTION_TYPE_BUY = 'Buy'
-TRANSACTION_TYPE_SELL = 'Sell'
-TRANSACTION_TYPE_DIVIDEND = 'Dividend'
-TRANSACTION_TYPE_BROKER_COMMISSION = 'Broker commission'
-TRANSACTION_TYPE_TAX = 'Tax'
-TRANSACTION_TYPE_INTEREST_INCOME = 'Interest income'
+TRANSACTION_TYPE_CASH_IN = "Cash in"
+TRANSACTION_TYPE_CASH_OUT = "Cash out"
+TRANSACTION_TYPE_BUY = "Buy"
+TRANSACTION_TYPE_SELL = "Sell"
+TRANSACTION_TYPE_DIVIDEND = "Dividend"
+TRANSACTION_TYPE_BROKER_COMMISSION = "Broker commission"
+TRANSACTION_TYPE_TAX = "Tax"
+TRANSACTION_TYPE_INTEREST_INCOME = "Interest income"
 
 TRANSACTION_TYPE_CHOICES = (
-    (TRANSACTION_TYPE_CASH_IN, 'Cash in'),
-    (TRANSACTION_TYPE_CASH_OUT, 'Cash out'),
-    (TRANSACTION_TYPE_BUY, 'Buy'),
-    (TRANSACTION_TYPE_SELL, 'Sell'),
-    (TRANSACTION_TYPE_DIVIDEND, 'Dividend'),
-    (TRANSACTION_TYPE_BROKER_COMMISSION, 'Broker commission'),
-    (TRANSACTION_TYPE_TAX, 'Tax'),
-    (TRANSACTION_TYPE_INTEREST_INCOME, 'Interest income'),
+    (TRANSACTION_TYPE_CASH_IN, "Cash in"),
+    (TRANSACTION_TYPE_CASH_OUT, "Cash out"),
+    (TRANSACTION_TYPE_BUY, "Buy"),
+    (TRANSACTION_TYPE_SELL, "Sell"),
+    (TRANSACTION_TYPE_DIVIDEND, "Dividend"),
+    (TRANSACTION_TYPE_BROKER_COMMISSION, "Broker commission"),
+    (TRANSACTION_TYPE_TAX, "Tax"),
+    (TRANSACTION_TYPE_INTEREST_INCOME, "Interest income"),
 )
 
 NAV_BARCHART_CHOICES = (
-    ('Broker', 'Broker'),
-    ('Asset type', 'Asset type'),
-    ('Asset class', 'Asset class'),
-    ('Currency', 'Currency'),
-    ('No breakdown', 'No breakdown'),
+    ("Broker", "Broker"),
+    ("Asset type", "Asset type"),
+    ("Asset class", "Asset class"),
+    ("Currency", "Currency"),
+    ("No breakdown", "No breakdown"),
 )
 
 ASSET_TYPE_CHOICES = (
-    ('Stock', 'Stock'),
-    ('Bond', 'Bond'),
-    ('ETF', 'ETF'),
-    ('Mutual fund', 'Mutual fund'),
-    ('Option', 'Option'),
-    ('Future', 'Future'),
+    ("Stock", "Stock"),
+    ("Bond", "Bond"),
+    ("ETF", "ETF"),
+    ("Mutual fund", "Mutual fund"),
+    ("Option", "Option"),
+    ("Future", "Future"),
 )
 
 EXPOSURE_CHOICES = (
-    ('Equity', 'Equity'),
-    ('FI', 'Fixed income'),
-    ('FX', 'Forex'),
-    ('Commodity', 'Commodity'),
+    ("Equity", "Equity"),
+    ("FI", "Fixed income"),
+    ("FX", "Forex"),
+    ("Commodity", "Commodity"),
 )
 
 TOLERANCE = 1e-7
 
-YTD = 'ytd'
-ALL_TIME = 'all_time'
+YTD = "ytd"
+ALL_TIME = "all_time"
 
 BROKER_GROUPS = {
-    'UK': [3, 6],
+    "UK": [3, 6],
     # Add other groups as needed
 }
 
 # Names of mutual funds that are kept in FT database in pences, so need to be divided by 100
 MUTUAL_FUNDS_IN_PENCES = [
-    'Fidelity Index US Fund P Accumulation',
-    'BlackRock Corporate Bond',
-    'Fidelity Index Europe ex UK',
-    'Baillie Gifford High Yield Bond',
-    'Legal & General Multi-Index',
-    'Barings Europe Select Trust',
-    'Legal & General Global Technology Index',
-    'Fidelity Index Emerging Markets',
-    'Rathbone Ethical Bond',
-    'iShares Physical Platinum ETC',
-    'VT Garraway Absolute Equity',
-    'ES River & Mercantile Global Recovery',
-    'Baillie Gifford Japanese Smaller Companies',
-    'Invesco MSCI World',
-    'iShares Global Property Securities Equity',
-    'Legal & General International Index Trust',
-    'iShares Overseas Corporate Bond',
-    'iShares Emerging Markets Equity',
-    'Legal & General Pacific Index Trust',
-    'iShares Pacific ex Japan Equity',
-    'Fidelity Multi Asset Allocator',
-    'Ninety One UK Smaller Companies',
+    "Fidelity Index US Fund P Accumulation",
+    "BlackRock Corporate Bond",
+    "Fidelity Index Europe ex UK",
+    "Baillie Gifford High Yield Bond",
+    "Legal & General Multi-Index",
+    "Barings Europe Select Trust",
+    "Legal & General Global Technology Index",
+    "Fidelity Index Emerging Markets",
+    "Rathbone Ethical Bond",
+    "iShares Physical Platinum ETC",
+    "VT Garraway Absolute Equity",
+    "ES River & Mercantile Global Recovery",
+    "Baillie Gifford Japanese Smaller Companies",
+    "Invesco MSCI World",
+    "iShares Global Property Securities Equity",
+    "Legal & General International Index Trust",
+    "iShares Overseas Corporate Bond",
+    "iShares Emerging Markets Equity",
+    "Legal & General Pacific Index Trust",
+    "iShares Pacific ex Japan Equity",
+    "Fidelity Multi Asset Allocator",
+    "Ninety One UK Smaller Companies",
 ]
 
 # Broker identifiers for transaction import
@@ -110,47 +106,47 @@ ACCOUNT_IDENTIFIERS = {
     #                  ],
     #     'fuzzy_threshold': 59  # Adjust this threshold as needed
     # },
-    'Charles Stanley – JISA || TL': {
-        'keywords': ['Charles Stanley & Co. Limited',
-                     '1903304',
-                     'JISA - MASTER TIMOTHY LINIK',
-                     '4682720'
-                     ],
-        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    "Charles Stanley – JISA || TL": {
+        "keywords": [
+            "Charles Stanley & Co. Limited",
+            "1903304",
+            "JISA - MASTER TIMOTHY LINIK",
+            "4682720",
+        ],
+        "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
-    'Charles Stanley – JISA || LL': {
-        'keywords': ['Charles Stanley & Co. Limited',
-                     '1903304',
-                     'JISA - MASTER LEO LINIK',
-                     '4682719'
-                     ],
-        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    "Charles Stanley – JISA || LL": {
+        "keywords": [
+            "Charles Stanley & Co. Limited",
+            "1903304",
+            "JISA - MASTER LEO LINIK",
+            "4682719",
+        ],
+        "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
-    'Charles Stanley – ISA': {
-        'keywords': ['Charles Stanley & Co. Limited',
-                     '1903304',
-                     'Mr Y Linik',
-                     '4681921'
-                     ],
-        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    "Charles Stanley – ISA": {
+        "keywords": ["Charles Stanley & Co. Limited", "1903304", "Mr Y Linik", "4681921"],
+        "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
-    'Charles Stanley – Investment': {
-        'keywords': ['Charles Stanley & Co. Limited',
-                     '1903304',
-                     'Mr Y Linik',
-                     'Investment',
-                     '4432757'
-                     ],
-        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    "Charles Stanley – Investment": {
+        "keywords": [
+            "Charles Stanley & Co. Limited",
+            "1903304",
+            "Mr Y Linik",
+            "Investment",
+            "4432757",
+        ],
+        "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
-    'Charles Stanley – SIPP': {
-        'keywords': ['Charles Stanley & Co. Limited',
-                     '1903304',
-                     'Charles Stanley Direct Sipp',
-                     'SIPP',
-                     '4455068'
-                     ],
-        'fuzzy_threshold': 65  # Adjust this threshold as needed
+    "Charles Stanley – SIPP": {
+        "keywords": [
+            "Charles Stanley & Co. Limited",
+            "1903304",
+            "Charles Stanley Direct Sipp",
+            "SIPP",
+            "4455068",
+        ],
+        "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
     # Add more broker accounts here
     # 'Broker Name': {
@@ -160,11 +156,7 @@ ACCOUNT_IDENTIFIERS = {
 }
 
 # Broker names
-CHARLES_STANLEY_BROKER = 'Charles Stanley'
-
-
-# Tinkoff constants
-from tinkoff.invest import OperationType, InstrumentType
+CHARLES_STANLEY_BROKER = "Charles Stanley"
 
 OPERATION_TYPE_DESCRIPTIONS = {
     OperationType.OPERATION_TYPE_UNSPECIFIED: "Unspecified",
@@ -245,17 +237,7 @@ INSTRUMENT_KIND_DESCRIPTIONS = {
 }
 
 # Tinkoff account types
-TINKOFF_ACCOUNT_TYPES = {
-    0: 'UNSPECIFIED',
-    1: 'TINKOFF',
-    2: 'TINKOFF_IIS',
-    3: 'INVEST_BOX'
-}
+TINKOFF_ACCOUNT_TYPES = {0: "UNSPECIFIED", 1: "TINKOFF", 2: "TINKOFF_IIS", 3: "INVEST_BOX"}
 
 # Tinkoff account statuses
-TINKOFF_ACCOUNT_STATUSES = {
-    0: 'UNSPECIFIED',
-    1: 'NEW',
-    2: 'OPEN',
-    3: 'CLOSED'
-}
+TINKOFF_ACCOUNT_STATUSES = {0: "UNSPECIFIED", 1: "NEW", 2: "OPEN", 3: "CLOSED"}

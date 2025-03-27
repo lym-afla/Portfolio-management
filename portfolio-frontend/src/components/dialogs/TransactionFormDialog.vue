@@ -2,7 +2,9 @@
   <v-dialog v-model="dialog" max-width="600px">
     <v-card>
       <v-card-title>
-        <span class="text-h5">{{ isEdit ? 'Edit Transaction' : 'Add Transaction' }}</span>
+        <span class="text-h5">{{
+          isEdit ? 'Edit Transaction' : 'Add Transaction'
+        }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
@@ -14,8 +16,8 @@
               type="date"
               :required="field.required"
               :error-messages="errors[field.name]"
-              @update:model-value="value => setFieldValue(field.name, value)"
-            ></v-text-field>
+              @update:model-value="(value) => setFieldValue(field.name, value)"
+            />
 
             <v-autocomplete
               v-else-if="field.type === 'select'"
@@ -27,7 +29,7 @@
               :required="field.required"
               :error-messages="errors[field.name]"
               clearable
-              @update:model-value="value => setFieldValue(field.name, value)"
+              @update:model-value="(value) => setFieldValue(field.name, value)"
             >
               <template v-slot:selection="{ item }">
                 {{ item.raw ? item.raw.text : '' }}
@@ -42,8 +44,8 @@
               step="0.01"
               :required="field.required"
               :error-messages="errors[field.name]"
-              @update:model-value="value => setFieldValue(field.name, value)"
-            ></v-text-field>
+              @update:model-value="(value) => setFieldValue(field.name, value)"
+            />
 
             <v-textarea
               v-else-if="field.type === 'textarea'"
@@ -51,20 +53,16 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errors[field.name]"
-              @update:model-value="value => setFieldValue(field.name, value)"
-            ></v-textarea>
+              @update:model-value="(value) => setFieldValue(field.name, value)"
+            />
           </template>
         </v-form>
-        <v-alert
-          v-if="generalError"
-          type="error"
-          class="mt-4"
-        >
+        <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
         </v-alert>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
         <v-btn
           color="blue darken-1"
@@ -84,7 +82,11 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useForm } from 'vee-validate'
 import * as yup from 'yup'
-import { getTransactionFormStructure, addTransaction, updateTransaction } from '@/services/api'
+import {
+  getTransactionFormStructure,
+  addTransaction,
+  updateTransaction,
+} from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
@@ -97,7 +99,7 @@ export default {
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
     const isEdit = computed(() => !!props.editItem)
     const formFields = ref([])
@@ -162,12 +164,14 @@ export default {
 
     const schema = computed(() => {
       const schemaObj = {}
-      formFields.value.forEach(field => {
+      formFields.value.forEach((field) => {
         if (field.type === 'number') {
           schemaObj[field.name] = getNumberSchema(field)
         } else {
           if (field.required) {
-            schemaObj[field.name] = yup.mixed().required(`${field.label} is required`)
+            schemaObj[field.name] = yup
+              .mixed()
+              .required(`${field.label} is required`)
           } else {
             schemaObj[field.name] = yup.mixed().nullable()
           }
@@ -200,7 +204,15 @@ export default {
       return yup.object().shape(schemaObj)
     })
 
-    const { handleSubmit, errors, resetForm, values: form, setValues, setFieldValue, setFieldError } = useForm({
+    const {
+      handleSubmit,
+      errors,
+      resetForm,
+      values: form,
+      setValues,
+      setFieldValue,
+      setFieldError,
+    } = useForm({
       validationSchema: schema,
       validateOnChange: true,
     })
@@ -241,7 +253,10 @@ export default {
       try {
         let response
         if (isEdit.value) {
-          response = await updateTransaction(submittableValues.id, submittableValues)
+          response = await updateTransaction(
+            submittableValues.id,
+            submittableValues
+          )
           emit('transaction-updated', response)
         } else {
           response = await addTransaction(submittableValues)
@@ -259,7 +274,8 @@ export default {
             }
           })
         } else {
-          generalError.value = error.message || 'An unexpected error occurred. Please try again.'
+          generalError.value =
+            error.message || 'An unexpected error occurred. Please try again.'
         }
       } finally {
         isSubmitting.value = false
@@ -275,10 +291,12 @@ export default {
     const populateFormWithEditItem = () => {
       if (props.editItem && formFields.value.length > 0) {
         const formattedValues = { ...props.editItem }
-        formFields.value.forEach(field => {
+        formFields.value.forEach((field) => {
           if (field.type === 'select' && formattedValues[field.name]) {
             if (typeof formattedValues[field.name] === 'object') {
-              formattedValues[field.name] = String(formattedValues[field.name].id)
+              formattedValues[field.name] = String(
+                formattedValues[field.name].id
+              )
             } else {
               formattedValues[field.name] = String(formattedValues[field.name])
             }
@@ -289,10 +307,14 @@ export default {
             }
 
             // Verify that the value exists in the choices
-            const isValidChoice = field.choices.some(choice => choice.value === formattedValues[field.name])
+            const isValidChoice = field.choices.some(
+              (choice) => choice.value === formattedValues[field.name]
+            )
             if (!isValidChoice) {
-              console.warn(`Invalid value for ${field.name}: ${formattedValues[field.name]}`)
-              formattedValues[field.name] = ''  // Set to empty string for empty choice
+              console.warn(
+                `Invalid value for ${field.name}: ${formattedValues[field.name]}`
+              )
+              formattedValues[field.name] = '' // Set to empty string for empty choice
             }
           }
         })
@@ -300,13 +322,17 @@ export default {
       }
     }
 
-    watch(() => props.editItem, (newValue) => {
-      if (newValue) {
-        populateFormWithEditItem()
-      } else {
-        initializeForm()
-      }
-    }, { immediate: true })
+    watch(
+      () => props.editItem,
+      (newValue) => {
+        if (newValue) {
+          populateFormWithEditItem()
+        } else {
+          initializeForm()
+        }
+      },
+      { immediate: true }
+    )
 
     onMounted(fetchFormStructure)
 
@@ -322,9 +348,8 @@ export default {
       closeDialog,
       submitForm,
       clearFieldError,
-      setFieldValue
+      setFieldValue,
     }
-  }
+  },
 }
 </script>
-

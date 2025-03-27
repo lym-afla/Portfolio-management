@@ -5,16 +5,19 @@
         <v-card class="pa-4">
           <v-card-title class="headline">Register</v-card-title>
           <v-card-text>
-            <RegisterForm 
+            <RegisterForm
               ref="registerForm"
-              @register="handleRegister" 
-              :loading="loading" 
+              @register="handleRegister"
+              :loading="loading"
               :errors="errors"
             />
           </v-card-text>
           <v-card-actions>
-            <v-spacer></v-spacer>
-            <span>Already have an account? <router-link to="/login">Login</router-link></span>
+            <v-spacer />
+            <span
+              >Already have an account?
+              <router-link to="/login">Login</router-link></span
+            >
           </v-card-actions>
         </v-card>
       </v-col>
@@ -28,7 +31,7 @@
           {{ successMessage }}
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn color="primary" text @click="redirectToLogin">
             Go to Login
           </v-btn>
@@ -47,7 +50,7 @@ import RegisterForm from '@/components/RegisterForm.vue'
 export default {
   name: 'RegisterPage',
   components: {
-    RegisterForm
+    RegisterForm,
   },
   setup() {
     const loading = ref(false)
@@ -63,8 +66,15 @@ export default {
       errors.value = {}
 
       try {
-        const response = await register(credentials.username, credentials.email, credentials.password, credentials.password2)
-        successMessage.value = response.message || 'Registration successful. You can now log in to your account.'
+        const response = await register(
+          credentials.username,
+          credentials.email,
+          credentials.password,
+          credentials.password2
+        )
+        successMessage.value =
+          response.message ||
+          'Registration successful. You can now log in to your account.'
         showSuccessDialog.value = true
       } catch (err) {
         console.error('[RegisterPage] Registration error:', err)
@@ -86,25 +96,25 @@ export default {
       errors.value = {}
     })
 
-    return { 
-      loading, 
-      handleRegister, 
-      registerForm, 
-      successMessage, 
-      showSuccessDialog, 
+    return {
+      loading,
+      handleRegister,
+      registerForm,
+      successMessage,
+      showSuccessDialog,
       redirectToLogin,
-      errors
+      errors,
     }
   },
   mounted() {
-    this.$emit('update-page-title', ''); // Clear the page title for register page
-  }
+    this.$emit('update-page-title', '') // Clear the page title for register page
+  },
 }
 </script>
 
 <style scoped>
 .v-card-actions a {
   text-decoration: none;
-  color: #1976D2;
+  color: #1976d2;
 }
 </style>

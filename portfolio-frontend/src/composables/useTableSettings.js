@@ -11,42 +11,46 @@ export function useTableSettings() {
 
   const timespan = computed({
     get: () => tableSettings.value.timespan,
-    set: (value) => handleTimespanChange(value)
+    set: (value) => handleTimespanChange(value),
   })
 
   const dateFrom = computed({
     get: () => tableSettings.value.dateFrom,
-    set: (value) => store.dispatch('updateTableSettings', { dateFrom: value })
+    set: (value) => store.dispatch('updateTableSettings', { dateFrom: value }),
   })
 
   const dateTo = computed({
     get: () => tableSettings.value.dateTo,
-    set: (value) => store.dispatch('updateTableSettings', { dateTo: value })
+    set: (value) => store.dispatch('updateTableSettings', { dateTo: value }),
   })
 
   const itemsPerPage = computed({
     get: () => tableSettings.value.itemsPerPage,
-    set: (value) => store.dispatch('updateTableSettings', { itemsPerPage: value })
+    set: (value) =>
+      store.dispatch('updateTableSettings', { itemsPerPage: value }),
   })
 
   const currentPage = computed({
     get: () => tableSettings.value.page,
-    set: (value) => store.dispatch('updateTableSettings', { page: value })
+    set: (value) => store.dispatch('updateTableSettings', { page: value }),
   })
 
   const sortBy = computed({
     get: () => tableSettings.value.sortBy,
-    set: (value) => store.dispatch('updateTableSettings', { sortBy: value })
+    set: (value) => store.dispatch('updateTableSettings', { sortBy: value }),
   })
 
   const search = computed({
     get: () => tableSettings.value.search,
-    set: debounce((value) => store.dispatch('updateTableSettings', { search: value }), 500)
+    set: debounce(
+      (value) => store.dispatch('updateTableSettings', { search: value }),
+      500
+    ),
   })
 
   const handleTimespanChange = async (value) => {
     let currentDate = effectiveCurrentDate.value
-    
+
     if (!currentDate) {
       await store.dispatch('fetchEffectiveCurrentDate')
       currentDate = store.state.effectiveCurrentDate
@@ -64,7 +68,7 @@ export function useTableSettings() {
     store.dispatch('updateTableSettings', {
       timespan: value,
       dateFrom: dateRange.dateFrom,
-      dateTo: dateRange.dateTo
+      dateTo: dateRange.dateTo,
     })
   }
 

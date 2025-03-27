@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
     <v-card class="mb-4">
@@ -42,7 +42,7 @@
               density="compact"
               bg-color="white"
               class="rounded-lg"
-            ></v-text-field>
+            />
           </v-col>
           <v-col cols="12" sm="4" md="3" lg="2" class="ml-auto">
             <v-select
@@ -54,7 +54,7 @@
               class="rows-per-page-select"
               @update:model-value="handleItemsPerPageChange"
               bg-color="white"
-            ></v-select>
+            />
           </v-col>
         </v-toolbar>
       </template>
@@ -62,14 +62,26 @@
       <template #item="{ item }">
         <tr>
           <td :class="`text-${headerAlignments.name}`">{{ item.name }}</td>
-          <td :class="`text-${headerAlignments.broker_name}`">{{ item.broker_name }}</td>
-          <td :class="`text-${headerAlignments.no_of_securities}`">{{ item.no_of_securities }}</td>
-          <td :class="`text-${headerAlignments.first_investment}`">{{ item.first_investment }}</td>
+          <td :class="`text-${headerAlignments.broker_name}`">
+            {{ item.broker_name }}
+          </td>
+          <td :class="`text-${headerAlignments.no_of_securities}`">
+            {{ item.no_of_securities }}
+          </td>
+          <td :class="`text-${headerAlignments.first_investment}`">
+            {{ item.first_investment }}
+          </td>
           <td :class="`text-${headerAlignments.nav}`">{{ item.nav }}</td>
-          <td v-for="currency in currencies" :key="`cash-${currency}`" :class="`text-${headerAlignments[`cash_${currency}`]}`">
+          <td
+            v-for="currency in currencies"
+            :key="`cash-${currency}`"
+            :class="`text-${headerAlignments[`cash_${currency}`]}`"
+          >
             {{ item.cash[currency] }}
           </td>
-          <td :class="`text-${headerAlignments.irr} font-italic`">{{ item.irr }}</td>
+          <td :class="`text-${headerAlignments.irr} font-italic`">
+            {{ item.irr }}
+          </td>
           <td :class="`text-${headerAlignments.actions}`">
             <v-icon small class="mr-2" @click="editAccount(item)">
               mdi-pencil
@@ -83,11 +95,20 @@
       <template #tfoot>
         <tfoot>
           <tr class="font-weight-bold">
-            <td v-for="header in flattenedHeaders" :key="header.key" :class="['text-' + header.align, header.key === 'irr' ? 'font-italic' : '']">
-              <template v-if="header.key === 'name'">
-                TOTAL
-              </template>
-              <template v-else-if="['no_of_securities', 'nav', 'irr'].includes(header.key)">
+            <td
+              v-for="header in flattenedHeaders"
+              :key="header.key"
+              :class="[
+                'text-' + header.align,
+                header.key === 'irr' ? 'font-italic' : '',
+              ]"
+            >
+              <template v-if="header.key === 'name'"> TOTAL </template>
+              <template
+                v-else-if="
+                  ['no_of_securities', 'nav', 'irr'].includes(header.key)
+                "
+              >
                 {{ totals[header.key] }}
               </template>
               <!-- <template v-else>
@@ -112,7 +133,7 @@
             :total-visible="7"
             rounded="circle"
             @update:model-value="handlePageChange"
-          ></v-pagination>
+          />
         </div>
       </template>
     </v-data-table>
@@ -130,14 +151,18 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import AccountFormDialog from '@/components/dialogs/AccountFormDialog.vue'
-import { getAccountsTable, deleteAccount, getAccountDetails } from '@/services/api'
+import {
+  getAccountsTable,
+  deleteAccount,
+  getAccountDetails,
+} from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 export default {
   name: 'AccountsPage',
   components: {
-    AccountFormDialog
+    AccountFormDialog,
   },
   setup() {
     const store = useStore()
@@ -150,7 +175,7 @@ export default {
       handleItemsPerPageChange,
       handleSortChange,
     } = useTableSettings()
-    
+
     const { handleApiError } = useErrorHandler()
 
     const accounts = ref([])
@@ -160,24 +185,36 @@ export default {
     const currencies = ref([])
     const totalItems = ref(0)
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+    const pageCount = computed(() =>
+      Math.ceil(totalItems.value / itemsPerPage.value)
+    )
 
     const headers = computed(() => [
       { title: 'Name', key: 'name', align: 'start', sortable: true },
       { title: 'Broker', key: 'broker_name', align: 'center', sortable: true },
-      { title: 'Number of securities', key: 'no_of_securities', align: 'center', sortable: true },
-      { title: 'First investment', key: 'first_investment', align: 'center', sortable: true },
+      {
+        title: 'Number of securities',
+        key: 'no_of_securities',
+        align: 'center',
+        sortable: true,
+      },
+      {
+        title: 'First investment',
+        key: 'first_investment',
+        align: 'center',
+        sortable: true,
+      },
       { title: 'Current NAV', key: 'nav', align: 'center', sortable: true },
       {
         title: 'Cash balance',
         key: 'cash',
         align: 'center',
         sortable: false,
-        children: currencies.value.map(currency => ({
+        children: currencies.value.map((currency) => ({
           title: currency,
           key: `cash_${currency}`,
           align: 'center',
-          sortable: true
+          sortable: true,
         })),
       },
       { title: 'IRR', key: 'irr', align: 'center', sortable: true },
@@ -185,25 +222,25 @@ export default {
     ])
 
     const headerAlignments = computed(() => {
-      const alignments = {};
-      headers.value.forEach(header => {
-        alignments[header.key] = header.align || 'start';
+      const alignments = {}
+      headers.value.forEach((header) => {
+        alignments[header.key] = header.align || 'start'
         if (header.children) {
-          header.children.forEach(child => {
-            alignments[child.key] = child.align || 'start';
-          });
+          header.children.forEach((child) => {
+            alignments[child.key] = child.align || 'start'
+          })
         }
-      });
-      return alignments;
-    });
+      })
+      return alignments
+    })
 
     const totals = ref({})
 
     const flattenedHeaders = computed(() => {
       const flattened = []
-      headers.value.forEach(header => {
+      headers.value.forEach((header) => {
         if (header.children) {
-          header.children.forEach(child => {
+          header.children.forEach((child) => {
             flattened.push(child)
           })
         } else {
@@ -220,11 +257,15 @@ export default {
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           sortBy: sortBy.value[0] || {},
-          search: search.value
+          search: search.value,
         })
         accounts.value = response.accounts
         totalItems.value = response.total_items
-        currencies.value = [...new Set(accounts.value.flatMap(account => Object.keys(account.cash)))]
+        currencies.value = [
+          ...new Set(
+            accounts.value.flatMap((account) => Object.keys(account.cash))
+          ),
+        ]
         totals.value = response.totals
       } catch (error) {
         handleApiError(error)
@@ -249,7 +290,9 @@ export default {
     }
 
     const processDeleteAccount = async (item) => {
-      const confirm = window.confirm('Are you sure you want to delete this account?')
+      const confirm = window.confirm(
+        'Are you sure you want to delete this account?'
+      )
       if (confirm) {
         try {
           await deleteAccount(item.id)
@@ -278,7 +321,7 @@ export default {
         search,
         itemsPerPage,
         currentPage,
-        sortBy
+        sortBy,
       ],
       () => {
         fetchAccounts()
@@ -322,6 +365,6 @@ export default {
       editingAccount,
       addAccount,
     }
-  }
+  },
 }
 </script>

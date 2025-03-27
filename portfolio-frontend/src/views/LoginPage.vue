@@ -5,15 +5,18 @@
         <v-card class="pa-4">
           <v-card-title class="headline">Login</v-card-title>
           <v-card-text>
-            <LoginForm 
+            <LoginForm
               ref="loginForm"
-              @submit="handleLogin" 
-              :loading="loading" 
+              @submit="handleLogin"
+              :loading="loading"
             />
           </v-card-text>
           <v-card-actions>
-            <v-spacer></v-spacer>
-            <span>Don't have an account? <router-link to="/register">Register</router-link></span>
+            <v-spacer />
+            <span
+              >Don't have an account?
+              <router-link to="/register">Register</router-link></span
+            >
           </v-card-actions>
         </v-card>
       </v-col>
@@ -31,7 +34,7 @@ import LoginForm from '@/components/LoginForm.vue'
 export default {
   name: 'LoginPage',
   components: {
-    LoginForm
+    LoginForm,
   },
   setup() {
     const loading = ref(false)
@@ -44,10 +47,16 @@ export default {
 
       try {
         const result = await store.dispatch('login', credentials)
-        console.log("[LoginPage.vue] Token set in the store:", store.state.accessToken)
-        console.log("[LoginPage.vue] Token from localStorage:", localStorage.getItem('accessToken'))
+        console.log(
+          '[LoginPage.vue] Token set in the store:',
+          store.state.accessToken
+        )
+        console.log(
+          '[LoginPage.vue] Token from localStorage:',
+          localStorage.getItem('accessToken')
+        )
         if (result.success) {
-          console.log("Login successful from LoginPage.vue")
+          console.log('Login successful from LoginPage.vue')
           router.push('/profile')
         }
       } catch (error) {
@@ -60,7 +69,9 @@ export default {
           loginForm.value.setErrors(error)
         } else {
           console.log('Unknown error')
-          loginForm.value.setErrors('An unknown error occurred. Please try again.')
+          loginForm.value.setErrors(
+            'An unknown error occurred. Please try again.'
+          )
         }
       } finally {
         loading.value = false
@@ -68,13 +79,13 @@ export default {
     }
 
     return { loading, handleLogin, loginForm }
-  }
+  },
 }
 </script>
 
 <style scoped>
 .v-card-actions a {
   text-decoration: none;
-  color: #1976D2;
+  color: #1976d2;
 }
 </style>

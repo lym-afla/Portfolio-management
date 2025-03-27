@@ -13,9 +13,9 @@ export function useWebSocket(baseUrl) {
     const host = window.location.hostname
     const port = 8000
     const token = store.state.accessToken
-    
+
     console.log('Token being used:', token)
-    
+
     return `${protocol}://${host}:${port}${baseUrl}?token=${token}`
   }
 
@@ -28,7 +28,7 @@ export function useWebSocket(baseUrl) {
 
       const url = getWebSocketUrl(baseUrl)
       console.log('Attempting to connect to WebSocket:', url)
-      
+
       if (!store.state.accessToken) {
         console.error('No access token available')
         reject(new Error('No access token available'))
@@ -95,6 +95,6 @@ export function useWebSocket(baseUrl) {
     sendMessage,
     connect,
     disconnect,
-    reset
+    reset,
   }
 }

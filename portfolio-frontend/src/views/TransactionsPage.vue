@@ -1,7 +1,7 @@
 <template>
   <v-container fluid class="pa-0">
     <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
     <v-card class="mb-4">
@@ -63,10 +63,16 @@
                   density="compact"
                   bg-color="white"
                   class="rounded-lg"
-                ></v-text-field>
+                />
               </v-col>
-              <v-spacer></v-spacer>
-              <v-col cols="12" sm="4" md="3" lg="2" class="d-flex align-center justify-end px-2">
+              <v-spacer />
+              <v-col
+                cols="12"
+                sm="4"
+                md="3"
+                lg="2"
+                class="d-flex align-center justify-end px-2"
+              >
                 <v-select
                   v-model="itemsPerPage"
                   :items="itemsPerPageOptions"
@@ -77,24 +83,30 @@
                   class="rows-per-page-select"
                   @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
-                ></v-select>
+                />
               </v-col>
             </v-toolbar>
           </template>
 
           <template #header>
             <tr>
-              <th v-for="header in headers"
-              :key="header.key"
-              :colspan="header.children ? header.children.length : 1"
-              :rowspan="header.children ? 1 : 2"
-              :class="['text-' + header.align]">
+              <th
+                v-for="header in headers"
+                :key="header.key"
+                :colspan="header.children ? header.children.length : 1"
+                :rowspan="header.children ? 1 : 2"
+                :class="['text-' + header.align]"
+              >
                 {{ header.title }}
               </th>
             </tr>
             <tr>
               <template v-for="header in headers" :key="header.key">
-                <th v-for="subHeader in header.children" :key="subHeader.key" :class="['text-' + subHeader.align]">
+                <th
+                  v-for="subHeader in header.children"
+                  :key="subHeader.key"
+                  :class="['text-' + subHeader.align]"
+                >
                   {{ subHeader.title }}
                 </th>
               </template>
@@ -103,17 +115,21 @@
 
           <template #item="{ item }">
             <tr>
-              <td>
-              </td>
+              <td />
               <td>{{ item.date }}</td>
               <td class="text-start text-nowrap">
                 {{ item.type }}
-                <template v-if="item.type.includes('Cash') || item.type === 'Dividend'">
+                <template
+                  v-if="item.type.includes('Cash') || item.type === 'Dividend'"
+                >
                   {{ item.cash_flow }}
                   <template v-if="item.type === 'Dividend'">
-                    for 
+                    for
                     <router-link
-                      :to="{ name: 'SecurityDetail', params: { id: item.security.id } }"
+                      :to="{
+                        name: 'SecurityDetail',
+                        params: { id: item.security.id },
+                      }"
                       class="text-primary text-decoration-none font-weight-medium"
                     >
                       {{ item.security.name }}
@@ -123,34 +139,63 @@
                 <template v-else-if="item.type === 'Close'">
                   {{ item.quantity }} of
                   <router-link
-                    :to="{ name: 'SecurityDetail', params: { id: item.security.id } }"
+                    :to="{
+                      name: 'SecurityDetail',
+                      params: { id: item.security.id },
+                    }"
                     class="text-primary text-decoration-none font-weight-medium"
                   >
                     {{ item.security.name }}
                   </router-link>
                 </template>
                 <template v-else-if="item.type === 'FX'">
-                  : {{ item.from_cur }} to {{ item.to_cur }} @ {{ item.exchange_rate }}
-                  <span v-if="item.commission" class="text-caption text-grey"> || Fee: {{ item.commission }}</span>
+                  : {{ item.from_cur }} to {{ item.to_cur }} @
+                  {{ item.exchange_rate }}
+                  <span v-if="item.commission" class="text-caption text-grey">
+                    || Fee: {{ item.commission }}</span
+                  >
                 </template>
-                <template v-else-if="!['Broker commission', 'Tax', 'Interest income'].includes(item.type)">
+                <template
+                  v-else-if="
+                    !['Broker commission', 'Tax', 'Interest income'].includes(
+                      item.type
+                    )
+                  "
+                >
                   {{ item.quantity }}
                   @ {{ item.price }} of
                   <router-link
-                    :to="{ name: 'SecurityDetail', params: { id: item.security.id } }"
+                    :to="{
+                      name: 'SecurityDetail',
+                      params: { id: item.security.id },
+                    }"
                     class="text-primary text-decoration-none font-weight-medium"
                   >
                     {{ item.security.name }}
                   </router-link>
-                  <span v-if="item.commission" class="text-caption text-grey"> || Fee: 
-                    <span v-if="item.commission_currency">{{ item.commission_currency }}</span>
-                    {{ item.commission }}</span>
+                  <span v-if="item.commission" class="text-caption text-grey">
+                    || Fee:
+                    <span v-if="item.commission_currency">{{
+                      item.commission_currency
+                    }}</span>
+                    {{ item.commission }}</span
+                  >
                 </template>
               </td>
               <td class="text-center">{{ item.type }}</td>
-              <td v-for="currency in currencies" :key="`cash_flow-${currency}`" class="text-center">
+              <td
+                v-for="currency in currencies"
+                :key="`cash_flow-${currency}`"
+                class="text-center"
+              >
                 <template v-if="item.cur === currency">
-                  <template v-if="['Dividend', 'Tax'].includes(item.type) || item.type.includes('Interest') || item.type.includes('Cash')">
+                  <template
+                    v-if="
+                      ['Dividend', 'Tax'].includes(item.type) ||
+                      item.type.includes('Interest') ||
+                      item.type.includes('Cash')
+                    "
+                  >
                     {{ item.cash_flow }}
                   </template>
                   <template v-else-if="item.type === 'Broker commission'">
@@ -166,26 +211,21 @@
                 <template v-else-if="item.to_cur === currency">
                   {{ item.to_amount }}
                 </template>
-                <template v-else>
-                  –
-                </template>
+                <template v-else> – </template>
               </td>
-              <td class="text-center"></td>
-              <td v-for="currency in currencies" :key="`balance-${currency}`" class="text-center">
+              <td class="text-center" />
+              <td
+                v-for="currency in currencies"
+                :key="`balance-${currency}`"
+                class="text-center"
+              >
                 {{ item.balances[currency] }}
               </td>
               <td class="text-end">
-                <v-icon
-                  small
-                  class="mr-2"
-                  @click="editTransaction(item)"
-                >
+                <v-icon small class="mr-2" @click="editTransaction(item)">
                   mdi-pencil
                 </v-icon>
-                <v-icon
-                  small
-                  @click="processDeleteTransaction(item)"
-                >
+                <v-icon small @click="processDeleteTransaction(item)">
                   mdi-delete
                 </v-icon>
               </td>
@@ -206,7 +246,7 @@
                 :total-visible="7"
                 rounded="circle"
                 @update:model-value="handlePageChange"
-              ></v-pagination>
+              />
             </div>
           </template>
         </v-data-table>
@@ -230,12 +270,18 @@
     <v-dialog v-model="deleteDialog" max-width="500px">
       <v-card>
         <v-card-title class="text-h5">Delete Transaction</v-card-title>
-        <v-card-text>Are you sure you want to delete this transaction?</v-card-text>
+        <v-card-text
+          >Are you sure you want to delete this transaction?</v-card-text
+        >
         <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="closeDeleteDialog">Cancel</v-btn>
-          <v-btn color="red darken-1" text @click="deleteTransactionConfirm">OK</v-btn>
-          <v-spacer></v-spacer>
+          <v-spacer />
+          <v-btn color="blue darken-1" text @click="closeDeleteDialog"
+            >Cancel</v-btn
+          >
+          <v-btn color="red darken-1" text @click="deleteTransactionConfirm"
+            >OK</v-btn
+          >
+          <v-spacer />
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -244,7 +290,6 @@
       v-model="showImportDialog"
       @import-completed="handleImportCompleted"
     />
-
   </v-container>
 </template>
 
@@ -252,7 +297,12 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import { format } from 'date-fns'
-import { getTransactions, deleteTransaction, getTransactionDetails, getFXTransactionDetails } from '@/services/api'
+import {
+  getTransactions,
+  deleteTransaction,
+  getTransactionDetails,
+  getFXTransactionDetails,
+} from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
@@ -261,7 +311,7 @@ import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialo
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
 
 export default {
-  name: "TransactionsPage",
+  name: 'TransactionsPage',
   components: {
     DateRangeSelector,
     TransactionFormDialog,
@@ -282,13 +332,13 @@ export default {
       search,
       handlePageChange,
       handleItemsPerPageChange,
-      handleSortChange      
+      handleSortChange,
     } = useTableSettings()
 
     const dateRangeModel = ref({
       dateRange: 'all_time',
       dateFrom: null,
-      dateTo: null
+      dateTo: null,
     })
 
     const handleDateRangeChange = (newDateRange) => {
@@ -312,25 +362,34 @@ export default {
     const showImportDialog = ref(false)
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const effectiveCurrentDate = computed(
+      () => store.state.effectiveCurrentDate
+    )
 
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+    const pageCount = computed(() =>
+      Math.ceil(totalItems.value / itemsPerPage.value)
+    )
 
     const headers = computed(() => [
       { title: '', key: 'actions', align: 'center', sortable: false },
       { title: 'Date', key: 'date', align: 'start', sortable: true },
-      { title: 'Transaction', key: 'transaction', align: 'start', sortable: false },
+      {
+        title: 'Transaction',
+        key: 'transaction',
+        align: 'start',
+        sortable: false,
+      },
       { title: 'Type', key: 'type', align: 'center', sortable: false },
       {
         title: 'Cash flow',
         key: 'cash_flow',
         align: 'center',
         sortable: false,
-        children: currencies.value.map(currency => ({
+        children: currencies.value.map((currency) => ({
           title: currency,
           key: `cash_flow_${currency}`,
           align: 'center',
-          sortable: false
+          sortable: false,
         })),
       },
       { title: '', key: 'spacer', align: 'center', sortable: false },
@@ -339,14 +398,14 @@ export default {
         key: 'balance',
         align: 'center',
         sortable: false,
-        children: currencies.value.map(currency => ({
+        children: currencies.value.map((currency) => ({
           title: currency,
           key: `balance_${currency}`,
           align: 'center',
-          sortable: false
+          sortable: false,
         })),
       },
-      { title: 'Actions', align: 'end', key: 'actions', sortable: false }
+      { title: 'Actions', align: 'end', key: 'actions', sortable: false },
     ])
 
     const fetchTransactions = async () => {
@@ -380,7 +439,7 @@ export default {
         itemsPerPage,
         currentPage,
         sortBy,
-        search
+        search,
       ],
       () => {
         fetchTransactions()
@@ -407,8 +466,11 @@ export default {
         } else if (item.transaction_type === 'fx') {
           transactionDetails = await getFXTransactionDetails(item.id)
         }
-        editedTransaction.value = { ...transactionDetails, transaction_type: item.transaction_type }
-        console.log("Transaction fetched for editing:", editedTransaction.value)
+        editedTransaction.value = {
+          ...transactionDetails,
+          transaction_type: item.transaction_type,
+        }
+        console.log('Transaction fetched for editing:', editedTransaction.value)
         if (item.transaction_type === 'regular') {
           showTransactionDialog.value = true
         } else if (item.transaction_type === 'fx') {
@@ -498,6 +560,6 @@ export default {
       openImportDialog,
       handleImportCompleted,
     }
-  }
+  },
 }
 </script>

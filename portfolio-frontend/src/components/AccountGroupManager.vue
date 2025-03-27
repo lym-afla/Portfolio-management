@@ -2,7 +2,7 @@
   <v-card class="mb-4">
     <v-card-title class="d-flex align-center">
       Broker Account Groups
-      <v-spacer></v-spacer>
+      <v-spacer />
       <v-btn
         color="primary"
         prepend-icon="mdi-plus"
@@ -13,11 +13,7 @@
     </v-card-title>
 
     <v-card-text>
-      <v-progress-linear
-        v-if="loading"
-        indeterminate
-        color="primary"
-      ></v-progress-linear>
+      <v-progress-linear v-if="loading" indeterminate color="primary" />
 
       <v-expansion-panels v-else>
         <v-expansion-panel
@@ -56,21 +52,18 @@
                     color="error"
                     variant="tonal"
                     @click="deleteGroup(groupId)"
-                  ></v-btn>
+                  />
                 </template>
                 Delete group
               </v-tooltip>
             </div>
 
             <v-list>
-              <v-list-item
-                v-for="account in group.accounts"
-                :key="account.id"
-              >
+              <v-list-item v-for="account in group.accounts" :key="account.id">
                 <v-list-item-title>
                   {{ account.name }}
                 </v-list-item-title>
-                
+
                 <template v-slot:append>
                   <v-tooltip location="top">
                     <template v-slot:activator="{ props }">
@@ -80,7 +73,7 @@
                         variant="text"
                         color="error"
                         @click="removeAccountFromGroup(groupId, account.id)"
-                      ></v-btn>
+                      />
                     </template>
                     Remove account from group
                   </v-tooltip>
@@ -102,8 +95,8 @@
               v-model="newGroup.name"
               label="Group Name"
               required
-              :rules="[v => !!v || 'Group name is required']"
-            ></v-text-field>
+              :rules="[(v) => !!v || 'Group name is required']"
+            />
 
             <v-select
               v-model="newGroup.accounts"
@@ -112,12 +105,12 @@
               multiple
               chips
               required
-              :rules="[v => v.length > 0 || 'Select at least one account']"
-            ></v-select>
+              :rules="[(v) => v.length > 0 || 'Select at least one account']"
+            />
           </v-form>
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn
             color="primary"
             text
@@ -127,11 +120,7 @@
           >
             Save
           </v-btn>
-          <v-btn
-            color="error"
-            text
-            @click="showAddGroupDialog = false"
-          >
+          <v-btn color="error" text @click="showAddGroupDialog = false">
             Cancel
           </v-btn>
         </v-card-actions>
@@ -141,9 +130,7 @@
     <!-- Add Account to Group Dialog -->
     <v-dialog v-model="showAddAccountToGroupDialog" max-width="500px">
       <v-card>
-        <v-card-title>
-          Add Accounts to {{ selectedGroupName }}
-        </v-card-title>
+        <v-card-title> Add Accounts to {{ selectedGroupName }} </v-card-title>
         <v-card-text>
           <v-select
             v-model="selectedAccounts"
@@ -153,10 +140,10 @@
             label="Select accounts"
             multiple
             chips
-          ></v-select>
+          />
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn
             color="primary"
             :loading="isAddingAccount"
@@ -179,12 +166,12 @@
               v-model="renameData.newName"
               label="New Group Name"
               required
-              :rules="[v => !!v || 'Group name is required']"
-            ></v-text-field>
+              :rules="[(v) => !!v || 'Group name is required']"
+            />
           </v-form>
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn
             color="primary"
             text
@@ -194,11 +181,7 @@
           >
             Save
           </v-btn>
-          <v-btn
-            color="error"
-            text
-            @click="showRenameDialog = false"
-          >
+          <v-btn color="error" text @click="showRenameDialog = false">
             Cancel
           </v-btn>
         </v-card-actions>
@@ -211,10 +194,12 @@
         <v-card-title class="text-h5">Delete Group</v-card-title>
         <v-card-text>
           Are you sure you want to delete the group "{{ groupToDelete?.name }}"?
-          <div class="text-subtitle-2 mt-2 text-red">This action cannot be undone.</div>
+          <div class="text-subtitle-2 mt-2 text-red">
+            This action cannot be undone.
+          </div>
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn
             color="primary"
             variant="text"
@@ -237,13 +222,18 @@
 </template>
 
 <script>
-import { getAccountGroups, saveAccountGroup, deleteAccountGroup, updateAccountGroup } from '@/services/api'
+import {
+  getAccountGroups,
+  saveAccountGroup,
+  deleteAccountGroup,
+  updateAccountGroup,
+} from '@/services/api'
 
 export default {
   name: 'AccountGroupManager',
-  
+
   emits: ['error', 'success'],
-  
+
   data() {
     return {
       loading: true,
@@ -259,14 +249,14 @@ export default {
       selectedAccounts: [],
       newGroup: {
         name: '',
-        accounts: []
+        accounts: [],
       },
       showRenameDialog: false,
       isRenameFormValid: false,
       isRenaming: false,
       renameData: {
         groupId: null,
-        newName: ''
+        newName: '',
       },
       showDeleteConfirmation: false,
       groupToDelete: null,
@@ -277,11 +267,19 @@ export default {
   computed: {
     availableAccountsForGroup() {
       if (!this.selectedGroup) return this.availableAccounts
-      const currentAccounts = new Set(this.accountGroups[this.selectedGroup].accounts)
-      return this.availableAccounts.filter(account => !currentAccounts.has(account.value))
+      const currentAccounts = new Set(
+        this.accountGroups[this.selectedGroup].accounts
+      )
+      return this.availableAccounts.filter(
+        (account) => !currentAccounts.has(account.value)
+      )
     },
     filteredAvailableAccounts() {
-      if (!this.selectedGroup || !this.accountGroups || !this.availableAccounts) {
+      if (
+        !this.selectedGroup ||
+        !this.accountGroups ||
+        !this.availableAccounts
+      ) {
         return []
       }
 
@@ -291,11 +289,15 @@ export default {
       }
 
       // Get IDs of accounts already in the group
-      const existingAccountIds = new Set(currentGroup.accounts.map(account => account.id))
+      const existingAccountIds = new Set(
+        currentGroup.accounts.map((account) => account.id)
+      )
 
       // Filter out accounts that are already in the group
-      return this.availableAccounts.filter(account => !existingAccountIds.has(account.value))
-    }
+      return this.availableAccounts.filter(
+        (account) => !existingAccountIds.has(account.value)
+      )
+    },
   },
 
   methods: {
@@ -315,7 +317,7 @@ export default {
         // Fetch account groups
         const response = await getAccountGroups()
         this.accountGroups = response.groups
-        
+
         // Update available accounts from response
         this.availableAccounts = response.available_accounts
       } catch (error) {
@@ -330,7 +332,7 @@ export default {
       try {
         await saveAccountGroup({
           name: this.newGroup.name,
-          accounts: this.newGroup.accounts
+          accounts: this.newGroup.accounts,
         })
         await this.fetchGroups()
         this.showAddGroupDialog = false
@@ -346,7 +348,7 @@ export default {
     deleteGroup(groupId) {
       this.groupToDelete = {
         id: groupId,
-        name: this.accountGroups[groupId].name
+        name: this.accountGroups[groupId].name,
       }
       this.showDeleteConfirmation = true
     },
@@ -379,11 +381,11 @@ export default {
       this.isAddingAccount = true
       try {
         const group = this.accountGroups[this.selectedGroup]
-        const currentAccountIds = group.accounts.map(account => account.id)
+        const currentAccountIds = group.accounts.map((account) => account.id)
         await updateAccountGroup({
           id: this.selectedGroup,
           name: group.name,
-          accounts: [...currentAccountIds, ...this.selectedAccounts]
+          accounts: [...currentAccountIds, ...this.selectedAccounts],
         })
         await this.fetchGroups()
         this.showAddAccountToGroupDialog = false
@@ -399,13 +401,13 @@ export default {
       try {
         const group = this.accountGroups[groupId]
         const updatedAccounts = group.accounts
-          .filter(account => account.id !== accountId)
-          .map(account => account.id)
-        
+          .filter((account) => account.id !== accountId)
+          .map((account) => account.id)
+
         await updateAccountGroup({
           id: groupId,
           name: group.name,
-          accounts: updatedAccounts
+          accounts: updatedAccounts,
         })
         await this.fetchGroups()
         this.$emit('success', 'Account removed from group')
@@ -427,7 +429,7 @@ export default {
         await updateAccountGroup({
           id: this.renameData.groupId,
           name: this.renameData.newName,
-          accounts: group.accounts.map(account => account.id)
+          accounts: group.accounts.map((account) => account.id),
         })
         await this.fetchGroups()
         this.showRenameDialog = false
@@ -437,11 +439,11 @@ export default {
       } finally {
         this.isRenaming = false
       }
-    }
+    },
   },
 
   async mounted() {
     await this.fetchGroups()
-  }
+  },
 }
-</script> 
+</script>

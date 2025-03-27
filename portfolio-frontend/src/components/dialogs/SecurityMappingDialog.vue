@@ -1,18 +1,22 @@
 <template>
   <v-card v-if="showSecurityMapping" class="mt-4">
     <v-card-title class="text-h6 d-flex align-center">
-      <v-icon start color="primary" icon="mdi-link-variant" class="mr-2"></v-icon>
+      <v-icon start color="primary" icon="mdi-link-variant" class="mr-2" />
       Map Security
     </v-card-title>
     <v-card-text>
       <v-alert type="warning" variant="tonal" class="mb-4">
-        <div class="text-subtitle-1 font-weight-medium">Unrecognized security</div>
+        <div class="text-subtitle-1 font-weight-medium">
+          Unrecognized security
+        </div>
         <div class="text-body-2">{{ security }}</div>
       </v-alert>
-      
+
       <v-alert v-if="bestMatch" type="info" variant="tonal" class="mb-4">
         <div class="text-subtitle-1 font-weight-medium">Best match found</div>
-        <div class="text-body-2">{{ bestMatch.match_name }} (Score: {{ bestMatch.match_score }})</div>
+        <div class="text-body-2">
+          {{ bestMatch.match_name }} (Score: {{ bestMatch.match_score }})
+        </div>
       </v-alert>
 
       <v-autocomplete
@@ -44,7 +48,7 @@ export default {
   props: {
     showSecurityMapping: {
       type: Boolean,
-      default: false
+      default: false,
     },
     security: String,
     bestMatch: Object,
@@ -52,7 +56,7 @@ export default {
   emits: ['security-selected'],
   setup(props, { emit }) {
     console.log('SecurityMappingDialog setup called')
-    
+
     const selectedSecurity = ref(null)
     const securityOptions = ref([])
     const loadingSecurities = ref(false)
@@ -65,12 +69,17 @@ export default {
         const securities = await getSecurities()
         console.log('Fetched securities:', securities)
         if (Array.isArray(securities)) {
-          securityOptions.value = securities.map(security => ({
+          securityOptions.value = securities.map((security) => ({
             id: security.id,
-            name: security.name
+            name: security.name,
           }))
           selectedSecurity.value = props.bestMatch.match_id
-          console.log("Assigning value to Select", props.bestMatch.match_id, props.bestMatch.match_name, selectedSecurity.value)
+          console.log(
+            'Assigning value to Select',
+            props.bestMatch.match_id,
+            props.bestMatch.match_name,
+            selectedSecurity.value
+          )
         } else {
           console.error('Fetched securities is not an array:', securities)
           securityError.value = 'Invalid data received from server'
@@ -90,9 +99,12 @@ export default {
     //   }
     // }, { immediate: true })
 
-    watch(() => selectedSecurity.value, (newValue) => {
-      emit('security-selected', newValue)
-    })
+    watch(
+      () => selectedSecurity.value,
+      (newValue) => {
+        emit('security-selected', newValue)
+      }
+    )
 
     onMounted(fetchSecurities)
 
@@ -102,6 +114,6 @@ export default {
       loadingSecurities,
       securityError,
     }
-  }
+  },
 }
 </script>

@@ -16,17 +16,20 @@
             clearable
             :disabled="accounts.length > 0"
             :error-messages="errors.securities"
-            >
+          >
             <template v-slot:prepend-item>
-              <v-list-item title="Select All" @click="toggleSelectAllSecurities">
+              <v-list-item
+                title="Select All"
+                @click="toggleSelectAllSecurities"
+              >
                 <template v-slot:prepend>
                   <v-checkbox-btn
                     :model-value="securitiesAllSelected"
                     :indeterminate="securitiesIndeterminate"
-                  ></v-checkbox-btn>
+                  />
                 </template>
               </v-list-item>
-              <v-divider class="mt-2"></v-divider>
+              <v-divider class="mt-2" />
             </template>
           </v-autocomplete>
 
@@ -40,46 +43,49 @@
             clearable
             :disabled="securities.length > 0"
             :error-messages="errors.accounts"
-            >
+          >
             <template v-slot:prepend-item>
               <v-list-item title="Select All" @click="toggleSelectAllAccounts">
                 <template v-slot:prepend>
                   <v-checkbox-btn
                     :model-value="accountsAllSelected"
                     :indeterminate="accountsIndeterminate"
-                  ></v-checkbox-btn>
+                  />
                 </template>
               </v-list-item>
-              <v-divider class="mt-2"></v-divider>
+              <v-divider class="mt-2" />
             </template>
           </v-autocomplete>
 
           <v-radio-group v-model="dateType" row>
-            <v-radio label="Date Range" value="range"></v-radio>
-            <v-radio label="Single Date" value="single"></v-radio>
+            <v-radio label="Date Range" value="range" />
+            <v-radio label="Single Date" value="single" />
           </v-radio-group>
 
           <template v-if="dateType === 'range'">
             <v-row>
               <v-col cols="12" sm="6">
-                <div v-if="errors.startDate" class="text-caption text-error pl-6">
+                <div
+                  v-if="errors.startDate"
+                  class="text-caption text-error pl-6"
+                >
                   {{ errors.startDate }}
                 </div>
-                <v-date-picker 
-                  v-model="startDate" 
+                <v-date-picker
+                  v-model="startDate"
                   label="Start Date"
                   :error-messages="errors.startDate"
-                ></v-date-picker>
+                />
               </v-col>
               <v-col cols="12" sm="6">
                 <div v-if="errors.endDate" class="text-caption text-error pl-6">
                   {{ errors.endDate }}
                 </div>
-                <v-date-picker 
-                  v-model="endDate" 
+                <v-date-picker
+                  v-model="endDate"
                   label="End Date"
                   :error-messages="errors.endDate"
-                ></v-date-picker>
+                />
               </v-col>
             </v-row>
             <v-select
@@ -89,21 +95,26 @@
               item-value="value"
               label="Frequency"
               :error-messages="errors.frequency"
-            ></v-select>
+            />
           </template>
 
           <template v-else>
             <div v-if="errors.singleDate" class="text-caption text-error pl-6">
-                {{ errors.singleDate }}
+              {{ errors.singleDate }}
             </div>
-            <v-date-picker 
-              v-model="singleDate" 
-                label="Date"
-                :error="!!errors.singleDate"
-              ></v-date-picker>
+            <v-date-picker
+              v-model="singleDate"
+              label="Date"
+              :error="!!errors.singleDate"
+            />
           </template>
 
-          <v-btn type="submit" color="primary" class="mt-4 w-100" :loading="isSubmitting">
+          <v-btn
+            type="submit"
+            color="primary"
+            class="mt-4 w-100"
+            :loading="isSubmitting"
+          >
             Import Prices
           </v-btn>
         </v-form>
@@ -130,7 +141,7 @@
           <p>End date: {{ generalErrorSummary.endDate }}</p>
           <p>Frequency: {{ generalErrorSummary.frequency }}</p>
         </v-alert>
-        
+
         <v-alert v-if="importSummary" type="success">
           <p>Total securities processed: {{ importSummary.totalSecurities }}</p>
           <p>Total dates processed: {{ importSummary.totalDates }}</p>
@@ -156,7 +167,9 @@
               <td>
                 <v-tooltip v-if="security.errors.length > 0" bottom>
                   <template v-slot:activator="{ props }">
-                    <v-icon v-bind="props" color="error">mdi-alert-circle</v-icon>
+                    <v-icon v-bind="props" color="error"
+                      >mdi-alert-circle</v-icon
+                    >
                   </template>
                   <span>{{ security.errors.join(', ') }}</span>
                 </v-tooltip>
@@ -167,8 +180,10 @@
         </v-table>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn color="blue darken-1" text @click="closeSummaryDialog">Close</v-btn>
+        <v-spacer />
+        <v-btn color="blue darken-1" text @click="closeSummaryDialog"
+          >Close</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -185,7 +200,7 @@ import { useErrorHandler } from '@/composables/useErrorHandler'
 export default {
   name: 'PriceImportDialog',
   components: {
-    ProgressDialog
+    ProgressDialog,
   },
   props: {
     modelValue: Boolean,
@@ -194,7 +209,7 @@ export default {
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
 
     const dateType = ref('range')
@@ -213,14 +228,14 @@ export default {
       },
       validationSchema: {
         securities: (value) => {
-          if (!value) return true; // Allow undefined during cleanup
+          if (!value) return true // Allow undefined during cleanup
           if (value.length === 0 && accounts.value.length === 0) {
             return 'Either securities or accounts must be selected'
           }
           return true
         },
         accounts: (value) => {
-          if (!value) return true; // Allow undefined during cleanup
+          if (!value) return true // Allow undefined during cleanup
           if (value.length === 0 && securities.value.length === 0) {
             return 'Either securities or accounts must be selected'
           }
@@ -253,12 +268,17 @@ export default {
       },
     })
 
-    const { value: securities, errorMessage: securitiesError } = useField('securities')
-    const { value: accounts, errorMessage: accountsError } = useField('accounts')
-    const { value: startDate, errorMessage: startDateError } = useField('startDate')
+    const { value: securities, errorMessage: securitiesError } =
+      useField('securities')
+    const { value: accounts, errorMessage: accountsError } =
+      useField('accounts')
+    const { value: startDate, errorMessage: startDateError } =
+      useField('startDate')
     const { value: endDate, errorMessage: endDateError } = useField('endDate')
-    const { value: frequency, errorMessage: frequencyError } = useField('frequency')
-    const { value: singleDate, errorMessage: singleDateError } = useField('singleDate')
+    const { value: frequency, errorMessage: frequencyError } =
+      useField('frequency')
+    const { value: singleDate, errorMessage: singleDateError } =
+      useField('singleDate')
 
     const generalError = ref('')
     const isSubmitting = ref(false)
@@ -307,7 +327,7 @@ export default {
       if (securitiesAllSelected.value) {
         securities.value = []
       } else {
-        securities.value = securitiesList.value.map(s => s.id)
+        securities.value = securitiesList.value.map((s) => s.id)
       }
     }
 
@@ -315,7 +335,7 @@ export default {
       if (accountsAllSelected.value) {
         accounts.value = []
       } else {
-        accounts.value = accountsList.value.map(a => a.id)
+        accounts.value = accountsList.value.map((a) => a.id)
       }
     }
 
@@ -335,13 +355,13 @@ export default {
             totalDates: data.total_dates,
             startDate: data.start_date,
             endDate: data.end_date,
-            frequency: data.frequency
+            frequency: data.frequency,
           }
-          detailedSummary.value = data.details.map(security => ({
+          detailedSummary.value = data.details.map((security) => ({
             name: security.security_name,
             updatedDates: security.updated_dates || [],
             skippedDates: security.skipped_dates || [],
-            errors: security.errors || []
+            errors: security.errors || [],
           }))
         } else if (data.message) {
           generalErrorSummary.value = {
@@ -381,7 +401,6 @@ export default {
     })
 
     const submitForm = handleSubmit(async (values) => {
-
       // Check if there are any front-end validation errors
       if (Object.keys(errors.value).length > 0) {
         console.log('Front-end validation failed. Not submitting.')
@@ -399,19 +418,25 @@ export default {
 
       try {
         // Prepare the data based on the date type
-        const submitData = { 
+        const submitData = {
           securities: values.securities,
           accounts: values.accounts,
-          frequency: values.frequency
+          frequency: values.frequency,
         }
 
         if (dateType.value === 'single') {
           if (values.singleDate) {
-            submitData.single_date = format(new Date(values.singleDate), 'yyyy-MM-dd')
+            submitData.single_date = format(
+              new Date(values.singleDate),
+              'yyyy-MM-dd'
+            )
           }
         } else {
           if (values.startDate) {
-            submitData.start_date = format(new Date(values.startDate), 'yyyy-MM-dd')
+            submitData.start_date = format(
+              new Date(values.startDate),
+              'yyyy-MM-dd'
+            )
           }
           if (values.endDate) {
             submitData.end_date = format(new Date(values.endDate), 'yyyy-MM-dd')
@@ -419,7 +444,7 @@ export default {
         }
 
         console.log('Submitting data:', submitData)
-        
+
         await importPrices(submitData)
         resetForm()
       } catch (error) {
@@ -437,11 +462,14 @@ export default {
       resetForm()
     }
 
-    watch(() => props.modelValue, (newValue) => {
-      if (!newValue) {
-        cleanupForm()
+    watch(
+      () => props.modelValue,
+      (newValue) => {
+        if (!newValue) {
+          cleanupForm()
+        }
       }
-    })
+    )
 
     return {
       dialog,
@@ -483,6 +511,6 @@ export default {
       totalOperations,
       currentMessage,
     }
-  }
+  },
 }
 </script>

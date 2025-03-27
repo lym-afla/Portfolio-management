@@ -2,7 +2,7 @@
   <v-dialog v-model="dialog" max-width="700px">
     <v-card>
       <v-card-title class="text-h5">Import Transactions</v-card-title>
-      
+
       <v-card-text>
         <!-- Initial Method Selection -->
         <v-fade-transition>
@@ -22,30 +22,21 @@
                       elevation="2"
                       @click="selectMethod('api')"
                       :class="{
-                        'selected': importMethod === 'api',
-                        'disabled': !hasConnectedBrokers
+                        selected: importMethod === 'api',
+                        disabled: !hasConnectedBrokers,
                       }"
                       :disabled="!hasConnectedBrokers"
                     >
                       <v-card-item>
-                        <v-avatar
-                          color="primary"
-                          size="64"
-                          class="mb-4"
-                        >
-                          <v-icon
-                            size="32"
-                            icon="mdi-api"
-                          ></v-icon>
+                        <v-avatar color="primary" size="64" class="mb-4">
+                          <v-icon size="32" icon="mdi-api" />
                         </v-avatar>
                         <v-card-title>Direct Import</v-card-title>
                         <v-card-subtitle class="text-wrap">
                           Import transactions directly from your broker
-                          <v-chip
-                            size="x-small"
-                            color="primary"
-                            class="ml-2"
-                          >Recommended</v-chip>
+                          <v-chip size="x-small" color="primary" class="ml-2"
+                            >Recommended</v-chip
+                          >
                         </v-card-subtitle>
                         <v-card-text>
                           <v-list density="compact">
@@ -73,18 +64,11 @@
                 class="import-method-card"
                 elevation="2"
                 @click="selectMethod('file')"
-                :class="{'selected': importMethod === 'file'}"
+                :class="{ selected: importMethod === 'file' }"
               >
                 <v-card-item>
-                  <v-avatar
-                    color="secondary"
-                    size="64"
-                    class="mb-4"
-                  >
-                    <v-icon
-                      size="32"
-                      icon="mdi-file-upload"
-                    ></v-icon>
+                  <v-avatar color="secondary" size="64" class="mb-4">
+                    <v-icon size="32" icon="mdi-file-upload" />
                   </v-avatar>
                   <v-card-title>File Import</v-card-title>
                   <v-card-subtitle>
@@ -116,14 +100,18 @@
               v-model="selectedBrokerAccount"
               :items="connectedBrokerAccounts"
               item-title="name"
-              :item-value="item => item"
+              :item-value="(item) => item"
               label="Select Broker Account"
-              :error-messages="showValidation && !selectedBrokerAccount?.id ? 'Please select a broker account' : ''"
+              :error-messages="
+                showValidation && !selectedBrokerAccount?.id
+                  ? 'Please select a broker account'
+                  : ''
+              "
               required
               class="mb-4"
               @update:model-value="handleBrokerAccountChange"
               return-object
-            ></v-select>
+            />
 
             <v-row>
               <v-col cols="6">
@@ -131,14 +119,14 @@
                   v-model="dateRange.from"
                   label="From Date (Optional)"
                   type="date"
-                ></v-text-field>
+                />
               </v-col>
               <v-col cols="6">
                 <v-text-field
                   v-model="dateRange.to"
                   label="To Date (Optional)"
                   type="date"
-                ></v-text-field>
+                />
               </v-col>
             </v-row>
           </div>
@@ -151,17 +139,17 @@
               v-model="file"
               label="Select Excel or CSV file to import"
               accept=".csv, .xlsx, .xls"
-              :rules="[v => !!v || 'File is required']"
+              :rules="[(v) => !!v || 'File is required']"
               @change="handleFileChange"
               :disabled="isAnalyzed"
-            ></v-file-input>
-            
+            />
+
             <v-checkbox
               v-model="isGalaxy"
               label="Galaxy"
               class="mt-2"
               :disabled="isAnalyzed"
-            ></v-checkbox>
+            />
 
             <v-select
               v-if="isGalaxy && isAnalyzed"
@@ -169,17 +157,19 @@
               :items="currencies"
               label="Select Currency"
               class="mt-2"
-              :rules="[v => !!v || 'Currency is required']"
-            ></v-select>
+              :rules="[(v) => !!v || 'Currency is required']"
+            />
 
             <v-alert
               v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
               :type="accountIdentified ? 'success' : 'info'"
               class="mt-4 mb-4"
             >
-              {{ accountIdentified 
-                ? `Broker account "${identifiedAccount.name}" was automatically identified. Please confirm or select a different broker account.` 
-                : 'Broker account could not be automatically identified. Please select a broker account below.' }}
+              {{
+                accountIdentified
+                  ? `Broker account "${identifiedAccount.name}" was automatically identified. Please confirm or select a different broker account.`
+                  : 'Broker account could not be automatically identified. Please select a broker account below.'
+              }}
             </v-alert>
           </div>
         </v-expand-transition>
@@ -191,7 +181,7 @@
               v-model="confirmEveryTransaction"
               label="Confirm every transaction manually"
               class="mt-4"
-            ></v-checkbox>
+            />
           </div>
         </v-expand-transition>
       </v-card-text>
@@ -207,14 +197,8 @@
           <v-icon start>mdi-arrow-left</v-icon>
           Back
         </v-btn>
-        <v-spacer v-else></v-spacer>
-        <v-btn 
-          color="error" 
-          text 
-          @click="closeDialog"
-        >
-          Cancel
-        </v-btn>
+        <v-spacer v-else />
+        <v-btn color="error" text @click="closeDialog"> Cancel </v-btn>
         <v-btn
           v-if="!importMethodSelected"
           color="primary"
@@ -223,11 +207,11 @@
         >
           Continue
         </v-btn>
-        <v-btn 
-          v-if="importMethodSelected && importMethod === 'file' && !isAnalyzed" 
-          color="blue darken-1" 
-          text 
-          @click="submitFile" 
+        <v-btn
+          v-if="importMethodSelected && importMethod === 'file' && !isAnalyzed"
+          color="blue darken-1"
+          text
+          @click="submitFile"
           :disabled="!file || isLoading"
           :loading="isLoading"
         >
@@ -268,10 +252,9 @@
     @stop-import="stopImport"
     @reset="resetImport"
   >
-
     <v-card v-if="showSecurityMapping || showTransactionConfirmation">
       <v-card-title class="text-h5">
-        <v-icon start color="primary" icon="mdi-import"></v-icon>
+        <v-icon start color="primary" icon="mdi-import" />
         Import Transaction
       </v-card-title>
 
@@ -305,7 +288,6 @@
         </v-btn>
       </v-card-actions> -->
     </v-card>
-
   </ProgressDialog>
 
   <v-dialog v-model="showSuccessDialog" max-width="500px">
@@ -327,7 +309,9 @@
                 <v-list-item-title class="text-h6">
                   {{ importStats.totalTransactions }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Total transactions processed</v-list-item-subtitle>
+                <v-list-item-subtitle
+                  >Total transactions processed</v-list-item-subtitle
+                >
               </v-list-item>
             </v-card>
           </v-col>
@@ -342,7 +326,9 @@
                 <v-list-item-title class="text-h6">
                   {{ importStats.importedTransactions }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Successfully imported</v-list-item-subtitle>
+                <v-list-item-subtitle
+                  >Successfully imported</v-list-item-subtitle
+                >
               </v-list-item>
             </v-card>
           </v-col>
@@ -372,7 +358,9 @@
                 <v-list-item-title class="text-h6">
                   {{ importStats.skippedTransactions }}
                 </v-list-item-title>
-                <v-list-item-subtitle>Skipped transactions</v-list-item-subtitle>
+                <v-list-item-subtitle
+                  >Skipped transactions</v-list-item-subtitle
+                >
               </v-list-item>
             </v-card>
           </v-col>
@@ -394,7 +382,7 @@
         </v-row>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="primary" @click="closeSuccessDialog">Close</v-btn>
       </v-card-actions>
     </v-card>
@@ -406,11 +394,11 @@
         <v-icon color="error" class="mr-2">mdi-alert-circle</v-icon>
         Import Error
       </v-card-title>
-      <v-card-text class="pt-4 text-body-1" style="white-space: pre-wrap;">
+      <v-card-text class="pt-4 text-body-1" style="white-space: pre-wrap">
         {{ errorMessage }}
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="error" @click="closeErrorDialog">Close</v-btn>
       </v-card-actions>
     </v-card>
@@ -429,26 +417,32 @@
       <v-card-title>{{ confirmTitle }}</v-card-title>
       <v-card-text>
         <p>{{ confirmMessage }}</p>
-        
+
         <!-- Show readonly security data if it exists -->
         <template v-if="securityFormData?.readonly">
           <v-list dense>
             <v-list-item>
               <v-list-item-title>Name:</v-list-item-title>
-              <v-list-item-subtitle>{{ securityFormData.name }}</v-list-item-subtitle>
+              <v-list-item-subtitle>{{
+                securityFormData.name
+              }}</v-list-item-subtitle>
             </v-list-item>
             <v-list-item>
               <v-list-item-title>ISIN:</v-list-item-title>
-              <v-list-item-subtitle>{{ securityFormData.ISIN }}</v-list-item-subtitle>
+              <v-list-item-subtitle>{{
+                securityFormData.ISIN
+              }}</v-list-item-subtitle>
             </v-list-item>
             <!-- Add other relevant fields -->
           </v-list>
         </template>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="error" @click="handleSecurityConfirm(false)">Skip</v-btn>
-        <v-btn color="primary" @click="handleSecurityConfirm(true)">Create</v-btn>
+        <v-btn color="primary" @click="handleSecurityConfirm(true)"
+          >Create</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -468,7 +462,7 @@
             <v-list-item-title>{{ account.name }}</v-list-item-title>
             <v-list-item-subtitle>
               ID: {{ account.id }} | Type: {{ account.type }}
-              <br>
+              <br />
               Opened: {{ account.opened_date }}
             </v-list-item-subtitle>
           </v-list-item>
@@ -483,7 +477,7 @@
     :broker-name="selectedBroker?.name"
     :tinkoff-accounts="tinkoffAccounts"
     :db-accounts="dbAccounts"
-    @account-matched="handleAccountMatched"
+    @accounts-matched="handleAccountsMatched"
     @create-account="handleAccountCreation"
   />
 </template>
@@ -506,7 +500,7 @@ export default {
     SecurityMappingDialog,
     TransactionImportProgress,
     SecurityFormDialog,
-    AccountMatchingDialog
+    AccountMatchingDialog,
   },
   props: {
     modelValue: Boolean,
@@ -542,7 +536,7 @@ export default {
       importedTransactions: 0,
       skippedTransactions: 0,
       duplicateTransactions: 0,
-      importErrors: 0
+      importErrors: 0,
     })
     const errorMessage = ref('')
     const showErrorDialog = ref(false)
@@ -556,11 +550,21 @@ export default {
 
     const importState = useImportState()
     const { handleApiError } = useErrorHandler()
-    const { isConnected, lastMessage, sendMessage, connect, disconnect, reset } = useWebSocket('/ws/transactions/')
-    
-    watch(() => props.modelValue, (newValue) => {
-      dialog.value = newValue
-    })
+    const {
+      isConnected,
+      lastMessage,
+      sendMessage,
+      connect,
+      disconnect,
+      reset,
+    } = useWebSocket('/ws/transactions/')
+
+    watch(
+      () => props.modelValue,
+      (newValue) => {
+        dialog.value = newValue
+      }
+    )
 
     watch(dialog, (newValue) => {
       emit('update:modelValue', newValue)
@@ -574,7 +578,7 @@ export default {
       { title: 'USD', value: 'USD' },
       { title: 'EUR', value: 'EUR' },
       { title: 'GBP', value: 'GBP' },
-      { title: 'RUB', value: 'RUB' }
+      { title: 'RUB', value: 'RUB' },
     ]
 
     const handleFileChange = (event) => {
@@ -604,7 +608,7 @@ export default {
           isAnalyzed.value = true
           fileId.value = result.fileId
           accounts.value = await getAccounts()
-          
+
           if (result.status === 'account_identified') {
             accountIdentified.value = true
             identifiedAccount.value = result.identifiedAccount
@@ -632,7 +636,10 @@ export default {
       }
 
       if (isGalaxy.value && !selectedCurrency.value) {
-        importState.setState('error', 'Currency must be selected for Galaxy import')
+        importState.setState(
+          'error',
+          'Currency must be selected for Galaxy import'
+        )
         return
       }
 
@@ -654,7 +661,7 @@ export default {
           confirm_every: confirmEveryTransaction.value,
           is_galaxy: isGalaxy.value,
           galaxy_type: isGalaxy.value ? galaxyType.value : null,
-          currency: isGalaxy.value ? selectedCurrency.value : null
+          currency: isGalaxy.value ? selectedCurrency.value : null,
         })
       } else {
         importError.value = 'WebSocket not connected. Please try again.'
@@ -675,7 +682,7 @@ export default {
 
     const stopImport = () => {
       sendMessage({
-        type: 'stop_import'
+        type: 'stop_import',
       })
       canStopImport.value = false // Disable stop button while processing
     }
@@ -688,7 +695,7 @@ export default {
       } else if (message.type === 'security_creation_needed') {
         const securityInfo = message.security_info
         // const confirmText = `Security ${securityInfo.name} (ISIN: ${securityInfo.isin}) does not exist in your portfolio.`
-        
+
         // if (message.data.exists_in_db) {
         //   // Security exists in database but not for this user
         //   showSecurityConfirmDialog(
@@ -698,31 +705,34 @@ export default {
         //     securityInfo
         //   )
         // } else {
-          // Show empty form with prefilled data from import
+        // Show empty form with prefilled data from import
         securityFormData.value = {
           name: securityInfo.name,
           ISIN: securityInfo.isin,
           currency: securityInfo.currency,
           type: 'Stock', // Default values
-          exposure: 'Equity' // Default values
+          exposure: 'Equity', // Default values
         }
         showSecurityDialog.value = true
         // }
       } else if (message.type === 'import_update') {
         handleImportUpdate(message.data)
-      } else if (message.type === 'import_error' || message.type === 'save_error') {
+      } else if (
+        message.type === 'import_error' ||
+        message.type === 'save_error'
+      ) {
         handleImportError(message.data.error)
       } else if (message.type === 'critical_error') {
         showProgressDialog.value = false
         showSuccessDialog.value = false
         showSecurityMapping.value = false
         showTransactionConfirmation.value = false
-        
+
         errorMessage.value = message.data.error
         showErrorDialog.value = true
-        
+
         disconnect()
-        
+
         resetInitialDialog()
         resetProgressDialog()
         resetConfirmationState()
@@ -757,7 +767,7 @@ export default {
     const handleImportError = (error) => {
       importError.value = error
       importState.setState('error', error)
-      
+
       handleApiError({ message: error })
     }
 
@@ -785,12 +795,12 @@ export default {
           sendMessage({
             type: 'security_mapped',
             action: 'map',
-            security_id: selectedSecurityId.value
+            security_id: selectedSecurityId.value,
           })
         } else {
           sendMessage({
             type: 'transaction_confirmed',
-            confirmed: true
+            confirmed: true,
           })
         }
       }
@@ -801,14 +811,14 @@ export default {
       if (isConnected.value) {
         if (showSecurityMapping.value) {
           sendMessage({
-          type: 'security_mapped',
-          action: 'skip',
-          security_id: null
-        })
+            type: 'security_mapped',
+            action: 'skip',
+            security_id: null,
+          })
         } else {
           sendMessage({
             type: 'transaction_confirmed',
-            confirmed: false
+            confirmed: false,
           })
         }
       }
@@ -830,7 +840,7 @@ export default {
       showProgressDialog.value = false
       emit('import-completed', result)
       importState.setState('complete', 'Import completed successfully')
-  
+
       currentImported.value = 0
       totalToImport.value = 0
       currentImportMessage.value = ''
@@ -841,11 +851,10 @@ export default {
 
       // Disconnect WebSocket without reconnection
       disconnect()
-      
+
       // Reset states
       resetProgressDialog()
       resetConfirmationState()
-      
     }
 
     const closeSuccessDialog = () => {
@@ -885,14 +894,14 @@ export default {
       showProgressDialog.value = false
       currentImportMessage.value = data.message
       importStats.value = data.stats
-      
+
       // Show a notification that import was stopped
       showErrorDialog.value = true
       errorMessage.value = 'Import process was stopped by user'
-      
+
       // Disconnect WebSocket
       disconnect()
-      
+
       // Reset states
       resetProgressDialog()
       resetConfirmationState()
@@ -905,7 +914,10 @@ export default {
     })
 
     watch(isConnected, (newValue) => {
-      console.log('WebSocket connection status:', newValue ? 'connected' : 'disconnected')
+      console.log(
+        'WebSocket connection status:',
+        newValue ? 'connected' : 'disconnected'
+      )
     })
 
     onUnmounted(() => {
@@ -923,10 +935,10 @@ export default {
       console.log('handleSecurityAdded called with:', securityData)
       showSecurityDialog.value = false
       securityFormData.value = null
-      
+
       sendMessage({
         type: 'security_confirmation',
-        security_id: securityData.id
+        security_id: securityData.id,
       })
     }
 
@@ -934,10 +946,10 @@ export default {
       console.log('handleSecuritySkipped called')
       showSecurityDialog.value = false
       securityFormData.value = null
-      
+
       sendMessage({
         type: 'security_confirmation',
-        security_id: null
+        security_id: null,
       })
     }
 
@@ -945,7 +957,7 @@ export default {
     //   confirmDialog.value = true
     //   confirmTitle.value = title
     //   confirmMessage.value = message
-      
+
     //   if (existingData) {
     //     // Show readonly security data
     //     securityFormData.value = { ...existingData, readonly: true }
@@ -964,13 +976,13 @@ export default {
     const handleSecurityConfirm = (confirmed) => {
       console.log('handleSecurityConfirm called with:', confirmed)
       confirmDialog.value = false
-      
+
       if (confirmed) {
         console.log('Security confirmed, formData:', securityFormData.value)
         if (securityFormData.value.readonly) {
           sendMessage({
             type: 'security_confirmation',
-            security_id: securityFormData.value.id
+            security_id: securityFormData.value.id,
           })
         } else {
           showSecurityDialog.value = true
@@ -987,7 +999,7 @@ export default {
     const connectedBrokerAccounts = ref([])
     const dateRange = ref({
       from: null,
-      to: null
+      to: null,
     })
 
     // Load connected broker accounts on component mount
@@ -995,7 +1007,7 @@ export default {
       try {
         isLoading.value = true
         const brokers = await getBrokersWithTokens()
-        connectedBrokerAccounts.value = brokers.map(broker => ({
+        connectedBrokerAccounts.value = brokers.map((broker) => ({
           id: broker.id,
           name: broker.name,
           // Add any other needed broker properties
@@ -1009,10 +1021,10 @@ export default {
     })
 
     // Computed properties
-    const hasConnectedBrokers = computed(() => 
-      connectedBrokerAccounts.value.length > 0
+    const hasConnectedBrokers = computed(
+      () => connectedBrokerAccounts.value.length > 0
     )
-    
+
     const isApiImportValid = computed(() => {
       return !!selectedBrokerAccount.value
     })
@@ -1039,9 +1051,9 @@ export default {
     // New method for API import
     const startApiImport = async () => {
       showValidation.value = true // Show validation on import attempt
-      
+
       console.log('Starting import with account:', selectedBrokerAccount.value) // Debug import data
-      
+
       if (!selectedBrokerAccount.value?.id) {
         errorMessage.value = 'Please select a broker account'
         return
@@ -1050,39 +1062,38 @@ export default {
       isLoading.value = true
       showProgressDialog.value = true
       currentImportMessage.value = 'Initializing import...'
-      
+
       try {
         // Log selected account for debugging
         console.log('Selected broker account:', selectedBrokerAccount.value)
 
         // Connect to WebSocket
         await connect()
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
+        await new Promise((resolve) => setTimeout(resolve, 100))
+
         if (!isConnected.value) {
           throw new Error('Failed to establish WebSocket connection')
         }
-        
+
         currentImportMessage.value = 'Connecting to broker API...'
-        
+
         const importData = {
           broker_account_id: selectedBrokerAccount.value.id,
           confirm_every_transaction: confirmEveryTransaction.value,
           date_from: dateRange.value?.from || null,
-          date_to: dateRange.value?.to || null
+          date_to: dateRange.value?.to || null,
         }
 
         console.log('Import data:', importData)
 
         const messageSent = sendMessage({
           type: 'start_api_import',
-          data: importData
+          data: importData,
         })
 
         if (!messageSent) {
           throw new Error('Failed to send start message')
         }
-
       } catch (error) {
         console.error('API import failed:', error)
         currentImportMessage.value = ''
@@ -1164,8 +1175,8 @@ export default {
           account_id: account.id,
           confirm_every_transaction: confirmEveryTransaction.value,
           date_from: dateRange.value?.from,
-          date_to: dateRange.value?.to
-        }
+          date_to: dateRange.value?.to,
+        },
       })
     }
 
@@ -1173,13 +1184,13 @@ export default {
     const tinkoffAccounts = ref([])
     const dbAccounts = ref([])
 
-    const handleAccountMatched = (selection) => {
+    const handleAccountsMatched = (selection) => {
       sendMessage({
-        type: 'account_matched',
+        type: 'accounts_matched',
         data: {
-          tinkoff_account_id: selection.tinkoffAccount.id,
-          db_account_id: selection.dbAccount.id
-        }
+          tinkoff_account_ids: selection.tinkoffAccounts.map((acc) => acc.id),
+          db_account_ids: selection.dbAccounts.map((acc) => acc.id),
+        },
       })
     }
 
@@ -1187,10 +1198,10 @@ export default {
       sendMessage({
         type: 'create_account',
         data: {
-          tinkoff_account_id: data.tinkoffAccount.id,
+          tinkoff_account_ids: data.tinkoffAccounts.map((acc) => acc.id),
           name: data.name,
-          comment: data.comment
-        }
+          comment: data.comment,
+        },
       })
     }
 
@@ -1265,10 +1276,10 @@ export default {
       showAccountMatching,
       tinkoffAccounts,
       dbAccounts,
-      handleAccountMatched,
-      handleAccountCreation
+      handleAccountsMatched,
+      handleAccountCreation,
     }
-  }
+  },
 }
 </script>
 

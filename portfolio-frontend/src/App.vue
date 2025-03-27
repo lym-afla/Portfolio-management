@@ -1,40 +1,40 @@
 <template>
   <v-app>
     <v-overlay :model-value="layoutLoading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
     <template v-if="!layoutLoading">
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
-        
+
         <v-app-bar elevation="1" height="auto">
           <v-container fluid class="py-2">
             <div class="d-flex">
               <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
               <SettingsDialog v-if="showSettingsDialog" class="ml-auto" />
             </div>
-            <v-divider v-if="pageTitle" class="mb-2"></v-divider> 
+            <v-divider v-if="pageTitle" class="mb-2" />
             <div v-if="showComponents" class="d-flex align-center mb-2">
               <AccountSelection class="flex-grow-1" />
               <v-divider vertical class="mx-2" />
               <div>
-                <SettingsDialog/>
+                <SettingsDialog />
               </div>
             </div>
-            <v-divider v-if="showComponents"></v-divider>
+            <v-divider v-if="showComponents" />
           </v-container>
         </v-app-bar>
 
         <v-main :style="{ paddingTop: mainPadding }">
           <v-container fluid class="pa-4">
-            <router-view @update-page-title="updatePageTitle"></router-view>
+            <router-view @update-page-title="updatePageTitle" />
           </v-container>
         </v-main>
       </template>
       <template v-else>
         <v-main>
-          <router-view></router-view>
+          <router-view />
         </v-main>
       </template>
     </template>
@@ -51,13 +51,7 @@
         {{ error }}
       </div>
       <template v-slot:actions>
-        <v-btn
-          color="white"
-          text
-          @click="clearErrors"
-        >
-          Close
-        </v-btn>
+        <v-btn color="white" text @click="clearErrors"> Close </v-btn>
       </template>
     </v-snackbar>
   </v-app>
@@ -91,7 +85,10 @@ export default {
     const isDatabasePage = computed(() => route.path.startsWith('/database'))
     const isSummaryPage = computed(() => route.path === '/summary')
 
-    const showComponents = computed(() => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value)
+    const showComponents = computed(
+      () =>
+        !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value
+    )
     const showSettingsDialog = computed(() => isSummaryPage.value)
 
     const setUser = (userData) => {
@@ -186,5 +183,4 @@ body {
 .v-dialog {
   overflow-y: visible;
 }
-
 </style>

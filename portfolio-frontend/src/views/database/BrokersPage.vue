@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
     <v-card class="mb-4">
@@ -42,7 +42,7 @@
               density="compact"
               bg-color="white"
               class="rounded-lg"
-            ></v-text-field>
+            />
           </v-col>
           <v-col cols="12" sm="4" md="3" lg="2" class="ml-auto">
             <v-select
@@ -54,7 +54,7 @@
               class="rows-per-page-select"
               @update:model-value="handleItemsPerPageChange"
               bg-color="white"
-            ></v-select>
+            />
           </v-col>
         </v-toolbar>
       </template>
@@ -62,13 +62,23 @@
       <template #item="{ item }">
         <tr>
           <td :class="`text-${headerAlignments.name}`">{{ item.name }}</td>
-          <td :class="`text-${headerAlignments.country}`">{{ item.country }}</td>
-          <td :class="`text-${headerAlignments.no_of_accounts}`">{{ item.no_of_accounts }}</td>
-          <td :class="`text-${headerAlignments.no_of_securities}`">{{ item.no_of_securities }}</td>
-          <td :class="`text-${headerAlignments.first_investment}`">{{ item.first_investment }}</td>
+          <td :class="`text-${headerAlignments.country}`">
+            {{ item.country }}
+          </td>
+          <td :class="`text-${headerAlignments.no_of_accounts}`">
+            {{ item.no_of_accounts }}
+          </td>
+          <td :class="`text-${headerAlignments.no_of_securities}`">
+            {{ item.no_of_securities }}
+          </td>
+          <td :class="`text-${headerAlignments.first_investment}`">
+            {{ item.first_investment }}
+          </td>
           <td :class="`text-${headerAlignments.nav}`">{{ item.nav }}</td>
           <td :class="`text-${headerAlignments.cash}`">{{ item.cash }}</td>
-          <td :class="`text-${headerAlignments.irr} font-italic`">{{ item.irr }}</td>
+          <td :class="`text-${headerAlignments.irr} font-italic`">
+            {{ item.irr }}
+          </td>
           <td :class="`text-${headerAlignments.actions}`">
             <v-icon small class="mr-2" @click="editBroker(item)">
               mdi-pencil
@@ -83,11 +93,26 @@
       <template #tfoot>
         <tfoot>
           <tr class="font-weight-bold">
-            <td v-for="header in headers" :key="header.key" :class="['text-' + header.align, header.key === 'irr' ? 'font-italic' : '']">
-              <template v-if="header.key === 'name'">
-                TOTAL
-              </template>
-              <template v-else-if="['no_of_accounts', 'no_of_securities', 'nav', 'cash', 'irr'].includes(header.key)">
+            <td
+              v-for="header in headers"
+              :key="header.key"
+              :class="[
+                'text-' + header.align,
+                header.key === 'irr' ? 'font-italic' : '',
+              ]"
+            >
+              <template v-if="header.key === 'name'"> TOTAL </template>
+              <template
+                v-else-if="
+                  [
+                    'no_of_accounts',
+                    'no_of_securities',
+                    'nav',
+                    'cash',
+                    'irr',
+                  ].includes(header.key)
+                "
+              >
                 {{ totals[header.key] }}
               </template>
             </td>
@@ -109,7 +134,7 @@
             :total-visible="7"
             rounded="circle"
             @update:model-value="handlePageChange"
-          ></v-pagination>
+          />
         </div>
       </template>
     </v-data-table>
@@ -134,7 +159,7 @@ import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
 export default {
   name: 'BrokersPage',
   components: {
-    BrokerFormDialog
+    BrokerFormDialog,
   },
   setup() {
     const store = useStore()
@@ -157,28 +182,45 @@ export default {
     const showBrokerDialog = ref(false)
     const editingBroker = ref(null)
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+    const pageCount = computed(() =>
+      Math.ceil(totalItems.value / itemsPerPage.value)
+    )
     const totals = ref({})
 
     const headers = [
       { title: 'Name', key: 'name', align: 'start', sortable: true },
       { title: 'Country', key: 'country', align: 'center', sortable: true },
-      { title: 'Accounts', key: 'no_of_accounts', align: 'center', sortable: true },
-      { title: 'Securities', key: 'no_of_securities', align: 'center', sortable: true },
-      { title: 'First Investment', key: 'first_investment', align: 'center', sortable: true },
+      {
+        title: 'Accounts',
+        key: 'no_of_accounts',
+        align: 'center',
+        sortable: true,
+      },
+      {
+        title: 'Securities',
+        key: 'no_of_securities',
+        align: 'center',
+        sortable: true,
+      },
+      {
+        title: 'First Investment',
+        key: 'first_investment',
+        align: 'center',
+        sortable: true,
+      },
       { title: 'Total NAV', key: 'nav', align: 'center', sortable: true },
       { title: 'Cash', key: 'cash', align: 'center', sortable: true },
       { title: 'IRR', key: 'irr', align: 'center', sortable: true },
-      { title: 'Actions', key: 'actions', align: 'end', sortable: false }
+      { title: 'Actions', key: 'actions', align: 'end', sortable: false },
     ]
 
     const headerAlignments = computed(() => {
-      const alignments = {};
-      headers.forEach(header => {
-        alignments[header.key] = header.align || 'start';
-      });
-      return alignments;
-    });
+      const alignments = {}
+      headers.forEach((header) => {
+        alignments[header.key] = header.align || 'start'
+      })
+      return alignments
+    })
 
     const fetchBrokers = async () => {
       tableLoading.value = true
@@ -187,7 +229,7 @@ export default {
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           sortBy: sortBy.value[0] || {},
-          search: search.value
+          search: search.value,
         })
         brokers.value = response.items
         totalItems.value = response.total_items
@@ -238,7 +280,7 @@ export default {
         search,
         itemsPerPage,
         currentPage,
-        sortBy
+        sortBy,
       ],
       () => {
         fetchBrokers()
@@ -269,9 +311,9 @@ export default {
       handleBrokerAdded,
       handleBrokerUpdated,
       headerAlignments,
-      totals
+      totals,
     }
-  }
+  },
 }
 </script>
 
@@ -279,4 +321,4 @@ export default {
 .nowrap-table :deep(td) {
   white-space: nowrap;
 }
-</style> 
+</style>

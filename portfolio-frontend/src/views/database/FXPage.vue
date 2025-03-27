@@ -1,7 +1,7 @@
 <template>
   <v-container fluid class="pa-0">
     <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64"></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
     <v-card class="mb-4">
@@ -55,10 +55,16 @@
                   density="compact"
                   bg-color="white"
                   class="rounded-lg"
-                ></v-text-field>
+                />
               </v-col>
-              <v-spacer></v-spacer>
-              <v-col cols="12" sm="4" md="3" lg="2" class="d-flex align-center justify-end px-2">
+              <v-spacer />
+              <v-col
+                cols="12"
+                sm="4"
+                md="3"
+                lg="2"
+                class="d-flex align-center justify-end px-2"
+              >
                 <v-select
                   v-model="itemsPerPage"
                   :items="itemsPerPageOptions"
@@ -69,7 +75,7 @@
                   class="rows-per-page-select"
                   @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
-                ></v-select>
+                />
               </v-col>
             </v-toolbar>
           </template>
@@ -77,9 +83,17 @@
           <template #item="{ item }">
             <tr>
               <td>{{ item.date }}</td>
-              <td v-for="currency in currencies" :key="currency" class="text-center">{{ item[currency] }}</td>
+              <td
+                v-for="currency in currencies"
+                :key="currency"
+                class="text-center"
+              >
+                {{ item[currency] }}
+              </td>
               <td class="text-end">
-                <v-icon small class="mr-2" @click="editItem(item)">mdi-pencil</v-icon>
+                <v-icon small class="mr-2" @click="editItem(item)"
+                  >mdi-pencil</v-icon
+                >
                 <v-icon small @click="deleteItem(item)">mdi-delete</v-icon>
               </td>
             </tr>
@@ -99,7 +113,7 @@
                 :total-visible="7"
                 rounded="circle"
                 @update:model-value="handlePageChange"
-              ></v-pagination>
+              />
             </div>
           </template>
         </v-data-table>
@@ -113,7 +127,11 @@
       @fx-added="fetchFXData"
       @fx-updated="fetchFXData"
     />
-    <FXImportDialog v-model="showImportDialog" @import-completed="fetchFXData" @refresh-table="fetchFXData" />
+    <FXImportDialog
+      v-model="showImportDialog"
+      @import-completed="fetchFXData"
+      @refresh-table="fetchFXData"
+    />
 
     <!-- Add confirmation dialog for delete -->
     <v-dialog v-model="showDeleteDialog" max-width="300px">
@@ -121,9 +139,17 @@
         <v-card-title class="text-h5">Confirm Delete</v-card-title>
         <v-card-text>Are you sure you want to delete this FX rate?</v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue darken-1" text @click="showDeleteDialog = false">Cancel</v-btn>
-          <v-btn color="red darken-1" text @click="confirmDelete" :loading="deleteLoading">Delete</v-btn>
+          <v-spacer />
+          <v-btn color="blue darken-1" text @click="showDeleteDialog = false"
+            >Cancel</v-btn
+          >
+          <v-btn
+            color="red darken-1"
+            text
+            @click="confirmDelete"
+            :loading="deleteLoading"
+            >Delete</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -133,7 +159,12 @@
 <script>
 import { ref, computed, watch, watchEffect, onMounted } from 'vue'
 import { useStore } from 'vuex'
-import { getFXData, deleteFXRate, getFXDetails, getEffectiveCurrentDate } from '@/services/api'
+import {
+  getFXData,
+  deleteFXRate,
+  getFXDetails,
+  getEffectiveCurrentDate,
+} from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
@@ -157,7 +188,7 @@ export default {
       search,
       handlePageChange,
       handleItemsPerPageChange,
-      handleSortChange
+      handleSortChange,
     } = useTableSettings()
 
     const { handleApiError } = useErrorHandler()
@@ -170,13 +201,22 @@ export default {
     const currencies = ref([])
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const pageCount = computed(() =>
+      Math.ceil(totalItems.value / itemsPerPage.value)
+    )
+    const effectiveCurrentDate = computed(
+      () => store.state.effectiveCurrentDate
+    )
 
     const headers = computed(() => [
       { title: 'Date', key: 'date', align: 'start', sortable: true },
-      ...currencies.value.map(currency => ({ title: currency, key: currency, align: 'center', sortable: true })),
-      { title: 'Actions', key: 'actions', align: 'end', sortable: false }
+      ...currencies.value.map((currency) => ({
+        title: currency,
+        key: currency,
+        align: 'center',
+        sortable: true,
+      })),
+      { title: 'Actions', key: 'actions', align: 'end', sortable: false },
     ])
 
     const fetchFXData = async () => {
@@ -188,7 +228,7 @@ export default {
         page: currentPage.value,
         itemsPerPage: itemsPerPage.value,
         sortBy: sortBy.value[0] || {},
-        search: search.value
+        search: search.value,
       })
       tableLoading.value = true
       try {
@@ -198,7 +238,7 @@ export default {
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           sortBy: sortBy.value[0] || {},
-          search: search.value
+          search: search.value,
         })
         console.log('FX data received:', response)
         fxData.value = response.results
@@ -215,11 +255,14 @@ export default {
       console.log('Initializing date range')
       console.log('effectiveCurrentDate:', effectiveCurrentDate.value)
       console.log('dateRange:', dateRange.value)
-      
+
       if (!effectiveCurrentDate.value) {
         try {
           const fetchedDate = await getEffectiveCurrentDate()
-          store.commit('SET_EFFECTIVE_CURRENT_DATE', fetchedDate.effective_current_date)
+          store.commit(
+            'SET_EFFECTIVE_CURRENT_DATE',
+            fetchedDate.effective_current_date
+          )
         } catch (error) {
           console.error('Failed to fetch effective current date:', error)
           return // Exit the function if we can't get the effective current date
@@ -227,23 +270,30 @@ export default {
       }
 
       if (effectiveCurrentDate.value) {
-        const { from, to } = calculateDateRange(dateRange.value, effectiveCurrentDate.value, dateFrom.value, dateTo.value)
+        const { from, to } = calculateDateRange(
+          dateRange.value,
+          effectiveCurrentDate.value,
+          dateFrom.value,
+          dateTo.value
+        )
         console.log('Calculated date range:', { from, to })
-        
+
         dateFrom.value = from
         dateTo.value = to
-        
+
         console.log('Date range initialized:', {
           dateFrom: dateFrom.value,
           dateTo: dateTo.value,
           dateRange: dateRange.value,
-          effectiveCurrentDate: effectiveCurrentDate.value
+          effectiveCurrentDate: effectiveCurrentDate.value,
         })
-        
+
         // Trigger table update after initialization
         await fetchFXData()
       } else {
-        console.error('effectiveCurrentDate is still not set after attempting to fetch it')
+        console.error(
+          'effectiveCurrentDate is still not set after attempting to fetch it'
+        )
       }
     }
 
@@ -333,7 +383,7 @@ export default {
       dateRangeForSelector: computed(() => ({
         dateRange: dateRange.value,
         dateFrom: dateFrom.value,
-        dateTo: dateTo.value
+        dateTo: dateTo.value,
       })),
       handleDateRangeChange,
       handleItemsPerPageChange,
@@ -348,8 +398,8 @@ export default {
       deleteItem,
       deleteLoading,
       confirmDelete,
-      fetchFXData
+      fetchFXData,
     }
-  }
+  },
 }
 </script>

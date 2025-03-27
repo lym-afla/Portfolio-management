@@ -1,32 +1,48 @@
 import os
-from django.core.asgi import get_asgi_application
+
 from channels.routing import ProtocolTypeRouter, URLRouter
-from django.urls import path, re_path
-from database.consumers import UpdateAccountPerformanceConsumer, PriceImportConsumer, FXImportConsumer
-from transactions.consumers import TransactionConsumer
 from channels.security.websocket import AllowedHostsOriginValidator
+from django.core.asgi import get_asgi_application
+from django.urls import path, re_path
+
+from database.consumers import (
+    FXImportConsumer,
+    PriceImportConsumer,
+    UpdateAccountPerformanceConsumer,
+)
+from transactions.consumers import TransactionConsumer
+
 from .auth_middleware import TokenAuthMiddleware
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'portfolio_management.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")
 
 django_asgi_app = get_asgi_application()
 
-application = ProtocolTypeRouter({
-    "http": TokenAuthMiddleware(
-        URLRouter([
-            # Route for SSE POST requests
-            path("database/api/update-account-performance/sse/", UpdateAccountPerformanceConsumer.as_asgi()),
-            path("database/api/price-import/sse/", PriceImportConsumer.as_asgi()),
-            path("database/api/fx-import/sse/", FXImportConsumer.as_asgi()),
-            # Route all other HTTP requests to Django
-            re_path(r"", django_asgi_app),  # This should be the last route
-        ])
-    ),
-    "websocket": AllowedHostsOriginValidator(
-        TokenAuthMiddleware(
-            URLRouter([
-                path("ws/transactions/", TransactionConsumer.as_asgi()),
-            ])
-        )
-    ),
-})
+application = ProtocolTypeRouter(
+    {
+        "http": TokenAuthMiddleware(
+            URLRouter(
+                [
+                    # Route for SSE POST requests
+                    path(
+                        "database/api/update-account-performance/sse/",
+                        UpdateAccountPerformanceConsumer.as_asgi(),
+                    ),
+                    path("database/api/price-import/sse/", PriceImportConsumer.as_asgi()),
+                    path("database/api/fx-import/sse/", FXImportConsumer.as_asgi()),
+                    # Route all other HTTP requests to Django
+                    re_path(r"", django_asgi_app),  # This should be the last route
+                ]
+            )
+        ),
+        "websocket": AllowedHostsOriginValidator(
+            TokenAuthMiddleware(
+                URLRouter(
+                    [
+                        path("ws/transactions/", TransactionConsumer.as_asgi()),
+                    ]
+                )
+            )
+        ),
+    }
+)

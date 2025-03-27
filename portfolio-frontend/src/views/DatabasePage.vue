@@ -2,11 +2,7 @@
   <v-container fluid class="database-page pa-0">
     <v-row>
       <v-col cols="12">
-        <v-tabs
-          v-model="activeTab"
-          color="primary"
-          align-tabs="center"
-        >
+        <v-tabs v-model="activeTab" color="primary" align-tabs="center">
           <v-tab to="/database/brokers" value="brokers">Brokers</v-tab>
           <v-tab to="/database/accounts" value="accounts">Accounts</v-tab>
           <v-tab to="/database/securities" value="securities">Securities</v-tab>
@@ -17,7 +13,7 @@
     </v-row>
     <v-row>
       <v-col cols="12">
-        <router-view></router-view>
+        <router-view />
       </v-col>
     </v-row>
   </v-container>
@@ -82,9 +78,9 @@ export default {
     })
 
     return {
-      activeTab
+      activeTab,
     }
-  }
+  },
 }
 </script>
 

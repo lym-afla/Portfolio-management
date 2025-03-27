@@ -23,11 +23,18 @@
             class="account-select mx-2"
           >
             <template v-slot:item="{ props, item }">
-              <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
+              <v-list-item
+                v-if="item.raw.type === 'option'"
+                v-bind="props"
+                :title="null"
+              >
                 {{ item.raw.title }}
               </v-list-item>
               <v-divider v-else-if="item.raw.type === 'divider'" class="my-2" />
-              <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
+              <v-list-subheader
+                v-else-if="item.raw.type === 'header'"
+                class="custom-subheader"
+              >
                 {{ item.raw.title }}
               </v-list-subheader>
             </template>
@@ -62,22 +69,23 @@ export default {
     const currentIndex = computed(() => {
       if (!selectedAccount.value) return -1
       return accountOptions.value.findIndex(
-        option => option.type === 'option' && 
-        option.value.type === selectedAccount.value.type && 
-        option.value.id === selectedAccount.value.id
+        (option) =>
+          option.type === 'option' &&
+          option.value.type === selectedAccount.value.type &&
+          option.value.id === selectedAccount.value.id
       )
     })
 
     const canSwitchLeft = computed(() => {
       return accountOptions.value
         .slice(0, currentIndex.value)
-        .some(option => option.type === 'option')
+        .some((option) => option.type === 'option')
     })
 
     const canSwitchRight = computed(() => {
       return accountOptions.value
         .slice(currentIndex.value + 1)
-        .some(option => option.type === 'option')
+        .some((option) => option.type === 'option')
     })
 
     const fetchAccounts = async () => {
@@ -87,9 +95,10 @@ export default {
         // Find the option matching the selected type and id
         const selected = data.selected
         const matchingOption = accountOptions.value.find(
-          option => option.type === 'option' && 
-          option.value.type === selected.type && 
-          option.value.id === selected.id
+          (option) =>
+            option.type === 'option' &&
+            option.value.type === selected.type &&
+            option.value.id === selected.id
         )
         selectedAccount.value = matchingOption?.value || null
         store.dispatch('updateSelectedAccount', selectedAccount.value)
@@ -101,15 +110,18 @@ export default {
     const handleAccountChange = async (newValue) => {
       console.log('handleAccountChange called with:', newValue)
       selectedAccount.value = newValue
-      
+
       await store.dispatch('updateAccountSelection', {
         type: newValue.type,
-        id: newValue.id
+        id: newValue.id,
       })
-      
+
       // Log the updated store state after the dispatch completes
-      console.log('[handleAccountChange] store.state.accountSelection:', store.state.accountSelection)
-      
+      console.log(
+        '[handleAccountChange] store.state.accountSelection:',
+        store.state.accountSelection
+      )
+
       // // Update data for the new account
       // await updateDataForAccount(newValue)
     }
@@ -159,9 +171,9 @@ export default {
       handleAccountChange,
       switchAccount,
       canSwitchLeft,
-      canSwitchRight
+      canSwitchRight,
     }
-  }
+  },
 }
 </script>
 
@@ -176,7 +188,7 @@ export default {
   color: #000000;
   padding-top: 12px;
   padding-bottom: 12px;
-  background-color: #F5F5F5;
+  background-color: #f5f5f5;
 }
 
 .arrow-btn {

@@ -3,11 +3,7 @@
     <v-card>
       <v-card-title>User Settings</v-card-title>
       <v-card-text>
-        <v-progress-circular
-          v-if="loading"
-          indeterminate
-          color="primary"
-        ></v-progress-circular>
+        <v-progress-circular v-if="loading" indeterminate color="primary" />
         <v-form v-else @submit.prevent="saveSettings">
           <v-select
             v-model="settingsForm.default_currency"
@@ -21,13 +17,13 @@
               </v-list-item>
             </template>
           </v-select>
-          
+
           <v-checkbox
             v-model="settingsForm.use_default_currency_where_relevant"
             label="Use default currency where relevant"
             :error-messages="fieldErrors.use_default_currency_where_relevant"
-          ></v-checkbox>
-          
+          />
+
           <v-select
             v-model="settingsForm.chart_frequency"
             :items="frequencyChoices"
@@ -40,7 +36,7 @@
               </v-list-item>
             </template>
           </v-select>
-          
+
           <v-select
             v-model="settingsForm.chart_timeline"
             :items="timelineChoices"
@@ -53,7 +49,7 @@
               </v-list-item>
             </template>
           </v-select>
-          
+
           <v-select
             v-model="settingsForm.NAV_barchart_default_breakdown"
             :items="navBreakdownChoices"
@@ -66,15 +62,19 @@
               </v-list-item>
             </template>
           </v-select>
-          
+
           <v-text-field
             v-model.number="settingsForm.digits"
             type="number"
             label="Number of digits"
-            :rules="[v => v >= 0 && v <= 6 || 'The value for digits must be between 0 and 6']"
+            :rules="[
+              (v) =>
+                (v >= 0 && v <= 6) ||
+                'The value for digits must be between 0 and 6',
+            ]"
             :error-messages="fieldErrors.digits"
-          ></v-text-field>
-          
+          />
+
           <v-select
             v-model="settingsForm.selected_account"
             :items="accountChoices"
@@ -84,16 +84,23 @@
             :error-messages="fieldErrors.selected_account"
           >
             <template v-slot:item="{ item, props }">
-              <v-list-item v-if="item.raw.type === 'option'" v-bind="props" :title="null">
+              <v-list-item
+                v-if="item.raw.type === 'option'"
+                v-bind="props"
+                :title="null"
+              >
                 {{ item.raw.title }}
               </v-list-item>
               <v-divider v-else-if="item.raw.type === 'divider'" />
-              <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
+              <v-list-subheader
+                v-else-if="item.raw.type === 'header'"
+                class="custom-subheader"
+              >
                 {{ item.raw.title }}
               </v-list-subheader>
             </template>
           </v-select>
-          
+
           <v-card-actions>
             <v-btn type="submit" color="primary">Save Settings</v-btn>
           </v-card-actions>
@@ -127,7 +134,11 @@
 <script>
 import { provide } from 'vue'
 import { useStore } from 'vuex'
-import { getUserSettings, updateUserSettings, getSettingsChoices } from '@/services/api'
+import {
+  getUserSettings,
+  updateUserSettings,
+  getSettingsChoices,
+} from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
 import AccountGroupManager from '@/components/AccountGroupManager.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
@@ -135,7 +146,7 @@ import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 export default {
   components: {
     AccountGroupManager,
-    BrokerTokenManager
+    BrokerTokenManager,
   },
 
   setup() {
@@ -159,7 +170,7 @@ export default {
         digits: 0,
         selected_account: {
           type: 'all',
-          id: null
+          id: null,
         },
       },
       currencyChoices: [],
@@ -184,7 +195,7 @@ export default {
 
   async mounted() {
     console.log('ProfileSettings component mounted')
-    await this.loadData();
+    await this.loadData()
   },
 
   methods: {
@@ -193,29 +204,35 @@ export default {
         this.loading = true
         const [settings, choices] = await Promise.all([
           getUserSettings(),
-          getSettingsChoices()
+          getSettingsChoices(),
         ])
-        
+
         // Format choices and set initial currency in store
         this.currencyChoices = this.formatChoices(choices.currency_choices)
         const selectedCurrencyOption = this.currencyChoices.find(
-          option => option.value === settings.default_currency
+          (option) => option.value === settings.default_currency
         )
         if (selectedCurrencyOption) {
-          this.store.commit('SET_SELECTED_CURRENCY', selectedCurrencyOption.title)
+          this.store.commit(
+            'SET_SELECTED_CURRENCY',
+            selectedCurrencyOption.title
+          )
         }
 
         // Format all choices first
         this.frequencyChoices = this.formatChoices(choices.frequency_choices)
         this.timelineChoices = this.formatChoices(choices.timeline_choices)
-        this.navBreakdownChoices = this.formatChoices(choices.nav_breakdown_choices)
+        this.navBreakdownChoices = this.formatChoices(
+          choices.nav_breakdown_choices
+        )
         this.accountChoices = formatAccountChoices(choices.account_choices)
 
         // Find the matching account option
         const matchingAccount = this.accountChoices.find(
-          option => option.type === 'option' && 
-                    option.value.type === settings.selected_account_type && 
-                    option.value.id === settings.selected_account_id
+          (option) =>
+            option.type === 'option' &&
+            option.value.type === settings.selected_account_type &&
+            option.value.id === settings.selected_account_id
         )
 
         // Update form with settings
@@ -223,10 +240,9 @@ export default {
           ...settings,
           selected_account: matchingAccount?.value || {
             type: 'all',
-            id: null
-          }
+            id: null,
+          },
         }
-
       } catch (error) {
         console.error('Error loading settings data:', error)
         this.showErrorMessage('Failed to load settings. Please try again.')
@@ -235,10 +251,10 @@ export default {
       }
     },
     formatChoices(choices) {
-      return choices.map(choice => ({
+      return choices.map((choice) => ({
         value: choice[0],
-        title: choice[1]
-      }));
+        title: choice[1],
+      }))
     },
     async saveSettings() {
       try {
@@ -248,16 +264,19 @@ export default {
           selected_account_type: this.settingsForm.selected_account.type,
           selected_account_id: this.settingsForm.selected_account.id,
         }
-        delete settingsToSave.selected_account  // Remove the combined field
+        delete settingsToSave.selected_account // Remove the combined field
 
         const response = await updateUserSettings(settingsToSave)
         if (response.success) {
           // Update store with new currency
           const selectedCurrencyOption = this.currencyChoices.find(
-            option => option.value === this.settingsForm.default_currency
+            (option) => option.value === this.settingsForm.default_currency
           )
           if (selectedCurrencyOption) {
-            this.store.commit('SET_SELECTED_CURRENCY', selectedCurrencyOption.title)
+            this.store.commit(
+              'SET_SELECTED_CURRENCY',
+              selectedCurrencyOption.title
+            )
           }
 
           this.showSuccessMessage('Settings saved successfully')
@@ -270,35 +289,35 @@ export default {
       }
     },
     handleFieldErrors(errors) {
-      this.clearFieldErrors();
-      Object.keys(errors).forEach(field => {
+      this.clearFieldErrors()
+      Object.keys(errors).forEach((field) => {
         if (field in this.fieldErrors) {
-          this.fieldErrors[field] = errors[field];
+          this.fieldErrors[field] = errors[field]
         }
-      });
-      this.showErrorMessage('Please correct the errors in the form.');
+      })
+      this.showErrorMessage('Please correct the errors in the form.')
     },
     clearFieldErrors() {
-      Object.keys(this.fieldErrors).forEach(field => {
-        this.fieldErrors[field] = [];
-      });
+      Object.keys(this.fieldErrors).forEach((field) => {
+        this.fieldErrors[field] = []
+      })
     },
     showSuccessMessage(message) {
-      this.snackbarMessage = message;
-      this.snackbarColor = 'success';
-      this.snackbar = true;
+      this.snackbarMessage = message
+      this.snackbarColor = 'success'
+      this.snackbar = true
     },
     showErrorMessage(message) {
-      this.snackbarMessage = message;
-      this.snackbarColor = 'error';
-      this.snackbar = true;
+      this.snackbarMessage = message
+      this.snackbarColor = 'error'
+      this.snackbar = true
     },
     showInfoMessage(message) {
-      this.snackbarMessage = message;
-      this.snackbarColor = 'info';
-      this.snackbar = true;
-    }
-  }
+      this.snackbarMessage = message
+      this.snackbarColor = 'info'
+      this.snackbar = true
+    },
+  },
 }
 </script>
 
@@ -309,6 +328,6 @@ export default {
   color: #000000;
   padding-top: 12px;
   padding-bottom: 12px;
-  background-color: #F5F5F5;
+  background-color: #f5f5f5;
 }
 </style>

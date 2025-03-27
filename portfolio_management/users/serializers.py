@@ -1,17 +1,23 @@
-from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
+from rest_framework import serializers
 
+from common.models import Accounts, Brokers
 from constants import (
-    CURRENCY_CHOICES, NAV_BARCHART_CHOICES, ACCOUNT_TYPE_BROKER, ACCOUNT_TYPE_GROUP,
-    ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_ALL
+    ACCOUNT_TYPE_ALL,
+    ACCOUNT_TYPE_BROKER,
+    ACCOUNT_TYPE_CHOICES,
+    ACCOUNT_TYPE_GROUP,
+    ACCOUNT_TYPE_INDIVIDUAL,
+    CURRENCY_CHOICES,
+    NAV_BARCHART_CHOICES,
 )
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
-from users.models import InteractiveBrokersApiToken, TinkoffApiToken, AccountGroup
-from common.models import Accounts, Brokers
+from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
 
 User = get_user_model()
+
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
@@ -19,30 +25,32 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'password', 'password2', 'first_name', 'last_name')
+        fields = ("id", "username", "email", "password", "password2", "first_name", "last_name")
         extra_kwargs = {
-            'first_name': {'required': False},
-            'last_name': {'required': False},
+            "first_name": {"required": False},
+            "last_name": {"required": False},
         }
 
     def validate(self, attrs):
-        if attrs['password'] != attrs['password2']:
+        if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
 
     def create(self, validated_data):
         user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data['email'],
-            password=validated_data['password']
+            username=validated_data["username"],
+            email=validated_data["email"],
+            password=validated_data["password"],
         )
         return user
+
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('username', 'first_name', 'last_name', 'email', 'default_currency')
-        read_only_fields = ('username',)
+        fields = ("username", "first_name", "last_name", "email", "default_currency")
+        read_only_fields = ("username",)
+
 
 class UserSettingsSerializer(serializers.ModelSerializer):
     default_currency = serializers.ChoiceField(choices=CURRENCY_CHOICES)
@@ -55,34 +63,36 @@ class UserSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'default_currency',
-            'use_default_currency_where_relevant',
-            'chart_frequency',
-            'chart_timeline',
-            'NAV_barchart_default_breakdown',
-            'digits',
-            'selected_account_type',
-            'selected_account_id'
+            "default_currency",
+            "use_default_currency_where_relevant",
+            "chart_frequency",
+            "chart_timeline",
+            "NAV_barchart_default_breakdown",
+            "digits",
+            "selected_account_type",
+            "selected_account_id",
         ]
 
     def validate_digits(self, value):
         if value > 6:
-            raise serializers.ValidationError('The value for digits must be less than or equal to 6.')
+            raise serializers.ValidationError(
+                "The value for digits must be less than or equal to 6."
+            )
         return value
 
     def validate(self, data):
         """
         Validate the combination of account_type and account_id
         """
-        account_type = data.get('selected_account_type')
-        account_id = data.get('selected_account_id')
-        user = self.context.get('request').user
+        account_type = data.get("selected_account_type")
+        account_id = data.get("selected_account_id")
+        user = self.context.get("request").user
 
         if account_type == ACCOUNT_TYPE_ALL:
             if account_id is not None:
-                raise serializers.ValidationError({
-                    'selected_account_id': "'all' type should have null ID"
-                })
+                raise serializers.ValidationError(
+                    {"selected_account_id": "'all' type should have null ID"}
+                )
         elif account_type and account_id is not None:
             try:
                 if account_type == ACCOUNT_TYPE_INDIVIDUAL:
@@ -92,36 +102,50 @@ class UserSettingsSerializer(serializers.ModelSerializer):
                 elif account_type == ACCOUNT_TYPE_BROKER:
                     Brokers.objects.get(id=account_id, investor=user)
             except (Accounts.DoesNotExist, AccountGroup.DoesNotExist, Brokers.DoesNotExist):
-                raise serializers.ValidationError({
-                    'selected_account_id': f'Invalid {account_type} ID'
-                })
+                raise serializers.ValidationError(
+                    {"selected_account_id": f"Invalid {account_type} ID"}
+                )
         elif account_type and account_id is None:
-            raise serializers.ValidationError({
-                'selected_account_id': f'{account_type} type requires an ID'
-            })
+            raise serializers.ValidationError(
+                {"selected_account_id": f"{account_type} type requires an ID"}
+            )
 
         return data
 
+
 class UserSettingsChoicesSerializer(serializers.Serializer):
-    currency_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
-    frequency_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
-    timeline_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
-    nav_breakdown_choices = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
+    currency_choices = serializers.ListField(
+        child=serializers.ListField(child=serializers.CharField())
+    )
+    frequency_choices = serializers.ListField(
+        child=serializers.ListField(child=serializers.CharField())
+    )
+    timeline_choices = serializers.ListField(
+        child=serializers.ListField(child=serializers.CharField())
+    )
+    nav_breakdown_choices = serializers.ListField(
+        child=serializers.ListField(child=serializers.CharField())
+    )
     account_choices = serializers.ListField(child=serializers.ListField())
+
 
 class DashboardSettingsSerializer(serializers.ModelSerializer):
     table_date = serializers.DateField(default=timezone.now().date())
 
     class Meta:
         model = User
-        fields = ['default_currency', 'digits', 'table_date']
+        fields = ["default_currency", "digits", "table_date"]
         extra_kwargs = {
-            'default_currency': {'label': 'Currency'},
-            'digits': {'label': 'Number of digits'},
+            "default_currency": {"label": "Currency"},
+            "digits": {"label": "Number of digits"},
         }
 
+
 class DashboardSettingsChoicesSerializer(serializers.Serializer):
-    default_currency = serializers.ListField(child=serializers.ListField(child=serializers.CharField()))
+    default_currency = serializers.ListField(
+        child=serializers.ListField(child=serializers.CharField())
+    )
+
 
 # Add new serializers for token management
 class BaseApiTokenSerializer(serializers.ModelSerializer):
@@ -129,34 +153,36 @@ class BaseApiTokenSerializer(serializers.ModelSerializer):
 
     class Meta:
         abstract = True
-        fields = ['id', 'token']
-        read_only_fields = ['id']
+        fields = ["id", "token"]
+        read_only_fields = ["id"]
 
     def create(self, validated_data):
-        token = validated_data.pop('token')
-        user = validated_data.get('user')
+        token = validated_data.pop("token")
+        user = validated_data.get("user")
         instance = super().create(validated_data)
         instance.set_token(token, user)
         return instance
 
     def update(self, instance, validated_data):
-        if 'token' in validated_data:
-            token = validated_data.pop('token')
-            user = validated_data.get('user')
+        if "token" in validated_data:
+            token = validated_data.pop("token")
+            user = validated_data.get("user")
             instance = super().update(instance, validated_data)
             instance.set_token(token, user)
             return instance
         return super().update(instance, validated_data)
 
+
 class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
     broker = serializers.PrimaryKeyRelatedField(
-        queryset=Brokers.objects.all(),
-        write_only=True  # We only need it for writing
+        queryset=Brokers.objects.all(), write_only=True  # We only need it for writing
     )
-    token_type = serializers.ChoiceField(choices=[
-        ('read_only', 'Read Only'),
-        ('full_access', 'Full Access'),
-    ])
+    token_type = serializers.ChoiceField(
+        choices=[
+            ("read_only", "Read Only"),
+            ("full_access", "Full Access"),
+        ]
+    )
     sandbox_mode = serializers.BooleanField(default=False)
     is_active = serializers.BooleanField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
@@ -165,62 +191,64 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
     class Meta(BaseApiTokenSerializer.Meta):
         model = TinkoffApiToken
         fields = BaseApiTokenSerializer.Meta.fields + [
-            'broker',
-            'token_type', 
-            'sandbox_mode', 
-            'is_active',
-            'created_at', 
-            'updated_at'
+            "broker",
+            "token_type",
+            "sandbox_mode",
+            "is_active",
+            "created_at",
+            "updated_at",
         ]
 
     def validate_broker(self, value):
         """
         Check if the broker belongs to the user and is appropriate for the token type
         """
-        if not value.investor == self.context['request'].user:
+        if not value.investor == self.context["request"].user:
             raise serializers.ValidationError("Invalid broker selection")
         return value
+
 
 class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
     class Meta(BaseApiTokenSerializer.Meta):
         model = InteractiveBrokersApiToken
         fields = BaseApiTokenSerializer.Meta.fields
 
+
 class AccountGroupSerializer(serializers.ModelSerializer):
-    accounts = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Accounts.objects.all()
-    )
+    accounts = serializers.PrimaryKeyRelatedField(many=True, queryset=Accounts.objects.all())
 
     class Meta:
         model = AccountGroup
-        fields = ['id', 'name', 'accounts', 'created_at', 'updated_at']
-        read_only_fields = ['created_at', 'updated_at']
+        fields = ["id", "name", "accounts", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at"]
 
     def validate(self, data):
         # Ensure user can only add their own broker accounts to groups
-        request = self.context.get('request')
+        request = self.context.get("request")
         if request and request.user:
             user_accounts = Accounts.objects.filter(broker__investor=request.user)
-            invalid_accounts = set(data['accounts']) - set(user_accounts)
-            
+            invalid_accounts = set(data["accounts"]) - set(user_accounts)
+
             if invalid_accounts:
-                raise serializers.ValidationError({
-                    'accounts': 'You can only add your own broker accounts to groups'
-                })
-        
+                raise serializers.ValidationError(
+                    {"accounts": "You can only add your own broker accounts to groups"}
+                )
+
         return data
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         # Add broker account details to the response
-        representation['accounts'] = [{
-            'id': account.id,
-            'name': account.name,
-        } for account in instance.accounts.all()]
+        representation["accounts"] = [
+            {
+                "id": account.id,
+                "name": account.name,
+            }
+            for account in instance.accounts.all()
+        ]
         return representation
 
     def create(self, validated_data):
-        user = self.context['request'].user
-        validated_data['user'] = user
+        user = self.context["request"].user
+        validated_data["user"] = user
         return super().create(validated_data)

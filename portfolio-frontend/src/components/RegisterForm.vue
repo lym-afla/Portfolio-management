@@ -6,14 +6,14 @@
       :error-messages="formErrors.username"
       @input="clearError('username')"
       autocomplete="username"
-    ></v-text-field>
+    />
     <v-text-field
       v-model="email"
       label="Email"
       type="email"
       :error-messages="formErrors.email"
       @input="clearError('email')"
-    ></v-text-field>
+    />
     <v-text-field
       v-model="password"
       label="Password"
@@ -21,7 +21,7 @@
       :error-messages="formErrors.password"
       @input="clearError('password')"
       autocomplete="new-password"
-    ></v-text-field>
+    />
     <v-text-field
       v-model="password2"
       label="Confirm Password"
@@ -29,11 +29,17 @@
       :error-messages="formErrors.password2"
       @input="clearError('password2')"
       autocomplete="new-password"
-    ></v-text-field>
-    <v-alert v-if="formErrors.general && formErrors.general.length" type="error" class="mt-3">
+    />
+    <v-alert
+      v-if="formErrors.general && formErrors.general.length"
+      type="error"
+      class="mt-3"
+    >
       {{ formErrors.general[0] }}
     </v-alert>
-    <v-btn type="submit" color="primary" block :loading="loading" class="mt-3">Register</v-btn>
+    <v-btn type="submit" color="primary" block :loading="loading" class="mt-3"
+      >Register</v-btn
+    >
   </v-form>
 </template>
 
@@ -45,8 +51,8 @@ export default {
     loading: Boolean,
     errors: {
       type: Object,
-      default: () => ({})
-    }
+      default: () => ({}),
+    },
   },
   emits: ['register'],
   setup(props, { emit }) {
@@ -59,7 +65,7 @@ export default {
       email: [],
       password: [],
       password2: [],
-      general: []
+      general: [],
     })
 
     const clearError = (field) => {
@@ -69,27 +75,33 @@ export default {
 
     const submitForm = () => {
       // Clear previous errors
-      Object.keys(formErrors).forEach(key => formErrors[key] = [])
+      Object.keys(formErrors).forEach((key) => (formErrors[key] = []))
 
       emit('register', {
         username: username.value,
         email: email.value,
         password: password.value,
-        password2: password2.value
+        password2: password2.value,
       })
     }
 
     // Watch for errors from parent component
-    watch(() => props.errors, (newErrors) => {
-      console.log('[RegisterForm.vue] New errors received:', newErrors)
-      Object.keys(formErrors).forEach(key => {
-        if (newErrors[key]) {
-          formErrors[key] = Array.isArray(newErrors[key]) ? newErrors[key] : [newErrors[key]]
-        } else {
-          formErrors[key] = []
-        }
-      })
-    }, { deep: true })
+    watch(
+      () => props.errors,
+      (newErrors) => {
+        console.log('[RegisterForm.vue] New errors received:', newErrors)
+        Object.keys(formErrors).forEach((key) => {
+          if (newErrors[key]) {
+            formErrors[key] = Array.isArray(newErrors[key])
+              ? newErrors[key]
+              : [newErrors[key]]
+          } else {
+            formErrors[key] = []
+          }
+        })
+      },
+      { deep: true }
+    )
 
     return {
       username,
@@ -100,6 +112,6 @@ export default {
       submitForm,
       clearError,
     }
-  }
+  },
 }
 </script>

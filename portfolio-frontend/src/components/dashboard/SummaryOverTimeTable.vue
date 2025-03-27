@@ -8,26 +8,50 @@
       <v-table v-if="!error" density="compact">
         <thead>
           <tr>
-            <th></th>
-            <th v-for="year in years" :key="year" class="text-center font-weight-bold">{{ year }}</th>
-            <th class="text-center highlight font-weight-bold">{{ currentYear }}YTD</th>
+            <th />
+            <th
+              v-for="year in years"
+              :key="year"
+              class="text-center font-weight-bold"
+            >
+              {{ year }}
+            </th>
+            <th class="text-center highlight font-weight-bold">
+              {{ currentYear }}YTD
+            </th>
             <th class="text-center highlight font-weight-bold">All-time</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="line in lines" :key="line.name" :class="{ 'font-weight-bold': line.name === 'BoP NAV' || line.name === 'EoP NAV', 'font-italic': line.name === 'TSR' }">
+          <tr
+            v-for="line in lines"
+            :key="line.name"
+            :class="{
+              'font-weight-bold':
+                line.name === 'BoP NAV' || line.name === 'EoP NAV',
+              'font-italic': line.name === 'TSR',
+            }"
+          >
             <td>
               {{ line.name }}
             </td>
-            <td v-for="year in years" :key="`${line.name}-${year}`" class="text-center">
+            <td
+              v-for="year in years"
+              :key="`${line.name}-${year}`"
+              class="text-center"
+            >
               {{ line.data[year] }}
             </td>
             <td class="text-center highlight">{{ line.data['YTD'] }}</td>
-            <td class="text-center font-weight-bold highlight">{{ line.data['All-time'] }}</td>
+            <td class="text-center font-weight-bold highlight">
+              {{ line.data['All-time'] }}
+            </td>
           </tr>
         </tbody>
       </v-table>
-      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Account Performance</v-btn>
+      <v-btn @click="showUpdateDialog" color="primary" class="mt-4"
+        >Update Account Performance</v-btn
+      >
     </v-card-text>
   </v-card>
   <v-card v-else>
@@ -36,7 +60,9 @@
       <v-alert type="info">
         No data available for the selected account.
       </v-alert>
-      <v-btn @click="showUpdateDialog" color="primary" class="mt-4">Update Account Performance</v-btn>
+      <v-btn @click="showUpdateDialog" color="primary" class="mt-4"
+        >Update Account Performance</v-btn
+      >
     </v-card-text>
   </v-card>
 
@@ -67,25 +93,25 @@ export default {
   name: 'SummaryOverTimeTable',
   components: {
     UpdateAccountPerformanceDialog,
-    ProgressDialog
+    ProgressDialog,
   },
   props: {
     lines: {
       type: Array,
-      default: () => []
+      default: () => [],
     },
     years: {
       type: Array,
-      default: () => []
+      default: () => [],
     },
     currentYear: {
       type: String,
-      default: ''
+      default: '',
     },
     error: {
       type: String,
-      default: ''
-    }
+      default: '',
+    },
   },
   emits: ['refresh-data'],
   setup(props, { emit }) {
@@ -121,29 +147,29 @@ export default {
     const handleProgress = (event) => {
       const data = event.detail
       console.log('Progress:', data)
-      
+
       if (!showProgressDialog.value) {
         showProgressDialog.value = true
       }
-      
-      switch(data.status) {
+
+      switch (data.status) {
         case 'initializing':
           totalOperations.value = data.total
           break
-          
+
         case 'progress':
           updateProgress.value = data.progress
           currentOperation.value = data.current
           currentMessage.value = compileProgressMessage(data)
           break
-          
+
         case 'complete':
           emit('refresh-data')
           setTimeout(() => {
             showProgressDialog.value = false
           }, 1000)
           break
-          
+
         case 'error':
           handleUpdateError(data.message)
           break
@@ -156,7 +182,8 @@ export default {
 
     const handleUpdateError = (error) => {
       console.error('[handleUpdateError] Update error:', error)
-      const errorMessage = error.response?.data?.message || error.message || String(error)
+      const errorMessage =
+        error.response?.data?.message || error.message || String(error)
       errors.value.push(errorMessage)
       currentMessage.value = `Error: ${errorMessage}`
     }
@@ -168,13 +195,25 @@ export default {
     }
 
     onMounted(() => {
-      window.addEventListener('accountPerformanceUpdateProgress', handleProgress)
-      window.addEventListener('accountPerformanceUpdateError', handleUpdateError)
+      window.addEventListener(
+        'accountPerformanceUpdateProgress',
+        handleProgress
+      )
+      window.addEventListener(
+        'accountPerformanceUpdateError',
+        handleUpdateError
+      )
     })
 
     onUnmounted(() => {
-      window.removeEventListener('accountPerformanceUpdateProgress', handleProgress)
-      window.removeEventListener('accountPerformanceUpdateError', handleUpdateError)
+      window.removeEventListener(
+        'accountPerformanceUpdateProgress',
+        handleProgress
+      )
+      window.removeEventListener(
+        'accountPerformanceUpdateError',
+        handleUpdateError
+      )
     })
 
     return {
@@ -188,9 +227,9 @@ export default {
       totalOperations,
       currentMessage,
       errors,
-      handleStopImport
+      handleStopImport,
     }
-  }
+  },
 }
 </script>
 

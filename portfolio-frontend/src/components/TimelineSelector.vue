@@ -24,12 +24,12 @@ export default {
   props: {
     modelValue: {
       type: String,
-      required: true
+      required: true,
     },
     effectiveCurrentDate: {
       type: String,
-      required: true
-    }
+      required: true,
+    },
   },
   emits: ['update:modelValue'],
   setup(props) {
@@ -49,6 +49,6 @@ export default {
       showYTD,
       // ytdValue
     }
-  }
+  },
 }
 </script>

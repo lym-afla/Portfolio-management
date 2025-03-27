@@ -1,21 +1,14 @@
 <template>
   <v-container fluid class="pa-0">
     <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular
-        color="primary"
-        indeterminate
-        size="64"
-      ></v-progress-circular>
+      <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
-    <slot name="above-table"></slot>
+    <slot name="above-table" />
 
     <v-row no-gutters>
       <v-col cols="12">
-        <v-skeleton-loader
-          v-if="initialLoading"
-          type="table"
-        ></v-skeleton-loader>
+        <v-skeleton-loader v-if="initialLoading" type="table" />
         <v-data-table
           v-else
           :headers="headers"
@@ -33,7 +26,7 @@
           disable-sort
         >
           <template v-for="(_, name) in $slots" #[name]="slotData">
-            <slot :name="name" v-bind="slotData"/>
+            <slot :name="name" v-bind="slotData" />
           </template>
 
           <template #top>
@@ -50,8 +43,12 @@
                   class="mr-2"
                 >
                   <template #item="{ props, item }">
-                    <v-list-item v-if="!item.raw.divider" v-bind="props" :title="item.title"></v-list-item>
-                    <v-divider v-else class="my-2"></v-divider>
+                    <v-list-item
+                      v-if="!item.raw.divider"
+                      v-bind="props"
+                      :title="item.title"
+                    />
+                    <v-divider v-else class="my-2" />
                   </template>
                 </v-select>
               </v-col>
@@ -65,9 +62,9 @@
                   density="compact"
                   bg-color="white"
                   class="rounded-lg"
-                ></v-text-field>
+                />
               </v-col>
-              <v-spacer></v-spacer>
+              <v-spacer />
               <v-col cols="12" sm="3" md="3" lg="2">
                 <v-select
                   v-model="itemsPerPage"
@@ -79,7 +76,7 @@
                   class="mr-2 rows-per-page-select"
                   @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
-                ></v-select>
+                />
               </v-col>
             </v-toolbar>
           </template>
@@ -98,7 +95,7 @@
                 :total-visible="7"
                 rounded="circle"
                 @update:model-value="handlePageChange"
-              ></v-pagination>
+              />
             </div>
           </template>
 
@@ -169,7 +166,9 @@ export default {
       handleTimespanChange,
     } = useTableSettings()
 
-    const pageCount = computed(() => Math.ceil(totalItems.value / itemsPerPage.value))
+    const pageCount = computed(() =>
+      Math.ceil(totalItems.value / itemsPerPage.value)
+    )
 
     const flattenedHeaders = computed(() => {
       return props.headers.flatMap((header) =>
@@ -187,8 +186,8 @@ export default {
           currentPage: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
-          sortBy: sortBy.value
-        });
+          sortBy: sortBy.value,
+        })
         const data = await props.fetchPositions({
           // timespan: timespan.value,
           dateFrom: dateFrom.value,
@@ -196,7 +195,7 @@ export default {
           page: currentPage.value,
           itemsPerPage: itemsPerPage.value,
           search: search.value,
-          sortBy: sortBy.value[0] || {}
+          sortBy: sortBy.value[0] || {},
         })
         positions.value = data.positions
         totals.value = data.totals
@@ -231,7 +230,7 @@ export default {
         sortBy,
         timespan,
         dateFrom,
-        dateTo
+        dateTo,
       ],
       () => {
         fetchData()
@@ -250,13 +249,16 @@ export default {
 
     const initializeData = async () => {
       emit('update-page-title', props.pageTitle)
-      
+
       if (!store.state.effectiveCurrentDate) {
         await store.dispatch('fetchEffectiveCurrentDate')
       }
 
       // Check if dateFrom and dateTo are already set in the store
-      if (!store.state.tableSettings.dateFrom || !store.state.tableSettings.dateTo) {
+      if (
+        !store.state.tableSettings.dateFrom ||
+        !store.state.tableSettings.dateTo
+      ) {
         // If not set, use the default 'ytd' timespan
         await handleTimespanChange(store.state.tableSettings.timespan)
       } else {

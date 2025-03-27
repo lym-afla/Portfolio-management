@@ -13,7 +13,7 @@ export default createStore({
     error: null,
     accountSelection: JSON.parse(localStorage.getItem('accountSelection')) || {
       type: 'all',
-      id: null
+      id: null,
     },
     dataRefreshTrigger: 0,
     effectiveCurrentDate: null,
@@ -33,7 +33,7 @@ export default createStore({
       breakdown: 'none',
       dateRange: 'ytd',
       dateFrom: null,
-      dateTo: null
+      dateTo: null,
     },
     isInitialized: false,
     isInitializing: false,
@@ -62,10 +62,10 @@ export default createStore({
     },
     SET_ACCOUNT_SELECTION(state, { type, id }) {
       state.accountSelection = { type, id }
-      
+
       // Save to localStorage
       localStorage.setItem('accountSelection', JSON.stringify({ type, id }))
-      
+
       // If user exists, update their preferences
       if (state.user) {
         state.user.selected_account_type = type
@@ -103,10 +103,13 @@ export default createStore({
   actions: {
     async login({ commit, dispatch }, credentials) {
       try {
-        const response = await api.login(credentials.username, credentials.password)
+        const response = await api.login(
+          credentials.username,
+          credentials.password
+        )
         commit('SET_TOKENS', {
           accessToken: response.access,
-          refreshToken: response.refresh
+          refreshToken: response.refresh,
         })
         await dispatch('fetchUserData')
         return { success: true }
@@ -121,7 +124,7 @@ export default createStore({
         const response = await api.refreshToken(state.refreshToken)
         commit('SET_TOKENS', {
           accessToken: response.access,
-          refreshToken: response.refresh || state.refreshToken
+          refreshToken: response.refresh || state.refreshToken,
         })
         await dispatch('fetchUserData')
         return { success: true }
@@ -146,17 +149,17 @@ export default createStore({
         // First update backend
         await api.updateUserDataForNewAccount({
           type: selection.type,
-          id: selection.id
+          id: selection.id,
         })
-        
+
         // Then update store
         commit('SET_ACCOUNT_SELECTION', {
           type: selection.type,
-          id: selection.id
+          id: selection.id,
         })
 
         console.log('[Store] Account selection updated', state.accountSelection)
-        
+
         // Finally trigger refresh
         dispatch('triggerDataRefresh')
       } catch (error) {
@@ -200,15 +203,17 @@ export default createStore({
       try {
         const userData = await api.getUserProfile()
         commit('SET_USER', userData)
-        
+
         // Set account selection from user preferences or localStorage
-        const savedSelection = JSON.parse(localStorage.getItem('accountSelection'))
+        const savedSelection = JSON.parse(
+          localStorage.getItem('accountSelection')
+        )
         const selection = {
           type: userData.selected_account_type || savedSelection?.type || 'all',
-          id: userData.selected_account_id || savedSelection?.id || null
+          id: userData.selected_account_id || savedSelection?.id || null,
         }
         commit('SET_ACCOUNT_SELECTION', selection)
-        
+
         return userData
       } catch (error) {
         console.error('Failed to fetch user data:', error)
@@ -218,7 +223,7 @@ export default createStore({
     async initializeApp({ commit, state, dispatch }) {
       const requestId = Date.now()
       console.log(`[Store][${requestId}] Starting initializeApp`)
-      
+
       // Check if already initialized
       if (state.isInitialized) {
         console.log(`[Store][${requestId}] App already initialized`)
@@ -227,19 +232,23 @@ export default createStore({
 
       // Check if initialization is in progress
       if (state.isInitializing) {
-        console.log(`[Store][${requestId}] Initialization already in progress, waiting...`)
+        console.log(
+          `[Store][${requestId}] Initialization already in progress, waiting...`
+        )
         // Wait for current initialization to complete
         while (state.isInitializing) {
-          await new Promise(resolve => setTimeout(resolve, 100))
+          await new Promise((resolve) => setTimeout(resolve, 100))
         }
         return { success: !!state.user }
       }
 
       try {
         commit('SET_STATE', { isInitializing: true })
-        
+
         // Load saved account selection from localStorage
-        const savedSelection = JSON.parse(localStorage.getItem('accountSelection'))
+        const savedSelection = JSON.parse(
+          localStorage.getItem('accountSelection')
+        )
         if (savedSelection) {
           commit('SET_ACCOUNT_SELECTION', savedSelection)
         }
@@ -254,7 +263,7 @@ export default createStore({
         if (!state.accessToken) {
           commit('SET_TOKENS', {
             accessToken: token,
-            refreshToken: localStorage.getItem('refreshToken')
+            refreshToken: localStorage.getItem('refreshToken'),
           })
         }
 
@@ -262,7 +271,10 @@ export default createStore({
           try {
             await dispatch('fetchUserData')
           } catch (error) {
-            console.error(`[Store][${requestId}] Error fetching user data:`, error)
+            console.error(
+              `[Store][${requestId}] Error fetching user data:`,
+              error
+            )
             commit('CLEAR_TOKENS')
             commit('SET_USER', null)
             return { success: false }
@@ -275,18 +287,18 @@ export default createStore({
         commit('SET_STATE', { isInitializing: false })
         console.log(`[Store][${requestId}] Initialization complete`)
       }
-    }
+    },
   },
   getters: {
     isAuthenticated: (state) => {
       return !!state.accessToken && !!state.user
     },
-    currentUser: state => state.user,
-    effectiveCurrentDate: state => state.effectiveCurrentDate,
-    tableSettings: state => state.tableSettings,
-    currentAccountSelection: state => state.accountSelection,
-    isAllAccountsSelected: state => state.accountSelection.type === 'all',
-    selectedAccountType: state => state.accountSelection.type,
-    selectedAccountId: state => state.accountSelection.id,
-  }
+    currentUser: (state) => state.user,
+    effectiveCurrentDate: (state) => state.effectiveCurrentDate,
+    tableSettings: (state) => state.tableSettings,
+    currentAccountSelection: (state) => state.accountSelection,
+    isAllAccountsSelected: (state) => state.accountSelection.type === 'all',
+    selectedAccountType: (state) => state.accountSelection.type,
+    selectedAccountId: (state) => state.accountSelection.id,
+  },
 })

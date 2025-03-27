@@ -9,10 +9,14 @@
             :items="breakdownOptions"
             label="Breakdown by"
             @update:model-value="updateParams"
-          ></v-select>
+          />
         </v-col>
         <v-col cols="12" sm="4">
-          <v-btn-toggle v-model="selectedFrequency" mandatory @update:model-value="updateParams">
+          <v-btn-toggle
+            v-model="selectedFrequency"
+            mandatory
+            @update:model-value="updateParams"
+          >
             <v-btn value="D">D</v-btn>
             <v-btn value="W">W</v-btn>
             <v-btn value="M">M</v-btn>
@@ -37,7 +41,7 @@
           <v-progress-circular indeterminate color="primary" size="64" />
         </div>
       </div>
-      <v-alert v-else type="info" text="No data available"></v-alert>
+      <v-alert v-else type="info" text="No data available" />
     </v-card-text>
   </v-card>
 </template>
@@ -58,21 +62,21 @@ export default {
       type: Object,
       default: () => ({
         labels: [],
-        datasets: []
-      })
+        datasets: [],
+      }),
     },
     loading: {
       type: Boolean,
-      default: false
+      default: false,
     },
     initialParams: {
       type: Object,
-      required: true
+      required: true,
     },
     effectiveCurrentDate: {
       type: String,
-      required: true
-    }
+      required: true,
+    },
   },
   emits: ['update-params'],
   setup(props, { emit }) {
@@ -94,7 +98,7 @@ export default {
       { title: 'Currency', value: 'currency' },
       { title: 'No breakdown', value: 'none' },
       { title: 'Value Contributions', value: 'value_contributions' },
-      { title: 'Cumulative Value', value: 'value_contributions_cumulative' }
+      { title: 'Cumulative Value', value: 'value_contributions_cumulative' },
     ]
 
     const updateParams = () => {
@@ -103,7 +107,7 @@ export default {
         dateFrom: dateFrom.value,
         dateTo: dateTo.value,
         breakdown: selectedBreakdown.value,
-        dateRange: dateRange.value
+        dateRange: dateRange.value,
       }
       store.dispatch('updateNavChartParams', params)
       emit('update-params', params)
@@ -124,13 +128,16 @@ export default {
       }
 
       // Case 2: No datasets or labels
-      if (!props.chartData?.datasets?.length || !props.chartData?.labels?.length) {
+      if (
+        !props.chartData?.datasets?.length ||
+        !props.chartData?.labels?.length
+      ) {
         return true
       }
 
       // Case 3: Check if all data points are empty/zero/N/A
-      const hasValidData = props.chartData.datasets.some(dataset => {
-        return dataset.data.some(value => {
+      const hasValidData = props.chartData.datasets.some((dataset) => {
+        return dataset.data.some((value) => {
           if (typeof value === 'number') {
             return value !== 0
           }
@@ -147,34 +154,41 @@ export default {
     }
 
     // Watch for both currency changes and entire chartData changes
-    watch([
-      () => props.chartData?.currency,
-      () => props.chartData
-    ], async ([newCurrency]) => {
-      if (newCurrency) {
-        await initChartOptions()
-      }
-    }, { deep: true, immediate: true }) // Added immediate: true to run on mount
+    watch(
+      [() => props.chartData?.currency, () => props.chartData],
+      async ([newCurrency]) => {
+        if (newCurrency) {
+          await initChartOptions()
+        }
+      },
+      { deep: true, immediate: true }
+    ) // Added immediate: true to run on mount
 
     const chartDataComputed = computed(() => {
       if (!props.chartData?.datasets || !chartOptions.value) {
         return {
           labels: [],
-          datasets: []
+          datasets: [],
         }
       }
-      
+
       const { colorPalette } = chartOptions.value
-      
+
       return {
         labels: props.chartData.labels,
         datasets: props.chartData.datasets.map((dataset, index) => ({
           ...dataset,
-          backgroundColor: dataset.type === 'bar' ? colorPalette[index % colorPalette.length] : dataset.backgroundColor,
-          borderColor: dataset.type === 'line' ? colorPalette[index % colorPalette.length] : undefined,
+          backgroundColor:
+            dataset.type === 'bar'
+              ? colorPalette[index % colorPalette.length]
+              : dataset.backgroundColor,
+          borderColor:
+            dataset.type === 'line'
+              ? colorPalette[index % colorPalette.length]
+              : undefined,
           order: dataset.type === 'line' ? 0 : index + 1,
-          yAxisID: dataset.type === 'line' ? 'y1' : 'y'
-        }))
+          yAxisID: dataset.type === 'line' ? 'y1' : 'y',
+        })),
       }
     })
 
@@ -182,7 +196,7 @@ export default {
       if (!chartOptions.value) {
         return {}
       }
-      
+
       return {
         ...chartOptions.value.navChartOptions,
         responsive: true,
@@ -193,10 +207,10 @@ export default {
             ...chartOptions.value.navChartOptions.scales.y,
             title: {
               ...chartOptions.value.navChartOptions.scales.y.title,
-              text: props.chartData?.currency
-            }
-          }
-        }
+              text: props.chartData?.currency,
+            },
+          },
+        },
       }
     })
 
@@ -214,11 +228,11 @@ export default {
       dateRangeForSelector: computed(() => ({
         dateRange: dateRange.value,
         dateFrom: dateFrom.value,
-        dateTo: dateTo.value
+        dateTo: dateTo.value,
       })),
       isEmptyData,
     }
-  }
+  },
 }
 </script>
 
@@ -227,7 +241,7 @@ export default {
   position: relative;
   width: 100%;
   height: 600px;
-  padding: 16px;  /* Add some padding */
+  padding: 16px; /* Add some padding */
 }
 
 .chart-overlay {

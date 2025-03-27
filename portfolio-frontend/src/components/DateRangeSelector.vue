@@ -12,7 +12,7 @@
           :items="dateRangeOptions"
           label="Date Range"
           @update:model-value="handlePredefinedRange"
-        ></v-select>
+        />
         <v-row>
           <v-col cols="6">
             <v-text-field
@@ -20,7 +20,7 @@
               label="From"
               type="date"
               @update:model-value="handleManualDateChange"
-            ></v-text-field>
+            />
           </v-col>
           <v-col cols="6">
             <v-text-field
@@ -28,12 +28,12 @@
               label="To"
               type="date"
               @update:model-value="handleManualDateChange"
-            ></v-text-field>
+            />
           </v-col>
         </v-row>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="primary" @click="applyDateRange">Apply</v-btn>
       </v-card-actions>
     </v-card>
@@ -51,8 +51,8 @@ export default {
   props: {
     modelValue: {
       type: Object,
-      default: () => ({ dateRange: 'ytd', dateFrom: null, dateTo: null })
-    }
+      default: () => ({ dateRange: 'ytd', dateFrom: null, dateTo: null }),
+    },
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
@@ -62,7 +62,9 @@ export default {
     const dateFrom = ref(props.modelValue.dateFrom)
     const dateTo = ref(props.modelValue.dateTo)
 
-    const effectiveCurrentDate = computed(() => store.state.effectiveCurrentDate)
+    const effectiveCurrentDate = computed(
+      () => store.state.effectiveCurrentDate
+    )
 
     const dateRangeOptions = computed(() => {
       const currentYear = new Date(effectiveCurrentDate.value).getFullYear()
@@ -83,11 +85,12 @@ export default {
       if (!dateFrom.value && !dateTo.value) {
         return 'Select Date Range'
       }
-      
-      const formatDate = (date) => date ? format(parseISO(date), 'dd MMM yyyy') : 'Start'
+
+      const formatDate = (date) =>
+        date ? format(parseISO(date), 'dd MMM yyyy') : 'Start'
       const fromStr = formatDate(dateFrom.value)
       const toStr = formatDate(dateTo.value)
-      
+
       return `${fromStr} ➔ ${toStr}`
     })
 
@@ -104,23 +107,34 @@ export default {
 
     const updateDateRange = () => {
       if (effectiveCurrentDate.value) {
-        const calculatedDateRange = calculateDateRange(selectedRange.value, effectiveCurrentDate.value)
+        const calculatedDateRange = calculateDateRange(
+          selectedRange.value,
+          effectiveCurrentDate.value
+        )
         dateFrom.value = calculatedDateRange.from
         dateTo.value = calculatedDateRange.to
       }
     }
 
     const applyDateRange = () => {
-      emit('update:modelValue', { dateRange: selectedRange.value, dateFrom: dateFrom.value, dateTo: dateTo.value })
+      emit('update:modelValue', {
+        dateRange: selectedRange.value,
+        dateFrom: dateFrom.value,
+        dateTo: dateTo.value,
+      })
       menu.value = false
     }
 
     // Watch for changes in the modelValue prop
-    watch(() => props.modelValue, (newValue) => {
-      selectedRange.value = newValue.dateRange
-      dateFrom.value = newValue.dateFrom
-      dateTo.value = newValue.dateTo
-    }, { deep: true })
+    watch(
+      () => props.modelValue,
+      (newValue) => {
+        selectedRange.value = newValue.dateRange
+        dateFrom.value = newValue.dateFrom
+        dateTo.value = newValue.dateTo
+      },
+      { deep: true }
+    )
 
     // Watch for changes in effectiveCurrentDate
     watch(effectiveCurrentDate, () => {
@@ -145,8 +159,8 @@ export default {
       displayDateRange,
       handlePredefinedRange,
       handleManualDateChange,
-      applyDateRange
+      applyDateRange,
     }
-  }
+  },
 }
 </script>

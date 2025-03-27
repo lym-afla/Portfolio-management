@@ -15,12 +15,12 @@
               <v-list-item-title>{{ item.title }}</v-list-item-title>
             </v-list-item>
           </v-list>
-          <v-divider></v-divider>
+          <v-divider />
           <v-list-item @click="handleLogout">
             <v-list-item-title>Logout</v-list-item-title>
           </v-list-item>
         </v-card>
-        
+
         <!-- Delete Account Button -->
         <v-card flat class="pa-0">
           <v-btn
@@ -37,7 +37,7 @@
       </v-col>
       <v-col cols="12" md="8">
         <!-- Tab Content -->
-        <router-view></router-view>
+        <router-view />
       </v-col>
     </v-row>
 
@@ -54,10 +54,10 @@
             v-model="confirmationText"
             label="Type 'DELETE' to confirm"
             :rules="[(v) => v === 'DELETE' || 'Please type DELETE to confirm']"
-          ></v-text-field>
+          />
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn color="primary" text @click="showDeleteConfirmation = false"
             >Cancel</v-btn
           >
@@ -110,7 +110,7 @@ export default {
       try {
         await deleteUserAccount()
         // Clear authentication state
-        store.commit('CLEAR_TOKENS')        
+        store.commit('CLEAR_TOKENS')
         // Redirect to register page
         router.push('/register')
       } catch (error) {

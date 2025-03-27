@@ -2,7 +2,9 @@
   <v-dialog v-model="dialog" max-width="500px">
     <v-card>
       <v-card-title>
-        <span class="text-h5">{{ isEdit ? 'Edit FX Transaction' : 'Add FX Transaction' }}</span>
+        <span class="text-h5">{{
+          isEdit ? 'Edit FX Transaction' : 'Add FX Transaction'
+        }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
@@ -14,7 +16,7 @@
               type="date"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-text-field>
+            />
             <v-autocomplete
               v-else-if="field.type === 'select'"
               v-model="form[field.name]"
@@ -24,7 +26,7 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-autocomplete>
+            />
             <v-text-field
               v-else-if="field.type === 'number'"
               v-model="form[field.name]"
@@ -33,28 +35,30 @@
               step="0.01"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-text-field>
+            />
             <v-textarea
               v-else-if="field.type === 'textarea'"
               v-model="form[field.name]"
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
-            ></v-textarea>
+            />
           </template>
         </v-form>
-        <v-alert
-          v-if="generalError"
-          type="error"
-          class="mt-4"
-        >
+        <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
         </v-alert>
       </v-card-text>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
-        <v-btn color="blue darken-1" text @click="submitForm" :loading="isSubmitting">Save</v-btn>
+        <v-btn
+          color="blue darken-1"
+          text
+          @click="submitForm"
+          :loading="isSubmitting"
+          >Save</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -62,7 +66,11 @@
 
 <script>
 import { ref, computed, watch, onMounted } from 'vue'
-import { getFXTransactionFormStructure, addFXTransaction, updateFXTransaction } from '@/services/api'
+import {
+  getFXTransactionFormStructure,
+  addFXTransaction,
+  updateFXTransaction,
+} from '@/services/api'
 
 export default {
   name: 'FXTransactionDialog',
@@ -74,7 +82,7 @@ export default {
   setup(props, { emit }) {
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
     const isEdit = computed(() => !!props.editItem)
     const form = ref({})
@@ -100,20 +108,26 @@ export default {
       }
     }
 
-    watch(() => props.editItem, (newValue) => {
-      if (newValue) {
-        console.log('newValue', newValue)
-        form.value = { ...newValue }
-        Object.keys(form.value).forEach(key => {
-          if (typeof form.value[key] === 'object' && form.value[key] !== null) {
-            form.value[key] = String(form.value[key].id) // For correct form pre-fill convert dict to id string
-          }
-        })
-        console.log('form', form.value)
-      } else {
-        initializeForm()
+    watch(
+      () => props.editItem,
+      (newValue) => {
+        if (newValue) {
+          console.log('newValue', newValue)
+          form.value = { ...newValue }
+          Object.keys(form.value).forEach((key) => {
+            if (
+              typeof form.value[key] === 'object' &&
+              form.value[key] !== null
+            ) {
+              form.value[key] = String(form.value[key].id) // For correct form pre-fill convert dict to id string
+            }
+          })
+          console.log('form', form.value)
+        } else {
+          initializeForm()
+        }
       }
-    })
+    )
 
     // watch(() => props.modelValue, (newValue) => {
     //   if (newValue) {
@@ -152,7 +166,8 @@ export default {
             }
           })
         } else {
-          generalError.value = error.message || 'An unexpected error occurred. Please try again.'
+          generalError.value =
+            error.message || 'An unexpected error occurred. Please try again.'
         }
       } finally {
         isSubmitting.value = false
@@ -172,6 +187,6 @@ export default {
       closeDialog,
       submitForm,
     }
-  }
+  },
 }
 </script>

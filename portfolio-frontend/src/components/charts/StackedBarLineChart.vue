@@ -1,5 +1,5 @@
 <template>
-  <canvas ref="chartRef"></canvas>
+  <canvas ref="chartRef" />
 </template>
 
 <script>
@@ -15,7 +15,7 @@ import {
   Tooltip,
   Legend,
   BarController,
-  LineController
+  LineController,
 } from 'chart.js'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
 
@@ -39,12 +39,12 @@ export default {
   props: {
     chartData: {
       type: Object,
-      required: true
+      required: true,
     },
     options: {
       type: Object,
-      required: true
-    }
+      required: true,
+    },
   },
   setup(props) {
     const chartRef = ref(null)
@@ -52,7 +52,7 @@ export default {
 
     const initChart = () => {
       if (!chartRef.value || !props.chartData || !props.options) return
-      
+
       if (chartInstance) {
         chartInstance.destroy()
       }
@@ -61,19 +61,21 @@ export default {
       chartInstance = new Chart(ctx, {
         type: 'bar',
         data: props.chartData,
-        options: props.options
+        options: props.options,
       })
     }
 
     const updateChart = () => {
       if (!chartInstance || !props.chartData || !props.options) return
-      
+
       // If data structure has changed significantly, reinitialize the chart
-      if (chartInstance.data.datasets.length !== props.chartData.datasets.length) {
+      if (
+        chartInstance.data.datasets.length !== props.chartData.datasets.length
+      ) {
         initChart()
         return
       }
-      
+
       chartInstance.data = props.chartData
       chartInstance.options = props.options
       chartInstance.update()
@@ -86,15 +88,19 @@ export default {
     })
 
     // Watch both props with immediate effect
-    watch([() => props.chartData, () => props.options], () => {
-      if (props.chartData && props.options) {
-        if (chartInstance) {
-          updateChart()
-        } else {
-          initChart()
+    watch(
+      [() => props.chartData, () => props.options],
+      () => {
+        if (props.chartData && props.options) {
+          if (chartInstance) {
+            updateChart()
+          } else {
+            initChart()
+          }
         }
-      }
-    }, { deep: true, immediate: true })
+      },
+      { deep: true, immediate: true }
+    )
 
     onBeforeUnmount(() => {
       if (chartInstance) {
@@ -103,8 +109,8 @@ export default {
     })
 
     return {
-      chartRef
+      chartRef,
     }
-  }
+  },
 }
-</script> 
+</script>

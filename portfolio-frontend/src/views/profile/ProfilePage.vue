@@ -15,7 +15,9 @@
     </v-card-text>
     <v-card-actions>
       <v-btn color="primary" @click="editProfile">Edit Profile</v-btn>
-      <v-btn color="primary" @click="showChangePasswordDialog">Change Password</v-btn>
+      <v-btn color="primary" @click="showChangePasswordDialog"
+        >Change Password</v-btn
+      >
     </v-card-actions>
 
     <!-- Change Password Dialog -->
@@ -33,7 +35,7 @@
               :error-messages="passwordErrors.old_password"
               @input="clearPasswordError('old_password')"
               autocomplete="current-password"
-            ></v-text-field>
+            />
             <v-text-field
               v-model="passwordForm.new_password1"
               label="New Password"
@@ -43,7 +45,7 @@
               :error-messages="passwordErrors.new_password1"
               @input="clearPasswordError('new_password1')"
               autocomplete="new-password"
-            ></v-text-field>
+            />
             <v-text-field
               v-model="passwordForm.new_password2"
               label="Confirm New Password"
@@ -53,10 +55,10 @@
               :error-messages="passwordMismatchError"
               @input="clearPasswordError('new_password2')"
               autocomplete="new-password"
-            ></v-text-field>
-            <v-btn 
-              type="submit" 
-              color="primary" 
+            />
+            <v-btn
+              type="submit"
+              color="primary"
               :loading="isLoading"
               :disabled="isLoading"
             >
@@ -65,8 +67,10 @@
           </v-form>
         </v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="primary" text @click="closeChangePasswordDialog">Close</v-btn>
+          <v-spacer />
+          <v-btn color="primary" text @click="closeChangePasswordDialog"
+            >Close</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -77,7 +81,7 @@
         <v-card-title class="text-h5 green--text">Success</v-card-title>
         <v-card-text>{{ successMessage }}</v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn color="green" text @click="successDialog = false">Close</v-btn>
         </v-card-actions>
       </v-card>
@@ -89,7 +93,7 @@
         <v-card-title class="text-h5 red--text">Error</v-card-title>
         <v-card-text>{{ errorMessage }}</v-card-text>
         <v-card-actions>
-          <v-spacer></v-spacer>
+          <v-spacer />
           <v-btn color="red" text @click="errorDialog = false">Close</v-btn>
         </v-card-actions>
       </v-card>
@@ -114,18 +118,24 @@ export default {
     // Get user data from store
     const userInfo = computed(() => {
       const user = store.state.user
-      console.log(`[ProfilePage][${componentId}] Computing userInfo, user exists:`, !!user)
+      console.log(
+        `[ProfilePage][${componentId}] Computing userInfo, user exists:`,
+        !!user
+      )
       if (!user) return {}
       return {
         username: user.username,
         email: user.email,
         first_name: user.first_name,
-        last_name: user.last_name
+        last_name: user.last_name,
       }
     })
 
     const formatLabel = (key) => {
-      return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+      return key
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
     }
 
     const changePasswordDialog = ref(false)
@@ -146,7 +156,9 @@ export default {
     const errorMessage = ref('')
 
     const passwordMismatchError = computed(() => {
-      return passwordForm.new_password1 !== passwordForm.new_password2 ? ['Passwords do not match'] : []
+      return passwordForm.new_password1 !== passwordForm.new_password2
+        ? ['Passwords do not match']
+        : []
     })
 
     const clearPasswordError = (field) => {
@@ -168,9 +180,11 @@ export default {
       if (typeof newErrors === 'string') {
         errorMessage.value = newErrors
       } else if (typeof newErrors === 'object') {
-        Object.keys(newErrors).forEach(field => {
+        Object.keys(newErrors).forEach((field) => {
           if (field in passwordErrors) {
-            passwordErrors[field] = Array.isArray(newErrors[field]) ? newErrors[field] : [newErrors[field]]
+            passwordErrors[field] = Array.isArray(newErrors[field])
+              ? newErrors[field]
+              : [newErrors[field]]
           } else {
             errorMessage.value = newErrors[field]
           }
@@ -189,8 +203,10 @@ export default {
         const response = await apiChangePassword(passwordForm)
         if (response.success) {
           changePasswordDialog.value = false
-          showSuccessMessage(response.message || 'Password changed successfully')
-          Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
+          showSuccessMessage(
+            response.message || 'Password changed successfully'
+          )
+          Object.keys(passwordForm).forEach((key) => (passwordForm[key] = ''))
         } else {
           setPasswordErrors(response.error || 'Failed to change password')
         }
@@ -208,16 +224,20 @@ export default {
 
     const closeChangePasswordDialog = () => {
       changePasswordDialog.value = false
-      Object.keys(passwordForm).forEach(key => passwordForm[key] = '')
-      Object.keys(passwordErrors).forEach(key => passwordErrors[key] = [])
+      Object.keys(passwordForm).forEach((key) => (passwordForm[key] = ''))
+      Object.keys(passwordErrors).forEach((key) => (passwordErrors[key] = []))
     }
 
     const fetchProfile = async () => {
       if (!store.state.user) {
-        console.log(`[ProfilePage][${componentId}] No user data, fetching profile...`)
+        console.log(
+          `[ProfilePage][${componentId}] No user data, fetching profile...`
+        )
         await store.dispatch('fetchUserData')
       } else {
-        console.log(`[ProfilePage][${componentId}] User data exists, skipping fetch`)
+        console.log(
+          `[ProfilePage][${componentId}] User data exists, skipping fetch`
+        )
       }
     }
 

@@ -3,8 +3,11 @@ import store from '@/store'
 
 export const login = async (username, password) => {
   try {
-    const response = await axiosInstance.post('/users/api/login/', { username, password })
-    console.log("Response from login:", response)
+    const response = await axiosInstance.post('/users/api/login/', {
+      username,
+      password,
+    })
+    console.log('Response from login:', response)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -16,9 +19,11 @@ export const refreshToken = async () => {
   if (!refreshToken) {
     throw new Error('No refresh token available')
   }
-  
+
   try {
-    const response = await axiosInstance.post('/users/api/refresh-token/', { refresh: refreshToken })
+    const response = await axiosInstance.post('/users/api/refresh-token/', {
+      refresh: refreshToken,
+    })
     return response.data
   } catch (error) {
     console.error('Error refreshing token:', error)
@@ -32,7 +37,7 @@ export const register = async (username, email, password, password2) => {
       username,
       email,
       password,
-      password2
+      password2,
     })
     console.log('Registration response:', response)
     return response.data
@@ -57,10 +62,13 @@ export const getAccountChoices = async () => {
 
 export const updateUserDataForNewAccount = async (selection) => {
   try {
-    const response = await axiosInstance.post('/users/api/update_user_data_for_new_account/', {
-      type: selection.type,
-      id: selection.id
-    })
+    const response = await axiosInstance.post(
+      '/users/api/update_user_data_for_new_account/',
+      {
+        type: selection.type,
+        id: selection.id,
+      }
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -78,19 +86,25 @@ export const getUserProfile = async () => {
 
 export const editUserProfile = async (profileData) => {
   try {
-    const response = await axiosInstance.put('/users/api/edit_profile/', profileData)
+    const response = await axiosInstance.put(
+      '/users/api/edit_profile/',
+      profileData
+    )
     return response.data
   } catch (error) {
-    return { 
-      success: false, 
-      errors: error.response?.data || { general: [error.message] }
+    return {
+      success: false,
+      errors: error.response?.data || { general: [error.message] },
     }
   }
 }
 
 export const changePassword = async (passwordData) => {
   try {
-    const response = await axiosInstance.post('/users/api/change_password/', passwordData)
+    const response = await axiosInstance.post(
+      '/users/api/change_password/',
+      passwordData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -108,7 +122,10 @@ export const getUserSettings = async () => {
 
 export const updateUserSettings = async (settings) => {
   try {
-    const response = await axiosInstance.post('/users/api/user_settings/', settings)
+    const response = await axiosInstance.post(
+      '/users/api/user_settings/',
+      settings
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -117,7 +134,9 @@ export const updateUserSettings = async (settings) => {
 
 export const getSettingsChoices = async () => {
   try {
-    const response = await axiosInstance.get('/users/api/user_settings_choices/')
+    const response = await axiosInstance.get(
+      '/users/api/user_settings_choices/'
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -130,7 +149,9 @@ export const logout = async () => {
     if (!refreshToken) {
       throw new Error('No refresh token found')
     }
-    const response = await axiosInstance.post('/users/api/logout/', { refresh_token: refreshToken })
+    const response = await axiosInstance.post('/users/api/logout/', {
+      refresh_token: refreshToken,
+    })
 
     // Clear all authentication tokens
     localStorage.removeItem('accessToken')
@@ -149,8 +170,9 @@ export const logout = async () => {
 export const deleteUserAccount = async () => {
   try {
     const refreshToken = localStorage.getItem('refreshToken')
-    const response = await axiosInstance.delete('/users/api/delete_account/',
-      { data: { refresh_token: refreshToken } })
+    const response = await axiosInstance.delete('/users/api/delete_account/', {
+      data: { refresh_token: refreshToken },
+    })
     // Clear all authentication tokens
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
@@ -173,11 +195,17 @@ export const getDashboardSettings = async () => {
 
 export const updateDashboardSettings = async (settings) => {
   try {
-    const response = await axiosInstance.post('/users/api/update_dashboard_settings/', settings)
+    const response = await axiosInstance.post(
+      '/users/api/update_dashboard_settings/',
+      settings
+    )
     return { success: true, ...response.data }
   } catch (error) {
     console.error('Error updating dashboard settings:', error)
-    return { success: false, error: error.response ? error.response.data : error.message }
+    return {
+      success: false,
+      error: error.response ? error.response.data : error.message,
+    }
   }
 }
 
@@ -195,37 +223,75 @@ export const getAssetTypes = async () => {
   }
 }
 
-export const getOpenPositions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('[api.js] getOpenPositions called with:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy });
+export const getOpenPositions = async (
+  dateFrom,
+  dateTo,
+  page,
+  itemsPerPage,
+  search = '',
+  sortBy = {}
+) => {
+  console.log('[api.js] getOpenPositions called with:', {
+    dateFrom,
+    dateTo,
+    page,
+    itemsPerPage,
+    search,
+    sortBy,
+  })
   try {
-    const response = await axiosInstance.post('/open_positions/api/get_open_positions_table/', {
-      dateFrom,
-      dateTo,
-      page,
-      itemsPerPage,
-      search,
-      sortBy
-    })
+    const response = await axiosInstance.post(
+      '/open_positions/api/get_open_positions_table/',
+      {
+        dateFrom,
+        dateTo,
+        page,
+        itemsPerPage,
+        search,
+        sortBy,
+      }
+    )
     return response.data
   } catch (error) {
-  console.error('Error fetching open positions:', error)
+    console.error('Error fetching open positions:', error)
     throw error.response ? error.response.data : error.message
   }
 }
 
-export const getClosedPositions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
+export const getClosedPositions = async (
+  dateFrom,
+  dateTo,
+  page,
+  itemsPerPage,
+  search = '',
+  sortBy = {}
+) => {
   try {
-    const response = await axiosInstance.post('/closed_positions/api/get_closed_positions_table/', {
+    const response = await axiosInstance.post(
+      '/closed_positions/api/get_closed_positions_table/',
+      {
+        dateFrom,
+        dateTo,
+        page,
+        itemsPerPage,
+        search,
+        sortBy, // This will be a single object or an empty object
+      }
+    )
+    console.log('API request payload:', {
       dateFrom,
       dateTo,
       page,
       itemsPerPage,
       search,
-      sortBy  // This will be a single object or an empty object
+      sortBy,
     })
-    console.log('API request payload:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy })
     console.log('API response:', response.data)
-    if (response.data && response.data.portfolio_closed && Array.isArray(response.data.portfolio_closed)) {
+    if (
+      response.data &&
+      response.data.portfolio_closed &&
+      Array.isArray(response.data.portfolio_closed)
+    ) {
       return response.data
     } else {
       console.error('Unexpected response format:', response.data)
@@ -255,7 +321,9 @@ export const getSecurities = async (assetTypes = [], accountId = null) => {
     if (accountId) {
       params.append('account_id', accountId)
     }
-    const response = await axiosInstance.get('/database/api/get-securities/', { params })
+    const response = await axiosInstance.get('/database/api/get-securities/', {
+      params,
+    })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -264,7 +332,10 @@ export const getSecurities = async (assetTypes = [], accountId = null) => {
 
 export const getPrices = async (params) => {
   try {
-    const response = await axiosInstance.post('/database/api/get-prices-table/', params)
+    const response = await axiosInstance.post(
+      '/database/api/get-prices-table/',
+      params
+    )
     return response.data
   } catch (error) {
     console.error('Error fetching prices:', error)
@@ -274,7 +345,10 @@ export const getPrices = async (params) => {
 
 export const getSecuritiesForDatabase = async (params) => {
   try {
-    const response = await axiosInstance.post('/database/api/get-securities-for-database/', params)
+    const response = await axiosInstance.post(
+      '/database/api/get-securities-for-database/',
+      params
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -283,7 +357,10 @@ export const getSecuritiesForDatabase = async (params) => {
 
 export const createSecurity = async (securityData) => {
   try {
-    const response = await axiosInstance.post('/database/api/create-security/', securityData)
+    const response = await axiosInstance.post(
+      '/database/api/create-security/',
+      securityData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -292,7 +369,9 @@ export const createSecurity = async (securityData) => {
 
 export const getSecurityDetail = async (securityId) => {
   try {
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/`)
+    const response = await axiosInstance.get(
+      `/database/api/securities/${securityId}/`
+    )
     return response.data
   } catch (error) {
     console.error('Error fetching security detail:', error)
@@ -302,9 +381,12 @@ export const getSecurityDetail = async (securityId) => {
 
 export const getSecurityPriceHistory = async (securityId, period) => {
   try {
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/price-history/`, {
-      params: { period }
-    })
+    const response = await axiosInstance.get(
+      `/database/api/securities/${securityId}/price-history/`,
+      {
+        params: { period },
+      }
+    )
     console.log('[api.js] Security price history:', response.data)
     return response.data
   } catch (error) {
@@ -315,9 +397,12 @@ export const getSecurityPriceHistory = async (securityId, period) => {
 
 export const getSecurityPositionHistory = async (securityId, period) => {
   try {
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/position-history/`, {
-      params: { period }
-    })
+    const response = await axiosInstance.get(
+      `/database/api/securities/${securityId}/position-history/`,
+      {
+        params: { period },
+      }
+    )
     console.log('[api.js] Security position history:', response.data)
     return response.data
   } catch (error) {
@@ -329,13 +414,16 @@ export const getSecurityPositionHistory = async (securityId, period) => {
 export const getSecurityTransactions = async (securityId, options, period) => {
   try {
     const { page, itemsPerPage } = options
-    const response = await axiosInstance.get(`/database/api/securities/${securityId}/transactions/`, {
-      params: {
-        page,
-        itemsPerPage,
-        period
+    const response = await axiosInstance.get(
+      `/database/api/securities/${securityId}/transactions/`,
+      {
+        params: {
+          page,
+          itemsPerPage,
+          period,
+        },
       }
-    })
+    )
     console.log('[api.js] Security transactions:', response.data)
     return response.data
   } catch (error) {
@@ -346,7 +434,10 @@ export const getSecurityTransactions = async (securityId, options, period) => {
 
 export const updateSecurity = async (securityId, securityData) => {
   try {
-    const response = await axiosInstance.put(`/database/api/update-security/${securityId}/`, securityData)
+    const response = await axiosInstance.put(
+      `/database/api/update-security/${securityId}/`,
+      securityData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -355,7 +446,9 @@ export const updateSecurity = async (securityId, securityData) => {
 
 export const deleteSecurity = async (securityId) => {
   try {
-    const response = await axiosInstance.delete(`/database/api/delete-security/${securityId}/`)
+    const response = await axiosInstance.delete(
+      `/database/api/delete-security/${securityId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -374,7 +467,9 @@ export const getDashboardBreakdown = async () => {
 
 export const getDashboardSummaryOverTime = async () => {
   try {
-    const response = await axiosInstance.get('/dashboard/api/get-summary-over-time/')
+    const response = await axiosInstance.get(
+      '/dashboard/api/get-summary-over-time/'
+    )
     return response.data
   } catch (error) {
     console.error('Error fetching summary over time data:', error)
@@ -382,22 +477,30 @@ export const getDashboardSummaryOverTime = async () => {
   }
 }
 
-export const getNAVChartData = async (breakdown, frequency, dateFrom, dateTo) => {
+export const getNAVChartData = async (
+  breakdown,
+  frequency,
+  dateFrom,
+  dateTo
+) => {
   try {
     console.log('API request params for NAV chart:', {
       breakdown: breakdown,
       frequency: frequency,
       dateFrom: dateFrom,
-      dateTo: dateTo
+      dateTo: dateTo,
     })
-    const response = await axiosInstance.get('/dashboard/api/get-nav-chart-data/', { 
-      params: {
-        breakdown,
-        frequency,
-        dateFrom,
-        dateTo
+    const response = await axiosInstance.get(
+      '/dashboard/api/get-nav-chart-data/',
+      {
+        params: {
+          breakdown,
+          frequency,
+          dateFrom,
+          dateTo,
+        },
       }
-    })
+    )
     console.log('API response:', response.data)
     return response.data
   } catch (error) {
@@ -417,7 +520,9 @@ export const getDashboardSummary = async () => {
 }
 
 export const getAccountPerformanceFormData = async () => {
-  const response = await axiosInstance.get('/database/api/update-account-performance/')
+  const response = await axiosInstance.get(
+    '/database/api/update-account-performance/'
+  )
   return response.data
 }
 
@@ -430,7 +535,7 @@ export const updateAccountPerformance = async (formData) => {
 
     const dataToSend = {
       ...formData,
-      effective_current_date: effectiveCurrentDate
+      effective_current_date: effectiveCurrentDate,
     }
 
     // Start the update process
@@ -448,8 +553,9 @@ export const updateAccountPerformance = async (formData) => {
 
     // Create EventSource with both session ID and token
     const source = new EventSource(
-      `${process.env.VUE_APP_API_URL}/database/api/update-account-performance/sse/?session_id=${sessionId}&token=${token}`, {
-        withCredentials: false
+      `${process.env.VUE_APP_API_URL}/database/api/update-account-performance/sse/?session_id=${sessionId}&token=${token}`,
+      {
+        withCredentials: false,
       }
     )
 
@@ -458,16 +564,18 @@ export const updateAccountPerformance = async (formData) => {
         try {
           const data = JSON.parse(event.data)
           console.log('[api.js] SSE message received:', data)
-          
+
           if (data.status === 'error' && data.type === 'authentication') {
             source.close()
             reject(new Error('Authentication failed'))
             return
           }
 
-          window.dispatchEvent(new CustomEvent('accountPerformanceUpdateProgress', { 
-            detail: data 
-          }))
+          window.dispatchEvent(
+            new CustomEvent('accountPerformanceUpdateProgress', {
+              detail: data,
+            })
+          )
 
           if (data.status === 'complete') {
             source.close()
@@ -499,16 +607,21 @@ export const updateAccountPerformance = async (formData) => {
     })
   } catch (error) {
     console.error('Error updating account performance:', error)
-    window.dispatchEvent(new CustomEvent('accountPerformanceUpdateError', { 
-      detail: { message: error.message || 'Unknown error occurred' } 
-    }))
+    window.dispatchEvent(
+      new CustomEvent('accountPerformanceUpdateError', {
+        detail: { message: error.message || 'Unknown error occurred' },
+      })
+    )
     throw error
   }
 }
 
 export const addPrice = async (priceData) => {
   try {
-    const response = await axiosInstance.post('/database/api/add-price/', priceData)
+    const response = await axiosInstance.post(
+      '/database/api/add-price/',
+      priceData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -517,7 +630,9 @@ export const addPrice = async (priceData) => {
 
 export const deletePrice = async (priceId) => {
   try {
-    const response = await axiosInstance.delete(`/database/api/delete-price/${priceId}/`)
+    const response = await axiosInstance.delete(
+      `/database/api/delete-price/${priceId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -526,7 +641,9 @@ export const deletePrice = async (priceId) => {
 
 export const getPriceDetails = async (priceId) => {
   try {
-    const response = await axiosInstance.get(`/database/api/get-price-details/${priceId}/`)
+    const response = await axiosInstance.get(
+      `/database/api/get-price-details/${priceId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -535,7 +652,10 @@ export const getPriceDetails = async (priceId) => {
 
 export const updatePrice = async (priceId, priceData) => {
   try {
-    const response = await axiosInstance.put(`/database/api/update-price/${priceId}/`, priceData)
+    const response = await axiosInstance.put(
+      `/database/api/update-price/${priceId}/`,
+      priceData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -544,7 +664,9 @@ export const updatePrice = async (priceId, priceData) => {
 
 export const getSecurityFormStructure = async () => {
   try {
-    const response = await axiosInstance.get('/database/api/security-form-structure/')
+    const response = await axiosInstance.get(
+      '/database/api/security-form-structure/'
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -553,7 +675,9 @@ export const getSecurityFormStructure = async () => {
 
 export const getSecurityDetails = async (id) => {
   try {
-    const response = await axiosInstance.get(`/database/api/get-security-details/${id}/`)
+    const response = await axiosInstance.get(
+      `/database/api/get-security-details/${id}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -578,31 +702,45 @@ export const importPrices = async (importData) => {
 
     const dataToSend = {
       ...importData,
-      effective_current_date: effectiveCurrentDate
+      effective_current_date: effectiveCurrentDate,
     }
 
-    const response = await axiosInstance.post('/database/api/price-import/sse/', dataToSend, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      responseType: 'text',
-      onDownloadProgress: (progressEvent) => {
-        if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
-          const dataChunk = progressEvent.event.currentTarget.response
-          const lines = dataChunk.split('\n')
-          lines.forEach((line) => {
-            if (line.trim()) {
-              try {
-                const data = JSON.parse(line)
-                window.dispatchEvent(new CustomEvent('priceImportProgress', { detail: data }))
-              } catch (error) {
-                console.error('Error parsing progress data:', error, 'Line:', line)
+    const response = await axiosInstance.post(
+      '/database/api/price-import/sse/',
+      dataToSend,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        responseType: 'text',
+        onDownloadProgress: (progressEvent) => {
+          if (
+            progressEvent.event.currentTarget &&
+            progressEvent.event.currentTarget.response
+          ) {
+            const dataChunk = progressEvent.event.currentTarget.response
+            const lines = dataChunk.split('\n')
+            lines.forEach((line) => {
+              if (line.trim()) {
+                try {
+                  const data = JSON.parse(line)
+                  window.dispatchEvent(
+                    new CustomEvent('priceImportProgress', { detail: data })
+                  )
+                } catch (error) {
+                  console.error(
+                    'Error parsing progress data:',
+                    error,
+                    'Line:',
+                    line
+                  )
+                }
               }
-            }
-          })
-        }
+            })
+          }
+        },
       }
-    })
+    )
     console.log('[api.js] Import completed. Response:', response)
     return response.data
   } catch (error) {
@@ -619,7 +757,10 @@ export const importPrices = async (importData) => {
 
 export const getAccountsTable = async (params = {}) => {
   try {
-    const response = await axiosInstance.post('/database/api/accounts/list_accounts/', params)
+    const response = await axiosInstance.post(
+      '/database/api/accounts/list_accounts/',
+      params
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -637,7 +778,9 @@ export const getAccounts = async () => {
 
 export const getAccountDetails = async (accountId) => {
   try {
-    const response = await axiosInstance.get(`/database/api/accounts/${accountId}/`)
+    const response = await axiosInstance.get(
+      `/database/api/accounts/${accountId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -645,13 +788,19 @@ export const getAccountDetails = async (accountId) => {
 }
 
 export const createAccount = async (accountData) => {
-  const response = await axiosInstance.post('/database/api/accounts/', accountData)
+  const response = await axiosInstance.post(
+    '/database/api/accounts/',
+    accountData
+  )
   return response.data
 }
 
 export const updateAccount = async (accountId, accountData) => {
   try {
-    const response = await axiosInstance.put(`/database/api/accounts/${accountId}/`, accountData)
+    const response = await axiosInstance.put(
+      `/database/api/accounts/${accountId}/`,
+      accountData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -660,7 +809,9 @@ export const updateAccount = async (accountId, accountData) => {
 
 export const deleteAccount = async (accountId) => {
   try {
-    const response = await axiosInstance.delete(`/database/api/accounts/${accountId}/`)
+    const response = await axiosInstance.delete(
+      `/database/api/accounts/${accountId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -669,7 +820,9 @@ export const deleteAccount = async (accountId) => {
 
 export const getAccountFormStructure = async () => {
   try {
-    const response = await axiosInstance.get('/database/api/accounts/form_structure/')
+    const response = await axiosInstance.get(
+      '/database/api/accounts/form_structure/'
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -686,7 +839,14 @@ export const getFXFormStructure = async () => {
   }
 }
 
-export const getFXData = async ({ startDate, endDate, page, itemsPerPage, sortBy, search }) => {
+export const getFXData = async ({
+  startDate,
+  endDate,
+  page,
+  itemsPerPage,
+  sortBy,
+  search,
+}) => {
   try {
     const response = await axiosInstance.post('/database/api/fx/list_fx/', {
       startDate,
@@ -694,7 +854,7 @@ export const getFXData = async ({ startDate, endDate, page, itemsPerPage, sortBy
       page,
       itemsPerPage,
       sortBy,
-      search
+      search,
     })
     return response.data
   } catch (error) {
@@ -725,7 +885,10 @@ export const addFXRate = async (fxData) => {
 
 export const updateFXRate = async (fxId, fxData) => {
   try {
-    const response = await axiosInstance.put(`/database/api/fx/${fxId}/`, fxData)
+    const response = await axiosInstance.put(
+      `/database/api/fx/${fxId}/`,
+      fxData
+    )
     return response.data
   } catch (error) {
     console.error('Error updating FX rate:', error)
@@ -756,7 +919,8 @@ export const getFXImportStats = async () => {
 
 export const importFXRates = async (importData, signal) => {
   try {
-    const response = await axiosInstance.post('/database/api/fx-import/sse/', 
+    const response = await axiosInstance.post(
+      '/database/api/fx-import/sse/',
       importData,
       {
         responseType: 'text',
@@ -765,7 +929,10 @@ export const importFXRates = async (importData, signal) => {
           'Content-Type': 'application/json',
         },
         onDownloadProgress: (progressEvent) => {
-          if (progressEvent.event.currentTarget && progressEvent.event.currentTarget.response) {
+          if (
+            progressEvent.event.currentTarget &&
+            progressEvent.event.currentTarget.response
+          ) {
             const dataChunk = progressEvent.event.currentTarget.response
             const lines = dataChunk.split('\n\n')
             lines.forEach((line) => {
@@ -776,14 +943,21 @@ export const importFXRates = async (importData, signal) => {
                   if (data.status === 'cancelled') {
                     throw new DOMException('Import cancelled', 'AbortError')
                   }
-                  window.dispatchEvent(new CustomEvent('fxImportProgress', { detail: data }))
+                  window.dispatchEvent(
+                    new CustomEvent('fxImportProgress', { detail: data })
+                  )
                 } catch (error) {
-                  console.error('Error parsing progress data:', error, 'Line:', line)
+                  console.error(
+                    'Error parsing progress data:',
+                    error,
+                    'Line:',
+                    line
+                  )
                 }
               }
             })
           }
-        }
+        },
       }
     )
     return response.data
@@ -807,17 +981,34 @@ export const cancelFXImport = async () => {
   }
 }
 
-export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, search = '', sortBy = {}) => {
-  console.log('API request payload for transactions:', { dateFrom, dateTo, page, itemsPerPage, search, sortBy })
+export const getTransactions = async (
+  dateFrom,
+  dateTo,
+  page,
+  itemsPerPage,
+  search = '',
+  sortBy = {}
+) => {
+  console.log('API request payload for transactions:', {
+    dateFrom,
+    dateTo,
+    page,
+    itemsPerPage,
+    search,
+    sortBy,
+  })
   try {
-    const response = await axiosInstance.post('/transactions/api/get_transactions_table/', {
-      page,
-      itemsPerPage,
-      search,
-      dateFrom,
-      dateTo,
-      sortBy
-    })
+    const response = await axiosInstance.post(
+      '/transactions/api/get_transactions_table/',
+      {
+        page,
+        itemsPerPage,
+        search,
+        dateFrom,
+        dateTo,
+        sortBy,
+      }
+    )
     console.log('API response for transactions:', response.data)
     return response.data
   } catch (error) {
@@ -828,7 +1019,9 @@ export const getTransactions = async (dateFrom, dateTo, page, itemsPerPage, sear
 
 export const getTransactionFormStructure = async () => {
   try {
-    const response = await axiosInstance.get('/transactions/api/form_structure/')
+    const response = await axiosInstance.get(
+      '/transactions/api/form_structure/'
+    )
     return response.data
   } catch (error) {
     console.error('Error fetching transaction form structure:', error)
@@ -848,7 +1041,10 @@ export const getTransactionDetails = async (id) => {
 
 export const addTransaction = async (transactionData) => {
   try {
-    const response = await axiosInstance.post('/transactions/api/', transactionData)
+    const response = await axiosInstance.post(
+      '/transactions/api/',
+      transactionData
+    )
     return response.data
   } catch (error) {
     console.error('Error adding transaction:', error)
@@ -858,7 +1054,10 @@ export const addTransaction = async (transactionData) => {
 
 export const updateTransaction = async (id, transactionData) => {
   try {
-    const response = await axiosInstance.put(`/transactions/api/${id}/`, transactionData)
+    const response = await axiosInstance.put(
+      `/transactions/api/${id}/`,
+      transactionData
+    )
     return response.data
   } catch (error) {
     console.error('Error updating transaction:', error)
@@ -878,7 +1077,9 @@ export const deleteTransaction = async (id) => {
 // FX Transaction API functions
 export const getFXTransactionFormStructure = async () => {
   try {
-    const response = await axiosInstance.get('/transactions/api/fx/form_structure/')
+    const response = await axiosInstance.get(
+      '/transactions/api/fx/form_structure/'
+    )
     return response.data
   } catch (error) {
     console.error('Error fetching FX transaction form structure:', error)
@@ -898,19 +1099,28 @@ export const getFXTransactionDetails = async (id) => {
 
 export const addFXTransaction = async (transactionData) => {
   try {
-    console.log('Sending FX transaction data:', transactionData)  // Add this line
-    const response = await axiosInstance.post('/transactions/api/fx/create_fx_transaction/', transactionData)
-    console.log('Received response:', response.data)  // Add this line
+    console.log('Sending FX transaction data:', transactionData) // Add this line
+    const response = await axiosInstance.post(
+      '/transactions/api/fx/create_fx_transaction/',
+      transactionData
+    )
+    console.log('Received response:', response.data) // Add this line
     return response.data
   } catch (error) {
-    console.error('Error adding FX transaction:', error.response ? error.response.data : error)
+    console.error(
+      'Error adding FX transaction:',
+      error.response ? error.response.data : error
+    )
     throw error.response ? error.response.data : error.message
   }
 }
 
 export const updateFXTransaction = async (id, transactionData) => {
   try {
-    const response = await axiosInstance.put(`/transactions/api/fx/${id}/`, transactionData)
+    const response = await axiosInstance.put(
+      `/transactions/api/fx/${id}/`,
+      transactionData
+    )
     return response.data
   } catch (error) {
     console.error('Error updating FX transaction:', error)
@@ -929,11 +1139,15 @@ export const deleteFXTransaction = async (id) => {
 
 export const analyzeFile = async (formData) => {
   try {
-    const response = await axiosInstance.post('/transactions/api/analyze_file/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    const response = await axiosInstance.post(
+      '/transactions/api/analyze_file/',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       }
-    })
+    )
     return response.data
   } catch (error) {
     console.error('Error analyzing file:', error)
@@ -955,9 +1169,12 @@ export async function getAccountPerformanceSummary() {
 
 export async function getPortfolioBreakdownSummary(year) {
   try {
-    const response = await axiosInstance.get('/summary/api/portfolio_breakdown/', {
-      params: { year: year }
-    })
+    const response = await axiosInstance.get(
+      '/summary/api/portfolio_breakdown/',
+      {
+        params: { year: year },
+      }
+    )
     return response.data
   } catch (error) {
     console.error('Error fetching portfolio breakdown:', error)
@@ -981,7 +1198,10 @@ export const getBrokerTokens = async () => {
 export const saveTinkoffToken = async (tokenData) => {
   console.log('Attempting to save Tinkoff token...')
   try {
-    const response = await axiosInstance.post('/users/api/tinkoff-tokens/save_read_only_token/', tokenData)
+    const response = await axiosInstance.post(
+      '/users/api/tinkoff-tokens/save_read_only_token/',
+      tokenData
+    )
     console.log('Save token response:', response)
     return response.data
   } catch (error) {
@@ -992,7 +1212,9 @@ export const saveTinkoffToken = async (tokenData) => {
 
 export const testTinkoffConnection = async (tokenId) => {
   try {
-    const response = await axiosInstance.post(`/users/api/tinkoff-tokens/${tokenId}/test_connection/`)
+    const response = await axiosInstance.post(
+      `/users/api/tinkoff-tokens/${tokenId}/test_connection/`
+    )
     return response.data
   } catch (error) {
     console.error('Error testing Tinkoff connection:', error)
@@ -1007,7 +1229,10 @@ export const testTinkoffConnection = async (tokenId) => {
 
 export const saveIBToken = async (tokenData) => {
   try {
-    const response = await axiosInstance.post('/users/api/ib-tokens/', tokenData)
+    const response = await axiosInstance.post(
+      '/users/api/ib-tokens/',
+      tokenData
+    )
     return response.data
   } catch (error) {
     console.error('Error saving IB token:', error)
@@ -1017,7 +1242,9 @@ export const saveIBToken = async (tokenData) => {
 
 export const testIBConnection = async (tokenId) => {
   try {
-    const response = await axiosInstance.post(`/users/api/ib-tokens/${tokenId}/test_connection/`)
+    const response = await axiosInstance.post(
+      `/users/api/ib-tokens/${tokenId}/test_connection/`
+    )
     return response.data
   } catch (error) {
     console.error('Error testing IB connection:', error)
@@ -1029,7 +1256,7 @@ export const revokeToken = async (broker, tokenId) => {
   try {
     const response = await axiosInstance.post('/users/api/revoke_token/', {
       token_type: broker,
-      token_id: tokenId
+      token_id: tokenId,
     })
     return response.data
   } catch (error) {
@@ -1050,7 +1277,7 @@ export const deleteToken = async (broker, tokenId) => {
     default:
       throw new Error(`Unsupported broker type: ${broker}`)
   }
-  
+
   return await axiosInstance.delete(`/users/api/${brokerEndpoint}/${tokenId}/`)
 }
 
@@ -1069,7 +1296,10 @@ export const getAccountGroups = async () => {
 export const saveAccountGroup = async (groupData) => {
   try {
     console.log('Saving account group:', groupData) // Debug log
-    const response = await axiosInstance.post('/users/api/account-groups/', groupData)
+    const response = await axiosInstance.post(
+      '/users/api/account-groups/',
+      groupData
+    )
     console.log('Save account group response:', response) // Debug log
     return response.data
   } catch (error) {
@@ -1080,7 +1310,10 @@ export const saveAccountGroup = async (groupData) => {
 
 export const updateAccountGroup = async (groupData) => {
   try {
-    const response = await axiosInstance.put(`/users/api/account-groups/${groupData.id}/`, groupData)
+    const response = await axiosInstance.put(
+      `/users/api/account-groups/${groupData.id}/`,
+      groupData
+    )
     return response.data
   } catch (error) {
     console.error('Error updating account group:', error)
@@ -1090,7 +1323,9 @@ export const updateAccountGroup = async (groupData) => {
 
 export const deleteAccountGroup = async (groupId) => {
   try {
-    const response = await axiosInstance.delete(`/users/api/account-groups/${groupId}/`)
+    const response = await axiosInstance.delete(
+      `/users/api/account-groups/${groupId}/`
+    )
     return response.data
   } catch (error) {
     console.error('Error deleting account group:', error)
@@ -1110,7 +1345,10 @@ export const getAvailableBrokers = async () => {
 
 export const getBrokersTable = async (params = {}) => {
   try {
-    const response = await axiosInstance.post('/database/api/brokers/list_brokers/', params)
+    const response = await axiosInstance.post(
+      '/database/api/brokers/list_brokers/',
+      params
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -1119,7 +1357,9 @@ export const getBrokersTable = async (params = {}) => {
 
 export const getBrokerDetails = async (brokerId) => {
   try {
-    const response = await axiosInstance.get(`/database/api/brokers/${brokerId}/`)
+    const response = await axiosInstance.get(
+      `/database/api/brokers/${brokerId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -1127,13 +1367,19 @@ export const getBrokerDetails = async (brokerId) => {
 }
 
 export const createBroker = async (brokerData) => {
-  const response = await axiosInstance.post('/database/api/brokers/', brokerData)
+  const response = await axiosInstance.post(
+    '/database/api/brokers/',
+    brokerData
+  )
   return response.data
 }
 
 export const updateBroker = async (brokerId, brokerData) => {
   try {
-    const response = await axiosInstance.put(`/database/api/brokers/${brokerId}/`, brokerData)
+    const response = await axiosInstance.put(
+      `/database/api/brokers/${brokerId}/`,
+      brokerData
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -1142,7 +1388,9 @@ export const updateBroker = async (brokerId, brokerData) => {
 
 export const deleteBroker = async (brokerId) => {
   try {
-    const response = await axiosInstance.delete(`/database/api/brokers/${brokerId}/`)
+    const response = await axiosInstance.delete(
+      `/database/api/brokers/${brokerId}/`
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -1151,7 +1399,9 @@ export const deleteBroker = async (brokerId) => {
 
 export const getBrokerFormStructure = async () => {
   try {
-    const response = await axiosInstance.get('/database/api/brokers/form_structure/')
+    const response = await axiosInstance.get(
+      '/database/api/brokers/form_structure/'
+    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -1161,7 +1411,7 @@ export const getBrokerFormStructure = async () => {
 export const getBrokersWithTokens = async () => {
   try {
     const response = await axiosInstance.get('/database/api/brokers/', {
-      params: { with_active_tokens: true }
+      params: { with_active_tokens: true },
     })
     return response.data
   } catch (error) {
@@ -1169,5 +1419,3 @@ export const getBrokersWithTokens = async () => {
     throw error.response ? error.response.data : error.message
   }
 }
-
-

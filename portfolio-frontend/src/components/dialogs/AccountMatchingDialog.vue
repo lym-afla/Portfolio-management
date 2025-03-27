@@ -18,7 +18,8 @@
         </v-alert>
 
         <p class="text-body-1 mb-4">
-          Please select which account from {{ brokerName }} API corresponds to your database account:
+          Please select which accounts from {{ brokerName }} API correspond to
+          your database accounts:
         </p>
 
         <v-row>
@@ -26,8 +27,8 @@
           <v-col cols="12" md="6">
             <v-card variant="outlined" class="pa-4">
               <div class="text-h6 mb-4">{{ brokerName }} API Accounts</div>
-              <v-radio-group v-model="selectedTinkoffAccount">
-                <v-radio
+              <v-checkbox-group v-model="selectedTinkoffAccounts">
+                <v-checkbox
                   v-for="account in tinkoffAccounts"
                   :key="account.id"
                   :value="account"
@@ -38,15 +39,15 @@
                       <strong>{{ account.name }}</strong>
                       <div class="text-caption">
                         ID: {{ account.id }}
-                        <br>
+                        <br />
                         Type: {{ account.type }}
-                        <br>
+                        <br />
                         Opened: {{ account.opened_date }}
                       </div>
                     </div>
                   </template>
-                </v-radio>
-              </v-radio-group>
+                </v-checkbox>
+              </v-checkbox-group>
             </v-card>
           </v-col>
 
@@ -54,8 +55,8 @@
           <v-col cols="12" md="6">
             <v-card variant="outlined" class="pa-4">
               <div class="text-h6 mb-4">Your Portfolio Accounts</div>
-              <v-radio-group v-model="selectedDbAccount">
-                <v-radio
+              <v-checkbox-group v-model="selectedDbAccounts">
+                <v-checkbox
                   v-for="account in dbAccounts"
                   :key="account.id"
                   :value="account"
@@ -66,15 +67,19 @@
                       <strong>{{ account.name }}</strong>
                       <div class="text-caption">
                         ID: {{ account.id }}
-                        <br>
+                        <br />
                         {{ account.comment || 'No comment' }}
-                        <br>
-                        {{ account.native_id ? `API ID: ${account.native_id}` : 'No API ID set' }}
+                        <br />
+                        {{
+                          account.native_id
+                            ? `API ID: ${account.native_id}`
+                            : 'No API ID set'
+                        }}
                       </div>
                     </div>
                   </template>
-                </v-radio>
-              </v-radio-group>
+                </v-checkbox>
+              </v-checkbox-group>
             </v-card>
           </v-col>
         </v-row>
@@ -86,13 +91,13 @@
             label="Create new account instead"
             @change="handleCreateNewChange"
           />
-          
+
           <v-expand-transition>
             <div v-if="createNewAccount">
               <v-text-field
                 v-model="newAccountName"
                 label="Account Name"
-                :rules="[v => !!v || 'Name is required']"
+                :rules="[(v) => !!v || 'Name is required']"
                 required
               />
               <v-textarea
@@ -107,18 +112,10 @@
 
       <v-card-actions>
         <v-spacer />
-        <v-btn
-          color="error"
-          variant="text"
-          @click="closeDialog"
-        >
+        <v-btn color="error" variant="text" @click="closeDialog">
           Cancel
         </v-btn>
-        <v-btn
-          color="primary"
-          :disabled="!isValid"
-          @click="confirmSelection"
-        >
+        <v-btn color="primary" :disabled="!isValid" @click="confirmSelection">
           Confirm
         </v-btn>
       </v-card-actions>
@@ -131,28 +128,28 @@ import { ref, computed } from 'vue'
 
 export default {
   name: 'AccountMatchingDialog',
-  
+
   props: {
     modelValue: Boolean,
     brokerName: {
       type: String,
-      required: true
+      required: true,
     },
     tinkoffAccounts: {
       type: Array,
-      required: true
+      required: true,
     },
     dbAccounts: {
       type: Array,
-      required: true
-    }
+      required: true,
+    },
   },
 
-  emits: ['update:modelValue', 'account-matched', 'create-account'],
+  emits: ['update:modelValue', 'accounts-matched', 'create-account'],
 
   setup(props, { emit }) {
-    const selectedTinkoffAccount = ref(null)
-    const selectedDbAccount = ref(null)
+    const selectedTinkoffAccounts = ref([])
+    const selectedDbAccounts = ref([])
     const createNewAccount = ref(false)
     const newAccountName = ref('')
     const newAccountComment = ref('')
@@ -160,19 +157,25 @@ export default {
 
     const dialogModel = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
 
     const isValid = computed(() => {
       if (createNewAccount.value) {
-        return selectedTinkoffAccount.value && newAccountName.value.trim()
+        return (
+          selectedTinkoffAccounts.value.length > 0 &&
+          newAccountName.value.trim()
+        )
       }
-      return selectedTinkoffAccount.value && selectedDbAccount.value
+      return (
+        selectedTinkoffAccounts.value.length > 0 &&
+        selectedDbAccounts.value.length > 0
+      )
     })
 
     const handleCreateNewChange = (value) => {
       if (value) {
-        selectedDbAccount.value = null
+        selectedDbAccounts.value = []
       } else {
         newAccountName.value = ''
         newAccountComment.value = ''
@@ -182,14 +185,14 @@ export default {
     const confirmSelection = () => {
       if (createNewAccount.value) {
         emit('create-account', {
-          tinkoffAccount: selectedTinkoffAccount.value,
+          tinkoffAccounts: selectedTinkoffAccounts.value,
           name: newAccountName.value,
-          comment: newAccountComment.value
+          comment: newAccountComment.value,
         })
       } else {
-        emit('account-matched', {
-          tinkoffAccount: selectedTinkoffAccount.value,
-          dbAccount: selectedDbAccount.value
+        emit('accounts-matched', {
+          tinkoffAccounts: selectedTinkoffAccounts.value,
+          dbAccounts: selectedDbAccounts.value,
         })
       }
       closeDialog()
@@ -197,8 +200,8 @@ export default {
 
     const closeDialog = () => {
       dialogModel.value = false
-      selectedTinkoffAccount.value = null
-      selectedDbAccount.value = null
+      selectedTinkoffAccounts.value = []
+      selectedDbAccounts.value = []
       createNewAccount.value = false
       newAccountName.value = ''
       newAccountComment.value = ''
@@ -207,8 +210,8 @@ export default {
 
     return {
       dialogModel,
-      selectedTinkoffAccount,
-      selectedDbAccount,
+      selectedTinkoffAccounts,
+      selectedDbAccounts,
       createNewAccount,
       newAccountName,
       newAccountComment,
@@ -216,8 +219,8 @@ export default {
       isValid,
       handleCreateNewChange,
       confirmSelection,
-      closeDialog
+      closeDialog,
     }
-  }
+  },
 }
-</script> 
+</script>

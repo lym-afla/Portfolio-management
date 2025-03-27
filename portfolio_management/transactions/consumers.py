@@ -1,27 +1,28 @@
-from collections import defaultdict
+import asyncio
 import datetime
+import json
+import logging
+from collections import defaultdict
 from decimal import Decimal
+
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.forms import model_to_dict
 
 from common.models import Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import get_security, transaction_exists, match_broker_account
+from core.import_utils import get_security, match_broker_account, transaction_exists
 from users.models import CustomUser
+
 from .views import TransactionViewSet
-import json
-import structlog
-import asyncio
-import logging
-from channels.db import database_sync_to_async
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-class TransactionConsumer(AsyncWebsocketConsumer):
 
+class TransactionConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Initialize queues to handle confirmations and mappings
@@ -39,12 +40,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # Get the authenticated user from the scope
         self.user = self.scope["user"]
-        
+
         if self.user.is_anonymous:
             # Reject the connection if user is not authenticated
             await self.close()
             return
-        
+
         await self.accept()
         logger.info(f"WebSocket connected for user: {self.user}")
 
@@ -63,40 +64,39 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         logger.debug(f"Raw WebSocket message received: {text_data}")
         try:
             text_data_json = json.loads(text_data)
-            message_type = text_data_json['type']
+            message_type = text_data_json["type"]
             logger.debug(f"Processing message type: {message_type} with data: {text_data_json}")
 
-            if message_type == 'start_file_import':  # Renamed from 'start_import'
-                file_id = text_data_json.get('file_id')
-                account_id = text_data_json.get('account_id')
-                confirm_every = text_data_json.get('confirm_every', False)
-                is_galaxy = text_data_json.get('is_galaxy', False)
-                galaxy_type = text_data_json.get('galaxy_type', None)
-                currency = text_data_json.get('currency', None)
-                
+            if message_type == "start_file_import":  # Renamed from 'start_import'
+                file_id = text_data_json.get("file_id")
+                account_id = text_data_json.get("account_id")
+                confirm_every = text_data_json.get("confirm_every", False)
+                is_galaxy = text_data_json.get("is_galaxy", False)
+                galaxy_type = text_data_json.get("galaxy_type", None)
+                currency = text_data_json.get("currency", None)
+
                 if not self.import_task or self.import_task.done():
                     self.import_task = asyncio.create_task(
                         self.start_file_import(  # Renamed method
-                            file_id, 
-                            account_id, 
-                            confirm_every, 
-                            currency, 
-                            is_galaxy, 
-                            galaxy_type
+                            file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
                         )
                     )
                     logger.debug("Started file import task")
                 else:
                     logger.warning("Import task already running")
-                    await self.send(text_data=json.dumps({
-                        'type': 'import_warning',
-                        'data': {'message': 'Import already in progress'}
-                    }))
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_warning",
+                                "data": {"message": "Import already in progress"},
+                            }
+                        )
+                    )
 
-            elif message_type == 'start_api_import':
-                data = text_data_json.get('data', {})
-                broker_id = data.get('broker_id')
-                
+            elif message_type == "start_api_import":
+                data = text_data_json.get("data", {})
+                broker_id = data.get("broker_id")
+
                 if not broker_id:
                     await self.send_error("Broker ID is required")
                     return
@@ -107,64 +107,78 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             broker_id=broker_id,
                             confirm_every=data.get("confirm_every_transaction", False),
                             date_from=data.get("date_from"),
-                            date_to=data.get("date_to")
+                            date_to=data.get("date_to"),
                         )
                     )
                     logger.debug("Started API import task")
                 else:
                     logger.warning("Import task already running")
-                    await self.send(text_data=json.dumps({
-                        'type': 'import_warning',
-                        'data': {'message': 'Import already in progress'}
-                    }))
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_warning",
+                                "data": {"message": "Import already in progress"},
+                            }
+                        )
+                    )
 
-            elif message_type == 'security_mapped':
-                action = text_data_json.get('action')
-                security_id = text_data_json.get('security_id', None)
-                mapping_response = {
-                    'action': action,
-                    'security_id': security_id
-                }
+            elif message_type == "security_mapped":
+                action = text_data_json.get("action")
+                security_id = text_data_json.get("security_id", None)
+                mapping_response = {"action": action, "security_id": security_id}
                 await self.mapping_events.put(mapping_response)
                 logger.debug(f"Put mapping event: {mapping_response}")
-            elif message_type == 'transaction_confirmed':
-                confirmed = text_data_json.get('confirmed', False)
+            elif message_type == "transaction_confirmed":
+                confirmed = text_data_json.get("confirmed", False)
                 await self.confirmation_events.put(confirmed)
-                logger.debug(f"Put confirmation event: {confirmed}. Queue size: {self.confirmation_events.qsize()}")
-            elif message_type == 'security_confirmation':
+                logger.debug(
+                    f"Put confirmation event: {confirmed}. "
+                    f"Queue size: {self.confirmation_events.qsize()}"
+                )
+            elif message_type == "security_confirmation":
                 # Clear any pending security events before adding new one
                 while not self.security_events.empty():
                     try:
                         self.security_events.get_nowait()
                     except asyncio.QueueEmpty:
                         break
-                        
-                security_id = text_data_json.get('security_id')
-                logger.debug(f"Security confirmation received. ID: {security_id}, Queue size before: {self.security_events.qsize()}")
+
+                security_id = text_data_json.get("security_id")
+                logger.debug(
+                    f"Security confirmation received. ID: {security_id}, "
+                    f"Queue size before: {self.security_events.qsize()}"
+                )
                 await self.security_events.put(security_id)
-                logger.debug(f"Security confirmation queued. Queue size after: {self.security_events.qsize()}")
-            elif message_type == 'stop_import':
+                logger.debug(
+                    "Security confirmation queued. Queue size after: "
+                    f"{self.security_events.qsize()}"
+                )
+            elif message_type == "stop_import":
                 self.stop_event.set()
                 logger.debug("Stop event set for import")
                 self.transactions_to_create = []
                 self.transactions_skipped = 0
                 self.duplicate_count = 0
-                
+
                 # Send stop confirmation to frontend
-                await self.send(text_data=json.dumps({
-                    'type': 'import_stopped',
-                    'data': {
-                        'message': 'Import process was stopped by user',
-                        'stats': {
-                            'totalTransactions': 0,
-                            'importedTransactions': 0,
-                            'skippedTransactions': self.transactions_skipped,
-                            'duplicateTransactions': self.duplicate_count,
-                            'importErrors': 0
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "type": "import_stopped",
+                            "data": {
+                                "message": "Import process was stopped by user",
+                                "stats": {
+                                    "totalTransactions": 0,
+                                    "importedTransactions": 0,
+                                    "skippedTransactions": self.transactions_skipped,
+                                    "duplicateTransactions": self.duplicate_count,
+                                    "importErrors": 0,
+                                },
+                            },
                         }
-                    }
-                }))
-                
+                    )
+                )
+
                 # Close the WebSocket connection
                 await self.close()
 
@@ -173,117 +187,109 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
         except json.JSONDecodeError:
             logger.error("Failed to decode JSON message")
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Invalid JSON data received'
-            }))
+            await self.send(
+                text_data=json.dumps({"type": "error", "message": "Invalid JSON data received"})
+            )
         except KeyError as e:
             logger.error(f"Missing required key in message: {str(e)}")
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f'Missing required data: {str(e)}'
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {"type": "error", "message": f"Missing required data: {str(e)}"}
+                )
+            )
         except Exception as e:
             logger.error(f"Error handling receive: {str(e)}", exc_info=True)
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'data': {'message': f'An error occurred: {str(e)}'}
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {"type": "error", "data": {"message": f"An error occurred: {str(e)}"}}
+                )
+            )
 
-    async def start_file_import(self, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type):
+    async def start_file_import(
+        self, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
+    ):
         logger.debug("Starting file import")
         try:
             self.confirm_every = confirm_every
             self.import_generator = self.view_set.import_transactions_from_file(
-                self.user, 
-                file_id, 
-                account_id,
-                confirm_every, 
-                currency, 
-                is_galaxy, 
-                galaxy_type
+                self.user, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
             )
             await self.process_import()
         except Exception as e:
             logger.error(f"Error in file import: {str(e)}")
-            await self.send(text_data=json.dumps({
-                'type': 'import_error',
-                'data': {'error': f'An error occurred during file import: {str(e)}'}
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "import_error",
+                        "data": {"error": f"An error occurred during file import: {str(e)}"},
+                    }
+                )
+            )
 
-    async def send_error(self, message: str, error_type: str = 'critical_error'):
+    async def send_error(self, message: str, error_type: str = "critical_error"):
         """
         Send error message to client
-        
+
         Args:
             message: Error message
             error_type: Type of error ('critical_error', 'import_error', 'save_error')
         """
-        await self.send(text_data=json.dumps({
-            'type': error_type,
-            'data': {
-                'error': message
-            }
-        }))
+        await self.send(text_data=json.dumps({"type": error_type, "data": {"error": message}}))
 
     async def send_message(self, message_type: str, data: dict):
         """
         Send formatted message to client
-        
+
         Args:
             message_type: Type of message
             data: Message data
         """
-        await self.send(text_data=json.dumps({
-            'type': message_type,
-            'data': data
-        }))
+        await self.send(text_data=json.dumps({"type": message_type, "data": data}))
 
-    async def start_api_import(self, broker_id: int, confirm_every: bool = False, date_from: str = None, date_to: str = None):
+    async def start_api_import(
+        self,
+        broker_id: int,
+        confirm_every: bool = False,
+        date_from: str = None,
+        date_to: str = None,
+    ):
         """Handle API import process"""
         try:
             # Get broker instance
             broker = await database_sync_to_async(Brokers.objects.get)(id=broker_id)
-            
-            # Try to match accounts
-            matched_account, tinkoff_accounts, db_accounts = await match_broker_account(broker, self.user)
 
-            if matched_account:
-                # Start import with matched account
-                self.import_task = asyncio.create_task(
-                    self.import_transactions_from_api(
-                        self.user,
-                        matched_account.id,
-                        confirm_every,
-                        date_from,
-                        date_to
-                    )
-                )
-                await self.process_import()
-            else:
-                # Send both account lists for selection
-                await self.send_message('account_selection_required', {
-                    'broker_id': broker_id,
-                    'tinkoff_accounts': tinkoff_accounts,
-                    'db_accounts': db_accounts,
-                    'message': 'Please match your account for import',
-                    'broker_name': broker.name
-                })
+            # Get matched and unmatched accounts
+            matched_pairs, unmatched_tinkoff, unmatched_db = await match_broker_account(
+                broker, self.user
+            )
+
+            # Send account matching data to frontend
+            await self.send_message(
+                "account_matching_required",
+                {
+                    "broker_id": broker_id,
+                    "broker_name": broker.name,
+                    "matched_pairs": matched_pairs,
+                    "unmatched_tinkoff": unmatched_tinkoff,
+                    "unmatched_db": unmatched_db,
+                    "message": "Please confirm account matches and match remaining accounts",
+                },
+            )
 
         except Brokers.DoesNotExist:
-            await self.send_error('Invalid broker ID')
+            await self.send_error("Invalid broker ID")
         except Exception as e:
             logger.error(f"Error in start_api_import: {str(e)}")
-            await self.send_error(f'Failed to start API import: {str(e)}')
+            await self.send_error(f"Failed to start API import: {str(e)}")
 
     async def process_import(self):
         logger.debug("Starting process_import")
         import_results = {
-            'totalTransactions': 0,
-            'importedTransactions': 0,
-            'skippedTransactions': 0,
-            'duplicateTransactions': 0,
-            'importErrors': 0
+            "totalTransactions": 0,
+            "importedTransactions": 0,
+            "skippedTransactions": 0,
+            "duplicateTransactions": 0,
+            "importErrors": 0,
         }
         security_cache = defaultdict(lambda: None)
         try:
@@ -291,60 +297,75 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 if self.stop_event.is_set():
                     break
 
-                if 'error' in update:
-                    import_results['importErrors'] += 1
-                    await self.send(text_data=json.dumps({
-                        'type': 'import_error',
-                        'data': {'error': update['error']}
-                    }))
-                elif update['status'] == 'critical_error':
-                    await self.send(text_data=json.dumps({
-                        'type': 'critical_error',
-                        'data': {'error': update['message']}
-                    }))
-                elif update['status'] == 'transaction_confirmation':
-                    await self.handle_transaction_confirmation(update['data'])
-                elif update.get('status') == 'security_mapping':
-                    logger.debug(f"Security mapping required for {update.get('mapping_data').get('stock_description')}")
-                    
-                    transaction_to_create = update['transaction_data']
+                if "error" in update:
+                    import_results["importErrors"] += 1
+                    await self.send(
+                        text_data=json.dumps(
+                            {"type": "import_error", "data": {"error": update["error"]}}
+                        )
+                    )
+                elif update["status"] == "critical_error":
+                    await self.send(
+                        text_data=json.dumps(
+                            {"type": "critical_error", "data": {"error": update["message"]}}
+                        )
+                    )
+                elif update["status"] == "transaction_confirmation":
+                    await self.handle_transaction_confirmation(update["data"])
+                elif update.get("status") == "security_mapping":
+                    logger.debug(
+                        f"Security mapping required for "
+                        f"{update.get('mapping_data').get('stock_description')}"
+                    )
+
+                    transaction_to_create = update["transaction_data"]
                     logger.debug(f"Transaction to create: {transaction_to_create}")
 
                     security_id = None  # Initialize security_id to None
-                    if security_cache[update['mapping_data']['stock_description']] is not None:
-                        security_id = security_cache[update['mapping_data']['stock_description']]
+                    if security_cache[update["mapping_data"]["stock_description"]] is not None:
+                        security_id = security_cache[update["mapping_data"]["stock_description"]]
                         logger.debug(f"Security found in cache {security_id}")
-                        
+
                         # If confirm_every is True, ask for transaction confirmation
                         if self.confirm_every:
                             security = await get_security(security_id)
                             if security:
                                 # Update the transaction data with the mapped security
-                                transaction_to_create['security'] = security
+                                transaction_to_create["security"] = security
                                 await self.handle_transaction_confirmation(transaction_to_create)
                                 continue  # Skip the rest of the loop iteration
                     else:
-                        await self.send(text_data=json.dumps({
-                            'type': 'import_update',
-                            'data': {
-                                'status': 'security_mapping',
-                                'mapping_data': update['mapping_data'],
-                                'transaction_data': self._serialize_transaction_data(update['transaction_data'])
-                            }
-                        }))
-                        
+                        await self.send(
+                            text_data=json.dumps(
+                                {
+                                    "type": "import_update",
+                                    "data": {
+                                        "status": "security_mapping",
+                                        "mapping_data": update["mapping_data"],
+                                        "transaction_data": self._serialize_transaction_data(
+                                            update["transaction_data"]
+                                        ),
+                                    },
+                                }
+                            )
+                        )
+
                         mapping_response = await self.mapping_events.get()
                         logger.debug(f"Received security mapping response: {mapping_response}")
-                        
-                        if mapping_response.get('action') == 'skip':
+
+                        if mapping_response.get("action") == "skip":
                             self.transactions_skipped += 1
                             logger.debug("Transaction skipped due to security mapping")
                             continue  # Skip to the next iteration
-                        elif mapping_response.get('action') == 'map':
-                            security_id = mapping_response.get('security_id')
-                            security_cache[update['mapping_data']['stock_description']] = security_id
+                        elif mapping_response.get("action") == "map":
+                            security_id = mapping_response.get("security_id")
+                            security_cache[
+                                update["mapping_data"]["stock_description"]
+                            ] = security_id
                         else:
-                            logger.error(f"Unknown mapping action: {mapping_response.get('action')}")
+                            logger.error(
+                                f"Unknown mapping action: {mapping_response.get('action')}"
+                            )
                             self.transactions_skipped += 1
                             continue  # Skip to the next iteration
 
@@ -353,14 +374,17 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         security = await get_security(security_id)
                         if security:
                             # Update the transaction data with the mapped security
-                            transaction_to_create['security'] = security
-                            
+                            transaction_to_create["security"] = security
+
                             # Check if transaction already exists
                             existing_transaction = await transaction_exists(transaction_to_create)
-                            
+
                             if not existing_transaction:
                                 self.transactions_to_create.append(transaction_to_create)
-                                logger.debug(f"Transaction updated with mapped security and added to create list: {transaction_to_create}")
+                                logger.debug(
+                                    "Transaction updated with mapped security and added to "
+                                    f"create list: {transaction_to_create}"
+                                )
                             else:
                                 self.duplicate_count += 1
                                 logger.debug(f"Transaction already exists: {transaction_to_create}")
@@ -370,81 +394,111 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     else:
                         logger.error("No security_id provided in mapping response")
                         self.transactions_skipped += 1
-                        
-                elif update.get('status') == 'progress':
-                    await self.send(text_data=json.dumps({
-                        'type': 'import_update',
-                        'data': update
-                    }))  
-                elif update.get('status') == 'initialization':
-                    await self.send(text_data=json.dumps({
-                        'type': 'initialization',
-                        'message': update.get('message'),
-                        'total_to_update': update.get('total_to_update')
-                    }))
-                elif update.get('status') == 'add_transaction':
-                    self.transactions_to_create.append(update.get('data'))
+
+                elif update.get("status") == "progress":
+                    await self.send(text_data=json.dumps({"type": "import_update", "data": update}))
+                elif update.get("status") == "initialization":
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "initialization",
+                                "message": update.get("message"),
+                                "total_to_update": update.get("total_to_update"),
+                            }
+                        )
+                    )
+                elif update.get("status") == "add_transaction":
+                    self.transactions_to_create.append(update.get("data"))
                     logger.debug(f"Transaction added to create list: {update.get('data')}")
-                elif update.get('status') == 'complete':
-                    import_results = update.get('data')
+                elif update.get("status") == "complete":
+                    import_results = update.get("data")
                     # logger.debug(f"[process_import] Import results: {update}")
 
             # After processing all transactions, save confirmed transactions
             if self.transactions_to_create:
                 try:
                     # Sending final confirmation message after the update
-                    logger.debug(f"Stats before finalising import. Imported: {import_results['importedTransactions']} || {len(self.transactions_to_create)}. Skipped: {import_results['skippedTransactions']} || {self.transactions_skipped}. Duplicate:. {import_results['duplicateTransactions']} || {self.duplicate_count}")
-                    import_results['importedTransactions'] = len(self.transactions_to_create)
-                    import_results['skippedTransactions'] += self.transactions_skipped
-                    import_results['duplicateTransactions'] += self.duplicate_count
+                    logger.debug(
+                        "Stats before finalising import. Imported: "
+                        f"{import_results['importedTransactions']} || "
+                        f"{len(self.transactions_to_create)}. "
+                        f"Skipped: {import_results['skippedTransactions']} || "
+                        f"{self.transactions_skipped}. "
+                        f"Duplicate: {import_results['duplicateTransactions']} || "
+                        f"{self.duplicate_count}"
+                    )
+                    import_results["importedTransactions"] = len(self.transactions_to_create)
+                    import_results["skippedTransactions"] += self.transactions_skipped
+                    import_results["duplicateTransactions"] += self.duplicate_count
                     logger.debug(f"Import results: {import_results}")
                     await self.view_set.save_transactions(self.transactions_to_create)
-                    await self.send(text_data=json.dumps({
-                        'type': 'import_complete',
-                        'data': import_results,
-                        'message': 'End of process_import method. Import process completed'
-                    }))
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_complete",
+                                "data": import_results,
+                                "message": "End of process_import method. Import process completed",
+                            }
+                        )
+                    )
                 except Exception as e:
                     logger.error(f"Error saving transactions: {str(e)}")
-                    await self.send(text_data=json.dumps({
-                        'type': 'save_error',
-                        'data': {'error': f'Error saving transactions: {str(e)}'}
-                    }))
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "save_error",
+                                "data": {"error": f"Error saving transactions: {str(e)}"},
+                            }
+                        )
+                    )
             else:
                 logger.debug("No transactions to save")
-                # logger.debug(f"Stats before finalising import. Imported: {import_results['importedTransactions']} || {len(self.transactions_to_create)}. Skipped: {import_results['skippedTransactions']} || {self.transactions_skipped}. Duplicate:. {import_results['duplicateTransactions']} || {self.duplicate_count}")
-                import_results['skippedTransactions'] += self.transactions_skipped
-                import_results['duplicateTransactions'] += self.duplicate_count
+                import_results["skippedTransactions"] += self.transactions_skipped
+                import_results["duplicateTransactions"] += self.duplicate_count
                 logger.debug(f"Import results: {import_results}")
-                await self.send(text_data=json.dumps({
-                    'type': 'import_complete',
-                    'data': import_results,
-                    'message': 'End of process_import method. Import process completed'
-                }))
+                await self.send(
+                    text_data=json.dumps(
+                        {
+                            "type": "import_complete",
+                            "data": import_results,
+                            "message": "End of process_import method. Import process completed",
+                        }
+                    )
+                )
 
         except StopAsyncIteration:
-            await self.send(text_data=json.dumps({
-                'type': 'import_complete',
-                'data': {'message': 'Import process completed'}
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {"type": "import_complete", "data": {"message": "Import process completed"}}
+                )
+            )
         except asyncio.CancelledError:
             logger.info("Import task was cancelled")
-            await self.send(text_data=json.dumps({
-                'type': 'import_cancelled',
-                'data': {'message': 'Import process was cancelled'}
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "import_cancelled",
+                        "data": {"message": "Import process was cancelled"},
+                    }
+                )
+            )
         except Exception as e:
             logger.error(f"Error in process_import: {str(e)}")
-            await self.send(text_data=json.dumps({
-                'type': 'import_error',
-                'data': {'error': f'An error occurred during import processing: {str(e)}'}
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "import_error",
+                        "data": {"error": f"An error occurred during import processing: {str(e)}"},
+                    }
+                )
+            )
         finally:
             if self.stop_event.is_set():
-                await self.send(text_data=json.dumps({
-                    'type': 'import_stopped',
-                    'data': {'message': 'Import process stopped'}
-                }))
+                await self.send(
+                    text_data=json.dumps(
+                        {"type": "import_stopped", "data": {"message": "Import process stopped"}}
+                    )
+                )
             self.stop_event.clear()
             self.transactions_to_create = []
             self.transactions_skipped = 0
@@ -453,17 +507,18 @@ class TransactionConsumer(AsyncWebsocketConsumer):
     async def handle_transaction_confirmation(self, transaction_data):
         # Check if transaction already exists
         existing_transaction = await transaction_exists(transaction_data)
-        
-        if not existing_transaction:        
+
+        if not existing_transaction:
             serialized_data = self._serialize_transaction_data(transaction_data)
             logger.debug(f"Sending transaction_confirmation: {serialized_data}")
-            await self.send(text_data=json.dumps({
-                'type': 'import_update',
-                'data': {
-                    'status': 'transaction_confirmation',
-                    'data': serialized_data
-                }
-            }))
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "import_update",
+                        "data": {"status": "transaction_confirmation", "data": serialized_data},
+                    }
+                )
+            )
             # Await confirmation from frontend
             confirmation = await self.confirmation_events.get()
             logger.debug(f"Received confirmation: {confirmation}")
@@ -476,7 +531,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 logger.debug("Transaction skipped based on user confirmation")
         else:
             self.duplicate_count += 1
-            logger.debug(f"Duplicate count in handle_transaction_confirmation: {self.duplicate_count}.")
+            logger.debug(
+                f"Duplicate count in handle_transaction_confirmation: {self.duplicate_count}."
+            )
             logger.debug(f"Transaction already exists: {transaction_data}")
 
     def _serialize_transaction_data(self, data):
@@ -484,14 +541,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             serialized = data.copy()  # Create a copy
 
             # Add total value to show to the user for confirmation
-            if 'price' in serialized and 'quantity' in serialized:
-                serialized['total'] = round(serialized['quantity'] * serialized['price'], 2)
-            
+            if "price" in serialized and "quantity" in serialized:
+                serialized["total"] = round(serialized["quantity"] * serialized["price"], 2)
+
             for key, value in serialized.items():
-                serialized[key] = self._serialize_transaction_data(value)  # Recursive call for dicts
+                serialized[key] = self._serialize_transaction_data(
+                    value
+                )  # Recursive call for dicts
             return format_table_data(serialized, self.user.default_currency, number_of_digits=2)
         elif isinstance(data, (CustomUser, Brokers, Assets)):
-            return model_to_dict(data, fields=['id', 'name'])
+            return model_to_dict(data, fields=["id", "name"])
         elif isinstance(data, (datetime.date, datetime.datetime)):
             return data.isoformat()
         elif isinstance(data, Decimal):

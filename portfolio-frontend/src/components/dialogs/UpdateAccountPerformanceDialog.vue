@@ -16,15 +16,18 @@
             @update:model-value="handleAccountChange"
           >
             <template v-slot:item="{ props, item }">
-              <v-list-item 
-                v-if="item.raw.type === 'option'" 
-                v-bind="props" 
+              <v-list-item
+                v-if="item.raw.type === 'option'"
+                v-bind="props"
                 :title="null"
               >
                 {{ item.raw.title }}
               </v-list-item>
               <v-divider v-else-if="item.raw.type === 'divider'" class="my-2" />
-              <v-list-subheader v-else-if="item.raw.type === 'header'" class="custom-subheader">
+              <v-list-subheader
+                v-else-if="item.raw.type === 'header'"
+                class="custom-subheader"
+              >
                 {{ item.raw.title }}
               </v-list-subheader>
             </template>
@@ -57,17 +60,13 @@
           />
         </v-form>
 
-        <v-alert
-          v-if="generalError"
-          type="error"
-          class="mt-4"
-        >
+        <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
         </v-alert>
       </v-card-text>
 
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
         <v-btn
           color="blue darken-1"
@@ -95,7 +94,7 @@ import axiosInstance from '@/config/axiosConfig'
 export default {
   name: 'UpdateAccountPerformanceDialog',
   props: {
-    modelValue: Boolean
+    modelValue: Boolean,
   },
   emits: ['update:modelValue', 'update-started', 'update-error'],
   setup(props, { emit }) {
@@ -115,13 +114,13 @@ export default {
       selection_account_id: null,
       currency: '',
       is_restricted: '',
-      skip_existing_years: false
+      skip_existing_years: false,
     })
     const dialog = computed({
       get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value)
+      set: (value) => emit('update:modelValue', value),
     })
-    
+
     // Get current account selection from store
     const currentStoreSelection = computed(() => store.state.accountSelection)
 
@@ -130,23 +129,30 @@ export default {
       try {
         const data = await getAccountPerformanceFormData()
         accountOptions.value = formatAccountChoices(data.account_choices)
-        currencyOptions.value = Object.entries(data.currency_choices).map(([value, text]) => ({ value, text }))
-        restrictedOptions.value = Object.entries(data.is_restricted_choices).map(([value, text]) => ({ value, text }))
+        currencyOptions.value = Object.entries(data.currency_choices).map(
+          ([value, text]) => ({ value, text })
+        )
+        restrictedOptions.value = Object.entries(
+          data.is_restricted_choices
+        ).map(([value, text]) => ({ value, text }))
 
         // Set initial account selection
         const matchingOption = accountOptions.value.find(
-          option => option.type === 'option' && 
-          option.value.type === currentStoreSelection.value.type && 
-          option.value.id === currentStoreSelection.value.id
+          (option) =>
+            option.type === 'option' &&
+            option.value.type === currentStoreSelection.value.type &&
+            option.value.id === currentStoreSelection.value.id
         )
-        
+
         if (matchingOption) {
           selectedAccount.value = matchingOption.value
           handleAccountChange(matchingOption.value)
         }
 
         // Set initial currency using the currency code (value), not the display text
-        const currencyOption = currencyOptions.value.find(option => option.text === selectedCurrency.value)
+        const currencyOption = currencyOptions.value.find(
+          (option) => option.text === selectedCurrency.value
+        )
         formData.value.currency = currencyOption?.value // Use the currency code
       } catch (error) {
         handleApiError(error)
@@ -165,37 +171,49 @@ export default {
     }
 
     // Watch for dialog opening
-    watch(() => props.modelValue, async (isOpen) => {
-      if (isOpen && accountOptions.value.length === 0) {
-        await fetchFormData()
+    watch(
+      () => props.modelValue,
+      async (isOpen) => {
+        if (isOpen && accountOptions.value.length === 0) {
+          await fetchFormData()
+        }
       }
-    })
+    )
 
     const errorMessages = ref({})
-    
+
     const clearErrors = () => {
       errorMessages.value = {}
       generalError.value = ''
     }
 
     // Add watchers for each form field to clear its error
-    watch(() => formData.value.selection_account_type, () => {
-      if (errorMessages.value.selection_account_type) {
-        errorMessages.value.selection_account_type = null
+    watch(
+      () => formData.value.selection_account_type,
+      () => {
+        if (errorMessages.value.selection_account_type) {
+          errorMessages.value.selection_account_type = null
+        }
       }
-    })
+    )
 
-    watch(() => formData.value.currency, () => {
-      if (errorMessages.value.currency) {
-        errorMessages.value.currency = null
+    watch(
+      () => formData.value.currency,
+      () => {
+        if (errorMessages.value.currency) {
+          errorMessages.value.currency = null
+        }
       }
-    })
+    )
 
-    watch(() => formData.value.is_restricted, () => {
-      if (errorMessages.value.is_restricted) {
-        errorMessages.value.is_restricted = null
+    watch(
+      () => formData.value.is_restricted,
+      () => {
+        if (errorMessages.value.is_restricted) {
+          errorMessages.value.is_restricted = null
+        }
       }
-    })
+    )
 
     const prepareFormData = () => {
       const effectiveCurrentDate = store.state.effectiveCurrentDate
@@ -205,7 +223,7 @@ export default {
 
       return {
         ...formData.value,
-        effective_current_date: effectiveCurrentDate
+        effective_current_date: effectiveCurrentDate,
       }
     }
 
@@ -233,8 +251,11 @@ export default {
 
       try {
         const dataToSend = prepareFormData()
-        console.log('[UpdateAccountPerformanceDialog] Submitting formData:', dataToSend)
-        
+        console.log(
+          '[UpdateAccountPerformanceDialog] Submitting formData:',
+          dataToSend
+        )
+
         // First validate
         const validateResponse = await axiosInstance.post(
           '/database/api/update-account-performance/validate/',
@@ -248,16 +269,19 @@ export default {
         // If validation passed, emit update-started with the same prepared data
         emit('update-started', dataToSend)
         closeDialog()
-        
       } catch (error) {
         console.error('Form submission error:', error)
         if (error.response?.data?.type === 'validation') {
-          Object.keys(error.response.data.errors).forEach(field => {
+          Object.keys(error.response.data.errors).forEach((field) => {
             errorMessages.value[field] = error.response.data.errors[field]
           })
-          errorMessages.value["selection_account_type"] = error.response.data.errors["selection_account_id"] ? "Wrong selection" : errorMessages.value["selection_account_type"]
+          errorMessages.value['selection_account_type'] = error.response.data
+            .errors['selection_account_id']
+            ? 'Wrong selection'
+            : errorMessages.value['selection_account_type']
         } else {
-          generalError.value = error.response?.data?.message || 'An unexpected error occurred'
+          generalError.value =
+            error.response?.data?.message || 'An unexpected error occurred'
         }
       } finally {
         loading.value = false
@@ -271,7 +295,7 @@ export default {
         selection_account_id: null,
         currency: '',
         is_restricted: '',
-        skip_existing_years: false
+        skip_existing_years: false,
       }
       clearErrors()
       if (form.value) {
@@ -279,11 +303,15 @@ export default {
       }
     }
 
-    watch(() => formData.value, () => {
-      if (generalError.value) {
-        generalError.value = ''
-      }
-    }, { deep: true })
+    watch(
+      () => formData.value,
+      () => {
+        if (generalError.value) {
+          generalError.value = ''
+        }
+      },
+      { deep: true }
+    )
 
     return {
       dialog,
@@ -301,7 +329,7 @@ export default {
       errorMessages,
       prepareFormData,
     }
-  }
+  },
 }
 </script>
 
@@ -312,7 +340,6 @@ export default {
   color: #000000;
   padding-top: 12px;
   padding-bottom: 12px;
-  background-color: #F5F5F5;
+  background-color: #f5f5f5;
 }
 </style>
-
