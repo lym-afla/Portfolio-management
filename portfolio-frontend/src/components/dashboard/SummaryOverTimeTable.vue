@@ -88,6 +88,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import UpdateAccountPerformanceDialog from '@/components/dialogs/UpdateAccountPerformanceDialog.vue'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 import { updateAccountPerformance } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'SummaryOverTimeTable',
@@ -146,7 +147,7 @@ export default {
 
     const handleProgress = (event) => {
       const data = event.detail
-      console.log('Progress:', data)
+      logger.log('Unknown', 'Progress:', data)
 
       if (!showProgressDialog.value) {
         showProgressDialog.value = true
@@ -181,7 +182,7 @@ export default {
     }
 
     const handleUpdateError = (error) => {
-      console.error('[handleUpdateError] Update error:', error)
+      logger.error('Unknown', '[handleUpdateError] Update error:', error)
       const errorMessage =
         error.response?.data?.message || error.message || String(error)
       errors.value.push(errorMessage)
@@ -190,7 +191,7 @@ export default {
 
     const handleStopImport = () => {
       // Implement stop import logic here
-      console.log('Stop import requested')
+      logger.log('Unknown', 'Stop import requested')
       showProgressDialog.value = false
     }
 

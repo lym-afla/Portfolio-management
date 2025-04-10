@@ -51,6 +51,7 @@
 <script>
 import { ref, computed, watch, onMounted } from 'vue'
 import { addFXRate, updateFXRate, getFXFormStructure } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'FXDialog',
@@ -81,7 +82,7 @@ export default {
           throw new Error('Invalid form structure received')
         }
       } catch (error) {
-        console.error('Error fetching form structure:', error)
+        logger.error('Unknown', 'Error fetching form structure:', error)
         generalError.value = 'Failed to load form structure. Please try again.'
       }
     }
@@ -165,7 +166,7 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting FX rate:', error)
+        logger.error('Unknown', 'Error submitting FX rate:', error)
         if (error && typeof error === 'object') {
           Object.entries(error).forEach(([key, value]) => {
             if (key === '__all__') {

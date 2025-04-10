@@ -124,6 +124,7 @@ import {
 } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'SecuritiesPage',
@@ -264,12 +265,12 @@ export default {
     }
 
     const handleSecurityAdded = (newSecurity) => {
-      console.log('newSecurity added:', newSecurity)
+      logger.log('Unknown', 'newSecurity added:', newSecurity)
       fetchSecurities()
     }
 
     const handleSecurityUpdated = (updatedSecurity) => {
-      console.log('updatedSecurity:', updatedSecurity)
+      logger.log('Unknown', 'updatedSecurity:', updatedSecurity)
       fetchSecurities()
     }
 

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import store from '@/store'
+import logger from '@/utils/logger'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import RegisterPage from '../views/RegisterPage.vue'
@@ -138,61 +139,55 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const guardId = Date.now()
-  console.log(`[Router][${guardId}] Navigation from ${from.path} to ${to.path}`)
+  logger.log('Router', `[${guardId}] Navigation from ${from.path} to ${to.path}`)
 
-  // Always ensure app is initialized
+  // Check if user is going to auth pages
+  const goingToAuthPage = to.name === 'Login' || to.name === 'Register'
+  
+  // Skip initialization completely for auth pages
+  if (goingToAuthPage) {
+    logger.log('Router', `[${guardId}] Going to auth page, skipping initialization`)
+    // But first check if already authenticated
+    if (store.getters.isAuthenticated) {
+      logger.log('Router', `[${guardId}] User is authenticated, redirecting to Profile`)
+      next({ name: 'Profile' })
+      return
+    }
+    next()
+    return
+  }
+  
+  // For non-auth pages, check initialization
   if (!store.state.isInitialized) {
-    console.log(`[Router][${guardId}] Initializing app...`)
+    logger.log('Router', `[${guardId}] App not initialized, initializing...`)
     try {
-      // Add a timeout to prevent hanging
+      // Set a timeout to prevent infinite initialization
+      const initPromise = store.dispatch('initializeApp')
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Initialization timed out')), 10000);
-      });
-
-      // Race between initialization and timeout
-      const result = await Promise.race([
-        store.dispatch('initializeApp'),
-        timeoutPromise
-      ]);
-
-      console.log(`[Router][${guardId}] Initialization result:`, result)
+        setTimeout(() => reject(new Error('Initialization timeout')), 3000)
+      })
+      
+      await Promise.race([initPromise, timeoutPromise])
     } catch (error) {
-      console.error(`[Router][${guardId}] Initialization failed:`, error)
-      // Continue navigation even if initialization fails
+      logger.error('Router', `[${guardId}] Initialization failed or timed out:`, error)
+      // Force initialization to complete to prevent infinite loops
       store.commit('SET_INITIALIZED', true)
     }
   }
 
+  // After initialization (successful or not), check authentication
   const isAuthenticated = store.getters.isAuthenticated
-  console.log(`[Router][${guardId}] Auth state:`, {
-    isAuthenticated,
-    hasToken: !!store.state.accessToken,
-    hasUser: !!store.state.user,
-    toPath: to.path,
-    requiresAuth: to.matched.some((record) => record.meta.requiresAuth),
-  })
-
-  // Handle auth-required routes
-  if (to.matched.some((record) => record.meta.requiresAuth)) {
+  
+  // Check if the route requires authentication
+  if (to.matched.some(record => record.meta.requiresAuth)) {
     if (!isAuthenticated) {
-      console.log(
-        `[Router][${guardId}] Auth required but not authenticated, redirecting to login`
-      )
+      logger.log('Router', `[${guardId}] Route requires auth but user is not authenticated, redirecting to login`)
       next({ name: 'Login' })
       return
     }
   }
 
-  // Redirect authenticated users away from login/register
-  if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated) {
-    console.log(
-      `[Router][${guardId}] Already authenticated, redirecting to profile`
-    )
-    next({ name: 'Profile' })
-    return
-  }
-
-  console.log(`[Router][${guardId}] Proceeding with navigation`)
+  // Continue navigation
   next()
 })
 

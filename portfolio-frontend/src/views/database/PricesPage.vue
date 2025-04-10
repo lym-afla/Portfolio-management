@@ -303,6 +303,7 @@ import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
 import { getChartOptions } from '@/config/chartConfig'
+import logger from '@/utils/logger'
 import {
   subDays,
   subMonths,
@@ -403,16 +404,16 @@ export default {
       try {
         const [assetTypesData, accountsData, securitiesData] =
           await Promise.all([getAssetTypes(), getAccounts(), getSecurities()])
-        console.log('accountsData', accountsData)
-        console.log('securitiesData', securitiesData)
-        console.log('assetTypesData', assetTypesData)
+        logger.log('PricesPage', 'accountsData', accountsData)
+        logger.log('PricesPage', 'securitiesData', securitiesData)
+        logger.log('PricesPage', 'assetTypesData', assetTypesData)
         assetTypes.value = assetTypesData
         accounts.value = accountsData
         securities.value = securitiesData
 
         await handleTimespanChange('ytd')
       } catch (error) {
-        console.error('Error fetching initial data:', error)
+        logger.error('PricesPage', 'Error fetching initial data:', error)
       }
     })
 
@@ -431,7 +432,7 @@ export default {
           selectedSecurities.value = securities.value.map((item) => item.id)
         }
       } catch (error) {
-        console.error('Error fetching securities:', error)
+        logger.error('PricesPage', 'Error fetching securities:', error)
       }
     }, 300) // 300ms debounce
 
@@ -452,11 +453,11 @@ export default {
           itemsPerPage: itemsPerPage.value,
           sortBy: sortBy.value[0] || {},
         })
-        console.log('API Response:', response) // Log the response
+        logger.log('PricesPage', 'API Response:', response) // Log the response
         priceData.value = response.prices
         totalItems.value = response.total_items
       } catch (error) {
-        console.error('Error fetching price data:', error)
+        logger.error('PricesPage', 'Error fetching price data:', error)
       } finally {
         tableLoading.value = false
         isApplyingFilters.value = false
@@ -476,7 +477,7 @@ export default {
     }
 
     const handlePricesImported = (summary) => {
-      console.log('Prices imported:', summary)
+      logger.log('PricesPage', 'Prices imported:', summary)
       // Refresh your price data here
       fetchPriceData()
     }
@@ -532,7 +533,7 @@ export default {
     }
 
     const handlePriceAdded = (newPrice) => {
-      console.log('New price added:', newPrice)
+      logger.log('PricesPage', 'New price added:', newPrice)
       fetchPriceData()
     }
 

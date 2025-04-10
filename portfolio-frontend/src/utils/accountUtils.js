@@ -1,6 +1,8 @@
+import logger from '@/utils/logger'
+
 export const formatAccountChoices = (choices) => {
   if (!Array.isArray(choices)) {
-    console.error('Received invalid choices format:', choices)
+    logger.error('Unknown', 'Received invalid choices format:', choices)
     return []
   }
 

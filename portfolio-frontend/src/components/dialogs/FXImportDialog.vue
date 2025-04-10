@@ -257,6 +257,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getFXImportStats, importFXRates, cancelFXImport } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
+import logger from '@/utils/logger'
 
 export default {
   name: 'FXImportDialog',
@@ -328,10 +329,10 @@ export default {
       if (importType.value === 'auto') {
         try {
           stats.value = await getFXImportStats()
-          console.log('Fetched stats:', stats.value)
+          logger.log('Unknown', 'Fetched stats:', stats.value)
         } catch (err) {
           error.value = 'Failed to fetch import statistics'
-          console.error('Error fetching stats:', err)
+          logger.error('Unknown', 'Error fetching stats:', err)
         }
       } else {
         stats.value = null
@@ -382,7 +383,7 @@ export default {
           error.value = 'Import process was stopped'
         } else {
           error.value = 'Failed to start import process'
-          console.error(err)
+          logger.error('Unknown', err)
         }
         showProgress.value = false
       } finally {
@@ -401,7 +402,7 @@ export default {
         showProgress.value = false
         showStopDialog.value = true
       } catch (err) {
-        console.error('Error cancelling import:', err)
+        logger.error('Unknown', 'Error cancelling import:', err)
         progressError.value = 'Failed to cancel import'
       }
     }
@@ -450,7 +451,7 @@ export default {
       window.removeEventListener('fxImportProgress', handleProgress)
     })
 
-    console.log('Import options:', importOptions)
+    logger.log('Unknown', 'Import options:', importOptions)
 
     return {
       dialog,

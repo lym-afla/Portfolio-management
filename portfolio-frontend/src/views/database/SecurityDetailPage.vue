@@ -261,6 +261,7 @@ import {
   startOfYear,
   differenceInDays,
 } from 'date-fns'
+import logger from '@/utils/logger'
 
 // Set the default locale for Chart.js
 Chart.defaults.locale = 'en-US'
@@ -401,7 +402,7 @@ export default {
         loadingPriceChart.value = false
         loadingPositionChart.value = false
       } catch (error) {
-        console.error('Error fetching security data:', error)
+        logger.error('Unknown', 'Error fetching security data:', error)
         // } finally {
         //   loading.value = false
       }
@@ -422,7 +423,7 @@ export default {
         transactions.value = response.transactions
         totalTransactions.value = response.total_items
       } catch (error) {
-        console.error('Error fetching transactions:', error)
+        logger.error('Unknown', 'Error fetching transactions:', error)
       } finally {
         loadingTransactions.value = false
       }

@@ -73,6 +73,7 @@
 
 <script>
 import { computed, watch } from 'vue'
+import logger from '@/utils/logger'
 
 export default {
   name: 'ProgressDialog',
@@ -124,7 +125,7 @@ export default {
       () => props.error,
       (newError) => {
         if (newError) {
-          console.log('ProgressDialog error changed:', newError)
+          logger.log('Unknown', 'ProgressDialog error changed:', newError)
         }
       }
     )
@@ -134,7 +135,7 @@ export default {
       () => props.currentMessage,
       (newMessage) => {
         if (newMessage) {
-          console.log('ProgressDialog: currentMessage changed to', newMessage)
+          logger.log('Unknown', 'ProgressDialog: currentMessage changed to', newMessage)
         }
       }
     )

@@ -10,6 +10,7 @@
 <script>
 import { ref, watch } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
+import logger from '@/utils/logger'
 
 export default {
   setup() {
@@ -24,7 +25,7 @@ export default {
           content: 'This is a test message',
         })
       } else {
-        console.error('WebSocket is not connected')
+        logger.error('Unknown', 'WebSocket is not connected')
       }
     }
 

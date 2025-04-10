@@ -68,6 +68,7 @@ import {
   getAccountFormStructure,
 } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'AccountFormDialog',
@@ -186,7 +187,7 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting account:', error)
+        logger.error('Unknown', 'Error submitting account:', error)
         if (
           error.response &&
           error.response.status === 400 &&

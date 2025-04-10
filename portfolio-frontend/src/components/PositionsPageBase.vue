@@ -125,6 +125,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useStore } from 'vuex'
 import { getYearOptions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
+import logger from '@/utils/logger'
 
 export default {
   name: 'PositionsPageBase',
@@ -202,11 +203,11 @@ export default {
         totalItems.value = data.total_items
       } catch (error) {
         store.dispatch('setError', error)
-        console.error('Error fetching positions:', error)
+        logger.error('Unknown', 'Error fetching positions:', error)
       } finally {
         tableLoading.value = false
         initialLoading.value = false
-        console.log('[PositionsPageBase] Current state:', store.state)
+        logger.log('Unknown', '[PositionsPageBase] Current state:', store.state)
       }
     }
 

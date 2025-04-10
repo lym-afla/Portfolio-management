@@ -1,4 +1,5 @@
 import axios from 'axios'
+import logger from '@/utils/logger'
 
 const axiosInstance = axios.create({
   baseURL: process.env.VUE_APP_API_URL,
@@ -19,7 +20,7 @@ const processQueue = (error, token = null) => {
 }
 
 const refreshToken = async () => {
-  console.log('Attempting to refresh token...')
+  logger.log('Unknown', 'Attempting to refresh token...')
   const refreshToken = localStorage.getItem('refreshToken')
   if (!refreshToken) {
     throw new Error('No refresh token available')
@@ -33,10 +34,10 @@ const refreshToken = async () => {
     const { access, refresh } = response.data
     localStorage.setItem('accessToken', access)
     localStorage.setItem('refreshToken', refresh)
-    console.log('Token refreshed successfully')
+    logger.log('Unknown', 'Token refreshed successfully')
     return access
   } catch (error) {
-    console.error('Error in refreshToken:', error)
+    logger.error('Unknown', 'Error in refreshToken:', error)
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
     throw error
@@ -61,7 +62,7 @@ axiosInstance.interceptors.response.use(
 
     // Handle Tinkoff API errors
     if (originalRequest.url.includes('tinkoff-tokens')) {
-      console.log('Tinkoff API error detected:', error.response?.data)
+      logger.log('Unknown', 'Tinkoff API error detected:', error.response?.data)
 
       // Pass through the error from backend without attempting token refresh
       if (error.response?.data?.error_code) {

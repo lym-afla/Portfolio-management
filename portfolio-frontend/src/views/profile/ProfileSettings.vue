@@ -142,6 +142,7 @@ import {
 import { formatAccountChoices } from '@/utils/accountUtils'
 import AccountGroupManager from '@/components/AccountGroupManager.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
+import logger from '@/utils/logger'
 
 export default {
   components: {
@@ -194,7 +195,7 @@ export default {
   },
 
   async mounted() {
-    console.log('ProfileSettings component mounted')
+    logger.log('Unknown', 'ProfileSettings component mounted')
     await this.loadData()
   },
 
@@ -244,7 +245,7 @@ export default {
           },
         }
       } catch (error) {
-        console.error('Error loading settings data:', error)
+        logger.error('Unknown', 'Error loading settings data:', error)
         this.showErrorMessage('Failed to load settings. Please try again.')
       } finally {
         this.loading = false
@@ -284,7 +285,7 @@ export default {
           this.handleFieldErrors(response.errors)
         }
       } catch (error) {
-        console.error('Error saving settings:', error)
+        logger.error('Unknown', 'Error saving settings:', error)
         this.showErrorMessage('Failed to save settings. Please try again.')
       }
     },

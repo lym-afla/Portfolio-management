@@ -88,6 +88,7 @@ import {
   updateTransaction,
 } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'TransactionFormDialog',
@@ -231,7 +232,7 @@ export default {
         formFields.value = response.fields
         initializeForm()
       } catch (error) {
-        console.error('Error fetching form structure:', error)
+        logger.error('Unknown', 'Error fetching form structure:', error)
         handleApiError(error)
       }
     }
@@ -264,7 +265,7 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting transaction:', error)
+        logger.error('Unknown', 'Error submitting transaction:', error)
         if (error && typeof error === 'object') {
           Object.entries(error).forEach(([key, value]) => {
             if (key === '__all__') {

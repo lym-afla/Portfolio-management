@@ -1,6 +1,7 @@
 import { createStore } from 'vuex'
 import * as api from '@/services/api'
 import router from '@/router'
+import logger from '@/utils/logger'
 // import axios from 'axios'
 
 export default createStore({
@@ -114,12 +115,12 @@ export default createStore({
         await dispatch('fetchUserData')
         return { success: true }
       } catch (error) {
-        console.error('Login failed from store', error)
+        logger.error('Store', 'Login failed from store', error)
         throw error
       }
     },
     async refreshToken({ commit, dispatch, state }) {
-      console.log('Refreshing token...')
+      logger.log('Store', 'Refreshing token...')
       try {
         const response = await api.refreshToken(state.refreshToken)
         commit('SET_TOKENS', {
@@ -129,7 +130,7 @@ export default createStore({
         await dispatch('fetchUserData')
         return { success: true }
       } catch (error) {
-        console.error('Token refresh failed', error)
+        logger.error('Store', 'Token refresh failed', error)
         commit('CLEAR_TOKENS')
         commit('SET_USER', null)
         return { success: false, error: error }
@@ -158,12 +159,12 @@ export default createStore({
           id: selection.id,
         })
 
-        console.log('[Store] Account selection updated', state.accountSelection)
+        logger.log('Store', 'Account selection updated', state.accountSelection)
 
         // Finally trigger refresh
         dispatch('triggerDataRefresh')
       } catch (error) {
-        console.error('Failed to update account selection', error)
+        logger.error('Store', 'Failed to update account selection', error)
         throw error
       }
     },
@@ -175,7 +176,7 @@ export default createStore({
         const response = await api.getEffectiveCurrentDate()
         commit('SET_EFFECTIVE_CURRENT_DATE', response.effective_current_date)
       } catch (error) {
-        console.error('Failed to fetch effective current date', error)
+        logger.error('Store', 'Failed to fetch effective current date', error)
       }
     },
     updateEffectiveCurrentDate({ commit }, date) {
@@ -188,11 +189,11 @@ export default createStore({
       commit('SET_NAV_CHART_PARAMS', params)
     },
     async logout({ commit }) {
-      console.log('Logout action triggered')
+      logger.log('Store', 'Logout action triggered')
       try {
         await api.logout()
       } catch (error) {
-        console.error('Error during logout:', error)
+        logger.error('Store', 'Error during logout:', error)
       } finally {
         commit('CLEAR_TOKENS')
         commit('SET_USER', null)
@@ -216,91 +217,71 @@ export default createStore({
 
         return userData
       } catch (error) {
-        console.error('Failed to fetch user data:', error)
+        logger.error('Store', 'Failed to fetch user data:', error)
         throw error
       }
     },
     async initializeApp({ commit, state, dispatch }) {
       const requestId = Date.now()
-      console.log(`[Store][${requestId}] Starting initializeApp`)
+      logger.log('Store', `[${requestId}] Starting initializeApp`)
 
-      // Set a timeout to prevent hanging indefinitely
-      const timeout = setTimeout(() => {
-        console.log(`[Store][${requestId}] Initialization timed out, continuing anyway`)
-        commit('SET_INITIALIZED', true)
-        commit('SET_STATE', { isInitializing: false })
-        return { success: false, timedOut: true }
-      }, 5000) // 5 second timeout
-
-      // Check if already initialized
+      // Check if already initialized or initializing
       if (state.isInitialized) {
-        console.log(`[Store][${requestId}] App already initialized`)
-        clearTimeout(timeout)
+        logger.log('Store', `[${requestId}] App already initialized, skipping`)
         return { success: !!state.user }
       }
 
-      // Check if initialization is in progress
       if (state.isInitializing) {
-        console.log(
-          `[Store][${requestId}] Initialization already in progress, waiting...`
-        )
-        // Wait for current initialization to complete
-        while (state.isInitializing) {
-          await new Promise((resolve) => setTimeout(resolve, 100))
+        logger.log('Store', `[${requestId}] App already initializing, waiting...`)
+        // Wait for initialization to complete instead of starting a new one
+        const maxWaitTime = 2000 // 2 seconds max wait
+        const startTime = Date.now()
+        
+        while (state.isInitializing && Date.now() - startTime < maxWaitTime) {
+          await new Promise(r => setTimeout(r, 100)) // Wait 100ms and check again
         }
-        clearTimeout(timeout)
-        return { success: !!state.user }
+        
+        if (state.isInitialized) {
+          return { success: !!state.user }
+        } else {
+          logger.warn('Store', `[${requestId}] Waited too long for initialization, forcing completion`)
+          commit('SET_INITIALIZED', true)
+          commit('SET_STATE', { isInitializing: false })
+          return { success: false }
+        }
       }
 
       try {
         commit('SET_STATE', { isInitializing: true })
-
-        // Load saved account selection from localStorage
-        const savedSelection = JSON.parse(
-          localStorage.getItem('accountSelection')
-        )
-        if (savedSelection) {
-          commit('SET_ACCOUNT_SELECTION', savedSelection)
-        }
+        logger.log('Store', `[${requestId}] Set isInitializing=true`)
 
         const token = localStorage.getItem('accessToken')
         if (!token) {
-          console.log(`[Store][${requestId}] No token found`)
-          commit('SET_INITIALIZED', true)
-          clearTimeout(timeout)
+          logger.log('Store', `[${requestId}] No token found, skipping initialization`)
           return { success: false }
         }
 
-        if (!state.accessToken) {
-          commit('SET_TOKENS', {
-            accessToken: token,
-            refreshToken: localStorage.getItem('refreshToken'),
-          })
-        }
+        logger.log('Store', `[${requestId}] Token found, setting tokens and fetching user data`)
+        commit('SET_TOKENS', {
+          accessToken: token,
+          refreshToken: localStorage.getItem('refreshToken'),
+        })
 
-        if (!state.user) {
-          try {
-            await dispatch('fetchUserData')
-          } catch (error) {
-            console.error(
-              `[Store][${requestId}] Error fetching user data:`,
-              error
-            )
-            commit('CLEAR_TOKENS')
-            commit('SET_USER', null)
-            clearTimeout(timeout)
-            return { success: false }
-          }
+        try {
+          await dispatch('fetchUserData')
+          logger.log('Store', `[${requestId}] User data fetched successfully`)
+          return { success: true }
+        } catch (error) {
+          logger.error('Store', `[${requestId}] Error fetching user data:`, error)
+          commit('CLEAR_TOKENS')
+          commit('SET_USER', null)
+          return { success: false }
         }
-
-        console.log(`[Store][${requestId}] Initialization complete`)
-        clearTimeout(timeout)
-        return { success: true }
       } catch (error) {
-        console.error(`[Store][${requestId}] Initialization error:`, error)
-        clearTimeout(timeout)
+        logger.error('Store', `[${requestId}] Initialization error:`, error)
         return { success: false, error }
       } finally {
+        logger.log('Store', `[${requestId}] Initialization completed, setting isInitialized=true`)
         commit('SET_INITIALIZED', true)
         commit('SET_STATE', { isInitializing: false })
       }

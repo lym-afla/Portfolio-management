@@ -71,6 +71,7 @@ import {
   addFXTransaction,
   updateFXTransaction,
 } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'FXTransactionDialog',
@@ -103,7 +104,7 @@ export default {
         formFields.value = response.fields
         initializeForm()
       } catch (error) {
-        console.error('Error fetching form structure:', error)
+        logger.error('Unknown', 'Error fetching form structure:', error)
         generalError.value = 'Failed to load form structure. Please try again.'
       }
     }
@@ -112,7 +113,7 @@ export default {
       () => props.editItem,
       (newValue) => {
         if (newValue) {
-          console.log('newValue', newValue)
+          logger.log('Unknown', 'newValue', newValue)
           form.value = { ...newValue }
           Object.keys(form.value).forEach((key) => {
             if (
@@ -122,7 +123,7 @@ export default {
               form.value[key] = String(form.value[key].id) // For correct form pre-fill convert dict to id string
             }
           })
-          console.log('form', form.value)
+          logger.log('Unknown', 'form', form.value)
         } else {
           initializeForm()
         }
@@ -156,7 +157,7 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting FX transaction:', error)
+        logger.error('Unknown', 'Error submitting FX transaction:', error)
         if (error && typeof error === 'object') {
           Object.entries(error).forEach(([key, value]) => {
             if (key === '__all__') {

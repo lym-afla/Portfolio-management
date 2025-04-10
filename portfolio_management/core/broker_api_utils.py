@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Dict, Optional
 from channels.db import database_sync_to_async
 from tinkoff.invest import Client, GetOperationsByCursorRequest, OperationState, RequestError
 
-from common.models import Brokers
+from common.models import Accounts, Brokers
 
 from .tinkoff_utils import get_user_token, map_tinkoff_operation_to_transaction, verify_token_access
 
@@ -44,13 +44,13 @@ class BrokerAPI(ABC):
 
     @abstractmethod
     async def get_transactions(
-        self, account: Dict, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
     ) -> AsyncGenerator[Dict, None]:
         """
         Fetch transactions from broker API
 
         Args:
-            account: Account object containing broker account details
+            account: Accounts model instance containing broker account details
             date_from: Start date in YYYY-MM-DD format (optional)
             date_to: End date in YYYY-MM-DD format (optional)
 
@@ -103,7 +103,12 @@ class TinkoffAPI(BrokerAPI):
 
         for attempt in range(self.MAX_RETRIES):
             try:
-                return await operation_func(*args, **kwargs)
+                # Check if operation_func is a coroutine function (asynchronous)
+                if asyncio.iscoroutinefunction(operation_func):
+                    return await operation_func(*args, **kwargs)
+                else:
+                    # For synchronous functions like the Tinkoff API methods
+                    return operation_func(*args, **kwargs)
 
             except RequestError as e:
                 last_exception = e
@@ -153,7 +158,11 @@ class TinkoffAPI(BrokerAPI):
             if not await verify_token_access(user):
                 raise TinkoffAPIException("Invalid or insufficient token access")
 
-            self.client = Client(self.token)
+            # Validate token by creating a temporary client
+            with Client(self.token) as client:
+                # Just verify we can access the API
+                client.users.get_info()
+            
             return True
 
         except Exception as e:
@@ -164,33 +173,36 @@ class TinkoffAPI(BrokerAPI):
         """Close connection to Tinkoff API"""
         self.logger.debug("Disconnecting from Tinkoff API")
         try:
-            # Client object doesn't have a close method, just clean up references
-            self.client = None
+            # Just clean up references
             self.token = None
             self.user = None
         except Exception as e:
             self.logger.error(f"Error disconnecting from Tinkoff API: {str(e)}")
 
     async def get_transactions(
-        self, account: Dict, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
     ) -> AsyncGenerator[Dict, None]:
         """
         Fetch transactions from Tinkoff API using cursor-based pagination
 
         Args:
-            account: Account object containing broker account details
+            account: Accounts model instance containing broker account details
             date_from: Start date in YYYY-MM-DD format
             date_to: End date in YYYY-MM-DD format
         """
-        self.logger.debug(f"Fetching Tinkoff transactions for account {account['id']}")
+        self.logger.debug(f"Fetching Tinkoff transactions for account {account.id}")
 
         total_operations = 0  # Move initialization outside try block
 
         try:
-            self.logger.debug(f"Fetching Tinkoff transactions for account {account['id']}")
+            self.logger.debug(f"Fetching Tinkoff transactions for account {account.id} (native ID: {account.native_id})")
 
-            if not self.client:
+            if not self.token:
                 raise TinkoffAPIException("Not connected to Tinkoff API")
+
+            # Validate that we have a native_id for this account
+            if not account.native_id:
+                raise TinkoffAPIException(f"Account {account.id} ({account.name}) does not have a native ID set for Tinkoff API")
 
             from_date = (
                 datetime.strptime(date_from, "%Y-%m-%d")
@@ -199,57 +211,73 @@ class TinkoffAPI(BrokerAPI):
             )
             to_date = datetime.strptime(date_to, "%Y-%m-%d") if date_to else datetime.now()
 
-            cursor = ""
-
-            while True:
+            # Use Client with context manager instead of storing it as instance attribute
+            with Client(self.token) as client:
+                # Verify the account exists in Tinkoff
                 try:
-                    # Wrap the API call with retry logic
-                    response = await self._retry_operation(
-                        self.client.operations.get_operations_by_cursor,
-                        GetOperationsByCursorRequest(
-                            account_id=str(account["id"]),
-                            from_=from_date,
-                            to=to_date,
-                            cursor=cursor,
-                            limit=self.OPERATIONS_BATCH_SIZE,
-                            operation_types=[],
-                            state=OperationState.OPERATION_STATE_EXECUTED,
-                        ),
-                    )
-
-                    # Process operations in current batch
-                    for operation in response.items:
-                        total_operations += 1
-                        self.logger.debug(
-                            f"Processing operation {total_operations}: {operation.id}"
-                        )
-
-                        try:
-                            transaction_data = await map_tinkoff_operation_to_transaction(
-                                operation=operation, investor=self.user, account=account
-                            )
-
-                            if transaction_data:
-                                yield transaction_data
-
-                        except Exception as e:
-                            self.logger.error(
-                                f"Error processing operation {operation.id}: {str(e)}"
-                            )
-                            continue
-
-                    if not response.has_next:
-                        self.logger.debug(
-                            f"Completed fetching all operations. "
-                            f"Total processed: {total_operations}"
-                        )
-                        break
-
-                    cursor = response.next_cursor
-
+                    # First try to get accounts to verify the account ID
+                    tinkoff_accounts = client.users.get_accounts()
+                    tinkoff_account_ids = [acc.id for acc in tinkoff_accounts.accounts]
+                    
+                    if account.native_id not in tinkoff_account_ids:
+                        self.logger.error(f"Invalid native_id: {account.native_id} not found in Tinkoff accounts: {tinkoff_account_ids}")
+                        raise TinkoffAPIException(f"Account with native ID {account.native_id} not found in Tinkoff. Available accounts: {', '.join(tinkoff_account_ids)}")
+                    
                 except Exception as e:
-                    self.logger.error(f"Error in batch processing: {str(e)}")
-                    raise
+                    self.logger.error(f"Error verifying account: {str(e)}")
+                    raise TinkoffAPIException(f"Error verifying account: {str(e)}")
+                
+                cursor = ""
+
+                while True:
+                    try:
+                        # Wrap the API call with retry logic
+                        response = await self._retry_operation(
+                            client.operations.get_operations_by_cursor,
+                            GetOperationsByCursorRequest(
+                                account_id=str(account.native_id),
+                                from_=from_date,
+                                to=to_date,
+                                cursor=cursor,
+                                limit=self.OPERATIONS_BATCH_SIZE,
+                                operation_types=[],
+                                state=OperationState.OPERATION_STATE_EXECUTED,
+                            ),
+                        )
+
+                        # Process operations in current batch
+                        for operation in response.items:
+                            total_operations += 1
+                            self.logger.debug(
+                                f"Processing operation {total_operations}: {operation.id}"
+                            )
+
+                            try:
+                                transaction_data = await map_tinkoff_operation_to_transaction(
+                                    operation=operation, investor=self.user, account=account
+                                )
+
+                                if transaction_data:
+                                    yield transaction_data
+
+                            except Exception as e:
+                                self.logger.error(
+                                    f"Error processing operation {operation.id}: {str(e)}"
+                                )
+                                continue
+
+                        if not response.has_next:
+                            self.logger.debug(
+                                f"Completed fetching all operations. "
+                                f"Total processed: {total_operations}"
+                            )
+                            break
+
+                        cursor = response.next_cursor
+
+                    except Exception as e:
+                        self.logger.error(f"Error in batch processing: {str(e)}")
+                        raise
 
         except Exception as e:
             self.logger.error(f"Error fetching Tinkoff transactions: {str(e)}")
@@ -264,8 +292,6 @@ class TinkoffAPI(BrokerAPI):
                 return False
 
             # Use context manager for proper resource handling
-            from tinkoff.invest import Client
-
             with Client(self.token) as client:
                 # Try to get user info as a validation check
                 client.users.get_info()
@@ -297,9 +323,9 @@ class InteractiveBrokersAPI(BrokerAPI):
             self.logger.error(f"Error disconnecting from IB API: {str(e)}")
 
     async def get_transactions(
-        self, account: Dict, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
     ) -> AsyncGenerator[Dict, None]:
-        self.logger.debug(f"Fetching IB transactions for account {account['id']}")
+        self.logger.debug(f"Fetching IB transactions for account {account.id}")
         try:
             # TODO: Implement IB transaction fetching
             # This is a placeholder that yields no transactions

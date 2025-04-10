@@ -33,6 +33,7 @@
 
 <script>
 import { ref, reactive } from 'vue'
+import logger from '@/utils/logger'
 
 export default {
   props: {
@@ -60,12 +61,12 @@ export default {
       generalError.value = ''
 
       const credentials = { username: username.value, password: password.value }
-      console.log('Submitting form with data:', credentials)
+      logger.log('Unknown', 'Submitting form with data:', credentials)
       emit('submit', credentials)
     }
 
     const setErrors = (errors) => {
-      console.log('Setting errors:', errors)
+      logger.log('Unknown', 'Setting errors:', errors)
       if (typeof errors === 'string') {
         if (errors.includes('Proxy')) {
           generalError.value =
@@ -88,8 +89,8 @@ export default {
           }
         })
       }
-      console.log('Field errors after setting:', fieldErrors)
-      console.log('General error after setting:', generalError.value)
+      logger.log('Unknown', 'Field errors after setting:', fieldErrors)
+      logger.log('Unknown', 'General error after setting:', generalError.value)
     }
 
     return {

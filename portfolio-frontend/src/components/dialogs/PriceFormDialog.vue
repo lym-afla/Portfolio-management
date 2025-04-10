@@ -53,6 +53,7 @@
 <script>
 import { ref, computed, watch } from 'vue'
 import { addPrice, updatePrice } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'PriceFormDialog',
@@ -116,8 +117,8 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting price:', error)
-        console.log(error.response, error.errors)
+        logger.error('Unknown', 'Error submitting price:', error)
+        logger.log('Unknown', error.response, error.errors)
         if (error.errors) {
           const errors = error.errors
           if (errors) {

@@ -90,6 +90,7 @@ import { useStore } from 'vuex'
 import { formatAccountChoices } from '@/utils/accountUtils'
 // import { updateAccountPerformance } from '@/services/api'
 import axiosInstance from '@/config/axiosConfig'
+import logger from '@/utils/logger'
 
 export default {
   name: 'UpdateAccountPerformanceDialog',
@@ -270,7 +271,7 @@ export default {
         emit('update-started', dataToSend)
         closeDialog()
       } catch (error) {
-        console.error('Form submission error:', error)
+        logger.error('Unknown', 'Form submission error:', error)
         if (error.response?.data?.type === 'validation') {
           Object.keys(error.response.data.errors).forEach((field) => {
             errorMessages.value[field] = error.response.data.errors[field]

@@ -1,5 +1,6 @@
 import axiosInstance from '@/config/axiosConfig'
 import store from '@/store'
+import logger from '@/utils/logger'
 
 export const login = async (username, password) => {
   try {
@@ -7,7 +8,7 @@ export const login = async (username, password) => {
       username,
       password,
     })
-    console.log('Response from login:', response)
+    logger.log('Unknown', 'Response from login:', response)
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -26,7 +27,7 @@ export const refreshToken = async () => {
     })
     return response.data
   } catch (error) {
-    console.error('Error refreshing token:', error)
+    logger.error('Unknown', 'Error refreshing token:', error)
     throw error
   }
 }
@@ -39,10 +40,10 @@ export const register = async (username, email, password, password2) => {
       password,
       password2,
     })
-    console.log('Registration response:', response)
+    logger.log('Unknown', 'Registration response:', response)
     return response.data
   } catch (error) {
-    console.error('Registration error:', error.response)
+    logger.error('Unknown', 'Registration error:', error.response)
     if (error.response && error.response.data && error.response.data.errors) {
       throw error.response.data.errors
     } else {
@@ -159,7 +160,7 @@ export const logout = async () => {
 
     return response.data
   } catch (error) {
-    console.error('Error during logout:', error)
+    logger.error('Unknown', 'Error during logout:', error)
     // Even if the server request fails, we should clear local tokens
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
@@ -178,7 +179,7 @@ export const deleteUserAccount = async () => {
     localStorage.removeItem('refreshToken')
     return response.data
   } catch (error) {
-    console.error('Error deleting account:', error.response || error)
+    logger.error('Unknown', 'Error deleting account:', error.response || error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -188,7 +189,7 @@ export const getDashboardSettings = async () => {
     const response = await axiosInstance.get('/users/api/dashboard_settings/')
     return response.data
   } catch (error) {
-    console.error('Error fetching dashboard settings:', error)
+    logger.error('Unknown', 'Error fetching dashboard settings:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -201,7 +202,7 @@ export const updateDashboardSettings = async (settings) => {
     )
     return { success: true, ...response.data }
   } catch (error) {
-    console.error('Error updating dashboard settings:', error)
+    logger.error('Unknown', 'Error updating dashboard settings:', error)
     return {
       success: false,
       error: error.response ? error.response.data : error.message,
@@ -253,7 +254,7 @@ export const getOpenPositions = async (
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching open positions:', error)
+    logger.error('Unknown', 'Error fetching open positions:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -286,7 +287,7 @@ export const getClosedPositions = async (
       search,
       sortBy,
     })
-    console.log('API response:', response.data)
+    logger.log('Unknown', 'API response:', response.data)
     if (
       response.data &&
       response.data.portfolio_closed &&
@@ -294,11 +295,11 @@ export const getClosedPositions = async (
     ) {
       return response.data
     } else {
-      console.error('Unexpected response format:', response.data)
+      logger.error('Unknown', 'Unexpected response format:', response.data)
       throw new Error('Invalid response format')
     }
   } catch (error) {
-    console.error('Error fetching closed positions:', error)
+    logger.error('Unknown', 'Error fetching closed positions:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -338,7 +339,7 @@ export const getPrices = async (params) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching prices:', error)
+    logger.error('Unknown', 'Error fetching prices:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -374,7 +375,7 @@ export const getSecurityDetail = async (securityId) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching security detail:', error)
+    logger.error('Unknown', 'Error fetching security detail:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -387,10 +388,10 @@ export const getSecurityPriceHistory = async (securityId, period) => {
         params: { period },
       }
     )
-    console.log('[api.js] Security price history:', response.data)
+    logger.log('Unknown', '[api.js] Security price history:', response.data)
     return response.data
   } catch (error) {
-    console.error('Error fetching security price history:', error)
+    logger.error('Unknown', 'Error fetching security price history:', error)
     throw error
   }
 }
@@ -403,10 +404,10 @@ export const getSecurityPositionHistory = async (securityId, period) => {
         params: { period },
       }
     )
-    console.log('[api.js] Security position history:', response.data)
+    logger.log('Unknown', '[api.js] Security position history:', response.data)
     return response.data
   } catch (error) {
-    console.error('Error fetching security position history:', error)
+    logger.error('Unknown', 'Error fetching security position history:', error)
     throw error
   }
 }
@@ -424,10 +425,10 @@ export const getSecurityTransactions = async (securityId, options, period) => {
         },
       }
     )
-    console.log('[api.js] Security transactions:', response.data)
+    logger.log('Unknown', '[api.js] Security transactions:', response.data)
     return response.data
   } catch (error) {
-    console.error('Error fetching security transactions:', error)
+    logger.error('Unknown', 'Error fetching security transactions:', error)
     throw error
   }
 }
@@ -460,7 +461,7 @@ export const getDashboardBreakdown = async () => {
     const response = await axiosInstance.get('/dashboard/api/get-breakdown/')
     return response.data
   } catch (error) {
-    console.error('Error fetching breakdown data:', error)
+    logger.error('Unknown', 'Error fetching breakdown data:', error)
     throw error
   }
 }
@@ -472,7 +473,7 @@ export const getDashboardSummaryOverTime = async () => {
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching summary over time data:', error)
+    logger.error('Unknown', 'Error fetching summary over time data:', error)
     throw error
   }
 }
@@ -501,10 +502,10 @@ export const getNAVChartData = async (
         },
       }
     )
-    console.log('API response:', response.data)
+    logger.log('Unknown', 'API response:', response.data)
     return response.data
   } catch (error) {
-    console.error('Error fetching NAV chart data:', error)
+    logger.error('Unknown', 'Error fetching NAV chart data:', error)
     throw error
   }
 }
@@ -514,7 +515,7 @@ export const getDashboardSummary = async () => {
     const response = await axiosInstance.get('/dashboard/api/get-summary/')
     return response.data
   } catch (error) {
-    console.error('Error fetching dashboard summary:', error)
+    logger.error('Unknown', 'Error fetching dashboard summary:', error)
     throw error
   }
 }
@@ -563,7 +564,7 @@ export const updateAccountPerformance = async (formData) => {
       source.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          console.log('[api.js] SSE message received:', data)
+          logger.log('Unknown', '[api.js] SSE message received:', data)
 
           if (data.status === 'error' && data.type === 'authentication') {
             source.close()
@@ -585,14 +586,14 @@ export const updateAccountPerformance = async (formData) => {
             reject(new Error(data.message))
           }
         } catch (error) {
-          console.error('Error parsing SSE message:', error)
+          logger.error('Unknown', 'Error parsing SSE message:', error)
           source.close()
           reject(error)
         }
       }
 
       source.onerror = (error) => {
-        console.error('SSE connection error:', error)
+        logger.error('Unknown', 'SSE connection error:', error)
         source.close()
         reject(new Error('SSE connection failed'))
       }
@@ -600,13 +601,13 @@ export const updateAccountPerformance = async (formData) => {
       // Handle authentication errors
       source.addEventListener('error', (event) => {
         if (event.target.readyState === EventSource.CLOSED) {
-          console.error('SSE connection closed due to error')
+          logger.error('Unknown', 'SSE connection closed due to error')
           reject(new Error('Connection closed due to error'))
         }
       })
     })
   } catch (error) {
-    console.error('Error updating account performance:', error)
+    logger.error('Unknown', 'Error updating account performance:', error)
     window.dispatchEvent(
       new CustomEvent('accountPerformanceUpdateError', {
         detail: { message: error.message || 'Unknown error occurred' },
@@ -741,10 +742,10 @@ export const importPrices = async (importData) => {
         },
       }
     )
-    console.log('[api.js] Import completed. Response:', response)
+    logger.log('Unknown', '[api.js] Import completed. Response:', response)
     return response.data
   } catch (error) {
-    console.error('Error updating price import:', error)
+    logger.error('Unknown', 'Error updating price import:', error)
     if (error.response) {
       throw error.response.data
     } else if (error.request) {
@@ -834,7 +835,7 @@ export const getFXFormStructure = async () => {
     const response = await axiosInstance.get('/database/api/fx/form_structure/')
     return response.data
   } catch (error) {
-    console.error('Error fetching FX form structure:', error)
+    logger.error('Unknown', 'Error fetching FX form structure:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -858,7 +859,7 @@ export const getFXData = async ({
     })
     return response.data
   } catch (error) {
-    console.error('Error fetching FX data:', error)
+    logger.error('Unknown', 'Error fetching FX data:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -868,7 +869,7 @@ export const getFXDetails = async (fxId) => {
     const response = await axiosInstance.get(`/database/api/fx/${fxId}/`)
     return response.data
   } catch (error) {
-    console.error('Error fetching FX details:', error)
+    logger.error('Unknown', 'Error fetching FX details:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -878,7 +879,7 @@ export const addFXRate = async (fxData) => {
     const response = await axiosInstance.post('/database/api/fx/', fxData)
     return response.data
   } catch (error) {
-    console.error('Error adding FX rate:', error)
+    logger.error('Unknown', 'Error adding FX rate:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -891,7 +892,7 @@ export const updateFXRate = async (fxId, fxData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error updating FX rate:', error)
+    logger.error('Unknown', 'Error updating FX rate:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -901,7 +902,7 @@ export const deleteFXRate = async (fxId) => {
     const response = await axiosInstance.delete(`/database/api/fx/${fxId}/`)
     return response.data
   } catch (error) {
-    console.error('Error deleting FX rate:', error)
+    logger.error('Unknown', 'Error deleting FX rate:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -909,10 +910,10 @@ export const deleteFXRate = async (fxId) => {
 export const getFXImportStats = async () => {
   try {
     const response = await axiosInstance.get('/database/api/fx/import_stats/')
-    console.log('GetFXImportStats API response:', response.data)
+    logger.log('Unknown', 'GetFXImportStats API response:', response.data)
     return response.data
   } catch (error) {
-    console.error('Error fetching FX import stats:', error)
+    logger.error('Unknown', 'Error fetching FX import stats:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -963,10 +964,10 @@ export const importFXRates = async (importData, signal) => {
     return response.data
   } catch (error) {
     if (error.name === 'AbortError') {
-      console.log('FX import was aborted')
+      logger.log('Unknown', 'FX import was aborted')
       throw error
     }
-    console.error('Error importing FX rates:', error)
+    logger.error('Unknown', 'Error importing FX rates:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -976,7 +977,7 @@ export const cancelFXImport = async () => {
     const response = await axiosInstance.post('/database/api/fx/cancel_import/')
     return response.data
   } catch (error) {
-    console.error('Error cancelling FX import:', error)
+    logger.error('Unknown', 'Error cancelling FX import:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1009,10 +1010,10 @@ export const getTransactions = async (
         sortBy,
       }
     )
-    console.log('API response for transactions:', response.data)
+    logger.log('Unknown', 'API response for transactions:', response.data)
     return response.data
   } catch (error) {
-    console.error('Error fetching transactions:', error)
+    logger.error('Unknown', 'Error fetching transactions:', error)
     throw error
   }
 }
@@ -1024,7 +1025,7 @@ export const getTransactionFormStructure = async () => {
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching transaction form structure:', error)
+    logger.error('Unknown', 'Error fetching transaction form structure:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1034,7 +1035,7 @@ export const getTransactionDetails = async (id) => {
     const response = await axiosInstance.get(`/transactions/api/${id}/`)
     return response.data
   } catch (error) {
-    console.error('Error fetching transaction details:', error)
+    logger.error('Unknown', 'Error fetching transaction details:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1047,7 +1048,7 @@ export const addTransaction = async (transactionData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error adding transaction:', error)
+    logger.error('Unknown', 'Error adding transaction:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1060,7 +1061,7 @@ export const updateTransaction = async (id, transactionData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error updating transaction:', error)
+    logger.error('Unknown', 'Error updating transaction:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1069,7 +1070,7 @@ export const deleteTransaction = async (id) => {
   try {
     await axiosInstance.delete(`/transactions/api/${id}/`)
   } catch (error) {
-    console.error('Error deleting transaction:', error)
+    logger.error('Unknown', 'Error deleting transaction:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1082,7 +1083,7 @@ export const getFXTransactionFormStructure = async () => {
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching FX transaction form structure:', error)
+    logger.error('Unknown', 'Error fetching FX transaction form structure:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1092,19 +1093,19 @@ export const getFXTransactionDetails = async (id) => {
     const response = await axiosInstance.get(`/transactions/api/fx/${id}/`)
     return response.data
   } catch (error) {
-    console.error('Error fetching FX transaction details:', error)
+    logger.error('Unknown', 'Error fetching FX transaction details:', error)
     throw error.response ? error.response.data : error.message
   }
 }
 
 export const addFXTransaction = async (transactionData) => {
   try {
-    console.log('Sending FX transaction data:', transactionData) // Add this line
+    logger.log('Unknown', 'Sending FX transaction data:', transactionData) // Add this line
     const response = await axiosInstance.post(
       '/transactions/api/fx/create_fx_transaction/',
       transactionData
     )
-    console.log('Received response:', response.data) // Add this line
+    logger.log('Unknown', 'Received response:', response.data) // Add this line
     return response.data
   } catch (error) {
     console.error(
@@ -1123,7 +1124,7 @@ export const updateFXTransaction = async (id, transactionData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error updating FX transaction:', error)
+    logger.error('Unknown', 'Error updating FX transaction:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1132,7 +1133,7 @@ export const deleteFXTransaction = async (id) => {
   try {
     await axiosInstance.delete(`/transactions/api/fx/${id}/`)
   } catch (error) {
-    console.error('Error deleting FX transaction:', error)
+    logger.error('Unknown', 'Error deleting FX transaction:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1150,7 +1151,7 @@ export const analyzeFile = async (formData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error analyzing file:', error)
+    logger.error('Unknown', 'Error analyzing file:', error)
     throw error
   }
 }
@@ -1177,35 +1178,35 @@ export async function getPortfolioBreakdownSummary(year) {
     )
     return response.data
   } catch (error) {
-    console.error('Error fetching portfolio breakdown:', error)
+    logger.error('Unknown', 'Error fetching portfolio breakdown:', error)
     throw error
   }
 }
 
 export const getBrokerTokens = async () => {
-  console.log('getBrokerTokens called') // Debug log
+  logger.log('Unknown', 'getBrokerTokens called') // Debug log
   try {
-    console.log('Making request to /users/api/broker_tokens/') // Debug log
+    logger.log('Unknown', 'Making request to /users/api/broker_tokens/') // Debug log
     const response = await axiosInstance.get('/users/api/broker_tokens/')
-    console.log('getBrokerTokens response:', response) // Debug log
+    logger.log('Unknown', 'getBrokerTokens response:', response) // Debug log
     return response.data
   } catch (error) {
-    console.error('Error in getBrokerTokens:', error) // Debug log
+    logger.error('Unknown', 'Error in getBrokerTokens:', error) // Debug log
     throw error.response ? error.response.data : error.message
   }
 }
 
 export const saveTinkoffToken = async (tokenData) => {
-  console.log('Attempting to save Tinkoff token...')
+  logger.log('Unknown', 'Attempting to save Tinkoff token...')
   try {
     const response = await axiosInstance.post(
       '/users/api/tinkoff-tokens/save_read_only_token/',
       tokenData
     )
-    console.log('Save token response:', response)
+    logger.log('Unknown', 'Save token response:', response)
     return response.data
   } catch (error) {
-    console.error('Error saving Tinkoff token:', error.response?.data)
+    logger.error('Unknown', 'Error saving Tinkoff token:', error.response?.data)
     throw error
   }
 }
@@ -1217,7 +1218,7 @@ export const testTinkoffConnection = async (tokenId) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error testing Tinkoff connection:', error)
+    logger.error('Unknown', 'Error testing Tinkoff connection:', error)
     if (error.response?.data?.error === 'PERMISSION_DENIED') {
       throw new Error('Token has insufficient privileges.')
     } else if (error.response?.data?.error === 'UNAUTHENTICATED') {
@@ -1235,7 +1236,7 @@ export const saveIBToken = async (tokenData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error saving IB token:', error)
+    logger.error('Unknown', 'Error saving IB token:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1247,7 +1248,7 @@ export const testIBConnection = async (tokenId) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error testing IB connection:', error)
+    logger.error('Unknown', 'Error testing IB connection:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1260,7 +1261,7 @@ export const revokeToken = async (broker, tokenId) => {
     })
     return response.data
   } catch (error) {
-    console.error('Error revoking token:', error)
+    logger.error('Unknown', 'Error revoking token:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1283,27 +1284,27 @@ export const deleteToken = async (broker, tokenId) => {
 
 export const getAccountGroups = async () => {
   try {
-    console.log('Fetching account groups') // Debug log
+    logger.log('Unknown', 'Fetching account groups') // Debug log
     const response = await axiosInstance.get('/users/api/account-groups/')
-    console.log('Broker groups response:', response) // Debug log
+    logger.log('Unknown', 'Broker groups response:', response) // Debug log
     return response.data
   } catch (error) {
-    console.error('Error fetching account groups:', error)
+    logger.error('Unknown', 'Error fetching account groups:', error)
     throw error.response ? error.response.data : error.message
   }
 }
 
 export const saveAccountGroup = async (groupData) => {
   try {
-    console.log('Saving account group:', groupData) // Debug log
+    logger.log('Unknown', 'Saving account group:', groupData) // Debug log
     const response = await axiosInstance.post(
       '/users/api/account-groups/',
       groupData
     )
-    console.log('Save account group response:', response) // Debug log
+    logger.log('Unknown', 'Save account group response:', response) // Debug log
     return response.data
   } catch (error) {
-    console.error('Error saving account group:', error)
+    logger.error('Unknown', 'Error saving account group:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1316,7 +1317,7 @@ export const updateAccountGroup = async (groupData) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error updating account group:', error)
+    logger.error('Unknown', 'Error updating account group:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1328,7 +1329,7 @@ export const deleteAccountGroup = async (groupId) => {
     )
     return response.data
   } catch (error) {
-    console.error('Error deleting account group:', error)
+    logger.error('Unknown', 'Error deleting account group:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1338,7 +1339,7 @@ export const getAvailableBrokers = async () => {
     const response = await axiosInstance.get('/database/api/brokers/')
     return response.data
   } catch (error) {
-    console.error('Error fetching brokers:', error)
+    logger.error('Unknown', 'Error fetching brokers:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1415,7 +1416,7 @@ export const getBrokersWithTokens = async () => {
     })
     return response.data
   } catch (error) {
-    console.error('Error fetching brokers with tokens:', error)
+    logger.error('Unknown', 'Error fetching brokers with tokens:', error)
     throw error.response ? error.response.data : error.message
   }
 }

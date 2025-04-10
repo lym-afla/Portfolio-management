@@ -12,7 +12,7 @@ from django.forms import model_to_dict
 
 from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import get_security, match_broker_account, transaction_exists
+from core.import_utils import get_security, match_tinkoff_broker_account, transaction_exists
 from users.models import CustomUser
 
 from .views import TransactionViewSet
@@ -216,6 +216,45 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         )
                     )
 
+            elif message_type == "use_existing_matches":
+                # Handle the request to use existing matches from frontend
+                data = text_data_json.get("data", {})
+                pairs = data.get("pairs", [])
+                
+                logger.debug(f"Received use_existing_matches with pairs: {pairs}")
+
+                if not pairs:
+                    logger.error("No existing pairs provided in use_existing_matches")
+                    await self.send_error("No existing pairs provided")
+                    return
+
+                # Get broker_id from the stored task or data
+                broker_id = getattr(self, "current_broker_id", None)
+                if not broker_id:
+                    logger.error("Broker ID not found in use_existing_matches")
+                    await self.send_error("Broker ID not found. Please restart the import process.")
+                    return
+
+                # Process the matched accounts and start importing transactions
+                logger.debug(f"Using existing matches with {len(pairs)} account pairs")
+
+                # Create a new task for importing transactions with existing matches
+                if not self.import_task or self.import_task.done():
+                    logger.debug(f"Starting import task with pairs: {pairs}")
+                    self.import_task = asyncio.create_task(
+                        self.process_account_matches(broker_id, pairs)
+                    )
+                else:
+                    logger.warning("Import task already running")
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_warning",
+                                "data": {"message": "Import already in progress"},
+                            }
+                        )
+                    )
+
             elif message_type == "create_account":
                 # Handle the create account request from frontend
                 data = text_data_json.get("data", {})
@@ -337,7 +376,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             broker = await database_sync_to_async(Brokers.objects.get)(id=broker_id)
 
             # Get matched and unmatched accounts
-            matched_pairs, unmatched_tinkoff, unmatched_db = await match_broker_account(
+            matched_pairs, unmatched_tinkoff, unmatched_db = await match_tinkoff_broker_account(
                 broker, self.user
             )
 
@@ -394,6 +433,29 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
                 if not tinkoff_account_id or not db_account_id:
                     logger.warning(f"Skipping invalid pair: {pair}")
+                    continue
+
+                # Update native_id in the database account
+                try:
+                    @database_sync_to_async
+                    def update_account_native_id(db_account_id, tinkoff_account_id):
+                        try:
+                            account = Accounts.objects.get(id=db_account_id)
+                            account.native_id = tinkoff_account_id
+                            account.save(update_fields=['native_id'])
+                            logger.info(f"Updated native_id for account {account.name} (ID: {account.id}) to {tinkoff_account_id}")
+                            return account
+                        except Accounts.DoesNotExist:
+                            logger.error(f"Account with ID {db_account_id} not found")
+                            return None
+                    
+                    # Update native_id
+                    account = await update_account_native_id(db_account_id, tinkoff_account_id)
+                    if not account:
+                        logger.error(f"Failed to update native_id for account ID {db_account_id}")
+                        continue
+                except Exception as e:
+                    logger.error(f"Error updating native_id for account ID {db_account_id}: {str(e)}")
                     continue
 
                 # Update progress
@@ -758,6 +820,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         """
         try:
             logger.debug(f"Creating new account '{name}' for tinkoff account {tinkoff_account}")
+            
+            # Get Tinkoff account ID
+            tinkoff_account_id = tinkoff_account.get("id")
+            if not tinkoff_account_id:
+                await self.send_error("Invalid Tinkoff account data")
+                return
 
             # Send progress update
             await self.send_message(
@@ -774,18 +842,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             def create_account():
                 broker = Brokers.objects.get(id=broker_id)
                 account = Accounts.objects.create(
-                    name=name, broker=broker, investor=self.user, comment=comment
+                    name=name, 
+                    broker=broker, 
+                    investor=self.user, 
+                    comment=comment,
+                    native_id=tinkoff_account_id  # Set native_id when creating the account
                 )
                 return account
 
             new_account = await create_account()
-            logger.debug(f"Created new account with ID {new_account.id}")
-
-            # Now process the import with the new account
-            tinkoff_account_id = tinkoff_account.get("id")
-            if not tinkoff_account_id:
-                await self.send_error("Invalid Tinkoff account data")
-                return
+            logger.debug(f"Created new account with ID {new_account.id} and native ID {new_account.native_id}")
 
             # Update progress
             await self.send_message(

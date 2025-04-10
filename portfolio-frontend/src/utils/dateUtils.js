@@ -1,4 +1,5 @@
 import { startOfYear, parseISO, format, startOfDay } from 'date-fns'
+import logger from '@/utils/logger'
 
 export function calculateDateRangeFromTimespan(timespan, effectiveDate) {
   const parsedEffectiveDate = parseISO(effectiveDate)
@@ -17,7 +18,7 @@ export function calculateDateRangeFromTimespan(timespan, effectiveDate) {
     // Assume it's a specific year
     const year = parseInt(timespan, 10)
     if (isNaN(year)) {
-      console.error('Invalid timespan value:', timespan)
+      logger.error('Unknown', 'Invalid timespan value:', timespan)
       return null
     }
     dateFromValue = new Date(year, 0, 1) // January 1st of the year

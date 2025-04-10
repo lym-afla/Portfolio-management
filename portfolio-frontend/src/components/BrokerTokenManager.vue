@@ -388,6 +388,7 @@ import {
   deleteToken,
   getAvailableBrokers,
 } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'BrokerTokenManager',
@@ -480,18 +481,18 @@ export default {
     },
 
     async fetchTokens() {
-      console.log('Attempting to fetch tokens...')
+      logger.log('Unknown', 'Attempting to fetch tokens...')
       this.loading = true
       try {
-        console.log('Making API call to getBrokerTokens...')
+        logger.log('Unknown', 'Making API call to getBrokerTokens...')
         const response = await getBrokerTokens()
-        console.log('API response:', response)
+        logger.log('Unknown', 'API response:', response)
         if (response) {
           this.tinkoffTokens = response.tinkoff_tokens || []
           this.ibTokens = response.ib_tokens || []
         }
       } catch (error) {
-        console.error('Error in fetchTokens:', error)
+        logger.error('Unknown', 'Error in fetchTokens:', error)
         this.handleError(error)
       } finally {
         this.loading = false
@@ -610,7 +611,7 @@ export default {
           minute: '2-digit',
         })
       } catch (e) {
-        console.error('Date formatting error:', e)
+        logger.error('Unknown', 'Date formatting error:', e)
         return 'Invalid Date'
       }
     },
@@ -724,11 +725,11 @@ export default {
   },
 
   created() {
-    console.log('BrokerTokenManager component created')
+    logger.log('Unknown', 'BrokerTokenManager component created')
   },
 
   async mounted() {
-    console.log('BrokerTokenManager component mounted')
+    logger.log('Unknown', 'BrokerTokenManager component mounted')
     await this.loadBrokers()
     await this.fetchTokens()
   },

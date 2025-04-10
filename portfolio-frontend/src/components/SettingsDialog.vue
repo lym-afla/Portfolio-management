@@ -63,6 +63,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { getDashboardSettings, updateDashboardSettings } from '@/services/api'
 import { useStore } from 'vuex'
 import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
+import logger from '@/utils/logger'
 
 export default {
   setup() {
@@ -81,7 +82,7 @@ export default {
     const fetchSettingsData = async () => {
       try {
         const response = await getDashboardSettings()
-        console.log('[SettingsDialog] Getting dashboard settings:', response)
+        logger.log('Unknown', '[SettingsDialog] Getting dashboard settings:', response)
 
         // Update formData with settings
         Object.assign(formData, response.settings)
@@ -95,7 +96,7 @@ export default {
         const selectedCurrency = response.choices.default_currency.find(
           ([value]) => value === response.settings.default_currency
         )
-        console.log('[SettingsDialog] Selected currency:', selectedCurrency)
+        logger.log('Unknown', '[SettingsDialog] Selected currency:', selectedCurrency)
         // Set the currency in the store to the second element of the found list
         if (
           selectedCurrency &&
@@ -104,7 +105,7 @@ export default {
           store.commit('SET_SELECTED_CURRENCY', selectedCurrency[1])
         }
       } catch (error) {
-        console.error('Failed to fetch settings data:', error)
+        logger.error('Unknown', 'Failed to fetch settings data:', error)
       }
     }
 
@@ -126,10 +127,10 @@ export default {
       try {
         clearErrors()
         isUpdating.value = true
-        console.log('[SettingsDialog] Sending formData:', formData)
+        logger.log('Unknown', '[SettingsDialog] Sending formData:', formData)
         const response = await updateDashboardSettings(formData)
         if (response.success) {
-          console.log('Settings updated successfully:', response)
+          logger.log('Unknown', 'Settings updated successfully:', response)
 
           // Update store with new currency
           const selectedCurrencyOption = currencyChoices.value.find(
@@ -143,7 +144,7 @@ export default {
 
           // Get the current state from the store
           const currentState = store.state
-          console.log('[SettingsDialog] Current state:', currentState)
+          logger.log('Unknown', '[SettingsDialog] Current state:', currentState)
 
           // Calculate new date range based on the new effective date
           const dateRange = calculateDateRangeFromTimespan(
@@ -168,7 +169,7 @@ export default {
           handleErrors(response.errors)
         }
       } catch (error) {
-        console.error('Failed to save settings:', error)
+        logger.error('Unknown', 'Failed to save settings:', error)
         if (
           error.response &&
           error.response.data &&

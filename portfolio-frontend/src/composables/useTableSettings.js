@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { useStore } from 'vuex'
 import { debounce } from 'lodash'
 import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
+import logger from '@/utils/logger'
 
 export function useTableSettings() {
   const store = useStore()
@@ -58,7 +59,7 @@ export function useTableSettings() {
     }
 
     if (!currentDate) {
-      console.error('Failed to fetch effective current date')
+      logger.error('Unknown', 'Failed to fetch effective current date')
       return
     }
 

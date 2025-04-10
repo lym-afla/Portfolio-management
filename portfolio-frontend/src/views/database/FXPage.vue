@@ -171,6 +171,7 @@ import { calculateDateRange } from '@/utils/dateRangeUtils'
 import FXDialog from '@/components/dialogs/FXDialog.vue'
 import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'FXPage',
@@ -240,7 +241,7 @@ export default {
           sortBy: sortBy.value[0] || {},
           search: search.value,
         })
-        console.log('FX data received:', response)
+        logger.log('Unknown', 'FX data received:', response)
         fxData.value = response.results
         totalItems.value = response.count
         currencies.value = response.currencies
@@ -252,9 +253,9 @@ export default {
     }
 
     const initializeDateRange = async () => {
-      console.log('Initializing date range')
-      console.log('effectiveCurrentDate:', effectiveCurrentDate.value)
-      console.log('dateRange:', dateRange.value)
+      logger.log('Unknown', 'Initializing date range')
+      logger.log('Unknown', 'effectiveCurrentDate:', effectiveCurrentDate.value)
+      logger.log('Unknown', 'dateRange:', dateRange.value)
 
       if (!effectiveCurrentDate.value) {
         try {
@@ -264,7 +265,7 @@ export default {
             fetchedDate.effective_current_date
           )
         } catch (error) {
-          console.error('Failed to fetch effective current date:', error)
+          logger.error('Unknown', 'Failed to fetch effective current date:', error)
           return // Exit the function if we can't get the effective current date
         }
       }
@@ -276,7 +277,7 @@ export default {
           dateFrom.value,
           dateTo.value
         )
-        console.log('Calculated date range:', { from, to })
+        logger.log('Unknown', 'Calculated date range:', { from, to })
 
         dateFrom.value = from
         dateTo.value = to
@@ -298,7 +299,7 @@ export default {
     }
 
     const handleDateRangeChange = (newDateRange) => {
-      console.log('Date range changed:', newDateRange)
+      logger.log('Unknown', 'Date range changed:', newDateRange)
       dateRange.value = newDateRange.dateRange
       dateFrom.value = newDateRange.dateFrom
       dateTo.value = newDateRange.dateTo
@@ -319,7 +320,7 @@ export default {
     })
 
     onMounted(async () => {
-      console.log('Mounting FXPage')
+      logger.log('Unknown', 'Mounting FXPage')
       if (!effectiveCurrentDate.value) {
         await initializeDateRange()
       }
@@ -337,7 +338,7 @@ export default {
     }
 
     const editItem = async (item) => {
-      console.log('Editing item:', item)
+      logger.log('Unknown', 'Editing item:', item)
       try {
         const fxDetails = await getFXDetails(item.id)
         editedItem.value = fxDetails
@@ -348,7 +349,7 @@ export default {
     }
 
     const deleteItem = async (item) => {
-      console.log('Deleting item:', item)
+      logger.log('Unknown', 'Deleting item:', item)
       itemToDelete.value = item
       showDeleteDialog.value = true
     }

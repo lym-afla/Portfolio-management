@@ -48,7 +48,13 @@ def get_investor(investor_id):
 
 
 @database_sync_to_async
-def get_account(account_id):
+def get_broker(account):
+    """Get broker from account asynchronously"""
+    return account.broker
+
+
+@database_sync_to_async
+def get_account(account_id: int) -> Accounts:
     return Accounts.objects.get(id=account_id)
 
 
@@ -1200,7 +1206,7 @@ async def create_security_from_micex(security_name, isin, user):
         return None
 
 
-async def match_broker_account(
+async def match_tinkoff_broker_account(
     broker: Brokers, user
 ) -> Tuple[Dict[str, Dict], List[Dict], List[Dict]]:
     """

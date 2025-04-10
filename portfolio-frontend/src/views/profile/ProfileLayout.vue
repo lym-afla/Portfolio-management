@@ -80,6 +80,7 @@ import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 // import store from '@/store'
 import { deleteUserAccount, logout } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   setup() {
@@ -96,7 +97,7 @@ export default {
         store.commit('CLEAR_TOKENS')
         router.push('/login')
       } catch (error) {
-        console.error('Error logging out:', error)
+        logger.error('Unknown', 'Error logging out:', error)
       } finally {
         isLoading.value = false
       }
@@ -114,7 +115,7 @@ export default {
         // Redirect to register page
         router.push('/register')
       } catch (error) {
-        console.error('Error deleting account:', error)
+        logger.error('Unknown', 'Error deleting account:', error)
         // Handle error (e.g., show error message to user)
       } finally {
         isLoading.value = false
@@ -149,10 +150,10 @@ export default {
     //     //   this.$emit('update-page-title', '') // Clear the page title
     //     //   this.router.push('/login')
     //     // } else {
-    //     //   console.error('Logout failed:', response.error)
+    //     //   logger.error('Unknown', 'Logout failed:', response.error)
     //     // }
     //   } catch (error) {
-    //     console.error('Logout error:', error)
+    //     logger.error('Unknown', 'Logout error:', error)
     //   }
     // },
     isActive(route) {

@@ -12,6 +12,7 @@
 <script>
 import { Line } from 'vue-chartjs'
 import {
+import logger from '@/utils/logger'
   Chart as ChartJS,
   Title,
   Tooltip,
@@ -45,10 +46,10 @@ export default {
   },
   computed: {
     chartData() {
-      console.log('Prices prop:', this.prices)
+      logger.log('Unknown', 'Prices prop:', this.prices)
 
       if (!this.prices || this.prices.length === 0) {
-        console.log('No prices available')
+        logger.log('Unknown', 'No prices available')
         return {
           labels: [],
           datasets: [],
@@ -89,7 +90,7 @@ export default {
         }
       )
 
-      console.log('Datasets:', datasets)
+      logger.log('Unknown', 'Datasets:', datasets)
 
       return {
         labels: allDates,

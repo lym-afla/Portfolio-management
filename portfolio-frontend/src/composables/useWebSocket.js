@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useStore } from 'vuex'
+import logger from '@/utils/logger'
 
 export function useWebSocket(baseUrl) {
   const store = useStore()
@@ -15,7 +16,7 @@ export function useWebSocket(baseUrl) {
     const port = 8000
     const token = store.state.accessToken
 
-    console.log('Token being used:', token?.substring(0, 10) + '...')
+    logger.log('Unknown', 'Token being used:', token?.substring(0, 10) + '...')
 
     return `${protocol}://${host}:${port}${baseUrl}?token=${token}`
   }
@@ -24,7 +25,7 @@ export function useWebSocket(baseUrl) {
     return new Promise((resolve) => {
       // Set a timeout to prevent hanging if connection fails
       const connectionTimeout = setTimeout(() => {
-        console.warn('WebSocket connection attempt timed out')
+        logger.warn('Unknown', 'WebSocket connection attempt timed out')
         resolve(false)
       }, 3000)
 
@@ -46,7 +47,7 @@ export function useWebSocket(baseUrl) {
 
       // Don't attempt connection if no token is available
       if (!store.state.accessToken) {
-        console.warn('No access token available for WebSocket connection')
+        logger.warn('Unknown', 'No access token available for WebSocket connection')
         clearTimeout(connectionTimeout)
         resolve(false)
         return
@@ -54,25 +55,25 @@ export function useWebSocket(baseUrl) {
 
       try {
         const url = getWebSocketUrl(baseUrl)
-        console.log('Attempting to connect to WebSocket:', url)
+        logger.log('Unknown', 'Attempting to connect to WebSocket:', url)
 
         socket.value = new WebSocket(url)
 
         socket.value.onopen = () => {
-          console.log('WebSocket connection opened')
+          logger.log('Unknown', 'WebSocket connection opened')
           isConnected.value = true
           clearTimeout(connectionTimeout)
           resolve(true)
         }
 
         socket.value.onclose = () => {
-          console.log('WebSocket connection closed')
+          logger.log('Unknown', 'WebSocket connection closed')
           isConnected.value = false
           if (!intentionalClose.value) {
             // Only attempt reconnect if app is fully initialized
             if (store.state.isInitialized) {
               setTimeout(() => {
-                connectionAttempted.value = false  // Reset the flag to allow reconnect
+                connectionAttempted.value = false // Reset the flag to allow reconnect
                 connect()
               }, 3000) // Reconnect after 3 seconds if not intentional
             }
@@ -80,7 +81,7 @@ export function useWebSocket(baseUrl) {
         }
 
         socket.value.onerror = (error) => {
-          console.error('WebSocket error:', error)
+          logger.error('Unknown', 'WebSocket error:', error)
           clearTimeout(connectionTimeout)
           resolve(false)
         }
@@ -89,11 +90,11 @@ export function useWebSocket(baseUrl) {
           try {
             lastMessage.value = JSON.parse(event.data)
           } catch (e) {
-            console.error('Error parsing WebSocket message:', e)
+            logger.error('Unknown', 'Error parsing WebSocket message:', e)
           }
         }
       } catch (error) {
-        console.error('Error initializing WebSocket:', error)
+        logger.error('Unknown', 'Error initializing WebSocket:', error)
         clearTimeout(connectionTimeout)
         resolve(false)
       }
@@ -114,19 +115,19 @@ export function useWebSocket(baseUrl) {
 
   const sendMessage = (message) => {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) {
-      console.log('Sending message:', message)
+      logger.log('Unknown', 'Sending message:', message)
       socket.value.send(JSON.stringify(message))
       return true
     } else {
-      console.warn('Cannot send message: WebSocket is not connected')
+      logger.warn('Unknown', 'Cannot send message: WebSocket is not connected')
       return false
     }
   }
 
   // Only attempt to connect if the app is fully initialized
   if (store.state.isInitialized) {
-    connect().catch(error => {
-      console.error('Failed to establish initial WebSocket connection:', error)
+    connect().catch((error) => {
+      logger.error('Unknown', 'Failed to establish initial WebSocket connection:', error)
     })
   }
 

@@ -64,6 +64,7 @@ import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useStore } from 'vuex'
+import logger from '@/utils/logger'
 
 export default {
   name: 'App',
@@ -117,7 +118,7 @@ export default {
 
     const showError = (message) => {
       clearErrors()
-      console.log('Showing error:', message)
+      logger.log('Unknown', 'Showing error:', message)
       errorMessages.value.push(message)
       errorSnackbar.value = true
     }

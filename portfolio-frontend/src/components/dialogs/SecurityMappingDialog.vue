@@ -42,6 +42,7 @@
 <script>
 import { ref, watch, onMounted } from 'vue'
 import { getSecurities } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'SecurityMappingDialog',
@@ -55,7 +56,7 @@ export default {
   },
   emits: ['security-selected'],
   setup(props, { emit }) {
-    console.log('SecurityMappingDialog setup called')
+    logger.log('Unknown', 'SecurityMappingDialog setup called')
 
     const selectedSecurity = ref(null)
     const securityOptions = ref([])
@@ -67,7 +68,7 @@ export default {
       securityError.value = null
       try {
         const securities = await getSecurities()
-        console.log('Fetched securities:', securities)
+        logger.log('Unknown', 'Fetched securities:', securities)
         if (Array.isArray(securities)) {
           securityOptions.value = securities.map((security) => ({
             id: security.id,
@@ -81,11 +82,11 @@ export default {
             selectedSecurity.value
           )
         } else {
-          console.error('Fetched securities is not an array:', securities)
+          logger.error('Unknown', 'Fetched securities is not an array:', securities)
           securityError.value = 'Invalid data received from server'
         }
       } catch (error) {
-        console.error('Error fetching securities:', error)
+        logger.error('Unknown', 'Error fetching securities:', error)
         securityError.value = 'Failed to fetch securities'
       } finally {
         loadingSecurities.value = false
@@ -93,7 +94,7 @@ export default {
     }
 
     // watch(() => props.accountId, (newValue) => {
-    //   console.log('accountId changed:', newValue)
+    //   logger.log('Unknown', 'accountId changed:', newValue)
     //   if (newValue) {
     //     fetchSecurities()
     //   }

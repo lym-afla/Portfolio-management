@@ -310,6 +310,7 @@ import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vue'
 import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
+import logger from '@/utils/logger'
 
 export default {
   name: 'TransactionsPage',
@@ -459,7 +460,7 @@ export default {
     }
 
     const editTransaction = async (item) => {
-      console.log('Editing item:', item)
+      logger.log('Unknown', 'Editing item:', item)
       try {
         let transactionDetails
         if (item.transaction_type === 'regular') {
@@ -471,7 +472,7 @@ export default {
           ...transactionDetails,
           transaction_type: item.transaction_type,
         }
-        console.log('Transaction fetched for editing:', editedTransaction.value)
+        logger.log('Unknown', 'Transaction fetched for editing:', editedTransaction.value)
         if (item.transaction_type === 'regular') {
           showTransactionDialog.value = true
         } else if (item.transaction_type === 'fx') {
@@ -510,7 +511,7 @@ export default {
     }
 
     const handleImportCompleted = async (importResults) => {
-      console.log('[TransactionsPage] Import completed:', importResults)
+      logger.log('Unknown', '[TransactionsPage] Import completed:', importResults)
       await fetchTransactions()
     }
 

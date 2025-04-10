@@ -45,6 +45,7 @@
 
 <script>
 import { ref, reactive, watch } from 'vue'
+import logger from '@/utils/logger'
 
 export default {
   props: {
@@ -89,7 +90,7 @@ export default {
     watch(
       () => props.errors,
       (newErrors) => {
-        console.log('[RegisterForm.vue] New errors received:', newErrors)
+        logger.log('Unknown', '[RegisterForm.vue] New errors received:', newErrors)
         Object.keys(formErrors).forEach((key) => {
           if (newErrors[key]) {
             formErrors[key] = Array.isArray(newErrors[key])

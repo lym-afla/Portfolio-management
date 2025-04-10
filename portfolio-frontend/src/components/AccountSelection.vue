@@ -58,6 +58,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import { getAccountChoices } from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
+import logger from '@/utils/logger'
 
 export default {
   name: 'AccountSelection',
@@ -103,12 +104,12 @@ export default {
         selectedAccount.value = matchingOption?.value || null
         store.dispatch('updateSelectedAccount', selectedAccount.value)
       } catch (error) {
-        console.error('Error fetching accounts:', error)
+        logger.error('Unknown', 'Error fetching accounts:', error)
       }
     }
 
     const handleAccountChange = async (newValue) => {
-      console.log('handleAccountChange called with:', newValue)
+      logger.log('Unknown', 'handleAccountChange called with:', newValue)
       selectedAccount.value = newValue
 
       await store.dispatch('updateAccountSelection', {
@@ -128,15 +129,15 @@ export default {
 
     // const updateDataForAccount = async (selection) => {
     //   try {
-    //     console.log('updateDataForAccount called with:', selection)
+    //     logger.log('Unknown', 'updateDataForAccount called with:', selection)
     //     const response = await updateUserDataForNewAccount({
     //       type: selection.type,
     //       id: selection.id
     //     })
-    //     console.log('updateForNewAccount response:', response)
+    //     logger.log('Unknown', 'updateForNewAccount response:', response)
     //     store.dispatch('triggerDataRefresh')
     //   } catch (error) {
-    //     console.error('Error updating account selection:', error)
+    //     logger.error('Unknown', 'Error updating account selection:', error)
     //   }
     // }
 
@@ -160,7 +161,7 @@ export default {
     }
 
     onMounted(() => {
-      console.log('AccountSelection component mounted')
+      logger.log('Unknown', 'AccountSelection component mounted')
       fetchAccounts()
     })
 

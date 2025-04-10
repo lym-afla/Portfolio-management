@@ -283,6 +283,7 @@ import {
   getYearOptions,
   getPortfolioBreakdownSummary,
 } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'SummaryPage',
@@ -421,7 +422,7 @@ export default {
           totalData.value = data.total_context.line
           years.value = data.total_context.years || []
         } else {
-          console.error('Unexpected data structure:', data)
+          logger.error('Unknown', 'Unexpected data structure:', data)
         }
       } catch (error) {
         if (error.message === 'Authentication required') {

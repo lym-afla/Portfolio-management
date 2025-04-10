@@ -9,6 +9,7 @@ import router from './router'
 import store from './store'
 import './assets/fonts.css'
 import './plugins/vee-validate'
+import logger from './utils/logger'
 
 const vuetify = createVuetify({
   components,
@@ -29,4 +30,31 @@ const vuetify = createVuetify({
   },
 })
 
-createApp(App).use(vuetify).use(router).use(store).mount('#app')
+// Initialize logger
+logger.log('App', 'Application starting...')
+
+// Set debug based on environment
+if (process.env.NODE_ENV !== 'production') {
+  logger.setDebugEnabled(true)
+  logger.info('App', `Running in ${process.env.NODE_ENV} mode`)
+} else {
+  logger.setDebugEnabled(false)
+  // This won't show in production unless debug is manually enabled
+  logger.info('App', 'Running in production mode')
+}
+
+// Create and mount the app
+const app = createApp(App)
+app.use(vuetify)
+app.use(store)
+app.use(router)
+
+// Make logger available globally for debugging in development
+if (process.env.NODE_ENV !== 'production') {
+  window.$logger = logger
+}
+
+app.mount('#app')
+
+// Report that app is mounted
+logger.log('App', 'Application mounted')

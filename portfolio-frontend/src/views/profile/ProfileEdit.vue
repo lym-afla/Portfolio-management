@@ -33,6 +33,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserProfile, editUserProfile } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   setup() {
@@ -65,7 +66,7 @@ export default {
           formErrors[key] = []
         })
       } catch (error) {
-        console.error('Error fetching user details:', error)
+        logger.error('Unknown', 'Error fetching user details:', error)
         showErrorMessage('Failed to fetch user details')
       }
     }
@@ -83,7 +84,7 @@ export default {
         //   handleErrors(response.errors)
         // }
       } catch (error) {
-        console.error('Error saving profile:', error)
+        logger.error('Unknown', 'Error saving profile:', error)
         handleErrors(
           error.errors || { general: ['An unexpected error occurred'] }
         )

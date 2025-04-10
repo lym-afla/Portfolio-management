@@ -99,6 +99,7 @@ import {
   getNAVChartData,
 } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'DashboardPage',
@@ -183,13 +184,13 @@ export default {
       try {
         clearErrors()
         loading.value.summary = true
-        console.log('Fetching dashboard summary...')
+        logger.log('Unknown', 'Fetching dashboard summary...')
         const data = await getDashboardSummary()
-        console.log('Received summary data:', data)
+        logger.log('Unknown', 'Received summary data:', data)
         summary.value = data
         loading.value.summary = false
       } catch (err) {
-        console.error('Error fetching summary:', err)
+        logger.error('Unknown', 'Error fetching summary:', err)
         error.value.summary = handleApiError(err)
         loading.value.summary = false
       }
@@ -203,7 +204,7 @@ export default {
           totalNAV.value = data.totalNAV
         })
         .catch((err) => {
-          console.error('Error fetching breakdown data:', err)
+          logger.error('Unknown', 'Error fetching breakdown data:', err)
           error.value.breakdownCharts = handleApiError(err)
         })
         .finally(() => {
@@ -215,13 +216,13 @@ export default {
       try {
         clearErrors()
         loading.value.summaryOverTime = true
-        console.log('Fetching summary over time data...')
+        logger.log('Unknown', 'Fetching summary over time data...')
         const data = await getDashboardSummaryOverTime()
-        console.log('Received summary over time data:', data)
+        logger.log('Unknown', 'Received summary over time data:', data)
         summaryOverTimeData.value = data
         loading.value.summaryOverTime = false
       } catch (err) {
-        console.error('Error fetching summary over time:', err)
+        logger.error('Unknown', 'Error fetching summary over time:', err)
         if (err.response && err.response.status === 404) {
           // Handle 404 as "no data" instead of an error
           summaryOverTimeData.value = null
@@ -245,17 +246,17 @@ export default {
           updating.value.navChart = true
         }
 
-        console.log('Fetching NAV chart data...')
+        logger.log('Unknown', 'Fetching NAV chart data...')
         const data = await getNAVChartData(
           params.breakdown,
           params.frequency,
           params.dateFrom,
           params.dateTo
         )
-        console.log('Received NAV chart data:', data)
+        logger.log('Unknown', 'Received NAV chart data:', data)
         navChartData.value = data
       } catch (err) {
-        console.error('Error fetching NAV chart data:', err)
+        logger.error('Unknown', 'Error fetching NAV chart data:', err)
         error.value.navChart = handleApiError(err)
       } finally {
         updating.value.navChart = false
@@ -285,7 +286,7 @@ export default {
           })
         }
       } catch (error) {
-        console.error('Error initializing dashboard:', error)
+        logger.error('Unknown', 'Error initializing dashboard:', error)
       } finally {
         isEffectiveDateLoading.value = false
       }
@@ -316,7 +317,7 @@ export default {
     watch(
       () => store.state.dataRefreshTrigger,
       () => {
-        console.log('Data refresh triggered, refreshing dashboard data...')
+        logger.log('Unknown', 'Data refresh triggered, refreshing dashboard data...')
         refreshAllData()
       }
     )

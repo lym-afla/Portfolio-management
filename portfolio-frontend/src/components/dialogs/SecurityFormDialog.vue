@@ -98,6 +98,7 @@ import {
   updateSecurity,
   getSecurityFormStructure,
 } from '@/services/api'
+import logger from '@/utils/logger'
 
 export default {
   name: 'SecurityFormDialog',
@@ -128,10 +129,10 @@ export default {
       try {
         const structure = await getSecurityFormStructure()
         formFields.value = structure.fields
-        console.log('SecurityFormDialog formFields', formFields.value)
+        logger.log('Unknown', 'SecurityFormDialog formFields', formFields.value)
         initializeForm()
       } catch (error) {
-        console.error('Error fetching form structure:', error)
+        logger.error('Unknown', 'Error fetching form structure:', error)
         generalError.value = 'Failed to load form structure'
       }
     }
@@ -170,7 +171,7 @@ export default {
     const closeDialog = () => {
       // Only emit security-skipped if it's an import AND the dialog is closed via Cancel button
       if (props.isImport && !isSubmitting.value) {
-        console.log('Emitting security-skipped from Cancel button') // Debug log
+        logger.log('Unknown', 'Emitting security-skipped from Cancel button') // Debug log
         emit('security-skipped')
       }
       dialog.value = false
@@ -201,7 +202,7 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting security:', error)
+        logger.error('Unknown', 'Error submitting security:', error)
         if (error.errors) {
           Object.keys(error.errors).forEach((key) => {
             if (key === '__all__') {

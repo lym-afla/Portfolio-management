@@ -30,6 +30,7 @@ import { useRouter } from 'vue-router'
 // import axios from 'axios'
 import store from '@/store'
 import LoginForm from '@/components/LoginForm.vue'
+import logger from '@/utils/logger'
 
 export default {
   name: 'LoginPage',
@@ -42,7 +43,7 @@ export default {
     const loginForm = ref(null)
 
     const handleLogin = async (credentials) => {
-      console.log('Handling login with credentials:', credentials)
+      logger.log('Unknown', 'Handling login with credentials:', credentials)
       loading.value = true
 
       try {
@@ -56,19 +57,19 @@ export default {
           localStorage.getItem('accessToken')
         )
         if (result.success) {
-          console.log('Login successful from LoginPage.vue')
+          logger.log('Unknown', 'Login successful from LoginPage.vue')
           router.push('/profile')
         }
       } catch (error) {
-        console.log('Login failed from LoginPage.vue', error)
+        logger.log('Unknown', 'Login failed from LoginPage.vue', error)
         if (error.non_field_errors) {
-          console.log('Non-field errors:', error.non_field_errors)
+          logger.log('Unknown', 'Non-field errors:', error.non_field_errors)
           loginForm.value.setErrors(error.non_field_errors[0])
         } else if (error) {
-          console.log('Field errors:', error)
+          logger.log('Unknown', 'Field errors:', error)
           loginForm.value.setErrors(error)
         } else {
-          console.log('Unknown error')
+          logger.log('Unknown', 'Unknown error')
           loginForm.value.setErrors(
             'An unknown error occurred. Please try again.'
           )

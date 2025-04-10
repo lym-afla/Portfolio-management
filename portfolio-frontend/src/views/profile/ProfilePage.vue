@@ -106,11 +106,12 @@ import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { changePassword as apiChangePassword } from '@/services/api'
 import { useStore } from 'vuex'
+import logger from '@/utils/logger'
 
 export default {
   setup() {
     const componentId = Date.now()
-    console.log(`[ProfilePage][${componentId}] Component setup started`)
+    logger.log('Unknown', `[ProfilePage][${componentId}] Component setup started`)
 
     const router = useRouter()
     const store = useStore()
@@ -211,7 +212,7 @@ export default {
           setPasswordErrors(response.error || 'Failed to change password')
         }
       } catch (error) {
-        console.error('Error changing password:', error)
+        logger.error('Unknown', 'Error changing password:', error)
         if (error.error === 'Incorrect old password') {
           passwordErrors.old_password = ['Incorrect current password']
         } else {
@@ -242,7 +243,7 @@ export default {
     }
 
     onMounted(() => {
-      console.log(`[ProfilePage][${componentId}] Component mounted`)
+      logger.log('Unknown', `[ProfilePage][${componentId}] Component mounted`)
       fetchProfile()
     })
 

@@ -1,11 +1,12 @@
 import { inject } from 'vue'
+import logger from '@/utils/logger'
 
 export function useErrorHandler() {
   const showError = inject('showError')
 
   const handleApiError = (error) => {
     let errorMessage = 'An unexpected error occurred.'
-    console.log('handleApiError:', error)
+    logger.log('Unknown', 'handleApiError:', error)
 
     if (error.response) {
       if (error.response.data && error.response.data.error) {

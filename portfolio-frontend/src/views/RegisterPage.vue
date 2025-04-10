@@ -46,6 +46,7 @@ import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { register } from '@/services/api'
 import RegisterForm from '@/components/RegisterForm.vue'
+import logger from '@/utils/logger'
 
 export default {
   name: 'RegisterPage',
@@ -61,7 +62,7 @@ export default {
     const errors = ref({})
 
     const handleRegister = async (credentials) => {
-      console.log('Handling registration with credentials:', credentials)
+      logger.log('Unknown', 'Handling registration with credentials:', credentials)
       loading.value = true
       errors.value = {}
 
@@ -77,7 +78,7 @@ export default {
           'Registration successful. You can now log in to your account.'
         showSuccessDialog.value = true
       } catch (err) {
-        console.error('[RegisterPage] Registration error:', err)
+        logger.error('Unknown', '[RegisterPage] Registration error:', err)
         if (typeof err === 'object' && err !== null) {
           errors.value = err
         } else {

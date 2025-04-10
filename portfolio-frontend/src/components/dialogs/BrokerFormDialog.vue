@@ -66,6 +66,7 @@ import {
   getBrokerFormStructure,
 } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'BrokerFormDialog',
@@ -159,7 +160,7 @@ export default {
         }
         closeDialog()
       } catch (error) {
-        console.error('Error submitting broker:', error)
+        logger.error('Unknown', 'Error submitting broker:', error)
         if (
           error.response &&
           error.response.status === 400 &&

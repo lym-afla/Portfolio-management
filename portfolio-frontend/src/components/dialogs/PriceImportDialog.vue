@@ -196,6 +196,7 @@ import { importPrices, getPriceImportFormStructure } from '@/services/api'
 import { format } from 'date-fns'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import logger from '@/utils/logger'
 
 export default {
   name: 'PriceImportDialog',
@@ -302,7 +303,7 @@ export default {
         accountsList.value = structure.accounts
         frequencyChoices.value = structure.frequency_choices
       } catch (error) {
-        console.error('Error fetching form structure:', error)
+        logger.error('Unknown', 'Error fetching form structure:', error)
         generalError.value = 'Failed to load form structure. Please try again.'
       }
     }
@@ -340,14 +341,14 @@ export default {
     }
 
     const handleProgress = (event) => {
-      console.log('Progress event received:', event)
+      logger.log('Unknown', 'Progress event received:', event)
       const data = event.detail
       if (data.status === 'progress') {
         progress.value = data.progress
         currentOperation.value = data.current
         totalOperations.value = data.total
         currentMessage.value = `${data.result.charAt(0).toUpperCase() + data.result.slice(1)} for ${data.date} for ${data.security_name}`
-        console.log('Updated progress:', progress.value)
+        logger.log('Unknown', 'Updated progress:', progress.value)
       } else if (data.status === 'complete') {
         if (data.details) {
           importSummary.value = {
@@ -403,7 +404,7 @@ export default {
     const submitForm = handleSubmit(async (values) => {
       // Check if there are any front-end validation errors
       if (Object.keys(errors.value).length > 0) {
-        console.log('Front-end validation failed. Not submitting.')
+        logger.log('Unknown', 'Front-end validation failed. Not submitting.')
         return
       }
 
@@ -443,12 +444,12 @@ export default {
           }
         }
 
-        console.log('Submitting data:', submitData)
+        logger.log('Unknown', 'Submitting data:', submitData)
 
         await importPrices(submitData)
         resetForm()
       } catch (error) {
-        console.error('Error importing prices:', error)
+        logger.error('Unknown', 'Error importing prices:', error)
         handleApiError(error)
       } finally {
         if (!showSummaryDialog.value) {
