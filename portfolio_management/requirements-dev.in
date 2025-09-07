@@ -1,0 +1,9 @@
+pytest
+pytest-asyncio
+pytest-django
+pip-tools
+ipython
+ipykernel
+Sphinx
+black
+mypy

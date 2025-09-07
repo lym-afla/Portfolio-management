@@ -439,10 +439,35 @@ class TransactionViewSet(viewsets.ModelViewSet):
     @database_sync_to_async
     def save_transactions(self, transactions_to_create):
         """Save transactions in bulk"""
-        with transaction.atomic():
-            Transactions.objects.bulk_create(
-                [Transactions(**data) for data in transactions_to_create]
-            )
+        logger.debug(f"About to save {len(transactions_to_create)} transactions")
+        
+        # Log each transaction data for debugging
+        for i, data in enumerate(transactions_to_create):
+            logger.debug(f"Transaction {i+1}: {data}")
+            
+            # Check for None values that might cause issues
+            for key, value in data.items():
+                if value is None and key in ['quantity', 'price']:
+                    logger.warning(f"Transaction {i+1} has None value for {key}")
+        
+        try:
+            with transaction.atomic():
+                created_transactions = []
+                for data in transactions_to_create:
+                    logger.debug(f"Creating transaction with data: {data}")
+                    created_transaction = Transactions(**data)
+                    created_transactions.append(created_transaction)
+                
+                # Use bulk_create for efficiency
+                Transactions.objects.bulk_create(created_transactions)
+                logger.debug(f"Successfully saved {len(created_transactions)} transactions")
+                
+        except Exception as e:
+            logger.error(f"Error saving transactions: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            raise
 
     async def import_transactions_from_api(
         self, user, broker_account_id, confirm_every, date_from=None, date_to=None

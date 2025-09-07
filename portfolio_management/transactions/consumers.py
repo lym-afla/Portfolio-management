@@ -531,10 +531,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         security_cache = defaultdict(lambda: None)
         try:
             async for update in self.import_generator:
+                logger.debug(f"[process_import] Processing update: {update}")
+                
                 if self.stop_event.is_set():
                     break
 
                 if "error" in update:
+                    logger.debug(f"[process_import] Error in update: {update['error']}")
                     import_results["importErrors"] += 1
                     await self.send(
                         text_data=json.dumps(
@@ -548,7 +551,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         )
                     )
                 elif update["status"] == "transaction_confirmation":
-                    await self.handle_transaction_confirmation(update["data"])
+                    logger.debug(f"[process_import] Handling transaction confirmation: {update['data']}")
+                    try:
+                        await self.handle_transaction_confirmation(update["data"])
+                        logger.debug(f"[process_import] Transaction confirmation handled successfully")
+                    except Exception as e:
+                        logger.error(f"Error in transaction confirmation: {str(e)}")
+                        logger.error(f"Error type: {type(e)}")
+                        import traceback
+                        logger.error(f"Full traceback: {traceback.format_exc()}")
+                        raise
                 elif update.get("status") == "security_mapping":
                     logger.debug(
                         f"Security mapping required for "
@@ -569,8 +581,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             if security:
                                 # Update the transaction data with the mapped security
                                 transaction_to_create["security"] = security
-                                await self.handle_transaction_confirmation(transaction_to_create)
-                                continue  # Skip the rest of the loop iteration
+                                try:
+                                    logger.debug(f"Handling transaction confirmation for: {transaction_to_create}")
+                                    await self.handle_transaction_confirmation(transaction_to_create)
+                                    continue  # Skip the rest of the loop iteration
+                                except Exception as e:
+                                    logger.error(f"Error in handle_transaction_confirmation: {str(e)}")
+                                    logger.error(f"Error type: {type(e)}")
+                                    import traceback
+                                    logger.error(f"Full traceback: {traceback.format_exc()}")
+                                    raise
                     else:
                         await self.send(
                             text_data=json.dumps(
@@ -648,9 +668,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     self.transactions_to_create.append(update.get("data"))
                     logger.debug(f"Transaction added to create list: {update.get('data')}")
                 elif update.get("status") == "complete":
+                    logger.debug(f"[process_import] Received complete status: {update}")
                     import_results = update.get("data")
                     # logger.debug(f"[process_import] Import results: {update}")
+                else:
+                    logger.debug(f"[process_import] Unhandled update status: {update.get('status')}")
 
+            logger.debug("[process_import] Finished processing all updates from import generator")
             # After processing all transactions, save confirmed transactions
             if self.transactions_to_create:
                 try:
@@ -668,7 +692,20 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     import_results["skippedTransactions"] += self.transactions_skipped
                     import_results["duplicateTransactions"] += self.duplicate_count
                     logger.debug(f"Import results: {import_results}")
+                    
+                    # Add detailed logging before save
+                    logger.debug(f"About to save {len(self.transactions_to_create)} transactions")
+                    for i, tx in enumerate(self.transactions_to_create):
+                        logger.debug(f"Transaction {i+1} to save: {tx}")
+                        # Check for problematic None values
+                        for key, value in tx.items():
+                            if value is None:
+                                logger.debug(f"  - {key}: None")
+                    
+                    logger.debug("Calling save_transactions...")
                     await self.view_set.save_transactions(self.transactions_to_create)
+                    logger.debug("save_transactions completed successfully")
+                    
                     await self.send(
                         text_data=json.dumps(
                             {
@@ -721,6 +758,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             )
         except Exception as e:
             logger.error(f"Error in process_import: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error occurred at process_import level")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            
+            # Log current state
+            logger.error(f"transactions_to_create count: {len(self.transactions_to_create)}")
+            if self.transactions_to_create:
+                logger.error(f"transactions_to_create: {self.transactions_to_create}")
+            
             await self.send(
                 text_data=json.dumps(
                     {
@@ -798,8 +845,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 serialized[key] = self._serialize_transaction_data(
                     value
                 )  # Recursive call for dicts
-            return format_table_data(serialized, self.user.default_currency, number_of_digits=2)
-        elif isinstance(data, (CustomUser, Brokers, Assets)):
+            return format_table_data(serialized, serialized["currency"], number_of_digits=2)
+        elif isinstance(data, (CustomUser, Brokers, Assets, Accounts)):
             return model_to_dict(data, fields=["id", "name"])
         elif isinstance(data, (datetime.date, datetime.datetime)):
             return data.isoformat()

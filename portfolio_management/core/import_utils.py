@@ -18,6 +18,7 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 from fake_useragent import UserAgent
 from fuzzywuzzy import process
+from tinkoff.invest import InstrumentType
 
 from common.models import Accounts, Assets, Brokers, Prices, Transactions
 from constants import (
@@ -1114,7 +1115,7 @@ async def _process_galaxy_securities(df, user, account):
 
                 except Assets.DoesNotExist:
                     # Try to create security using MICEX data
-                    security = await create_security_from_micex(security_name, isin, user, account)
+                    security = await create_security_from_micex(security_name, isin, user, instrument_type=InstrumentType.INSTRUMENT_TYPE_SHARE)
                     if security:
                         security_columns.append(i)
                         yield {
@@ -1139,13 +1140,35 @@ async def _process_galaxy_securities(df, user, account):
     }
 
 
-async def create_security_from_micex(security_name, isin, user):
+async def create_security_from_micex(security_name, isin, user, instrument_type):
     """Create a new security using MICEX API data"""
     try:
         # Constants for MICEX API
-        selected_engine = "stock"
-        selected_market = "shares"
-        selected_board = "TQBR"
+        engine_stock = "stock"
+        engine_etf = "stock"
+        engine_bond = "stock"
+        market_shares = "shares"
+        market_etfs = "shares"
+        market_bonds = "bonds"
+        board_stocks = "TQBR"
+        board_etfs = "TQTF"
+        board_bonds = "TQCB"
+
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+            selected_engine = engine_stock
+            selected_market = market_shares
+            selected_board = board_stocks
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+            selected_engine = engine_etf
+            selected_market = market_etfs
+            selected_board = board_etfs
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+            selected_engine = engine_bond
+            selected_market = market_bonds
+            selected_board = board_bonds
+        else:
+            logger.error(f"Invalid instrument type: {instrument_type}")
+            return None
 
         # First, get the securities list and find our security
         url = (
@@ -1177,15 +1200,33 @@ async def create_security_from_micex(security_name, isin, user):
         # Get the first match if multiple found
         security = security.iloc[0]
 
+        # Get the asset type from the instrument type
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+            asset_type = ASSET_TYPE_CHOICES[0][0]
+            exposure = EXPOSURE_CHOICES[0][0]
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+            asset_type = ASSET_TYPE_CHOICES[1][0]
+            exposure = EXPOSURE_CHOICES[0][0]
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+            asset_type = ASSET_TYPE_CHOICES[2][0]
+            exposure = EXPOSURE_CHOICES[1][0]
+        else:
+            asset_type = None
+            exposure = None
+
+        if not asset_type:
+            logger.error(f"Invalid instrument type: {instrument_type}")
+            return None
+
         # Create new asset
         @database_sync_to_async
         def create_asset():
             asset = Assets.objects.create(
-                type=ASSET_TYPE_CHOICES[0][0],  # 'Stock' from ASSET_TYPE_CHOICES
+                type=asset_type,
                 ISIN=isin,
                 name=security_name,
                 currency="RUB" if security["CURRENCYID"] == "SUR" else security["CURRENCYID"],
-                exposure=EXPOSURE_CHOICES[0][0],  # 'Equity' from EXPOSURE_CHOICES
+                exposure=exposure,
                 restricted=False,
                 data_source="MICEX",
                 secid=security["SECID"],

@@ -74,15 +74,17 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     mock_instrument = MagicMock()
     mock_instrument.instrument.name = "Test Stock"
     mock_instrument.instrument.isin = "TEST123456789"
+    mock_instrument.instrument.instrument_kind = "stock"
 
     mock_client_instance = MagicMock()
     mock_client_instance.instruments.get_instrument_by.return_value = mock_instrument
     mock_client.return_value.__enter__.return_value = mock_client_instance
 
     # Test successful retrieval
-    name, isin = await get_security_by_uid("test-uid", user)
+    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
     assert name == "Test Stock"
     assert isin == "TEST123456789"
+    assert instrument_type == "stock"
     mock_client_instance.instruments.get_instrument_by.assert_called_once_with(
         id_type=3, id="test-uid"
     )
@@ -91,27 +93,27 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
         "Token has insufficient privileges", {"code": "40002"}, {}  # message  # details  # metadata
     )
-    name, isin = await get_security_by_uid("test-uid", user)
+    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
     assert name is None and isin is None
 
     # Test API error handling for invalid token
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
         "Invalid token", {"code": "40003"}, {}
     )
-    name, isin = await get_security_by_uid("test-uid", user)
+    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
     assert name is None and isin is None
 
     # Test API error handling for generic error
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
         "Internal server error", {"code": "50000"}, {}
     )
-    name, isin = await get_security_by_uid("test-uid", user)
+    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
     assert name is None and isin is None
 
     # Test unexpected exception
     mock_client_instance.instruments.get_instrument_by.side_effect = Exception("Unexpected error")
-    name, isin = await get_security_by_uid("test-uid", user)
-    assert name is None and isin is None
+    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
+    assert name is None and isin is None and instrument_type is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -119,35 +121,35 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 @patch("core.tinkoff_utils.get_security_by_uid")
 @patch("core.tinkoff_utils.create_security_from_micex")
 async def test_find_or_create_security(mock_create_security, mock_get_security, user, broker):
-    mock_get_security.return_value = ("Test Stock", "TEST123456789")
+    mock_get_security.return_value = ("Test Stock", "TEST123456789", "stock")
 
     # Test case 1: Security exists with relationships
     asset = await Assets.objects.acreate(
-        type="Stock", ISIN="TEST123456789", name="Test Stock", currency="USD", exposure="Equity"
+        type="Stock", ISIN="TEST123456789", name="Test Stock", currency="USD", exposure="Equity", instrument_type="stock"
     )
     await asset.investors.aset([user])
 
     security, status = await _find_or_create_security("test-uid", user)
     assert status == "existing_with_relationships"
     assert security.ISIN == "TEST123456789"
-
+    assert security.instrument_type == "stock"
     # Test case 2: Security exists without relationships
     await asset.investors.aclear()
 
     security, status = await _find_or_create_security("test-uid", user)
     assert status == "existing_added_relationships"
     assert security.ISIN == "TEST123456789"
-
+    assert security.instrument_type == "stock"
     # Test case 3: Security doesn't exist, create new
     await asset.adelete()
     mock_create_security.return_value = await Assets.objects.acreate(
-        type="Stock", ISIN="NEW123456789", name="New Stock", currency="USD", exposure="Equity"
+        type="Stock", ISIN="NEW123456789", name="New Stock", currency="USD", exposure="Equity", instrument_type="stock"
     )
 
     security, status = await _find_or_create_security("test-uid", user)
     assert status == "created_new"
     assert security.ISIN == "NEW123456789"
-
+    assert security.instrument_type == "stock"
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio

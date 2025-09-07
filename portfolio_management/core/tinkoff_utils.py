@@ -38,7 +38,7 @@ async def get_user_token(user, sandbox_mode=False):
 async def get_security_by_uid(instrument_uid, user):
     """
     Get security details from Tinkoff API using instrument_uid.
-    Returns (name, ISIN) or (None, None) if not found.
+    Returns (name, ISIN, instrument type) or (None, None, None) if not found.
     """
     try:
         token = await get_user_token(user)
@@ -46,7 +46,7 @@ async def get_security_by_uid(instrument_uid, user):
             instrument = client.instruments.get_instrument_by(
                 id_type=3, id=instrument_uid
             )  # id_type=3 is uid
-            return (instrument.instrument.name, instrument.instrument.isin)
+            return (instrument.instrument.name, instrument.instrument.isin, instrument.instrument.instrument_kind)
     except RequestError as e:
         error_message = str(e)
         if "40002" in error_message:
@@ -55,10 +55,10 @@ async def get_security_by_uid(instrument_uid, user):
             logger.error("Invalid or expired Tinkoff API token")
         else:
             logger.error(f"Tinkoff API error: {error_message}")
-        return None, None
+        return None, None, None
     except Exception as e:
         logger.error(f"Error getting security details from Tinkoff: {str(e)}")
-        return None, None
+        return None, None, None
 
 
 async def _find_or_create_security(instrument_uid, investor):
@@ -74,7 +74,7 @@ async def _find_or_create_security(instrument_uid, investor):
         tuple: (Assets instance, str status)
     """
     # Get security details from Tinkoff
-    name, isin = await get_security_by_uid(instrument_uid, investor)
+    name, isin, instrument_type = await get_security_by_uid(instrument_uid, investor)
     if not isin:
         return None, "Could not get security details from Tinkoff"
 
@@ -99,7 +99,7 @@ async def _find_or_create_security(instrument_uid, investor):
             # Create new security using MICEX data - import function here to avoid circular imports
             from core.import_utils import create_security_from_micex
 
-            security = await create_security_from_micex(name, isin, investor)
+            security = await create_security_from_micex(name, isin, investor, instrument_type)
             if security:
                 return security, "created_new"
             return None, "failed_to_create"
@@ -149,6 +149,15 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
             logger.debug(f"Security matched: {security.name} (status: {status})")
         else:
             logger.warning(f"Could not match security for operation {operation.id}")
+            # Get security info for potential creation
+            name, isin, instrument_type = await get_security_by_uid(operation.instrument_uid, investor)
+            if name and isin:
+                # Mark this transaction as needing security mapping
+                transaction_data["needs_security_mapping"] = True
+                transaction_data["security_description"] = name
+                transaction_data["isin"] = isin
+                transaction_data["instrument_type"] = instrument_type
+            transaction_data["security"] = None
 
     # Handle quantity and price for buy/sell operations
     if operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]:
