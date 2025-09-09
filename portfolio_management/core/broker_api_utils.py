@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Dict, Optional
 from channels.db import database_sync_to_async
 from tinkoff.invest import Client, GetOperationsByCursorRequest, OperationState, RequestError
 
-from common.models import Brokers
+from common.models import Accounts, Brokers
 
 from .tinkoff_utils import get_user_token, map_tinkoff_operation_to_transaction, verify_token_access
 
@@ -33,7 +33,7 @@ class BrokerAPI(ABC):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
-    async def connect(self) -> bool:
+    async def connect(self, user) -> bool:
         """Establish connection to broker API"""
         pass
 
@@ -44,7 +44,7 @@ class BrokerAPI(ABC):
 
     @abstractmethod
     async def get_transactions(
-        self, account: Dict, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
     ) -> AsyncGenerator[Dict, None]:
         """
         Fetch transactions from broker API
@@ -153,6 +153,7 @@ class TinkoffAPI(BrokerAPI):
             if not await verify_token_access(user):
                 raise TinkoffAPIException("Invalid or insufficient token access")
 
+            # Use context manager for Client
             self.client = Client(self.token)
             return True
 
@@ -172,7 +173,7 @@ class TinkoffAPI(BrokerAPI):
             self.logger.error(f"Error disconnecting from Tinkoff API: {str(e)}")
 
     async def get_transactions(
-        self, account: Dict, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
     ) -> AsyncGenerator[Dict, None]:
         """
         Fetch transactions from Tinkoff API using cursor-based pagination
@@ -182,12 +183,12 @@ class TinkoffAPI(BrokerAPI):
             date_from: Start date in YYYY-MM-DD format
             date_to: End date in YYYY-MM-DD format
         """
-        self.logger.debug(f"Fetching Tinkoff transactions for account {account['id']}")
+        self.logger.debug(f"Fetching Tinkoff transactions for account {account.id}")
 
         total_operations = 0  # Move initialization outside try block
 
         try:
-            self.logger.debug(f"Fetching Tinkoff transactions for account {account['id']}")
+            self.logger.debug(f"Fetching Tinkoff transactions for account {account.id}")
 
             if not self.client:
                 raise TinkoffAPIException("Not connected to Tinkoff API")
@@ -199,57 +200,63 @@ class TinkoffAPI(BrokerAPI):
             )
             to_date = datetime.strptime(date_to, "%Y-%m-%d") if date_to else datetime.now()
 
-            cursor = ""
+            # Ensure account has a native_id that matches the broker's account ID
+            if not account.native_id:
+                self.logger.error(f"Account {account.id} has no native_id set")
+                raise TinkoffAPIException(f"Account {account.id} has no native_id set")
 
-            while True:
-                try:
-                    # Wrap the API call with retry logic
-                    response = await self._retry_operation(
-                        self.client.operations.get_operations_by_cursor,
-                        GetOperationsByCursorRequest(
-                            account_id=str(account["id"]),
-                            from_=from_date,
-                            to=to_date,
-                            cursor=cursor,
-                            limit=self.OPERATIONS_BATCH_SIZE,
-                            operation_types=[],
-                            state=OperationState.OPERATION_STATE_EXECUTED,
-                        ),
-                    )
+            # Use a fresh Client instance with context manager like in test.ipynb
+            with Client(self.token) as client:
+                cursor = ""
 
-                    # Process operations in current batch
-                    for operation in response.items:
-                        total_operations += 1
-                        self.logger.debug(
-                            f"Processing operation {total_operations}: {operation.id}"
+                while True:
+                    try:
+                        # Use account.native_id instead of account.id to match the broker account ID
+                        response = client.operations.get_operations_by_cursor(
+                            GetOperationsByCursorRequest(
+                                account_id=str(account.native_id),
+                                from_=from_date,
+                                to=to_date,
+                                cursor=cursor,
+                                limit=self.OPERATIONS_BATCH_SIZE,
+                                operation_types=[],
+                                state=OperationState.OPERATION_STATE_EXECUTED,
+                            )
                         )
 
-                        try:
-                            transaction_data = await map_tinkoff_operation_to_transaction(
-                                operation=operation, investor=self.user, account=account
+                        # Process operations in current batch
+                        for operation in response.items:
+                            total_operations += 1
+                            self.logger.debug(
+                                f"Processing operation {total_operations}: {operation.id}"
                             )
 
-                            if transaction_data:
-                                yield transaction_data
+                            try:
+                                transaction_data = await map_tinkoff_operation_to_transaction(
+                                    operation=operation, investor=self.user, account=account
+                                )
 
-                        except Exception as e:
-                            self.logger.error(
-                                f"Error processing operation {operation.id}: {str(e)}"
+                                if transaction_data:
+                                    yield transaction_data
+
+                            except Exception as e:
+                                self.logger.error(
+                                    f"Error processing operation {operation.id}: {str(e)}"
+                                )
+                                continue
+
+                        if not response.has_next:
+                            self.logger.debug(
+                                f"Completed fetching all operations. "
+                                f"Total processed: {total_operations}"
                             )
-                            continue
+                            break
 
-                    if not response.has_next:
-                        self.logger.debug(
-                            f"Completed fetching all operations. "
-                            f"Total processed: {total_operations}"
-                        )
-                        break
+                        cursor = response.next_cursor
 
-                    cursor = response.next_cursor
-
-                except Exception as e:
-                    self.logger.error(f"Error in batch processing: {str(e)}")
-                    raise
+                    except Exception as e:
+                        self.logger.error(f"Error in batch processing: {str(e)}")
+                        raise
 
         except Exception as e:
             self.logger.error(f"Error fetching Tinkoff transactions: {str(e)}")
@@ -279,7 +286,7 @@ class TinkoffAPI(BrokerAPI):
 class InteractiveBrokersAPI(BrokerAPI):
     """Interactive Brokers API implementation"""
 
-    async def connect(self) -> bool:
+    async def connect(self, user) -> bool:
         self.logger.debug("Connecting to Interactive Brokers API")
         try:
             # TODO: Implement IB API connection
@@ -297,9 +304,9 @@ class InteractiveBrokersAPI(BrokerAPI):
             self.logger.error(f"Error disconnecting from IB API: {str(e)}")
 
     async def get_transactions(
-        self, account: Dict, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
     ) -> AsyncGenerator[Dict, None]:
-        self.logger.debug(f"Fetching IB transactions for account {account['id']}")
+        self.logger.debug(f"Fetching IB transactions for account {account.id}")
         try:
             # TODO: Implement IB transaction fetching
             # This is a placeholder that yields no transactions
@@ -308,6 +315,34 @@ class InteractiveBrokersAPI(BrokerAPI):
         except Exception as e:
             self.logger.error(f"Error fetching IB transactions: {str(e)}")
             raise BrokerAPIException(f"Failed to fetch IB transactions: {str(e)}")
+
+
+@database_sync_to_async
+def get_broker_from_account(account: Accounts) -> Brokers:
+    """
+    Get broker object from account in a sync-to-async safe way
+
+    Args:
+        account: Account model instance
+
+    Returns:
+        Broker model instance
+    """
+    return account.broker
+
+
+@database_sync_to_async
+def check_tinkoff_tokens_exist(broker: Brokers):
+    """
+    Check if tinkoff tokens exist for a broker in a sync-to-async safe way
+
+    Args:
+        broker: Broker model instance
+
+    Returns:
+        Boolean indicating if tinkoff tokens exist
+    """
+    return broker.tinkoff_tokens.exists()
 
 
 async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
@@ -321,8 +356,8 @@ async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
         BrokerAPI instance or None if broker not supported/configured
     """
     try:
-        # Check for Tinkoff tokens
-        has_tinkoff_token = await database_sync_to_async(broker.tinkoff_tokens.exists)()
+        # Check for Tinkoff tokens using sync-to-async safe function
+        has_tinkoff_token = await check_tinkoff_tokens_exist(broker)
 
         if has_tinkoff_token:
             return TinkoffAPI()
@@ -340,5 +375,6 @@ async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
             return None
 
     except Exception as e:
-        logger.error(f"Error initializing broker API for {broker.name}: {str(e)}")
+        account_id = getattr(broker, "id", "unknown")
+        logger.error(f"Error initializing broker API for account {account_id}: {str(e)}")
         return None

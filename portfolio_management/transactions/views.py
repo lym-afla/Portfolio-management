@@ -19,7 +19,7 @@ from rest_framework.response import Response
 
 from common.models import Accounts, FXTransaction, Transactions
 from constants import ACCOUNT_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
-from core.broker_api_utils import TinkoffAPIException, get_broker_api
+from core.broker_api_utils import TinkoffAPIException, get_broker_api, get_broker_from_account
 from core.import_utils import (
     get_account,
     parse_charles_stanley_transactions,
@@ -413,11 +413,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
             }
 
             # Get appropriate broker API handler
-            broker_api = await get_broker_api(account.broker)
+            broker = await get_broker_from_account(account)
+            broker_api = await get_broker_api(broker)
             if not broker_api:
                 yield {
                     "status": "critical_error",
-                    "message": f"Unsupported broker API: {account.broker.name}",
+                    "message": "Unsupported broker API or no API tokens configured",
                 }
                 return
 

@@ -12,7 +12,12 @@ from django.forms import model_to_dict
 
 from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import get_security, match_broker_account, transaction_exists
+from core.import_utils import (
+    get_security,
+    match_broker_account,
+    transaction_exists,
+    update_account_native_id,
+)
 from users.models import CustomUser
 
 from .views import TransactionViewSet
@@ -396,6 +401,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     logger.warning(f"Skipping invalid pair: {pair}")
                     continue
 
+                # Update native_id for the account to ensure it matches with broker's API
+                await update_account_native_id(db_account_id, tinkoff_account_id)
+
                 # Update progress
                 await self.send_message(
                     "import_update",
@@ -757,7 +765,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             comment: Optional comment for the new account
         """
         try:
-            logger.debug(f"Creating new account '{name}' for tinkoff account {tinkoff_account}")
+            tinkoff_account_id = tinkoff_account.get("id")
+            if not tinkoff_account_id:
+                await self.send_error("Invalid Tinkoff account data")
+                return
+
+            logger.debug(f"Creating new account '{name}' for tinkoff account {tinkoff_account_id}")
 
             # Send progress update
             await self.send_message(
@@ -774,15 +787,21 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             def create_account():
                 broker = Brokers.objects.get(id=broker_id)
                 account = Accounts.objects.create(
-                    name=name, broker=broker, investor=self.user, comment=comment
+                    name=name,
+                    broker=broker,
+                    investor=self.user,
+                    comment=comment,
+                    native_id=tinkoff_account_id,  # Set native_id during creation
                 )
                 return account
 
             new_account = await create_account()
-            logger.debug(f"Created new account with ID {new_account.id}")
+            logger.debug(
+                f"Created new account with ID {new_account.id} "
+                f"and native_id {new_account.native_id}"
+            )
 
             # Now process the import with the new account
-            tinkoff_account_id = tinkoff_account.get("id")
             if not tinkoff_account_id:
                 await self.send_error("Invalid Tinkoff account data")
                 return

@@ -43,12 +43,12 @@ CustomUser = get_user_model()
 
 
 @database_sync_to_async
-def get_investor(investor_id):
+def get_investor(investor_id: int):
     return CustomUser.objects.get(id=investor_id)
 
 
 @database_sync_to_async
-def get_account(account_id):
+def get_account(account_id: int) -> Accounts:
     return Accounts.objects.get(id=account_id)
 
 
@@ -1198,6 +1198,33 @@ async def create_security_from_micex(security_name, isin, user):
     except Exception as e:
         logger.error(f"Error creating security from MICEX: {str(e)}")
         return None
+
+
+@database_sync_to_async
+def update_account_native_id(account_id: int, native_id: str) -> bool:
+    """
+    Update the native_id field for an account
+
+    Args:
+        account_id: Database account ID
+        native_id: External/broker account ID to save
+
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    try:
+        account = Accounts.objects.get(id=account_id)
+        if account.native_id != native_id:
+            account.native_id = native_id
+            account.save(update_fields=["native_id"])
+            logger.info(f"Updated native_id for account {account_id} to {native_id}")
+        return True
+    except Accounts.DoesNotExist:
+        logger.error(f"Account {account_id} not found")
+        return False
+    except Exception as e:
+        logger.error(f"Error updating native_id for account {account_id}: {str(e)}")
+        return False
 
 
 async def match_broker_account(

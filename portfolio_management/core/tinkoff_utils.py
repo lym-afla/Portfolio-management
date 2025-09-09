@@ -6,7 +6,7 @@ from tinkoff.invest import Client, OperationType
 from tinkoff.invest.exceptions import RequestError
 from tinkoff.invest.utils import quotation_to_decimal
 
-from common.models import Assets, Transactions
+from common.models import Accounts, Assets, Transactions
 from constants import (
     TRANSACTION_TYPE_BROKER_COMMISSION,
     TRANSACTION_TYPE_BUY,
@@ -105,7 +105,7 @@ async def _find_or_create_security(instrument_uid, investor):
             return None, "failed_to_create"
 
 
-async def map_tinkoff_operation_to_transaction(operation, investor, account):
+async def map_tinkoff_operation_to_transaction(operation, investor, account: Accounts):
     """
     Maps a Tinkoff API operation to our Transaction model format.
 
