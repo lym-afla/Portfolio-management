@@ -8,10 +8,14 @@ from tinkoff.invest.utils import quotation_to_decimal
 
 from common.models import Assets, Transactions
 from constants import (
-    TRANSACTION_TYPE_BROKER_COMMISSION,
     TRANSACTION_TYPE_BUY,
+    TRANSACTION_TYPE_CASH_IN,
+    TRANSACTION_TYPE_CASH_OUT,
+    TRANSACTION_TYPE_COUPON,
     TRANSACTION_TYPE_DIVIDEND,
+    TRANSACTION_TYPE_REPO,
     TRANSACTION_TYPE_SELL,
+    TRANSACTION_TYPE_TAX,
 )
 
 # Remove circular import
@@ -46,7 +50,11 @@ async def get_security_by_uid(instrument_uid, user):
             instrument = client.instruments.get_instrument_by(
                 id_type=3, id=instrument_uid
             )  # id_type=3 is uid
-            return (instrument.instrument.name, instrument.instrument.isin, instrument.instrument.instrument_kind)
+            return (
+                instrument.instrument.name,
+                instrument.instrument.isin,
+                instrument.instrument.instrument_kind,
+            )
     except RequestError as e:
         error_message = str(e)
         if "40002" in error_message:
@@ -130,7 +138,13 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_BUY: TRANSACTION_TYPE_BUY,
         OperationType.OPERATION_TYPE_SELL: TRANSACTION_TYPE_SELL,
         OperationType.OPERATION_TYPE_DIVIDEND: TRANSACTION_TYPE_DIVIDEND,
-        OperationType.OPERATION_TYPE_BROKER_FEE: TRANSACTION_TYPE_BROKER_COMMISSION,
+        OperationType.OPERATION_TYPE_DIVIDEND_TAX: TRANSACTION_TYPE_TAX,
+        OperationType.OPERATION_TYPE_OVERNIGHT: TRANSACTION_TYPE_REPO,
+        OperationType.OPERATION_TYPE_COUPON: TRANSACTION_TYPE_COUPON,
+        OperationType.OPERATION_TYPE_TAX_CORRECTION: TRANSACTION_TYPE_TAX,
+        OperationType.OPERATION_TYPE_TAX: TRANSACTION_TYPE_TAX,
+        OperationType.OPERATION_TYPE_OUTPUT: TRANSACTION_TYPE_CASH_OUT,
+        OperationType.OPERATION_TYPE_INPUT: TRANSACTION_TYPE_CASH_IN,
     }
 
     transaction_data["type"] = operation_type_mapping.get(operation.type)
@@ -150,7 +164,9 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         else:
             logger.warning(f"Could not match security for operation {operation.id}")
             # Get security info for potential creation
-            name, isin, instrument_type = await get_security_by_uid(operation.instrument_uid, investor)
+            name, isin, instrument_type = await get_security_by_uid(
+                operation.instrument_uid, investor
+            )
             if name and isin:
                 # Mark this transaction as needing security mapping
                 transaction_data["needs_security_mapping"] = True
@@ -164,14 +180,11 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         transaction_data["quantity"] = Decimal(str(operation.quantity))
         if operation.price:
             transaction_data["price"] = quotation_to_decimal(operation.price)
-
-    # Handle payment/cash flow
-    if operation.payment:
-        payment = quotation_to_decimal(operation.payment)
-        if operation.type == OperationType.OPERATION_TYPE_BUY:
-            transaction_data["cash_flow"] = -abs(payment)
-        else:
-            transaction_data["cash_flow"] = abs(payment)
+    else:
+        # Handle payment/cash flow
+        if operation.payment:
+            payment = quotation_to_decimal(operation.payment)
+            transaction_data["cash_flow"] = payment
 
     # Handle commission
     if operation.commission and operation.commission.units != 0:

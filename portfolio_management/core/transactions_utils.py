@@ -141,7 +141,7 @@ def _calculate_transactions_table_output(
 def _process_regular_transaction(transaction, balance, number_of_digits):
     """Process a regular transaction and update balances."""
     transaction_data = {
-        "id": transaction.id,
+        "id": f"regular_{transaction.id}",
         "transaction_type": "regular",
         "type": transaction.type,
         "security": {
@@ -151,15 +151,13 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
         "cur": transaction.currency,
     }
 
-    balance[transaction.currency] = round(
-        balance.get(transaction.currency, Decimal(0))
-        - Decimal(
-            (transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0))
-            - Decimal(transaction.cash_flow or Decimal(0))
-            - Decimal(transaction.commission or Decimal(0))
-        ),
-        2,
+    balance_entry = balance.get(transaction.currency, Decimal(0)) - Decimal(
+        (transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0))
+        - Decimal(transaction.cash_flow or Decimal(0))
+        - Decimal(transaction.commission or Decimal(0))
     )
+
+    balance[transaction.currency] = round(balance_entry, 2)
 
     if transaction.quantity:
         transaction_data["value"] = currency_format(
@@ -187,7 +185,7 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
 def _process_fx_transaction(transaction, balance, number_of_digits):
     """Process an FX transaction and update balances."""
     transaction_data = {
-        "id": transaction.id,
+        "id": f"fx_{transaction.id}",
         "transaction_type": "fx",
         "type": "FX",
         "from_cur": transaction.from_currency,

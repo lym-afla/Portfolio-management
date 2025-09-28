@@ -33,11 +33,11 @@ afterAll(() => {
 
 describe('TransactionImportDialog', () => {
   let wrapper
-  
+
   beforeEach(() => {
     // Reset API mocks
     jest.clearAllMocks()
-    
+
     // Mock API responses
     getBrokersWithTokens.mockResolvedValue([
       { id: 1, name: 'Tinkoff Broker' },
@@ -90,12 +90,12 @@ describe('TransactionImportDialog', () => {
   it('loads connected brokers on mount', async () => {
     // Wait for mounted hook to complete
     await wrapper.vm.$nextTick()
-    
+
     // Verify that getBrokersWithTokens was called
     expect(getBrokersWithTokens).toHaveBeenCalled()
-    
+
     // Verify that brokers were loaded into the component
-    expect(wrapper.vm.connectedBrokerAccounts).toHaveLength(2)
+    expect(wrapper.vm.connectedBrokers).toHaveLength(2)
     expect(wrapper.vm.hasConnectedBrokers).toBe(true)
   })
 
@@ -109,7 +109,7 @@ describe('TransactionImportDialog', () => {
     // Test File Import selection
     await wrapper.vm.selectMethod('file')
     expect(wrapper.vm.importMethod).toBe('file')
-    
+
     await wrapper.vm.confirmMethod()
     expect(wrapper.vm.importMethodSelected).toBe(true)
 
@@ -118,7 +118,7 @@ describe('TransactionImportDialog', () => {
     expect(wrapper.vm.importMethod).toBe(null)
     expect(wrapper.vm.importMethodSelected).toBe(false)
     // Test API Import selection
-    wrapper.vm.connectedBrokerAccounts = [
+    wrapper.vm.connectedBrokers = [
       { id: 1, name: 'Test Broker' }
     ]
     await wrapper.vm.$nextTick()
@@ -134,19 +134,19 @@ describe('TransactionImportDialog', () => {
   })
 
   it('disables API import when no brokers are connected', async () => {
-    // Set no connected brokers
-    wrapper.vm.connectedBrokerAccounts = []
+    // Set no connected brokers BEFORE trying to select
+    wrapper.vm.connectedBrokers = []
     await wrapper.vm.$nextTick()
-
-    // Try to select API import method
-    await wrapper.vm.selectMethod('api')
-    
-    // Verify no selection was made
-    expect(wrapper.vm.importMethod).toBe(null)
-    expect(wrapper.vm.importMethodSelected).toBe(false)
 
     // Verify the disabled state through component data
     expect(wrapper.vm.hasConnectedBrokers).toBe(false)
+
+    // Try to select API import method
+    await wrapper.vm.selectMethod('api')
+
+    // Verify no selection was made
+    expect(wrapper.vm.importMethod).toBe(null)
+    expect(wrapper.vm.importMethodSelected).toBe(false)
 
     // Verify tooltip exists
     const tooltip = wrapper.find('.v-tooltip')
@@ -156,14 +156,14 @@ describe('TransactionImportDialog', () => {
   // Add a new test for UI elements
   it('renders import method cards correctly', async () => {
     await wrapper.vm.$nextTick()
-    
+
     const cards = wrapper.findAll('.import-method-card')
     expect(cards.length).toBe(2)
-    
+
     // Check API card (first card)
     const apiCard = cards[0]
     expect(apiCard.find('.v-card-title').text()).toBe('Direct Import')
-    
+
     // Check File card (second card)
     const fileCard = cards[1]
     expect(fileCard.find('.v-card-title').text()).toBe('File Import')
@@ -171,69 +171,70 @@ describe('TransactionImportDialog', () => {
 
   it('validates API import form fields', async () => {
     await wrapper.vm.$nextTick()
-    
+
     // Select API import method
     await wrapper.vm.selectMethod('api')
     await wrapper.vm.confirmMethod()
     await wrapper.vm.$nextTick()
-    
+
     // Initially form should be invalid because no fields are filled
     expect(wrapper.vm.isApiImportValid).toBeFalsy()
-    
+
     // Fill in form fields
-    wrapper.vm.selectedBrokerAccount = { id: 1, name: 'Test Broker' }
+    wrapper.vm.selectedBroker = { id: 1, name: 'Test Broker' }
     wrapper.vm.dateRange = {
       from: '2024-01-01',
       to: '2024-01-31'
     }
     await wrapper.vm.$nextTick()
-    
+
     // Check if form fields are filled correctly
-    expect(wrapper.vm.selectedBrokerAccount).toBeTruthy()
+    expect(wrapper.vm.selectedBroker).toBeTruthy()
     expect(wrapper.vm.dateRange.from).toBe('2024-01-01')
     expect(wrapper.vm.dateRange.to).toBe('2024-01-31')
   })
 
   it('handles back to selection properly', async () => {
     await wrapper.vm.$nextTick()
-    
+
     // Select API import and fill some data
     await wrapper.vm.selectMethod('api')
     await wrapper.vm.confirmMethod()
-    wrapper.vm.selectedBrokerAccount = { id: 1, name: 'Test Broker' }
+    wrapper.vm.selectedBroker = { id: 1, name: 'Test Broker' }
     wrapper.vm.dateRange = {
       from: '2024-01-01',
       to: '2024-01-31'
     }
-    
+
     // Go back to selection
     await wrapper.vm.backToSelection()
-    
+    await wrapper.vm.$nextTick()
+
     // Verify all form data is reset
     expect(wrapper.vm.importMethod).toBe(null)
     expect(wrapper.vm.importMethodSelected).toBe(false)
-    expect(wrapper.vm.selectedBrokerAccount).toBe(null)
+    expect(wrapper.vm.selectedBroker).toBe(null)
     expect(wrapper.vm.dateRange.from).toBe(null)
     expect(wrapper.vm.dateRange.to).toBe(null)
   })
 
   it('shows correct form based on selected import method', async () => {
     await wrapper.vm.$nextTick()
-    
+
     // Select API import
     await wrapper.vm.selectMethod('api')
     await wrapper.vm.confirmMethod()
-    
+
     // Should show API form elements
     expect(wrapper.find('.v-select').exists()).toBe(true)
     expect(wrapper.findAll('.v-text-field').length).toBe(2) // Date range fields
     expect(wrapper.find('.v-file-input').exists()).toBe(false)
-    
+
     // Switch to File import
     await wrapper.vm.backToSelection()
     await wrapper.vm.selectMethod('file')
     await wrapper.vm.confirmMethod()
-    
+
     // Should show File form elements
     expect(wrapper.find('.v-select').exists()).toBe(false)
     expect(wrapper.findAll('.v-text-field').length).toBe(0)
@@ -243,33 +244,34 @@ describe('TransactionImportDialog', () => {
   it('handles dialog close properly', async () => {
     // Verify initial state
     expect(wrapper.vm.dialog).toBe(true)
-    
+
     // Close dialog
     await wrapper.vm.closeDialog()
-    
+    await wrapper.vm.$nextTick()
+
     // Verify dialog is closed and form is reset
     expect(wrapper.vm.dialog).toBe(false)
     expect(wrapper.vm.importMethod).toBe(null)
     expect(wrapper.vm.importMethodSelected).toBe(false)
     expect(wrapper.vm.file).toBe(null)
-    expect(wrapper.vm.selectedBrokerAccount).toBe(null)
+    expect(wrapper.vm.selectedBroker).toBe(null)
     expect(wrapper.vm.dateRange.from).toBe(null)
     expect(wrapper.vm.dateRange.to).toBe(null)
   })
 
   it('disables continue button when no method is selected', async () => {
     await wrapper.vm.$nextTick()
-    
+
     // Initially button should be disabled
     const initialButton = wrapper.find('.v-btn[color="primary"]')
     expect(initialButton.attributes('disabled')).toBe('true')
-    
+
     // Select a method
     await wrapper.vm.selectMethod('file')
     await wrapper.vm.$nextTick()
-    
+
     // Find button again after state change
     const updatedButton = wrapper.find('.v-btn[color="primary"]')
     expect(updatedButton.attributes('disabled')).toBe('false')
   })
-}) 
+})

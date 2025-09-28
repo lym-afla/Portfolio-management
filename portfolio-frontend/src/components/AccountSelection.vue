@@ -102,7 +102,6 @@ export default {
             option.value.id === selected.id
         )
         selectedAccount.value = matchingOption?.value || null
-        store.dispatch('updateSelectedAccount', selectedAccount.value)
       } catch (error) {
         logger.error('Unknown', 'Error fetching accounts:', error)
       }

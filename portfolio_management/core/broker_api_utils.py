@@ -162,7 +162,7 @@ class TinkoffAPI(BrokerAPI):
             with Client(self.token) as client:
                 # Just verify we can access the API
                 client.users.get_info()
-            
+
             return True
 
         except Exception as e:
@@ -195,14 +195,20 @@ class TinkoffAPI(BrokerAPI):
         total_operations = 0  # Move initialization outside try block
 
         try:
-            self.logger.debug(f"Fetching Tinkoff transactions for account {account.id} (native ID: {account.native_id})")
+            self.logger.debug(
+                f"Fetching Tinkoff transactions for account {account.id} "
+                f"(native ID: {account.native_id})"
+            )
 
             if not self.token:
                 raise TinkoffAPIException("Not connected to Tinkoff API")
 
             # Validate that we have a native_id for this account
             if not account.native_id:
-                raise TinkoffAPIException(f"Account {account.id} ({account.name}) does not have a native ID set for Tinkoff API")
+                raise TinkoffAPIException(
+                    f"Account {account.id} ({account.name}) "
+                    "does not have a native ID set for Tinkoff API"
+                )
 
             from_date = (
                 datetime.strptime(date_from, "%Y-%m-%d")
@@ -218,15 +224,21 @@ class TinkoffAPI(BrokerAPI):
                     # First try to get accounts to verify the account ID
                     tinkoff_accounts = client.users.get_accounts()
                     tinkoff_account_ids = [acc.id for acc in tinkoff_accounts.accounts]
-                    
+
                     if account.native_id not in tinkoff_account_ids:
-                        self.logger.error(f"Invalid native_id: {account.native_id} not found in Tinkoff accounts: {tinkoff_account_ids}")
-                        raise TinkoffAPIException(f"Account with native ID {account.native_id} not found in Tinkoff. Available accounts: {', '.join(tinkoff_account_ids)}")
-                    
+                        self.logger.error(
+                            f"Invalid native_id: {account.native_id} "
+                            f"not found in Tinkoff accounts: {tinkoff_account_ids}"
+                        )
+                        raise TinkoffAPIException(
+                            f"Account with native ID {account.native_id} not found in Tinkoff. "
+                            f"Available accounts: {', '.join(tinkoff_account_ids)}"
+                        )
+
                 except Exception as e:
                     self.logger.error(f"Error verifying account: {str(e)}")
                     raise TinkoffAPIException(f"Error verifying account: {str(e)}")
-                
+
                 cursor = ""
 
                 while True:
@@ -259,6 +271,14 @@ class TinkoffAPI(BrokerAPI):
 
                                 if transaction_data:
                                     yield transaction_data
+                                else:
+                                    self.logger.warning(
+                                        f"Opperation {operation.id} is unrecognized"
+                                    )
+                                    yield {
+                                        "unrecognized_operation": True,
+                                        "data": operation,
+                                    }
 
                             except Exception as e:
                                 self.logger.error(

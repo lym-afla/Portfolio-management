@@ -220,7 +220,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 # Handle the request to use existing matches from frontend
                 data = text_data_json.get("data", {})
                 pairs = data.get("pairs", [])
-                
+
                 logger.debug(f"Received use_existing_matches with pairs: {pairs}")
 
                 if not pairs:
@@ -437,25 +437,31 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
                 # Update native_id in the database account
                 try:
+
                     @database_sync_to_async
                     def update_account_native_id(db_account_id, tinkoff_account_id):
                         try:
                             account = Accounts.objects.get(id=db_account_id)
                             account.native_id = tinkoff_account_id
-                            account.save(update_fields=['native_id'])
-                            logger.info(f"Updated native_id for account {account.name} (ID: {account.id}) to {tinkoff_account_id}")
+                            account.save(update_fields=["native_id"])
+                            logger.info(
+                                f"Updated native_id for account {account.name} (ID: {account.id})"
+                                f" to {tinkoff_account_id}"
+                            )
                             return account
                         except Accounts.DoesNotExist:
                             logger.error(f"Account with ID {db_account_id} not found")
                             return None
-                    
+
                     # Update native_id
                     account = await update_account_native_id(db_account_id, tinkoff_account_id)
                     if not account:
                         logger.error(f"Failed to update native_id for account ID {db_account_id}")
                         continue
                 except Exception as e:
-                    logger.error(f"Error updating native_id for account ID {db_account_id}: {str(e)}")
+                    logger.error(
+                        f"Error updating native_id for account ID {db_account_id}: {str(e)}"
+                    )
                     continue
 
                 # Update progress
@@ -532,7 +538,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         try:
             async for update in self.import_generator:
                 logger.debug(f"[process_import] Processing update: {update}")
-                
+
                 if self.stop_event.is_set():
                     break
 
@@ -551,16 +557,37 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         )
                     )
                 elif update["status"] == "transaction_confirmation":
-                    logger.debug(f"[process_import] Handling transaction confirmation: {update['data']}")
+                    logger.debug(
+                        f"[process_import] Handling transaction confirmation: {update['data']}"
+                    )
                     try:
                         await self.handle_transaction_confirmation(update["data"])
-                        logger.debug(f"[process_import] Transaction confirmation handled successfully")
+                        logger.debug(
+                            "[process_import] Transaction confirmation handled successfully"
+                        )
                     except Exception as e:
                         logger.error(f"Error in transaction confirmation: {str(e)}")
                         logger.error(f"Error type: {type(e)}")
                         import traceback
+
                         logger.error(f"Full traceback: {traceback.format_exc()}")
                         raise
+                elif update.get("status") == "unrecognized_operation":
+                    logger.debug(f"Unrecognized operation: {update['transaction_data']}")
+                    self.transactions_skipped += 1
+                    logger.debug("Transaction skipped due to unrecognized operation")
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_update",
+                                "data": {
+                                    "status": "unrecognized_operation",
+                                    "transaction_data": update["transaction_data"],
+                                },
+                            }
+                        )
+                    )
+                    continue
                 elif update.get("status") == "security_mapping":
                     logger.debug(
                         f"Security mapping required for "
@@ -582,13 +609,21 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                                 # Update the transaction data with the mapped security
                                 transaction_to_create["security"] = security
                                 try:
-                                    logger.debug(f"Handling transaction confirmation for: {transaction_to_create}")
-                                    await self.handle_transaction_confirmation(transaction_to_create)
+                                    logger.debug(
+                                        "Handling transaction confirmation for: "
+                                        f"{transaction_to_create}"
+                                    )
+                                    await self.handle_transaction_confirmation(
+                                        transaction_to_create
+                                    )
                                     continue  # Skip the rest of the loop iteration
                                 except Exception as e:
-                                    logger.error(f"Error in handle_transaction_confirmation: {str(e)}")
+                                    logger.error(
+                                        f"Error in handle_transaction_confirmation: {str(e)}"
+                                    )
                                     logger.error(f"Error type: {type(e)}")
                                     import traceback
+
                                     logger.error(f"Full traceback: {traceback.format_exc()}")
                                     raise
                     else:
@@ -672,7 +707,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     import_results = update.get("data")
                     # logger.debug(f"[process_import] Import results: {update}")
                 else:
-                    logger.debug(f"[process_import] Unhandled update status: {update.get('status')}")
+                    logger.debug(
+                        f"[process_import] Unhandled update status: {update.get('status')}"
+                    )
 
             logger.debug("[process_import] Finished processing all updates from import generator")
             # After processing all transactions, save confirmed transactions
@@ -692,20 +729,20 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     import_results["skippedTransactions"] += self.transactions_skipped
                     import_results["duplicateTransactions"] += self.duplicate_count
                     logger.debug(f"Import results: {import_results}")
-                    
+
                     # Add detailed logging before save
                     logger.debug(f"About to save {len(self.transactions_to_create)} transactions")
                     for i, tx in enumerate(self.transactions_to_create):
-                        logger.debug(f"Transaction {i+1} to save: {tx}")
+                        logger.debug(f"Transaction {i + 1} to save: {tx}")
                         # Check for problematic None values
                         for key, value in tx.items():
                             if value is None:
                                 logger.debug(f"  - {key}: None")
-                    
+
                     logger.debug("Calling save_transactions...")
                     await self.view_set.save_transactions(self.transactions_to_create)
                     logger.debug("save_transactions completed successfully")
-                    
+
                     await self.send(
                         text_data=json.dumps(
                             {
@@ -759,15 +796,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error in process_import: {str(e)}")
             logger.error(f"Error type: {type(e)}")
-            logger.error(f"Error occurred at process_import level")
+            logger.error("Error occurred at process_import level")
             import traceback
+
             logger.error(f"Full traceback: {traceback.format_exc()}")
-            
+
             # Log current state
             logger.error(f"transactions_to_create count: {len(self.transactions_to_create)}")
             if self.transactions_to_create:
                 logger.error(f"transactions_to_create: {self.transactions_to_create}")
-            
+
             await self.send(
                 text_data=json.dumps(
                     {
@@ -838,7 +876,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             serialized = data.copy()  # Create a copy
 
             # Add total value to show to the user for confirmation
-            if "price" in serialized and "quantity" in serialized:
+            if (
+                "price" in serialized
+                and "quantity" in serialized
+                and serialized["price"] is not None
+                and serialized["quantity"] is not None
+            ):
                 serialized["total"] = round(serialized["quantity"] * serialized["price"], 2)
 
             for key, value in serialized.items():
@@ -867,7 +910,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         """
         try:
             logger.debug(f"Creating new account '{name}' for tinkoff account {tinkoff_account}")
-            
+
             # Get Tinkoff account ID
             tinkoff_account_id = tinkoff_account.get("id")
             if not tinkoff_account_id:
@@ -889,16 +932,19 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             def create_account():
                 broker = Brokers.objects.get(id=broker_id)
                 account = Accounts.objects.create(
-                    name=name, 
-                    broker=broker, 
-                    investor=self.user, 
+                    name=name,
+                    broker=broker,
+                    investor=self.user,
                     comment=comment,
-                    native_id=tinkoff_account_id  # Set native_id when creating the account
+                    native_id=tinkoff_account_id,  # Set native_id when creating the account
                 )
                 return account
 
             new_account = await create_account()
-            logger.debug(f"Created new account with ID {new_account.id} and native ID {new_account.native_id}")
+            logger.debug(
+                f"Created new account with ID {new_account.id} "
+                f"and native ID {new_account.native_id}"
+            )
 
             # Update progress
             await self.send_message(

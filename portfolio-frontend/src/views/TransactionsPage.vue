@@ -459,14 +459,25 @@ export default {
       showFXTransactionDialog.value = true
     }
 
+    const extractTransactionId = (prefixedId) => {
+      // Extract the actual database ID from prefixed format (e.g., "regular_5" -> "5")
+      if (prefixedId.startsWith('regular_')) {
+        return prefixedId.replace('regular_', '')
+      } else if (prefixedId.startsWith('fx_')) {
+        return prefixedId.replace('fx_', '')
+      }
+      return prefixedId // fallback for backwards compatibility
+    }
+
     const editTransaction = async (item) => {
       logger.log('Unknown', 'Editing item:', item)
       try {
+        const actualId = extractTransactionId(item.id)
         let transactionDetails
         if (item.transaction_type === 'regular') {
-          transactionDetails = await getTransactionDetails(item.id)
+          transactionDetails = await getTransactionDetails(actualId)
         } else if (item.transaction_type === 'fx') {
-          transactionDetails = await getFXTransactionDetails(item.id)
+          transactionDetails = await getFXTransactionDetails(actualId)
         }
         editedTransaction.value = {
           ...transactionDetails,
@@ -496,7 +507,8 @@ export default {
     const deleteTransactionConfirm = async () => {
       if (transactionToDelete.value) {
         try {
-          await deleteTransaction(transactionToDelete.value.id)
+          const actualId = extractTransactionId(transactionToDelete.value.id)
+          await deleteTransaction(actualId)
           await fetchTransactions()
         } catch (error) {
           handleApiError(error)
@@ -555,6 +567,7 @@ export default {
       showImportDialog,
       openAddTransactionDialog,
       openAddFXTransactionDialog,
+      extractTransactionId,
       editTransaction,
       processDeleteTransaction,
       closeDeleteDialog,

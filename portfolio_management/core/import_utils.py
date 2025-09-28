@@ -1115,7 +1115,12 @@ async def _process_galaxy_securities(df, user, account):
 
                 except Assets.DoesNotExist:
                     # Try to create security using MICEX data
-                    security = await create_security_from_micex(security_name, isin, user, instrument_type=InstrumentType.INSTRUMENT_TYPE_SHARE)
+                    security = await create_security_from_micex(
+                        security_name,
+                        isin,
+                        user,
+                        instrument_type=InstrumentType.INSTRUMENT_TYPE_SHARE,
+                    )
                     if security:
                         security_columns.append(i)
                         yield {
@@ -1205,10 +1210,10 @@ async def create_security_from_micex(security_name, isin, user, instrument_type)
             asset_type = ASSET_TYPE_CHOICES[0][0]
             exposure = EXPOSURE_CHOICES[0][0]
         elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
-            asset_type = ASSET_TYPE_CHOICES[1][0]
+            asset_type = ASSET_TYPE_CHOICES[2][0]
             exposure = EXPOSURE_CHOICES[0][0]
         elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
-            asset_type = ASSET_TYPE_CHOICES[2][0]
+            asset_type = ASSET_TYPE_CHOICES[1][0]
             exposure = EXPOSURE_CHOICES[1][0]
         else:
             asset_type = None

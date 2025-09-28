@@ -125,7 +125,12 @@ async def test_find_or_create_security(mock_create_security, mock_get_security, 
 
     # Test case 1: Security exists with relationships
     asset = await Assets.objects.acreate(
-        type="Stock", ISIN="TEST123456789", name="Test Stock", currency="USD", exposure="Equity", instrument_type="stock"
+        type="Stock",
+        ISIN="TEST123456789",
+        name="Test Stock",
+        currency="USD",
+        exposure="Equity",
+        instrument_type="stock",
     )
     await asset.investors.aset([user])
 
@@ -143,13 +148,19 @@ async def test_find_or_create_security(mock_create_security, mock_get_security, 
     # Test case 3: Security doesn't exist, create new
     await asset.adelete()
     mock_create_security.return_value = await Assets.objects.acreate(
-        type="Stock", ISIN="NEW123456789", name="New Stock", currency="USD", exposure="Equity", instrument_type="stock"
+        type="Stock",
+        ISIN="NEW123456789",
+        name="New Stock",
+        currency="USD",
+        exposure="Equity",
+        instrument_type="stock",
     )
 
     security, status = await _find_or_create_security("test-uid", user)
     assert status == "created_new"
     assert security.ISIN == "NEW123456789"
     assert security.instrument_type == "stock"
+
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio

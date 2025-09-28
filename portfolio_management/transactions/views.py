@@ -39,35 +39,34 @@ logger = logging.getLogger(__name__)
 def ensure_account_native_ids(user, broker_api):
     """
     Ensures that all Tinkoff accounts have their native_id set properly.
-    
+
     Args:
         user: The user whose accounts should be synchronized
         broker_api: An instance of the TinkoffAPI class
-        
+
     Returns:
         dict: A dictionary mapping Tinkoff account IDs to Accounts model instances
     """
     from tinkoff.invest import Client
-    
+
     # Get the token
     try:
         with Client(broker_api.token) as client:
             # Get all Tinkoff accounts
             tinkoff_accounts = client.users.get_accounts()
-            
+
             # Create a mapping of account names to their IDs
             tinkoff_account_map = {
                 account.name: account.id for account in tinkoff_accounts.accounts
             }
-            
+
             # Get all user's broker accounts for Tinkoff
             tinkoff_brokers = [
-                broker for broker in user.brokers.all() 
-                if broker.tinkoff_tokens.exists()
+                broker for broker in user.brokers.all() if broker.tinkoff_tokens.exists()
             ]
-            
+
             updated_accounts = {}
-            
+
             # Update each account's native_id if needed
             for broker in tinkoff_brokers:
                 for account in broker.accounts.all():
@@ -75,21 +74,26 @@ def ensure_account_native_ids(user, broker_api):
                     if account.native_id and account.is_active:
                         updated_accounts[account.native_id] = account
                         continue
-                    
+
                     # Try to find a matching account by name
                     if account.name in tinkoff_account_map:
                         account.native_id = tinkoff_account_map[account.name]
-                        account.save(update_fields=['native_id'])
-                        logger.info(f"Updated native_id for account {account.name} to {account.native_id}")
+                        account.save(update_fields=["native_id"])
+                        logger.info(
+                            f"Updated native_id for account {account.name} to {account.native_id}"
+                        )
                         updated_accounts[account.native_id] = account
-            
+
             # Log accounts that weren't matched
             for tinkoff_name, tinkoff_id in tinkoff_account_map.items():
                 if tinkoff_id not in updated_accounts.values():
-                    logger.warning(f"Tinkoff account '{tinkoff_name}' (ID: {tinkoff_id}) not matched to any database account")
-            
+                    logger.warning(
+                        f"Tinkoff account '{tinkoff_name}' (ID: {tinkoff_id})"
+                        " not matched to any database account"
+                    )
+
             return updated_accounts
-            
+
     except Exception as e:
         logger.error(f"Error synchronizing Tinkoff account IDs: {str(e)}")
         return {}
@@ -440,16 +444,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def save_transactions(self, transactions_to_create):
         """Save transactions in bulk"""
         logger.debug(f"About to save {len(transactions_to_create)} transactions")
-        
+
         # Log each transaction data for debugging
         for i, data in enumerate(transactions_to_create):
-            logger.debug(f"Transaction {i+1}: {data}")
-            
+            logger.debug(f"Transaction {i + 1}: {data}")
+
             # Check for None values that might cause issues
             for key, value in data.items():
-                if value is None and key in ['quantity', 'price']:
-                    logger.warning(f"Transaction {i+1} has None value for {key}")
-        
+                if value is None and key in ["quantity", "price"]:
+                    logger.warning(f"Transaction {i + 1} has None value for {key}")
+
         try:
             with transaction.atomic():
                 created_transactions = []
@@ -457,15 +461,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     logger.debug(f"Creating transaction with data: {data}")
                     created_transaction = Transactions(**data)
                     created_transactions.append(created_transaction)
-                
+
                 # Use bulk_create for efficiency
                 Transactions.objects.bulk_create(created_transactions)
                 logger.debug(f"Successfully saved {len(created_transactions)} transactions")
-                
+
         except Exception as e:
             logger.error(f"Error saving transactions: {str(e)}")
             logger.error(f"Error type: {type(e)}")
             import traceback
+
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
@@ -522,21 +527,24 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 if not connected:
                     yield {"status": "critical_error", "message": "Failed to connect to broker API"}
                     return
-                
+
                 # For Tinkoff API, ensure account native IDs are synchronized
-                if broker.name.lower() == 'tinkoff' or 'тинькофф' in broker.name.lower():
+                if broker.name.lower() == "tinkoff" or "тинькофф" in broker.name.lower():
                     yield {"status": "progress", "message": "Synchronizing Tinkoff account IDs..."}
                     await ensure_account_native_ids(user, broker_api)
-                    
+
                     # Refetch account to get updated native_id
                     account = await get_account(broker_account_id)
                     if not account.native_id:
                         yield {
-                            "status": "critical_error", 
-                            "message": f"Could not find matching Tinkoff account ID for {account.name}. Please check account names match exactly with those in Tinkoff."
+                            "status": "critical_error",
+                            "message": (
+                                f"Could not find matching Tinkoff account ID for {account.name}. "
+                                "Please check account names match exactly with those in Tinkoff."
+                            ),
                         }
                         return
-                    
+
             except TinkoffAPIException as e:
                 yield {
                     "status": "critical_error",
@@ -576,6 +584,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                     "symbol": trans.get("symbol"),
                                 },
                                 "transaction_data": transaction_data,
+                            }
+                            continue
+
+                        if trans.get("unrecognized_operation"):
+                            yield {
+                                "status": "unrecognized_operation",
+                                "transaction_data": trans.get("data"),
                             }
                             continue
 
