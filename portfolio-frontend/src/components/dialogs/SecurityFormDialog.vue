@@ -194,7 +194,9 @@ export default {
           emit('security-updated', response)
         } else {
           response = await createSecurity(form.value)
+          logger.log('Unknown', 'createSecurity response:', response)
           if (props.isImport) {
+            logger.log('Unknown', 'Emitting security-added with:', { id: response.id, name: response.name })
             emit('security-added', { id: response.id, name: response.name })
           } else {
             emit('security-added', response)

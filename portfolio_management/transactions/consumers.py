@@ -573,33 +573,35 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         logger.error(f"Full traceback: {traceback.format_exc()}")
                         raise
                 elif update.get("status") == "unrecognized_operation":
-                    logger.debug(f"Unrecognized operation: {update['transaction_data']}")
                     self.transactions_skipped += 1
-                    logger.debug("Transaction skipped due to unrecognized operation")
-                    await self.send(
-                        text_data=json.dumps(
-                            {
-                                "type": "import_update",
-                                "data": {
-                                    "status": "unrecognized_operation",
-                                    "transaction_data": update["transaction_data"],
-                                },
-                            }
+                    if "комиссия" in update.get("transaction_data").description.lower():
+                        logger.debug("Transaction skipped due to separatly logged commission")
+                    else:
+                        logger.debug("Transaction skipped due to unrecognized operation")
+                        await self.send(
+                            text_data=json.dumps(
+                                {
+                                    "type": "import_update",
+                                    "data": {
+                                        "status": "unrecognized_operation",
+                                        "transaction_data": update["transaction_data"],
+                                    },
+                                }
+                            )
                         )
-                    )
                     continue
                 elif update.get("status") == "security_mapping":
                     logger.debug(
                         f"Security mapping required for "
-                        f"{update.get('mapping_data').get('stock_description')}"
+                        f"{update.get('mapping_data').get('security_description')}"
                     )
 
                     transaction_to_create = update["transaction_data"]
                     logger.debug(f"Transaction to create: {transaction_to_create}")
 
                     security_id = None  # Initialize security_id to None
-                    if security_cache[update["mapping_data"]["stock_description"]] is not None:
-                        security_id = security_cache[update["mapping_data"]["stock_description"]]
+                    if security_cache[update["mapping_data"]["security_description"]] is not None:
+                        security_id = security_cache[update["mapping_data"]["security_description"]]
                         logger.debug(f"Security found in cache {security_id}")
 
                         # If confirm_every is True, ask for transaction confirmation
@@ -652,7 +654,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         elif mapping_response.get("action") == "map":
                             security_id = mapping_response.get("security_id")
                             security_cache[
-                                update["mapping_data"]["stock_description"]
+                                update["mapping_data"]["security_description"]
                             ] = security_id
                         else:
                             logger.error(

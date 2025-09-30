@@ -44,7 +44,7 @@
           />
         </template>
 
-        <template v-if="extended">
+        <div v-if="extended">
           <v-list-item
             v-for="subItem in databaseSubItems"
             :key="subItem.title"
@@ -54,7 +54,7 @@
             :active="isActive(subItem.to)"
             @click="goToPage(subItem.to)"
           />
-        </template>
+        </div>
       </v-list-group>
     </v-list>
 

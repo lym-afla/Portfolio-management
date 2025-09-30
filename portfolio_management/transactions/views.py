@@ -442,7 +442,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @database_sync_to_async
     def save_transactions(self, transactions_to_create):
-        """Save transactions in bulk"""
+        """Save transactions in bulk - handles both regular Transactions and FX Transactions"""
         logger.debug(f"About to save {len(transactions_to_create)} transactions")
 
         # Log each transaction data for debugging
@@ -456,15 +456,54 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
-                created_transactions = []
+                regular_transactions = []
+                fx_transactions = []
+
                 for data in transactions_to_create:
                     logger.debug(f"Creating transaction with data: {data}")
-                    created_transaction = Transactions(**data)
-                    created_transactions.append(created_transaction)
+
+                    # Check if this is an FX transaction
+                    is_fx = data.pop("is_fx", False)
+
+                    if is_fx:
+                        # Create FXTransaction
+
+                        # Prepare FX-specific data
+                        fx_data = {
+                            "investor": data["investor"],
+                            "account": data["account"],
+                            "date": data["date"],
+                            "from_currency": data.get("from_currency"),
+                            "to_currency": data.get("to_currency"),
+                            "from_amount": data.get("from_amount"),
+                            "to_amount": data.get("to_amount"),
+                            "exchange_rate": data.get("exchange_rate"),
+                            "commission": data.get("commission"),
+                            "commission_currency": data.get("commission_currency"),
+                            "comment": data.get("comment", ""),
+                        }
+                        fx_transaction = FXTransaction(**fx_data)
+                        fx_transactions.append(fx_transaction)
+                        logger.debug(f"Created FX transaction: {fx_data}")
+                    else:
+                        # Create regular Transaction
+                        created_transaction = Transactions(**data)
+                        regular_transactions.append(created_transaction)
 
                 # Use bulk_create for efficiency
-                Transactions.objects.bulk_create(created_transactions)
-                logger.debug(f"Successfully saved {len(created_transactions)} transactions")
+                if regular_transactions:
+                    Transactions.objects.bulk_create(regular_transactions)
+                    logger.debug(
+                        f"Successfully saved {len(regular_transactions)} regular transactions"
+                    )
+
+                if fx_transactions:
+                    FXTransaction.objects.bulk_create(fx_transactions)
+                    logger.debug(f"Successfully saved {len(fx_transactions)} FX transactions")
+
+                logger.debug(
+                    f"Total transactions saved: {len(regular_transactions) + len(fx_transactions)}"
+                )
 
         except Exception as e:
             logger.error(f"Error saving transactions: {str(e)}")
@@ -559,6 +598,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 ):
                     stats["totalTransactions"] += 1
 
+                    if trans.get("unrecognized_operation"):
+                        yield {
+                            "status": "unrecognized_operation",
+                            "transaction_data": trans.get("data"),
+                        }
+                        continue
+
                     try:
                         # Format transaction data
                         transaction_data = {
@@ -579,18 +625,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             yield {
                                 "status": "security_mapping",
                                 "mapping_data": {
-                                    "stock_description": trans["security_description"],
+                                    "security_description": trans["security_description"],
                                     "isin": trans.get("isin"),
                                     "symbol": trans.get("symbol"),
                                 },
                                 "transaction_data": transaction_data,
-                            }
-                            continue
-
-                        if trans.get("unrecognized_operation"):
-                            yield {
-                                "status": "unrecognized_operation",
-                                "transaction_data": trans.get("data"),
                             }
                             continue
 

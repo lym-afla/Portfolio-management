@@ -2,7 +2,7 @@ import logging
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import Client, OperationType
+from tinkoff.invest import Client, InstrumentType, OperationType
 from tinkoff.invest.exceptions import RequestError
 from tinkoff.invest.utils import quotation_to_decimal
 
@@ -123,7 +123,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        dict: Transaction data ready for creating a Transaction instance
+        dict: Transaction data ready for creating a Transaction or FXTransaction instance
     """
     # Initialize base transaction data
     transaction_data = {
@@ -133,6 +133,83 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         "comment": operation.description,
     }
 
+    # Check if this is an FX transaction
+    is_fx_transaction = (
+        operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY
+        and operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]
+    )
+
+    logger.debug(f"==== ==== ==== ==== Operation: {operation}")
+    logger.debug(operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY)
+    logger.debug(
+        operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]
+    )
+    logger.debug(f"==== ==== ==== ==== is_fx_transaction: {is_fx_transaction}")
+
+    if is_fx_transaction:
+        # This is an FX transaction
+        transaction_data["is_fx"] = True
+
+        # Extract currency being traded from operation name or instrument_uid
+        # The 'name' field contains the currency name (e.g., "Доллар США" for USD)
+        currency_map = {
+            "Доллар США": "USD",
+            "Евро": "EUR",
+            "Фунт стерлингов": "GBP",
+            "Швейцарский франк": "CHF",
+            "Юань": "CNY",
+        }
+
+        to_currency = None
+        # Try to extract from name
+        for key, value in currency_map.items():
+            if key in operation.name:
+                to_currency = value
+                break
+
+        # Fallback: try to get from instrument details
+        if not to_currency and operation.instrument_uid:
+            name, isin, instrument_type = await get_security_by_uid(
+                operation.instrument_uid, investor
+            )
+            for key, value in currency_map.items():
+                if name and key in name:
+                    to_currency = value
+                    break
+
+        # Determine from_currency and to_currency based on operation type
+        if operation.type == OperationType.OPERATION_TYPE_BUY:
+            # Buying foreign currency, paying with account currency
+            transaction_data["from_currency"] = operation.payment.currency.upper()
+            transaction_data["to_currency"] = to_currency or "USD"  # Default to USD if unknown
+            transaction_data["from_amount"] = abs(quotation_to_decimal(operation.payment))
+            transaction_data["to_amount"] = Decimal(str(operation.quantity))
+        else:  # SELL
+            # Selling foreign currency, receiving account currency
+            transaction_data["from_currency"] = to_currency or "USD"
+            transaction_data["to_currency"] = operation.payment.currency.upper()
+            transaction_data["from_amount"] = Decimal(str(operation.quantity))
+            transaction_data["to_amount"] = abs(quotation_to_decimal(operation.payment))
+
+        # Calculate exchange rate
+        if transaction_data.get("from_amount") and transaction_data.get("to_amount"):
+            transaction_data["exchange_rate"] = (
+                transaction_data["from_amount"] / transaction_data["to_amount"]
+            )
+
+        # Handle commission
+        if operation.commission and operation.commission.units != 0:
+            transaction_data["commission"] = abs(quotation_to_decimal(operation.commission))
+            transaction_data["commission_currency"] = operation.commission.currency.upper()
+
+        logger.debug(
+            f"FX transaction detected: {transaction_data['from_currency']} "
+            f"-> {transaction_data['to_currency']}"
+        )
+
+        return transaction_data
+
+    # Regular (non-FX) transaction handling
     # Map operation type
     operation_type_mapping = {
         OperationType.OPERATION_TYPE_BUY: TRANSACTION_TYPE_BUY,
@@ -167,12 +244,15 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
             name, isin, instrument_type = await get_security_by_uid(
                 operation.instrument_uid, investor
             )
+            # Mark this transaction as needing security mapping
+            transaction_data["needs_security_mapping"] = True
             if name and isin:
-                # Mark this transaction as needing security mapping
-                transaction_data["needs_security_mapping"] = True
                 transaction_data["security_description"] = name
                 transaction_data["isin"] = isin
                 transaction_data["instrument_type"] = instrument_type
+            else:
+                transaction_data["security_description"] = operation.name
+                transaction_data["instrument_type"] = operation.instrument_type
             transaction_data["security"] = None
 
     # Handle quantity and price for buy/sell operations

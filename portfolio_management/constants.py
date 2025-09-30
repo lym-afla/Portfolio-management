@@ -1,6 +1,13 @@
 from tinkoff.invest import InstrumentType, OperationType
 
-CURRENCY_CHOICES = (("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr"))
+CURRENCY_CHOICES = (
+    ("USD", "$"),
+    ("EUR", "€"),
+    ("GBP", "£"),
+    ("RUB", "₽"),
+    ("CHF", "Fr"),
+    ("CNY", "¥"),
+)
 
 # Account selection types
 ACCOUNT_TYPE_ALL = "all"

@@ -35,6 +35,24 @@
           <v-icon color="primary">mdi-magnify</v-icon>
         </template>
       </v-autocomplete>
+
+      <v-divider class="my-4" />
+
+      <v-alert type="info" variant="tonal" class="mb-3">
+        <div class="text-body-2">
+          Can't find the security? Create a new one.
+        </div>
+      </v-alert>
+
+      <v-btn
+        color="primary"
+        variant="outlined"
+        block
+        prepend-icon="mdi-plus"
+        @click="createNewSecurity"
+      >
+        Create New Security
+      </v-btn>
     </v-card-text>
   </v-card>
 </template>
@@ -54,7 +72,7 @@ export default {
     security: String,
     bestMatch: Object,
   },
-  emits: ['security-selected'],
+  emits: ['security-selected', 'create-security'],
   setup(props, { emit }) {
     logger.log('Unknown', 'SecurityMappingDialog setup called')
 
@@ -74,13 +92,17 @@ export default {
             id: security.id,
             name: security.name,
           }))
-          selectedSecurity.value = props.bestMatch.match_id
-          console.log(
-            'Assigning value to Select',
-            props.bestMatch.match_id,
-            props.bestMatch.match_name,
-            selectedSecurity.value
-          )
+          // Only set selectedSecurity if bestMatch exists
+          if (props.bestMatch && props.bestMatch.match_id) {
+            selectedSecurity.value = props.bestMatch.match_id
+            logger.log(
+              'Unknown',
+              'Assigning value to Select',
+              props.bestMatch.match_id,
+              props.bestMatch.match_name,
+              selectedSecurity.value
+            )
+          }
         } else {
           logger.error('Unknown', 'Fetched securities is not an array:', securities)
           securityError.value = 'Invalid data received from server'
@@ -91,6 +113,11 @@ export default {
       } finally {
         loadingSecurities.value = false
       }
+    }
+
+    const createNewSecurity = () => {
+      logger.log('Unknown', 'Creating new security for:', props.security)
+      emit('create-security')
     }
 
     // watch(() => props.accountId, (newValue) => {
@@ -114,6 +141,7 @@ export default {
       securityOptions,
       loadingSecurities,
       securityError,
+      createNewSecurity,
     }
   },
 }

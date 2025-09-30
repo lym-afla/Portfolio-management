@@ -104,15 +104,15 @@ def read_excel_file(file_path):
 
 
 @database_sync_to_async
-def _find_security(stock_description, investor):
+def _find_security(security_description, investor):
     securities = list(Assets.objects.filter(investors=investor))
 
     # Check for exact match
-    security = next((s for s in securities if s.name == stock_description), None)
+    security = next((s for s in securities if s.name == security_description), None)
 
     # If no exact match, look for best match
     security_names = [security.name for security in securities]
-    best_match = process.extractOne(stock_description, security_names)
+    best_match = process.extractOne(security_description, security_names)
 
     if best_match:
         match_name, match_score = best_match
@@ -141,7 +141,7 @@ async def _process_transaction_row(row, investor, account, currency):
 
         transaction_date = pd.to_datetime(row["Date"], errors="coerce").date()
         description = row["Description"]
-        stock_description = row["Stock Description"]
+        security_description = row["Stock Description"]
         price = Decimal(str(row["Price"])) if not pd.isna(row["Price"]) else None
         debit = Decimal(str(row["Debit"])) if not pd.isna(row["Debit"]) else Decimal("0")
         credit = Decimal(str(row["Credit"])) if not pd.isna(row["Credit"]) else Decimal("0")
@@ -179,11 +179,11 @@ async def _process_transaction_row(row, investor, account, currency):
             transaction_type = TRANSACTION_TYPE_CASH_OUT
         elif any(keyword in description for keyword in DIVIDEND_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_DIVIDEND
-            security, best_match = await _find_security(stock_description, investor)
+            security, best_match = await _find_security(security_description, investor)
         elif any(keyword in description for keyword in INTEREST_INCOME_DESCRIPTIONS):
             transaction_type = TRANSACTION_TYPE_INTEREST_INCOME
-        elif pd.notna(stock_description):
-            security, best_match = await _find_security(stock_description, investor)
+        elif pd.notna(security_description):
+            security, best_match = await _find_security(security_description, investor)
             if debit > 0:
                 transaction_type = TRANSACTION_TYPE_BUY
             elif credit > 0:
@@ -233,7 +233,10 @@ async def _process_transaction_row(row, investor, account, currency):
             return None, "duplicate"
 
         if security is None and transaction_type not in NON_SECURITY_RELATED_TRANSACTION_TYPES:
-            mapping_details = {"stock_description": stock_description, "best_match": best_match}
+            mapping_details = {
+                "security_description": security_description,
+                "best_match": best_match,
+            }
             logger.debug(f"Mapping required for transaction: {transaction_data}")
             return {
                 "mapping_details": mapping_details,

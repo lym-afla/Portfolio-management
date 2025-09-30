@@ -265,6 +265,7 @@
           :security="securityToMap"
           :bestMatch="bestMatch"
           @security-selected="handleSecuritySelected"
+          @create-security="handleCreateSecurityFromMapping"
         />
 
         <TransactionImportProgress
@@ -533,6 +534,7 @@ export default {
     const bestMatch = ref(null)
     const currentTransaction = ref({})
     const selectedSecurityId = ref(null)
+    const currentMappingData = ref(null)
 
     const showSuccessDialog = ref(false)
     const importStats = ref({
@@ -714,12 +716,12 @@ export default {
       ) {
         // Check if this is a security error that we can handle
         const isSecurityError = message.data.error && (
-          message.data.error.includes('Security not found') || 
+          message.data.error.includes('Security not found') ||
           message.data.error.includes('Could not match security') ||
-          message.data.error.includes('unsupported operand type') || 
+          message.data.error.includes('unsupported operand type') ||
           message.data.error.includes('NoneType')
         );
-        
+
         if (isSecurityError) {
           // Handle security error but don't disconnect
           handleImportError(message.data.error);
@@ -750,18 +752,18 @@ export default {
       } else if (message.type === 'account_matching_required') {
         // Handle the data correctly from backend message format
         logger.log('TransactionImportDialog', 'Received account_matching_required with data:', message.data)
-        
+
         selectedBroker.value = {
           id: message.data.broker_id,
           name: message.data.broker_name,
         }
         tinkoffAccounts.value = message.data.unmatched_tinkoff
         dbAccounts.value = message.data.unmatched_db
-        
+
         // Transform matched_pairs from an object to an array
         const rawMatchedPairs = message.data.matched_pairs || {}
         logger.log('TransactionImportDialog', 'Raw matched pairs:', rawMatchedPairs)
-        
+
         matchedPairs.value = Object.entries(rawMatchedPairs).map(([tinkoffAccountId, pairData]) => {
           const pair = {
             tinkoff_account_id: tinkoffAccountId,
@@ -773,9 +775,9 @@ export default {
           logger.log('TransactionImportDialog', 'Transformed pair:', pair)
           return pair
         })
-        
+
         logger.log('TransactionImportDialog', 'Transformed matched pairs array:', matchedPairs.value)
-        
+
         showAccountMatching.value = true
         // Hide the progress dialog while showing the account matching dialog
         showProgressDialog.value = false
@@ -803,21 +805,21 @@ export default {
 
       // Check if this is a security-related error and provide options to add or skip
       if (error && (
-        error.includes('Security not found') || 
+        error.includes('Security not found') ||
         error.includes('Could not match security') ||
-        error.includes('unsupported operand type') || 
+        error.includes('unsupported operand type') ||
         error.includes('NoneType')
       )) {
         // Try to extract security info from the current import message
         let securityName = '';
         let securityIsin = '';
-        
+
         // First try to extract from the error message
         const securityMatch = error.match(/([^(]+)\(([^)]+)\)/);
         if (securityMatch && securityMatch.length >= 3) {
           securityName = securityMatch[1].trim();
           securityIsin = securityMatch[2].trim();
-        } 
+        }
         // If not found in error, try the current message
         else if (currentImportMessage.value && currentImportMessage.value.includes('security')) {
           const msgMatch = currentImportMessage.value.match(/security\s+['"]?([^'"]+)['"]?/i);
@@ -825,20 +827,20 @@ export default {
             securityName = msgMatch[1].trim();
           }
         }
-        
+
         logger.log('TransactionImportDialog', 'Detected security error:', {
           error,
           securityName,
           securityIsin,
           currentMessage: currentImportMessage.value
         });
-        
+
         // Show dialog to create new security or skip
         confirmTitle.value = 'Unknown Security Detected';
-        confirmMessage.value = securityName 
+        confirmMessage.value = securityName
           ? `The security "${securityName}" was not found in the database. Would you like to create it or skip this transaction?`
           : 'An unknown security was encountered during import. Would you like to create it or skip this transaction?';
-        
+
         securityFormData.value = {
           name: securityName,
           ISIN: securityIsin,
@@ -846,7 +848,7 @@ export default {
           type: 'Stock',
           exposure: 'Equity',
         };
-        
+
         confirmDialog.value = true;
         return;
       }
@@ -855,11 +857,30 @@ export default {
     }
 
     const handleSecurityMapping = (data) => {
-      securityToMap.value = data.mapping_data.stock_description
+      securityToMap.value = data.mapping_data.security_description
       bestMatch.value = data.mapping_data.best_match
       currentTransaction.value = data.transaction_data
+      currentMappingData.value = data.mapping_data
       showSecurityMapping.value = true
       showTransactionConfirmation.value = true
+    }
+
+    const handleCreateSecurityFromMapping = () => {
+      logger.log('TransactionImportDialog', 'Creating security from mapping data:', currentMappingData.value)
+
+      // Prepare security form data from mapping information
+      securityFormData.value = {
+        name: currentMappingData.value.security_description || '',
+        ISIN: currentMappingData.value.isin || '',
+        symbol: currentMappingData.value.symbol || '',
+        currency: 'RUB', // Default value, can be adjusted based on your needs
+        type: 'Stock', // Default value
+        exposure: 'Equity', // Default value
+      }
+
+      // Hide progress dialog while showing the security form
+      showProgressDialog.value = false
+      showSecurityDialog.value = true
     }
 
     const handleTransactionConfirmation = (data) => {
@@ -915,6 +936,7 @@ export default {
       securityToMap.value = ''
       bestMatch.value = null
       selectedSecurityId.value = null
+      currentMappingData.value = null
     }
 
     const handleImportSuccess = (result) => {
@@ -997,28 +1019,28 @@ export default {
       logger.log('TransactionImportDialog', 'Received WebSocket message in dialog:', message)
 
       // Check for account matching inconsistency in logs
-      if (message.data && message.data.error && 
+      if (message.data && message.data.error &&
           message.data.error.includes('not matched to any database account') &&
           matchedPairs.value && matchedPairs.value.length > 0) {
-        
+
         // Extract the account ID from the error message
         const accountIdMatch = message.data.error.match(/ID: (\d+)/);
         if (accountIdMatch && accountIdMatch[1]) {
           const accountId = accountIdMatch[1];
-          
+
           // Check if this account ID was in our matched pairs
-          const wasMatched = matchedPairs.value.some(pair => 
+          const wasMatched = matchedPairs.value.some(pair =>
             String(pair.tinkoff_account_id) === String(accountId));
-            
+
           if (wasMatched) {
             // Show special error for this backend inconsistency
             errorMessage.value = "Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.";
             showErrorDialog.value = true;
-            
+
             // Log this for debugging
-            logger.error('TransactionImportDialog', 'Account matching inconsistency detected:', 
+            logger.error('TransactionImportDialog', 'Account matching inconsistency detected:',
               { accountId, matchedPairs: matchedPairs.value });
-            
+
             return;
           }
         }
@@ -1033,19 +1055,19 @@ export default {
       ) {
         // Check if this is a security error we can handle
         const isSecurityError = message.data && message.data.error && (
-          message.data.error.includes('Security not found') || 
+          message.data.error.includes('Security not found') ||
           message.data.error.includes('Could not match security') ||
-          message.data.error.includes('unsupported operand type') || 
+          message.data.error.includes('unsupported operand type') ||
           message.data.error.includes('NoneType')
         );
-        
+
         if (isSecurityError) {
           // For security errors, keep the connection but handle the error
           handleImportError(message.data.error);
         } else {
           // For other errors, close the account matching dialog if open
           showAccountMatching.value = false
-          
+
           if (message.type === 'critical_error') {
             // Handle critical errors that require disconnecting
             disconnect();
@@ -1090,38 +1112,66 @@ export default {
 
     const handleSecurityAdded = (securityData) => {
       logger.log('TransactionImportDialog', 'handleSecurityAdded called with:', securityData)
+      logger.log('TransactionImportDialog', 'showSecurityMapping.value:', showSecurityMapping.value)
+      logger.log('TransactionImportDialog', 'Security ID:', securityData?.id)
+
       showSecurityDialog.value = false
       securityFormData.value = null
-      
+
       // Show the progress dialog again
       showProgressDialog.value = true;
 
-      // Inform the server about the newly created security
-      sendMessage({
-        type: 'security_confirmation',
-        security_id: securityData.id,
-        security_created: true,
-        security_data: {
-          name: securityData.name,
-          id: securityData.id
-        }
-      })
+      // If this was created from security mapping, use it to map the security
+      if (showSecurityMapping.value && securityData?.id) {
+        logger.log('TransactionImportDialog', 'Mapping newly created security to transaction, ID:', securityData.id)
+        sendMessage({
+          type: 'security_mapped',
+          action: 'map',
+          security_id: securityData.id,
+        })
+        resetConfirmationState()
+      } else if (securityData?.id) {
+        // Inform the server about the newly created security for other cases
+        logger.log('TransactionImportDialog', 'Sending security_confirmation for non-mapping case')
+        sendMessage({
+          type: 'security_confirmation',
+          security_id: securityData.id,
+          security_created: true,
+          security_data: {
+            name: securityData.name,
+            id: securityData.id
+          }
+        })
+      } else {
+        logger.error('TransactionImportDialog', 'Security data missing ID:', securityData)
+      }
     }
 
     const handleSecuritySkipped = () => {
       logger.log('TransactionImportDialog', 'handleSecuritySkipped called')
       showSecurityDialog.value = false
       securityFormData.value = null
-      
+
       // Show the progress dialog again
       showProgressDialog.value = true;
 
-      // Tell the server to skip this transaction
-      sendMessage({
-        type: 'security_confirmation',
-        security_id: null,
-        skip_transaction: true
-      })
+      // If this was from security mapping, send skip message
+      if (showSecurityMapping.value) {
+        logger.log('TransactionImportDialog', 'Skipping transaction due to security creation cancellation')
+        sendMessage({
+          type: 'security_mapped',
+          action: 'skip',
+          security_id: null,
+        })
+        resetConfirmationState()
+      } else {
+        // Tell the server to skip this transaction for other cases
+        sendMessage({
+          type: 'security_confirmation',
+          security_id: null,
+          skip_transaction: true
+        })
+      }
     }
 
     const handleSecurityConfirm = (confirmed) => {
@@ -1144,11 +1194,11 @@ export default {
         // User chose to skip this security/transaction
         handleSecuritySkipped()
       }
-      
+
       // After handling the security confirmation, reset the error state to continue the import
       importError.value = '';
       errorMessage.value = '';
-      
+
       // Show the progress dialog again
       if (!showSecurityDialog.value) {
         showProgressDialog.value = true;
@@ -1403,7 +1453,7 @@ export default {
       }
 
       // Log the pairs before sending
-      logger.log('TransactionImportDialog', 'Sending matched pairs to server:', 
+      logger.log('TransactionImportDialog', 'Sending matched pairs to server:',
         JSON.stringify(data.pairs, null, 2))
 
       // Send the data to the server
@@ -1499,6 +1549,7 @@ export default {
       handleAccountCreation,
       handleUseExistingMatches,
       closeAccountMatching,
+      handleCreateSecurityFromMapping,
     }
   },
 }
