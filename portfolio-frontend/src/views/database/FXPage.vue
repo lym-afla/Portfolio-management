@@ -265,7 +265,11 @@ export default {
             fetchedDate.effective_current_date
           )
         } catch (error) {
-          logger.error('Unknown', 'Failed to fetch effective current date:', error)
+          logger.error(
+            'Unknown',
+            'Failed to fetch effective current date:',
+            error
+          )
           return // Exit the function if we can't get the effective current date
         }
       }

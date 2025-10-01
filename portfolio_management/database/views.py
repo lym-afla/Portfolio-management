@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
-from constants import ASSET_TYPE_CHOICES
+from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
@@ -229,7 +229,7 @@ def api_security_form_structure(request):
 
         if field_name == "data_source":
             field_data["choices"] = [{"value": "", "text": "None"}] + [
-                {"value": choice[0], "text": choice[1]} for choice in Assets.DATA_SOURCE_CHOICES
+                {"value": choice[0], "text": choice[1]} for choice in DATA_SOURCE_CHOICES
             ]
 
         # Handle specific widget types
@@ -285,6 +285,7 @@ def api_get_security_details_for_editing(request, security_id):
             "data_source": security.data_source,
             "yahoo_symbol": security.yahoo_symbol,
             "update_link": security.update_link,
+            "tbank_instrument_uid": security.tbank_instrument_uid,
             "comment": security.comment,
         }
     )

@@ -181,6 +181,26 @@
                     }}</span>
                     {{ item.commission }}</span
                   >
+                  <span v-if="item.aci" class="text-caption text-grey">
+                    || ACI: {{ item.aci }}
+                  </span>
+                </template>
+
+                <template
+                  v-else-if="item.type === 'Tax' && item.security.name !== null"
+                >
+                  for
+                  <router-link
+                    :to="{
+                      name: 'SecurityDetail',
+                      params: { id: item.security.id },
+                    }"
+                    class="text-primary text-decoration-none font-weight-medium"
+                  >
+                    {{ item.security.name }}
+                  </router-link>
+                  <span v-if="item.security.type === 'Bond'"> coupon </span>
+                  <span v-else> dividend </span>
                 </template>
               </td>
               <td class="text-center">{{ item.type }}</td>
@@ -200,7 +220,7 @@
                     {{ item.cash_flow }}
                   </template>
                   <template v-else-if="item.type === 'Broker commission'">
-                    ({{ item.commission }})
+                    {{ item.cash_flow }}
                   </template>
                   <template v-else>
                     {{ item.value }}
@@ -483,7 +503,11 @@ export default {
           ...transactionDetails,
           transaction_type: item.transaction_type,
         }
-        logger.log('Unknown', 'Transaction fetched for editing:', editedTransaction.value)
+        logger.log(
+          'Unknown',
+          'Transaction fetched for editing:',
+          editedTransaction.value
+        )
         if (item.transaction_type === 'regular') {
           showTransactionDialog.value = true
         } else if (item.transaction_type === 'fx') {
@@ -523,7 +547,11 @@ export default {
     }
 
     const handleImportCompleted = async (importResults) => {
-      logger.log('Unknown', '[TransactionsPage] Import completed:', importResults)
+      logger.log(
+        'Unknown',
+        '[TransactionsPage] Import completed:',
+        importResults
+      )
       await fetchTransactions()
     }
 

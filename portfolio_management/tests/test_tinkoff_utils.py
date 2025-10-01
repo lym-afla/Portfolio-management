@@ -81,7 +81,10 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     mock_client.return_value.__enter__.return_value = mock_client_instance
 
     # Test successful retrieval
-    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
+    securities_found = await get_security_by_uid("test-uid", user)
+    name = securities_found[0][0]
+    isin = securities_found[0][1]
+    instrument_type = securities_found[0][2]
     assert name == "Test Stock"
     assert isin == "TEST123456789"
     assert instrument_type == "stock"
@@ -93,26 +96,38 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
         "Token has insufficient privileges", {"code": "40002"}, {}  # message  # details  # metadata
     )
-    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
+    securities_found = await get_security_by_uid("test-uid", user)
+    name = securities_found[0][0]
+    isin = securities_found[0][1]
+    instrument_type = securities_found[0][2]
     assert name is None and isin is None
 
     # Test API error handling for invalid token
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
         "Invalid token", {"code": "40003"}, {}
     )
-    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
+    securities_found = await get_security_by_uid("test-uid", user)
+    name = securities_found[0][0]
+    isin = securities_found[0][1]
+    instrument_type = securities_found[0][2]
     assert name is None and isin is None
 
     # Test API error handling for generic error
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
         "Internal server error", {"code": "50000"}, {}
     )
-    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
+    securities_found = await get_security_by_uid("test-uid", user)
+    name = securities_found[0][0]
+    isin = securities_found[0][1]
+    instrument_type = securities_found[0][2]
     assert name is None and isin is None
 
     # Test unexpected exception
     mock_client_instance.instruments.get_instrument_by.side_effect = Exception("Unexpected error")
-    name, isin, instrument_type = await get_security_by_uid("test-uid", user)
+    securities_found = await get_security_by_uid("test-uid", user)
+    name = securities_found[0][0]
+    isin = securities_found[0][1]
+    instrument_type = securities_found[0][2]
     assert name is None and isin is None and instrument_type is None
 
 
@@ -121,7 +136,7 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 @patch("core.tinkoff_utils.get_security_by_uid")
 @patch("core.tinkoff_utils.create_security_from_micex")
 async def test_find_or_create_security(mock_create_security, mock_get_security, user, broker):
-    mock_get_security.return_value = ("Test Stock", "TEST123456789", "stock")
+    mock_get_security.return_value = [("Test Stock", "TEST123456789", "stock")]
 
     # Test case 1: Security exists with relationships
     asset = await Assets.objects.acreate(

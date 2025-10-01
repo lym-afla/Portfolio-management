@@ -135,7 +135,11 @@ export default {
       () => props.currentMessage,
       (newMessage) => {
         if (newMessage) {
-          logger.log('Unknown', 'ProgressDialog: currentMessage changed to', newMessage)
+          logger.log(
+            'Unknown',
+            'ProgressDialog: currentMessage changed to',
+            newMessage
+          )
         }
       }
     )

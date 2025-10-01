@@ -47,7 +47,10 @@ export function useWebSocket(baseUrl) {
 
       // Don't attempt connection if no token is available
       if (!store.state.accessToken) {
-        logger.warn('Unknown', 'No access token available for WebSocket connection')
+        logger.warn(
+          'Unknown',
+          'No access token available for WebSocket connection'
+        )
         clearTimeout(connectionTimeout)
         resolve(false)
         return
@@ -127,7 +130,11 @@ export function useWebSocket(baseUrl) {
   // Only attempt to connect if the app is fully initialized
   if (store.state.isInitialized) {
     connect().catch((error) => {
-      logger.error('Unknown', 'Failed to establish initial WebSocket connection:', error)
+      logger.error(
+        'Unknown',
+        'Failed to establish initial WebSocket connection:',
+        error
+      )
     })
   }
 

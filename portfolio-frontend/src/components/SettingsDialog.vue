@@ -82,7 +82,11 @@ export default {
     const fetchSettingsData = async () => {
       try {
         const response = await getDashboardSettings()
-        logger.log('Unknown', '[SettingsDialog] Getting dashboard settings:', response)
+        logger.log(
+          'Unknown',
+          '[SettingsDialog] Getting dashboard settings:',
+          response
+        )
 
         // Update formData with settings
         Object.assign(formData, response.settings)
@@ -96,7 +100,11 @@ export default {
         const selectedCurrency = response.choices.default_currency.find(
           ([value]) => value === response.settings.default_currency
         )
-        logger.log('Unknown', '[SettingsDialog] Selected currency:', selectedCurrency)
+        logger.log(
+          'Unknown',
+          '[SettingsDialog] Selected currency:',
+          selectedCurrency
+        )
         // Set the currency in the store to the second element of the found list
         if (
           selectedCurrency &&

@@ -147,12 +147,14 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
         "security": {
             "name": transaction.security.name if transaction.security else None,
             "id": transaction.security.id if transaction.security else None,
+            "type": transaction.security.type if transaction.security else None,
         },
         "cur": transaction.currency,
     }
 
     balance_entry = balance.get(transaction.currency, Decimal(0)) - Decimal(
         (transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0))
+        - Decimal(transaction.aci or Decimal(0))
         - Decimal(transaction.cash_flow or Decimal(0))
         - Decimal(transaction.commission or Decimal(0))
     )
@@ -177,6 +179,10 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
     if transaction.commission:
         transaction_data["commission"] = currency_format(
             -transaction.commission, transaction.currency, number_of_digits
+        )
+    if transaction.aci:
+        transaction_data["aci"] = currency_format(
+            transaction.aci, transaction.currency, number_of_digits
         )
 
     return transaction_data

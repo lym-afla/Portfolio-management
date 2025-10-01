@@ -11,11 +11,11 @@ let debugEnabled = !isProduction
 
 // Color codes for different log types
 const COLORS = {
-  log: '#3498db',     // Blue
-  info: '#2ecc71',    // Green
-  warn: '#f39c12',    // Orange
-  error: '#e74c3c',   // Red
-  debug: '#9b59b6',   // Purple
+  log: '#3498db', // Blue
+  info: '#2ecc71', // Green
+  warn: '#f39c12', // Orange
+  error: '#e74c3c', // Red
+  debug: '#9b59b6', // Purple
 }
 
 /**
@@ -27,7 +27,7 @@ const createMessage = (category, args) => {
   return [
     `%c${prefix}`,
     `color: ${COLORS[category] || COLORS.log}; font-weight: bold;`,
-    ...args
+    ...args,
   ]
 }
 
@@ -40,7 +40,12 @@ const logger = {
    */
   setDebugEnabled(enabled) {
     debugEnabled = enabled
-    console.log(...createMessage('log', [`[Logger]`, `Logging ${enabled ? 'enabled' : 'disabled'}`]))
+    console.log(
+      ...createMessage('log', [
+        `[Logger]`,
+        `Logging ${enabled ? 'enabled' : 'disabled'}`,
+      ])
+    )
   },
 
   /**
@@ -49,7 +54,7 @@ const logger = {
   isDebugEnabled() {
     return debugEnabled
   },
-  
+
   /**
    * Standard log
    */
@@ -57,7 +62,7 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.log(...createMessage('log', [`[${module}]`, ...args]))
   },
-  
+
   /**
    * Info level (for important information)
    */
@@ -65,7 +70,7 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.info(...createMessage('info', [`[${module}]`, ...args]))
   },
-  
+
   /**
    * Warning level
    */
@@ -73,7 +78,7 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.warn(...createMessage('warn', [`[${module}]`, ...args]))
   },
-  
+
   /**
    * Error level (always logs, even in production)
    */
@@ -81,7 +86,7 @@ const logger = {
     // Errors should be logged even in production for monitoring
     console.error(...createMessage('error', [`[${module}]`, ...args]))
   },
-  
+
   /**
    * Debug level (most verbose, for detailed debugging)
    */
@@ -89,7 +94,7 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.debug(...createMessage('debug', [`[${module}]`, ...args]))
   },
-  
+
   /**
    * Group logs together (for better organization)
    */
@@ -97,7 +102,7 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.group(title)
   },
-  
+
   /**
    * End group
    */
@@ -105,7 +110,7 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.groupEnd()
   },
-  
+
   /**
    * Log execution time of a function
    */
@@ -113,15 +118,15 @@ const logger = {
     if (isProduction && !debugEnabled) return
     console.time(`[${module}] ${label}`)
   },
-  
+
   /**
    * End timing
    */
   timeEnd(module, label) {
     if (isProduction && !debugEnabled) return
     console.timeEnd(`[${module}] ${label}`)
-  }
+  },
 }
 
 // Export the logger as default
-export default logger 
+export default logger

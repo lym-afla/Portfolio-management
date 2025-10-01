@@ -299,11 +299,15 @@ def IRR(
 def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     if transaction.type in ["Cash in", "Cash out"]:
         return (transaction.cash_flow or 0) * Decimal(-1)
-    elif transaction.type in ["Broker commission", "Tax"]:
-        return Decimal(0)
+    elif transaction.type == "Broker commission":
+        return Decimal(0)  # Broker commission is already included in transaction.commission field
+    elif transaction.type == "Tax":
+        return transaction.cash_flow or 0  # Tax affects cash flow and should be included in IRR
     else:
         return transaction.cash_flow or (
-            -transaction.quantity * transaction.price + (transaction.commission or 0)
+            -transaction.quantity * transaction.price
+            + (transaction.commission or 0)
+            + (transaction.aci or 0)
         )
 
 

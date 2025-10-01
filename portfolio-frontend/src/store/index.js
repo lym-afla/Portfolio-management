@@ -232,19 +232,25 @@ export default createStore({
       }
 
       if (state.isInitializing) {
-        logger.log('Store', `[${requestId}] App already initializing, waiting...`)
+        logger.log(
+          'Store',
+          `[${requestId}] App already initializing, waiting...`
+        )
         // Wait for initialization to complete instead of starting a new one
         const maxWaitTime = 2000 // 2 seconds max wait
         const startTime = Date.now()
-        
+
         while (state.isInitializing && Date.now() - startTime < maxWaitTime) {
-          await new Promise(r => setTimeout(r, 100)) // Wait 100ms and check again
+          await new Promise((r) => setTimeout(r, 100)) // Wait 100ms and check again
         }
-        
+
         if (state.isInitialized) {
           return { success: !!state.user }
         } else {
-          logger.warn('Store', `[${requestId}] Waited too long for initialization, forcing completion`)
+          logger.warn(
+            'Store',
+            `[${requestId}] Waited too long for initialization, forcing completion`
+          )
           commit('SET_INITIALIZED', true)
           commit('SET_STATE', { isInitializing: false })
           return { success: false }
@@ -257,11 +263,17 @@ export default createStore({
 
         const token = localStorage.getItem('accessToken')
         if (!token) {
-          logger.log('Store', `[${requestId}] No token found, skipping initialization`)
+          logger.log(
+            'Store',
+            `[${requestId}] No token found, skipping initialization`
+          )
           return { success: false }
         }
 
-        logger.log('Store', `[${requestId}] Token found, setting tokens and fetching user data`)
+        logger.log(
+          'Store',
+          `[${requestId}] Token found, setting tokens and fetching user data`
+        )
         commit('SET_TOKENS', {
           accessToken: token,
           refreshToken: localStorage.getItem('refreshToken'),
@@ -272,7 +284,11 @@ export default createStore({
           logger.log('Store', `[${requestId}] User data fetched successfully`)
           return { success: true }
         } catch (error) {
-          logger.error('Store', `[${requestId}] Error fetching user data:`, error)
+          logger.error(
+            'Store',
+            `[${requestId}] Error fetching user data:`,
+            error
+          )
           commit('CLEAR_TOKENS')
           commit('SET_USER', null)
           return { success: false }
@@ -281,7 +297,10 @@ export default createStore({
         logger.error('Store', `[${requestId}] Initialization error:`, error)
         return { success: false, error }
       } finally {
-        logger.log('Store', `[${requestId}] Initialization completed, setting isInitialized=true`)
+        logger.log(
+          'Store',
+          `[${requestId}] Initialization completed, setting isInitialized=true`
+        )
         commit('SET_INITIALIZED', true)
         commit('SET_STATE', { isInitializing: false })
       }

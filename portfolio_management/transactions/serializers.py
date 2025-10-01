@@ -26,6 +26,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             "quantity",
             "price",
             "cash_flow",
+            "aci",
             "commission",
             "comment",
         ]
@@ -43,6 +44,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         cash_flow = data.get("cash_flow")
         price = data.get("price")
         quantity = data.get("quantity")
+        aci = data.get("aci")
         commission = data.get("commission")
         security = data.get("security")
 
@@ -91,6 +93,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"quantity": "Quantity must be negative for sell transactions."}
             )
+
+        if aci is not None and aci < 0:
+            raise serializers.ValidationError({"aci": "ACI must be positive."})
 
         if commission is not None and commission >= 0:
             raise serializers.ValidationError({"commission": "Commission must be negative."})

@@ -11,8 +11,8 @@
 
 <script>
 import { Line } from 'vue-chartjs'
-import {
 import logger from '@/utils/logger'
+import {
   Chart as ChartJS,
   Title,
   Tooltip,

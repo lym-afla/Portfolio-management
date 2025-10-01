@@ -2,12 +2,13 @@ import logging
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import Client, InstrumentType, OperationType
+from tinkoff.invest import CandleInterval, Client, InstrumentType, OperationType
 from tinkoff.invest.exceptions import RequestError
 from tinkoff.invest.utils import quotation_to_decimal
 
 from common.models import Assets, Transactions
 from constants import (
+    TRANSACTION_TYPE_BROKER_COMMISSION,
     TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
@@ -17,9 +18,6 @@ from constants import (
     TRANSACTION_TYPE_SELL,
     TRANSACTION_TYPE_TAX,
 )
-
-# Remove circular import
-# from core.import_utils import create_security_from_micex
 from users.models import TinkoffApiToken
 
 logger = logging.getLogger(__name__)
@@ -39,78 +37,167 @@ async def get_user_token(user, sandbox_mode=False):
         raise
 
 
-async def get_security_by_uid(instrument_uid, user):
+async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None):
     """
     Get security details from Tinkoff API using instrument_uid.
-    Returns (name, ISIN, instrument type) or (None, None, None) if not found.
+    Falls back to find_instrument if get_instrument_by fails.
+
+    Args:
+        instrument_uid: Tinkoff instrument UID
+        user: CustomUser instance
+        position_uid: Optional position UID for fallback search
+        name: Optional name for fallback search
+
+    Returns:
+        List of tuples (name, ISIN, instrument type) or empty list if not found.
     """
+    token = await get_user_token(user)
     try:
-        token = await get_user_token(user)
         with Client(token) as client:
             instrument = client.instruments.get_instrument_by(
                 id_type=3, id=instrument_uid
             )  # id_type=3 is uid
-            return (
-                instrument.instrument.name,
-                instrument.instrument.isin,
-                instrument.instrument.instrument_kind,
-            )
+            return [
+                (
+                    instrument.instrument.name,
+                    instrument.instrument.isin,
+                    instrument.instrument.instrument_kind,
+                )
+            ]
     except RequestError as e:
         error_message = str(e)
         if "40002" in error_message:
             logger.error("Insufficient privileges for Tinkoff API token")
+            return []
         elif "40003" in error_message:
             logger.error("Invalid or expired Tinkoff API token")
+            return []
+        elif "50002" in error_message:
+            logger.warning(f"Instrument not found by UID {instrument_uid}, trying fallback methods")
+
+            # Try fallback with position_uid or name
+            if position_uid or name:
+                try:
+                    with Client(token) as client:
+                        # Try position_uid first as it's more specific
+                        query = position_uid if position_uid else name
+                        logger.info(f"Searching instrument with query: {query}")
+
+                        result = client.instruments.find_instrument(query=query)
+
+                        if result.instruments:
+                            if len(result.instruments) == 1:
+                                # Single match - use it
+                                found = result.instruments[0]
+                                logger.info(f"Found single match: {found.name} ({found.isin})")
+                                return [(found.name, found.isin, found.instrument_kind)]
+                            else:
+                                # Multiple matches - try to find exact match by position_uid
+                                if position_uid:
+                                    for inst in result.instruments:
+                                        if inst.position_uid == position_uid:
+                                            logger.info(
+                                                f"Found match by position_uid: {inst.name} "
+                                                f"({inst.isin})"
+                                            )
+                                            return [(inst.name, inst.isin, inst.instrument_kind)]
+
+                                # No exact match, return all found
+                                logger.warning(
+                                    f"Multiple instruments found ({len(result.instruments)})"
+                                )
+                                securities_found = []
+                                for _, inst in enumerate(result.instruments):
+                                    securities_found.append(
+                                        (inst.name, inst.isin, inst.instrument_kind)
+                                    )
+                                return securities_found
+                        else:
+                            logger.error(f"No instruments found with query: {query}")
+                            return []
+
+                except Exception as fallback_error:
+                    logger.error(f"Fallback search failed: {str(fallback_error)}")
+                    return []
+            else:
+                logger.error("No position_uid or name provided for fallback search")
+                return []
         else:
             logger.error(f"Tinkoff API error: {error_message}")
-        return None, None, None
+            return []
     except Exception as e:
         logger.error(f"Error getting security details from Tinkoff: {str(e)}")
-        return None, None, None
+        return []
 
 
-async def _find_or_create_security(instrument_uid, investor):
+async def _find_or_create_security(instrument_uid, investor, position_uid=None, name=None):
     """
     Find existing security or create new one using Tinkoff API data.
 
     Args:
         instrument_uid: Tinkoff instrument UID
         investor: CustomUser instance
-        account: Accounts instance
+        position_uid: Optional position UID for fallback search
+        name: Optional security name for fallback search
 
     Returns:
         tuple: (Assets instance, str status)
     """
     # Get security details from Tinkoff
-    name, isin, instrument_type = await get_security_by_uid(instrument_uid, investor)
-    if not isin:
+    securities_found = await get_security_by_uid(instrument_uid, investor, position_uid, name)
+    if not securities_found or len(securities_found) == 0:
         return None, "Could not get security details from Tinkoff"
 
-    try:
-        # Try to find security with all relationships
-        security = await database_sync_to_async(Assets.objects.get)(ISIN=isin, investors=investor)
-        return security, "existing_with_relationships"
-    except Assets.DoesNotExist:
+    # Try to find a security with all relationships; only go to except if none found
+    found_security = None
+    for sec in securities_found:
         try:
-            # Try to find security without relationships
-            security = await database_sync_to_async(Assets.objects.get)(ISIN=isin)
-
-            # Add relationships
-            @database_sync_to_async
-            def add_relationships(security, investor):
-                security.investors.add(investor)
-                return security
-
-            security = await add_relationships(security, investor)
-            return security, "existing_added_relationships"
+            found_security = await database_sync_to_async(Assets.objects.get)(
+                ISIN=sec[1], investors=investor
+            )
+            return found_security, "existing_with_relationships"
         except Assets.DoesNotExist:
-            # Create new security using MICEX data - import function here to avoid circular imports
-            from core.import_utils import create_security_from_micex
+            continue
+    # If none found, fall through to next except block
 
-            security = await create_security_from_micex(name, isin, investor, instrument_type)
-            if security:
-                return security, "created_new"
-            return None, "failed_to_create"
+    # Try to find security without relationships
+    for sec in securities_found:
+        try:
+            found_security = await database_sync_to_async(Assets.objects.get)(ISIN=sec[1])
+            await database_sync_to_async(found_security.investors.add)(investor)
+            return found_security, "existing_added_relationships"
+        except Assets.DoesNotExist:
+            continue
+
+    if not found_security and len(securities_found) == 1:
+        # Create new security using MICEX data - import function here to avoid circular imports
+        from core.import_utils import create_security_from_micex, create_security_from_tinkoff
+
+        # Try to create from MICEX first
+        found_security = await create_security_from_micex(
+            securities_found[0][0], securities_found[0][1], investor, securities_found[0][2]
+        )
+
+        if found_security:
+            return found_security, "created_new_from_micex"
+
+        # Fallback to T-Bank data if MICEX fails (e.g., matured bonds, delisted securities)
+        logger.warning(
+            f"MICEX creation failed for {securities_found[0][0]} ({securities_found[0][1]}), "
+            f"falling back to T-Bank data"
+        )
+        found_security = await create_security_from_tinkoff(
+            securities_found[0][0],
+            securities_found[0][1],
+            investor,
+            securities_found[0][2],
+            instrument_uid,  # Pass the T-Bank instrument UID
+        )
+
+        if found_security:
+            return found_security, "created_new_from_tbank"
+
+        return None, "failed_to_create"
 
 
 async def map_tinkoff_operation_to_transaction(operation, investor, account):
@@ -139,12 +226,17 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         and operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]
     )
 
-    logger.debug(f"==== ==== ==== ==== Operation: {operation}")
-    logger.debug(operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY)
+    logger.debug(f"==== Processing operation ID: {operation.id} ====")
+    logger.debug(f"  Instrument kind: {operation.instrument_kind}")
     logger.debug(
-        operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]
+        f"  Is currency: {operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY}"
     )
-    logger.debug(f"==== ==== ==== ==== is_fx_transaction: {is_fx_transaction}")
+    logger.debug(f"  Operation type: {operation.type}")
+    logger.debug(
+        "  Is buy/sell: "
+        f"{operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]}"
+    )
+    logger.debug(f"  >> IS FX TRANSACTION: {is_fx_transaction} <<")
 
     if is_fx_transaction:
         # This is an FX transaction
@@ -169,13 +261,15 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
         # Fallback: try to get from instrument details
         if not to_currency and operation.instrument_uid:
-            name, isin, instrument_type = await get_security_by_uid(
-                operation.instrument_uid, investor
+            securities_found = await get_security_by_uid(
+                operation.instrument_uid, investor, operation.position_uid, operation.name
             )
-            for key, value in currency_map.items():
-                if name and key in name:
-                    to_currency = value
-                    break
+            if len(securities_found) == 1:
+                name = securities_found[0][0]
+                for key, value in currency_map.items():
+                    if name and key in name:
+                        to_currency = value
+                        break
 
         # Determine from_currency and to_currency based on operation type
         if operation.type == OperationType.OPERATION_TYPE_BUY:
@@ -199,12 +293,13 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
         # Handle commission
         if operation.commission and operation.commission.units != 0:
-            transaction_data["commission"] = abs(quotation_to_decimal(operation.commission))
+            transaction_data["commission"] = -1 * abs(quotation_to_decimal(operation.commission))
             transaction_data["commission_currency"] = operation.commission.currency.upper()
 
         logger.debug(
-            f"FX transaction detected: {transaction_data['from_currency']} "
-            f"-> {transaction_data['to_currency']}"
+            f"✓ FX transaction created: {transaction_data['from_currency']} "
+            f"-> {transaction_data['to_currency']}, "
+            f"Rate: {transaction_data.get('exchange_rate', 'N/A')}"
         )
 
         return transaction_data
@@ -222,6 +317,9 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_TAX: TRANSACTION_TYPE_TAX,
         OperationType.OPERATION_TYPE_OUTPUT: TRANSACTION_TYPE_CASH_OUT,
         OperationType.OPERATION_TYPE_INPUT: TRANSACTION_TYPE_CASH_IN,
+        OperationType.OPERATION_TYPE_SERVICE_FEE: TRANSACTION_TYPE_BROKER_COMMISSION,
+        OperationType.OPERATION_TYPE_BOND_TAX: TRANSACTION_TYPE_TAX,
+        OperationType.OPERATION_TYPE_BENEFIT_TAX: TRANSACTION_TYPE_TAX,
     }
 
     transaction_data["type"] = operation_type_mapping.get(operation.type)
@@ -234,32 +332,52 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
     # Handle security matching
     if operation.instrument_uid:
-        security, status = await _find_or_create_security(operation.instrument_uid, investor)
+        security, status = await _find_or_create_security(
+            operation.instrument_uid, investor, operation.position_uid, operation.name
+        )
         if security:
             transaction_data["security"] = security
             logger.debug(f"Security matched: {security.name} (status: {status})")
         else:
             logger.warning(f"Could not match security for operation {operation.id}")
             # Get security info for potential creation
-            name, isin, instrument_type = await get_security_by_uid(
-                operation.instrument_uid, investor
+            securities_found = await get_security_by_uid(
+                operation.instrument_uid, investor, operation.position_uid, operation.name
             )
-            # Mark this transaction as needing security mapping
-            transaction_data["needs_security_mapping"] = True
-            if name and isin:
-                transaction_data["security_description"] = name
-                transaction_data["isin"] = isin
-                transaction_data["instrument_type"] = instrument_type
+            if len(securities_found) == 1:
+                name = securities_found[0][0]
+                isin = securities_found[0][1]
+                instrument_type = securities_found[0][2]
+
+                # Mark this transaction as needing security mapping
+                transaction_data["needs_security_mapping"] = True
+                if name and isin:
+                    transaction_data["security_description"] = name
+                    transaction_data["isin"] = isin
+                    transaction_data["instrument_type"] = instrument_type
+                else:
+                    transaction_data["security_description"] = operation.name
+                    transaction_data["instrument_type"] = operation.instrument_type
+                transaction_data["security"] = None
             else:
-                transaction_data["security_description"] = operation.name
-                transaction_data["instrument_type"] = operation.instrument_type
-            transaction_data["security"] = None
+                raise ValueError(f"Multiple securities found for operation {operation.id}")
 
     # Handle quantity and price for buy/sell operations
     if operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]:
-        transaction_data["quantity"] = Decimal(str(operation.quantity))
         if operation.price:
             transaction_data["price"] = quotation_to_decimal(operation.price)
+
+        aci = operation.accrued_int
+
+        if operation.type == OperationType.OPERATION_TYPE_BUY:
+            transaction_data["quantity"] = Decimal(str(operation.quantity))
+            if quotation_to_decimal(aci) != 0:
+                transaction_data["aci"] = -1 * abs(quotation_to_decimal(aci))
+        else:
+            transaction_data["quantity"] = -1 * Decimal(str(operation.quantity))
+            if quotation_to_decimal(aci) != 0:
+                transaction_data["aci"] = abs(quotation_to_decimal(aci))
+
     else:
         # Handle payment/cash flow
         if operation.payment:
@@ -268,7 +386,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
     # Handle commission
     if operation.commission and operation.commission.units != 0:
-        transaction_data["commission"] = quotation_to_decimal(operation.commission)
+        transaction_data["commission"] = -1 * abs(quotation_to_decimal(operation.commission))
 
     return transaction_data
 
@@ -302,11 +420,13 @@ async def create_transaction_from_tinkoff(operation, investor, account):
     ).first()
 
     if existing:
+        logger.debug(f"Transaction already exists: {existing}")
         return None, "Transaction already exists"
 
     # Create new transaction
     try:
         transaction = await database_sync_to_async(Transactions.objects.create)(**transaction_data)
+        logger.info(f"Transaction created successfully: {transaction}")
         return transaction, "Transaction created successfully"
     except Exception as e:
         return None, f"Error creating transaction: {str(e)}"
@@ -360,4 +480,61 @@ async def get_account_info(user):
             }
     except Exception as e:
         logger.error(f"Failed to get account info: {str(e)}")
+        return None
+
+
+async def get_price_from_tbank(instrument_uid, date, user):
+    """
+    Get the closing price for a security from T-Bank (Tinkoff) API for a specific date.
+
+    Args:
+        instrument_uid: T-Bank instrument UID
+        date: datetime.date object for which to fetch the price
+        user: CustomUser instance (to get API token)
+
+    Returns:
+        Decimal: The closing price, or None if not found
+    """
+    try:
+        token = await get_user_token(user)
+        if not token:
+            logger.error("No T-Bank API token found for user")
+            return None
+
+        # Convert date to datetime with time bounds (start and end of day)
+        from datetime import datetime, timedelta
+
+        from_dt = datetime.combine(date, datetime.min.time()) - timedelta(days=6)
+        to_dt = from_dt + timedelta(days=7)
+
+        logger.debug(f"Fetching price for instrument {instrument_uid} on {date}")
+
+        with Client(token) as client:
+            # Get daily candles for the specified date
+            response = client.market_data.get_candles(
+                instrument_id=instrument_uid,
+                from_=from_dt,
+                to=to_dt,
+                interval=CandleInterval.CANDLE_INTERVAL_DAY,
+            )
+
+            if response.candles and len(response.candles) > 0:
+                # Get the first (and should be only) candle for the day
+                candle = response.candles[0]
+                # Use the closing price
+                close_price = quotation_to_decimal(candle.close)
+                logger.info(f"Fetched price for {instrument_uid} on {date}: {close_price}")
+                return close_price
+            else:
+                logger.warning(f"No candle data found for instrument {instrument_uid} on {date}")
+                return None
+
+    except RequestError as e:
+        logger.error(f"T-Bank API error fetching price for {instrument_uid} on {date}: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching price from T-Bank for {instrument_uid} on {date}: {str(e)}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None

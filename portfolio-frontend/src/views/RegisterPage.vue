@@ -62,7 +62,11 @@ export default {
     const errors = ref({})
 
     const handleRegister = async (credentials) => {
-      logger.log('Unknown', 'Handling registration with credentials:', credentials)
+      logger.log(
+        'Unknown',
+        'Handling registration with credentials:',
+        credentials
+      )
       loading.value = true
       errors.value = {}
 

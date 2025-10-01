@@ -72,7 +72,7 @@ def get_security(security_id):
 def transaction_exists(transaction_data):
     query = Q()
     required_fields = ["investor", "account", "date", "currency", "type"]
-    optional_fields = ["security", "quantity", "price", "cash_flow", "commission"]
+    optional_fields = ["security", "quantity", "price", "cash_flow", "commission", "aci"]
 
     # Add required fields to the query
     for field in required_fields:
@@ -85,7 +85,39 @@ def transaction_exists(transaction_data):
         if field in transaction_data and transaction_data[field] is not None:
             query &= Q(**{field: transaction_data[field]})
 
-    return Transactions.objects.filter(query).exists()
+    exists = Transactions.objects.filter(query).exists()
+
+    return exists
+
+
+@database_sync_to_async
+def fx_transaction_exists(transaction_data):
+    """Check if an FX transaction already exists."""
+    from common.models import FXTransaction
+
+    query = Q()
+    required_fields = [
+        "investor",
+        "account",
+        "date",
+        "from_currency",
+        "to_currency",
+        "exchange_rate",
+    ]
+    optional_fields = ["from_amount", "to_amount", "commission", "commission_currency"]
+
+    # Add required fields to the query
+    for field in required_fields:
+        if field not in transaction_data:
+            raise ValueError(f"Required field '{field}' is missing from FX transaction_data")
+        query &= Q(**{field: transaction_data[field]})
+
+    # Add optional fields to the query if they exist
+    for field in optional_fields:
+        if field in transaction_data and transaction_data[field] is not None:
+            query &= Q(**{field: transaction_data[field]})
+
+    return FXTransaction.objects.filter(query).exists()
 
 
 def read_excel_file(file_path):
@@ -717,6 +749,59 @@ async def import_security_prices_from_micex(security, dates):
             }
 
 
+async def import_security_prices_from_tbank(security, dates, user):
+    """
+    Import security prices from T-Bank (Tinkoff) API.
+
+    Args:
+        security: Assets instance with tbank_instrument_uid
+        dates: List of dates to fetch prices for
+        user: CustomUser instance (to get API token)
+    """
+    from core.tinkoff_utils import get_price_from_tbank
+
+    if not security.tbank_instrument_uid:
+        yield {
+            "security_name": security.name,
+            "status": "error",
+            "message": f"No T-Bank instrument UID specified for {security.name}",
+        }
+        return
+
+    for d in dates:
+        result = {
+            "security_name": security.name,
+            "date": d.strftime("%Y-%m-%d"),
+            "status": "skipped",
+        }
+
+        # Check if price already exists
+        price_exists_func = database_sync_to_async(
+            Prices.objects.filter(security=security, date=d).exists
+        )
+        price_exists = await price_exists_func()
+        if price_exists:
+            yield result
+            continue
+
+        # Get price from T-Bank API
+        try:
+            price = await get_price_from_tbank(security.tbank_instrument_uid, d, user)
+            if price:
+                create_price_func = database_sync_to_async(Prices.objects.create)
+                await create_price_func(security=security, date=d, price=price)
+                result["status"] = "updated"
+            else:
+                result["status"] = "error"
+                result["message"] = f"No price found for {d.strftime('%Y-%m-%d')}"
+        except Exception as e:
+            logger.error(f"Error fetching price for {security.name} on {d}: {str(e)}")
+            result["status"] = "error"
+            result["message"] = f"Error: {str(e)}"
+
+        yield result
+
+
 async def _process_galaxy_transaction(
     user, account, date, currency, transaction_type, cash_flow=None, commission=None
 ):
@@ -1148,6 +1233,83 @@ async def _process_galaxy_securities(df, user, account):
     }
 
 
+async def create_security_from_tinkoff(
+    security_name, isin, user, instrument_type, instrument_uid=None
+):
+    """
+    Create a new security using T-Bank (Tinkoff) data as fallback.
+    Used when security is not found in MICEX (e.g., matured bonds, delisted securities).
+
+    Args:
+        security_name: Name of the security from Tinkoff
+        isin: ISIN code
+        user: CustomUser instance
+        instrument_type: Tinkoff InstrumentType enum
+        instrument_uid: Tinkoff instrument UID (optional)
+
+    Returns:
+        Assets instance or None
+    """
+    try:
+        logger.info(
+            f"Creating security from T-Bank data: {security_name} ({isin}), UID: {instrument_uid}"
+        )
+
+        # Map Tinkoff instrument type to our asset type
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+            asset_type = ASSET_TYPE_CHOICES[0][0]  # Stock
+            exposure = EXPOSURE_CHOICES[0][0]  # Equity
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+            asset_type = ASSET_TYPE_CHOICES[2][0]  # ETF
+            exposure = EXPOSURE_CHOICES[0][0]  # Equity
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+            asset_type = ASSET_TYPE_CHOICES[1][0]  # Bond
+            exposure = EXPOSURE_CHOICES[1][0]  # Fixed income
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_CURRENCY:
+            # This shouldn't happen as FX is handled separately, but just in case
+            logger.warning(
+                f"Currency instrument type passed to create_security_from_tinkoff: {security_name}"
+            )
+            return None
+        else:
+            logger.warning(f"Unsupported instrument type for {security_name}: {instrument_type}")
+            # Default to Stock/Equity for unknown types
+            asset_type = ASSET_TYPE_CHOICES[0][0]
+            exposure = EXPOSURE_CHOICES[0][0]
+
+        # Create new asset with T-Bank as data source
+        @database_sync_to_async
+        def create_asset():
+            asset = Assets.objects.create(
+                type=asset_type,
+                ISIN=isin,
+                name=security_name,
+                currency="RUB",  # Default to RUB, can be updated later if needed
+                exposure=exposure,
+                restricted=False,
+                data_source="TBANK",  # T-Bank as the data source
+                secid=None,  # No MICEX secid available
+                tbank_instrument_uid=instrument_uid,  # Store T-Bank instrument UID
+            )
+            asset.investors.add(user)
+            return asset
+
+        asset = await create_asset()
+        logger.info(
+            f"Successfully created asset from T-Bank data: {asset.name} ({asset.ISIN}), "
+            f"Type: {asset.type}, Data source: {asset.data_source}, "
+            f"UID: {asset.tbank_instrument_uid}"
+        )
+        return asset
+
+    except Exception as e:
+        logger.error(f"Error creating security from T-Bank data: {str(e)}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return None
+
+
 async def create_security_from_micex(security_name, isin, user, instrument_type):
     """Create a new security using MICEX API data"""
     try:
@@ -1202,7 +1364,7 @@ async def create_security_from_micex(security_name, isin, user, instrument_type)
             ]
 
         if security.empty:
-            logger.error(f"Security not found in MICEX: {security_name} ({isin})")
+            logger.warning(f"Security not found in MICEX: {security_name} ({isin})")
             return None
 
         # Get the first match if multiple found

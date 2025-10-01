@@ -12,7 +12,12 @@ from django.forms import model_to_dict
 
 from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import get_security, match_tinkoff_broker_account, transaction_exists
+from core.import_utils import (
+    fx_transaction_exists,
+    get_security,
+    match_tinkoff_broker_account,
+    transaction_exists,
+)
 from users.models import CustomUser
 
 from .views import TransactionViewSet
@@ -843,7 +848,10 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def handle_transaction_confirmation(self, transaction_data):
         # Check if transaction already exists
-        existing_transaction = await transaction_exists(transaction_data)
+        if transaction_data.get("is_fx"):
+            existing_transaction = await fx_transaction_exists(transaction_data)
+        else:
+            existing_transaction = await transaction_exists(transaction_data)
 
         if not existing_transaction:
             serialized_data = self._serialize_transaction_data(transaction_data)
@@ -877,20 +885,44 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         if isinstance(data, dict):
             serialized = data.copy()  # Create a copy
 
-            # Add total value to show to the user for confirmation
-            if (
-                "price" in serialized
-                and "quantity" in serialized
-                and serialized["price"] is not None
-                and serialized["quantity"] is not None
-            ):
-                serialized["total"] = round(serialized["quantity"] * serialized["price"], 2)
+            # Check if this is an FX transaction
+            is_fx = serialized.get("is_fx", False)
 
-            for key, value in serialized.items():
-                serialized[key] = self._serialize_transaction_data(
-                    value
-                )  # Recursive call for dicts
-            return format_table_data(serialized, serialized["currency"], number_of_digits=2)
+            if is_fx:
+                # For FX transactions, set type to 'FX' for frontend display
+                serialized["type"] = "FX"
+
+                # Serialize nested objects recursively
+                for key, value in list(serialized.items()):
+                    if isinstance(value, (CustomUser, Brokers, Assets, Accounts)):
+                        serialized[key] = model_to_dict(value, fields=["id", "name"])
+                    elif isinstance(value, (datetime.date, datetime.datetime)):
+                        serialized[key] = value.isoformat()
+                    elif isinstance(value, Decimal):
+                        serialized[key] = float(value)
+
+                # Format FX transaction data - use from_currency for formatting
+                currency_for_format = serialized.get("from_currency", "USD")
+                return format_table_data(serialized, currency_for_format, number_of_digits=2)
+            else:
+                # Regular transaction handling
+                # Add total value to show to the user for confirmation
+                if (
+                    "price" in serialized
+                    and "quantity" in serialized
+                    and serialized["price"] is not None
+                    and serialized["quantity"] is not None
+                ):
+                    serialized["total"] = round(serialized["quantity"] * serialized["price"], 2)
+
+                for key, value in serialized.items():
+                    serialized[key] = self._serialize_transaction_data(
+                        value
+                    )  # Recursive call for dicts
+
+                # Use currency field for regular transactions
+                currency = serialized.get("currency", "USD")
+                return format_table_data(serialized, currency, number_of_digits=2)
         elif isinstance(data, (CustomUser, Brokers, Assets, Accounts)):
             return model_to_dict(data, fields=["id", "name"])
         elif isinstance(data, (datetime.date, datetime.datetime)):

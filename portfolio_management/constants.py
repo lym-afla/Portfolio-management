@@ -71,6 +71,14 @@ EXPOSURE_CHOICES = (
     ("Commodity", "Commodity"),
 )
 
+DATA_SOURCE_CHOICES = [
+    ("FT", "Financial Times"),
+    ("YAHOO", "Yahoo Finance"),
+    ("MICEX", "MICEX"),
+    ("TBANK", "T-Bank"),
+    # Add more sources as needed
+]
+
 TOLERANCE = 1e-7
 
 YTD = "ytd"

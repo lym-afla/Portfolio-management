@@ -21,6 +21,7 @@ from common.models import Accounts, FXTransaction, Transactions
 from constants import ACCOUNT_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
 from core.broker_api_utils import TinkoffAPIException, get_broker_api
 from core.import_utils import (
+    fx_transaction_exists,
     get_account,
     get_broker,
     parse_charles_stanley_transactions,
@@ -188,6 +189,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     {
                         "name": "cash_flow",
                         "label": "Cash Flow",
+                        "type": "number",
+                        "required": False,
+                    },
+                    {
+                        "name": "aci",
+                        "label": "ACI",
                         "type": "number",
                         "required": False,
                     },
@@ -466,25 +473,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     is_fx = data.pop("is_fx", False)
 
                     if is_fx:
-                        # Create FXTransaction
-
-                        # Prepare FX-specific data
-                        fx_data = {
-                            "investor": data["investor"],
-                            "account": data["account"],
-                            "date": data["date"],
-                            "from_currency": data.get("from_currency"),
-                            "to_currency": data.get("to_currency"),
-                            "from_amount": data.get("from_amount"),
-                            "to_amount": data.get("to_amount"),
-                            "exchange_rate": data.get("exchange_rate"),
-                            "commission": data.get("commission"),
-                            "commission_currency": data.get("commission_currency"),
-                            "comment": data.get("comment", ""),
-                        }
-                        fx_transaction = FXTransaction(**fx_data)
+                        # Create FXTransaction - data is already in correct format
+                        fx_transaction = FXTransaction(**data)
                         fx_transactions.append(fx_transaction)
-                        logger.debug(f"Created FX transaction: {fx_data}")
+                        logger.debug("Created FX transaction")
                     else:
                         # Create regular Transaction
                         created_transaction = Transactions(**data)
@@ -606,38 +598,74 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         continue
 
                     try:
-                        # Format transaction data
-                        transaction_data = {
-                            "date": trans["date"],
-                            "type": trans["type"],
-                            "security": trans.get("security"),
-                            "quantity": trans.get("quantity"),
-                            "price": trans.get("price"),
-                            "currency": trans.get("currency"),
-                            "cash_flow": trans.get("cash_flow"),
-                            "commission": trans.get("commission"),
-                            "account": account,
-                            "investor": user,
-                        }
+                        # Check if this is an FX transaction
+                        is_fx = trans.get("is_fx", False)
+
+                        if is_fx:
+                            logger.info(
+                                f"Processing FX transaction: {trans.get('from_currency')}"
+                                f" -> {trans.get('to_currency')}"
+                            )
+                            # Format FX transaction data
+                            transaction_data = {
+                                "is_fx": True,
+                                "date": trans["date"],
+                                "from_currency": trans.get("from_currency"),
+                                "to_currency": trans.get("to_currency"),
+                                "from_amount": trans.get("from_amount"),
+                                "to_amount": trans.get("to_amount"),
+                                "exchange_rate": trans.get("exchange_rate"),
+                                "commission": trans.get("commission"),
+                                "commission_currency": trans.get("commission_currency"),
+                                "comment": trans.get("comment", ""),
+                                "account": account,
+                                "investor": user,
+                            }
+                        else:
+                            # Format regular transaction data
+                            transaction_data = {
+                                "date": trans["date"],
+                                "type": trans["type"],
+                                "security": trans.get("security"),
+                                "quantity": trans.get("quantity"),
+                                "price": trans.get("price"),
+                                "currency": trans.get("currency"),
+                                "cash_flow": trans.get("cash_flow"),
+                                "commission": trans.get("commission"),
+                                "aci": trans.get("aci"),
+                                "comment": trans.get("comment", ""),
+                                "account": account,
+                                "investor": user,
+                            }
 
                         # Process transaction based on status
-                        if trans.get("needs_security_mapping"):
-                            yield {
-                                "status": "security_mapping",
-                                "mapping_data": {
-                                    "security_description": trans["security_description"],
-                                    "isin": trans.get("isin"),
-                                    "symbol": trans.get("symbol"),
-                                },
-                                "transaction_data": transaction_data,
-                            }
-                            continue
+                        if not is_fx:
+                            # Security mapping only applies to regular transactions
+                            if trans.get("needs_security_mapping"):
+                                yield {
+                                    "status": "security_mapping",
+                                    "mapping_data": {
+                                        "security_description": trans["security_description"],
+                                        "isin": trans.get("isin"),
+                                        "symbol": trans.get("symbol"),
+                                    },
+                                    "transaction_data": transaction_data,
+                                }
+                                continue
 
-                        # Check for duplicates
-                        existing_transaction = await transaction_exists(transaction_data)
-                        if existing_transaction:
-                            stats["duplicateTransactions"] += 1
-                            continue
+                            # Check for duplicates for regular transactions
+                            existing_transaction = await transaction_exists(transaction_data)
+                            if existing_transaction:
+                                stats["duplicateTransactions"] += 1
+                                logger.debug("Duplicate regular transaction found, skipping")
+                                continue
+                        else:
+                            # Check for duplicates for FX transactionss
+                            existing_fx = await fx_transaction_exists(transaction_data)
+                            if existing_fx:
+                                stats["duplicateTransactions"] += 1
+                                logger.debug("Duplicate FX transaction found, skipping")
+                                continue
 
                         # Handle confirmation if needed
                         if confirm_every:

@@ -2,7 +2,7 @@ from django import forms
 
 from common.forms import GroupedSelect
 from common.models import Accounts, Assets, FXTransaction
-from constants import CURRENCY_CHOICES
+from constants import CURRENCY_CHOICES, DATA_SOURCE_CHOICES
 from core.user_utils import prepare_account_choices
 
 
@@ -22,6 +22,7 @@ class SecurityForm(forms.ModelForm):
             "yahoo_symbol",
             "update_link",
             "secid",
+            "tbank_instrument_uid",
             "fund_fee",
             "comment",
         ]
@@ -37,6 +38,7 @@ class SecurityForm(forms.ModelForm):
             "yahoo_symbol": forms.TextInput(attrs={"class": "form-control"}),
             "update_link": forms.URLInput(attrs={"class": "form-control"}),
             "secid": forms.TextInput(attrs={"class": "form-control"}),
+            "tbank_instrument_uid": forms.TextInput(attrs={"class": "form-control"}),
             "fund_fee": forms.NumberInput(attrs={"class": "form-control"}),
         }
 
@@ -47,12 +49,12 @@ class SecurityForm(forms.ModelForm):
             (choice[0], choice[0]) for choice in Assets._meta.get_field("type").choices if choice[0]
         ]
 
-        self.fields["data_source"].choices = [("", "None")] + Assets.DATA_SOURCE_CHOICES
+        self.fields["data_source"].choices = [("", "None")] + DATA_SOURCE_CHOICES
         self.fields["yahoo_symbol"].required = False
         self.fields["update_link"].required = False
         self.fields["fund_fee"].required = False
         self.fields["secid"].required = False
-
+        self.fields["tbank_instrument_uid"].required = False
         self.fields["update_link"].label = "Update link (Financial Times)"
 
     def clean(self):
@@ -61,6 +63,7 @@ class SecurityForm(forms.ModelForm):
         yahoo_symbol = cleaned_data.get("yahoo_symbol")
         update_link = cleaned_data.get("update_link")
         secid = cleaned_data.get("secid")
+        tbank_instrument_uid = cleaned_data.get("tbank_instrument_uid")
 
         if data_source == "YAHOO" and not yahoo_symbol:
             self.add_error(
@@ -72,6 +75,10 @@ class SecurityForm(forms.ModelForm):
             )
         elif data_source == "MICEX" and not secid:
             self.add_error("secid", "Secid is required for MICEX data source.")
+        elif data_source == "TBANK" and not tbank_instrument_uid:
+            self.add_error(
+                "tbank_instrument_uid", "T-Bank instrument UID is required for T-Bank data source."
+            )
 
         return cleaned_data
 

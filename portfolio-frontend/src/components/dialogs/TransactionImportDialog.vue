@@ -635,7 +635,6 @@ export default {
     }
 
     const startImport = async () => {
-      reset()
       if (!fileId.value || !selectedAccount.value) {
         importState.setState('error', 'File and account must be selected')
         return
@@ -654,6 +653,10 @@ export default {
       dialog.value = false
 
       try {
+        // Reset WebSocket state before attempting to connect
+        // This clears intentionalClose and connectionAttempted flags
+        reset()
+
         // Try to connect but don't block if it fails
         await connect()
 
@@ -693,7 +696,11 @@ export default {
     }
 
     const handleWebSocketMessage = (message) => {
-      logger.log('TransactionImportDialog', 'Received WebSocket message in dialog:', message)
+      logger.log(
+        'TransactionImportDialog',
+        'Received WebSocket message in dialog:',
+        message
+      )
       if (message.type === 'initialization') {
         totalToImport.value = message.total_to_update
         currentImportMessage.value = message.message
@@ -715,19 +722,19 @@ export default {
         message.type === 'save_error'
       ) {
         // Check if this is a security error that we can handle
-        const isSecurityError = message.data.error && (
-          message.data.error.includes('Security not found') ||
-          message.data.error.includes('Could not match security') ||
-          message.data.error.includes('unsupported operand type') ||
-          message.data.error.includes('NoneType')
-        );
+        const isSecurityError =
+          message.data.error &&
+          (message.data.error.includes('Security not found') ||
+            message.data.error.includes('Could not match security') ||
+            message.data.error.includes('unsupported operand type') ||
+            message.data.error.includes('NoneType'))
 
         if (isSecurityError) {
           // Handle security error but don't disconnect
-          handleImportError(message.data.error);
+          handleImportError(message.data.error)
         } else {
           // For other errors, handle normally
-          handleImportError(message.data.error);
+          handleImportError(message.data.error)
         }
       } else if (message.type === 'critical_error') {
         showProgressDialog.value = false
@@ -751,7 +758,11 @@ export default {
         handleTransactionConfirmation(message.data)
       } else if (message.type === 'account_matching_required') {
         // Handle the data correctly from backend message format
-        logger.log('TransactionImportDialog', 'Received account_matching_required with data:', message.data)
+        logger.log(
+          'TransactionImportDialog',
+          'Received account_matching_required with data:',
+          message.data
+        )
 
         selectedBroker.value = {
           id: message.data.broker_id,
@@ -762,21 +773,31 @@ export default {
 
         // Transform matched_pairs from an object to an array
         const rawMatchedPairs = message.data.matched_pairs || {}
-        logger.log('TransactionImportDialog', 'Raw matched pairs:', rawMatchedPairs)
+        logger.log(
+          'TransactionImportDialog',
+          'Raw matched pairs:',
+          rawMatchedPairs
+        )
 
-        matchedPairs.value = Object.entries(rawMatchedPairs).map(([tinkoffAccountId, pairData]) => {
-          const pair = {
-            tinkoff_account_id: tinkoffAccountId,
-            db_account_id: pairData.db_account.id,
-            // Preserve the full account objects
-            tinkoff_account: pairData.tinkoff_account,
-            db_account: pairData.db_account
+        matchedPairs.value = Object.entries(rawMatchedPairs).map(
+          ([tinkoffAccountId, pairData]) => {
+            const pair = {
+              tinkoff_account_id: tinkoffAccountId,
+              db_account_id: pairData.db_account.id,
+              // Preserve the full account objects
+              tinkoff_account: pairData.tinkoff_account,
+              db_account: pairData.db_account,
+            }
+            logger.log('TransactionImportDialog', 'Transformed pair:', pair)
+            return pair
           }
-          logger.log('TransactionImportDialog', 'Transformed pair:', pair)
-          return pair
-        })
+        )
 
-        logger.log('TransactionImportDialog', 'Transformed matched pairs array:', matchedPairs.value)
+        logger.log(
+          'TransactionImportDialog',
+          'Transformed matched pairs array:',
+          matchedPairs.value
+        )
 
         showAccountMatching.value = true
         // Hide the progress dialog while showing the account matching dialog
@@ -804,27 +825,33 @@ export default {
       importState.setState('error', error)
 
       // Check if this is a security-related error and provide options to add or skip
-      if (error && (
-        error.includes('Security not found') ||
-        error.includes('Could not match security') ||
-        error.includes('unsupported operand type') ||
-        error.includes('NoneType')
-      )) {
+      if (
+        error &&
+        (error.includes('Security not found') ||
+          error.includes('Could not match security') ||
+          error.includes('unsupported operand type') ||
+          error.includes('NoneType'))
+      ) {
         // Try to extract security info from the current import message
-        let securityName = '';
-        let securityIsin = '';
+        let securityName = ''
+        let securityIsin = ''
 
         // First try to extract from the error message
-        const securityMatch = error.match(/([^(]+)\(([^)]+)\)/);
+        const securityMatch = error.match(/([^(]+)\(([^)]+)\)/)
         if (securityMatch && securityMatch.length >= 3) {
-          securityName = securityMatch[1].trim();
-          securityIsin = securityMatch[2].trim();
+          securityName = securityMatch[1].trim()
+          securityIsin = securityMatch[2].trim()
         }
         // If not found in error, try the current message
-        else if (currentImportMessage.value && currentImportMessage.value.includes('security')) {
-          const msgMatch = currentImportMessage.value.match(/security\s+['"]?([^'"]+)['"]?/i);
+        else if (
+          currentImportMessage.value &&
+          currentImportMessage.value.includes('security')
+        ) {
+          const msgMatch = currentImportMessage.value.match(
+            /security\s+['"]?([^'"]+)['"]?/i
+          )
           if (msgMatch && msgMatch[1]) {
-            securityName = msgMatch[1].trim();
+            securityName = msgMatch[1].trim()
           }
         }
 
@@ -832,14 +859,14 @@ export default {
           error,
           securityName,
           securityIsin,
-          currentMessage: currentImportMessage.value
-        });
+          currentMessage: currentImportMessage.value,
+        })
 
         // Show dialog to create new security or skip
-        confirmTitle.value = 'Unknown Security Detected';
+        confirmTitle.value = 'Unknown Security Detected'
         confirmMessage.value = securityName
           ? `The security "${securityName}" was not found in the database. Would you like to create it or skip this transaction?`
-          : 'An unknown security was encountered during import. Would you like to create it or skip this transaction?';
+          : 'An unknown security was encountered during import. Would you like to create it or skip this transaction?'
 
         securityFormData.value = {
           name: securityName,
@@ -847,10 +874,10 @@ export default {
           currency: 'RUB', // Default values
           type: 'Stock',
           exposure: 'Equity',
-        };
+        }
 
-        confirmDialog.value = true;
-        return;
+        confirmDialog.value = true
+        return
       }
 
       handleApiError({ message: error })
@@ -866,7 +893,11 @@ export default {
     }
 
     const handleCreateSecurityFromMapping = () => {
-      logger.log('TransactionImportDialog', 'Creating security from mapping data:', currentMappingData.value)
+      logger.log(
+        'TransactionImportDialog',
+        'Creating security from mapping data:',
+        currentMappingData.value
+      )
 
       // Prepare security form data from mapping information
       securityFormData.value = {
@@ -1016,32 +1047,44 @@ export default {
     watch(lastMessage, (message) => {
       if (!message) return
 
-      logger.log('TransactionImportDialog', 'Received WebSocket message in dialog:', message)
+      logger.log(
+        'TransactionImportDialog',
+        'Received WebSocket message in dialog:',
+        message
+      )
 
       // Check for account matching inconsistency in logs
-      if (message.data && message.data.error &&
-          message.data.error.includes('not matched to any database account') &&
-          matchedPairs.value && matchedPairs.value.length > 0) {
-
+      if (
+        message.data &&
+        message.data.error &&
+        message.data.error.includes('not matched to any database account') &&
+        matchedPairs.value &&
+        matchedPairs.value.length > 0
+      ) {
         // Extract the account ID from the error message
-        const accountIdMatch = message.data.error.match(/ID: (\d+)/);
+        const accountIdMatch = message.data.error.match(/ID: (\d+)/)
         if (accountIdMatch && accountIdMatch[1]) {
-          const accountId = accountIdMatch[1];
+          const accountId = accountIdMatch[1]
 
           // Check if this account ID was in our matched pairs
-          const wasMatched = matchedPairs.value.some(pair =>
-            String(pair.tinkoff_account_id) === String(accountId));
+          const wasMatched = matchedPairs.value.some(
+            (pair) => String(pair.tinkoff_account_id) === String(accountId)
+          )
 
           if (wasMatched) {
             // Show special error for this backend inconsistency
-            errorMessage.value = "Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.";
-            showErrorDialog.value = true;
+            errorMessage.value =
+              'Server inconsistency detected: An account you matched was not recognized during import. This is likely a server-side bug. Please try again or contact support.'
+            showErrorDialog.value = true
 
             // Log this for debugging
-            logger.error('TransactionImportDialog', 'Account matching inconsistency detected:',
-              { accountId, matchedPairs: matchedPairs.value });
+            logger.error(
+              'TransactionImportDialog',
+              'Account matching inconsistency detected:',
+              { accountId, matchedPairs: matchedPairs.value }
+            )
 
-            return;
+            return
           }
         }
       }
@@ -1054,24 +1097,25 @@ export default {
         message.type === 'critical_error'
       ) {
         // Check if this is a security error we can handle
-        const isSecurityError = message.data && message.data.error && (
-          message.data.error.includes('Security not found') ||
-          message.data.error.includes('Could not match security') ||
-          message.data.error.includes('unsupported operand type') ||
-          message.data.error.includes('NoneType')
-        );
+        const isSecurityError =
+          message.data &&
+          message.data.error &&
+          (message.data.error.includes('Security not found') ||
+            message.data.error.includes('Could not match security') ||
+            message.data.error.includes('unsupported operand type') ||
+            message.data.error.includes('NoneType'))
 
         if (isSecurityError) {
           // For security errors, keep the connection but handle the error
-          handleImportError(message.data.error);
+          handleImportError(message.data.error)
         } else {
           // For other errors, close the account matching dialog if open
           showAccountMatching.value = false
 
           if (message.type === 'critical_error') {
             // Handle critical errors that require disconnecting
-            disconnect();
-            resetImport();
+            disconnect()
+            resetImport()
           }
         }
       } else if (message.type === 'error') {
@@ -1111,19 +1155,31 @@ export default {
     }
 
     const handleSecurityAdded = (securityData) => {
-      logger.log('TransactionImportDialog', 'handleSecurityAdded called with:', securityData)
-      logger.log('TransactionImportDialog', 'showSecurityMapping.value:', showSecurityMapping.value)
+      logger.log(
+        'TransactionImportDialog',
+        'handleSecurityAdded called with:',
+        securityData
+      )
+      logger.log(
+        'TransactionImportDialog',
+        'showSecurityMapping.value:',
+        showSecurityMapping.value
+      )
       logger.log('TransactionImportDialog', 'Security ID:', securityData?.id)
 
       showSecurityDialog.value = false
       securityFormData.value = null
 
       // Show the progress dialog again
-      showProgressDialog.value = true;
+      showProgressDialog.value = true
 
       // If this was created from security mapping, use it to map the security
       if (showSecurityMapping.value && securityData?.id) {
-        logger.log('TransactionImportDialog', 'Mapping newly created security to transaction, ID:', securityData.id)
+        logger.log(
+          'TransactionImportDialog',
+          'Mapping newly created security to transaction, ID:',
+          securityData.id
+        )
         sendMessage({
           type: 'security_mapped',
           action: 'map',
@@ -1132,18 +1188,25 @@ export default {
         resetConfirmationState()
       } else if (securityData?.id) {
         // Inform the server about the newly created security for other cases
-        logger.log('TransactionImportDialog', 'Sending security_confirmation for non-mapping case')
+        logger.log(
+          'TransactionImportDialog',
+          'Sending security_confirmation for non-mapping case'
+        )
         sendMessage({
           type: 'security_confirmation',
           security_id: securityData.id,
           security_created: true,
           security_data: {
             name: securityData.name,
-            id: securityData.id
-          }
+            id: securityData.id,
+          },
         })
       } else {
-        logger.error('TransactionImportDialog', 'Security data missing ID:', securityData)
+        logger.error(
+          'TransactionImportDialog',
+          'Security data missing ID:',
+          securityData
+        )
       }
     }
 
@@ -1153,11 +1216,14 @@ export default {
       securityFormData.value = null
 
       // Show the progress dialog again
-      showProgressDialog.value = true;
+      showProgressDialog.value = true
 
       // If this was from security mapping, send skip message
       if (showSecurityMapping.value) {
-        logger.log('TransactionImportDialog', 'Skipping transaction due to security creation cancellation')
+        logger.log(
+          'TransactionImportDialog',
+          'Skipping transaction due to security creation cancellation'
+        )
         sendMessage({
           type: 'security_mapped',
           action: 'skip',
@@ -1169,17 +1235,25 @@ export default {
         sendMessage({
           type: 'security_confirmation',
           security_id: null,
-          skip_transaction: true
+          skip_transaction: true,
         })
       }
     }
 
     const handleSecurityConfirm = (confirmed) => {
-      logger.log('TransactionImportDialog', 'handleSecurityConfirm called with:', confirmed)
+      logger.log(
+        'TransactionImportDialog',
+        'handleSecurityConfirm called with:',
+        confirmed
+      )
       confirmDialog.value = false
 
       if (confirmed) {
-        logger.log('TransactionImportDialog', 'Security confirmed, formData:', securityFormData.value)
+        logger.log(
+          'TransactionImportDialog',
+          'Security confirmed, formData:',
+          securityFormData.value
+        )
         if (securityFormData.value.readonly) {
           // If it's a readonly object (existing security)
           sendMessage({
@@ -1196,12 +1270,12 @@ export default {
       }
 
       // After handling the security confirmation, reset the error state to continue the import
-      importError.value = '';
-      errorMessage.value = '';
+      importError.value = ''
+      errorMessage.value = ''
 
       // Show the progress dialog again
       if (!showSecurityDialog.value) {
-        showProgressDialog.value = true;
+        showProgressDialog.value = true
       }
     }
 
@@ -1278,6 +1352,10 @@ export default {
       try {
         // Log selected account for debugging
         logger.log('Unknown', 'Selected broker account:', selectedBroker.value)
+
+        // Reset WebSocket state before attempting to connect
+        // This clears intentionalClose and connectionAttempted flags
+        reset()
 
         // Try to connect but don't block if it fails
         await connect()
@@ -1421,7 +1499,11 @@ export default {
         showAccountMatching.value = false
         showProgressDialog.value = true
       } catch (error) {
-        logger.error('TransactionImportDialog', 'Error sending account creation request:', error)
+        logger.error(
+          'TransactionImportDialog',
+          'Error sending account creation request:',
+          error
+        )
         errorMessage.value = 'Error creating new account'
       }
     }
@@ -1436,25 +1518,39 @@ export default {
     }
 
     const handleUseExistingMatches = (data) => {
-      logger.log('TransactionImportDialog', 'Using existing account matches:', data.pairs)
+      logger.log(
+        'TransactionImportDialog',
+        'Using existing account matches:',
+        data.pairs
+      )
 
       // Validate that we have valid pairs data
       if (!data || !data.pairs || !Array.isArray(data.pairs)) {
-        logger.error('TransactionImportDialog', 'Invalid existing pairs data:', data)
+        logger.error(
+          'TransactionImportDialog',
+          'Invalid existing pairs data:',
+          data
+        )
         errorMessage.value = 'Invalid existing account pairs data'
         return
       }
 
       // Check if we have at least one pair
       if (data.pairs.length === 0) {
-        logger.error('TransactionImportDialog', 'No existing account pairs available')
+        logger.error(
+          'TransactionImportDialog',
+          'No existing account pairs available'
+        )
         errorMessage.value = 'No existing account pairs were found'
         return
       }
 
       // Log the pairs before sending
-      logger.log('TransactionImportDialog', 'Sending matched pairs to server:',
-        JSON.stringify(data.pairs, null, 2))
+      logger.log(
+        'TransactionImportDialog',
+        'Sending matched pairs to server:',
+        JSON.stringify(data.pairs, null, 2)
+      )
 
       // Send the data to the server
       try {
@@ -1468,7 +1564,11 @@ export default {
         showAccountMatching.value = false
         showProgressDialog.value = true
       } catch (error) {
-        logger.error('TransactionImportDialog', 'Error sending existing matches:', error)
+        logger.error(
+          'TransactionImportDialog',
+          'Error sending existing matches:',
+          error
+        )
         errorMessage.value = 'Error sending existing matches to server'
       }
     }

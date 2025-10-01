@@ -196,7 +196,10 @@ export default {
           response = await createSecurity(form.value)
           logger.log('Unknown', 'createSecurity response:', response)
           if (props.isImport) {
-            logger.log('Unknown', 'Emitting security-added with:', { id: response.id, name: response.name })
+            logger.log('Unknown', 'Emitting security-added with:', {
+              id: response.id,
+              name: response.name,
+            })
             emit('security-added', { id: response.id, name: response.name })
           } else {
             emit('security-added', response)
@@ -239,6 +242,12 @@ export default {
         return false
       }
       if (fieldName === 'secid' && form.value.data_source !== 'MICEX') {
+        return false
+      }
+      if (
+        fieldName === 'tbank_instrument_uid' &&
+        form.value.data_source !== 'TBANK'
+      ) {
         return false
       }
       return true

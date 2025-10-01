@@ -90,7 +90,11 @@ export default {
     watch(
       () => props.errors,
       (newErrors) => {
-        logger.log('Unknown', '[RegisterForm.vue] New errors received:', newErrors)
+        logger.log(
+          'Unknown',
+          '[RegisterForm.vue] New errors received:',
+          newErrors
+        )
         Object.keys(formErrors).forEach((key) => {
           if (newErrors[key]) {
             formErrors[key] = Array.isArray(newErrors[key])

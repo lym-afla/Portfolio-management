@@ -317,7 +317,10 @@ export default {
     watch(
       () => store.state.dataRefreshTrigger,
       () => {
-        logger.log('Unknown', 'Data refresh triggered, refreshing dashboard data...')
+        logger.log(
+          'Unknown',
+          'Data refresh triggered, refreshing dashboard data...'
+        )
         refreshAllData()
       }
     )

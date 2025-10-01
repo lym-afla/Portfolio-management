@@ -23,30 +23,46 @@
         </p>
 
         <!-- Already Matched Accounts Section -->
-        <v-card v-if="matchedPairs && matchedPairs.length > 0" variant="outlined" class="mb-4 pa-4">
+        <v-card
+          v-if="matchedPairs && matchedPairs.length > 0"
+          variant="outlined"
+          class="mb-4 pa-4"
+        >
           <div class="d-flex align-center mb-2">
             <h3 class="text-h6">Already Matched Accounts</h3>
             <v-spacer />
-            <v-chip color="success" class="ml-2">{{ matchedPairs.length }} matched</v-chip>
+            <v-chip color="success" class="ml-2"
+              >{{ matchedPairs.length }} matched</v-chip
+            >
           </div>
-          
+
           <v-list>
-            <v-list-item v-for="pair in matchedPairs" :key="`matched-${pair.tinkoff_account_id}`">
+            <v-list-item
+              v-for="pair in matchedPairs"
+              :key="`matched-${pair.tinkoff_account_id}`"
+            >
               <template v-slot:prepend>
                 <v-icon color="success">mdi-check-circle</v-icon>
               </template>
               <v-list-item-title class="font-weight-bold">
-                {{ pair.tinkoff_account?.name || getTinkoffAccountName(pair.tinkoff_account_id) }} → 
-                {{ pair.db_account?.name || getDbAccountName(pair.db_account_id) }}
+                {{
+                  pair.tinkoff_account?.name ||
+                  getTinkoffAccountName(pair.tinkoff_account_id)
+                }}
+                →
+                {{
+                  pair.db_account?.name || getDbAccountName(pair.db_account_id)
+                }}
               </v-list-item-title>
               <v-list-item-subtitle>
-                Tinkoff ID: {{ pair.tinkoff_account_id }} | DB ID: {{ pair.db_account_id }}
+                Tinkoff ID: {{ pair.tinkoff_account_id }} | DB ID:
+                {{ pair.db_account_id }}
               </v-list-item-subtitle>
             </v-list-item>
           </v-list>
-          
+
           <v-btn
-            v-if="matchedPairs.length > 0" 
+            v-if="matchedPairs.length > 0"
             color="success"
             variant="tonal"
             class="mt-3"
@@ -56,11 +72,11 @@
             Continue with existing matches only
           </v-btn>
         </v-card>
-        
+
         <!-- Accounts to Match Section -->
         <div v-if="hasUnmatchedAccounts" class="mb-4">
           <h3 class="text-h6 mb-3">Match Remaining Accounts</h3>
-          
+
           <!-- Account Matching Pairs -->
           <div
             v-for="(pair, index) in accountPairs"
@@ -185,7 +201,8 @@
                         <v-icon color="primary">mdi-bank</v-icon>
                       </template>
                       <v-list-item-subtitle>
-                        ID: {{ item.raw.id }} | Opened: {{ item.raw.opened_date }}
+                        ID: {{ item.raw.id }} | Opened:
+                        {{ item.raw.opened_date }}
                       </v-list-item-subtitle>
                     </v-list-item>
                   </template>
@@ -207,12 +224,21 @@
             </v-expand-transition>
           </v-card>
         </div>
-        
+
         <!-- No Remaining Accounts Message -->
-        <div v-if="!hasUnmatchedAccounts && (!matchedPairs || matchedPairs.length === 0)" class="text-center pa-4">
+        <div
+          v-if="
+            !hasUnmatchedAccounts &&
+            (!matchedPairs || matchedPairs.length === 0)
+          "
+          class="text-center pa-4"
+        >
           <v-icon size="large" color="warning">mdi-information</v-icon>
           <p class="text-h6 mt-2">No accounts available to match</p>
-          <p class="text-body-1">All Tinkoff accounts are already matched or there are no accounts to match.</p>
+          <p class="text-body-1">
+            All Tinkoff accounts are already matched or there are no accounts to
+            match.
+          </p>
         </div>
       </v-card-text>
 
@@ -222,7 +248,11 @@
           Cancel
         </v-btn>
         <v-btn color="primary" :disabled="!isValid" @click="confirmSelection">
-          {{ matchedPairs && matchedPairs.length > 0 ? 'Confirm New Matches' : 'Confirm' }}
+          {{
+            matchedPairs && matchedPairs.length > 0
+              ? 'Confirm New Matches'
+              : 'Confirm'
+          }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -257,54 +287,76 @@ export default {
     },
   },
 
-  emits: ['update:modelValue', 'accounts-matched', 'create-account', 'use-existing-matches'],
+  emits: [
+    'update:modelValue',
+    'accounts-matched',
+    'create-account',
+    'use-existing-matches',
+  ],
 
   setup(props, { emit }) {
     // Add debugging onMounted hook
     onMounted(() => {
       logger.debug('AccountMatchingDialog', 'Component mounted with data:')
       logger.debug('AccountMatchingDialog', 'matchedPairs:', props.matchedPairs)
-      logger.debug('AccountMatchingDialog', 'tinkoffAccounts:', props.tinkoffAccounts)
+      logger.debug(
+        'AccountMatchingDialog',
+        'tinkoffAccounts:',
+        props.tinkoffAccounts
+      )
       logger.debug('AccountMatchingDialog', 'dbAccounts:', props.dbAccounts)
-      
+
       // Log detailed structure of matched pairs
       logMatchedPairsStructure()
-      
+
       // Check if IDs in matchedPairs exist in the accounts arrays
       if (props.matchedPairs && props.matchedPairs.length > 0) {
-        props.matchedPairs.forEach(pair => {
-          const tinkoffExists = props.tinkoffAccounts.some(acc => String(acc.id) === String(pair.tinkoff_account_id))
-          const dbExists = props.dbAccounts.some(acc => String(acc.id) === String(pair.db_account_id))
-          
-          logger.debug('AccountMatchingDialog', `Pair check - Tinkoff ID: ${pair.tinkoff_account_id} exists: ${tinkoffExists}, DB ID: ${pair.db_account_id} exists: ${dbExists}`)
-          
+        props.matchedPairs.forEach((pair) => {
+          const tinkoffExists = props.tinkoffAccounts.some(
+            (acc) => String(acc.id) === String(pair.tinkoff_account_id)
+          )
+          const dbExists = props.dbAccounts.some(
+            (acc) => String(acc.id) === String(pair.db_account_id)
+          )
+
+          logger.debug(
+            'AccountMatchingDialog',
+            `Pair check - Tinkoff ID: ${pair.tinkoff_account_id} exists: ${tinkoffExists}, DB ID: ${pair.db_account_id} exists: ${dbExists}`
+          )
+
           // Check if pair contains names directly
           if (pair.tinkoff_account?.name || pair.db_account?.name) {
-            logger.info('AccountMatchingDialog', 'Found embedded names in matchedPairs:', 
-                        { tinkoff: pair.tinkoff_account?.name, db: pair.db_account?.name })
+            logger.info(
+              'AccountMatchingDialog',
+              'Found embedded names in matchedPairs:',
+              { tinkoff: pair.tinkoff_account?.name, db: pair.db_account?.name }
+            )
           }
         })
       }
     })
-    
+
     // Helper to log detailed structure of matched pairs
     const logMatchedPairsStructure = () => {
       if (!props.matchedPairs || props.matchedPairs.length === 0) {
         logger.debug('AccountMatchingDialog', 'No matched pairs available')
         return
       }
-      
+
       logger.group('AccountMatchingDialog - Matched Pairs Structure')
       props.matchedPairs.forEach((pair, index) => {
         logger.debug('AccountMatchingDialog', `Pair #${index + 1}:`)
         const keys = Object.keys(pair)
-        keys.forEach(key => {
-          logger.debug('AccountMatchingDialog', `  ${key}: ${JSON.stringify(pair[key])}`)
+        keys.forEach((key) => {
+          logger.debug(
+            'AccountMatchingDialog',
+            `  ${key}: ${JSON.stringify(pair[key])}`
+          )
         })
       })
       logger.groupEnd()
     }
-    
+
     // Account pairs for matching
     const accountPairs = ref([{ tinkoffAccount: null, dbAccount: null }])
 
@@ -323,57 +375,81 @@ export default {
     // Helper methods to get names for the already matched pairs display
     const getTinkoffAccountName = (id) => {
       // First check if the matched pair has the full tinkoff_account object
-      const pair = props.matchedPairs.find(p => String(p.tinkoff_account_id) === String(id))
+      const pair = props.matchedPairs.find(
+        (p) => String(p.tinkoff_account_id) === String(id)
+      )
       if (pair && pair.tinkoff_account && pair.tinkoff_account.name) {
         return pair.tinkoff_account.name
       }
-      
+
       // Fall back to looking up in tinkoffAccounts array
       const stringId = String(id)
-      const account = props.tinkoffAccounts.find(acc => String(acc.id) === stringId)
+      const account = props.tinkoffAccounts.find(
+        (acc) => String(acc.id) === stringId
+      )
       if (!account) {
-        logger.warn('AccountMatchingDialog', 'Could not find Tinkoff account with ID:', id, 
-                  'Type:', typeof id, 
-                  'Available account IDs:', props.tinkoffAccounts.map(a => ({id: a.id, type: typeof a.id})))
+        logger.warn(
+          'AccountMatchingDialog',
+          'Could not find Tinkoff account with ID:',
+          id,
+          'Type:',
+          typeof id,
+          'Available account IDs:',
+          props.tinkoffAccounts.map((a) => ({ id: a.id, type: typeof a.id }))
+        )
       }
       return account ? account.name : `Account ${id}`
     }
-    
+
     const getDbAccountName = (id) => {
       // First check if the matched pair has the full db_account object
-      const pair = props.matchedPairs.find(p => String(p.db_account_id) === String(id))
+      const pair = props.matchedPairs.find(
+        (p) => String(p.db_account_id) === String(id)
+      )
       if (pair && pair.db_account && pair.db_account.name) {
         return pair.db_account.name
       }
-      
+
       // Fall back to looking up in dbAccounts array
       const stringId = String(id)
-      const account = props.dbAccounts.find(acc => String(acc.id) === stringId)
+      const account = props.dbAccounts.find(
+        (acc) => String(acc.id) === stringId
+      )
       if (!account) {
-        logger.warn('AccountMatchingDialog', 'Could not find DB account with ID:', id, 
-                  'Type:', typeof id, 
-                  'Available account IDs:', props.dbAccounts.map(a => ({id: a.id, type: typeof a.id})))
+        logger.warn(
+          'AccountMatchingDialog',
+          'Could not find DB account with ID:',
+          id,
+          'Type:',
+          typeof id,
+          'Available account IDs:',
+          props.dbAccounts.map((a) => ({ id: a.id, type: typeof a.id }))
+        )
       }
       return account ? account.name : `Account ${id}`
     }
 
     // Check if there are any unmatched accounts to display the matching section
     const hasUnmatchedAccounts = computed(() => {
-      return remainingTinkoffAccounts.value.length > 0 || 
-             availableDbAccounts(0).length > 0
+      return (
+        remainingTinkoffAccounts.value.length > 0 ||
+        availableDbAccounts(0).length > 0
+      )
     })
 
     // Function to check which Tinkoff accounts are available for a specific pair
     const availableTinkoffAccounts = (pairIndex) => {
       // Filter out already matched Tinkoff accounts
-      const alreadyMatchedIds = (props.matchedPairs || []).map(p => p.tinkoff_account_id)
-      
+      const alreadyMatchedIds = (props.matchedPairs || []).map(
+        (p) => p.tinkoff_account_id
+      )
+
       return props.tinkoffAccounts.filter((account) => {
         // Check if this account is already matched
         if (alreadyMatchedIds.includes(account.id)) {
           return false
         }
-        
+
         // Check if this account is used in any other pair
         return !accountPairs.value.some(
           (pair, index) =>
@@ -387,14 +463,16 @@ export default {
     // Function to check which DB accounts are available for a specific pair
     const availableDbAccounts = (pairIndex) => {
       // Filter out already matched DB accounts
-      const alreadyMatchedIds = (props.matchedPairs || []).map(p => p.db_account_id)
-      
+      const alreadyMatchedIds = (props.matchedPairs || []).map(
+        (p) => p.db_account_id
+      )
+
       return props.dbAccounts.filter((account) => {
         // Check if this account is already matched
         if (alreadyMatchedIds.includes(account.id)) {
           return false
         }
-        
+
         // Check if this account is used in any other pair
         return !accountPairs.value.some(
           (pair, index) =>
@@ -408,14 +486,16 @@ export default {
     // Computed to get remaining Tinkoff accounts for creating new accounts
     const remainingTinkoffAccounts = computed(() => {
       // Filter out already matched Tinkoff accounts
-      const alreadyMatchedIds = (props.matchedPairs || []).map(p => p.tinkoff_account_id)
-      
+      const alreadyMatchedIds = (props.matchedPairs || []).map(
+        (p) => p.tinkoff_account_id
+      )
+
       return props.tinkoffAccounts.filter((account) => {
         // Check if already matched
         if (alreadyMatchedIds.includes(account.id)) {
           return false
         }
-        
+
         // Check if used in a current pair
         return !accountPairs.value.some(
           (pair) => pair.tinkoffAccount && pair.tinkoffAccount.id === account.id
@@ -433,10 +513,14 @@ export default {
 
     const isValid = computed(() => {
       // If we have matched pairs and no new pairs to match, it's valid
-      if (props.matchedPairs && props.matchedPairs.length > 0 && !hasUnmatchedAccounts.value) {
+      if (
+        props.matchedPairs &&
+        props.matchedPairs.length > 0 &&
+        !hasUnmatchedAccounts.value
+      ) {
         return true
       }
-      
+
       if (createNewAccount.value) {
         return newAccountTinkoffAccount.value && newAccountName.value.trim()
       }
@@ -469,7 +553,7 @@ export default {
         newAccountTinkoffAccount.value = null
       }
     }
-    
+
     const continueWithExistingMatches = () => {
       emit('use-existing-matches', { pairs: props.matchedPairs })
       closeDialog()
@@ -478,14 +562,16 @@ export default {
     const confirmSelection = () => {
       try {
         // If we have matched pairs but no new ones and no creation, use existing
-        if (props.matchedPairs && 
-            props.matchedPairs.length > 0 && 
-            !hasUnmatchedAccounts.value && 
-            !createNewAccount.value) {
+        if (
+          props.matchedPairs &&
+          props.matchedPairs.length > 0 &&
+          !hasUnmatchedAccounts.value &&
+          !createNewAccount.value
+        ) {
           continueWithExistingMatches()
           return
         }
-        
+
         if (createNewAccount.value) {
           if (!newAccountTinkoffAccount.value) {
             errorMessage.value = 'Please select a Tinkoff account'
@@ -499,13 +585,19 @@ export default {
           })
         } else {
           // Validate that we have at least one complete pair for new matches
-          if (hasUnmatchedAccounts.value && 
-              !accountPairs.value.some((pair) => pair.tinkoffAccount && pair.dbAccount)) {
+          if (
+            hasUnmatchedAccounts.value &&
+            !accountPairs.value.some(
+              (pair) => pair.tinkoffAccount && pair.dbAccount
+            )
+          ) {
             if (props.matchedPairs && props.matchedPairs.length > 0) {
               // We have existing matches, ask if user wants to continue with them
-              errorMessage.value = 'Please create at least one new match or use existing matches'
+              errorMessage.value =
+                'Please create at least one new match or use existing matches'
             } else {
-              errorMessage.value = 'Please create at least one account matching pair'
+              errorMessage.value =
+                'Please create at least one account matching pair'
             }
             return
           }
@@ -517,12 +609,9 @@ export default {
               tinkoff_account_id: pair.tinkoffAccount.id,
               db_account_id: pair.dbAccount.id,
             }))
-          
+
           // Combine with existing matched pairs if any
-          const allPairs = [
-            ...(props.matchedPairs || []),
-            ...newMatchedPairs
-          ]
+          const allPairs = [...(props.matchedPairs || []), ...newMatchedPairs]
 
           emit('accounts-matched', {
             pairs: allPairs,

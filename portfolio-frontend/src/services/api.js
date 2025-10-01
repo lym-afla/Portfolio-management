@@ -1083,7 +1083,11 @@ export const getFXTransactionFormStructure = async () => {
     )
     return response.data
   } catch (error) {
-    logger.error('Unknown', 'Error fetching FX transaction form structure:', error)
+    logger.error(
+      'Unknown',
+      'Error fetching FX transaction form structure:',
+      error
+    )
     throw error.response ? error.response.data : error.message
   }
 }

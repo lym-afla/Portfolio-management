@@ -139,24 +139,33 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const guardId = Date.now()
-  logger.log('Router', `[${guardId}] Navigation from ${from.path} to ${to.path}`)
+  logger.log(
+    'Router',
+    `[${guardId}] Navigation from ${from.path} to ${to.path}`
+  )
 
   // Check if user is going to auth pages
   const goingToAuthPage = to.name === 'Login' || to.name === 'Register'
-  
+
   // Skip initialization completely for auth pages
   if (goingToAuthPage) {
-    logger.log('Router', `[${guardId}] Going to auth page, skipping initialization`)
+    logger.log(
+      'Router',
+      `[${guardId}] Going to auth page, skipping initialization`
+    )
     // But first check if already authenticated
     if (store.getters.isAuthenticated) {
-      logger.log('Router', `[${guardId}] User is authenticated, redirecting to Profile`)
+      logger.log(
+        'Router',
+        `[${guardId}] User is authenticated, redirecting to Profile`
+      )
       next({ name: 'Profile' })
       return
     }
     next()
     return
   }
-  
+
   // For non-auth pages, check initialization
   if (!store.state.isInitialized) {
     logger.log('Router', `[${guardId}] App not initialized, initializing...`)
@@ -166,10 +175,14 @@ router.beforeEach(async (to, from, next) => {
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Initialization timeout')), 3000)
       })
-      
+
       await Promise.race([initPromise, timeoutPromise])
     } catch (error) {
-      logger.error('Router', `[${guardId}] Initialization failed or timed out:`, error)
+      logger.error(
+        'Router',
+        `[${guardId}] Initialization failed or timed out:`,
+        error
+      )
       // Force initialization to complete to prevent infinite loops
       store.commit('SET_INITIALIZED', true)
     }
@@ -177,11 +190,14 @@ router.beforeEach(async (to, from, next) => {
 
   // After initialization (successful or not), check authentication
   const isAuthenticated = store.getters.isAuthenticated
-  
+
   // Check if the route requires authentication
-  if (to.matched.some(record => record.meta.requiresAuth)) {
+  if (to.matched.some((record) => record.meta.requiresAuth)) {
     if (!isAuthenticated) {
-      logger.log('Router', `[${guardId}] Route requires auth but user is not authenticated, redirecting to login`)
+      logger.log(
+        'Router',
+        `[${guardId}] Route requires auth but user is not authenticated, redirecting to login`
+      )
       next({ name: 'Login' })
       return
     }

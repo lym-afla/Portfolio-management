@@ -111,7 +111,10 @@ import logger from '@/utils/logger'
 export default {
   setup() {
     const componentId = Date.now()
-    logger.log('Unknown', `[ProfilePage][${componentId}] Component setup started`)
+    logger.log(
+      'Unknown',
+      `[ProfilePage][${componentId}] Component setup started`
+    )
 
     const router = useRouter()
     const store = useStore()

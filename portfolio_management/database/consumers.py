@@ -18,6 +18,7 @@ from core.import_utils import (
     generate_dates_for_price_import,
     import_security_prices_from_ft,
     import_security_prices_from_micex,
+    import_security_prices_from_tbank,
     import_security_prices_from_yahoo,
 )
 
@@ -382,6 +383,8 @@ class PriceImportConsumer(AsyncHttpConsumer):
                         price_generator = import_security_prices_from_yahoo(security, dates)
                     elif security.data_source == "MICEX" and security.secid:
                         price_generator = import_security_prices_from_micex(security, dates)
+                    elif security.data_source == "TBANK" and security.tbank_instrument_uid:
+                        price_generator = import_security_prices_from_tbank(security, dates, user)
                     else:
                         error_message = (
                             f"No valid data source or update information for {security.name}"

@@ -50,7 +50,8 @@
                   >From</v-list-item-title
                 >
                 <v-list-item-subtitle class="text-body-2">
-                  {{ currentTransaction.from_amount }} {{ currentTransaction.from_currency }}
+                  {{ currentTransaction.from_amount }}
+                  {{ currentTransaction.from_currency }}
                 </v-list-item-subtitle>
               </v-list-item>
             </v-col>
@@ -63,7 +64,8 @@
                   >To</v-list-item-title
                 >
                 <v-list-item-subtitle class="text-body-2">
-                  {{ currentTransaction.to_amount }} {{ currentTransaction.to_currency }}
+                  {{ currentTransaction.to_amount }}
+                  {{ currentTransaction.to_currency }}
                 </v-list-item-subtitle>
               </v-list-item>
             </v-col>

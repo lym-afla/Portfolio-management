@@ -201,6 +201,7 @@ class TransactionSerializer(serializers.ModelSerializer):
     value = serializers.SerializerMethodField()
     cash_flow = serializers.SerializerMethodField()
     commission = serializers.SerializerMethodField()
+    aci = serializers.SerializerMethodField()
     currency = serializers.CharField()
     security_name = serializers.SerializerMethodField()
     security_id = serializers.SerializerMethodField()
@@ -216,10 +217,12 @@ class TransactionSerializer(serializers.ModelSerializer):
             "value",
             "cash_flow",
             "commission",
+            "aci",
             "currency",
             "security_name",
             "security_id",
             "account",
+            "aci",
         ]
 
     def get_digits(self):
@@ -246,6 +249,9 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_commission(self, obj):
         return format_value(obj.commission, "commission", obj.currency, self.get_digits())
+
+    def get_aci(self, obj):
+        return format_value(obj.aci, "aci", obj.currency, self.get_digits())
 
     def get_security_name(self, obj):
         return obj.security.name if obj.security else None

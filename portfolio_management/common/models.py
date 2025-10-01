@@ -13,6 +13,7 @@ from constants import (
     ACCOUNT_TYPE_CHOICES,
     ASSET_TYPE_CHOICES,
     CURRENCY_CHOICES,
+    DATA_SOURCE_CHOICES,
     EXPOSURE_CHOICES,
     TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_CHOICES,
@@ -227,6 +228,7 @@ class Accounts(models.Model):
         for transaction in transactions:
             balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal(
                 (transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0))
+                - Decimal(transaction.aci or Decimal(0))
                 - Decimal(transaction.cash_flow or Decimal(0))
                 - Decimal(transaction.commission or Decimal(0))
             )
@@ -262,12 +264,6 @@ class Assets(models.Model):
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default="Equity")
     restricted = models.BooleanField(default=False, null=False)
     comment = models.TextField(null=True, blank=True)
-    DATA_SOURCE_CHOICES = [
-        ("FT", "Financial Times"),
-        ("YAHOO", "Yahoo Finance"),
-        ("MICEX", "MICEX")
-        # Add more sources as needed
-    ]
     data_source = models.CharField(
         max_length=10, choices=[("", "None")] + DATA_SOURCE_CHOICES, blank=True, null=True
     )
@@ -277,6 +273,7 @@ class Assets(models.Model):
     )  # For Yahoo Finance symbol
     fund_fee = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
     secid = models.CharField(max_length=10, null=True, blank=True)  # For MICEX
+    tbank_instrument_uid = models.CharField(max_length=50, blank=True, null=True)  # For T-Bank
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
@@ -713,31 +710,81 @@ class Assets(models.Model):
         self, date, investor, currency=None, account_ids=None, start_date=None
     ):
         """
-        Calculate the capital distribution (dividends) for this asset.
-        Capital distribution is the total cash flow from 'dividend' type transactions.
+        Calculate the capital distribution for this asset.
+        Includes:
+        - Dividends (for stocks/ETFs)
+        - Coupons (for bonds)
+        - ACI (Accrued Interest when buying/selling bonds)
+        - Taxes (paid on dividends/coupons)
         """
-        total_dividends = 0
-        dividend_transactions = self.transactions.filter(
-            type="Dividend", date__lte=date, investor=investor
+        total_distributions = 0
+
+        # Get dividend and coupon transactions
+        distribution_transactions = self.transactions.filter(
+            type__in=["Dividend", "Coupon"], date__lte=date, investor=investor
         )
 
         if account_ids is not None:
-            dividend_transactions = dividend_transactions.filter(account_id__in=account_ids)
+            distribution_transactions = distribution_transactions.filter(account_id__in=account_ids)
 
         if start_date is not None:
-            dividend_transactions = dividend_transactions.filter(date__gte=start_date)
+            distribution_transactions = distribution_transactions.filter(date__gte=start_date)
 
-        if dividend_transactions:
+        # Calculate dividends and coupons
+        if distribution_transactions:
             if currency is None:
-                total_dividends += dividend_transactions.aggregate(total=Sum("cash_flow"))["total"]
+                total_distributions += (
+                    distribution_transactions.aggregate(total=Sum("cash_flow"))["total"] or 0
+                )
             else:
-                for dividend in dividend_transactions:
-                    fx_rate = FX.get_rate(dividend.currency, currency, dividend.date)["FX"]
+                for transaction in distribution_transactions:
+                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
                     if fx_rate:
-                        total_dividends += dividend.cash_flow * fx_rate
-            return round(Decimal(total_dividends), 2)
-        else:
-            return Decimal(0)
+                        total_distributions += transaction.cash_flow * fx_rate
+
+        # Get transactions with ACI (buy/sell bonds)
+        aci_transactions = self.transactions.filter(
+            aci__isnull=False, date__lte=date, investor=investor
+        )
+
+        if account_ids is not None:
+            aci_transactions = aci_transactions.filter(account_id__in=account_ids)
+
+        if start_date is not None:
+            aci_transactions = aci_transactions.filter(date__gte=start_date)
+
+        # Add ACI to total distributions
+        if aci_transactions:
+            if currency is None:
+                total_distributions += aci_transactions.aggregate(total=Sum("aci"))["total"] or 0
+            else:
+                for transaction in aci_transactions:
+                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
+                    if fx_rate:
+                        total_distributions += transaction.aci * fx_rate
+
+        # Get tax transactions (typically negative, reducing net distributions)
+        tax_transactions = self.transactions.filter(type="Tax", date__lte=date, investor=investor)
+
+        if account_ids is not None:
+            tax_transactions = tax_transactions.filter(account_id__in=account_ids)
+
+        if start_date is not None:
+            tax_transactions = tax_transactions.filter(date__gte=start_date)
+
+        # Subtract taxes from total distributions
+        if tax_transactions:
+            if currency is None:
+                total_distributions += (
+                    tax_transactions.aggregate(total=Sum("cash_flow"))["total"] or 0
+                )
+            else:
+                for transaction in tax_transactions:
+                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
+                    if fx_rate:
+                        total_distributions += transaction.cash_flow * fx_rate
+
+        return round(Decimal(total_distributions), 2)
 
     def get_commission(self, date, investor, currency=None, account_ids=None, start_date=None):
         """
@@ -785,9 +832,13 @@ class Transactions(models.Model):
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
     date = models.DateField(db_index=True, null=False)
     quantity = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
-    price = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
+    price = models.DecimalField(
+        max_digits=18, decimal_places=9, null=True, blank=True
+    )  # Increased precision for T-Bank API (nano field)
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # Accounts for sign of ACI (negative for buy, positive for sell)
+    aci = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
 
     def __str__(self):

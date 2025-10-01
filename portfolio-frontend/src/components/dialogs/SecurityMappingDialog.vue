@@ -104,7 +104,11 @@ export default {
             )
           }
         } else {
-          logger.error('Unknown', 'Fetched securities is not an array:', securities)
+          logger.error(
+            'Unknown',
+            'Fetched securities is not an array:',
+            securities
+          )
           securityError.value = 'Invalid data received from server'
         }
       } catch (error) {
