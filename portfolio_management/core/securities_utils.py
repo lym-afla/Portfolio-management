@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404
 from common.models import Assets
 from core.portfolio_utils import IRR
 
-from .formatting_utils import format_table_data
+from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
 from .sorting_utils import sort_entries
 
@@ -23,23 +23,19 @@ def get_securities_table_api(request):
     effective_current_date = datetime.strptime(
         request.session["effective_current_date"], "%Y-%m-%d"
     ).date()
-    currency_target = user.default_currency
     number_of_digits = user.digits
 
     securities_data = _filter_securities(user, search)
     securities_data = _get_securities_data(user, securities_data, effective_current_date)
     securities_data = sort_entries(securities_data, sort_by)
     paginated_securities, pagination_data = paginate_table(securities_data, page, items_per_page)
-    formatted_securities = format_table_data(
-        paginated_securities, currency_target, number_of_digits
-    )
-
-    # totals = _calculate_totals(securities_data, user, effective_current_date, currency_target)
-    # totals = format_table_data(totals, currency_target, number_of_digits)
+    formatted_securities = [
+        {k: format_value(v, k, position["currency"], number_of_digits) for k, v in position.items()}
+        for position in paginated_securities.object_list
+    ]
 
     return {
         "securities": formatted_securities,
-        # 'totals': totals,
         "total_items": pagination_data["total_items"],
         "current_page": pagination_data["current_page"],
         "total_pages": pagination_data["total_pages"],
@@ -80,7 +76,7 @@ def _get_securities_data(user, securities, effective_current_date):
         }
 
         # Calculate current value and IRR if price is available
-        price = security.price_at_date(effective_current_date)
+        price = security.price_at_date(effective_current_date, security.currency)
         if price is not None:
             security_data["current_value"] = security_data["open_position"] * price.price
             security_data["irr"] = IRR(
@@ -120,7 +116,7 @@ def get_security_detail(request, security_id):
     }
 
     # Calculate current value and IRR if price is available
-    price = security.price_at_date(effective_current_date)
+    price = security.price_at_date(effective_current_date, security.currency)
     if price is not None:
         security_data["current_value"] = security_data["open_position"] * price.price
         security_data["irr"] = IRR(

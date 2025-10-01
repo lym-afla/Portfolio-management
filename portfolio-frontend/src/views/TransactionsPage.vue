@@ -29,6 +29,14 @@
         >
           Import Transactions
         </v-btn>
+        <v-btn
+          color="info"
+          prepend-icon="mdi-swap-horizontal"
+          class="ml-2"
+          @click="openTransferDialog"
+        >
+          Transfer Asset
+        </v-btn>
       </v-card-text>
     </v-card>
 
@@ -121,10 +129,10 @@
               <td class="text-start text-nowrap">
                 {{ item.type }}
                 <template
-                  v-if="item.type.includes('Cash') || item.type === 'Dividend'"
+                  v-if="item.type.includes('Cash') || item.type === 'Dividend' || item.type === 'Coupon'"
                 >
                   {{ item.cash_flow }}
-                  <template v-if="item.type === 'Dividend'">
+                  <template v-if="item.type === 'Dividend' || item.type === 'Coupon'">
                     for
                     <router-link
                       :to="{
@@ -212,7 +220,7 @@
                 <template v-if="item.cur === currency">
                   <template
                     v-if="
-                      ['Dividend', 'Tax'].includes(item.type) ||
+                      ['Dividend', 'Tax', 'Coupon'].includes(item.type) ||
                       item.type.includes('Interest') ||
                       item.type.includes('Cash')
                     "
@@ -311,6 +319,11 @@
       v-model="showImportDialog"
       @import-completed="handleImportCompleted"
     />
+
+    <AssetTransferDialog
+      v-model="showTransferDialog"
+      @transfer-completed="handleTransferCompleted"
+    />
   </v-container>
 </template>
 
@@ -330,6 +343,7 @@ import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vue'
 import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
+import AssetTransferDialog from '@/components/dialogs/AssetTransferDialog.vue'
 import logger from '@/utils/logger'
 
 export default {
@@ -339,6 +353,7 @@ export default {
     TransactionFormDialog,
     FXTransactionFormDialog,
     TransactionImportDialog,
+    AssetTransferDialog,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -382,6 +397,7 @@ export default {
     const deleteDialog = ref(false)
     const transactionToDelete = ref(null)
     const showImportDialog = ref(false)
+    const showTransferDialog = ref(false)
 
     const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
     const effectiveCurrentDate = computed(
@@ -555,6 +571,15 @@ export default {
       await fetchTransactions()
     }
 
+    const openTransferDialog = () => {
+      showTransferDialog.value = true
+    }
+
+    const handleTransferCompleted = async () => {
+      logger.log('Unknown', '[TransactionsPage] Transfer completed')
+      await fetchTransactions()
+    }
+
     onMounted(async () => {
       emit('update-page-title', 'Transactions')
       if (!effectiveCurrentDate.value) {
@@ -593,6 +618,7 @@ export default {
       deleteDialog,
       transactionToDelete,
       showImportDialog,
+      showTransferDialog,
       openAddTransactionDialog,
       openAddFXTransactionDialog,
       extractTransactionId,
@@ -602,6 +628,8 @@ export default {
       deleteTransactionConfirm,
       openImportDialog,
       handleImportCompleted,
+      openTransferDialog,
+      handleTransferCompleted,
     }
   },
 }

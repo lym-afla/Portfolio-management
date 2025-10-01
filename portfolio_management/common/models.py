@@ -296,7 +296,7 @@ class Assets(models.Model):
                     {"price": last_transaction.price, "date": last_transaction.date},
                 )
             else:
-                logger.error(f"No transaction found for {self.name} as of {price_date}")
+                logger.warning(f"No transaction found for {self.name} as of {price_date}")
                 return None
 
         if currency is not None:

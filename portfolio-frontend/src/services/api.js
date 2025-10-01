@@ -1142,6 +1142,36 @@ export const deleteFXTransaction = async (id) => {
   }
 }
 
+export const getSecurityPosition = async (securityId, accountId, date = null) => {
+  try {
+    const response = await axiosInstance.post(
+      '/transactions/api/get_security_position/',
+      {
+        security_id: securityId,
+        account_id: accountId,
+        date: date,
+      }
+    )
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error getting security position:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const transferAsset = async (transferData) => {
+  try {
+    const response = await axiosInstance.post(
+      '/transactions/api/transfer_asset/',
+      transferData
+    )
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error transferring asset:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 export const analyzeFile = async (formData) => {
   try {
     const response = await axiosInstance.post(

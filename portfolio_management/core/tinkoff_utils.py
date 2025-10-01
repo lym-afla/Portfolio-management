@@ -8,6 +8,7 @@ from tinkoff.invest.utils import quotation_to_decimal
 
 from common.models import Assets, Transactions
 from constants import (
+    TRANSACTION_TYPE_ASSET_TRANSFER,
     TRANSACTION_TYPE_BROKER_COMMISSION,
     TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_CASH_IN,
@@ -320,11 +321,23 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_SERVICE_FEE: TRANSACTION_TYPE_BROKER_COMMISSION,
         OperationType.OPERATION_TYPE_BOND_TAX: TRANSACTION_TYPE_TAX,
         OperationType.OPERATION_TYPE_BENEFIT_TAX: TRANSACTION_TYPE_TAX,
+        OperationType.OPERATION_TYPE_INPUT_SECURITIES: TRANSACTION_TYPE_ASSET_TRANSFER,
+        OperationType.OPERATION_TYPE_OUTPUT_SECURITIES: TRANSACTION_TYPE_ASSET_TRANSFER,
     }
+
+    # Check if this is an asset transfer operation (before type mapping)
+    is_asset_transfer = operation.type in [
+        OperationType.OPERATION_TYPE_INPUT_SECURITIES,
+        OperationType.OPERATION_TYPE_OUTPUT_SECURITIES,
+    ]
 
     transaction_data["type"] = operation_type_mapping.get(operation.type)
     if not transaction_data["type"]:
         return None  # Skip unsupported operation types
+
+    if is_asset_transfer:
+        transaction_data["is_asset_transfer"] = True
+        logger.debug(f"Detected asset transfer operation: {operation.type}")
 
     # Handle currency
     if operation.payment and operation.payment.currency:
@@ -362,21 +375,33 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
             else:
                 raise ValueError(f"Multiple securities found for operation {operation.id}")
 
-    # Handle quantity and price for buy/sell operations
-    if operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]:
+    # Handle quantity and price for buy/sell operations (including asset transfers)
+    if operation.type in [
+        OperationType.OPERATION_TYPE_BUY,
+        OperationType.OPERATION_TYPE_SELL,
+        OperationType.OPERATION_TYPE_INPUT_SECURITIES,
+        OperationType.OPERATION_TYPE_OUTPUT_SECURITIES,
+    ]:
+        # For regular buy/sell, use the operation price
+        # For asset transfers, price might be 0, will be set later to buy-in/market price
         if operation.price:
             transaction_data["price"] = quotation_to_decimal(operation.price)
 
         aci = operation.accrued_int
 
-        if operation.type == OperationType.OPERATION_TYPE_BUY:
+        if operation.type in [
+            OperationType.OPERATION_TYPE_BUY,
+            OperationType.OPERATION_TYPE_INPUT_SECURITIES,
+        ]:
             transaction_data["quantity"] = Decimal(str(operation.quantity))
             if quotation_to_decimal(aci) != 0:
                 transaction_data["aci"] = -1 * abs(quotation_to_decimal(aci))
-        else:
+        else:  # SELL or OUTPUT_SECURITIES
             transaction_data["quantity"] = -1 * Decimal(str(operation.quantity))
             if quotation_to_decimal(aci) != 0:
                 transaction_data["aci"] = abs(quotation_to_decimal(aci))
+            if is_asset_transfer:
+                transaction_data["needs_price_calculation"] = True
 
     else:
         # Handle payment/cash flow

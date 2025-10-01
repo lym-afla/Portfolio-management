@@ -253,7 +253,16 @@ import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
 import { getChartOptions } from '@/config/chartConfig'
 import 'chartjs-adapter-date-fns'
-import { Chart } from 'chart.js'
+import {
+  Chart,
+  TimeScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js'
 import {
   subDays,
   subMonths,
@@ -262,6 +271,17 @@ import {
   differenceInDays,
 } from 'date-fns'
 import logger from '@/utils/logger'
+
+// Register Chart.js components
+Chart.register(
+  TimeScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+)
 
 // Set the default locale for Chart.js
 Chart.defaults.locale = 'en-US'

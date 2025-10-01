@@ -346,10 +346,12 @@ def _calculate_open_table_output_for_api(
         position["entry_value"] = Decimal(position["entry_price"] * position["current_position"])
 
         if "current_value" in categories:
-            if asset.price_at_date(end_date, currency_used) is not None:
-                position["current_price"] = asset.price_at_date(end_date, currency_used).price
+            asset_price = asset.price_at_date(end_date, currency_used)
+            if asset_price is not None:
+                position["current_price"] = asset_price.price
             else:
                 position["current_price"] = position["entry_price"]
+
             position["current_value"] = Decimal(
                 position["current_price"] * position["current_position"]
             )

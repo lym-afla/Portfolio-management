@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pandas as pd
 from channels.db import database_sync_to_async
@@ -17,7 +18,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from common.models import Accounts, FXTransaction, Transactions
+from common.models import Accounts, Assets, FXTransaction, Transactions
 from constants import ACCOUNT_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
 from core.broker_api_utils import TinkoffAPIException, get_broker_api
 from core.import_utils import (
@@ -367,6 +368,240 @@ class TransactionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=["POST"])
+    def get_security_position(self, request):
+        """
+        Get the current position (quantity) for a security in a specific account.
+        """
+        try:
+            security_id = request.data.get("security_id")
+            account_id = request.data.get("account_id")
+            date_str = request.data.get("date")
+
+            if not all([security_id, account_id]):
+                return Response(
+                    {"error": "Missing required fields: security_id, account_id"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Parse date or use today
+            if date_str:
+                from datetime import datetime as dt
+
+                position_date = dt.strptime(date_str, "%Y-%m-%d").date()
+            else:
+                from datetime import date
+
+                position_date = date.today()
+
+            # Get the security
+            try:
+                security = Assets.objects.get(id=security_id, investors=request.user)
+            except Assets.DoesNotExist:
+                return Response(
+                    {"error": f"Security with id {security_id} not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Get the account
+            try:
+                account = Accounts.objects.get(  # noqa: F841
+                    id=account_id, broker__investor=request.user
+                )
+            except Accounts.DoesNotExist:
+                return Response(
+                    {"error": f"Account with id {account_id} not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Calculate current position
+            position = security.position(
+                date=position_date, investor=request.user, account_ids=[account_id]
+            )
+
+            return Response(
+                {
+                    "security_id": security_id,
+                    "account_id": account_id,
+                    "position": float(position) if position else 0,
+                    "date": position_date.isoformat(),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.error(f"Error in get_security_position: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"An error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["POST"])
+    def transfer_asset(self, request):
+        """
+        Transfer an asset from one broker account to another.
+        Creates a sale from the source account and a purchase in the destination account
+        at the average cost basis (zero realized gain).
+        """
+        try:
+            # Extract request data
+            security_id = request.data.get("security")
+            from_account_id = request.data.get("fromAccount")
+            to_account_id = request.data.get("toAccount")
+            quantity = request.data.get("quantity")
+            transfer_date_str = request.data.get("date")
+
+            # Validate required fields
+            if not all([security_id, from_account_id, to_account_id, quantity, transfer_date_str]):
+                return Response(
+                    {
+                        "error": (
+                            "Missing required fields: security, fromAccount, toAccount, quantity, date"  # noqa: E501
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Parse date
+            transfer_date = datetime.strptime(transfer_date_str, "%Y-%m-%d").date()
+
+            # Get the security
+            try:
+                security = Assets.objects.get(id=security_id, investors=request.user)
+            except Assets.DoesNotExist:
+                return Response(
+                    {"error": f"Security with id {security_id} not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Get the accounts
+            try:
+                from_account = Accounts.objects.get(
+                    id=from_account_id, broker__investor=request.user
+                )
+                to_account = Accounts.objects.get(id=to_account_id, broker__investor=request.user)
+            except Accounts.DoesNotExist:
+                return Response(
+                    {"error": "One or both accounts not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Calculate the average buy-in price for the security in the from_account
+            buy_in_price = security.calculate_buy_in_price(
+                date=transfer_date,
+                investor=request.user,
+                account_ids=[from_account_id],
+            )
+
+            if buy_in_price is None:
+                return Response(
+                    {
+                        "error": (
+                            "Unable to calculate buy-in price. "
+                            "No prior transactions found for this security in the source account."
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get the currency from the security
+            currency = security.currency
+
+            # Create comments
+            sale_comment = f"Transfer out to {to_account.name}"
+            buy_comment = f"Transfer in from {from_account.name}"
+            cash_comment = f"Phantom cash movement for asset transfer: {security.name}"
+
+            # Calculate transfer value
+            transfer_value = Decimal(quantity) * buy_in_price
+
+            # Create all transactions atomically
+            with transaction.atomic():
+                # 1. Sell transaction (from_account) - negative quantity
+                sale_transaction = Transactions.objects.create(
+                    investor=request.user,
+                    account=from_account,
+                    security=security,
+                    date=transfer_date,
+                    type="Sell",
+                    quantity=-Decimal(quantity),  # Negative for sell
+                    price=buy_in_price,
+                    currency=currency,
+                    cash_flow=None,  # Empty cash flow
+                    commission=None,  # Empty commission
+                    comment=sale_comment,
+                )
+
+                # 2. Buy transaction (to_account) - positive quantity
+                buy_transaction = Transactions.objects.create(
+                    investor=request.user,
+                    account=to_account,
+                    security=security,
+                    date=transfer_date,
+                    type="Buy",
+                    quantity=Decimal(quantity),  # Positive for buy
+                    price=buy_in_price,
+                    currency=currency,
+                    cash_flow=None,  # Empty cash flow
+                    commission=None,  # Empty commission
+                    comment=buy_comment,
+                )
+
+                # 3. Phantom cash-out transaction (from_account) - to balance the cash effect
+                cash_in_transaction = Transactions.objects.create(
+                    investor=request.user,
+                    account=from_account,
+                    security=None,
+                    date=transfer_date,
+                    type="Cash out",
+                    quantity=None,
+                    price=None,
+                    currency=currency,
+                    cash_flow=-transfer_value,  # Negative cash flow
+                    commission=None,
+                    comment=cash_comment,
+                )
+
+                # 4. Phantom cash-in transaction (to_account) - to balance the cash effect
+                cash_out_transaction = Transactions.objects.create(
+                    investor=request.user,
+                    account=to_account,
+                    security=None,
+                    date=transfer_date,
+                    type="Cash in",
+                    quantity=None,
+                    price=None,
+                    currency=currency,
+                    cash_flow=transfer_value,  # Positive cash flow
+                    commission=None,
+                    comment=cash_comment,
+                )
+
+            logger.info(
+                f"Asset transfer completed: {quantity} units of {security.name} "
+                f"from {from_account.name} to {to_account.name} at {buy_in_price} {currency}"
+            )
+
+            return Response(
+                {
+                    "message": "Asset transfer completed successfully",
+                    "sale_transaction_id": sale_transaction.id,
+                    "buy_transaction_id": buy_transaction.id,
+                    "cash_in_transaction_id": cash_in_transaction.id,
+                    "cash_out_transaction_id": cash_out_transaction.id,
+                    "transfer_price": float(buy_in_price),
+                    "transfer_value": float(transfer_value),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except Exception as e:
+            logger.error(f"Error in transfer_asset: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"An error occurred during asset transfer: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     async def import_transactions_from_file(
         self, user, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
     ):
@@ -449,7 +684,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @database_sync_to_async
     def save_transactions(self, transactions_to_create):
-        """Save transactions in bulk - handles both regular Transactions and FX Transactions"""
+        """Save transactions in bulk - regular Transactions, FX Transactions, and Asset Transfers"""
         logger.debug(f"About to save {len(transactions_to_create)} transactions")
 
         # Log each transaction data for debugging
@@ -465,6 +700,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 regular_transactions = []
                 fx_transactions = []
+                phantom_cash_transactions = []
 
                 for data in transactions_to_create:
                     logger.debug(f"Creating transaction with data: {data}")
@@ -472,11 +708,96 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     # Check if this is an FX transaction
                     is_fx = data.pop("is_fx", False)
 
+                    # Check if this is an asset transfer
+                    is_asset_transfer = data.pop("is_asset_transfer", False)
+                    needs_price_calculation = data.pop("needs_price_calculation", False)
+
                     if is_fx:
                         # Create FXTransaction - data is already in correct format
                         fx_transaction = FXTransaction(**data)
                         fx_transactions.append(fx_transaction)
                         logger.debug("Created FX transaction")
+                    elif is_asset_transfer:
+                        # Handle asset transfer
+                        logger.debug(f"Processing asset transfer: {data['type']}")
+
+                        # Calculate price if needed (use buy-in price or market price)
+                        if needs_price_calculation and data.get("security"):
+                            security = data["security"]
+                            transfer_date = data["date"]
+                            investor = data["investor"]
+                            account = data["account"]
+
+                            # Try to get buy-in price first
+                            buy_in_price = security.calculate_buy_in_price(
+                                date=transfer_date,
+                                investor=investor,
+                                account_ids=[account.id],
+                            )
+
+                            if buy_in_price:
+                                data["price"] = buy_in_price
+                                logger.debug(f"Using buy-in price: {buy_in_price}")
+                            else:
+                                # Fallback to current market price
+                                try:
+                                    price_obj = (
+                                        security.prices.filter(date__lte=transfer_date)
+                                        .order_by("-date")
+                                        .first()
+                                    )
+                                    if price_obj:
+                                        data["price"] = price_obj.price
+                                        logger.debug(f"Using market price: {price_obj.price}")
+                                    else:
+                                        logger.warning("No price found for asset transfer, using 0")
+                                        data["price"] = Decimal(0)
+                                except Exception as e:
+                                    logger.error(f"Error getting price for asset transfer: {e}")
+                                    data["price"] = Decimal(0)
+
+                        # Ensure cash_flow and commission are None for asset transfers
+                        data["cash_flow"] = None
+                        data["commission"] = None
+
+                        # Create the main transaction
+                        created_transaction = Transactions(**data)
+                        regular_transactions.append(created_transaction)
+
+                        # Create phantom cash transaction to balance the cash effect
+                        if data.get("price") and data.get("quantity"):
+                            transfer_value = abs(data["price"] * data["quantity"])
+
+                            # For INPUT_SECURITIES (Buy): create Cash in (positive)
+                            # For OUTPUT_SECURITIES (Sell): create Cash out (negative)
+                            if data["type"] == "Buy":  # INPUT_SECURITIES
+                                phantom_type = "Cash in"
+                                phantom_cash_flow = transfer_value
+                            else:  # Sell - OUTPUT_SECURITIES
+                                phantom_type = "Cash out"
+                                phantom_cash_flow = -transfer_value
+
+                            phantom_transaction = Transactions(
+                                investor=data["investor"],
+                                account=data["account"],
+                                security=None,
+                                date=data["date"],
+                                type=phantom_type,
+                                quantity=None,
+                                price=None,
+                                currency=data.get("currency"),
+                                cash_flow=phantom_cash_flow,
+                                commission=None,
+                                comment=(
+                                    f"Phantom cash movement for asset transfer: "
+                                    f"{data.get('security').name if data.get('security') else 'Unknown'}"  # noqa: E501
+                                ),
+                            )
+                            phantom_cash_transactions.append(phantom_transaction)
+                            logger.debug(
+                                f"Created phantom {phantom_type} transaction with cash_flow: "
+                                f"{phantom_cash_flow}"
+                            )
                     else:
                         # Create regular Transaction
                         created_transaction = Transactions(**data)
@@ -493,9 +814,19 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     FXTransaction.objects.bulk_create(fx_transactions)
                     logger.debug(f"Successfully saved {len(fx_transactions)} FX transactions")
 
-                logger.debug(
-                    f"Total transactions saved: {len(regular_transactions) + len(fx_transactions)}"
+                if phantom_cash_transactions:
+                    Transactions.objects.bulk_create(phantom_cash_transactions)
+                    logger.debug(
+                        f"Successfully saved {len(phantom_cash_transactions)} "
+                        "phantom cash transactions"
+                    )
+
+                transactions_saved = (
+                    len(regular_transactions)
+                    + len(fx_transactions)
+                    + len(phantom_cash_transactions)
                 )
+                logger.debug(f"Total transactions saved: " f"{transactions_saved}")
 
         except Exception as e:
             logger.error(f"Error saving transactions: {str(e)}")
