@@ -185,6 +185,13 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
             transaction.aci, transaction.currency, number_of_digits
         )
 
+    # Add bond-specific data for redemption/maturity transactions
+    if transaction.type in ["Bond redemption", "Bond maturity"]:
+        if transaction.notional_change:
+            transaction_data["notional_change"] = currency_format(
+                transaction.notional_change, transaction.currency, number_of_digits
+            )
+
     return transaction_data
 
 

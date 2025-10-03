@@ -303,6 +303,10 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
         return Decimal(0)  # Broker commission is already included in transaction.commission field
     elif transaction.type == "Tax":
         return transaction.cash_flow or 0  # Tax affects cash flow and should be included in IRR
+    elif transaction.type in ["Bond redemption", "Bond maturity"]:
+        # For bond redemptions, the cash_flow should already be set correctly
+        # representing the cash received from the redemption
+        return transaction.cash_flow or Decimal(0)
     else:
         return transaction.cash_flow or (
             -transaction.quantity * transaction.price

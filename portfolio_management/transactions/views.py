@@ -19,7 +19,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from common.models import Accounts, Assets, FXTransaction, Transactions
-from constants import ACCOUNT_IDENTIFIERS, CHARLES_STANLEY_BROKER, CURRENCY_CHOICES
+from constants import (
+    ACCOUNT_IDENTIFIERS,
+    CHARLES_STANLEY_BROKER,
+    CURRENCY_CHOICES,
+    TRANSACTION_TYPE_BOND_MATURITY,
+    TRANSACTION_TYPE_BOND_REDEMPTION,
+)
 from core.broker_api_utils import TinkoffAPIException, get_broker_api
 from core.import_utils import (
     fx_transaction_exists,
@@ -713,7 +719,14 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     needs_price_calculation = data.pop("needs_price_calculation", False)
 
                     if is_fx:
-                        # Create FXTransaction - data is already in correct format
+                        # Create FXTransaction - round exchange_rate to match DB precision
+                        if "exchange_rate" in data and data["exchange_rate"] is not None:
+                            # Get decimal_places from the model field dynamically
+                            exchange_rate_field = FXTransaction._meta.get_field("exchange_rate")
+                            decimal_places = exchange_rate_field.decimal_places
+                            data["exchange_rate"] = round(
+                                Decimal(str(data["exchange_rate"])), decimal_places
+                            )
                         fx_transaction = FXTransaction(**data)
                         fx_transactions.append(fx_transaction)
                         logger.debug("Created FX transaction")
@@ -805,10 +818,31 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 # Use bulk_create for efficiency
                 if regular_transactions:
-                    Transactions.objects.bulk_create(regular_transactions)
+                    created_transactions = Transactions.objects.bulk_create(regular_transactions)
                     logger.debug(
                         f"Successfully saved {len(regular_transactions)} regular transactions"
                     )
+
+                    # Manually create NotionalHistory for bond redemptions
+                    # (bulk_create bypasses save())
+                    for txn in created_transactions:
+                        if txn.type in [
+                            TRANSACTION_TYPE_BOND_REDEMPTION,
+                            TRANSACTION_TYPE_BOND_MATURITY,
+                        ]:
+                            if txn.security and txn.notional_change and txn.notional_change != 0:
+                                try:
+                                    txn._create_notional_history()
+                                    logger.debug(
+                                        f"Created NotionalHistory for transaction {txn.id}: "
+                                        f"{txn.security.name}"
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        "Error creating NotionalHistory "
+                                        f"for transaction {txn.id}: {e}",
+                                        exc_info=True,
+                                    )
 
                 if fx_transactions:
                     FXTransaction.objects.bulk_create(fx_transactions)
@@ -964,10 +998,47 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 "cash_flow": trans.get("cash_flow"),
                                 "commission": trans.get("commission"),
                                 "aci": trans.get("aci"),
+                                "notional_change": trans.get("notional_change"),
                                 "comment": trans.get("comment", ""),
                                 "account": account,
                                 "investor": user,
                             }
+
+                            # For bond redemptions, calculate per-bond notional_change
+                            if trans["type"] in ["Bond redemption", "Bond maturity"]:
+                                total_notional = trans.get("notional_change")
+                                security = trans.get("security")
+
+                                if total_notional and security:
+                                    # Get position at redemption date to calculate per-bond notional
+                                    try:
+                                        # Get position BEFORE this transaction
+                                        position = await database_sync_to_async(security.position)(
+                                            trans["date"], user, [account.id]
+                                        )
+
+                                        if position and position != 0:
+                                            # Calculate per-bond notional
+                                            notional_per_bond = Decimal(total_notional) / abs(
+                                                Decimal(position)
+                                            )
+                                            transaction_data["notional_change"] = notional_per_bond
+
+                                            logger.debug(
+                                                f"Bond redemption: total={total_notional}, "
+                                                f"position={position}, per_bond={notional_per_bond}"
+                                            )
+                                        else:
+                                            logger.warning(
+                                                f"Position is 0 for {security.name} on "
+                                                f"{trans['date']}, "
+                                                f"keeping total notional_change={total_notional}"
+                                            )
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Error calculating per-bond notional: {e}",
+                                            exc_info=True,
+                                        )
 
                         # Process transaction based on status
                         if not is_fx:

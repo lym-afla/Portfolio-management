@@ -9,6 +9,8 @@ from tinkoff.invest.utils import quotation_to_decimal
 from common.models import Assets, Transactions
 from constants import (
     TRANSACTION_TYPE_ASSET_TRANSFER,
+    TRANSACTION_TYPE_BOND_MATURITY,
+    TRANSACTION_TYPE_BOND_REDEMPTION,
     TRANSACTION_TYPE_BROKER_COMMISSION,
     TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_CASH_IN,
@@ -63,6 +65,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                     instrument.instrument.name,
                     instrument.instrument.isin,
                     instrument.instrument.instrument_kind,
+                    instrument.instrument.ticker,  # Add ticker for MICEX lookups
                 )
             ]
     except RequestError as e:
@@ -91,7 +94,9 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                                 # Single match - use it
                                 found = result.instruments[0]
                                 logger.info(f"Found single match: {found.name} ({found.isin})")
-                                return [(found.name, found.isin, found.instrument_kind)]
+                                return [
+                                    (found.name, found.isin, found.instrument_kind, found.ticker)
+                                ]
                             else:
                                 # Multiple matches - try to find exact match by position_uid
                                 if position_uid:
@@ -101,7 +106,14 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                                                 f"Found match by position_uid: {inst.name} "
                                                 f"({inst.isin})"
                                             )
-                                            return [(inst.name, inst.isin, inst.instrument_kind)]
+                                            return [
+                                                (
+                                                    inst.name,
+                                                    inst.isin,
+                                                    inst.instrument_kind,
+                                                    inst.ticker,
+                                                )
+                                            ]
 
                                 # No exact match, return all found
                                 logger.warning(
@@ -110,7 +122,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                                 securities_found = []
                                 for _, inst in enumerate(result.instruments):
                                     securities_found.append(
-                                        (inst.name, inst.isin, inst.instrument_kind)
+                                        (inst.name, inst.isin, inst.instrument_kind, inst.ticker)
                                     )
                                 return securities_found
                         else:
@@ -131,7 +143,9 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
         return []
 
 
-async def _find_or_create_security(instrument_uid, investor, position_uid=None, name=None):
+async def _find_or_create_security(
+    instrument_uid, investor, position_uid=None, name=None
+) -> tuple[Assets | None, str]:
     """
     Find existing security or create new one using Tinkoff API data.
 
@@ -175,8 +189,14 @@ async def _find_or_create_security(instrument_uid, investor, position_uid=None, 
         from core.import_utils import create_security_from_micex, create_security_from_tinkoff
 
         # Try to create from MICEX first
+        # securities_found tuple: (name, isin, instrument_kind, ticker)
+        security_name = securities_found[0][0]
+        security_isin = securities_found[0][1]
+        security_type = securities_found[0][2]
+        security_ticker = securities_found[0][3] if len(securities_found[0]) > 3 else None
+
         found_security = await create_security_from_micex(
-            securities_found[0][0], securities_found[0][1], investor, securities_found[0][2]
+            security_name, security_isin, investor, security_type, ticker=security_ticker
         )
 
         if found_security:
@@ -184,14 +204,14 @@ async def _find_or_create_security(instrument_uid, investor, position_uid=None, 
 
         # Fallback to T-Bank data if MICEX fails (e.g., matured bonds, delisted securities)
         logger.warning(
-            f"MICEX creation failed for {securities_found[0][0]} ({securities_found[0][1]}), "
+            f"MICEX creation failed for {security_name} ({security_isin}), "
             f"falling back to T-Bank data"
         )
         found_security = await create_security_from_tinkoff(
-            securities_found[0][0],
-            securities_found[0][1],
+            security_name,
+            security_isin,
             investor,
-            securities_found[0][2],
+            security_type,
             instrument_uid,  # Pass the T-Bank instrument UID
         )
 
@@ -323,6 +343,8 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_BENEFIT_TAX: TRANSACTION_TYPE_TAX,
         OperationType.OPERATION_TYPE_INPUT_SECURITIES: TRANSACTION_TYPE_ASSET_TRANSFER,
         OperationType.OPERATION_TYPE_OUTPUT_SECURITIES: TRANSACTION_TYPE_ASSET_TRANSFER,
+        OperationType.OPERATION_TYPE_BOND_REPAYMENT: TRANSACTION_TYPE_BOND_REDEMPTION,
+        OperationType.OPERATION_TYPE_BOND_REPAYMENT_FULL: TRANSACTION_TYPE_BOND_MATURITY,
     }
 
     # Check if this is an asset transfer operation (before type mapping)
@@ -375,8 +397,41 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
             else:
                 raise ValueError(f"Multiple securities found for operation {operation.id}")
 
-    # Handle quantity and price for buy/sell operations (including asset transfers)
+    # Handle bond redemption operations
     if operation.type in [
+        OperationType.OPERATION_TYPE_BOND_REPAYMENT,
+        OperationType.OPERATION_TYPE_BOND_REPAYMENT_FULL,
+    ]:
+        # Note: T-Bank API returns quantity=0 for bond redemptions
+        # The actual redemption information is in the payment field
+        # We don't change quantity for amortizing bonds - the notional changes instead
+
+        # Payment represents the cash received from redemption
+        if operation.payment:
+            cash_received = quotation_to_decimal(operation.payment)
+            transaction_data["cash_flow"] = cash_received
+
+            # For bond redemptions, we need to infer the notional change
+            # The payment is typically: number_of_bonds * notional_redeemed_per_bond
+            # Since we don't have the quantity, we'll store the total cash as notional_change
+            # This will need to be adjusted manually or via bond metadata
+            transaction_data["notional_change"] = cash_received
+
+        # Set quantity to None since T-Bank doesn't provide it
+        # The bond position doesn't change in terms of number of bonds held
+        transaction_data["quantity"] = None
+
+        # Price isn't meaningful for amortizing redemptions
+        # It's the notional being returned, not a market transaction
+        transaction_data["price"] = None
+
+        logger.debug(
+            f"Bond redemption: cash_flow={transaction_data.get('cash_flow')}, "
+            f"notional_change={transaction_data.get('notional_change')}"
+        )
+
+    # Handle quantity and price for buy/sell operations (including asset transfers)
+    elif operation.type in [
         OperationType.OPERATION_TYPE_BUY,
         OperationType.OPERATION_TYPE_SELL,
         OperationType.OPERATION_TYPE_INPUT_SECURITIES,

@@ -239,6 +239,10 @@ def api_security_form_structure(request):
             field_data["type"] = "textarea"
         elif isinstance(field.widget, forms.URLInput):
             field_data["type"] = "url"
+        elif isinstance(field.widget, forms.DateInput):
+            field_data["type"] = "dateinput"
+        elif isinstance(field.widget, forms.NumberInput):
+            field_data["type"] = "numberinput"
 
         structure["fields"].append(field_data)
 
@@ -257,6 +261,9 @@ def api_create_security(request):
         # Now add the many-to-many relationships
         security.investors.add(request.user)
 
+        # Save bond metadata if this is a bond
+        form.save_bond_metadata(security)
+
         return Response(
             {
                 "success": True,
@@ -273,22 +280,49 @@ def api_create_security(request):
 @permission_classes([IsAuthenticated])
 def api_get_security_details_for_editing(request, security_id):
     security = get_object_or_404(Assets, id=security_id, investors=request.user)
-    return Response(
-        {
-            "id": security.id,
-            "name": security.name,
-            "ISIN": security.ISIN,
-            "type": security.type,
-            "currency": security.currency,
-            "exposure": security.exposure,
-            "restricted": security.restricted,
-            "data_source": security.data_source,
-            "yahoo_symbol": security.yahoo_symbol,
-            "update_link": security.update_link,
-            "tbank_instrument_uid": security.tbank_instrument_uid,
-            "comment": security.comment,
-        }
-    )
+
+    result = {
+        "id": security.id,
+        "name": security.name,
+        "ISIN": security.ISIN,
+        "type": security.type,
+        "currency": security.currency,
+        "exposure": security.exposure,
+        "restricted": security.restricted,
+        "data_source": security.data_source,
+        "yahoo_symbol": security.yahoo_symbol,
+        "update_link": security.update_link,
+        "tbank_instrument_uid": security.tbank_instrument_uid,
+        "comment": security.comment,
+    }
+
+    # Add bond metadata if this is a bond
+    if security.type == "Bond":
+        try:
+            bond_meta = security.bondmetadata_metadata
+            result.update(
+                {
+                    "initial_notional": str(bond_meta.initial_notional)
+                    if bond_meta.initial_notional
+                    else None,
+                    "issue_date": bond_meta.issue_date.isoformat()
+                    if bond_meta.issue_date
+                    else None,
+                    "maturity_date": bond_meta.maturity_date.isoformat()
+                    if bond_meta.maturity_date
+                    else None,
+                    "coupon_rate": str(bond_meta.coupon_rate) if bond_meta.coupon_rate else None,
+                    "coupon_frequency": bond_meta.coupon_frequency,
+                    "is_amortizing": bond_meta.is_amortizing,
+                    "bond_type": bond_meta.bond_type,
+                    "credit_rating": bond_meta.credit_rating,
+                }
+            )
+        except Exception:
+            # No bond metadata exists yet
+            pass
+
+    return Response(result)
 
 
 @api_view(["PUT"])
@@ -299,23 +333,28 @@ def api_update_security(request, security_id):
     except Assets.DoesNotExist:
         return Response({"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    # Update regular fields
-    for key, value in request.data.items():
-        setattr(security, key, value)
+    # Use form for validation and updating
+    form = SecurityForm(request.data, instance=security)
+    if form.is_valid():
+        security = form.save()
 
-    # Save the security first
-    security.save()
+        # Save bond metadata if this is a bond
+        form.save_bond_metadata(security)
 
-    logger.debug(f"Security updated. {security}")
+        logger.debug(f"Security updated. {security}")
 
-    return Response(
-        {
-            "success": True,
-            "message": "Security updated successfully",
-            "id": security.id,
-            "name": security.name,
-        }
-    )
+        return Response(
+            {
+                "success": True,
+                "message": "Security updated successfully",
+                "id": security.id,
+                "name": security.name,
+            }
+        )
+    else:
+        return Response(
+            {"success": False, "errors": form.errors}, status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 @api_view(["DELETE"])

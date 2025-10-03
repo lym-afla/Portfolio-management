@@ -15,6 +15,8 @@ from constants import (
     CURRENCY_CHOICES,
     DATA_SOURCE_CHOICES,
     EXPOSURE_CHOICES,
+    TRANSACTION_TYPE_BOND_MATURITY,
+    TRANSACTION_TYPE_BOND_REDEMPTION,
     TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_CHOICES,
     TRANSACTION_TYPE_SELL,
@@ -274,6 +276,34 @@ class Assets(models.Model):
     fund_fee = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
     secid = models.CharField(max_length=10, null=True, blank=True)  # For MICEX
     tbank_instrument_uid = models.CharField(max_length=50, blank=True, null=True)  # For T-Bank
+
+    # Helper properties for bond handling
+    @property
+    def is_bond(self):
+        """Check if this asset is a bond"""
+        return self.type == "Bond"
+
+    @property
+    def bond_metadata(self):
+        """Get bond metadata if this is a bond, otherwise None"""
+        if not self.is_bond:
+            return None
+        try:
+            return self.bondmetadata_metadata
+        except Exception:
+            return None
+
+    def get_effective_notional(self, date, investor, account_ids=None):
+        """
+        Get the effective notional value per bond at a given date.
+        For amortizing bonds, this accounts for partial redemptions.
+        For other assets, returns 1.0 (representing standard quantity).
+        """
+        bond_meta = self.bond_metadata
+        if not bond_meta or not bond_meta.is_amortizing:
+            return Decimal(1)
+
+        return bond_meta.get_current_notional(date, investor, account_ids) or Decimal(1)
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
@@ -535,11 +565,85 @@ class Assets(models.Model):
                     f"Quantity: {transaction.quantity}, Price: {transaction.price}"
                 )
 
-                if (
+                # Check if this is a bond redemption transaction
+                is_bond_redemption = transaction.type in [
+                    TRANSACTION_TYPE_BOND_REDEMPTION,
+                    TRANSACTION_TYPE_BOND_MATURITY,
+                ]
+
+                # Handle bond redemptions separately
+                if is_bond_redemption:
+                    # For bond redemption: gain = cash_received - (notional_redeemed * buy_in_price)
+                    # Gain is zero only if bought at par and redeemed at par
+                    cash_received = transaction.cash_flow or Decimal(0)
+                    notional_redeemed = getattr(transaction, "notional_change", None)
+
+                    logger.debug(
+                        f"Bond redemption: cash_flow={cash_received}, "
+                        f"notional_change={notional_redeemed}"
+                    )
+
+                    if notional_redeemed and notional_redeemed != 0:
+                        buy_in_price_target_currency = self.calculate_buy_in_price(
+                            transaction.date, investor, currency, account_ids, start
+                        )
+                        buy_in_price_lcl_currency = self.calculate_buy_in_price(
+                            transaction.date, investor, transaction.currency, account_ids, start
+                        )
+
+                        if (
+                            buy_in_price_target_currency is not None
+                            and buy_in_price_lcl_currency is not None
+                        ):
+                            # Get number of bonds to calculate per-bond notional
+                            bonds_held = abs(position) if position != 0 else Decimal(1)
+
+                            fx_rate_exit = (
+                                FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
+                                if currency
+                                else 1
+                            )
+
+                            # Gain on redemption = cash - (notional * buy_in_price)
+                            # Price appreciation component (in local currency, then converted)
+                            cost_basis_lcl = (
+                                notional_redeemed * buy_in_price_lcl_currency * bonds_held
+                            )
+                            price_appreciation = (cash_received - cost_basis_lcl) * fx_rate_exit
+
+                            # Total G/L in target currency
+                            cost_basis_target = (
+                                notional_redeemed * buy_in_price_target_currency * bonds_held
+                            )
+                            gl_target_currency = cash_received * fx_rate_exit - cost_basis_target
+
+                            # FX effect
+                            fx_effect = gl_target_currency - price_appreciation
+
+                            result["total"] += Decimal(gl_target_currency)
+                            result["price_appreciation"] += Decimal(price_appreciation)
+                            result["fx_effect"] += Decimal(fx_effect)
+
+                            logger.debug(
+                                f"Redemption G/L: cash={cash_received}, "
+                                f"cost_basis={cost_basis_target}, gain={gl_target_currency}"
+                            )
+
+                    # Position doesn't change for partial redemptions (quantity is None/0)
+                    # For final redemption with negative quantity, update position
+                    if transaction.quantity:
+                        position += transaction.quantity
+
+                    logger.debug(f"Position after redemption: {position}")
+                    continue
+
+                is_position_reducing = (
                     (position > 0 and transaction.type == TRANSACTION_TYPE_SELL)
                     or (position < 0 and transaction.type == TRANSACTION_TYPE_BUY)
-                    or (position == 0)
-                ):  # This handles same-day open and close
+                    or (position == 0)  # This handles same-day open and close
+                )
+
+                if is_position_reducing:
                     buy_in_price_target_currency = self.calculate_buy_in_price(
                         transaction.date, investor, currency, account_ids, start
                     )
@@ -831,15 +935,89 @@ class Transactions(models.Model):
     )
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
     date = models.DateField(db_index=True, null=False)
-    quantity = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
+    quantity = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
     price = models.DecimalField(
         max_digits=18, decimal_places=9, null=True, blank=True
     )  # Increased precision for T-Bank API (nano field)
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    commission = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    commission = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
     # Accounts for sign of ACI (negative for buy, positive for sell)
     aci = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # For bond redemptions: tracks the notional amount redeemed per bond
+    notional_change = models.DecimalField(
+        max_digits=15,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Change in notional value (used for bond redemptions)",
+    )
     comment = models.TextField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        """Override save to automatically create NotionalHistory for bond redemptions"""
+        super().save(*args, **kwargs)
+
+        # Auto-create NotionalHistory for bond redemptions
+        if self.type in [TRANSACTION_TYPE_BOND_REDEMPTION, TRANSACTION_TYPE_BOND_MATURITY]:
+            if self.security and self.notional_change and self.notional_change != 0:
+                self._create_notional_history()
+
+    def _create_notional_history(self):
+        """Create NotionalHistory entry for this bond redemption"""
+
+        try:
+            # Get bond metadata
+            bond_meta = self.security.bond_metadata
+            if not bond_meta:
+                logger.warning(
+                    f"No bond metadata for {self.security.name}, " "cannot create NotionalHistory"
+                )
+                return
+
+            # notional_change is already per-bond (calculated during import)
+            notional_per_bond = self.notional_change
+
+            # Get current notional from previous history or initial
+            previous_history = (
+                NotionalHistory.objects.filter(asset=self.security, date__lt=self.date)
+                .order_by("-date")
+                .first()
+            )
+
+            if previous_history:
+                previous_notional = previous_history.notional_per_unit
+            else:
+                previous_notional = bond_meta.initial_notional or Decimal(1000)
+
+            # Calculate new notional per unit
+            new_notional = previous_notional - notional_per_bond
+
+            # Determine change reason
+            change_reason = (
+                "MATURITY" if self.type == TRANSACTION_TYPE_BOND_MATURITY else "REDEMPTION"
+            )
+
+            # Create or update NotionalHistory
+            NotionalHistory.objects.update_or_create(
+                asset=self.security,
+                date=self.date,
+                change_reason=change_reason,
+                defaults={
+                    "notional_per_unit": new_notional,
+                    "change_amount": -notional_per_bond,
+                    "comment": f"Auto-created from transaction {self.id}",
+                },
+            )
+
+            logger.info(
+                f"Created NotionalHistory for {self.security.name}: "
+                f"notional={new_notional}, change={-notional_per_bond}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error creating NotionalHistory for transaction {self.id}: {e}", exc_info=True
+            )
 
     def __str__(self):
         return f"{self.type} || {self.date}"
@@ -964,10 +1142,10 @@ class FXTransaction(models.Model):
     date = models.DateField(null=False)
     from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
-    from_amount = models.DecimalField(max_digits=15, decimal_places=6, null=False)
-    to_amount = models.DecimalField(max_digits=15, decimal_places=6, null=False)
-    exchange_rate = models.DecimalField(max_digits=15, decimal_places=6, null=False, blank=True)
-    commission = models.DecimalField(max_digits=15, decimal_places=6, null=True, blank=True)
+    from_amount = models.DecimalField(max_digits=15, decimal_places=9, null=False)
+    to_amount = models.DecimalField(max_digits=15, decimal_places=9, null=False)
+    exchange_rate = models.DecimalField(max_digits=15, decimal_places=9, null=False, blank=True)
+    commission = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
     commission_currency = models.CharField(
         max_length=3, choices=CURRENCY_CHOICES, null=True, blank=True
     )
@@ -980,3 +1158,229 @@ class FXTransaction(models.Model):
 
     def __str__(self):
         return f"FX: {self.from_currency} to {self.to_currency} on {self.date}"
+
+
+# Extensible metadata for different instrument types
+class InstrumentMetadata(models.Model):
+    """
+    Abstract base model for instrument-specific metadata.
+    This provides extensibility for bonds, options, futures, and other derivatives.
+    """
+
+    asset = models.OneToOneField(
+        Assets, on_delete=models.CASCADE, related_name="%(class)s_metadata"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class BondMetadata(InstrumentMetadata):
+    """
+    Bond-specific metadata for tracking fixed income instruments.
+    """
+
+    # Core bond characteristics
+    issue_date = models.DateField(null=True, blank=True, help_text="Bond issue date")
+    maturity_date = models.DateField(null=True, blank=True, help_text="Bond maturity date")
+    initial_notional = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Initial par/face value per bond",
+    )
+    coupon_rate = models.DecimalField(
+        max_digits=8,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Annual coupon rate (e.g., 5.25 for 5.25%)",
+    )
+    coupon_frequency = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of coupon payments per year (e.g., 2 for semi-annual)",
+    )
+
+    # Amortization tracking
+    is_amortizing = models.BooleanField(
+        default=False, help_text="Whether this bond has amortizing principal"
+    )
+    amortization_schedule = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Optional: predefined amortization schedule as list of {date, amount}",
+    )
+
+    # Additional characteristics
+    bond_type = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        choices=[
+            ("FIXED", "Fixed Rate"),
+            ("FLOATING", "Floating Rate"),
+            ("ZERO_COUPON", "Zero Coupon"),
+            ("INFLATION_LINKED", "Inflation Linked"),
+            ("CONVERTIBLE", "Convertible"),
+        ],
+        help_text="Type of bond",
+    )
+    credit_rating = models.CharField(
+        max_length=10, null=True, blank=True, help_text="Credit rating (e.g., AAA, BB+)"
+    )
+
+    def __str__(self):
+        return f"Bond Metadata for {self.asset.name}"
+
+    def get_current_notional(self, date, investor, account_ids=None):
+        """
+        Calculate the current notional value per bond at a given date.
+        Takes into account redemptions and amortizations.
+        """
+        if not self.is_amortizing:
+            return self.initial_notional
+
+        # Get all redemption transactions up to this date
+        redemption_filter = models.Q(
+            security=self.asset,
+            investor=investor,
+            date__lte=date,
+            type__in=["Bond redemption", "Bond maturity"],
+        )
+
+        if account_ids:
+            redemption_filter &= models.Q(account_id__in=account_ids)
+
+        redemptions = Transactions.objects.filter(redemption_filter).aggregate(
+            total_redeemed=Sum("notional_change")
+        )["total_redeemed"] or Decimal(0)
+
+        return self.initial_notional - redemptions
+
+
+class NotionalHistory(models.Model):
+    """
+    Track notional changes over time for bonds (and potentially other instruments).
+    This is particularly important for amortizing bonds where the par value decreases.
+    """
+
+    asset = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name="notional_history")
+    date = models.DateField(
+        null=False, db_index=True, help_text="Date when the notional change occurred"
+    )
+    notional_per_unit = models.DecimalField(
+        max_digits=15,
+        decimal_places=6,
+        null=False,
+        help_text="Notional/par value per unit after this change",
+    )
+    change_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Amount of notional change (negative for redemptions)",
+    )
+    change_reason = models.CharField(
+        max_length=50,
+        choices=[
+            ("REDEMPTION", "Partial Redemption"),
+            ("MATURITY", "Maturity"),
+            ("INITIAL", "Initial Issuance"),
+            ("ADJUSTMENT", "Adjustment"),
+        ],
+        null=True,
+        blank=True,
+    )
+    comment = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["asset", "date", "change_reason"], name="unique_notional_change"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.asset.name}: Notional={self.notional_per_unit} on {self.date}"
+
+
+class OptionMetadata(InstrumentMetadata):
+    """
+    Option-specific metadata. To be implemented in future phases.
+    """
+
+    strike_price = models.DecimalField(
+        max_digits=18, decimal_places=6, null=True, blank=True, help_text="Strike price"
+    )
+    expiration_date = models.DateField(null=True, blank=True, help_text="Option expiration date")
+    option_type = models.CharField(
+        max_length=10,
+        choices=[("CALL", "Call"), ("PUT", "Put")],
+        null=True,
+        blank=True,
+        help_text="Option type",
+    )
+    underlying_asset = models.ForeignKey(
+        Assets,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="options",
+        help_text="Underlying asset",
+    )
+    contract_size = models.DecimalField(
+        max_digits=15,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Number of underlying units per contract",
+    )
+
+    def __str__(self):
+        return f"Option Metadata for {self.asset.name}"
+
+
+class FutureMetadata(InstrumentMetadata):
+    """
+    Futures-specific metadata. To be implemented in future phases.
+    """
+
+    expiration_date = models.DateField(null=True, blank=True, help_text="Futures expiration date")
+    underlying_asset = models.ForeignKey(
+        Assets,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="futures",
+        help_text="Underlying asset",
+    )
+    contract_size = models.DecimalField(
+        max_digits=15,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Size of one futures contract",
+    )
+    tick_size = models.DecimalField(
+        max_digits=15,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text="Minimum price movement",
+    )
+    initial_margin = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Initial margin requirement",
+    )
+
+    def __str__(self):
+        return f"Future Metadata for {self.asset.name}"

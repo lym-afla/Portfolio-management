@@ -129,10 +129,16 @@
               <td class="text-start text-nowrap">
                 {{ item.type }}
                 <template
-                  v-if="item.type.includes('Cash') || item.type === 'Dividend' || item.type === 'Coupon'"
+                  v-if="
+                    item.type.includes('Cash') ||
+                    item.type === 'Dividend' ||
+                    item.type === 'Coupon'
+                  "
                 >
                   {{ item.cash_flow }}
-                  <template v-if="item.type === 'Dividend' || item.type === 'Coupon'">
+                  <template
+                    v-if="item.type === 'Dividend' || item.type === 'Coupon'"
+                  >
                     for
                     <router-link
                       :to="{
@@ -157,18 +163,39 @@
                     {{ item.security.name }}
                   </router-link>
                 </template>
+                <template
+                  v-else-if="
+                    item.type === 'Bond redemption' ||
+                    item.type === 'Bond maturity'
+                  "
+                >
+                  of {{ item.notional_change }} {{ item.cur }} for
+                  <router-link
+                    :to="{
+                      name: 'SecurityDetail',
+                      params: { id: item.security.id },
+                    }"
+                    class="text-primary text-decoration-none font-weight-medium"
+                  >
+                    {{ item.security.name }}
+                  </router-link>
+                </template>
                 <template v-else-if="item.type === 'FX'">
                   : {{ item.from_cur }} to {{ item.to_cur }} @
-                  {{ item.exchange_rate }}
+                  {{ formatExchangeRate(item.exchange_rate) }}
                   <span v-if="item.commission" class="text-caption text-grey">
                     || Fee: {{ item.commission }}</span
                   >
                 </template>
                 <template
                   v-else-if="
-                    !['Broker commission', 'Tax', 'Interest income'].includes(
-                      item.type
-                    )
+                    ![
+                      'Broker commission',
+                      'Tax',
+                      'Interest income',
+                      'Bond redemption',
+                      'Bond maturity',
+                    ].includes(item.type)
                   "
                 >
                   {{ item.quantity }}
@@ -220,7 +247,13 @@
                 <template v-if="item.cur === currency">
                   <template
                     v-if="
-                      ['Dividend', 'Tax', 'Coupon'].includes(item.type) ||
+                      [
+                        'Dividend',
+                        'Tax',
+                        'Coupon',
+                        'Bond redemption',
+                        'Bond maturity',
+                      ].includes(item.type) ||
                       item.type.includes('Interest') ||
                       item.type.includes('Cash')
                     "
@@ -471,6 +504,20 @@ export default {
       return format(new Date(date), 'yyyy-MM-dd')
     }
 
+    const formatExchangeRate = (rate) => {
+      // If rate is a string, parse it to a number
+      const rateNum = parseFloat(rate)
+
+      // If rate is less than 1, display as 1/x for better readability
+      if (rateNum < 1 && rateNum > 0) {
+        const inverted = 1 / rateNum
+        return `1:${inverted.toFixed(4)}`
+      }
+
+      // Otherwise, display the rate as-is, rounded to 4 decimals
+      return rateNum.toFixed(4)
+    }
+
     watch(
       [
         () => store.state.dataRefreshTrigger,
@@ -612,6 +659,7 @@ export default {
       handleSortChange,
       fetchTransactions,
       formatDate,
+      formatExchangeRate,
       showTransactionDialog,
       showFXTransactionDialog,
       editedTransaction,

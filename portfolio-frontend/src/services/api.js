@@ -1142,7 +1142,11 @@ export const deleteFXTransaction = async (id) => {
   }
 }
 
-export const getSecurityPosition = async (securityId, accountId, date = null) => {
+export const getSecurityPosition = async (
+  securityId,
+  accountId,
+  date = null
+) => {
   try {
     const response = await axiosInstance.post(
       '/transactions/api/get_security_position/',

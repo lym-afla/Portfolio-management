@@ -1,13 +1,75 @@
 from django import forms
 
 from common.forms import GroupedSelect
-from common.models import Accounts, Assets, FXTransaction
+from common.models import Accounts, Assets, BondMetadata, FXTransaction
 from constants import CURRENCY_CHOICES, DATA_SOURCE_CHOICES
 from core.user_utils import prepare_account_choices
 
 
 class SecurityForm(forms.ModelForm):
     update_link = forms.URLField(required=False, assume_scheme="http")  # Specify the default scheme
+
+    # Bond metadata fields
+    initial_notional = forms.DecimalField(
+        required=False,
+        max_digits=15,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        label="Initial notional",
+        help_text="Initial par/face value per bond",
+    )
+    issue_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        label="Issue date",
+        help_text="Bond issue date",
+    )
+    maturity_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        label="Maturity date",
+        help_text="Bond maturity date",
+    )
+    coupon_rate = forms.DecimalField(
+        required=False,
+        max_digits=8,
+        decimal_places=4,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        label="Coupon rate",
+        help_text="Annual coupon rate (e.g., 5.25 for 5.25%)",
+    )
+    coupon_frequency = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        label="Coupon frequency",
+        help_text="Coupon payments per year (1=annual, 2=semi-annual, 4=quarterly, 12=monthly)",
+    )
+    is_amortizing = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        label="Is amortizing",
+        help_text="Whether this bond has amortizing principal",
+    )
+    bond_type = forms.ChoiceField(
+        required=False,
+        choices=[("", "---")]
+        + [
+            ("FIXED", "Fixed Rate"),
+            ("FLOATING", "Floating Rate"),
+            ("ZERO_COUPON", "Zero Coupon"),
+            ("INFLATION_LINKED", "Inflation Linked"),
+            ("CONVERTIBLE", "Convertible"),
+        ],
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Bond type",
+    )
+    credit_rating = forms.CharField(
+        required=False,
+        max_length=10,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+        label="Credit rating",
+        help_text="Credit rating (e.g., AAA, BB+)",
+    )
 
     class Meta:
         model = Assets
@@ -17,13 +79,24 @@ class SecurityForm(forms.ModelForm):
             "type",
             "currency",
             "exposure",
+            # Fund fields
+            "fund_fee",
+            # Bond metadata fields (shown only for bonds)
+            "initial_notional",
+            "issue_date",
+            "maturity_date",
+            "coupon_rate",
+            "coupon_frequency",
+            "is_amortizing",
+            "bond_type",
+            "credit_rating",
+            # Other fields
             "restricted",
             "data_source",
             "yahoo_symbol",
             "update_link",
             "secid",
             "tbank_instrument_uid",
-            "fund_fee",
             "comment",
         ]
         widgets = {
@@ -57,6 +130,21 @@ class SecurityForm(forms.ModelForm):
         self.fields["tbank_instrument_uid"].required = False
         self.fields["update_link"].label = "Update link (Financial Times)"
 
+        # Load bond metadata if editing an existing bond
+        if self.instance and self.instance.pk and self.instance.type == "Bond":
+            try:
+                bond_meta = self.instance.bondmetadata_metadata
+                self.fields["initial_notional"].initial = bond_meta.initial_notional
+                self.fields["issue_date"].initial = bond_meta.issue_date
+                self.fields["maturity_date"].initial = bond_meta.maturity_date
+                self.fields["coupon_rate"].initial = bond_meta.coupon_rate
+                self.fields["coupon_frequency"].initial = bond_meta.coupon_frequency
+                self.fields["is_amortizing"].initial = bond_meta.is_amortizing
+                self.fields["bond_type"].initial = bond_meta.bond_type
+                self.fields["credit_rating"].initial = bond_meta.credit_rating
+            except BondMetadata.DoesNotExist:
+                pass
+
     def clean(self):
         cleaned_data = super().clean()
         data_source = cleaned_data.get("data_source")
@@ -64,6 +152,7 @@ class SecurityForm(forms.ModelForm):
         update_link = cleaned_data.get("update_link")
         secid = cleaned_data.get("secid")
         tbank_instrument_uid = cleaned_data.get("tbank_instrument_uid")
+        asset_type = cleaned_data.get("type")
 
         if data_source == "YAHOO" and not yahoo_symbol:
             self.add_error(
@@ -80,7 +169,34 @@ class SecurityForm(forms.ModelForm):
                 "tbank_instrument_uid", "T-Bank instrument UID is required for T-Bank data source."
             )
 
+        # Validate bond-specific fields
+        if asset_type == "Bond":
+            if cleaned_data.get("is_amortizing") and not cleaned_data.get("initial_notional"):
+                self.add_error(
+                    "initial_notional", "Initial notional is required for amortizing bonds."
+                )
+
         return cleaned_data
+
+    def save_bond_metadata(self, asset):
+        """Save bond metadata if this is a bond"""
+        if asset.type == "Bond":
+            bond_data = {
+                "initial_notional": self.cleaned_data.get("initial_notional"),
+                "issue_date": self.cleaned_data.get("issue_date"),
+                "maturity_date": self.cleaned_data.get("maturity_date"),
+                "coupon_rate": self.cleaned_data.get("coupon_rate"),
+                "coupon_frequency": self.cleaned_data.get("coupon_frequency"),
+                "is_amortizing": self.cleaned_data.get("is_amortizing", False),
+                "bond_type": self.cleaned_data.get("bond_type"),
+                "credit_rating": self.cleaned_data.get("credit_rating"),
+            }
+
+            # Remove None values
+            bond_data = {k: v for k, v in bond_data.items() if v is not None}
+
+            if bond_data:  # Only create/update if there's data
+                BondMetadata.objects.update_or_create(asset=asset, defaults=bond_data)
 
 
 EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (("All", "All Currencies"),)

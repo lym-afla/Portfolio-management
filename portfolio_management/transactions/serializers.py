@@ -28,6 +28,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             "cash_flow",
             "aci",
             "commission",
+            "notional_change",
             "comment",
         ]
 

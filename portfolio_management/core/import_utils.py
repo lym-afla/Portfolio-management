@@ -1,14 +1,13 @@
 import asyncio
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 from typing import Dict, List, Tuple
 
 import aiohttp
 import pandas as pd
-import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 from channels.db import database_sync_to_async
@@ -18,9 +17,19 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 from fake_useragent import UserAgent
 from fuzzywuzzy import process
-from tinkoff.invest import InstrumentType
+from tinkoff.invest import Client, InstrumentType
+from tinkoff.invest.utils import quotation_to_decimal
 
-from common.models import Accounts, Assets, Brokers, Prices, Transactions
+from common.models import (
+    Accounts,
+    Assets,
+    BondMetadata,
+    Brokers,
+    FutureMetadata,
+    OptionMetadata,
+    Prices,
+    Transactions,
+)
 from constants import (
     ASSET_TYPE_CHOICES,
     EXPOSURE_CHOICES,
@@ -93,6 +102,8 @@ def transaction_exists(transaction_data):
 @database_sync_to_async
 def fx_transaction_exists(transaction_data):
     """Check if an FX transaction already exists."""
+    from decimal import Decimal
+
     from common.models import FXTransaction
 
     query = Q()
@@ -106,16 +117,27 @@ def fx_transaction_exists(transaction_data):
     ]
     optional_fields = ["from_amount", "to_amount", "commission", "commission_currency"]
 
+    # Create a copy to avoid modifying the original
+    data_copy = transaction_data.copy()
+
+    # Get decimal_places from the model field dynamically
+    exchange_rate_field = FXTransaction._meta.get_field("exchange_rate")
+    decimal_places = exchange_rate_field.decimal_places
+
+    # Round exchange_rate to match database precision
+    if "exchange_rate" in data_copy and data_copy["exchange_rate"] is not None:
+        data_copy["exchange_rate"] = round(Decimal(str(data_copy["exchange_rate"])), decimal_places)
+
     # Add required fields to the query
     for field in required_fields:
-        if field not in transaction_data:
+        if field not in data_copy:
             raise ValueError(f"Required field '{field}' is missing from FX transaction_data")
-        query &= Q(**{field: transaction_data[field]})
+        query &= Q(**{field: data_copy[field]})
 
     # Add optional fields to the query if they exist
     for field in optional_fields:
-        if field in transaction_data and transaction_data[field] is not None:
-            query &= Q(**{field: transaction_data[field]})
+        if field in data_copy and data_copy[field] is not None:
+            query &= Q(**{field: data_copy[field]})
 
     return FXTransaction.objects.filter(query).exists()
 
@@ -1237,68 +1259,184 @@ async def create_security_from_tinkoff(
     security_name, isin, user, instrument_type, instrument_uid=None
 ):
     """
-    Create a new security using T-Bank (Tinkoff) data as fallback.
+    Create a new security using T-Bank (Tinkoff) data with type-specific API methods.
     Used when security is not found in MICEX (e.g., matured bonds, delisted securities).
+    Fetches comprehensive metadata using bond_by, share_by, etf_by, future_by, or option_by.
 
     Args:
         security_name: Name of the security from Tinkoff
         isin: ISIN code
         user: CustomUser instance
         instrument_type: Tinkoff InstrumentType enum
-        instrument_uid: Tinkoff instrument UID (optional)
+        instrument_uid: Tinkoff instrument UID (required for fetching metadata)
 
     Returns:
         Assets instance or None
     """
+
     try:
         logger.info(
             f"Creating security from T-Bank data: {security_name} ({isin}), UID: {instrument_uid}"
         )
 
-        # Map Tinkoff instrument type to our asset type
-        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
-            asset_type = ASSET_TYPE_CHOICES[0][0]  # Stock
-            exposure = EXPOSURE_CHOICES[0][0]  # Equity
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
-            asset_type = ASSET_TYPE_CHOICES[2][0]  # ETF
-            exposure = EXPOSURE_CHOICES[0][0]  # Equity
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
-            asset_type = ASSET_TYPE_CHOICES[1][0]  # Bond
-            exposure = EXPOSURE_CHOICES[1][0]  # Fixed income
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_CURRENCY:
-            # This shouldn't happen as FX is handled separately, but just in case
-            logger.warning(
-                f"Currency instrument type passed to create_security_from_tinkoff: {security_name}"
-            )
-            return None
-        else:
-            logger.warning(f"Unsupported instrument type for {security_name}: {instrument_type}")
-            # Default to Stock/Equity for unknown types
-            asset_type = ASSET_TYPE_CHOICES[0][0]
-            exposure = EXPOSURE_CHOICES[0][0]
+        if not instrument_uid:
+            logger.warning(f"No instrument_uid provided for {security_name}, creating basic asset")
+            # Fallback to basic creation without metadata
+            return await _create_basic_tbank_asset(security_name, isin, user, instrument_type, None)
 
-        # Create new asset with T-Bank as data source
+        # Get T-Bank token
+        token = await get_user_token(user)
+
+        # Fetch instrument-specific data
+        instrument_data = None
+
+        try:
+            with Client(token) as client:
+                if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+                    response = client.instruments.bond_by(id_type=3, id=instrument_uid)
+                    instrument_data = response.instrument
+                elif instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+                    response = client.instruments.share_by(id_type=3, id=instrument_uid)
+                    instrument_data = response.instrument
+                elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+                    response = client.instruments.etf_by(id_type=3, id=instrument_uid)
+                    instrument_data = response.instrument
+                elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
+                    response = client.instruments.future_by(id_type=3, id=instrument_uid)
+                    instrument_data = response.instrument
+                elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION:
+                    response = client.instruments.option_by(id_type=3, id=instrument_uid)
+                    instrument_data = response.instrument
+                else:
+                    logger.warning(
+                        f"Unsupported instrument type for {security_name}: {instrument_type}"
+                    )
+                    return await _create_basic_tbank_asset(
+                        security_name, isin, user, instrument_type, instrument_uid
+                    )
+        except Exception as e:
+            logger.error(f"Error fetching instrument data from T-Bank: {e}")
+            return await _create_basic_tbank_asset(
+                security_name, isin, user, instrument_type, instrument_uid
+            )
+
+        # Create asset with metadata
         @database_sync_to_async
-        def create_asset():
+        def create_asset_with_metadata():
+            # Map to asset type
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+                asset_type = ASSET_TYPE_CHOICES[0][0]
+                exposure = EXPOSURE_CHOICES[0][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+                asset_type = ASSET_TYPE_CHOICES[2][0]
+                exposure = EXPOSURE_CHOICES[0][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+                asset_type = ASSET_TYPE_CHOICES[1][0]
+                exposure = EXPOSURE_CHOICES[1][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
+                asset_type = ASSET_TYPE_CHOICES[4][0]
+                exposure = EXPOSURE_CHOICES[4][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION:
+                asset_type = ASSET_TYPE_CHOICES[5][0]
+                exposure = EXPOSURE_CHOICES[4][0]
+            else:
+                asset_type = ASSET_TYPE_CHOICES[0][0]
+                exposure = EXPOSURE_CHOICES[0][0]
+
+            # Create main asset
             asset = Assets.objects.create(
                 type=asset_type,
-                ISIN=isin,
-                name=security_name,
-                currency="RUB",  # Default to RUB, can be updated later if needed
+                ISIN=isin if isin else instrument_data.isin,
+                name=instrument_data.name,
+                currency=instrument_data.currency,
                 exposure=exposure,
                 restricted=False,
-                data_source="TBANK",  # T-Bank as the data source
-                secid=None,  # No MICEX secid available
-                tbank_instrument_uid=instrument_uid,  # Store T-Bank instrument UID
+                data_source="TBANK",
+                secid=instrument_data.ticker if hasattr(instrument_data, "ticker") else None,
+                tbank_instrument_uid=instrument_uid,
             )
             asset.investors.add(user)
+
+            # Create type-specific metadata
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND and instrument_data:
+                bond_data = {}
+
+                # Extract bond-specific fields
+                if hasattr(instrument_data, "initial_nominal") and instrument_data.initial_nominal:
+                    bond_data["initial_notional"] = quotation_to_decimal(
+                        instrument_data.initial_nominal
+                    )
+
+                if hasattr(instrument_data, "placement_date") and instrument_data.placement_date:
+                    bond_data["issue_date"] = instrument_data.placement_date.date()
+
+                if hasattr(instrument_data, "maturity_date") and instrument_data.maturity_date:
+                    bond_data["maturity_date"] = instrument_data.maturity_date.date()
+
+                if hasattr(instrument_data, "coupon_quantity_per_year"):
+                    bond_data["coupon_frequency"] = instrument_data.coupon_quantity_per_year
+
+                # Detect bond type from flags
+                if hasattr(instrument_data, "floating_coupon_flag"):
+                    if instrument_data.floating_coupon_flag:
+                        bond_data["bond_type"] = "FLOATING"
+                    elif bond_data.get("coupon_frequency", 0) == 0:
+                        bond_data["bond_type"] = "ZERO_COUPON"
+                    else:
+                        bond_data["bond_type"] = "FIXED"
+
+                # Amortization flag
+                if hasattr(instrument_data, "amortization_flag"):
+                    bond_data["is_amortizing"] = instrument_data.amortization_flag
+
+                if bond_data:
+                    BondMetadata.objects.create(asset=asset, **bond_data)
+                    logger.info(f"Created BondMetadata from T-Bank for {asset.name}")
+
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES and instrument_data:
+                future_data = {}
+
+                if hasattr(instrument_data, "expiration_date") and instrument_data.expiration_date:
+                    future_data["expiration_date"] = instrument_data.expiration_date.date()
+
+                if hasattr(instrument_data, "basic_asset"):
+                    future_data["underlying_asset"] = instrument_data.basic_asset
+
+                if hasattr(instrument_data, "name"):
+                    future_data["contract_name"] = instrument_data.name
+
+                if hasattr(instrument_data, "lot"):
+                    future_data["lot_size"] = Decimal(str(instrument_data.lot))
+
+                if future_data:
+                    FutureMetadata.objects.create(asset=asset, **future_data)
+                    logger.info(f"Created FutureMetadata from T-Bank for {asset.name}")
+
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION and instrument_data:
+                option_data = {}
+
+                if hasattr(instrument_data, "expiration_date") and instrument_data.expiration_date:
+                    option_data["expiration_date"] = instrument_data.expiration_date.date()
+
+                if hasattr(instrument_data, "strike_price") and instrument_data.strike_price:
+                    option_data["strike_price"] = quotation_to_decimal(instrument_data.strike_price)
+
+                if hasattr(instrument_data, "direction"):
+                    # OptionDirection: CALL=1, PUT=2
+                    option_data["option_type"] = "CALL" if instrument_data.direction == 1 else "PUT"
+
+                if hasattr(instrument_data, "basic_asset"):
+                    option_data["underlying_asset"] = instrument_data.basic_asset
+
+                if option_data:
+                    OptionMetadata.objects.create(asset=asset, **option_data)
+                    logger.info(f"Created OptionMetadata from T-Bank for {asset.name}")
+
             return asset
 
-        asset = await create_asset()
+        asset = await create_asset_with_metadata()
         logger.info(
-            f"Successfully created asset from T-Bank data: {asset.name} ({asset.ISIN}), "
-            f"Type: {asset.type}, Data source: {asset.data_source}, "
-            f"UID: {asset.tbank_instrument_uid}"
+            f"Successfully created asset from T-Bank with metadata: {asset.name} ({asset.ISIN})"
         )
         return asset
 
@@ -1310,110 +1448,416 @@ async def create_security_from_tinkoff(
         return None
 
 
-async def create_security_from_micex(security_name, isin, user, instrument_type):
-    """Create a new security using MICEX API data"""
+async def _create_basic_tbank_asset(security_name, isin, user, instrument_type, instrument_uid):
+    """Fallback: Create basic asset without metadata."""
     try:
-        # Constants for MICEX API
-        engine_stock = "stock"
-        engine_etf = "stock"
-        engine_bond = "stock"
-        market_shares = "shares"
-        market_etfs = "shares"
-        market_bonds = "bonds"
-        board_stocks = "TQBR"
-        board_etfs = "TQTF"
-        board_bonds = "TQCB"
 
-        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
-            selected_engine = engine_stock
-            selected_market = market_shares
-            selected_board = board_stocks
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
-            selected_engine = engine_etf
-            selected_market = market_etfs
-            selected_board = board_etfs
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
-            selected_engine = engine_bond
-            selected_market = market_bonds
-            selected_board = board_bonds
-        else:
-            logger.error(f"Invalid instrument type: {instrument_type}")
-            return None
-
-        # First, get the securities list and find our security
-        url = (
-            f"https://iss.moex.com/iss/engines/{selected_engine}/markets/"
-            f"{selected_market}/boards/{selected_board}/securities.json"
-        )
-        response = requests.get(url)
-        if response.status_code != 200:
-            logger.error(f"Failed to fetch securities list from MICEX: {response.status_code}")
-            return None
-
-        data = response.json()
-        securities_df = pd.DataFrame(
-            data["securities"]["data"], columns=data["securities"]["columns"]
-        )
-
-        # Try to find the security by ISIN first (more reliable)
-        security = securities_df[securities_df["ISIN"] == isin]
-        if security.empty:
-            # If not found by ISIN, try by name
-            security = securities_df[
-                securities_df["SECNAME"].str.contains(security_name, case=False, na=False)
-            ]
-
-        if security.empty:
-            logger.warning(f"Security not found in MICEX: {security_name} ({isin})")
-            return None
-
-        # Get the first match if multiple found
-        security = security.iloc[0]
-
-        # Get the asset type from the instrument type
-        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
-            asset_type = ASSET_TYPE_CHOICES[0][0]
-            exposure = EXPOSURE_CHOICES[0][0]
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
-            asset_type = ASSET_TYPE_CHOICES[2][0]
-            exposure = EXPOSURE_CHOICES[0][0]
-        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
-            asset_type = ASSET_TYPE_CHOICES[1][0]
-            exposure = EXPOSURE_CHOICES[1][0]
-        else:
-            asset_type = None
-            exposure = None
-
-        if not asset_type:
-            logger.error(f"Invalid instrument type: {instrument_type}")
-            return None
-
-        # Create new asset
         @database_sync_to_async
-        def create_asset():
+        def create_basic_asset():
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+                asset_type = ASSET_TYPE_CHOICES[0][0]
+                exposure = EXPOSURE_CHOICES[0][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+                asset_type = ASSET_TYPE_CHOICES[2][0]
+                exposure = EXPOSURE_CHOICES[0][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+                asset_type = ASSET_TYPE_CHOICES[1][0]
+                exposure = EXPOSURE_CHOICES[1][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
+                asset_type = ASSET_TYPE_CHOICES[4][0]
+                exposure = EXPOSURE_CHOICES[4][0]
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION:
+                asset_type = ASSET_TYPE_CHOICES[5][0]
+                exposure = EXPOSURE_CHOICES[4][0]
+            else:
+                asset_type = ASSET_TYPE_CHOICES[0][0]
+                exposure = EXPOSURE_CHOICES[0][0]
+
             asset = Assets.objects.create(
                 type=asset_type,
                 ISIN=isin,
                 name=security_name,
-                currency="RUB" if security["CURRENCYID"] == "SUR" else security["CURRENCYID"],
+                currency="RUB",
                 exposure=exposure,
                 restricted=False,
-                data_source="MICEX",
-                secid=security["SECID"],
+                data_source="TBANK",
+                secid=None,
+                tbank_instrument_uid=instrument_uid,
             )
-
             asset.investors.add(user)
             return asset
 
-        asset = await create_asset()
-        logger.info(
-            f"Created new asset: {asset.name} ({asset.ISIN}) "
-            f"with user and broker account relationships"
+        return await create_basic_asset()
+    except Exception as e:
+        logger.error(f"Error in fallback asset creation: {e}")
+        return None
+
+
+async def _enhance_bond_metadata_from_tbank(asset, isin, user):
+    """
+    Enhance bond metadata with T-Bank API data.
+    Fetches accurate amortization flag and coupon type (floating vs fixed).
+
+    Args:
+        asset: Assets instance
+        isin: Bond ISIN
+        user: User object for T-Bank API access
+    """
+
+    try:
+        # Get T-Bank token
+        token = await get_user_token(user)
+
+        # Fetch bond data from T-Bank using class_code + ISIN
+        with Client(token) as client:
+            try:
+                # id_type=2 is for ticker which is ISIN for bonds
+                # TQCB is the standard board for corporate bonds
+                response = client.instruments.bond_by(id_type=2, id=isin, class_code="TQCB")
+                bond_instrument = response.instrument
+
+                # Update BondMetadata with T-Bank data
+                @database_sync_to_async
+                def update_bond_metadata():
+                    try:
+                        bond_meta = asset.bond_metadata
+                        updated = False
+
+                        # Update bond type from floating_coupon_flag
+                        if hasattr(bond_instrument, "floating_coupon_flag"):
+                            if bond_instrument.floating_coupon_flag:
+                                bond_meta.bond_type = "FLOATING"
+                                updated = True
+                                logger.info(
+                                    f"Updated bond type to FLOATING for {asset.name} "
+                                    f"from T-Bank API"
+                                )
+                            elif bond_meta.bond_type == "FIXED":
+                                # Keep as FIXED if not floating and not zero coupon
+                                pass
+
+                        # Update amortization flag (authoritative from T-Bank)
+                        if hasattr(bond_instrument, "amortization_flag"):
+                            bond_meta.is_amortizing = bond_instrument.amortization_flag
+                            updated = True
+                            logger.info(
+                                f"Updated is_amortizing={bond_instrument.amortization_flag} "
+                                f"for {asset.name} from T-Bank API"
+                            )
+
+                        # Update initial_notional if missing
+                        if not bond_meta.initial_notional and hasattr(
+                            bond_instrument, "initial_nominal"
+                        ):
+                            if bond_instrument.initial_nominal:
+                                bond_meta.initial_notional = quotation_to_decimal(
+                                    bond_instrument.initial_nominal
+                                )
+                                updated = True
+
+                        if updated:
+                            bond_meta.save()
+                            logger.info(f"Enhanced BondMetadata for {asset.name} from T-Bank API")
+
+                    except Exception as e:
+                        logger.error(
+                            f"Error updating BondMetadata for {asset.name}: {e}", exc_info=True
+                        )
+
+                await update_bond_metadata()
+
+            except Exception as e:
+                # If bond not found in TQCB, try other boards or just log
+                error_msg = str(e)
+                if "50002" in error_msg or "not found" in error_msg.lower():
+                    logger.info(
+                        f"Bond {isin} not found in T-Bank TQCB board, "
+                        f"keeping MICEX metadata for {asset.name}"
+                    )
+                else:
+                    logger.warning(f"Error fetching bond from T-Bank for {asset.name}: {e}")
+
+    except Exception as e:
+        logger.error(
+            f"Error enhancing bond metadata from T-Bank for {asset.name}: {e}", exc_info=True
         )
+
+
+async def fetch_security_from_micex_targeted(security_identifier, instrument_type):
+    """
+    Fetch security data from MICEX using targeted API endpoint.
+
+    Args:
+        security_identifier: ISIN for bonds, SECID for stocks/ETFs/futures/options
+        instrument_type: InstrumentType enum
+
+    Returns:
+        dict: Security data or None if not found
+    """
+    try:
+        # Use targeted endpoint
+        url = f"https://iss.moex.com/iss/securities/{security_identifier}.json"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logger.error(
+                        f"Failed to fetch security from MICEX: {security_identifier}, "
+                        f"status={response.status}"
+                    )
+                    return None
+
+                data = await response.json()
+
+                # Parse description data (contains main security info)
+                if "description" not in data or not data["description"]["data"]:
+                    logger.warning(f"No description data for security: {security_identifier}")
+                    return None
+
+                # Convert to dict for easier access
+                desc_columns = data["description"]["columns"]
+                desc_data = data["description"]["data"]
+
+                security_info = {}
+                for row in desc_data:
+                    field_name = row[desc_columns.index("name")]
+                    field_value = row[desc_columns.index("value")]
+                    security_info[field_name] = field_value
+
+                # Get the SECID if not already the identifier
+                secid = security_info.get("SECID", security_identifier)
+
+                logger.info(
+                    f"Fetched security from MICEX: {security_info.get('NAME', security_identifier)}"
+                )
+                return {
+                    "secid": secid,
+                    "isin": security_info.get("ISIN"),
+                    "name": security_info.get("NAME") or security_info.get("SHORTNAME"),
+                    "short_name": security_info.get("SHORTNAME"),
+                    "currency": "RUB"
+                    if security_info.get("FACEUNIT") == "SUR"
+                    else security_info.get("FACEUNIT", "RUB"),
+                    "data": security_info,  # Full data for type-specific processing
+                    "instrument_type": instrument_type,
+                }
+
+    except Exception as e:
+        logger.error(f"Error fetching security from MICEX: {e}", exc_info=True)
+        return None
+
+
+async def create_security_from_micex(security_name, isin, user, instrument_type, ticker=None):
+    """
+    Create a new security using targeted MICEX API request.
+    Automatically creates metadata for bonds, futures, and options.
+
+    Args:
+        security_name: Name of the security
+        isin: ISIN code
+        user: User object
+        instrument_type: InstrumentType enum
+        ticker: Ticker symbol (for non-bonds, used for MICEX lookup)
+    """
+    try:
+        # Determine the identifier to use
+        # For bonds: use ISIN, for others: use ticker (more reliable for MICEX)
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+            identifier = isin
+        else:
+            # For stocks/ETFs/futures/options: use ticker if available, fallback to ISIN
+            identifier = ticker if ticker else isin
+
+        # Fetch security data from MICEX
+        security_data = await fetch_security_from_micex_targeted(identifier, instrument_type)
+
+        if not security_data:
+            logger.warning(f"Security not found in MICEX: {security_name} ({isin})")
+            return None
+
+        # Determine asset type and exposure
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_SHARE:
+            asset_type = ASSET_TYPE_CHOICES[0][0]  # Stock
+            exposure = EXPOSURE_CHOICES[0][0]  # Equity
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_ETF:
+            asset_type = ASSET_TYPE_CHOICES[2][0]  # ETF
+            exposure = EXPOSURE_CHOICES[0][0]  # Equity
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+            asset_type = ASSET_TYPE_CHOICES[1][0]  # Bond
+            exposure = EXPOSURE_CHOICES[1][0]  # Fixed Income
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
+            asset_type = ASSET_TYPE_CHOICES[4][0]  # Future
+            exposure = EXPOSURE_CHOICES[4][0]  # Derivatives
+        elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION:
+            asset_type = ASSET_TYPE_CHOICES[5][0]  # Option
+            exposure = EXPOSURE_CHOICES[4][0]  # Derivatives
+        else:
+            logger.error(f"Unsupported instrument type: {instrument_type}")
+            return None
+
+        # Create the asset
+        @database_sync_to_async
+        def create_asset_and_metadata():
+            # Create main asset
+            asset = Assets.objects.create(
+                type=asset_type,
+                ISIN=security_data["isin"] or isin,
+                name=security_data["name"],
+                currency=security_data["currency"],
+                exposure=exposure,
+                restricted=False,
+                data_source="MICEX",
+                secid=security_data["secid"],
+            )
+            asset.investors.add(user)
+
+            # Create type-specific metadata
+            data = security_data["data"]
+
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+                # Create BondMetadata
+                bond_data = {}
+
+                # Parse dates
+                if data.get("ISSUEDATE"):
+                    try:
+                        bond_data["issue_date"] = datetime.strptime(
+                            data["ISSUEDATE"], "%Y-%m-%d"
+                        ).date()
+                    except (ValueError, TypeError):
+                        pass
+
+                if data.get("MATDATE"):
+                    try:
+                        bond_data["maturity_date"] = datetime.strptime(
+                            data["MATDATE"], "%Y-%m-%d"
+                        ).date()
+                    except (ValueError, TypeError):
+                        pass
+
+                # Parse numeric fields
+                if data.get("INITIALFACEVALUE"):
+                    try:
+                        bond_data["initial_notional"] = Decimal(str(data["INITIALFACEVALUE"]))
+                    except (ValueError, TypeError, InvalidOperation):
+                        pass
+
+                if data.get("COUPONPERCENT"):
+                    try:
+                        bond_data["coupon_rate"] = Decimal(str(data["COUPONPERCENT"]))
+                    except (ValueError, TypeError, InvalidOperation):
+                        pass
+
+                if data.get("COUPONFREQUENCY"):
+                    try:
+                        bond_data["coupon_frequency"] = int(data["COUPONFREQUENCY"])
+                    except (ValueError, TypeError):
+                        pass
+
+                # Determine if bond is amortizing (check if current face value < initial)
+                if data.get("FACEVALUE") and data.get("INITIALFACEVALUE"):
+                    try:
+                        current_face = Decimal(str(data["FACEVALUE"]))
+                        initial_face = Decimal(str(data["INITIALFACEVALUE"]))
+                        bond_data["is_amortizing"] = current_face < initial_face
+                    except (ValueError, TypeError, InvalidOperation):
+                        bond_data["is_amortizing"] = False
+                else:
+                    bond_data["is_amortizing"] = False
+
+                # Bond type - determine from coupon percent
+                # Zero coupon bonds have COUPONPERCENT = 0
+                # For floating vs fixed, we'll fetch from T-Bank API below
+                if data.get("COUPONPERCENT"):
+                    try:
+                        coupon_pct = Decimal(str(data["COUPONPERCENT"]))
+                        if coupon_pct == 0:
+                            bond_data["bond_type"] = "ZERO_COUPON"
+                        else:
+                            # Default to FIXED, will be updated by T-Bank API below
+                            bond_data["bond_type"] = "FIXED"
+                    except (ValueError, TypeError, InvalidOperation):
+                        bond_data["bond_type"] = "FIXED"
+                else:
+                    bond_data["bond_type"] = "FIXED"
+
+                # Create BondMetadata if we have any data
+                if bond_data:
+                    BondMetadata.objects.create(asset=asset, **bond_data)
+                    logger.info(f"Created BondMetadata for {asset.name}: {bond_data}")
+
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
+                # Create FutureMetadata
+                future_data = {}
+
+                if data.get("LSTDELDATE"):
+                    try:
+                        future_data["expiration_date"] = datetime.strptime(
+                            data["LSTDELDATE"], "%Y-%m-%d"
+                        ).date()
+                    except (ValueError, TypeError):
+                        pass
+
+                if data.get("ASSETCODE"):
+                    future_data["underlying_asset"] = data["ASSETCODE"]
+
+                if data.get("CONTRACTNAME"):
+                    future_data["contract_name"] = data["CONTRACTNAME"]
+
+                if data.get("LOTSIZE"):
+                    try:
+                        future_data["lot_size"] = Decimal(str(data["LOTSIZE"]))
+                    except (ValueError, TypeError, InvalidOperation):
+                        pass
+
+                if future_data:
+                    FutureMetadata.objects.create(asset=asset, **future_data)
+                    logger.info(f"Created FutureMetadata for {asset.name}")
+
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION:
+                # Create OptionMetadata
+                option_data = {}
+
+                if data.get("LSTDELDATE"):
+                    try:
+                        option_data["expiration_date"] = datetime.strptime(
+                            data["LSTDELDATE"], "%Y-%m-%d"
+                        ).date()
+                    except (ValueError, TypeError):
+                        pass
+
+                if data.get("STRIKE"):
+                    try:
+                        option_data["strike_price"] = Decimal(str(data["STRIKE"]))
+                    except (ValueError, TypeError, InvalidOperation):
+                        pass
+
+                if data.get("OPTIONTYPE"):
+                    option_data["option_type"] = "CALL" if data["OPTIONTYPE"] == "C" else "PUT"
+
+                if data.get("ASSETCODE"):
+                    option_data["underlying_asset"] = data["ASSETCODE"]
+
+                if option_data:
+                    OptionMetadata.objects.create(asset=asset, **option_data)
+                    logger.info(f"Created OptionMetadata for {asset.name}")
+
+            return asset
+
+        asset = await create_asset_and_metadata()
+        logger.info(
+            f"Created new asset from MICEX: {asset.name} ({asset.ISIN}) "
+            f"with metadata and user relationships"
+        )
+
+        # For bonds, also fetch from T-Bank API to get accurate amortization and coupon type
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
+            await _enhance_bond_metadata_from_tbank(asset, isin, user)
+
         return asset
 
     except Exception as e:
-        logger.error(f"Error creating security from MICEX: {str(e)}")
+        logger.error(f"Error creating security from MICEX: {str(e)}", exc_info=True)
         return None
 
 

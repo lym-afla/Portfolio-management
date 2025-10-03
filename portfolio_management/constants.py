@@ -33,6 +33,8 @@ TRANSACTION_TYPE_TAX = "Tax"
 TRANSACTION_TYPE_INTEREST_INCOME = "Interest income"
 TRANSACTION_TYPE_REPO = "Repo"
 TRANSACTION_TYPE_ASSET_TRANSFER = "Asset transfer"
+TRANSACTION_TYPE_BOND_REDEMPTION = "Bond redemption"  # Partial or full bond repayment
+TRANSACTION_TYPE_BOND_MATURITY = "Bond maturity"  # Full bond maturity
 
 
 TRANSACTION_TYPE_CHOICES = (
@@ -46,6 +48,8 @@ TRANSACTION_TYPE_CHOICES = (
     (TRANSACTION_TYPE_TAX, "Tax"),
     (TRANSACTION_TYPE_INTEREST_INCOME, "Interest income"),
     (TRANSACTION_TYPE_REPO, "Repo"),
+    (TRANSACTION_TYPE_BOND_REDEMPTION, "Bond redemption"),
+    (TRANSACTION_TYPE_BOND_MATURITY, "Bond maturity"),
 )
 
 NAV_BARCHART_CHOICES = (
@@ -70,6 +74,7 @@ EXPOSURE_CHOICES = (
     ("FI", "Fixed income"),
     ("FX", "Forex"),
     ("Commodity", "Commodity"),
+    ("Derivatives", "Derivatives"),
 )
 
 DATA_SOURCE_CHOICES = [

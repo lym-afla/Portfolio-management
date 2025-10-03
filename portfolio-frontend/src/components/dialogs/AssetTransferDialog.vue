@@ -10,78 +10,78 @@
         <v-form ref="form" v-model="valid">
           <v-row>
             <v-col cols="12">
-            <v-autocomplete
-              v-model="formData.security"
-              :items="securities"
-              :loading="loadingSecurities"
-              item-title="text"
-              item-value="value"
-              label="Security *"
-              :rules="[rules.required]"
-              variant="outlined"
-              density="comfortable"
-              prepend-inner-icon="mdi-chart-line"
-              @update:model-value="onSecurityChange"
-            >
-              <template v-slot:selection="{ item }">
-                {{ item.raw ? item.raw.text : '' }}
-              </template>
-            </v-autocomplete>
-          </v-col>
-
-          <v-col cols="12">
-            <v-autocomplete
-              v-model="formData.fromAccount"
-              :items="fromAccounts"
-              :loading="loadingAccounts"
-              item-title="text"
-              item-value="value"
-              label="From Account *"
-              :rules="[rules.required]"
-              variant="outlined"
-              density="comfortable"
-              prepend-inner-icon="mdi-bank-minus"
-              :disabled="!formData.security"
-              @update:model-value="onFromAccountChange"
-            >
-              <template v-slot:selection="{ item }">
-                {{ item.raw ? item.raw.text : '' }}
-              </template>
-            </v-autocomplete>
-          </v-col>
-
-          <v-col cols="12">
-            <v-autocomplete
-              v-model="formData.toAccount"
-              :items="toAccounts"
-              :loading="loadingAccounts"
-              item-title="text"
-              item-value="value"
-              label="To Account *"
-              :rules="[rules.required, rules.differentAccount]"
-              variant="outlined"
-              density="comfortable"
-              prepend-inner-icon="mdi-bank-plus"
-            >
-              <template v-slot:selection="{ item }">
-                {{ item.raw ? item.raw.text : '' }}
-              </template>
-            </v-autocomplete>
+              <v-autocomplete
+                v-model="formData.security"
+                :items="securities"
+                :loading="loadingSecurities"
+                item-title="text"
+                item-value="value"
+                label="Security *"
+                :rules="[rules.required]"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-chart-line"
+                @update:model-value="onSecurityChange"
+              >
+                <template v-slot:selection="{ item }">
+                  {{ item.raw ? item.raw.text : '' }}
+                </template>
+              </v-autocomplete>
             </v-col>
 
-          <v-col cols="12">
-            <v-text-field
-              :model-value="displayQuantity"
-              label="Quantity to Transfer"
-              :loading="loadingQuantity"
-              variant="outlined"
-              density="comfortable"
-              prepend-inner-icon="mdi-counter"
-              readonly
-              hint="All holdings in the source account will be transferred"
-              persistent-hint
-            />
-          </v-col>
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="formData.fromAccount"
+                :items="fromAccounts"
+                :loading="loadingAccounts"
+                item-title="text"
+                item-value="value"
+                label="From Account *"
+                :rules="[rules.required]"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-bank-minus"
+                :disabled="!formData.security"
+                @update:model-value="onFromAccountChange"
+              >
+                <template v-slot:selection="{ item }">
+                  {{ item.raw ? item.raw.text : '' }}
+                </template>
+              </v-autocomplete>
+            </v-col>
+
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="formData.toAccount"
+                :items="toAccounts"
+                :loading="loadingAccounts"
+                item-title="text"
+                item-value="value"
+                label="To Account *"
+                :rules="[rules.required, rules.differentAccount]"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-bank-plus"
+              >
+                <template v-slot:selection="{ item }">
+                  {{ item.raw ? item.raw.text : '' }}
+                </template>
+              </v-autocomplete>
+            </v-col>
+
+            <v-col cols="12">
+              <v-text-field
+                :model-value="displayQuantity"
+                label="Quantity to Transfer"
+                :loading="loadingQuantity"
+                variant="outlined"
+                density="comfortable"
+                prepend-inner-icon="mdi-counter"
+                readonly
+                hint="All holdings in the source account will be transferred"
+                persistent-hint
+              />
+            </v-col>
 
             <v-col cols="12">
               <v-text-field
@@ -289,7 +289,11 @@ export default {
 
       try {
         submitting.value = true
-        logger.log('AssetTransferDialog', 'Submitting transfer:', formData.value)
+        logger.log(
+          'AssetTransferDialog',
+          'Submitting transfer:',
+          formData.value
+        )
 
         await transferAsset(formData.value)
 

@@ -19,6 +19,20 @@
               :required="field.required"
               :error-messages="errorMessages[field.name]"
               :type="field.type === 'url' ? 'url' : 'text'"
+              :hint="field.help_text"
+              persistent-hint
+            />
+            <v-text-field
+              v-else-if="
+                field.type === 'dateinput' && shouldShowField(field.name)
+              "
+              v-model="form[field.name]"
+              :label="field.label"
+              :required="field.required"
+              :error-messages="errorMessages[field.name]"
+              type="date"
+              :hint="field.help_text"
+              persistent-hint
             />
             <v-select
               v-else-if="field.type === 'select' && shouldShowField(field.name)"
@@ -29,6 +43,8 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
+              :hint="field.help_text"
+              persistent-hint
             />
             <v-checkbox
               v-else-if="
@@ -37,6 +53,8 @@
               v-model="form[field.name]"
               :label="field.label"
               :error-messages="errorMessages[field.name]"
+              :hint="field.help_text"
+              persistent-hint
             />
             <v-textarea
               v-else-if="
@@ -46,6 +64,8 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
+              :hint="field.help_text"
+              persistent-hint
             />
             <v-select
               v-else-if="
@@ -60,6 +80,8 @@
               multiple
               chips
               :error-messages="errorMessages[field.name]"
+              :hint="field.help_text"
+              persistent-hint
             />
             <v-text-field
               v-else-if="
@@ -69,6 +91,9 @@
               :label="field.label"
               :required="field.required"
               :error-messages="errorMessages[field.name]"
+              type="number"
+              :hint="field.help_text"
+              persistent-hint
             />
           </template>
         </v-form>
@@ -250,6 +275,22 @@ export default {
       ) {
         return false
       }
+
+      // Bond-specific fields
+      const bondFields = [
+        'initial_notional',
+        'issue_date',
+        'maturity_date',
+        'coupon_rate',
+        'coupon_frequency',
+        'is_amortizing',
+        'bond_type',
+        'credit_rating',
+      ]
+      if (bondFields.includes(fieldName) && form.value.type !== 'Bond') {
+        return false
+      }
+
       return true
     }
 
