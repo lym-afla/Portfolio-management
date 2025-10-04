@@ -228,8 +228,9 @@ class Accounts(models.Model):
         # in 'transactions' app after each transaction
         transactions = self.transactions.filter(date__lte=date)
         for transaction in transactions:
+            effective_price = transaction.get_price()
             balance[transaction.currency] = balance.get(transaction.currency, Decimal(0)) - Decimal(
-                (transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0))
+                effective_price * Decimal(transaction.quantity or Decimal(0))
                 - Decimal(transaction.aci or Decimal(0))
                 - Decimal(transaction.cash_flow or Decimal(0))
                 - Decimal(transaction.commission or Decimal(0))
@@ -293,7 +294,7 @@ class Assets(models.Model):
         except Exception:
             return None
 
-    def get_effective_notional(self, date, investor, account_ids=None):
+    def get_effective_notional(self, date, investor, account_ids=None, currency=None):
         """
         Get the effective notional value per bond at a given date.
         For amortizing bonds, this accounts for partial redemptions.
@@ -301,9 +302,9 @@ class Assets(models.Model):
         """
         bond_meta = self.bond_metadata
         if not bond_meta or not bond_meta.is_amortizing:
-            return Decimal(1)
+            return None
 
-        return bond_meta.get_current_notional(date, investor, account_ids) or Decimal(1)
+        return bond_meta.get_current_notional(date, investor, account_ids, currency)
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
@@ -323,7 +324,7 @@ class Assets(models.Model):
                 quote = type(
                     "obj",
                     (object,),
-                    {"price": last_transaction.price, "date": last_transaction.date},
+                    {"price": last_transaction.get_price(), "date": last_transaction.date},
                 )
             else:
                 logger.warning(f"No transaction found for {self.name} as of {price_date}")
@@ -340,6 +341,54 @@ class Assets(models.Model):
             f"in currency {currency or self.currency}"
         )
         return quote
+
+    def calculate_value_at_date(self, date, investor, currency=None, account_ids=None):
+        """
+        Calculate the market value of this asset at a given date.
+        For bonds, this accounts for the effective notional value.
+        For other assets, this is simply position * price.
+
+        Args:
+            date: The date for which to calculate value
+            investor: The investor who owns the asset
+            currency: Optional currency for conversion
+            account_ids: Optional list of account IDs to filter by
+
+        Returns:
+            Decimal: The calculated market value
+        """
+        position = self.position(date, investor, account_ids)
+        if position == 0:
+            return Decimal(0)
+
+        price_quote = self.price_at_date(date, currency)
+        if price_quote is None:
+            logger.warning(f"No price found for {self.name} at {date}")
+            return Decimal(0)
+
+        price = price_quote.price
+
+        # For bonds, multiply by effective notional as prices are typically quoted per 1000 notional
+        if self.is_bond:
+            effective_notional = self.get_effective_notional(date, investor, account_ids, currency)
+            # Bond prices are typically quoted as percentage of par (100 = 100% of par value)
+            # So value = position * (price / 100) * notional
+            # Since notional is typically 1000 and price is like 98.5 for 98.5%
+            # value = position * price * notional / 100
+            value = position * price * effective_notional / Decimal(100)
+            logger.debug(
+                f"Bond value calculation for {self.name}: "
+                f"position={position}, price={price}, notional={effective_notional}, "
+                f"value={value}"
+            )
+        else:
+            value = position * price
+            logger.debug(
+                f"Standard value calculation for {self.name}: "
+                f"position={position}, price={price}, value={value}"
+            )
+
+        return value
 
     # Define position at date by summing all movements to date
     def position(self, date, investor, account_ids=None):
@@ -492,7 +541,7 @@ class Assets(models.Model):
         for transaction in transactions:
             logger.debug(
                 f"Processing transaction: Date={transaction.date}, "
-                f"Quantity={transaction.quantity}, Price={transaction.price}"
+                f"Quantity={transaction.quantity}, Price={transaction.get_price()}"
             )
 
             if currency is not None:
@@ -501,7 +550,9 @@ class Assets(models.Model):
                 fx_rate = Decimal(1)
             logger.debug(f"FX rate: {fx_rate}")
 
-            current_price = transaction.price * fx_rate
+            # Get price (handles bond percentage to actual price conversion)
+            effective_price = transaction.get_price()
+            current_price = effective_price * fx_rate
             weight_current = transaction.quantity
 
             # Calculate entry price
@@ -562,7 +613,7 @@ class Assets(models.Model):
             for transaction in transactions:
                 logger.debug(
                     f"Transaction: {transaction.date}, {transaction.type}, "
-                    f"Quantity: {transaction.quantity}, Price: {transaction.price}"
+                    f"Quantity: {transaction.quantity}, Price: {transaction.get_price()}"
                 )
 
                 # Check if this is a bond redemption transaction
@@ -667,12 +718,12 @@ class Assets(models.Model):
                         )
 
                         price_appreciation = (
-                            -(transaction.price - buy_in_price_lcl_currency)
+                            -(transaction.get_price() - buy_in_price_lcl_currency)
                             * transaction.quantity
                             * fx_rate_exit
                         )
                         gl_target_currency = (
-                            -(transaction.price * fx_rate_exit - buy_in_price_target_currency)
+                            -(transaction.get_price() * fx_rate_exit - buy_in_price_target_currency)
                             * transaction.quantity
                         )
                         fx_effect = gl_target_currency - price_appreciation
@@ -938,7 +989,14 @@ class Transactions(models.Model):
     quantity = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
     price = models.DecimalField(
         max_digits=18, decimal_places=9, null=True, blank=True
-    )  # Increased precision for T-Bank API (nano field)
+    )  # For bonds: stored as percentage of par (e.g., 98.5 = 98.5%). For others: actual price
+    notional = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Notional/par value per bond at transaction time (for bonds only)",
+    )
     cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     commission = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
     # Accounts for sign of ACI (negative for buy, positive for sell)
@@ -964,6 +1022,7 @@ class Transactions(models.Model):
 
     def _create_notional_history(self):
         """Create NotionalHistory entry for this bond redemption"""
+        from datetime import timedelta
 
         try:
             # Get bond metadata
@@ -997,27 +1056,101 @@ class Transactions(models.Model):
                 "MATURITY" if self.type == TRANSACTION_TYPE_BOND_MATURITY else "REDEMPTION"
             )
 
-            # Create or update NotionalHistory
-            NotionalHistory.objects.update_or_create(
+            # Calculate change_amount (negative for redemptions)
+            change_amount_value = -notional_per_bond
+
+            # Search for existing entry within ±7 days with similar change_amount
+            # This handles cases where API event dates differ from broker transaction dates
+            # (e.g., event on Friday, transaction settles on Monday)
+            date_range_start = self.date - timedelta(days=7)
+            date_range_end = self.date + timedelta(days=7)
+
+            # Tolerance for matching change_amount (e.g., 0.01 for rounding differences)
+            amount_tolerance = Decimal("0.01")
+
+            # Find potential matches
+            nearby_entries = NotionalHistory.objects.filter(
                 asset=self.security,
-                date=self.date,
+                date__gte=date_range_start,
+                date__lte=date_range_end,
                 change_reason=change_reason,
-                defaults={
-                    "notional_per_unit": new_notional,
-                    "change_amount": -notional_per_bond,
-                    "comment": f"Auto-created from transaction {self.id}",
-                },
             )
 
-            logger.info(
-                f"Created NotionalHistory for {self.security.name}: "
-                f"notional={new_notional}, change={-notional_per_bond}"
-            )
+            # Look for a matching entry based on similar change_amount
+            matching_entry = None
+            for entry in nearby_entries:
+                if (
+                    entry.change_amount
+                    and abs(entry.change_amount - change_amount_value) <= amount_tolerance
+                ):
+                    matching_entry = entry
+                    break
+
+            if matching_entry:
+                # Update existing entry with actual transaction date
+                old_date = matching_entry.date
+                matching_entry.date = self.date
+                matching_entry.notional_per_unit = new_notional
+                matching_entry.change_amount = change_amount_value
+                matching_entry.comment = (
+                    f"Updated from transaction {self.id} (original API date: {old_date})"
+                )
+                matching_entry.save()
+
+                logger.info(
+                    f"Updated NotionalHistory for {self.security.name}: "
+                    f"date {old_date} → {self.date}, notional={new_notional}, "
+                    f"change={change_amount_value}"
+                )
+            else:
+                # No matching entry found, create new one
+                NotionalHistory.objects.create(
+                    asset=self.security,
+                    date=self.date,
+                    change_reason=change_reason,
+                    notional_per_unit=new_notional,
+                    change_amount=change_amount_value,
+                    comment=f"Auto-created from transaction {self.id}",
+                )
+
+                logger.info(
+                    f"Created NotionalHistory for {self.security.name}: "
+                    f"notional={new_notional}, change={change_amount_value}"
+                )
 
         except Exception as e:
             logger.error(
                 f"Error creating NotionalHistory for transaction {self.id}: {e}", exc_info=True
             )
+
+    def get_price(self):
+        """
+        Get the effective price per unit for this transaction.
+
+        For stocks/ETFs/etc: returns transaction.price as-is
+        For bonds: converts percentage to actual price using notional
+                   (price_percentage * notional / 100)
+
+        Returns:
+            Decimal: Effective price per unit, or None if price is not available
+        """
+        if not self.price:
+            return None
+
+        # Check if this is a bond transaction
+        if self.security and self.security.type == "Bond":
+            if self.notional:
+                notional = self.notional
+            else:
+                notional = self.security.get_effective_notional(
+                    self.date, self.investor, self.account_id, self.currency
+                )
+            # Bond price is stored as percentage of par
+            # Convert to actual money per bond: price% * notional / 100
+            return (self.price * notional) / Decimal(100)
+        else:
+            # For non-bonds, price is already in actual money terms
+            return self.price
 
     def __str__(self):
         return f"{self.type} || {self.date}"
@@ -1236,20 +1369,61 @@ class BondMetadata(InstrumentMetadata):
     def __str__(self):
         return f"Bond Metadata for {self.asset.name}"
 
-    def get_current_notional(self, date, investor, account_ids=None):
+    def get_current_notional(self, date, investor=None, account_ids=None, currency=None):
         """
-        Calculate the current notional value per bond at a given date.
-        Takes into account redemptions and amortizations.
-        """
-        if not self.is_amortizing:
-            return self.initial_notional
+        Get the current notional value per bond at a given date.
 
-        # Get all redemption transactions up to this date
+        For non-amortizing bonds, returns the initial notional.
+        For amortizing bonds, uses NotionalHistory if available,
+        otherwise calculates from redemption transactions.
+
+        Args:
+            date: The date for which to get the notional
+            investor: Optional investor filter (used for transaction-based calculation)
+            account_ids: Optional account IDs filter (used for transaction-based calculation)
+            currency: Optional currency filter (used for transaction-based calculation)
+        Returns:
+            Decimal: The notional value per bond at the given date
+        """
+        if currency is None:
+            currency = self.asset.currency
+
+        fx_rate = FX.get_rate(self.asset.currency, currency, date)["FX"]
+        logger.debug(f"FX rate for {self.asset.name} at {date}: {fx_rate}")
+
+        if not self.is_amortizing:
+            return self.initial_notional or Decimal(1000) * fx_rate
+
+        # Try to get from NotionalHistory first (more efficient and accurate)
+        try:
+            latest_history = (
+                NotionalHistory.objects.filter(asset=self.asset, date__lte=date)
+                .order_by("-date")
+                .first()
+            )
+
+            if latest_history:
+                logger.debug(
+                    f"Using NotionalHistory for {self.asset.name} at {date}: "
+                    f"{latest_history.notional_per_unit}"
+                )
+                return latest_history.notional_per_unit * fx_rate
+        except Exception as e:
+            logger.warning(f"Error fetching NotionalHistory: {e}, falling back to transactions")
+
+        # Fallback: Calculate from transactions
+        if not investor:
+            logger.warning(
+                f"No NotionalHistory found and no investor provided for {self.asset.name}, "
+                f"returning initial notional"
+            )
+            return self.initial_notional or Decimal(1) * fx_rate
+
         redemption_filter = models.Q(
             security=self.asset,
             investor=investor,
             date__lte=date,
-            type__in=["Bond redemption", "Bond maturity"],
+            type__in=[TRANSACTION_TYPE_BOND_REDEMPTION, TRANSACTION_TYPE_BOND_MATURITY],
         )
 
         if account_ids:
@@ -1259,7 +1433,13 @@ class BondMetadata(InstrumentMetadata):
             total_redeemed=Sum("notional_change")
         )["total_redeemed"] or Decimal(0)
 
-        return self.initial_notional - redemptions
+        current_notional = (self.initial_notional or Decimal(1)) - abs(redemptions)
+        logger.debug(
+            f"Calculated notional from transactions for {self.asset.name}: "
+            f"{current_notional} (initial: {self.initial_notional}, redeemed: {redemptions})"
+        )
+
+        return current_notional
 
 
 class NotionalHistory(models.Model):
@@ -1300,11 +1480,10 @@ class NotionalHistory(models.Model):
 
     class Meta:
         ordering = ["date"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["asset", "date", "change_reason"], name="unique_notional_change"
-            )
-        ]
+        # Note: Removed strict unique constraint on (asset, date, change_reason)
+        # because API event dates may differ from actual broker transaction dates
+        # (e.g., T+2 settlement, weekend processing). Instead, we handle duplicates
+        # in application logic by matching on date proximity and change_amount.
 
     def __str__(self):
         return f"{self.asset.name}: Notional={self.notional_per_unit} on {self.date}"

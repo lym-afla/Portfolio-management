@@ -1,5 +1,4 @@
 from datetime import datetime
-from decimal import Decimal
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -66,22 +65,16 @@ def _get_securities_data(user, securities, effective_current_date):
             "first_investment": security.investment_date(user) or "None",
             "currency": security.currency,
             "open_position": security.position(effective_current_date, user),
-            "current_value": Decimal(0),
+            "current_value": security.calculate_value_at_date(
+                effective_current_date, user, security.currency
+            ),
             "realized": security.realized_gain_loss(effective_current_date, user)["all_time"][
                 "total"
             ],
             "unrealized": security.unrealized_gain_loss(effective_current_date, user)["total"],
             "capital_distribution": security.get_capital_distribution(effective_current_date, user),
-            "irr": None,
+            "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
         }
-
-        # Calculate current value and IRR if price is available
-        price = security.price_at_date(effective_current_date, security.currency)
-        if price is not None:
-            security_data["current_value"] = security_data["open_position"] * price.price
-            security_data["irr"] = IRR(
-                user.id, effective_current_date, security.currency, asset_id=security.id
-            )
 
         securities_data.append(security_data)
     return securities_data
@@ -104,24 +97,18 @@ def get_security_detail(request, security_id):
         "first_investment": security.investment_date(user) or "None",
         "currency": security.currency,
         "open_position": security.position(effective_current_date, user),
-        "current_value": Decimal(0),
+        "current_value": security.calculate_value_at_date(
+            effective_current_date, user, security.currency
+        ),
         "realized": security.realized_gain_loss(effective_current_date, user)["all_time"]["total"],
         "unrealized": security.unrealized_gain_loss(effective_current_date, user)["total"],
         "capital_distribution": security.get_capital_distribution(effective_current_date, user),
-        "irr": None,
+        "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
         "data_source": security.data_source,
         "update_link": security.update_link,
         "yahoo_symbol": security.yahoo_symbol,
         "comment": security.comment,
     }
-
-    # Calculate current value and IRR if price is available
-    price = security.price_at_date(effective_current_date, security.currency)
-    if price is not None:
-        security_data["current_value"] = security_data["open_position"] * price.price
-        security_data["irr"] = IRR(
-            user.id, effective_current_date, security.currency, asset_id=security.id
-        )
 
     return format_table_data([security_data], security.currency, number_of_digits)[0]
 

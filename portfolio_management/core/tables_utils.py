@@ -130,9 +130,9 @@ def _calculate_closed_table_output_for_api(
                 entry_quantity = asset.position(
                     entry_date - timedelta(days=1), user_id, selected_account_ids
                 )
-                entry_value = (
-                    asset.price_at_date(entry_date - timedelta(days=1), currency_used).price
-                    * entry_quantity
+                # Use calculate_value_at_date for proper bond notional handling
+                entry_value = asset.calculate_value_at_date(
+                    entry_date - timedelta(days=1), user_id, currency_used, selected_account_ids
                 )
             else:
                 entry_value = Decimal(0)
@@ -144,7 +144,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                entry_value += transaction.price * abs(transaction.quantity) * fx_rate
+                entry_value += transaction.get_price() * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
             position["entry_value"] = Decimal(entry_value)
@@ -157,7 +157,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                exit_value += transaction.price * abs(transaction.quantity) * fx_rate
+                exit_value += transaction.get_price() * abs(transaction.quantity) * fx_rate
 
             position["exit_value"] = Decimal(exit_value)
 
@@ -352,8 +352,9 @@ def _calculate_open_table_output_for_api(
             else:
                 position["current_price"] = position["entry_price"]
 
-            position["current_value"] = Decimal(
-                position["current_price"] * position["current_position"]
+            # Use calculate_value_at_date for proper bond notional handling
+            position["current_value"] = asset.calculate_value_at_date(
+                end_date, user_id, currency_used, selected_account_ids
             )
             position["share_of_portfolio"] = position["current_value"] / portfolio_NAV
 

@@ -169,7 +169,10 @@ class SummaryViewSet(viewsets.ViewSet):
             asset.current_price = Decimal(
                 getattr(asset.price_at_date(end_date, currency_target), "price", 0)
             )
-            market_value = round(asset.current_price * asset.current_position, 2)
+            # Use calculate_value_at_date for proper bond notional handling
+            market_value = round(
+                asset.calculate_value_at_date(end_date, user, currency_target, account_ids), 2
+            )
 
             unrealized = asset.unrealized_gain_loss(
                 end_date, user, currency_target, account_ids, start_date

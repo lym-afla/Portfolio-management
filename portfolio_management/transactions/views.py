@@ -192,6 +192,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "label": "Price",
                         "type": "number",
                         "required": False,
+                        "helper_text": (
+                            "For bonds: enter as percentage of par (e.g., 98.5 for 98.5%)"
+                        ),
+                    },
+                    {
+                        "name": "notional",
+                        "label": "Notional (for bonds)",
+                        "type": "number",
+                        "required": False,
+                        "helper_text": "Par value per bond (e.g., 1000)",
                     },
                     {
                         "name": "cash_flow",
@@ -994,6 +1004,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 "security": trans.get("security"),
                                 "quantity": trans.get("quantity"),
                                 "price": trans.get("price"),
+                                "notional": trans.get("notional"),
                                 "currency": trans.get("currency"),
                                 "cash_flow": trans.get("cash_flow"),
                                 "commission": trans.get("commission"),

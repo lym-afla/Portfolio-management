@@ -1012,7 +1012,7 @@ async def parse_galaxy_account_security_transactions(
 
         # Process securities first
         valid_columns = None
-        async for update in _process_galaxy_securities(df, user, account):
+        async for update in _process_galaxy_securities(df, user):
             if update["status"] == "security_processing_complete":
                 valid_columns = update["valid_columns"]
                 yield {
@@ -1171,7 +1171,7 @@ async def parse_galaxy_account_security_transactions(
         yield {"status": "critical_error", "message": f"Error during import: {str(e)}"}
 
 
-async def _process_galaxy_securities(df, user, account):
+async def _process_galaxy_securities(df, user):
     """Process all securities in the Excel file before handling transactions."""
     security_columns = []
 
@@ -1256,7 +1256,7 @@ async def _process_galaxy_securities(df, user, account):
 
 
 async def create_security_from_tinkoff(
-    security_name, isin, user, instrument_type, instrument_uid=None
+    security_name, isin, user, instrument_type, instrument_uid=None, date_to_save=None
 ):
     """
     Create a new security using T-Bank (Tinkoff) data with type-specific API methods.
@@ -1438,6 +1438,26 @@ async def create_security_from_tinkoff(
         logger.info(
             f"Successfully created asset from T-Bank with metadata: {asset.name} ({asset.ISIN})"
         )
+
+        # For bonds, fetch and save redemption history to NotionalHistory
+        if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND and instrument_uid:
+            try:
+                from core.tinkoff_utils import save_bond_redemption_history
+
+                entries_count = await save_bond_redemption_history(
+                    asset, instrument_uid, user, date_to_save
+                )
+                if entries_count > 0:
+                    logger.info(
+                        f"Saved {entries_count} bond redemption events for {asset.name} "
+                        f"up to {date_to_save if date_to_save else datetime.now()}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Could not save bond redemption history for {asset.name}: {e}. "
+                    f"This is not critical, continuing..."
+                )
+
         return asset
 
     except Exception as e:
@@ -1502,6 +1522,9 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
         asset: Assets instance
         isin: Bond ISIN
         user: User object for T-Bank API access
+
+    Returns:
+        str: instrument_uid if successful, None otherwise
     """
 
     try:
@@ -1566,6 +1589,9 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
 
                 await update_bond_metadata()
 
+                # Return instrument_uid for further use
+                return bond_instrument.uid if hasattr(bond_instrument, "uid") else None
+
             except Exception as e:
                 # If bond not found in TQCB, try other boards or just log
                 error_msg = str(e)
@@ -1576,11 +1602,13 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
                     )
                 else:
                     logger.warning(f"Error fetching bond from T-Bank for {asset.name}: {e}")
+                return None
 
     except Exception as e:
         logger.error(
             f"Error enhancing bond metadata from T-Bank for {asset.name}: {e}", exc_info=True
         )
+        return None
 
 
 async def fetch_security_from_micex_targeted(security_identifier, instrument_type):
@@ -1647,7 +1675,9 @@ async def fetch_security_from_micex_targeted(security_identifier, instrument_typ
         return None
 
 
-async def create_security_from_micex(security_name, isin, user, instrument_type, ticker=None):
+async def create_security_from_micex(
+    security_name, isin, user, instrument_type, ticker=None, date_to_save=None
+):
     """
     Create a new security using targeted MICEX API request.
     Automatically creates metadata for bonds, futures, and options.
@@ -1852,7 +1882,26 @@ async def create_security_from_micex(security_name, isin, user, instrument_type,
 
         # For bonds, also fetch from T-Bank API to get accurate amortization and coupon type
         if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
-            await _enhance_bond_metadata_from_tbank(asset, isin, user)
+            instrument_uid = await _enhance_bond_metadata_from_tbank(asset, isin, user)
+
+            # If we got the instrument_uid, also save bond redemption history
+            if instrument_uid:
+                try:
+                    from core.tinkoff_utils import save_bond_redemption_history
+
+                    entries_count = await save_bond_redemption_history(
+                        asset, instrument_uid, user, date_to_save
+                    )
+                    if entries_count > 0:
+                        logger.info(
+                            f"Saved {entries_count} bond redemption events for {asset.name} "
+                            f"up to {date_to_save if date_to_save else datetime.now()}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Could not save bond redemption history for {asset.name}: {e}. "
+                        f"This is not critical, continuing..."
+                    )
 
         return asset
 

@@ -146,13 +146,14 @@
                   <tr>
                     <td>{{ item.date }}</td>
                     <td class="text-start text-nowrap">
-                      {{ item.type }}
-                      <template v-if="item.type === 'Dividend'">
+                      <template v-if="item.type !== 'Bond redemption' && item.type !== 'Bond maturity'">{{ item.type }}</template>
+                      <template v-else-if="item.type === 'Dividend' || item.type === 'Coupon'">
                         payout of {{ item.cash_flow }}
                       </template>
                       <template v-else-if="item.type === 'Close'">
                         Close of {{ item.quantity }} securities
                       </template>
+                      <template v-else-if="item.type === 'Bond redemption' || item.type === 'Bond maturity'"> Redemption of {{ item.notional_change }} per bond </template>
                       <template
                         v-else-if="
                           ![
@@ -176,9 +177,10 @@
                     <td class="text-center">
                       <template
                         v-if="
-                          ['Dividend', 'Tax'].includes(item.type) ||
+                          ['Dividend', 'Tax', 'Coupon'].includes(item.type) ||
                           item.type.includes('Interest') ||
-                          item.type.includes('Cash')
+                          item.type.includes('Cash') ||
+                          item.type.includes('Bond')
                         "
                       >
                         {{ item.cash_flow }}
@@ -333,7 +335,7 @@ export default {
     )
 
     const getTransactionDescription = (item) => {
-      if (item.type.includes('Cash') || item.type === 'Dividend') {
+      if (item.type.includes('Cash') || item.type === 'Dividend' || item.type.includes('Coupon')) {
         return item.type
       } else if (item.type === 'Close') {
         return `${item.quantity} of ${item.price}`

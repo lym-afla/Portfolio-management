@@ -367,6 +367,7 @@ import { format } from 'date-fns'
 import {
   getTransactions,
   deleteTransaction,
+  deleteFXTransaction,
   getTransactionDetails,
   getFXTransactionDetails,
 } from '@/services/api'
@@ -511,7 +512,7 @@ export default {
       // If rate is less than 1, display as 1/x for better readability
       if (rateNum < 1 && rateNum > 0) {
         const inverted = 1 / rateNum
-        return `1:${inverted.toFixed(4)}`
+        return `${inverted.toFixed(4)}`
       }
 
       // Otherwise, display the rate as-is, rounded to 4 decimals
@@ -595,7 +596,11 @@ export default {
       if (transactionToDelete.value) {
         try {
           const actualId = extractTransactionId(transactionToDelete.value.id)
-          await deleteTransaction(actualId)
+          if (transactionToDelete.value.transaction_type === 'fx') {
+            await deleteFXTransaction(actualId)
+          } else {
+            await deleteTransaction(actualId)
+          }
           await fetchTransactions()
         } catch (error) {
           handleApiError(error)

@@ -44,6 +44,9 @@
               step="0.01"
               :required="field.required"
               :error-messages="errors[field.name]"
+              :hint="field.helper_text"
+              :persistent-hint="!!field.helper_text"
+              :suffix="field.name === 'price' && isBondSelected ? '%' : ''"
               @update:model-value="(value) => setFieldValue(field.name, value)"
             />
 
@@ -226,6 +229,17 @@ export default {
       return Object.keys(errors.value).length === 0
     })
 
+    // Check if selected security is a bond
+    const isBondSelected = computed(() => {
+      if (!form.security) return false
+      const securityField = formFields.value.find((f) => f.name === 'security')
+      if (!securityField || !securityField.choices) return false
+      const selectedSecurity = securityField.choices.find(
+        (choice) => choice.value === form.security
+      )
+      return selectedSecurity && selectedSecurity.type === 'Bond'
+    })
+
     const fetchFormStructure = async () => {
       try {
         const response = await getTransactionFormStructure()
@@ -346,6 +360,7 @@ export default {
       generalError,
       isSubmitting,
       isFormValid,
+      isBondSelected,
       closeDialog,
       submitForm,
       clearFieldError,

@@ -1,9 +1,11 @@
 import logging
+from datetime import datetime
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
 from tinkoff.invest import CandleInterval, Client, InstrumentType, OperationType
 from tinkoff.invest.exceptions import RequestError
+from tinkoff.invest.schemas import EventType, GetBondEventsRequest
 from tinkoff.invest.utils import quotation_to_decimal
 
 from common.models import Assets, Transactions
@@ -38,6 +40,258 @@ async def get_user_token(user, sandbox_mode=False):
     except Exception as e:
         logger.error(f"Error getting Tinkoff token: {str(e)}")
         raise
+
+
+async def get_bond_initial_notional(instrument_uid, user):
+    """
+    Fetch the initial notional value of a bond from T-Bank API.
+
+    Args:
+        instrument_uid: T-Bank instrument UID for the bond
+        user: CustomUser instance (to get API token)
+
+    Returns:
+        Decimal: The initial notional value per bond, or None if not found
+    """
+    try:
+        token = await get_user_token(user)
+        if not token:
+            logger.error("No T-Bank API token found for user")
+            return None
+
+        with Client(token) as client:
+            response = client.instruments.bond_by(id_type=3, id=instrument_uid)
+            if response.instrument and response.instrument.initial_nominal:
+                initial_notional = quotation_to_decimal(response.instrument.initial_nominal)
+                logger.debug(f"Fetched initial notional for {instrument_uid}: {initial_notional}")
+                return initial_notional
+            else:
+                logger.warning(f"No initial_nominal found in bond response for {instrument_uid}")
+                return None
+
+    except RequestError as e:
+        logger.error(f"T-Bank API error fetching bond info for {instrument_uid}: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching initial notional for {instrument_uid}: {str(e)}")
+        return None
+
+
+async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional):
+    """
+    Calculate the remaining notional value of a bond at a given date based on redemption history.
+
+    Uses T-Bank's bond events API to fetch all MTY (maturity/redemption) events and calculates
+    the remaining notional by subtracting all redemptions that occurred before or on the given date.
+
+    Bond Event Structure:
+    - event.value (Quotation): Percentage of par redeemed (e.g., 12.5% or 0.125)
+    - event.pay_one_bond (MoneyValue): Actual cash paid per bond
+    - event.event_date: Date of redemption
+    - event.operation_type: 'OA' (partial amortization), 'CA' (call option), 'CM' (full maturity)
+
+    Example:
+        If a bond with 1000 initial notional had two redemptions:
+        - 2022-08-19: 12.5% redeemed
+        - 2022-11-18: 12.5% redeemed
+
+        On 2022-12-01, remaining notional = 1000 * (1 - 0.125 - 0.125) = 750
+
+    Args:
+        instrument_uid: T-Bank instrument UID for the bond
+        date: The date for which to calculate notional (datetime.date or datetime)
+        user: CustomUser instance (to get API token)
+        initial_notional: Initial par value of the bond
+
+    Returns:
+        Decimal: The remaining notional value per bond at the given date
+    """
+    try:
+        token = await get_user_token(user)
+        if not token:
+            logger.error("No T-Bank API token found for user")
+            return initial_notional
+
+        # Convert date to datetime if needed
+        if isinstance(date, datetime):
+            target_date = date
+        else:
+            from datetime import datetime as dt
+
+            target_date = dt.combine(date, dt.min.time())
+
+        logger.debug(
+            f"Fetching bond events for instrument {instrument_uid} up to {target_date.date()}"
+        )
+
+        with Client(token) as client:
+            # Fetch all MTY (maturity/redemption) events from inception to target date
+            request = GetBondEventsRequest(
+                from_=datetime(1980, 1, 1),
+                to=target_date,
+                instrument_id=instrument_uid,
+                type=EventType.EVENT_TYPE_MTY,
+            )
+
+            response = client.instruments.get_bond_events(request)
+
+            if not response.events:
+                logger.debug(
+                    f"No redemption events found for bond {instrument_uid}, using initial notional"
+                )
+                return initial_notional
+
+            # Calculate total redeemed amount
+            total_redeemed_percentage = Decimal(0)
+
+            for event in response.events:
+                if event.event_date.date() <= target_date.date():
+                    # event.value is a Quotation representing percentage of par redeemed
+                    redeemed_pct = quotation_to_decimal(event.value)
+                    total_redeemed_percentage += redeemed_pct
+
+                    logger.debug(
+                        f"Redemption on {event.event_date.date()}: "
+                        f"{redeemed_pct}% (pay_one_bond: {event.pay_one_bond.units})"
+                    )
+
+            # Calculate remaining notional
+            remaining_percentage = Decimal(100) - total_redeemed_percentage
+
+            remaining_notional = initial_notional * (remaining_percentage / Decimal(100))
+
+            logger.info(
+                f"Bond {instrument_uid} at {target_date.date()}: "
+                f"redeemed {total_redeemed_percentage}%, "
+                f"remaining notional: {remaining_notional} (from {initial_notional})"
+            )
+
+            return remaining_notional
+
+    except RequestError as e:
+        logger.error(f"T-Bank API error fetching bond events for {instrument_uid}: {str(e)}")
+        return initial_notional
+    except Exception as e:
+        logger.error(f"Error calculating bond notional for {instrument_uid} at {date}: {str(e)}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return initial_notional
+
+
+async def save_bond_redemption_history(security, instrument_uid, user, date_to_save=None):
+    """
+    Fetch and save all bond redemption history to NotionalHistory model.
+
+    This function fetches all MTY (maturity/redemption) events for a bond from T-Bank API
+    and creates NotionalHistory entries for each redemption event.
+
+    Args:
+        security: Assets instance (the bond)
+        instrument_uid: T-Bank instrument UID for the bond
+        date_to_save: The date until which to save redemption history
+        user: CustomUser instance (to get API token)
+
+    Returns:
+        int: Number of NotionalHistory entries created
+    """
+    try:
+        token = await get_user_token(user)
+        if not token:
+            logger.error("No T-Bank API token found for user")
+            return 0
+
+        # Get bond metadata to get initial notional
+        bond_meta = await database_sync_to_async(lambda: security.bond_metadata)()
+        if not bond_meta or not bond_meta.initial_notional:
+            logger.warning(f"No bond metadata with initial_notional for {security.name}")
+            return 0
+
+        initial_notional = bond_meta.initial_notional
+
+        with Client(token) as client:
+            # Fetch all MTY events from inception to now
+            request = GetBondEventsRequest(
+                from_=datetime(1980, 1, 1),
+                to=date_to_save if date_to_save else datetime.now(),
+                instrument_id=instrument_uid,
+                type=EventType.EVENT_TYPE_MTY,
+            )
+
+            response = client.instruments.get_bond_events(request)
+
+            if not response.events:
+                logger.info(f"No redemption events found for bond {security.name}")
+                return 0
+
+            # Sort events by date
+            sorted_events = sorted(response.events, key=lambda e: e.event_date)
+
+            # Track cumulative notional changes
+            current_notional = initial_notional
+            entries_created = 0
+
+            @database_sync_to_async
+            def create_notional_history_entry(
+                event_date, notional_per_unit, change_amount, operation_type
+            ):
+                from common.models import NotionalHistory
+
+                # Determine change reason based on operation_type
+                if operation_type in ["CM", "OM"]:
+                    change_reason = "MATURITY"
+                else:
+                    change_reason = "REDEMPTION"
+
+                _, created = NotionalHistory.objects.update_or_create(
+                    asset=security,
+                    date=event_date,
+                    change_reason=change_reason,
+                    defaults={
+                        "notional_per_unit": notional_per_unit,
+                        "change_amount": change_amount,
+                        "comment": (
+                            f"Auto-imported from T-Bank API (operation_type: {operation_type})",
+                        ),
+                    },
+                )
+                return created
+
+            for event in sorted_events:
+                # event.value is percentage redeemed
+                redeemed_pct = quotation_to_decimal(event.value)
+
+                # Calculate absolute change amount
+                # redeemed_pct is already a percentage
+                change_amount = -initial_notional * (redeemed_pct / Decimal(100))
+
+                current_notional += change_amount
+
+                # Create NotionalHistory entry
+                created = await create_notional_history_entry(
+                    event.event_date.date(), current_notional, change_amount, event.operation_type
+                )
+
+                if created:
+                    entries_created += 1
+                    logger.info(
+                        f"Created NotionalHistory for {security.name} "
+                        f"on {event.event_date.date()}: "
+                        f"notional={current_notional}, change={change_amount}"
+                    )
+
+            logger.info(f"Saved {entries_created} NotionalHistory entries for {security.name}")
+            return entries_created
+
+    except RequestError as e:
+        logger.error(f"T-Bank API error fetching bond events for {instrument_uid}: {str(e)}")
+        return 0
+    except Exception as e:
+        logger.error(f"Error saving bond redemption history for {security.name}: {str(e)}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return 0
 
 
 async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None):
@@ -144,7 +398,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
 
 
 async def _find_or_create_security(
-    instrument_uid, investor, position_uid=None, name=None
+    instrument_uid, investor, position_uid=None, name=None, date_to_save=None
 ) -> tuple[Assets | None, str]:
     """
     Find existing security or create new one using Tinkoff API data.
@@ -196,7 +450,12 @@ async def _find_or_create_security(
         security_ticker = securities_found[0][3] if len(securities_found[0]) > 3 else None
 
         found_security = await create_security_from_micex(
-            security_name, security_isin, investor, security_type, ticker=security_ticker
+            security_name,
+            security_isin,
+            investor,
+            security_type,
+            ticker=security_ticker,
+            date_to_save=date_to_save,
         )
 
         if found_security:
@@ -213,6 +472,7 @@ async def _find_or_create_security(
             investor,
             security_type,
             instrument_uid,  # Pass the T-Bank instrument UID
+            date_to_save=date_to_save,
         )
 
         if found_security:
@@ -368,7 +628,11 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
     # Handle security matching
     if operation.instrument_uid:
         security, status = await _find_or_create_security(
-            operation.instrument_uid, investor, operation.position_uid, operation.name
+            operation.instrument_uid,
+            investor,
+            operation.position_uid,
+            operation.name,
+            date_to_save=operation.date.date(),
         )
         if security:
             transaction_data["security"] = security
@@ -440,7 +704,60 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         # For regular buy/sell, use the operation price
         # For asset transfers, price might be 0, will be set later to buy-in/market price
         if operation.price:
-            transaction_data["price"] = quotation_to_decimal(operation.price)
+            actual_price = quotation_to_decimal(operation.price)
+
+            # For bonds, convert price to percentage of par
+            # Use bond events API to determine notional based on redemption history
+            if security and security.type == "Bond":
+                try:
+                    # Get initial notional from T-Bank API
+                    initial_notional = await get_bond_initial_notional(
+                        operation.instrument_uid, investor
+                    )
+
+                    if not initial_notional:
+                        # Fallback to bond metadata
+                        bond_meta = await database_sync_to_async(lambda: security.bond_metadata)()
+                        if bond_meta and bond_meta.initial_notional:
+                            initial_notional = bond_meta.initial_notional
+                        else:
+                            logger.warning(
+                                f"Could not determine initial notional for bond {security.name}, "
+                                f"storing actual price: {actual_price}"
+                            )
+                            transaction_data["price"] = actual_price
+                            raise ValueError("No initial notional available")
+
+                    # Calculate notional at transaction date based on redemption history
+                    notional = await get_bond_notional_at_date(
+                        operation.instrument_uid, operation.date.date(), investor, initial_notional
+                    )
+
+                    if notional and notional > 0:
+                        # Convert actual price to percentage: (actual_price / notional) * 100
+                        price_percentage = (actual_price / notional) * Decimal(100)
+
+                        transaction_data["price"] = price_percentage
+                        transaction_data["notional"] = notional
+                        logger.info(
+                            f"Bond transaction: actual_price={actual_price}, "
+                            f"notional={notional}, percentage={price_percentage:.2f}%"
+                        )
+                    else:
+                        logger.warning(
+                            f"Could not determine notional for bond {security.name}, "
+                            f"storing actual price: {actual_price}"
+                        )
+                        transaction_data["price"] = actual_price
+                except Exception as e:
+                    logger.error(
+                        f"Error converting bond price to percentage: {e}. "
+                        f"Using actual price: {actual_price}"
+                    )
+                    transaction_data["price"] = actual_price
+            else:
+                # For non-bonds, use actual price as-is
+                transaction_data["price"] = actual_price
 
         aci = operation.accrued_int
 
@@ -567,6 +884,8 @@ async def get_price_from_tbank(instrument_uid, date, user):
     """
     Get the closing price for a security from T-Bank (Tinkoff) API for a specific date.
 
+    Optimized to fetch minimal data: starts with 1 day, expands only if needed.
+
     Args:
         instrument_uid: T-Bank instrument UID
         date: datetime.date object for which to fetch the price
@@ -575,39 +894,90 @@ async def get_price_from_tbank(instrument_uid, date, user):
     Returns:
         Decimal: The closing price, or None if not found
     """
+    from datetime import datetime, timedelta, timezone
+
     try:
         token = await get_user_token(user)
         if not token:
             logger.error("No T-Bank API token found for user")
             return None
 
-        # Convert date to datetime with time bounds (start and end of day)
-        from datetime import datetime, timedelta
-
-        from_dt = datetime.combine(date, datetime.min.time()) - timedelta(days=6)
-        to_dt = from_dt + timedelta(days=7)
-
         logger.debug(f"Fetching price for instrument {instrument_uid} on {date}")
 
-        with Client(token) as client:
-            # Get daily candles for the specified date
-            response = client.market_data.get_candles(
-                instrument_id=instrument_uid,
-                from_=from_dt,
-                to=to_dt,
-                interval=CandleInterval.CANDLE_INTERVAL_DAY,
-            )
+        # Convert target date to timezone-aware datetime (UTC)
+        target_dt = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
 
-            if response.candles and len(response.candles) > 0:
-                # Get the first (and should be only) candle for the day
-                candle = response.candles[0]
-                # Use the closing price
-                close_price = quotation_to_decimal(candle.close)
-                logger.info(f"Fetched price for {instrument_uid} on {date}: {close_price}")
-                return close_price
-            else:
-                logger.warning(f"No candle data found for instrument {instrument_uid} on {date}")
-                return None
+        # Try progressively larger date ranges: 1 day, 7 days, 14 days
+        lookback_days = [1, 7, 14]
+
+        with Client(token) as client:
+            for days_back in lookback_days:
+                # Start from 1 day before target, extend backwards based on attempt
+                from_dt = datetime.combine(date, datetime.min.time()) - timedelta(days=days_back)
+                to_dt = datetime.combine(date, datetime.max.time())
+
+                logger.debug(
+                    f"Attempt with {days_back} day(s) lookback: "
+                    f"from {from_dt.date()} to {to_dt.date()}"
+                )
+
+                try:
+                    response = client.market_data.get_candles(
+                        instrument_id=instrument_uid,
+                        from_=from_dt,
+                        to=to_dt,
+                        interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                    )
+
+                    if response.candles and len(response.candles) > 0:
+                        # Find exact match first, then most recent before target date
+                        selected_candle = None
+                        exact_match = None
+
+                        for candle in response.candles:
+                            candle_date = candle.time.date()
+
+                            # Check for exact date match
+                            if candle_date == date:
+                                exact_match = candle
+                                break
+
+                            # Track the most recent candle before or on target date
+                            if candle.time <= target_dt:
+                                if selected_candle is None or candle.time > selected_candle.time:
+                                    selected_candle = candle
+
+                        # Prefer exact match, fall back to most recent
+                        final_candle = exact_match if exact_match else selected_candle
+
+                        if final_candle:
+                            close_price = quotation_to_decimal(final_candle.close)
+                            logger.info(
+                                f"Fetched price for {instrument_uid} on "
+                                f"{final_candle.time.date()}: {close_price} "
+                                f"(requested: {date}, {'exact' if exact_match else 'closest'})"
+                            )
+                            return close_price
+
+                    # If we got a response but no suitable candles, try next range
+                    logger.debug(
+                        f"No suitable candle in {days_back}-day range, " f"trying larger range..."
+                    )
+
+                except RequestError as e:
+                    # API error on this attempt, try next range
+                    logger.warning(
+                        f"API error with {days_back}-day lookback: {str(e)}, "
+                        f"trying larger range..."
+                    )
+                    continue
+
+            # Exhausted all attempts
+            logger.warning(
+                f"No candle data found for instrument {instrument_uid} "
+                f"on or before {date} (tried up to {max(lookback_days)} days back)"
+            )
+            return None
 
     except RequestError as e:
         logger.error(f"T-Bank API error fetching price for {instrument_uid} on {date}: {str(e)}")

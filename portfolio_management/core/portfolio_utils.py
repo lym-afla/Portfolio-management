@@ -103,10 +103,6 @@ def NAV_at_date(
     if "account" in breakdown:
         analysis["account"] = defaultdict(Decimal)
 
-    # If no broker accounts, return empty structure
-    if not account_ids:
-        return dict(analysis)
-
     portfolio = _portfolio_at_date(user_id, date, account_ids)
     portfolio_accounts = Accounts.objects.filter(broker__investor__id=user_id, id__in=account_ids)
 
@@ -116,17 +112,16 @@ def NAV_at_date(
     item_type = {"asset_type": "type", "currency": "currency", "asset_class": "exposure"}
 
     for security in portfolio:
-        security_price = security.price_at_date(date, target_currency)
-        if security_price is not None:
-            security_price = security_price.price
-        else:
-            security_price = security.calculate_buy_in_price(
-                date, user_id, target_currency, account_ids
-            )
-
         for account in portfolio_accounts:
             account_position = security.position(date, user_id, [account.id])
-            account_value = Decimal(account_position * security_price)
+            if account_position == 0:
+                continue
+
+            # Use calculate_value_at_date for proper bond notional handling
+            account_value = security.calculate_value_at_date(
+                date, user_id, target_currency, [account.id]
+            )
+
             analysis["Total NAV"] += account_value
 
             if "account" in breakdown:
@@ -169,10 +164,7 @@ def _calculate_portfolio_value(
     else:
         asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         try:
-            portfolio_value = Decimal(
-                asset.price_at_date(date, currency).price
-                * asset.position(date, user_id, account_ids)
-            )
+            portfolio_value = asset.calculate_value_at_date(date, user_id, currency, account_ids)
         except Exception:
             portfolio_value = Decimal(0)
 
@@ -205,7 +197,7 @@ def calculate_portfolio_cash(
     return Decimal(cash).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-MAX_IRR = Decimal("2")
+MAX_IRR = Decimal("3")
 IRR_PRECISION = Decimal("0.0001")
 
 
@@ -299,20 +291,29 @@ def IRR(
 def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     if transaction.type in ["Cash in", "Cash out"]:
         return (transaction.cash_flow or 0) * Decimal(-1)
-    elif transaction.type == "Broker commission":
-        return Decimal(0)  # Broker commission is already included in transaction.commission field
-    elif transaction.type == "Tax":
-        return transaction.cash_flow or 0  # Tax affects cash flow and should be included in IRR
-    elif transaction.type in ["Bond redemption", "Bond maturity"]:
-        # For bond redemptions, the cash_flow should already be set correctly
-        # representing the cash received from the redemption
-        return transaction.cash_flow or Decimal(0)
+    # elif transaction.type == "Broker commission":
+    #     return Decimal(0)  # Broker commission is already included in transaction.commission field
+    # elif transaction.type == "Tax":
+    #     return transaction.cash_flow or 0  # Tax affects cash flow and should be included in IRR
+    # elif transaction.type in ["Bond redemption", "Bond maturity"]:
+    #     # For bond redemptions, the cash_flow should already be set correctly
+    #     # representing the cash received from the redemption
+    #     return transaction.cash_flow or Decimal(0)
     else:
-        return transaction.cash_flow or (
-            -transaction.quantity * transaction.price
-            + (transaction.commission or 0)
-            + (transaction.aci or 0)
-        )
+        # Use cash_flow if available, otherwise calculate from quantity and price
+        if transaction.cash_flow:
+            return transaction.cash_flow
+
+        # Get effective price (handles bond percentage conversion)
+        effective_price = transaction.get_price()
+        if effective_price and transaction.quantity:
+            return (
+                -transaction.quantity * effective_price
+                + (transaction.commission or 0)
+                + (transaction.aci or 0)
+            )
+
+        return Decimal(0)
 
 
 def get_selected_account_ids(

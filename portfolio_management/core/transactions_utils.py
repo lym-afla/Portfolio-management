@@ -152,8 +152,10 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
         "cur": transaction.currency,
     }
 
+    # Get effective price (handles bond percentage to actual price conversion)
+    effective_price = transaction.get_price()
     balance_entry = balance.get(transaction.currency, Decimal(0)) - Decimal(
-        (transaction.price or Decimal(0)) * Decimal(transaction.quantity or Decimal(0))
+        effective_price * Decimal(transaction.quantity or Decimal(0))
         - Decimal(transaction.aci or Decimal(0))
         - Decimal(transaction.cash_flow or Decimal(0))
         - Decimal(transaction.commission or Decimal(0))
@@ -163,13 +165,14 @@ def _process_regular_transaction(transaction, balance, number_of_digits):
 
     if transaction.quantity:
         transaction_data["value"] = currency_format(
-            -round(Decimal(transaction.quantity * transaction.price), 2)
+            -round(Decimal(transaction.quantity * effective_price), 2)
             + (transaction.commission or 0),
             transaction.currency,
             number_of_digits,
         )
+        # For display, show the price as stored (percentage for bonds, actual for others)
         transaction_data["price"] = currency_format(
-            transaction.price, transaction.currency, number_of_digits
+            transaction.get_price(), transaction.currency, number_of_digits
         )
         transaction_data["quantity"] = abs(round(transaction.quantity, 0))
     if transaction.cash_flow:

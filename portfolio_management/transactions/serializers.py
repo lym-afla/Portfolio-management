@@ -25,6 +25,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             "date",
             "quantity",
             "price",
+            "notional",
             "cash_flow",
             "aci",
             "commission",
@@ -135,7 +136,11 @@ class TransactionFormSerializer(serializers.ModelSerializer):
 
     def get_security_choices(self, investor):
         choices = [
-            {"value": str(security.pk), "text": security.name}
+            {
+                "value": str(security.pk),
+                "text": security.name,
+                "type": security.type,  # Include security type for frontend
+            }
             for security in Assets.objects.filter(investors=investor).order_by("name")
         ]
         return choices

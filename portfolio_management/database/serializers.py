@@ -206,6 +206,7 @@ class TransactionSerializer(serializers.ModelSerializer):
     security_name = serializers.SerializerMethodField()
     security_id = serializers.SerializerMethodField()
     account = serializers.SerializerMethodField()
+    notional_change = serializers.SerializerMethodField()
 
     class Meta:
         model = Transactions
@@ -223,6 +224,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             "security_id",
             "account",
             "aci",
+            "notional_change",
         ]
 
     def get_digits(self):
@@ -261,6 +263,9 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_account(self, obj):
         return {"id": obj.account.id, "name": obj.account.name} if obj.account else None
+
+    def get_notional_change(self, obj):
+        return format_value(obj.notional_change, "notional_change", obj.currency, self.get_digits())
 
 
 class BrokerSerializer(serializers.ModelSerializer):
