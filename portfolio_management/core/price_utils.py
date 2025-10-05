@@ -1,6 +1,8 @@
+from datetime import date
+
 from django.db.models import Q
 
-from common.models import Prices
+from common.models import Assets, Prices
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
@@ -84,7 +86,25 @@ def _filter_prices(
     if selected_asset_types:
         prices_query = prices_query.filter(security__type__in=selected_asset_types)
     if selected_account:
-        prices_query = prices_query.filter(security__accounts__id=selected_account)
+        # Get all securities with non-zero positions in the selected account at end_date
+        position_date = end_date if end_date else date.today()
+
+        # Get all securities that have transactions in this account (more efficient query)
+        securities_in_account = Assets.objects.filter(
+            transactions__account__id=selected_account,
+            transactions__investor=user,
+            transactions__quantity__isnull=False,
+        ).distinct()
+
+        # Filter to only those with non-zero positions at the position_date
+        securities_with_positions = [
+            security.id
+            for security in securities_in_account
+            if security.position(date=position_date, investor=user, account_ids=[selected_account])
+            != 0
+        ]
+
+        prices_query = prices_query.filter(security__id__in=securities_with_positions)
     if selected_securities:
         prices_query = prices_query.filter(security__id__in=selected_securities)
     if search:

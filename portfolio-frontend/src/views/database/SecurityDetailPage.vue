@@ -143,53 +143,14 @@
                 disable-sort
               >
                 <template #item="{ item }">
-                  <tr>
-                    <td>{{ item.date }}</td>
-                    <td class="text-start text-nowrap">
-                      <template v-if="item.type !== 'Bond redemption' && item.type !== 'Bond maturity'">{{ item.type }}</template>
-                      <template v-else-if="item.type === 'Dividend' || item.type === 'Coupon'">
-                        payout of {{ item.cash_flow }}
-                      </template>
-                      <template v-else-if="item.type === 'Close'">
-                        Close of {{ item.quantity }} securities
-                      </template>
-                      <template v-else-if="item.type === 'Bond redemption' || item.type === 'Bond maturity'"> Redemption of {{ item.notional_change }} per bond </template>
-                      <template
-                        v-else-if="
-                          ![
-                            'Broker commission',
-                            'Tax',
-                            'Interest income',
-                          ].includes(item.type)
-                        "
-                      >
-                        {{ item.quantity }}
-                        @ {{ item.price }}
-                        <span
-                          v-if="item.commission"
-                          class="text-caption text-grey"
-                        >
-                          || Fee: {{ item.commission }}</span
-                        >
-                      </template>
-                    </td>
-                    <td class="text-center">{{ item.type }}</td>
-                    <td class="text-center">
-                      <template
-                        v-if="
-                          ['Dividend', 'Tax', 'Coupon'].includes(item.type) ||
-                          item.type.includes('Interest') ||
-                          item.type.includes('Cash') ||
-                          item.type.includes('Bond')
-                        "
-                      >
-                        {{ item.cash_flow }}
-                      </template>
-                      <template v-else>
-                        {{ item.value }}
-                      </template>
-                    </td>
-                  </tr>
+                  <transaction-row
+                    :transaction="item"
+                    :currencies="[]"
+                    :show-balances="false"
+                    :show-cash-flow="false"
+                    :show-single-cash-flow="true"
+                    :show-actions="false"
+                  />
                 </template>
 
                 <template #bottom>
@@ -288,11 +249,14 @@ Chart.register(
 // Set the default locale for Chart.js
 Chart.defaults.locale = 'en-US'
 
+import TransactionRow from '@/components/transactions/TransactionRow.vue'
+
 export default {
   name: 'SecurityDetailPage',
   components: {
     LineChart,
     TimelineSelector,
+    TransactionRow,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
@@ -335,7 +299,11 @@ export default {
     )
 
     const getTransactionDescription = (item) => {
-      if (item.type.includes('Cash') || item.type === 'Dividend' || item.type.includes('Coupon')) {
+      if (
+        item.type.includes('Cash') ||
+        item.type === 'Dividend' ||
+        item.type.includes('Coupon')
+      ) {
         return item.type
       } else if (item.type === 'Close') {
         return `${item.quantity} of ${item.price}`

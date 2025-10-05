@@ -76,6 +76,7 @@ class SecurityForm(forms.ModelForm):
         fields = [
             "name",
             "ISIN",
+            "ticker",
             "type",
             "currency",
             "exposure",
@@ -102,6 +103,7 @@ class SecurityForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "ISIN": forms.TextInput(attrs={"class": "form-control"}),
+            "ticker": forms.TextInput(attrs={"class": "form-control"}),
             "type": forms.Select(attrs={"class": "form-select"}),
             "currency": forms.Select(attrs={"class": "form-select"}),
             "exposure": forms.Select(attrs={"class": "form-select"}),
@@ -118,6 +120,7 @@ class SecurityForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
+        self.fields["ticker"].required = False
         self.fields["type"].choices = [
             (choice[0], choice[0]) for choice in Assets._meta.get_field("type").choices if choice[0]
         ]
@@ -129,7 +132,6 @@ class SecurityForm(forms.ModelForm):
         self.fields["secid"].required = False
         self.fields["tbank_instrument_uid"].required = False
         self.fields["update_link"].label = "Update link (Financial Times)"
-
         # Load bond metadata if editing an existing bond
         if self.instance and self.instance.pk and self.instance.type == "Bond":
             try:

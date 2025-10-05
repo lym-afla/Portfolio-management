@@ -699,6 +699,186 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return file_path, account_id
 
     @database_sync_to_async
+    def save_single_transaction(self, transaction_data):
+        """
+        Save a single transaction to the database.
+
+        Args:
+            transaction_data: Dictionary containing transaction data
+
+        Returns:
+            dict: Result with 'success' boolean and optional 'error' message
+        """
+        from decimal import ROUND_HALF_UP
+        from decimal import InvalidOperation as DecimalInvalidOperation
+
+        def normalize_decimal_field(value, max_digits, decimal_places):
+            """Normalize a Decimal value to fit database constraints"""
+            try:
+                original_value = Decimal(str(value))
+
+                # Calculate how many integer digits we have
+                abs_value = abs(original_value)
+                if abs_value == 0:
+                    int_digits = 1
+                else:
+                    int_digits = len(str(int(abs_value)))
+
+                # Determine max decimal places we can use
+                max_decimal_places = min(decimal_places, max_digits - int_digits)
+
+                if max_decimal_places < 0:
+                    logger.warning(
+                        f"Value {original_value} too large for field "
+                        f"(max_digits={max_digits}, needs {int_digits} integer digits)"
+                    )
+                    return Decimal("0")
+
+                # Use quantize to properly set the decimal places
+                quantizer = Decimal("0.1") ** max_decimal_places
+                return original_value.quantize(quantizer, rounding=ROUND_HALF_UP)
+
+            except (DecimalInvalidOperation, Exception) as e:
+                logger.error(f"Error normalizing decimal: {e}")
+                return Decimal("0")
+
+        try:
+            # Check if this is an FX transaction
+            is_fx = transaction_data.pop("is_fx", False)
+
+            # Check if this is an asset transfer
+            is_asset_transfer = transaction_data.pop("is_asset_transfer", False)
+            needs_price_calculation = transaction_data.pop("needs_price_calculation", False)
+
+            if is_fx:
+                # Normalize FX transaction decimal fields
+                decimal_fields = ["exchange_rate", "from_amount", "to_amount", "commission"]
+                for field_name in decimal_fields:
+                    if field_name in transaction_data and transaction_data[field_name] is not None:
+                        field = FXTransaction._meta.get_field(field_name)
+                        transaction_data[field_name] = normalize_decimal_field(
+                            transaction_data[field_name], field.max_digits, field.decimal_places
+                        )
+
+                fx_transaction = FXTransaction.objects.create(**transaction_data)
+                logger.debug(f"Saved FX transaction with ID: {fx_transaction.id}")
+                return {"success": True, "transaction_id": fx_transaction.id, "type": "fx"}
+
+            elif is_asset_transfer:
+                # Handle asset transfer
+                if needs_price_calculation and transaction_data.get("security"):
+                    security = transaction_data["security"]
+                    transfer_date = transaction_data["date"]
+                    investor = transaction_data["investor"]
+                    account = transaction_data["account"]
+
+                    buy_in_price = security.calculate_buy_in_price(
+                        date=transfer_date,
+                        investor=investor,
+                        account_ids=[account.id],
+                    )
+
+                    if buy_in_price:
+                        transaction_data["price"] = buy_in_price
+                    else:
+                        try:
+                            price_obj = (
+                                security.prices.filter(date__lte=transfer_date)
+                                .order_by("-date")
+                                .first()
+                            )
+                            transaction_data["price"] = price_obj.price if price_obj else Decimal(0)
+                        except Exception:
+                            transaction_data["price"] = Decimal(0)
+
+                transaction_data["cash_flow"] = None
+                transaction_data["commission"] = None
+
+                # Create main transaction
+                created_transaction = Transactions.objects.create(**transaction_data)
+
+                # Create phantom cash transaction
+                if transaction_data.get("price") and transaction_data.get("quantity"):
+                    transfer_value = abs(transaction_data["price"] * transaction_data["quantity"])
+                    phantom_type = "Cash in" if transaction_data["type"] == "Buy" else "Cash out"
+                    phantom_cash_flow = (
+                        transfer_value if transaction_data["type"] == "Buy" else -transfer_value
+                    )
+
+                    Transactions.objects.create(
+                        investor=transaction_data["investor"],
+                        account=transaction_data["account"],
+                        security=None,
+                        date=transaction_data["date"],
+                        type=phantom_type,
+                        quantity=None,
+                        price=None,
+                        currency=transaction_data.get("currency"),
+                        cash_flow=phantom_cash_flow,
+                        commission=None,
+                        comment=(
+                            "Phantom cash movement for asset transfer: "
+                            f"{transaction_data.get('security').name if transaction_data.get('security') else 'Unknown'}"  # noqa: E501
+                        ),
+                    )
+
+                logger.debug(f"Saved asset transfer transaction with ID: {created_transaction.id}")
+                return {
+                    "success": True,
+                    "transaction_id": created_transaction.id,
+                    "type": "asset_transfer",
+                }
+
+            else:
+                # Normalize regular transaction decimal fields
+                decimal_fields = [
+                    "quantity",
+                    "price",
+                    "notional",
+                    "cash_flow",
+                    "commission",
+                    "aci",
+                    "notional_change",
+                ]
+                for field_name in decimal_fields:
+                    if field_name in transaction_data and transaction_data[field_name] is not None:
+                        field = Transactions._meta.get_field(field_name)
+                        transaction_data[field_name] = normalize_decimal_field(
+                            transaction_data[field_name], field.max_digits, field.decimal_places
+                        )
+
+                created_transaction = Transactions.objects.create(**transaction_data)
+
+                # Create NotionalHistory for bond redemptions
+                if created_transaction.type in [
+                    TRANSACTION_TYPE_BOND_REDEMPTION,
+                    TRANSACTION_TYPE_BOND_MATURITY,
+                ]:
+                    if (
+                        created_transaction.security
+                        and created_transaction.notional_change
+                        and created_transaction.notional_change != 0
+                    ):
+                        try:
+                            created_transaction._create_notional_history()
+                            logger.debug(
+                                f"Created NotionalHistory for transaction {created_transaction.id}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Error creating NotionalHistory: {e}", exc_info=True)
+
+                logger.debug(f"Saved regular transaction with ID: {created_transaction.id}")
+                return {
+                    "success": True,
+                    "transaction_id": created_transaction.id,
+                    "type": "regular",
+                }
+
+        except Exception as e:
+            logger.error(f"Error saving single transaction: {str(e)}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    @database_sync_to_async
     def save_transactions(self, transactions_to_create):
         """Save transactions in bulk - regular Transactions, FX Transactions, and Asset Transfers"""
         logger.debug(f"About to save {len(transactions_to_create)} transactions")
@@ -906,15 +1086,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if not date_to:
                 date_to = datetime.now().strftime("%Y-%m-%d")
 
-            # Initialize stats
-            stats = {
-                "totalTransactions": 0,
-                "importedTransactions": 0,
-                "skippedTransactions": 0,
-                "duplicateTransactions": 0,
-                "importErrors": 0,
-            }
-
             # Get appropriate broker API handler
             broker_api = await get_broker_api(broker)
             if not broker_api:
@@ -934,9 +1105,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     yield {"status": "critical_error", "message": "Failed to connect to broker API"}
                     return
 
-                # For Tinkoff API, ensure account native IDs are synchronized
+                # For T-Bank API, ensure account native IDs are synchronized
                 if broker.name.lower() == "tinkoff" or "тинькофф" in broker.name.lower():
-                    yield {"status": "progress", "message": "Synchronizing Tinkoff account IDs..."}
+                    yield {"status": "progress", "message": "Fetching transactions from T-Bank..."}
                     await ensure_account_native_ids(user, broker_api)
 
                     # Refetch account to get updated native_id
@@ -945,8 +1116,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         yield {
                             "status": "critical_error",
                             "message": (
-                                f"Could not find matching Tinkoff account ID for {account.name}. "
-                                "Please check account names match exactly with those in Tinkoff."
+                                f"Could not find matching T-Bank account ID for {account.name}. "
+                                "Please check account names match exactly with those in T-Bank."
                             ),
                         }
                         return
@@ -958,12 +1129,35 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 }
                 return
 
-            # Fetch transactions from broker API
+            # First, get total count of transactions
             try:
+                # Fetch all transactions to get accurate count
+                all_transactions = []
                 async for trans in broker_api.get_transactions(
                     account=account, date_from=date_from, date_to=date_to
                 ):
-                    stats["totalTransactions"] += 1
+                    all_transactions.append(trans)
+
+                # Yield total count upfront
+                total_count = len(all_transactions)
+                yield {
+                    "status": "total_count",
+                    "total": total_count,
+                    "message": f"Found {total_count} transactions to process",
+                }
+
+                # Now process each transaction
+                current_index = 0
+                for trans in all_transactions:
+                    current_index += 1
+
+                    # Yield progress update
+                    yield {
+                        "status": "progress",
+                        "current": current_index,
+                        "total": total_count,
+                        "message": f"Processing transaction {current_index} of {total_count}",
+                    }
 
                     if trans.get("unrecognized_operation"):
                         yield {
@@ -1069,15 +1263,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             # Check for duplicates for regular transactions
                             existing_transaction = await transaction_exists(transaction_data)
                             if existing_transaction:
-                                stats["duplicateTransactions"] += 1
                                 logger.debug("Duplicate regular transaction found, skipping")
+                                yield {"status": "duplicate_transaction", "data": transaction_data}
                                 continue
                         else:
                             # Check for duplicates for FX transactionss
                             existing_fx = await fx_transaction_exists(transaction_data)
                             if existing_fx:
-                                stats["duplicateTransactions"] += 1
                                 logger.debug("Duplicate FX transaction found, skipping")
+                                yield {"status": "duplicate_transaction", "data": transaction_data}
                                 continue
 
                         # Handle confirmation if needed
@@ -1085,16 +1279,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             yield {"status": "transaction_confirmation", "data": transaction_data}
                             continue
 
-                        # Add transaction
-                        yield {"status": "add_transaction", "data": transaction_data}
-                        stats["importedTransactions"] += 1
+                        # Save transaction immediately (instead of collecting for bulk save)
+                        yield {"status": "save_transaction", "data": transaction_data}
 
                     except Exception as e:
-                        logger.error(f"Error processing transaction: {str(e)}")
-                        stats["importErrors"] += 1
+                        logger.error(f"Error processing transaction: {str(e)}", exc_info=True)
                         yield {
-                            "status": "progress",
+                            "status": "transaction_error",
                             "message": f"Error processing transaction: {str(e)}",
+                            "error_detail": str(e),
                         }
 
             except TinkoffAPIException as e:
@@ -1104,8 +1297,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 }
                 return
 
-            # Return final stats
-            yield {"status": "complete", "data": stats}
+            # Signal completion (stats are tracked in consumers.py)
+            yield {"status": "processing_complete"}
 
         except Exception as e:
             logger.error(f"Error in API import: {str(e)}", exc_info=True)

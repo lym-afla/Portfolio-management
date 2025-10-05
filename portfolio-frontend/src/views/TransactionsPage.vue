@@ -123,175 +123,15 @@
           </template>
 
           <template #item="{ item }">
-            <tr>
-              <td />
-              <td>{{ item.date }}</td>
-              <td class="text-start text-nowrap">
-                {{ item.type }}
-                <template
-                  v-if="
-                    item.type.includes('Cash') ||
-                    item.type === 'Dividend' ||
-                    item.type === 'Coupon'
-                  "
-                >
-                  {{ item.cash_flow }}
-                  <template
-                    v-if="item.type === 'Dividend' || item.type === 'Coupon'"
-                  >
-                    for
-                    <router-link
-                      :to="{
-                        name: 'SecurityDetail',
-                        params: { id: item.security.id },
-                      }"
-                      class="text-primary text-decoration-none font-weight-medium"
-                    >
-                      {{ item.security.name }}
-                    </router-link>
-                  </template>
-                </template>
-                <template v-else-if="item.type === 'Close'">
-                  {{ item.quantity }} of
-                  <router-link
-                    :to="{
-                      name: 'SecurityDetail',
-                      params: { id: item.security.id },
-                    }"
-                    class="text-primary text-decoration-none font-weight-medium"
-                  >
-                    {{ item.security.name }}
-                  </router-link>
-                </template>
-                <template
-                  v-else-if="
-                    item.type === 'Bond redemption' ||
-                    item.type === 'Bond maturity'
-                  "
-                >
-                  of {{ item.notional_change }} {{ item.cur }} for
-                  <router-link
-                    :to="{
-                      name: 'SecurityDetail',
-                      params: { id: item.security.id },
-                    }"
-                    class="text-primary text-decoration-none font-weight-medium"
-                  >
-                    {{ item.security.name }}
-                  </router-link>
-                </template>
-                <template v-else-if="item.type === 'FX'">
-                  : {{ item.from_cur }} to {{ item.to_cur }} @
-                  {{ formatExchangeRate(item.exchange_rate) }}
-                  <span v-if="item.commission" class="text-caption text-grey">
-                    || Fee: {{ item.commission }}</span
-                  >
-                </template>
-                <template
-                  v-else-if="
-                    ![
-                      'Broker commission',
-                      'Tax',
-                      'Interest income',
-                      'Bond redemption',
-                      'Bond maturity',
-                    ].includes(item.type)
-                  "
-                >
-                  {{ item.quantity }}
-                  @ {{ item.price }} of
-                  <router-link
-                    :to="{
-                      name: 'SecurityDetail',
-                      params: { id: item.security.id },
-                    }"
-                    class="text-primary text-decoration-none font-weight-medium"
-                  >
-                    {{ item.security.name }}
-                  </router-link>
-                  <span v-if="item.commission" class="text-caption text-grey">
-                    || Fee:
-                    <span v-if="item.commission_currency">{{
-                      item.commission_currency
-                    }}</span>
-                    {{ item.commission }}</span
-                  >
-                  <span v-if="item.aci" class="text-caption text-grey">
-                    || ACI: {{ item.aci }}
-                  </span>
-                </template>
-
-                <template
-                  v-else-if="item.type === 'Tax' && item.security.name !== null"
-                >
-                  for
-                  <router-link
-                    :to="{
-                      name: 'SecurityDetail',
-                      params: { id: item.security.id },
-                    }"
-                    class="text-primary text-decoration-none font-weight-medium"
-                  >
-                    {{ item.security.name }}
-                  </router-link>
-                  <span v-if="item.security.type === 'Bond'"> coupon </span>
-                  <span v-else> dividend </span>
-                </template>
-              </td>
-              <td class="text-center">{{ item.type }}</td>
-              <td
-                v-for="currency in currencies"
-                :key="`cash_flow-${currency}`"
-                class="text-center"
-              >
-                <template v-if="item.cur === currency">
-                  <template
-                    v-if="
-                      [
-                        'Dividend',
-                        'Tax',
-                        'Coupon',
-                        'Bond redemption',
-                        'Bond maturity',
-                      ].includes(item.type) ||
-                      item.type.includes('Interest') ||
-                      item.type.includes('Cash')
-                    "
-                  >
-                    {{ item.cash_flow }}
-                  </template>
-                  <template v-else-if="item.type === 'Broker commission'">
-                    {{ item.cash_flow }}
-                  </template>
-                  <template v-else>
-                    {{ item.value }}
-                  </template>
-                </template>
-                <template v-else-if="item.from_cur === currency">
-                  {{ item.from_amount }}
-                </template>
-                <template v-else-if="item.to_cur === currency">
-                  {{ item.to_amount }}
-                </template>
-                <template v-else> – </template>
-              </td>
-              <td class="text-center" />
-              <td
-                v-for="currency in currencies"
-                :key="`balance-${currency}`"
-                class="text-center"
-              >
-                {{ item.balances[currency] }}
-              </td>
-              <td class="text-end">
-                <v-icon small class="mr-2" @click="editTransaction(item)">
-                  mdi-pencil
-                </v-icon>
-                <v-icon small @click="processDeleteTransaction(item)">
-                  mdi-delete
-                </v-icon>
-              </td>
-            </tr>
+            <transaction-row
+              :transaction="item"
+              :currencies="currencies"
+              :show-balances="true"
+              :show-cash-flow="true"
+              :show-actions="true"
+              @edit="editTransaction"
+              @delete="processDeleteTransaction"
+            />
           </template>
 
           <template #bottom>
@@ -378,6 +218,7 @@ import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vu
 import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
 import AssetTransferDialog from '@/components/dialogs/AssetTransferDialog.vue'
+import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import logger from '@/utils/logger'
 
 export default {
@@ -388,6 +229,7 @@ export default {
     FXTransactionFormDialog,
     TransactionImportDialog,
     AssetTransferDialog,
+    TransactionRow,
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {

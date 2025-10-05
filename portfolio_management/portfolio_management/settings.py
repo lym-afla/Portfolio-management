@@ -216,7 +216,7 @@ LOGGING = {
         },
         "uvicorn": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "ERROR",
         },
         "transactions": {
             "handlers": ["console"],

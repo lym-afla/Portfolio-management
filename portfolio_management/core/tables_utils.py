@@ -85,6 +85,7 @@ def _calculate_closed_table_output_for_api(
             position = {
                 "id": asset.id,
                 "type": asset.type,
+                "instrument_type": asset.type,  # For formatting logic
                 "name": asset.name,
                 "currency": currency_format(None, asset.currency),
                 "exit_date": exit_date,
@@ -320,6 +321,7 @@ def _calculate_open_table_output_for_api(
         position = {
             "id": asset.id,
             "type": asset.type,
+            "instrument_type": asset.type,  # For formatting logic
             "name": asset.name,
             "currency": currency_format(None, asset.currency),
         }
@@ -336,17 +338,29 @@ def _calculate_open_table_output_for_api(
 
         asset_start_date = start_date if start_date is not None else position_entry_date
 
-        position["entry_price"] = asset.calculate_buy_in_price(
-            end_date, user_id, currency_used, selected_account_ids, asset_start_date
-        )
+        if asset.type == "Bond":
+            position["entry_price"] = asset.calculate_buy_in_price(
+                end_date, user_id, asset.currency, selected_account_ids, asset_start_date
+            )
+        else:
+            position["entry_price"] = asset.calculate_buy_in_price(
+                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            )
         if position["entry_price"] == 0:
             position["entry_price"] = asset.calculate_buy_in_price(
                 end_date, user_id, currency_used, selected_account_ids
             )
-        position["entry_value"] = Decimal(position["entry_price"] * position["current_position"])
+        position["entry_value"] = asset.calculate_value_at_date(
+            end_date, user_id, currency_used, selected_account_ids
+        )
 
         if "current_value" in categories:
-            asset_price = asset.price_at_date(end_date, currency_used)
+            # Use percentage of par for bonds without currency effect
+            if asset.type == "Bond":
+                asset_price = asset.price_at_date(end_date, asset.currency)
+            else:
+                asset_price = asset.price_at_date(end_date, currency_used)
+
             if asset_price is not None:
                 position["current_price"] = asset_price.price
             else:

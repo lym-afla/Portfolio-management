@@ -270,6 +270,9 @@ class TinkoffAPI(BrokerAPI):
                                 )
 
                                 if transaction_data:
+                                    if isinstance(transaction_data, str):
+                                        self.logger.warning(f"{{operation.id}}: {transaction_data}")
+                                        continue
                                     yield transaction_data
                                 else:
                                     self.logger.warning(

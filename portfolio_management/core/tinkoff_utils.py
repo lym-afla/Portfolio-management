@@ -319,7 +319,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                     instrument.instrument.name,
                     instrument.instrument.isin,
                     instrument.instrument.instrument_kind,
-                    instrument.instrument.ticker,  # Add ticker for MICEX lookups
+                    instrument.instrument.ticker,
                 )
             ]
     except RequestError as e:
@@ -469,6 +469,7 @@ async def _find_or_create_security(
         found_security = await create_security_from_tinkoff(
             security_name,
             security_isin,
+            security_ticker,
             investor,
             security_type,
             instrument_uid,  # Pass the T-Bank instrument UID
@@ -606,6 +607,9 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_BOND_REPAYMENT: TRANSACTION_TYPE_BOND_REDEMPTION,
         OperationType.OPERATION_TYPE_BOND_REPAYMENT_FULL: TRANSACTION_TYPE_BOND_MATURITY,
     }
+
+    if operation.type == OperationType.OPERATION_TYPE_BROKER_FEE:
+        return "Separate entry for transaction broker fee"
 
     # Check if this is an asset transfer operation (before type mapping)
     is_asset_transfer = operation.type in [

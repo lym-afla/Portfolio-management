@@ -540,12 +540,126 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             "importErrors": 0,
         }
         security_cache = defaultdict(lambda: None)
+        total_to_process = 0
         try:
             async for update in self.import_generator:
                 logger.debug(f"[process_import] Processing update: {update}")
 
                 if self.stop_event.is_set():
                     break
+
+                # Handle total count
+                if update.get("status") == "total_count":
+                    total_to_process = update.get("total", 0)
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_update",
+                                "data": {
+                                    "status": "total_count",
+                                    "total": total_to_process,
+                                    "message": update.get(
+                                        "message", f"Found {total_to_process} transactions"
+                                    ),
+                                },
+                            }
+                        )
+                    )
+                    continue
+
+                # Handle duplicate transactions
+                if update.get("status") == "duplicate_transaction":
+                    import_results["duplicateTransactions"] += 1
+                    logger.debug("Duplicate transaction detected")
+                    continue
+
+                # Handle transaction errors
+                if update.get("status") == "transaction_error":
+                    import_results["importErrors"] += 1
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_update",
+                                "data": {
+                                    "status": "transaction_error",
+                                    "message": update.get(
+                                        "message", "Error processing transaction"
+                                    ),
+                                    "error_detail": update.get("error_detail"),
+                                },
+                            }
+                        )
+                    )
+                    continue
+
+                # Handle save transaction
+                if update.get("status") == "save_transaction":
+                    transaction_data = update.get("data")
+                    logger.debug(
+                        f"[process_import] Saving transaction immediately: {transaction_data}"
+                    )
+
+                    try:
+                        # Save transaction immediately
+                        save_result = await self.view_set.save_single_transaction(transaction_data)
+
+                        if save_result.get("success"):
+                            import_results["importedTransactions"] += 1
+                            logger.debug(
+                                f"Successfully saved transaction {save_result.get('transaction_id')}"  # noqa: E501
+                            )
+
+                            # Send progress update
+                            await self.send(
+                                text_data=json.dumps(
+                                    {
+                                        "type": "import_update",
+                                        "data": {
+                                            "status": "transaction_saved",
+                                            "current": import_results["importedTransactions"],
+                                            "total": total_to_process,
+                                            "message": (
+                                                f"Saved transaction {import_results['importedTransactions']} "  # noqa: E501
+                                                f"of {total_to_process}"
+                                            ),
+                                        },
+                                    }
+                                )
+                            )
+                        else:
+                            import_results["importErrors"] += 1
+                            error_msg = save_result.get("error", "Unknown error")
+                            logger.error(f"Failed to save transaction: {error_msg}")
+
+                            # Send error to frontend
+                            await self.send(
+                                text_data=json.dumps(
+                                    {
+                                        "type": "import_update",
+                                        "data": {
+                                            "status": "save_error",
+                                            "message": f"Error saving transaction: {error_msg}",
+                                            "error_detail": error_msg,
+                                        },
+                                    }
+                                )
+                            )
+                    except Exception as e:
+                        import_results["importErrors"] += 1
+                        logger.error(f"Exception while saving transaction: {str(e)}", exc_info=True)
+                        await self.send(
+                            text_data=json.dumps(
+                                {
+                                    "type": "import_update",
+                                    "data": {
+                                        "status": "save_error",
+                                        "message": f"Error saving transaction: {str(e)}",
+                                        "error_detail": str(e),
+                                    },
+                                }
+                            )
+                        )
+                    continue
 
                 if "error" in update:
                     logger.debug(f"[process_import] Error in update: {update['error']}")
@@ -578,7 +692,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         logger.error(f"Full traceback: {traceback.format_exc()}")
                         raise
                 elif update.get("status") == "unrecognized_operation":
-                    self.transactions_skipped += 1
+                    import_results["skippedTransactions"] += 1
                     if "комиссия" in update.get("transaction_data").description.lower():
                         logger.debug("Transaction skipped due to separatly logged commission")
                     else:
@@ -709,80 +823,42 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 elif update.get("status") == "add_transaction":
                     self.transactions_to_create.append(update.get("data"))
                     logger.debug(f"Transaction added to create list: {update.get('data')}")
+                elif update.get("status") == "processing_complete":
+                    # Backend finished processing - stats are tracked here, not from backend
+                    logger.debug("[process_import] Backend processing complete")
                 elif update.get("status") == "complete":
+                    # Legacy handling - kept for file imports
                     logger.debug(f"[process_import] Received complete status: {update}")
                     import_results = update.get("data")
-                    # logger.debug(f"[process_import] Import results: {update}")
                 else:
                     logger.debug(
                         f"[process_import] Unhandled update status: {update.get('status')}"
                     )
 
             logger.debug("[process_import] Finished processing all updates from import generator")
-            # After processing all transactions, save confirmed transactions
-            if self.transactions_to_create:
-                try:
-                    # Sending final confirmation message after the update
-                    logger.debug(
-                        "Stats before finalising import. Imported: "
-                        f"{import_results['importedTransactions']} || "
-                        f"{len(self.transactions_to_create)}. "
-                        f"Skipped: {import_results['skippedTransactions']} || "
-                        f"{self.transactions_skipped}. "
-                        f"Duplicate: {import_results['duplicateTransactions']} || "
-                        f"{self.duplicate_count}"
-                    )
-                    import_results["importedTransactions"] = len(self.transactions_to_create)
-                    import_results["skippedTransactions"] += self.transactions_skipped
-                    import_results["duplicateTransactions"] += self.duplicate_count
-                    logger.debug(f"Import results: {import_results}")
 
-                    # Add detailed logging before save
-                    logger.debug(f"About to save {len(self.transactions_to_create)} transactions")
-                    for i, tx in enumerate(self.transactions_to_create):
-                        logger.debug(f"Transaction {i + 1} to save: {tx}")
-                        # Check for problematic None values
-                        for key, value in tx.items():
-                            if value is None:
-                                logger.debug(f"  - {key}: None")
-
-                    logger.debug("Calling save_transactions...")
-                    await self.view_set.save_transactions(self.transactions_to_create)
-                    logger.debug("save_transactions completed successfully")
-
-                    await self.send(
-                        text_data=json.dumps(
-                            {
-                                "type": "import_complete",
-                                "data": import_results,
-                                "message": "End of process_import method. Import process completed",
-                            }
-                        )
-                    )
-                except Exception as e:
-                    logger.error(f"Error saving transactions: {str(e)}")
-                    await self.send(
-                        text_data=json.dumps(
-                            {
-                                "type": "save_error",
-                                "data": {"error": f"Error saving transactions: {str(e)}"},
-                            }
-                        )
-                    )
-            else:
-                logger.debug("No transactions to save")
-                import_results["skippedTransactions"] += self.transactions_skipped
-                import_results["duplicateTransactions"] += self.duplicate_count
-                logger.debug(f"Import results: {import_results}")
-                await self.send(
-                    text_data=json.dumps(
-                        {
-                            "type": "import_complete",
-                            "data": import_results,
-                            "message": "End of process_import method. Import process completed",
-                        }
-                    )
+            # Calculate final stats
+            # For API imports, totalTransactions is the sum of all outcomes
+            # For file imports, it may come from the backend
+            if import_results["totalTransactions"] == 0:
+                import_results["totalTransactions"] = (
+                    import_results["importedTransactions"]
+                    + import_results["skippedTransactions"]
+                    + import_results["duplicateTransactions"]
+                    + import_results["importErrors"]
                 )
+
+            logger.debug(f"Final import results: {import_results}")
+
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "import_complete",
+                        "data": import_results,
+                        "message": "Import process completed",
+                    }
+                )
+            )
 
         except StopAsyncIteration:
             await self.send(
@@ -822,16 +898,24 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 )
             )
         finally:
-            # Store results before clearing
-            results = {
-                "importedTransactions": len(self.transactions_to_create),
-                "skippedTransactions": self.transactions_skipped,
-                "duplicateTransactions": self.duplicate_count,
-                "importErrors": import_results["importErrors"],
-                "totalTransactions": len(self.transactions_to_create)
-                + self.transactions_skipped
-                + self.duplicate_count,
-            }
+            # For API imports, use import_results; for file imports, use legacy counters
+            if (
+                import_results["importedTransactions"] > 0
+                or import_results["duplicateTransactions"] > 0
+            ):
+                # API import - use tracked results
+                results = import_results
+            else:
+                # File import - use legacy counters
+                results = {
+                    "importedTransactions": len(self.transactions_to_create),
+                    "skippedTransactions": self.transactions_skipped,
+                    "duplicateTransactions": self.duplicate_count,
+                    "importErrors": import_results.get("importErrors", 0),
+                    "totalTransactions": len(self.transactions_to_create)
+                    + self.transactions_skipped
+                    + self.duplicate_count,
+                }
 
             if self.stop_event.is_set():
                 await self.send(

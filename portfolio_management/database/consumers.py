@@ -7,11 +7,11 @@ from channels.db import database_sync_to_async
 from channels.generic.http import AsyncHttpConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
-from django.db.models import Prefetch
+from django.db.models import Q, Sum
 from django.utils.dateparse import parse_date
 from django.utils.formats import date_format
 
-from common.models import FX, Accounts, Assets, Transactions
+from common.models import FX, Assets, Transactions
 from constants import CURRENCY_CHOICES
 from core.database_utils import get_years_count, save_or_update_annual_broker_performance
 from core.import_utils import (
@@ -25,6 +25,27 @@ from core.import_utils import (
 logger = logging.getLogger(__name__)
 
 
+def get_cors_origin(scope):
+    """Get the appropriate CORS origin from the request headers"""
+    # Get origin from request headers
+    origin = None
+    for header_name, header_value in scope.get("headers", []):
+        if header_name.lower() == b"origin":
+            origin = header_value.decode("utf-8")
+            break
+
+    # List of allowed origins
+    allowed_origins = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ]
+
+    # Return the matching origin or default to localhost
+    if origin and origin in allowed_origins:
+        return origin.encode("utf-8")
+    return b"http://localhost:8080"
+
+
 class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
     async def send_sse_message(self, data):
         """Helper function to send SSE messages"""
@@ -35,8 +56,8 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
         headers = [
             (
                 b"Access-Control-Allow-Origin",
-                b"http://localhost:8080",
-            ),  # Adjust this to match your frontend URL
+                get_cors_origin(self.scope),
+            ),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
             (b"Access-Control-Allow-Headers", b"Content-Type, Authorization"),
             (b"Access-Control-Allow-Credentials", b"true"),
@@ -225,7 +246,7 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
 class PriceImportConsumer(AsyncHttpConsumer):
     async def handle(self, body):
         headers = [
-            (b"Access-Control-Allow-Origin", b"http://localhost:8080"),
+            (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
             (b"Access-Control-Allow-Headers", b"Content-Type, Authorization"),
             (b"Access-Control-Allow-Credentials", b"true"),
@@ -332,17 +353,40 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
                 @database_sync_to_async
                 def get_securities_from_accounts():
-                    accounts = Accounts.objects.filter(
-                        id__in=account_ids, broker__investor=user
-                    ).prefetch_related(
-                        Prefetch(
-                            "securities", queryset=Assets.objects.all(), to_attr="all_securities"
+                    # accounts = Accounts.objects.filter(
+                    #     id__in=account_ids, broker__investor=user
+                    # ).prefetch_related(
+                    #     Prefetch(
+                    #         "securities", queryset=Assets.objects.all(), to_attr="all_securities"
+                    #     )
+                    # )
+                    # securities = []
+                    # for account in accounts:
+                    #     securities.extend(account.all_securities)
+                    # # return list(set(securities))  # Remove duplicates
+
+                    base_query = (
+                        Assets.objects.filter(
+                            investors__id=user.id,
+                            transactions__date__lte=end_date,
+                            transactions__account__id__in=account_ids,
                         )
+                        .annotate(
+                            total_quantity=Sum(
+                                "transactions__quantity",
+                                filter=Q(
+                                    transactions__date__lte=end_date,
+                                    transactions__account__id__in=account_ids,
+                                ),
+                            )
+                        )
+                        .distinct()
                     )
-                    securities = []
-                    for account in accounts:
-                        securities.extend(account.all_securities)
-                    return list(set(securities))  # Remove duplicates
+
+                    securities = list(base_query)
+
+                    # Return assets with non-zero positions
+                    return [security for security in securities if security.total_quantity != 0]
 
                 securities = await get_securities_from_accounts()
                 # Filter securities with positive positions
@@ -508,7 +552,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
 class FXImportConsumer(AsyncHttpConsumer):
     async def handle(self, body):
         headers = [
-            (b"Access-Control-Allow-Origin", b"http://localhost:8080"),
+            (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
             (b"Access-Control-Allow-Headers", b"Content-Type, Authorization"),
             (b"Access-Control-Allow-Credentials", b"true"),
@@ -684,7 +728,7 @@ class FXImportConsumer(AsyncHttpConsumer):
             return "Linked existing", "existing_linked"
         elif any(
             getattr(fx_instance, field) is None
-            for field in ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD"]
+            for field in ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"]
         ):
             FX.update_fx_rate(date, user)
             return "Updated", "incomplete_updated"

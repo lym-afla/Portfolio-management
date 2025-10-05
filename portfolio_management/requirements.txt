@@ -177,7 +177,7 @@ websockets==15.0.1
     # via yfinance
 yarl==1.20.1
     # via aiohttp
-yfinance==0.2.65
+yfinance==0.2.66
     # via -r requirements.in
 zstandard==0.24.0
     # via -r requirements.in

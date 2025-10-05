@@ -289,31 +289,21 @@ def IRR(
 
 
 def _calculate_cash_flow(transaction: Transactions) -> Decimal:
+    """
+    Calculate cash flow for a transaction for IRR calculation.
+
+    Uses the centralized get_calculated_cash_flow() method and applies
+    sign convention for IRR (negative = outflow, positive = inflow).
+    """
+    # Get the cash flow using the centralized method
+    cash_flow = transaction.get_calculated_cash_flow()
+
+    # For IRR calculation, "Cash in" and "Cash out" need to be inverted
+    # because they represent external cash flows
     if transaction.type in ["Cash in", "Cash out"]:
-        return (transaction.cash_flow or 0) * Decimal(-1)
-    # elif transaction.type == "Broker commission":
-    #     return Decimal(0)  # Broker commission is already included in transaction.commission field
-    # elif transaction.type == "Tax":
-    #     return transaction.cash_flow or 0  # Tax affects cash flow and should be included in IRR
-    # elif transaction.type in ["Bond redemption", "Bond maturity"]:
-    #     # For bond redemptions, the cash_flow should already be set correctly
-    #     # representing the cash received from the redemption
-    #     return transaction.cash_flow or Decimal(0)
-    else:
-        # Use cash_flow if available, otherwise calculate from quantity and price
-        if transaction.cash_flow:
-            return transaction.cash_flow
+        return -cash_flow
 
-        # Get effective price (handles bond percentage conversion)
-        effective_price = transaction.get_price()
-        if effective_price and transaction.quantity:
-            return (
-                -transaction.quantity * effective_price
-                + (transaction.commission or 0)
-                + (transaction.aci or 0)
-            )
-
-        return Decimal(0)
+    return cash_flow
 
 
 def get_selected_account_ids(

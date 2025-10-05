@@ -102,7 +102,6 @@ def transaction_exists(transaction_data):
 @database_sync_to_async
 def fx_transaction_exists(transaction_data):
     """Check if an FX transaction already exists."""
-    from decimal import Decimal
 
     from common.models import FXTransaction
 
@@ -589,6 +588,12 @@ async def import_security_prices_from_ft(security, dates):
 
 
 async def import_security_prices_from_yahoo(security, dates):
+    """
+    Import security prices from Yahoo Finance.
+
+    Note: Modern yfinance uses curl_cffi internally to handle headers and browser mimicking.
+    We let yfinance handle the session to avoid conflicts.
+    """
     if not security.yahoo_symbol:
         yield {
             "security_name": security.name,
@@ -618,6 +623,7 @@ async def import_security_prices_from_yahoo(security, dates):
 
         try:
             # Use run_in_executor to run yfinance operations in a separate thread
+            # Let yfinance handle the session internally (uses curl_cffi for browser mimicking)
             loop = asyncio.get_event_loop()
             ticker = await loop.run_in_executor(None, yf.Ticker, security.yahoo_symbol)
             # Set auto_adjust to False to get unadjusted close prices
@@ -673,10 +679,41 @@ async def import_security_prices_from_micex(security, dates):
         end_date = (target_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")  # Include next day
         start_date = (target_date - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
 
+        # # Constants for MICEX API
+        # selected_engine = "stock"
+        # selected_market = "shares"
+        # selected_board = "TQBR"
+
         # Constants for MICEX API
-        selected_engine = "stock"
-        selected_market = "shares"
-        selected_board = "TQBR"
+        engine_stock = "stock"
+        engine_etf = "stock"
+        engine_bond = "stock"
+        market_shares = "shares"
+        market_etfs = "shares"
+        market_bonds = "bonds"
+        board_stocks = "TQBR"
+        board_etfs = "TQTF"
+        board_bonds = "TQCB"
+
+        if security.type == ASSET_TYPE_CHOICES[0][0]:
+            selected_engine = engine_stock
+            selected_market = market_shares
+            selected_board = board_stocks
+        elif security.type == ASSET_TYPE_CHOICES[2][0]:
+            selected_engine = engine_etf
+            selected_market = market_etfs
+            selected_board = board_etfs
+        elif security.type == ASSET_TYPE_CHOICES[1][0]:
+            selected_engine = engine_bond
+            selected_market = market_bonds
+            selected_board = board_bonds
+        else:
+            yield {
+                "security_name": security.name,
+                "status": "error",
+                "message": f"Invalid instrument type: {security.type}",
+            }
+            return
 
         url = (
             f"https://iss.moex.com/iss/history/engines/{selected_engine}/markets/"
@@ -1256,7 +1293,7 @@ async def _process_galaxy_securities(df, user):
 
 
 async def create_security_from_tinkoff(
-    security_name, isin, user, instrument_type, instrument_uid=None, date_to_save=None
+    security_name, isin, ticker, user, instrument_type, instrument_uid=None, date_to_save=None
 ):
     """
     Create a new security using T-Bank (Tinkoff) data with type-specific API methods.
@@ -1266,6 +1303,7 @@ async def create_security_from_tinkoff(
     Args:
         security_name: Name of the security from Tinkoff
         isin: ISIN code
+        ticker: Ticker symbol
         user: CustomUser instance
         instrument_type: Tinkoff InstrumentType enum
         instrument_uid: Tinkoff instrument UID (required for fetching metadata)
@@ -1282,7 +1320,9 @@ async def create_security_from_tinkoff(
         if not instrument_uid:
             logger.warning(f"No instrument_uid provided for {security_name}, creating basic asset")
             # Fallback to basic creation without metadata
-            return await _create_basic_tbank_asset(security_name, isin, user, instrument_type, None)
+            return await _create_basic_tbank_asset(
+                security_name, isin, ticker, user, instrument_type, None
+            )
 
         # Get T-Bank token
         token = await get_user_token(user)
@@ -1312,12 +1352,12 @@ async def create_security_from_tinkoff(
                         f"Unsupported instrument type for {security_name}: {instrument_type}"
                     )
                     return await _create_basic_tbank_asset(
-                        security_name, isin, user, instrument_type, instrument_uid
+                        security_name, isin, ticker, user, instrument_type, instrument_uid
                     )
         except Exception as e:
             logger.error(f"Error fetching instrument data from T-Bank: {e}")
             return await _create_basic_tbank_asset(
-                security_name, isin, user, instrument_type, instrument_uid
+                security_name, isin, ticker, user, instrument_type, instrument_uid
             )
 
         # Create asset with metadata
@@ -1468,7 +1508,9 @@ async def create_security_from_tinkoff(
         return None
 
 
-async def _create_basic_tbank_asset(security_name, isin, user, instrument_type, instrument_uid):
+async def _create_basic_tbank_asset(
+    security_name, isin, ticker, user, instrument_type, instrument_uid
+):
     """Fallback: Create basic asset without metadata."""
     try:
 
@@ -1496,6 +1538,7 @@ async def _create_basic_tbank_asset(security_name, isin, user, instrument_type, 
             asset = Assets.objects.create(
                 type=asset_type,
                 ISIN=isin,
+                ticker=ticker,
                 name=security_name,
                 currency="RUB",
                 exposure=exposure,
@@ -1733,6 +1776,7 @@ async def create_security_from_micex(
                 type=asset_type,
                 ISIN=security_data["isin"] or isin,
                 name=security_data["name"],
+                ticker=ticker,
                 currency=security_data["currency"],
                 exposure=exposure,
                 restricted=False,

@@ -136,7 +136,7 @@
       </v-card-text>
     </v-card>
 
-    <v-card class="mb-4">
+    <!-- <v-card class="mb-4">
       <v-card-title>Price History</v-card-title>
       <v-card-text>
         <TimelineSelector
@@ -150,7 +150,7 @@
         />
         <p v-else>No price data available. Please apply filters.</p>
       </v-card-text>
-    </v-card>
+    </v-card> -->
 
     <v-card>
       <v-data-table
@@ -296,8 +296,8 @@ import {
   getPriceDetails,
 } from '@/services/api'
 import debounce from 'lodash/debounce'
-import LineChart from '@/components/charts/LineChart.vue'
-import TimelineSelector from '@/components/TimelineSelector.vue'
+// import LineChart from '@/components/charts/LineChart.vue'
+// import TimelineSelector from '@/components/TimelineSelector.vue'
 import { useTableSettings } from '@/composables/useTableSettings'
 import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
@@ -315,8 +315,8 @@ import {
 export default {
   name: 'PricesPage',
   components: {
-    LineChart,
-    TimelineSelector,
+    // LineChart,
+    // TimelineSelector,
     PriceFormDialog,
     SecurityFormDialog,
     PriceImportDialog,

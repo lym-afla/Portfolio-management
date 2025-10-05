@@ -25,19 +25,36 @@ def format_table_data(
     """
     if isinstance(data, list):
         return [
-            {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
+            {
+                k: format_value(
+                    v, k, currency_target, number_of_digits, position.get("instrument_type", None)
+                )
+                for k, v in position.items()
+            }
             for position in data
         ]
     elif isinstance(data, dict):
-        return {k: format_value(v, k, currency_target, number_of_digits) for k, v in data.items()}
+        return {
+            k: format_value(
+                v, k, currency_target, number_of_digits, data.get("instrument_type", None)
+            )
+            for k, v in data.items()
+        }
     elif isinstance(data, Page):
         return [
-            {k: format_value(v, k, currency_target, number_of_digits) for k, v in position.items()}
+            {
+                k: format_value(
+                    v, k, currency_target, number_of_digits, position.get("instrument_type", None)
+                )
+                for k, v in position.items()
+            }
             for position in data.object_list
         ]
 
 
-def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
+def format_value(
+    value: Any, key: str, currency: str, digits: int, instrument_type: str = None
+) -> Any:
     """
     Format a single value based on its key and type.
 
@@ -45,14 +62,15 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
     :param key: Key associated with the value
     :param currency: Currency for formatting
     :param digits: Number of digits for rounding
+    :param instrument_type: Type of instrument
     :return: Formatted value
     """
     if value == NOT_RELEVANT:
         return value
     if isinstance(value, dict):
-        return {k: format_value(v, k, currency, digits) for k, v in value.items()}
+        return {k: format_value(v, k, currency, digits, instrument_type) for k, v in value.items()}
     if "currency" in key:
-        return currency_format(value=None, currency=value)
+        return currency_format(value=None, currency=value, instrument_type=instrument_type)
     if "date" in key or key == "first_investment" and isinstance(value, datetime.date):
         if isinstance(value, datetime.date):
             return value.strftime("%d-%b-%y")
@@ -64,19 +82,29 @@ def format_value(value: Any, key: str, currency: str, digits: int) -> Any:
     ]:
         return format_percentage(value, digits=1)
     elif key in ["current_position", "open_position", "quantity"]:
-        return currency_format(value, currency=None, digits=0)
+        return currency_format(value, currency=None, digits=0, instrument_type=instrument_type)
     elif key in ["id", "no_of_securities", "no_of_accounts"] or "id" in key:
         return value
     elif key == "exchange_rate":
-        return currency_format(value, currency=None, digits=4)
+        return currency_format(value, currency=None, digits=4, instrument_type=instrument_type)
+    elif (
+        key in ["entry_price", "current_price"]
+        and instrument_type
+        and instrument_type.lower() == "bond"
+    ):
+        # Bond prices are stored as percentages (100 = 100%), format them as such
+        return format_bond_price(value, digits)
     elif isinstance(value, (Decimal, float, int)):
-        return currency_format(value, currency, digits)
+        return currency_format(value, currency, digits, instrument_type)
     else:
         return value
 
 
 def currency_format(
-    value: Union[Decimal, float, int, None] = None, currency: str = None, digits: int = 2
+    value: Union[Decimal, float, int, None] = None,
+    currency: str = None,
+    digits: int = 2,
+    instrument_type: str = None,
 ) -> str:
     """
     Format value as currency or return currency symbol.
@@ -85,6 +113,7 @@ def currency_format(
     :param value: Value to be formatted
     :param currency: Currency code
     :param digits: Number of digits for rounding
+    :param instrument_type: Type of instrument (for special formatting)
     :return: Formatted currency string or symbol
     """
     if currency is None:
@@ -119,7 +148,7 @@ def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
     """
     Format a value as a percentage.
 
-    :param value: Value to be formatted as percentage
+    :param value: Value to be formatted as percentage (expects decimal: 1.0 = 100%)
     :param digits: Number of digits for rounding
     :return: Formatted percentage string
     """
@@ -133,6 +162,30 @@ def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
             return "–"
         else:
             return f"{float(value * 100):.{int(digits)}f}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) -> str:
+    """
+    Format a bond price as a percentage.
+    Bond prices are stored as actual percentages (100 = 100%), not decimals.
+
+    :param value: Bond price value (100 = 100%)
+    :param digits: Number of digits for rounding
+    :return: Formatted percentage string
+    """
+    if value is None:
+        return "NA"
+
+    try:
+        value = Decimal(value)
+        if value < 0:
+            return f"({abs(value):.{digits}f}%)"
+        elif value == 0:
+            return "–"
+        else:
+            return f"{value:.{digits}f}%"
     except (TypeError, ValueError):
         return str(value)
 

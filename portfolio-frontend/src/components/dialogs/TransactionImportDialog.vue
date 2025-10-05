@@ -806,11 +806,54 @@ export default {
     }
 
     const handleImportUpdate = (update) => {
-      if (update.status === 'progress') {
-        currentImported.value = update.current
+      if (update.status === 'total_count') {
+        // Set total transactions count
+        totalToImport.value = update.total || 0
+        currentImportMessage.value =
+          update.message || `Found ${update.total} transactions to process`
+        logger.log(
+          'TransactionImportDialog',
+          `Total transactions to process: ${update.total}`
+        )
+      } else if (update.status === 'progress') {
+        currentImported.value = update.current || 0
         currentImportMessage.value = update.message
-        importState.setProgress(update.progress)
+        if (update.progress !== undefined) {
+          importState.setProgress(update.progress)
+        } else if (totalToImport.value > 0) {
+          // Calculate progress percentage
+          const progress = Math.round(
+            (currentImported.value / totalToImport.value) * 100
+          )
+          importState.setProgress(progress)
+        }
         importState.setState('importing', update.message)
+      } else if (update.status === 'transaction_saved') {
+        // Update progress for each saved transaction
+        currentImported.value = update.current || 0
+        currentImportMessage.value = update.message || 'Saving transactions...'
+        if (totalToImport.value > 0) {
+          const progress = Math.round(
+            (currentImported.value / totalToImport.value) * 100
+          )
+          importState.setProgress(progress)
+        }
+      } else if (
+        update.status === 'transaction_error' ||
+        update.status === 'save_error'
+      ) {
+        // Show error but continue processing
+        const errorMsg =
+          update.message ||
+          update.error_detail ||
+          'Error processing transaction'
+        logger.error('TransactionImportDialog', 'Transaction error:', errorMsg)
+
+        // Display error in UI (non-blocking)
+        currentImportMessage.value = `⚠️ ${errorMsg}`
+
+        // Optionally show a toast or snackbar for errors
+        // For now, just log and continue
       } else if (update.status === 'security_mapping') {
         handleSecurityMapping(update)
       } else if (update.status === 'transaction_confirmation') {

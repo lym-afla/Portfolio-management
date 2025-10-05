@@ -294,6 +294,7 @@ def api_get_security_details_for_editing(request, security_id):
         "update_link": security.update_link,
         "tbank_instrument_uid": security.tbank_instrument_uid,
         "comment": security.comment,
+        "ticker": security.ticker,
     }
 
     # Add bond metadata if this is a bond
@@ -618,11 +619,14 @@ class FXViewSet(viewsets.ModelViewSet):
                 | Q(CHFGBP__icontains=search)
                 | Q(RUBUSD__icontains=search)
                 | Q(PLNUSD__icontains=search)
+                | Q(CNYUSD__icontains=search)
             )
 
         # Convert queryset to list of dictionaries
         fx_data = list(
-            queryset.values("id", "date", "USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD")
+            queryset.values(
+                "id", "date", "USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"
+            )
         )
 
         # Apply sorting
@@ -641,7 +645,7 @@ class FXViewSet(viewsets.ModelViewSet):
             "count": pagination_info["total_items"],
             "current_page": pagination_info["current_page"],
             "total_pages": pagination_info["total_pages"],
-            "currencies": ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD"],
+            "currencies": ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"],
         }
 
         return Response(response_data)
@@ -687,6 +691,12 @@ class FXViewSet(viewsets.ModelViewSet):
                         "type": "number",
                         "required": True,
                     },
+                    {
+                        "name": "CNYUSD",
+                        "label": "CNY/USD",
+                        "type": "number",
+                        "required": True,
+                    },
                 ]
             }
         )
@@ -706,6 +716,7 @@ class FXViewSet(viewsets.ModelViewSet):
             | Q(CHFGBP__isnull=True)
             | Q(RUBUSD__isnull=True)
             | Q(PLNUSD__isnull=True)
+            | Q(CNYUSD__isnull=True)
         ).count()
 
         stats = {

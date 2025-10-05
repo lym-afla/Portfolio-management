@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
+from common.models import FX, Accounts, Assets, Brokers, FXTransaction, Prices, Transactions
 from constants import (
     ACCOUNT_TYPE_ALL,
     ACCOUNT_TYPE_BROKER,
@@ -10,7 +10,7 @@ from constants import (
     ACCOUNT_TYPE_INDIVIDUAL,
     CURRENCY_CHOICES,
 )
-from core.formatting_utils import format_value
+from core.formatting_utils import format_bond_price, format_value
 from core.user_utils import prepare_account_choices
 
 
@@ -183,7 +183,7 @@ class AccountPerformanceSerializer(serializers.Serializer):
 class FXSerializer(serializers.ModelSerializer):
     class Meta:
         model = FX
-        fields = ["id", "date", "USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD"]
+        fields = ["id", "date", "USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"]
         read_only_fields = ["id"]  # Remove 'investor' from read_only_fields
 
 
@@ -194,6 +194,11 @@ class FXRateSerializer(serializers.Serializer):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
+    # Model ID and type info
+    id = serializers.SerializerMethodField()
+    transaction_type = serializers.SerializerMethodField()
+
+    # Formatted fields
     date = serializers.SerializerMethodField()
     type = serializers.CharField()
     quantity = serializers.SerializerMethodField()
@@ -202,15 +207,27 @@ class TransactionSerializer(serializers.ModelSerializer):
     cash_flow = serializers.SerializerMethodField()
     commission = serializers.SerializerMethodField()
     aci = serializers.SerializerMethodField()
-    currency = serializers.CharField()
-    security_name = serializers.SerializerMethodField()
-    security_id = serializers.SerializerMethodField()
+    cur = serializers.CharField(source="currency")  # Frontend expects 'cur'
+
+    # Security info
+    security = serializers.SerializerMethodField()
+    instrument_type = serializers.SerializerMethodField()
+
+    # Account info
     account = serializers.SerializerMethodField()
+
+    # Bond-specific
     notional_change = serializers.SerializerMethodField()
+    notional = serializers.SerializerMethodField()
+
+    # Optional balance tracking
+    balances = serializers.SerializerMethodField()
 
     class Meta:
         model = Transactions
         fields = [
+            "id",
+            "transaction_type",
             "date",
             "type",
             "quantity",
@@ -219,16 +236,25 @@ class TransactionSerializer(serializers.ModelSerializer):
             "cash_flow",
             "commission",
             "aci",
-            "currency",
-            "security_name",
-            "security_id",
+            "cur",
+            "security",
+            "instrument_type",
             "account",
-            "aci",
             "notional_change",
+            "notional",
+            "balances",
         ]
 
     def get_digits(self):
         return self.context.get("digits", 2)  # Default to 2 if not provided
+
+    def get_id(self, obj):
+        """Return prefixed ID for frontend identification"""
+        return f"regular_{obj.id}"
+
+    def get_transaction_type(self, obj):
+        """Return 'regular' to distinguish from FX transactions"""
+        return "regular"
 
     def get_date(self, obj):
         return format_value(obj.date, "date", None, None)
@@ -238,16 +264,29 @@ class TransactionSerializer(serializers.ModelSerializer):
         return format_value(quantity, "quantity", None, 0)
 
     def get_price(self, obj):
-        return format_value(obj.price, "price", obj.currency, self.get_digits())
+        """Format price based on instrument type"""
+        instrument_type = self.get_instrument_type(obj)
+
+        # For bonds, show price as percentage (as stored)
+        if instrument_type and instrument_type.lower() == "bond":
+            return format_bond_price(obj.price, self.get_digits())
+
+        # For others, use get_price() which returns actual price
+        effective_price = obj.get_price()
+        return format_value(effective_price, "price", obj.currency, self.get_digits())
 
     def get_value(self, obj):
+        """Calculate transaction value using centralized method"""
         if obj.quantity and obj.price:
-            value = -Decimal(obj.quantity) * Decimal(obj.price)
+            value = -Decimal(obj.quantity) * Decimal(obj.get_price())
             return format_value(value, "value", obj.currency, self.get_digits())
         return None
 
     def get_cash_flow(self, obj):
-        return format_value(obj.cash_flow, "cash_flow", obj.currency, self.get_digits())
+        """Use centralized cash flow calculation"""
+        # Use the centralized calculation method
+        calculated_cash_flow = obj.get_calculated_cash_flow()
+        return format_value(calculated_cash_flow, "cash_flow", obj.currency, self.get_digits())
 
     def get_commission(self, obj):
         return format_value(obj.commission, "commission", obj.currency, self.get_digits())
@@ -255,17 +294,125 @@ class TransactionSerializer(serializers.ModelSerializer):
     def get_aci(self, obj):
         return format_value(obj.aci, "aci", obj.currency, self.get_digits())
 
-    def get_security_name(self, obj):
-        return obj.security.name if obj.security else None
+    def get_security(self, obj):
+        """Return security info as dictionary"""
+        if obj.security:
+            return {"id": obj.security.id, "name": obj.security.name, "type": obj.security.type}
+        return None
 
-    def get_security_id(self, obj):
-        return obj.security.id if obj.security else None
+    def get_instrument_type(self, obj):
+        """Return instrument type for frontend formatting"""
+        return obj.security.type if obj.security else None
 
     def get_account(self, obj):
         return {"id": obj.account.id, "name": obj.account.name} if obj.account else None
 
     def get_notional_change(self, obj):
         return format_value(obj.notional_change, "notional_change", obj.currency, self.get_digits())
+
+    def get_notional(self, obj):
+        return format_value(obj.notional, "notional", obj.currency, self.get_digits())
+
+    def get_balances(self, obj):
+        """Return balances if balance tracking is enabled in context"""
+        if not self.context.get("include_balances", False):
+            return None
+
+        balance_tracker = self.context.get("balance_tracker", {})
+        return balance_tracker.get(obj.id, {})
+
+
+class FXTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for FX transactions with consistent formatting"""
+
+    # Model ID and type info
+    id = serializers.SerializerMethodField()
+    transaction_type = serializers.SerializerMethodField()
+
+    # Formatted fields
+    date = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
+
+    # FX specific fields
+    from_cur = serializers.CharField(source="from_currency")
+    to_cur = serializers.CharField(source="to_currency")
+    from_amount = serializers.SerializerMethodField()
+    to_amount = serializers.SerializerMethodField()
+    exchange_rate = serializers.SerializerMethodField()
+    commission = serializers.SerializerMethodField()
+    commission_currency = serializers.CharField(allow_null=True)
+
+    # Account info
+    account = serializers.SerializerMethodField()
+
+    # Optional balance tracking
+    balances = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FXTransaction
+        fields = [
+            "id",
+            "transaction_type",
+            "date",
+            "type",
+            "from_cur",
+            "to_cur",
+            "from_amount",
+            "to_amount",
+            "exchange_rate",
+            "commission",
+            "commission_currency",
+            "account",
+            "balances",
+        ]
+
+    def get_digits(self):
+        return self.context.get("digits", 2)
+
+    def get_id(self, obj):
+        """Return prefixed ID for frontend identification"""
+        return f"fx_{obj.id}"
+
+    def get_transaction_type(self, obj):
+        """Return 'fx' to distinguish from regular transactions"""
+        return "fx"
+
+    def get_date(self, obj):
+        return format_value(obj.date, "date", None, None)
+
+    def get_type(self, obj):
+        return "FX"
+
+    def get_from_amount(self, obj):
+        """Use centralized cash flow calculation for from_currency"""
+        cash_flow = obj.get_cash_flow_by_currency(obj.from_currency)
+        return format_value(cash_flow, "value", obj.from_currency, self.get_digits())
+
+    def get_to_amount(self, obj):
+        """Use centralized cash flow calculation for to_currency"""
+        cash_flow = obj.get_cash_flow_by_currency(obj.to_currency)
+        return format_value(cash_flow, "value", obj.to_currency, self.get_digits())
+
+    def get_exchange_rate(self, obj):
+        return format_value(obj.exchange_rate, "fx_rate", None, 6)
+
+    def get_commission(self, obj):
+        if obj.commission:
+            return format_value(
+                obj.commission, "commission", obj.commission_currency, self.get_digits()
+            )
+        return None
+
+    def get_account(self, obj):
+        return {"id": obj.account.id, "name": obj.account.name} if obj.account else None
+
+    def get_balances(self, obj):
+        """Return balances if balance tracking is enabled in context"""
+        if not self.context.get("include_balances", False):
+            return None
+
+        balance_tracker = self.context.get("balance_tracker", {})
+        return balance_tracker.get(obj.id, {})
 
 
 class BrokerSerializer(serializers.ModelSerializer):

@@ -6,8 +6,9 @@ from operator import attrgetter
 from django.db.models import Q
 
 from common.models import Accounts, FXTransaction, Transactions
+from database.serializers import FXTransactionSerializer, TransactionSerializer
 
-from .formatting_utils import currency_format, format_table_data
+from .balance_tracker import BalanceTracker
 from .pagination_utils import paginate_table
 from .portfolio_utils import get_selected_account_ids
 from .sorting_utils import sort_entries
@@ -35,7 +36,6 @@ def get_transactions_table_api(request):
         request.session["effective_current_date"], "%Y-%m-%d"
     ).date()
 
-    currency_target = user.default_currency
     number_of_digits = user.digits
     selected_account_ids = get_selected_account_ids(
         user, user.selected_account_type, user.selected_account_id
@@ -52,15 +52,14 @@ def get_transactions_table_api(request):
     )
 
     transactions_data = sort_entries(transactions_data, sort_by)
-    paginated_transactions, pagination_data = paginate_table(
-        transactions_data, page, items_per_page
-    )
-    formatted_transactions = format_table_data(
-        paginated_transactions, currency_target, number_of_digits
-    )
+    paginated_page, pagination_data = paginate_table(transactions_data, page, items_per_page)
+    # Convert Page object to list for JSON serialization
+    paginated_transactions = list(paginated_page)
+
+    # Note: format_table_data is NOT needed - serializers already format everything
 
     return {
-        "transactions": formatted_transactions,
+        "transactions": paginated_transactions,  # Already formatted by serializers
         "currencies": currencies,
         "total_items": pagination_data["total_items"],
         "current_page": pagination_data["current_page"],
@@ -98,141 +97,75 @@ def _filter_transactions(user, start_date, end_date, selected_account_ids, searc
 def _calculate_transactions_table_output(
     user, transactions, selected_account_ids, number_of_digits, start_date=None
 ):
-    """Calculate transaction table output with balances."""
+    """
+    Calculate transaction table output with balances using unified serializers.
+
+    This is the new DRY implementation that uses:
+    - TransactionSerializer for regular transactions
+    - FXTransactionSerializer for FX transactions
+    - BalanceTracker for balance management
+    """
+    # Get all currencies used in the accounts
     currencies = set()
     for account in Accounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
         currencies.update(account.get_currencies())
 
-    # Initialize balance with the starting balance for each currency and account
-    balance = {currency: Decimal(0) for currency in currencies}
+    # Initialize balance tracker
+    balance_tracker = BalanceTracker(number_of_digits=number_of_digits)
+
+    # Set initial balances if start_date is provided
+    initial_balances = {currency: Decimal(0) for currency in currencies}
     if start_date:
         for account_id in selected_account_ids:
             account = Accounts.objects.get(id=account_id)
             account_balance = account.balance(start_date)
             for currency, amount in account_balance.items():
-                balance[currency] += amount
+                initial_balances[currency] += amount
 
+    balance_tracker.set_initial_balances(initial_balances)
+
+    # Process transactions and build data
     transactions_data = []
 
     for transaction in transactions:
-        transaction_data = {
-            "date": transaction.date,
-            "balances": {},
-            "account": {"name": transaction.account.name, "id": transaction.account.id},
-        }
+        # Update balance tracker
+        balance_tracker.update(transaction)
 
+        # Serialize the transaction
         if isinstance(transaction, Transactions):
-            transaction_data.update(
-                _process_regular_transaction(transaction, balance, number_of_digits)
+            serializer = TransactionSerializer(
+                transaction,
+                context={
+                    "digits": number_of_digits,
+                    "include_balances": True,
+                    "balance_tracker": balance_tracker.get_all_balances(),
+                },
             )
         elif isinstance(transaction, FXTransaction):
-            transaction_data.update(_process_fx_transaction(transaction, balance, number_of_digits))
-
-        for currency in currencies:
-            transaction_data["balances"][currency] = currency_format(
-                balance[currency], currency, number_of_digits
+            serializer = FXTransactionSerializer(
+                transaction,
+                context={
+                    "digits": number_of_digits,
+                    "include_balances": True,
+                    "balance_tracker": balance_tracker.get_all_balances(),
+                },
             )
+        else:
+            continue
 
-        transactions_data.append(transaction_data)
+        transactions_data.append(serializer.data)
 
-    return transactions_data, currencies
-
-
-def _process_regular_transaction(transaction, balance, number_of_digits):
-    """Process a regular transaction and update balances."""
-    transaction_data = {
-        "id": f"regular_{transaction.id}",
-        "transaction_type": "regular",
-        "type": transaction.type,
-        "security": {
-            "name": transaction.security.name if transaction.security else None,
-            "id": transaction.security.id if transaction.security else None,
-            "type": transaction.security.type if transaction.security else None,
-        },
-        "cur": transaction.currency,
-    }
-
-    # Get effective price (handles bond percentage to actual price conversion)
-    effective_price = transaction.get_price()
-    balance_entry = balance.get(transaction.currency, Decimal(0)) - Decimal(
-        effective_price * Decimal(transaction.quantity or Decimal(0))
-        - Decimal(transaction.aci or Decimal(0))
-        - Decimal(transaction.cash_flow or Decimal(0))
-        - Decimal(transaction.commission or Decimal(0))
-    )
-
-    balance[transaction.currency] = round(balance_entry, 2)
-
-    if transaction.quantity:
-        transaction_data["value"] = currency_format(
-            -round(Decimal(transaction.quantity * effective_price), 2)
-            + (transaction.commission or 0),
-            transaction.currency,
-            number_of_digits,
-        )
-        # For display, show the price as stored (percentage for bonds, actual for others)
-        transaction_data["price"] = currency_format(
-            transaction.get_price(), transaction.currency, number_of_digits
-        )
-        transaction_data["quantity"] = abs(round(transaction.quantity, 0))
-    if transaction.cash_flow:
-        transaction_data["cash_flow"] = currency_format(
-            transaction.cash_flow, transaction.currency, number_of_digits
-        )
-    if transaction.commission:
-        transaction_data["commission"] = currency_format(
-            -transaction.commission, transaction.currency, number_of_digits
-        )
-    if transaction.aci:
-        transaction_data["aci"] = currency_format(
-            transaction.aci, transaction.currency, number_of_digits
-        )
-
-    # Add bond-specific data for redemption/maturity transactions
-    if transaction.type in ["Bond redemption", "Bond maturity"]:
-        if transaction.notional_change:
-            transaction_data["notional_change"] = currency_format(
-                transaction.notional_change, transaction.currency, number_of_digits
-            )
-
-    return transaction_data
+    return transactions_data, balance_tracker.get_currencies()
 
 
-def _process_fx_transaction(transaction, balance, number_of_digits):
-    """Process an FX transaction and update balances."""
-    transaction_data = {
-        "id": f"fx_{transaction.id}",
-        "transaction_type": "fx",
-        "type": "FX",
-        "from_cur": transaction.from_currency,
-        "to_cur": transaction.to_currency,
-        "exchange_rate": transaction.exchange_rate,
-    }
-
-    balance[transaction.from_currency] -= transaction.from_amount
-    balance[transaction.to_currency] += transaction.to_amount
-    if transaction.commission:
-        balance[transaction.commission_currency] += transaction.commission
-
-    transaction_data["from_amount"] = 0
-    transaction_data["to_amount"] = 0
-    if transaction.commission:
-        transaction_data["commission"] = currency_format(
-            -transaction.commission, transaction.commission_currency, number_of_digits
-        )
-        if transaction.commission_currency == transaction.from_currency:
-            transaction_data["from_amount"] += transaction.commission
-        elif transaction.commission_currency == transaction.to_currency:
-            transaction_data["to_amount"] += transaction.commission
-    transaction_data["from_amount"] = currency_format(
-        transaction_data["from_amount"] - transaction.from_amount,
-        transaction.from_currency,
-        number_of_digits,
-    )
-    transaction_data["to_amount"] = currency_format(
-        transaction_data["to_amount"] + transaction.to_amount,
-        transaction.to_currency,
-        number_of_digits,
-    )
-
-    return transaction_data
+# DEPRECATED: These functions are no longer used. Transaction processing now uses
+# the unified TransactionSerializer and FXTransactionSerializer with BalanceTracker.
+# Keeping for reference during migration period.
+#
+# def _process_regular_transaction(transaction, balance, number_of_digits):
+#     """OLD: Process a regular transaction and update balances."""
+#     ...
+#
+# def _process_fx_transaction(transaction, balance, number_of_digits):
+#     """OLD: Process an FX transaction and update balances."""
+#     ...
