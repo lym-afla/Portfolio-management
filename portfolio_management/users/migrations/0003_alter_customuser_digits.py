@@ -5,15 +5,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0002_customuser_nav_barchart_default_breakdown'),
+        ("users", "0002_customuser_nav_barchart_default_breakdown"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='customuser',
-            name='digits',
-            field=models.IntegerField(default=0, error_messages={'max_value': 'The value for digits must be less than or equal to 6.', 'min_value': 'The value for digits must be greater than or equal to 0.'}, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(6)]),
+            model_name="customuser",
+            name="digits",
+            field=models.IntegerField(
+                default=0,
+                error_messages={
+                    "max_value": "The value for digits must be less than or equal to 6.",
+                    "min_value": "The value for digits must be greater than or equal to 0.",
+                },
+                validators=[
+                    django.core.validators.MinValueValidator(0),
+                    django.core.validators.MaxValueValidator(6),
+                ],
+            ),
         ),
     ]

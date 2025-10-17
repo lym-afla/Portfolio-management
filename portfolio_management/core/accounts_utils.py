@@ -20,9 +20,10 @@ def get_accounts_table_api(request):
     sort_by = data.get("sortBy", {})
 
     user = request.user
-    effective_current_date = datetime.strptime(
-        request.session["effective_current_date"], "%Y-%m-%d"
-    ).date()
+    effective_current_date_str = getattr(
+        request, "effective_current_date", datetime.now().date().isoformat()
+    )
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
     currency_target = user.default_currency
     number_of_digits = user.digits
 

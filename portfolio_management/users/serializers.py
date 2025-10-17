@@ -1,7 +1,11 @@
+from datetime import date
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from common.models import Accounts, Brokers
 from constants import (
@@ -212,6 +216,47 @@ class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
     class Meta(BaseApiTokenSerializer.Meta):
         model = InteractiveBrokersApiToken
         fields = BaseApiTokenSerializer.Meta.fields
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Custom JWT token serializer that includes effective_current_date in the token payload
+    """
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+
+        # Get or create default effective_current_date
+        effective_date = date.today().isoformat()
+
+        # Try to get effective_date from user's existing session data if migrating
+        try:
+            from django.contrib.sessions.models import Session
+
+            recent_sessions = (
+                Session.objects.filter(session_data__contains=f'"_auth_user_id": "{self.user.id}"')
+                .order_by("-expire_date")
+                .first()
+            )
+
+            if recent_sessions:
+                session_data = recent_sessions.get_decoded()
+                if session_data and "effective_current_date" in session_data:
+                    effective_date = session_data["effective_current_date"]
+        except Exception:
+            # If anything goes wrong, just use today's date
+            pass
+
+        # Create custom refresh token with effective_current_date in payload
+        refresh = RefreshToken.for_user(self.user)
+        refresh["effective_current_date"] = effective_date
+
+        # Add the tokens to the response data
+        data["refresh"] = str(refresh)
+        data["access"] = str(refresh.access_token)
+        data["effective_current_date"] = effective_date
+
+        return data
 
 
 class AccountGroupSerializer(serializers.ModelSerializer):

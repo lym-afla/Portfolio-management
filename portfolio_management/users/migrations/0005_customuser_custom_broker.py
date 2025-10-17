@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0004_customuser_use_default_currency_where_relevant'),
+        ("users", "0004_customuser_use_default_currency_where_relevant"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='customuser',
-            name='custom_broker',
+            model_name="customuser",
+            name="custom_broker",
             field=models.IntegerField(default=3),
             preserve_default=False,
         ),

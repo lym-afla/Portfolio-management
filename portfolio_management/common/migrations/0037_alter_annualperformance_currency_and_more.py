@@ -4,45 +4,74 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0036_alter_assets_data_source'),
+        ("common", "0036_alter_assets_data_source"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='annualperformance',
-            name='currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'Fr')], max_length=3),
+            model_name="annualperformance",
+            name="currency",
+            field=models.CharField(
+                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                max_length=3,
+            ),
         ),
         migrations.AlterField(
-            model_name='assets',
-            name='currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'Fr')], default='USD', max_length=3),
+            model_name="assets",
+            name="currency",
+            field=models.CharField(
+                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                default="USD",
+                max_length=3,
+            ),
         ),
         migrations.AlterField(
-            model_name='assets',
-            name='data_source',
-            field=models.CharField(blank=True, choices=[('', 'None'), ('FT', 'Financial Times'), ('YAHOO', 'Yahoo Finance')], max_length=10, null=True),
+            model_name="assets",
+            name="data_source",
+            field=models.CharField(
+                blank=True,
+                choices=[("", "None"), ("FT", "Financial Times"), ("YAHOO", "Yahoo Finance")],
+                max_length=10,
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='assets',
-            name='exposure',
-            field=models.TextField(choices=[('Equity', 'Equity'), ('FI', 'Fixed income'), ('FX', 'Forex'), ('Commodity', 'Commodity')], default='Equity'),
+            model_name="assets",
+            name="exposure",
+            field=models.TextField(
+                choices=[
+                    ("Equity", "Equity"),
+                    ("FI", "Fixed income"),
+                    ("FX", "Forex"),
+                    ("Commodity", "Commodity"),
+                ],
+                default="Equity",
+            ),
         ),
         migrations.AlterField(
-            model_name='fxtransaction',
-            name='from_currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'Fr')], max_length=3),
+            model_name="fxtransaction",
+            name="from_currency",
+            field=models.CharField(
+                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                max_length=3,
+            ),
         ),
         migrations.AlterField(
-            model_name='fxtransaction',
-            name='to_currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'Fr')], max_length=3),
+            model_name="fxtransaction",
+            name="to_currency",
+            field=models.CharField(
+                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                max_length=3,
+            ),
         ),
         migrations.AlterField(
-            model_name='transactions',
-            name='currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'Fr')], default='USD', max_length=3),
+            model_name="transactions",
+            name="currency",
+            field=models.CharField(
+                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                default="USD",
+                max_length=3,
+            ),
         ),
     ]

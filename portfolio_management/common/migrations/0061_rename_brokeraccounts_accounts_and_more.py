@@ -4,25 +4,24 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0060_alter_brokeraccounts_native_id'),
-        ('users', '0017_rename_broker_accounts_accountgroup_accounts'),
+        ("common", "0060_alter_brokeraccounts_native_id"),
+        ("users", "0017_rename_broker_accounts_accountgroup_accounts"),
     ]
 
     operations = [
         migrations.RenameModel(
-            old_name='BrokerAccounts',
-            new_name='Accounts',
+            old_name="BrokerAccounts",
+            new_name="Accounts",
         ),
         migrations.RenameField(
-            model_name='fxtransaction',
-            old_name='broker_account',
-            new_name='account',
+            model_name="fxtransaction",
+            old_name="broker_account",
+            new_name="account",
         ),
         migrations.RenameField(
-            model_name='transactions',
-            old_name='broker_account',
-            new_name='account',
+            model_name="transactions",
+            old_name="broker_account",
+            new_name="account",
         ),
     ]

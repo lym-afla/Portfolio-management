@@ -16,8 +16,9 @@ def get_year_options_api(request):
     selected_account_ids = get_selected_account_ids(
         user, user.selected_account_type, user.selected_account_id
     )
-    effective_current_date_str = request.session.get("effective_current_date")
-    print(f"views. common. 16. Effective current date from session: {effective_current_date_str}")
+
+    # Use JWT middleware instead of session
+    effective_current_date_str = getattr(request, "effective_current_date", None)
 
     # Convert effective_current_date from string to date object
     effective_current_date = (
@@ -69,7 +70,19 @@ def get_year_options_api(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_effective_current_date(request):
-    effective_current_date = request.session.get(
-        "effective_current_date", datetime.now().date().isoformat()
+    import structlog
+
+    logger = structlog.get_logger(__name__)
+
+    # Use JWT middleware instead of session
+    effective_current_date = getattr(
+        request, "effective_current_date", datetime.now().date().isoformat()
     )
+
+    logger.info(
+        "get_effective_current_date called (JWT mode)",
+        effective_current_date=effective_current_date,
+        has_jwt_middleware=getattr(request, "effective_current_date", None) is not None,
+    )
+
     return Response({"effective_current_date": effective_current_date})

@@ -4,21 +4,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0003_brokers_securities_alter_assets_currency_and_more'),
+        ("common", "0003_brokers_securities_alter_assets_currency_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='prices',
-            name='id',
-            field=models.BigAutoField(auto_created=True, default=1, primary_key=True, serialize=False, verbose_name='ID'),
+            model_name="prices",
+            name="id",
+            field=models.BigAutoField(
+                auto_created=True, default=1, primary_key=True, serialize=False, verbose_name="ID"
+            ),
             preserve_default=False,
         ),
         migrations.AlterField(
-            model_name='prices',
-            name='date',
+            model_name="prices",
+            name="date",
             field=models.DateField(),
         ),
     ]

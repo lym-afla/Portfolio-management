@@ -6,56 +6,61 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0011_brokergroup'),
+        ("users", "0011_brokergroup"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='interactivebrokersapitoken',
-            name='is_active',
+            model_name="interactivebrokersapitoken",
+            name="is_active",
         ),
         migrations.RemoveField(
-            model_name='interactivebrokersapitoken',
-            name='key_part',
+            model_name="interactivebrokersapitoken",
+            name="key_part",
         ),
         migrations.RemoveField(
-            model_name='tinkoffapitoken',
-            name='is_active',
+            model_name="tinkoffapitoken",
+            name="is_active",
         ),
         migrations.RemoveField(
-            model_name='tinkoffapitoken',
-            name='key_part',
+            model_name="tinkoffapitoken",
+            name="key_part",
         ),
         migrations.AlterField(
-            model_name='interactivebrokersapitoken',
-            name='encrypted_token',
+            model_name="interactivebrokersapitoken",
+            name="encrypted_token",
             field=models.BinaryField(),
         ),
         migrations.AlterField(
-            model_name='interactivebrokersapitoken',
-            name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL),
+            model_name="interactivebrokersapitoken",
+            name="user",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL
+            ),
         ),
         migrations.AlterField(
-            model_name='tinkoffapitoken',
-            name='encrypted_token',
+            model_name="tinkoffapitoken",
+            name="encrypted_token",
             field=models.BinaryField(),
         ),
         migrations.AlterField(
-            model_name='tinkoffapitoken',
-            name='sandbox_mode',
+            model_name="tinkoffapitoken",
+            name="sandbox_mode",
             field=models.BooleanField(default=False),
         ),
         migrations.AlterField(
-            model_name='tinkoffapitoken',
-            name='token_type',
-            field=models.CharField(choices=[('read_only', 'Read Only'), ('full_access', 'Full Access')], max_length=20),
+            model_name="tinkoffapitoken",
+            name="token_type",
+            field=models.CharField(
+                choices=[("read_only", "Read Only"), ("full_access", "Full Access")], max_length=20
+            ),
         ),
         migrations.AlterField(
-            model_name='tinkoffapitoken',
-            name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL),
+            model_name="tinkoffapitoken",
+            name="user",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL
+            ),
         ),
     ]

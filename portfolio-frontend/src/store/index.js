@@ -83,6 +83,13 @@ export default createStore({
       state.userSettings = { ...state.userSettings, ...settings }
     },
     SET_EFFECTIVE_CURRENT_DATE(state, date) {
+      logger.log(
+        'Store',
+        '[DEBUG] SET_EFFECTIVE_CURRENT_DATE mutation - Old value:',
+        state.effectiveCurrentDate,
+        'New value:',
+        date
+      )
       state.effectiveCurrentDate = date
     },
     SET_SELECTED_CURRENCY(state, currency) {
@@ -173,8 +180,27 @@ export default createStore({
     },
     async fetchEffectiveCurrentDate({ commit }) {
       try {
+        logger.log(
+          'Store',
+          '[DEBUG] fetchEffectiveCurrentDate - Fetching from backend...'
+        )
         const response = await api.getEffectiveCurrentDate()
+        logger.log(
+          'Store',
+          '[DEBUG] fetchEffectiveCurrentDate - Backend response:',
+          response
+        )
+        logger.log(
+          'Store',
+          '[DEBUG] fetchEffectiveCurrentDate - Current store value before commit:',
+          this.state.effectiveCurrentDate
+        )
         commit('SET_EFFECTIVE_CURRENT_DATE', response.effective_current_date)
+        logger.log(
+          'Store',
+          '[DEBUG] fetchEffectiveCurrentDate - New store value after commit:',
+          this.state.effectiveCurrentDate
+        )
       } catch (error) {
         logger.error('Store', 'Failed to fetch effective current date', error)
       }
@@ -282,6 +308,14 @@ export default createStore({
         try {
           await dispatch('fetchUserData')
           logger.log('Store', `[${requestId}] User data fetched successfully`)
+
+          // Also fetch effective current date during initialization
+          await dispatch('fetchEffectiveCurrentDate')
+          logger.log(
+            'Store',
+            `[${requestId}] Effective current date fetched successfully`
+          )
+
           return { success: true }
         } catch (error) {
           logger.error(

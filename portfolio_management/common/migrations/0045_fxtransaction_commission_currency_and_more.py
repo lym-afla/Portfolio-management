@@ -4,20 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0044_alter_fx_options_alter_fx_unique_together_and_more'),
+        ("common", "0044_alter_fx_options_alter_fx_unique_together_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='fxtransaction',
-            name='commission_currency',
-            field=models.CharField(blank=True, choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'Fr')], max_length=3, null=True),
+            model_name="fxtransaction",
+            name="commission_currency",
+            field=models.CharField(
+                blank=True,
+                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                max_length=3,
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='transactions',
-            name='date',
+            model_name="transactions",
+            name="date",
             field=models.DateField(db_index=True),
         ),
     ]

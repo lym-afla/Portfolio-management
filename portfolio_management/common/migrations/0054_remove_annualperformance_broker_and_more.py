@@ -5,53 +5,62 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0053_migrate_broker_to_account'),
+        ("common", "0053_migrate_broker_to_account"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='annualperformance',
-            name='broker',
+            model_name="annualperformance",
+            name="broker",
         ),
         migrations.RemoveField(
-            model_name='annualperformance',
-            name='broker_account',
+            model_name="annualperformance",
+            name="broker_account",
         ),
         migrations.RemoveField(
-            model_name='brokers',
-            name='investor',
+            model_name="brokers",
+            name="investor",
         ),
         migrations.RemoveField(
-            model_name='brokers',
-            name='restricted',
+            model_name="brokers",
+            name="restricted",
         ),
         migrations.RemoveField(
-            model_name='brokers',
-            name='securities',
+            model_name="brokers",
+            name="securities",
         ),
         migrations.RemoveField(
-            model_name='fxtransaction',
-            name='broker',
+            model_name="fxtransaction",
+            name="broker",
         ),
         migrations.RemoveField(
-            model_name='transactions',
-            name='broker',
+            model_name="transactions",
+            name="broker",
         ),
         migrations.AlterField(
-            model_name='brokeraccounts',
-            name='id',
-            field=models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID'),
+            model_name="brokeraccounts",
+            name="id",
+            field=models.BigAutoField(
+                auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+            ),
         ),
         migrations.AlterField(
-            model_name='fxtransaction',
-            name='broker_account',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='fx_transactions', to='common.brokeraccounts'),
+            model_name="fxtransaction",
+            name="broker_account",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="fx_transactions",
+                to="common.brokeraccounts",
+            ),
         ),
         migrations.AlterField(
-            model_name='transactions',
-            name='broker_account',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='transactions', to='common.brokeraccounts'),
+            model_name="transactions",
+            name="broker_account",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="transactions",
+                to="common.brokeraccounts",
+            ),
         ),
     ]

@@ -20,7 +20,7 @@
                 <v-list-item>
                   <v-list-item-title>Type:</v-list-item-title>
                   <v-list-item-subtitle>{{
-                    security.type
+                    security.instrument_type
                   }}</v-list-item-subtitle>
                 </v-list-item>
                 <v-list-item>
@@ -43,44 +43,234 @@
           <v-card>
             <v-card-title>Performance Metrics</v-card-title>
             <v-card-text>
-              <v-list>
-                <v-list-item>
-                  <v-list-item-title>Current Position:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.open_position
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>Current Value:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.current_value
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>Realized Gain/Loss:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.realized
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>Unrealized Gain/Loss:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.unrealized
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>Capital Distribution:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.capital_distribution
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-                <v-list-item>
-                  <v-list-item-title>IRR:</v-list-item-title>
-                  <v-list-item-subtitle>{{
-                    security.irr
-                  }}</v-list-item-subtitle>
-                </v-list-item>
-              </v-list>
+              <!-- Table format for better readability -->
+              <v-table density="compact">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Current Position:</td>
+                    <td>{{ security.open_position }}</td>
+                  </tr>
+
+                  <!-- Buy-in Price -->
+                  <tr v-if="security.buy_in_price">
+                    <td>Buy-in Price:</td>
+                    <td>
+                      {{ security.buy_in_price }}
+                    </td>
+                  </tr>
+
+                  <!-- Current Price -->
+                  <tr v-if="security.current_price">
+                    <td>Current Price:</td>
+                    <td>{{ security.current_price }}</td>
+                  </tr>
+
+                  <tr>
+                    <td>Current Value:</td>
+                    <td>{{ security.current_value }}</td>
+                  </tr>
+
+                  <!-- Bond-specific: Total ACI for Position -->
+                  <tr
+                    v-if="
+                      security.instrument_type === 'Bond' &&
+                      security.bond_data &&
+                      security.bond_data.total_aci !== undefined &&
+                      security.bond_data.total_aci !== '–'
+                    "
+                  >
+                    <td>Total Accrued Interest:</td>
+                    <td>
+                      {{ security.bond_data.total_aci }}
+                      <span class="text-caption text-grey">
+                        (net of ACI paid at acquisition)</span
+                      >
+                    </td>
+                  </tr>
+
+                  <!-- Bond-specific: YTM -->
+                  <tr
+                    v-if="
+                      security.instrument_type === 'Bond' &&
+                      security.bond_data &&
+                      security.bond_data.ytm
+                    "
+                  >
+                    <td>YTM at Acquisition:</td>
+                    <td>{{ security.bond_data.ytm }}</td>
+                  </tr>
+
+                  <tr>
+                    <td>Realized Gain/Loss:</td>
+                    <td>{{ security.realized }}</td>
+                  </tr>
+                  <tr>
+                    <td>Unrealized Gain/Loss:</td>
+                    <td>{{ security.unrealized }}</td>
+                  </tr>
+                  <tr>
+                    <td>Capital Distribution:</td>
+                    <td>{{ security.capital_distribution }}</td>
+                  </tr>
+                  <tr>
+                    <td>IRR:</td>
+                    <td>{{ security.irr }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Bond-specific Information -->
+      <v-row v-if="security.instrument_type === 'Bond' && security.bond_data">
+        <v-col cols="12">
+          <v-card>
+            <v-card-title>Bond Information</v-card-title>
+            <v-card-text>
+              <v-row>
+                <!-- Basic Bond Details -->
+                <v-col cols="12" md="6">
+                  <v-table density="compact">
+                    <thead>
+                      <tr>
+                        <th>Detail</th>
+                        <th>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <!-- Show notional based on amortizing status -->
+                      <tr
+                        v-if="
+                          security.bond_data.current_notional !== null &&
+                          security.bond_data.current_notional !== undefined
+                        "
+                      >
+                        <td>
+                          {{
+                            security.bond_data.is_amortizing
+                              ? 'Current Nominal'
+                              : 'Notional'
+                          }}:
+                        </td>
+                        <td>
+                          {{ security.bond_data.current_notional }}
+                        </td>
+                      </tr>
+
+                      <!-- Show initial notional only for amortizing bonds -->
+                      <tr
+                        v-if="
+                          security.bond_data.is_amortizing &&
+                          security.bond_data.initial_notional !== null &&
+                          security.bond_data.initial_notional !== undefined
+                        "
+                      >
+                        <td>Initial Nominal:</td>
+                        <td>
+                          {{ security.bond_data.initial_notional }}
+                        </td>
+                      </tr>
+
+                      <tr v-if="security.bond_data.issue_date">
+                        <td>Issue Date:</td>
+                        <td>{{ security.bond_data.issue_date }}</td>
+                      </tr>
+
+                      <tr v-if="security.bond_data.maturity_date">
+                        <td>Maturity Date:</td>
+                        <td>{{ security.bond_data.maturity_date }}</td>
+                      </tr>
+
+                      <!-- Show bond type with amortizing status -->
+                      <tr>
+                        <td>Bond Type:</td>
+                        <td>
+                          {{ security.bond_data.coupon_type || 'Standard' }}
+                          <span
+                            v-if="security.bond_data.is_amortizing"
+                            class="text-caption text-grey"
+                            >(Amortizing)</span
+                          >
+                        </td>
+                      </tr>
+
+                      <tr v-if="security.bond_data.credit_rating">
+                        <td>Credit Rating:</td>
+                        <td>{{ security.bond_data.credit_rating }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </v-col>
+
+                <!-- Coupon Details -->
+                <v-col cols="12" md="6">
+                  <v-table density="compact">
+                    <thead>
+                      <tr>
+                        <th>Detail</th>
+                        <th>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-if="
+                          security.bond_data.coupon_amount !== null &&
+                          security.bond_data.coupon_amount !== undefined
+                        "
+                      >
+                        <td>Coupon per Bond:</td>
+                        <td>
+                          {{ security.bond_data.coupon_amount }}
+                        </td>
+                      </tr>
+
+                      <tr v-if="security.bond_data.coupon_rate">
+                        <td>Coupon Rate:</td>
+                        <td>{{ security.bond_data.coupon_rate }}</td>
+                      </tr>
+
+                      <tr v-if="security.bond_data.coupon_frequency">
+                        <td>Coupon Frequency:</td>
+                        <td>
+                          {{ security.bond_data.coupon_frequency }}x per year
+                        </td>
+                      </tr>
+
+                      <!-- Show next coupon date from bond_data -->
+                      <tr v-if="security.bond_data.next_coupon_date">
+                        <td>Next Coupon Payment:</td>
+                        <td>{{ security.bond_data.next_coupon_date }}</td>
+                      </tr>
+
+                      <!-- Show ACI data from bond_data -->
+                      <template v-if="security.bond_data.current_aci">
+                        <tr v-if="security.bond_data.current_aci.aci_amount">
+                          <td>Current Accrued Interest:</td>
+                          <td>
+                            {{ security.bond_data.current_aci.aci_amount }}
+                          </td>
+                        </tr>
+
+                        <tr v-if="security.bond_data.current_aci.aci_days">
+                          <td>Days Accrued:</td>
+                          <td>
+                            {{ security.bond_data.current_aci.aci_days }} /
+                            {{ security.bond_data.current_aci.total_days }} days
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </v-table>
+                </v-col>
+              </v-row>
             </v-card-text>
           </v-card>
         </v-col>
@@ -361,6 +551,14 @@ export default {
     const fetchSecurityData = async () => {
       try {
         const securityId = route.params.id
+
+        // Debug logging - Log current effective date before API calls
+        logger.log(
+          'SecurityDetailPage',
+          '[DEBUG] fetchSecurityData - Current effectiveCurrentDate from store:',
+          store.state.effectiveCurrentDate
+        )
+
         // loading.value = true
         loadingPriceChart.value = true
         loadingPositionChart.value = true
@@ -370,6 +568,18 @@ export default {
           security.value = securityResponse
           emit('update-page-title', security.value.name)
         }
+
+        // Always fetch the effective current date to ensure it's up-to-date
+        logger.log(
+          'SecurityDetailPage',
+          '[DEBUG] fetchSecurityData - Fetching effective current date from backend...'
+        )
+        await store.dispatch('fetchEffectiveCurrentDate')
+        logger.log(
+          'SecurityDetailPage',
+          '[DEBUG] fetchSecurityData - Updated effectiveCurrentDate from store:',
+          store.state.effectiveCurrentDate
+        )
 
         const [priceHistoryResponse, positionHistoryResponse] =
           await Promise.all([
@@ -383,10 +593,6 @@ export default {
         if (!chartOptionsLoaded.value) {
           chartOptions.value = await getChartOptions(security.value.currency)
           chartOptionsLoaded.value = true
-        }
-
-        if (!effectiveCurrentDate.value) {
-          await store.dispatch('fetchEffectiveCurrentDate')
         }
 
         loadingPriceChart.value = false
@@ -434,10 +640,26 @@ export default {
     )
 
     onMounted(async () => {
+      logger.log('SecurityDetailPage', '[DEBUG] onMounted - Starting...')
+      logger.log(
+        'SecurityDetailPage',
+        '[DEBUG] onMounted - Initial effectiveCurrentDate from store:',
+        store.state.effectiveCurrentDate
+      )
       loading.value = true
       await fetchSecurityData()
+      logger.log(
+        'SecurityDetailPage',
+        '[DEBUG] onMounted - After fetchSecurityData, effectiveCurrentDate from store:',
+        store.state.effectiveCurrentDate
+      )
       await fetchTransactions()
       loading.value = false
+      logger.log(
+        'SecurityDetailPage',
+        '[DEBUG] onMounted - Completed, final effectiveCurrentDate from store:',
+        store.state.effectiveCurrentDate
+      )
     })
 
     const getLastAvailableDataPoint = (data, targetDate) => {

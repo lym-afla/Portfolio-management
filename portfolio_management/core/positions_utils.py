@@ -45,9 +45,12 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     sort_by = data.get("sortBy", {})
 
     user = request.user
-    effective_current_date = datetime.strptime(
-        request.session["effective_current_date"], "%Y-%m-%d"
-    ).date()
+
+    # Use JWT middleware instead of session
+    effective_current_date_str = getattr(
+        request, "effective_current_date", date.today().isoformat()
+    )
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
@@ -153,17 +156,18 @@ def _filter_assets(
     :param search: Search string for asset name or type
     :return: QuerySet of filtered Asset objects
     """
+    query_end_date = end_date
     base_query = (
         Assets.objects.filter(
             investors__id=user.id,
-            transactions__date__lte=end_date,
+            transactions__date__lte=query_end_date,
             transactions__account__id__in=selected_account_ids,
         )
         .annotate(
             total_quantity=Sum(
                 "transactions__quantity",
                 filter=Q(
-                    transactions__date__lte=end_date,
+                    transactions__date__lte=query_end_date,
                     transactions__account__id__in=selected_account_ids,
                 ),
             )

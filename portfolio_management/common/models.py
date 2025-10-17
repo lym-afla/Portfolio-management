@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import networkx as nx
@@ -32,13 +32,15 @@ from constants import (
 # from .utils import update_FX_database
 from users.models import CustomUser
 
+from .fields import TimezoneAwareDateField, TimezoneAwareDateTimeField
+
 logger = logging.getLogger(__name__)
 
 
 # Table with FX data
 class FX(models.Model):
     id = models.AutoField(primary_key=True)
-    date = models.DateField(unique=True)
+    date = TimezoneAwareDateField(unique=True)
     investors = models.ManyToManyField(CustomUser, related_name="fx_rates")
     USDEUR = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
     USDGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
@@ -56,6 +58,10 @@ class FX(models.Model):
         fx_rate = 1
         dates_async = False
         dates_list = []
+
+        # Convert to uppercase
+        source = source.upper()
+        target = target.upper()
 
         if source == target:
             return {
@@ -185,8 +191,8 @@ class Brokers(models.Model):
     name = models.CharField(max_length=30, null=False)
     country = models.CharField(max_length=20)
     comment = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = TimezoneAwareDateTimeField(auto_now_add=True)
+    updated_at = TimezoneAwareDateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ["investor", "name"]
@@ -207,8 +213,8 @@ class Accounts(models.Model):
     restricted = models.BooleanField(default=False, null=False, blank=False)
     comment = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = TimezoneAwareDateTimeField(auto_now_add=True)
+    updated_at = TimezoneAwareDateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ["broker", "native_id"]
@@ -237,8 +243,11 @@ class Accounts(models.Model):
         """
         balance = {}
 
+        # Convert date to timezone-aware datetime for query
+        query_date = date
+
         # Process regular transactions using centralized cash flow calculation
-        transactions = self.transactions.filter(date__lte=date)
+        transactions = self.transactions.filter(date__lte=query_date)
         for transaction in transactions:
             cash_flow = transaction.get_calculated_cash_flow()
             balance[transaction.currency] = (
@@ -246,7 +255,7 @@ class Accounts(models.Model):
             )
 
         # Calculate balance from FX transactions using centralized method
-        fx_transactions = self.fx_transactions.filter(date__lte=date)
+        fx_transactions = self.fx_transactions.filter(date__lte=query_date)
         for fx_transaction in fx_transactions:
             # Get all currencies involved in this FX transaction
             involved_currencies = {fx_transaction.from_currency, fx_transaction.to_currency}
@@ -317,6 +326,7 @@ class Assets(models.Model):
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
         logger.debug(f"Fetching price for {self.name} as of {price_date} in currency {currency}")
+        # Convert date to timezone-aware datetime for query
         quote = self.prices.filter(date__lte=price_date).order_by("-date").first()
         if quote is None:
             # If no quote is found, take the price from the last transaction
@@ -339,7 +349,11 @@ class Assets(models.Model):
                 return None
 
         if currency is not None:
-            fx_rate = FX.get_rate(self.currency, currency, price_date)["FX"]
+            if self.is_bond:
+                fx_rate = Decimal(1)
+            else:
+                fx_rate = FX.get_rate(self.currency, currency, price_date)["FX"]
+
             logger.debug(
                 f"Converting price from {self.currency} to {currency} using FX rate {fx_rate}"
             )
@@ -397,7 +411,9 @@ class Assets(models.Model):
 
     # Define position at date by summing all movements to date
     def position(self, date, investor, account_ids=None):
-        query = self.transactions.filter(date__lte=date, investor=investor)
+        # Convert date to timezone-aware datetime for query
+        query_date = date
+        query = self.transactions.filter(date__lte=query_date, investor=investor)
         if account_ids is not None:
             query = query.filter(account_id__in=account_ids)
         total_quantity = query.aggregate(total=models.Sum("quantity"))["total"]
@@ -442,8 +458,9 @@ class Assets(models.Model):
         """
         Returns a list of dates when the position changes from 0 to non-zero.
         """
+        query_date = date
         transactions = self.transactions.filter(
-            date__lte=date, quantity__isnull=False, investor=investor
+            date__lte=query_date, quantity__isnull=False, investor=investor
         )
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
@@ -469,13 +486,15 @@ class Assets(models.Model):
         """
         Returns a list of dates when the position changes from non-zero to 0.
         """
+        query_end_date = end_date
         transactions = self.transactions.filter(
-            date__lte=end_date, quantity__isnull=False, investor=investor
+            date__lte=query_end_date, quantity__isnull=False, investor=investor
         )
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
         if start_date is not None:
-            transactions = transactions.filter(date__gte=start_date)
+            query_start_date = start_date
+            transactions = transactions.filter(date__gte=query_start_date)
 
         transactions = transactions.order_by("date")
 
@@ -516,8 +535,9 @@ class Assets(models.Model):
 
         is_long_position = None
 
+        query_date = date
         transactions = self.transactions.filter(
-            quantity__isnull=False, investor=investor, date__lte=date
+            quantity__isnull=False, investor=investor, date__lte=query_date
         ).order_by("date")
 
         if account_ids is not None:
@@ -632,8 +652,13 @@ class Assets(models.Model):
                 "total": Decimal(0),
             }
 
+            query_start = start
+            query_end = end
             transactions = self.transactions.filter(
-                date__gte=start, date__lte=end, quantity__isnull=False, investor=investor
+                date__gte=query_start,
+                date__lte=query_end,
+                quantity__isnull=False,
+                investor=investor,
             ).order_by("date")
             if account_ids is not None:
                 transactions = transactions.filter(account_id__in=account_ids)
@@ -949,22 +974,27 @@ class Assets(models.Model):
         Calculate the capital distribution for this asset.
         Includes:
         - Dividends (for stocks/ETFs)
-        - Coupons (for bonds)
-        - ACI (Accrued Interest when buying/selling bonds)
+        - Coupons received (for bonds)
+        - Net of ACI paid at bond acquisition (if any)
         - Taxes (paid on dividends/coupons)
+
+        Note: For bonds, only coupons actually received are counted as capital distribution.
+        ACI paid when buying bonds is netted against coupons. If no coupons received yet, returns zero. # noqa: E501
         """
         total_distributions = 0
 
         # Get dividend and coupon transactions
+        query_date = date
         distribution_transactions = self.transactions.filter(
-            type__in=["Dividend", "Coupon"], date__lte=date, investor=investor
+            type__in=["Dividend", "Coupon"], date__lte=query_date, investor=investor
         )
 
         if account_ids is not None:
             distribution_transactions = distribution_transactions.filter(account_id__in=account_ids)
 
         if start_date is not None:
-            distribution_transactions = distribution_transactions.filter(date__gte=start_date)
+            query_start_date = start_date
+            distribution_transactions = distribution_transactions.filter(date__gte=query_start_date)
 
         # Calculate dividends and coupons
         if distribution_transactions:
@@ -978,26 +1008,32 @@ class Assets(models.Model):
                     if fx_rate:
                         total_distributions += transaction.cash_flow * fx_rate
 
-        # Get transactions with ACI (buy/sell bonds)
-        aci_transactions = self.transactions.filter(
-            aci__isnull=False, date__lte=date, investor=investor
-        )
+        # For bonds: subtract ACI paid at acquisition (negative ACI from Buy transactions)
+        # This nets the ACI paid when buying against the coupons received
+        if self.is_bond:
+            aci_paid_transactions = self.transactions.filter(
+                type="Buy", aci__lt=0, date__lte=query_date, investor=investor
+            )
 
-        if account_ids is not None:
-            aci_transactions = aci_transactions.filter(account_id__in=account_ids)
+            if account_ids is not None:
+                aci_paid_transactions = aci_paid_transactions.filter(account_id__in=account_ids)
 
-        if start_date is not None:
-            aci_transactions = aci_transactions.filter(date__gte=start_date)
+            if start_date is not None:
+                aci_paid_transactions = aci_paid_transactions.filter(date__gte=query_start_date)
 
-        # Add ACI to total distributions
-        if aci_transactions:
-            if currency is None:
-                total_distributions += aci_transactions.aggregate(total=Sum("aci"))["total"] or 0
-            else:
-                for transaction in aci_transactions:
-                    fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
-                    if fx_rate:
-                        total_distributions += transaction.aci * fx_rate
+            # Subtract ACI paid (it's negative, so this reduces distributions)
+            if aci_paid_transactions:
+                if currency is None:
+                    total_distributions += (
+                        aci_paid_transactions.aggregate(total=Sum("aci"))["total"] or 0
+                    )
+                else:
+                    for transaction in aci_paid_transactions:
+                        fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)[
+                            "FX"
+                        ]
+                        if fx_rate:
+                            total_distributions += transaction.aci * fx_rate
 
         # Get tax transactions (typically negative, reducing net distributions)
         tax_transactions = self.transactions.filter(type="Tax", date__lte=date, investor=investor)
@@ -1027,15 +1063,17 @@ class Assets(models.Model):
         Calculate the comission for this asset.
         """
         total_commission = 0
+        query_date = date
         commission_transactions = self.transactions.filter(
-            commission__isnull=False, date__lte=date, investor=investor
+            commission__isnull=False, date__lte=query_date, investor=investor
         )
 
         if account_ids is not None:
             commission_transactions = commission_transactions.filter(account_id__in=account_ids)
 
         if start_date is not None:
-            commission_transactions = commission_transactions.filter(date__gte=start_date)
+            query_start_date = start_date
+            commission_transactions = commission_transactions.filter(date__gte=query_start_date)
 
         if commission_transactions:
             if currency is None:
@@ -1066,7 +1104,7 @@ class Transactions(models.Model):
         max_length=3, choices=CURRENCY_CHOICES, default="USD", null=False, blank=False
     )
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
-    date = models.DateField(db_index=True, null=False)
+    date = TimezoneAwareDateTimeField(db_index=True, null=False)
     quantity = models.DecimalField(max_digits=25, decimal_places=9, null=True, blank=True)
     price = models.DecimalField(
         max_digits=18, decimal_places=9, null=True, blank=True
@@ -1179,7 +1217,7 @@ class Transactions(models.Model):
                 if previous_history:
                     previous_notional = previous_history.notional_per_unit
                 else:
-                    previous_notional = bond_meta.initial_notional or Decimal(1000)
+                    previous_notional = bond_meta.initial_notional
 
                 # Calculate new notional per unit
                 new_notional = previous_notional - notional_per_bond
@@ -1312,7 +1350,7 @@ class Transactions(models.Model):
 
 # Table with non-public asset prices
 class Prices(models.Model):
-    date = models.DateField(null=False)
+    date = TimezoneAwareDateField(null=False)
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name="prices")
     price = models.DecimalField(max_digits=15, decimal_places=6, null=False)
 
@@ -1465,7 +1503,7 @@ class FXTransaction(models.Model):
         CustomUser, on_delete=models.CASCADE, related_name="fx_transactions"
     )
     account = models.ForeignKey(Accounts, on_delete=models.CASCADE, related_name="fx_transactions")
-    date = models.DateField(null=False)
+    date = TimezoneAwareDateTimeField(null=False)
     from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     from_amount = models.DecimalField(max_digits=20, decimal_places=9, null=False)
@@ -1534,8 +1572,8 @@ class InstrumentMetadata(models.Model):
     asset = models.OneToOneField(
         Assets, on_delete=models.CASCADE, related_name="%(class)s_metadata"
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = TimezoneAwareDateTimeField(auto_now_add=True)
+    updated_at = TimezoneAwareDateTimeField(auto_now=True)
 
     class Meta:
         abstract = True
@@ -1547,14 +1585,21 @@ class BondMetadata(InstrumentMetadata):
     """
 
     # Core bond characteristics
-    issue_date = models.DateField(null=True, blank=True, help_text="Bond issue date")
-    maturity_date = models.DateField(null=True, blank=True, help_text="Bond maturity date")
+    issue_date = TimezoneAwareDateField(null=True, blank=True, help_text="Bond issue date")
+    maturity_date = TimezoneAwareDateField(null=True, blank=True, help_text="Bond maturity date")
     initial_notional = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         null=True,
         blank=True,
         help_text="Initial par/face value per bond",
+    )
+    nominal_currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Currency in which the nominal/face value is denominated",
     )
     coupon_rate = models.DecimalField(
         max_digits=8,
@@ -1619,11 +1664,15 @@ class BondMetadata(InstrumentMetadata):
         if currency is None:
             currency = self.asset.currency
 
-        fx_rate = FX.get_rate(self.asset.currency, currency, date)["FX"]
-        logger.debug(f"FX rate for {self.asset.name} at {date}: {fx_rate}")
+        # Use nominal_currency if available, otherwise fall back to asset.currency
+        source_currency = self.nominal_currency or self.asset.currency
+        fx_rate = FX.get_rate(source_currency, currency, date)["FX"]
+        logger.debug(
+            f"FX rate for {self.asset.name} at {date} ({source_currency} to {currency}): {fx_rate}"
+        )
 
         if not self.is_amortizing:
-            return self.initial_notional or Decimal(1000) * fx_rate
+            return self.initial_notional * fx_rate
 
         # Try to get from NotionalHistory first (more efficient and accurate)
         try:
@@ -1675,6 +1724,284 @@ class BondMetadata(InstrumentMetadata):
 
         return current_notional
 
+    def get_current_aci(self, date, currency=None, user=None, force_refresh=False):
+        """
+        Calculate the accrued interest for this bond at a given date.
+
+        Uses the cached coupon schedule from BondCouponSchedule. If schedule is not available,
+        and user is provided, attempts to fetch it from T-Bank API as fallback.
+
+        Args:
+            date: The date for which to calculate ACI
+            currency: Optional currency for FX conversion (defaults to nominal_currency)
+            user: Optional CustomUser to fetch schedule from API if not cached
+            force_refresh: If True, refresh schedule even if it exists (for floating-rate bonds)
+
+        Returns:
+            dict with:
+                - 'aci_amount': Decimal - ACI amount in requested currency per bond
+                - 'aci_days': int - Number of days accrued
+                - 'total_days': int - Total days in coupon period
+                - 'coupon_start': date - Start of current coupon period
+                - 'coupon_end': date - End of current coupon period
+                - 'next_payment': date - Next coupon payment date
+            Returns None if schedule is not available or bond has matured
+        """
+        # Find the relevant coupon period for this date
+        # Get the most recent coupon end date that is >= date
+        try:
+            current_coupon = (
+                BondCouponSchedule.objects.filter(asset=self.asset, coupon_start_date__lte=date)
+                .order_by("-coupon_start_date")
+                .first()
+            )
+
+            # Fallback: fetch schedule if not found and user is provided
+            if not current_coupon and user:
+                logger.info(
+                    f"No coupon schedule found for {self.asset.name}, attempting to fetch from API"
+                )
+                try:
+                    from asgiref.sync import async_to_sync
+
+                    from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+
+                    success = async_to_sync(fetch_and_cache_bond_coupon_schedule)(
+                        self.asset, user, force_refresh=False
+                    )
+
+                    if success:
+                        # Try again after fetching
+                        current_coupon = (
+                            BondCouponSchedule.objects.filter(
+                                asset=self.asset, coupon_start_date__lte=date
+                            )
+                            .order_by("-coupon_start_date")
+                            .first()
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to fetch coupon schedule for {self.asset.name}: {e}")
+
+            # Check if coupon_amount is empty (floating-rate bond) and force_refresh is needed
+            if current_coupon and not current_coupon.coupon_amount and user and force_refresh:
+                logger.info(f"Coupon amount empty for {self.asset.name}, refreshing schedule")
+                try:
+                    from asgiref.sync import async_to_sync
+
+                    from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+
+                    async_to_sync(fetch_and_cache_bond_coupon_schedule)(
+                        self.asset, user, force_refresh=True
+                    )
+
+                    # Reload current coupon
+                    current_coupon = (
+                        BondCouponSchedule.objects.filter(
+                            asset=self.asset, coupon_start_date__lte=date
+                        )
+                        .order_by("-coupon_start_date")
+                        .first()
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to refresh coupon schedule for {self.asset.name}: {e}")
+
+            if not current_coupon:
+                logger.warning(
+                    f"No coupon schedule found for {self.asset.name} at {date}. "
+                    f"Provide 'user' parameter to fetch from API."
+                )
+                return None
+
+            # Check if date is past bond maturity
+            if self.maturity_date and date >= self.maturity_date:
+                logger.debug(f"Bond {self.asset.name} has matured, no ACI")
+                return None
+
+            # Calculate days in period
+            coupon_start = current_coupon.coupon_start_date
+            coupon_end = current_coupon.coupon_end_date
+
+            # Days accrued: from start to current date (inclusive of start, exclusive of end)
+            # Standard day count convention: actual/actual for most bonds
+            days_accrued = (date - coupon_start).days
+            total_days = (coupon_end - coupon_start).days
+
+            # Don't allow negative days (if date is before coupon start)
+            if days_accrued < 0:
+                days_accrued = 0
+
+            # Calculate ACI
+            if current_coupon.coupon_amount and total_days > 0:
+                # Use the exact coupon amount from schedule
+                aci_amount = (
+                    Decimal(current_coupon.coupon_amount)
+                    * Decimal(days_accrued)
+                    / Decimal(total_days)
+                )
+            elif self.coupon_rate and self.initial_notional and total_days > 0:
+                # Fallback: calculate from coupon rate and notional
+                # Annual coupon = notional * rate / 100
+                # Period coupon = annual / frequency
+                if self.coupon_frequency:
+                    period_coupon = (
+                        self.initial_notional
+                        * self.coupon_rate
+                        / Decimal(100)
+                        / self.coupon_frequency
+                    )
+                    aci_amount = period_coupon * Decimal(days_accrued) / Decimal(total_days)
+                else:
+                    logger.warning(
+                        f"No coupon_frequency for {self.asset.name}, cannot calculate ACI"
+                    )
+                    return None
+            else:
+                logger.warning(
+                    f"Insufficient data to calculate ACI for {self.asset.name}: "
+                    f"coupon_amount={current_coupon.coupon_amount}, "
+                    f"coupon_rate={self.coupon_rate}, "
+                    f"initial_notional={self.initial_notional}"
+                )
+
+                # Fallback: Try to fetch ACI from MICEX for floating-rate bonds
+                if self.asset.secid:
+                    logger.info(
+                        f"Attempting to fetch ACI from MICEX for floating-rate bond "
+                        f"{self.asset.name} (secid: {self.asset.secid})"
+                    )
+                    from core.micex_aci_utils import fetch_aci_from_micex
+
+                    micex_aci = fetch_aci_from_micex(self.asset.secid, date)
+
+                    if micex_aci:
+                        # Got ACI from MICEX, convert currency if needed
+                        aci_amount = micex_aci["aci_amount"]
+                        micex_currency = micex_aci["currency"]
+
+                        if currency and currency != micex_currency:
+                            fx_rate = FX.get_rate(micex_currency, currency, date)["FX"]
+                            aci_amount *= fx_rate
+                            result_currency = currency
+                        else:
+                            result_currency = micex_currency
+
+                        logger.info(
+                            f"Successfully retrieved ACI from MICEX for {self.asset.name}: "
+                            f"{aci_amount} {result_currency}"
+                        )
+
+                        return {
+                            "aci_amount": round(aci_amount, 2),
+                            "aci_days": days_accrued,
+                            "total_days": total_days,
+                            "coupon_start": coupon_start,
+                            "coupon_end": coupon_end,
+                            "next_payment": current_coupon.payment_date,
+                            "currency": result_currency,
+                            "source": "MICEX",  # Indicate data source
+                        }
+                    else:
+                        logger.warning(
+                            f"Failed to fetch ACI from MICEX for {self.asset.name}, "
+                            f"returning None"
+                        )
+
+                return None
+
+            # Convert currency if requested
+            if currency and currency != (self.nominal_currency or self.asset.currency):
+                source_currency = self.nominal_currency or self.asset.currency
+                fx_rate = FX.get_rate(source_currency, currency, date)["FX"]
+                aci_amount *= fx_rate
+            else:
+                currency = self.nominal_currency or self.asset.currency
+
+            return {
+                "aci_amount": round(aci_amount, 2),
+                "aci_days": days_accrued,
+                "total_days": total_days,
+                "coupon_start": coupon_start,
+                "coupon_end": coupon_end,
+                "next_payment": current_coupon.payment_date,
+                "currency": currency,
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating ACI for {self.asset.name}: {e}", exc_info=True)
+            return None
+
+    def get_total_aci_for_position(
+        self, date, investor, currency=None, account_ids=None, user=None
+    ):
+        """
+        Calculate total ACI for the entire bond position.
+        Returns current ACI per bond * position, net of ACI paid at acquisition in the current coupon period. # noqa: E501
+
+        This shows the "net accrued interest" value:
+        - Current ACI per bond (what would be received if sold today)
+        - Multiplied by position quantity
+        - Minus ACI paid when initially acquiring bonds in this coupon period
+
+        Args:
+            date: The date for which to calculate total ACI
+            investor: The investor whose position to calculate
+            currency: Optional currency for conversion
+            account_ids: Optional account filter
+            user: Optional user for API fallback
+
+        Returns:
+            Decimal: Total ACI amount for the position in specified currency
+        """
+        # Get current ACI per bond
+        aci_data = self.get_current_aci(date, currency, user)
+        if not aci_data:
+            return Decimal(0)
+
+        # Get current position
+        position_qty = self.asset.position(date, investor, account_ids)
+        if not position_qty or position_qty == 0:
+            return Decimal(0)
+
+        # Total ACI for position
+        total_aci = aci_data["aci_amount"] * Decimal(position_qty)
+
+        # Subtract ACI paid when buying in the current coupon period
+        # (to show net accrued interest since acquisition)
+        current_coupon_start = aci_data.get("coupon_start")
+        if current_coupon_start:
+            query_date = date
+            query_coupon_start = current_coupon_start
+
+            aci_paid_in_period = self.asset.transactions.filter(
+                type="Buy",
+                aci__lt=0,
+                date__gte=query_coupon_start,
+                date__lte=query_date,
+                investor=investor,
+            )
+
+            if account_ids is not None:
+                if isinstance(account_ids, int):
+                    account_ids = [account_ids]
+                aci_paid_in_period = aci_paid_in_period.filter(account_id__in=account_ids)
+
+            # Sum ACI paid (negative values)
+            if aci_paid_in_period.exists():
+                target_currency = currency or self.nominal_currency or self.asset.currency
+                aci_paid_total = Decimal(0)
+
+                for txn in aci_paid_in_period:
+                    # Convert date to ensure proper comparison
+                    txn_date = txn.date.date() if isinstance(txn.date, datetime) else txn.date
+                    fx_rate = FX.get_rate(txn.currency, target_currency, txn_date)["FX"]
+                    if fx_rate:
+                        aci_paid_total += txn.aci * Decimal(fx_rate)
+
+                # Add the negative ACI (subtract from total)
+                total_aci += aci_paid_total
+
+        return round(total_aci, 2)
+
 
 class NotionalHistory(models.Model):
     """
@@ -1683,7 +2010,7 @@ class NotionalHistory(models.Model):
     """
 
     asset = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name="notional_history")
-    date = models.DateField(
+    date = TimezoneAwareDateField(
         null=False, db_index=True, help_text="Date when the notional change occurred"
     )
     notional_per_unit = models.DecimalField(
@@ -1723,6 +2050,55 @@ class NotionalHistory(models.Model):
         return f"{self.asset.name}: Notional={self.notional_per_unit} on {self.date}"
 
 
+class BondCouponSchedule(models.Model):
+    """
+    Cache bond coupon schedule data from T-Bank API.
+    Used for calculating accrued interest at any given date.
+    """
+
+    asset = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name="coupon_schedule")
+    coupon_number = models.IntegerField(help_text="Sequential coupon number")
+    coupon_start_date = TimezoneAwareDateField(help_text="Start date of the coupon period")
+    coupon_end_date = TimezoneAwareDateField(
+        help_text="End date of the coupon period (accrual cutoff)"
+    )
+    payment_date = TimezoneAwareDateField(help_text="Actual payment date for the coupon")
+    coupon_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Coupon payment amount per bond in nominal currency",
+    )
+    coupon_currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Currency of the coupon payment",
+    )
+    coupon_type = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        help_text="Coupon type (FIXED, FLOATING, etc.)",
+    )
+    last_updated = TimezoneAwareDateTimeField(
+        auto_now=True, help_text="When this schedule was last fetched from API"
+    )
+
+    class Meta:
+        ordering = ["asset", "coupon_number"]
+        indexes = [
+            models.Index(fields=["asset", "coupon_end_date"]),
+            models.Index(fields=["asset", "payment_date"]),
+        ]
+        unique_together = [["asset", "coupon_number"]]
+
+    def __str__(self):
+        return f"{self.asset.name} - Coupon #{self.coupon_number} ({self.payment_date})"
+
+
 class OptionMetadata(InstrumentMetadata):
     """
     Option-specific metadata. To be implemented in future phases.
@@ -1731,7 +2107,9 @@ class OptionMetadata(InstrumentMetadata):
     strike_price = models.DecimalField(
         max_digits=18, decimal_places=6, null=True, blank=True, help_text="Strike price"
     )
-    expiration_date = models.DateField(null=True, blank=True, help_text="Option expiration date")
+    expiration_date = TimezoneAwareDateField(
+        null=True, blank=True, help_text="Option expiration date"
+    )
     option_type = models.CharField(
         max_length=10,
         choices=[("CALL", "Call"), ("PUT", "Put")],
@@ -1764,7 +2142,9 @@ class FutureMetadata(InstrumentMetadata):
     Futures-specific metadata. To be implemented in future phases.
     """
 
-    expiration_date = models.DateField(null=True, blank=True, help_text="Futures expiration date")
+    expiration_date = TimezoneAwareDateField(
+        null=True, blank=True, help_text="Futures expiration date"
+    )
     underlying_asset = models.ForeignKey(
         Assets,
         on_delete=models.SET_NULL,

@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0015_annualperformance'),
+        ("common", "0015_annualperformance"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='annualperformance',
-            name='restricted',
+            model_name="annualperformance",
+            name="restricted",
             field=models.BooleanField(default=False),
         ),
     ]

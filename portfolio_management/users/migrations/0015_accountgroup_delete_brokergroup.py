@@ -6,29 +6,43 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0054_remove_annualperformance_broker_and_more'),
-        ('users', '0014_alter_tinkoffapitoken_unique_together_and_more'),
+        ("common", "0054_remove_annualperformance_broker_and_more"),
+        ("users", "0014_alter_tinkoffapitoken_unique_together_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='AccountGroup',
+            name="AccountGroup",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('broker_accounts', models.ManyToManyField(related_name='groups', to='common.brokeraccounts')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='account_groups', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("name", models.CharField(max_length=50)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "broker_accounts",
+                    models.ManyToManyField(related_name="groups", to="common.brokeraccounts"),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="account_groups",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['name'],
-                'unique_together': {('user', 'name')},
+                "ordering": ["name"],
+                "unique_together": {("user", "name")},
             },
         ),
         migrations.DeleteModel(
-            name='BrokerGroup',
+            name="BrokerGroup",
         ),
     ]

@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0041_remove_prices_unique_security_price_entry_and_more'),
+        ("common", "0041_remove_prices_unique_security_price_entry_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='fx',
-            name='date',
+            model_name="fx",
+            name="date",
             field=models.DateField(unique=True),
         ),
     ]

@@ -30,9 +30,11 @@ logger = logging.getLogger(__name__)
 @permission_classes([IsAuthenticated])
 def get_dashboard_summary_api(request):
     user = request.user
-    effective_current_date = datetime.strptime(
-        request.session["effective_current_date"], "%Y-%m-%d"
-    ).date()
+    # Use JWT middleware instead of session
+    effective_current_date_str = getattr(
+        request, "effective_current_date", datetime.now().date().isoformat()
+    )
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -52,11 +54,12 @@ def get_dashboard_summary_api(request):
     summary["Invested"] = Decimal(0)
     summary["Cash-out"] = Decimal(0)
 
+    query_effective_current_date = effective_current_date
     transactions = (
         Transactions.objects.filter(
             investor=user,
             account_id__in=selected_account_ids,
-            date__lte=effective_current_date,
+            date__lte=query_effective_current_date,
             type__in=["Cash in", "Cash out"],
         )
         .values("currency", "type", "cash_flow", "date")
@@ -99,9 +102,11 @@ def get_dashboard_summary_api(request):
 @permission_classes([IsAuthenticated])
 def get_dashboard_breakdown_api(request):
     user = request.user
-    effective_current_date = datetime.strptime(
-        request.session["effective_current_date"], "%Y-%m-%d"
-    ).date()
+    # Use JWT middleware instead of session
+    effective_current_date_str = getattr(
+        request, "effective_current_date", datetime.now().date().isoformat()
+    )
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -150,9 +155,10 @@ def get_dashboard_breakdown_api(request):
 def get_dashboard_summary_over_time_api(request):
     try:
         user = request.user
-        effective_current_date = datetime.strptime(
-            request.session["effective_current_date"], "%Y-%m-%d"
-        ).date()
+        effective_current_date_str = getattr(
+            request, "effective_current_date", datetime.now().date().isoformat()
+        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
         currency_target = user.default_currency
         selected_account_ids = get_selected_account_ids(
@@ -304,11 +310,11 @@ def api_nav_chart_data(request):
             )
 
         if not to_date:
-            to_date = (
-                datetime.strptime(request.session["effective_current_date"], "%Y-%m-%d")
-                .date()
-                .isoformat()
+            # Use JWT middleware instead of session
+            effective_current_date_str = getattr(
+                request, "effective_current_date", datetime.now().date().isoformat()
             )
+            to_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date().isoformat()
 
         # from_date can be None, it will be handled in get_nav_chart_data
         chart_data = get_nav_chart_data(

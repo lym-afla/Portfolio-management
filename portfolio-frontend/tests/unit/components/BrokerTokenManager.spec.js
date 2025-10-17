@@ -33,7 +33,7 @@ describe('BrokerTokenManager', () => {
   beforeEach(() => {
     // Reset API mocks
     jest.clearAllMocks()
-    
+
     // Mock API responses
     getAvailableBrokers.mockResolvedValue([
       { id: 1, name: 'Tinkoff Broker' },
@@ -74,7 +74,7 @@ describe('BrokerTokenManager', () => {
   it('loads brokers on mount', async () => {
     // Wait for mounted hook to complete
     await wrapper.vm.$nextTick()
-    
+
     // Verify that getAvailableBrokers was called
     expect(getAvailableBrokers).toHaveBeenCalled()
     expect(getBrokerTokens).toHaveBeenCalled()
@@ -185,4 +185,4 @@ describe('BrokerTokenManager', () => {
     expect(errorSpy).toHaveBeenCalled()
     expect(wrapper.vm.isSaving).toBe(false)
   })
-}) 
+})

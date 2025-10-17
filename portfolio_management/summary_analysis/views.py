@@ -21,10 +21,10 @@ class SummaryViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["GET"])
     def summary_data(self, request):
         user = request.user
-        effective_current_date = datetime.strptime(
-            request.session.get("effective_current_date", datetime.now().strftime("%Y-%m-%d")),
-            "%Y-%m-%d",
-        ).date()
+        effective_current_date_str = getattr(
+            request, "effective_current_date", datetime.now().date().isoformat()
+        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
         currency_target = user.default_currency
         number_of_digits = user.digits
 
@@ -51,10 +51,10 @@ class SummaryViewSet(viewsets.ViewSet):
     def portfolio_breakdown(self, request):
         user = request.user
         timespan = request.GET.get("year")
-        effective_current_date = datetime.strptime(
-            request.session.get("effective_current_date", datetime.now().strftime("%Y-%m-%d")),
-            "%Y-%m-%d",
-        ).date()
+        effective_current_date_str = getattr(
+            request, "effective_current_date", datetime.now().date().isoformat()
+        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
         currency_target = user.default_currency
         number_of_digits = user.digits
 
@@ -336,14 +336,16 @@ class SummaryViewSet(viewsets.ViewSet):
                 ),
                 "total_percent": format_percentage(
                     (
-                        values["unrealized"]
-                        + values["realized"]
-                        + values["capital_distribution"]
-                        - values["commission"]
-                    )
-                    / values["cost"]
-                    if values["cost"]
-                    else 0,
+                        (
+                            values["unrealized"]
+                            + values["realized"]
+                            + values["capital_distribution"]
+                            - values["commission"]
+                        )
+                        / values["cost"]
+                        if values["cost"]
+                        else 0
+                    ),
                     digits=1,
                 ),
             }
@@ -384,14 +386,16 @@ class SummaryViewSet(viewsets.ViewSet):
             ),
             "total_percent": format_percentage(
                 (
-                    totals["unrealized"]
-                    + totals["realized"]
-                    + totals["capital_distribution"]
-                    - totals["commission"]
-                )
-                / totals["cost"]
-                if totals["cost"]
-                else 0,
+                    (
+                        totals["unrealized"]
+                        + totals["realized"]
+                        + totals["capital_distribution"]
+                        - totals["commission"]
+                    )
+                    / totals["cost"]
+                    if totals["cost"]
+                    else 0
+                ),
                 digits=1,
             ),
         }

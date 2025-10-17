@@ -32,9 +32,11 @@ def get_transactions_table_api(request):
     sort_by = data.get("sortBy", {})
 
     user = request.user
-    effective_current_date = datetime.strptime(
-        request.session["effective_current_date"], "%Y-%m-%d"
-    ).date()
+    # Use JWT middleware instead of session
+    effective_current_date_str = getattr(
+        request, "effective_current_date", date.today().isoformat()
+    )
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
     number_of_digits = user.digits
     selected_account_ids = get_selected_account_ids(

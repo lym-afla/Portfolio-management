@@ -1,6 +1,7 @@
 AW-portolio-management/
 X1-portfolio-management/
 .venv/
+portfolio_management/venv
 
 portfolio_management/dashboard/__pycache__/
 portfolio_management/dashboard/migrations/__pycache__/

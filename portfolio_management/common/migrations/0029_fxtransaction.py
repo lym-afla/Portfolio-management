@@ -6,27 +6,72 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0028_alter_annualperformance_currency_and_more'),
+        ("common", "0028_alter_annualperformance_currency_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='FXTransaction',
+            name="FXTransaction",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('date', models.DateField()),
-                ('from_currency', models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'SF')], max_length=3)),
-                ('to_currency', models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'SF')], max_length=3)),
-                ('from_amount', models.DecimalField(decimal_places=6, max_digits=15)),
-                ('to_amount', models.DecimalField(decimal_places=6, max_digits=15)),
-                ('exchange_rate', models.DecimalField(decimal_places=6, max_digits=15)),
-                ('commission', models.DecimalField(blank=True, decimal_places=6, max_digits=15, null=True)),
-                ('comment', models.TextField(blank=True, null=True)),
-                ('broker', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='fx_transactions', to='common.brokers')),
-                ('investor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='fx_transactions', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("date", models.DateField()),
+                (
+                    "from_currency",
+                    models.CharField(
+                        choices=[
+                            ("USD", "$"),
+                            ("EUR", "€"),
+                            ("GBP", "£"),
+                            ("RUB", "₽"),
+                            ("CHF", "SF"),
+                        ],
+                        max_length=3,
+                    ),
+                ),
+                (
+                    "to_currency",
+                    models.CharField(
+                        choices=[
+                            ("USD", "$"),
+                            ("EUR", "€"),
+                            ("GBP", "£"),
+                            ("RUB", "₽"),
+                            ("CHF", "SF"),
+                        ],
+                        max_length=3,
+                    ),
+                ),
+                ("from_amount", models.DecimalField(decimal_places=6, max_digits=15)),
+                ("to_amount", models.DecimalField(decimal_places=6, max_digits=15)),
+                ("exchange_rate", models.DecimalField(decimal_places=6, max_digits=15)),
+                (
+                    "commission",
+                    models.DecimalField(blank=True, decimal_places=6, max_digits=15, null=True),
+                ),
+                ("comment", models.TextField(blank=True, null=True)),
+                (
+                    "broker",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="fx_transactions",
+                        to="common.brokers",
+                    ),
+                ),
+                (
+                    "investor",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="fx_transactions",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
     ]

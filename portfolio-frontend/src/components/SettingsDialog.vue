@@ -135,10 +135,54 @@ export default {
       try {
         clearErrors()
         isUpdating.value = true
+
+        // Enhanced authentication debugging before making API call
+        const accessToken = localStorage.getItem('accessToken')
+        const isAuthenticated = store.getters.isAuthenticated
+
+        logger.log(
+          'SettingsDialog',
+          '[SettingsDialog] Pre-API authentication check:'
+        )
+        logger.log('SettingsDialog', `- Has access token: ${!!accessToken}`)
+        logger.log(
+          'SettingsDialog',
+          `- Is authenticated in store: ${isAuthenticated}`
+        )
+        logger.log(
+          'SettingsDialog',
+          `- User data: ${store.state.user ? 'Present' : 'Missing'}`
+        )
+
+        if (!accessToken) {
+          logger.error(
+            'SettingsDialog',
+            '[SettingsDialog] ❌ No access token available'
+          )
+          console.error(
+            '[AuthDebugger] ❌ Settings update attempted without access token'
+          )
+        }
+        if (!isAuthenticated) {
+          logger.error(
+            'SettingsDialog',
+            '[SettingsDialog] ❌ Not authenticated in store'
+          )
+          console.error(
+            '[AuthDebugger] ❌ Settings update attempted by unauthenticated user'
+          )
+        }
+
         logger.log('Unknown', '[SettingsDialog] Sending formData:', formData)
+        console.log('[AuthDebugger] 🔄 Updating dashboard settings...')
+
         const response = await updateDashboardSettings(formData)
         if (response.success) {
           logger.log('Unknown', 'Settings updated successfully:', response)
+          console.log(
+            '[AuthDebugger] ✅ Settings updated successfully, new table_date:',
+            response.table_date
+          )
 
           // Update store with new currency
           const selectedCurrencyOption = currencyChoices.value.find(

@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0012_remove_interactivebrokersapitoken_is_active_and_more'),
+        ("users", "0012_remove_interactivebrokersapitoken_is_active_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tinkoffapitoken',
-            name='is_active',
+            model_name="tinkoffapitoken",
+            name="is_active",
             field=models.BooleanField(default=True),
         ),
     ]

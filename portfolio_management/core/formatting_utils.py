@@ -1,4 +1,4 @@
-import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Union
 
@@ -68,11 +68,11 @@ def format_value(
     if value == NOT_RELEVANT:
         return value
     if isinstance(value, dict):
-        return {k: format_value(v, k, currency, digits, instrument_type) for k, v in value.items()}
+        return {k: format_value(v, k, currency, digits) for k, v in value.items()}
     if "currency" in key:
-        return currency_format(value=None, currency=value, instrument_type=instrument_type)
-    if "date" in key or key == "first_investment" and isinstance(value, datetime.date):
-        if isinstance(value, datetime.date):
+        return currency_format(value=None, currency=value)
+    if "date" in key or key == "first_investment":
+        if isinstance(value, (date, datetime)):
             return value.strftime("%d-%b-%y")
         else:
             return value
@@ -82,29 +82,35 @@ def format_value(
     ]:
         return format_percentage(value, digits=1)
     elif key in ["current_position", "open_position", "quantity"]:
-        return currency_format(value, currency=None, digits=0, instrument_type=instrument_type)
+        return currency_format(value, currency=None, digits=0)
     elif key in ["id", "no_of_securities", "no_of_accounts"] or "id" in key:
         return value
     elif key == "exchange_rate":
-        return currency_format(value, currency=None, digits=4, instrument_type=instrument_type)
+        return currency_format(value, currency=None, digits=4)
     elif (
-        key in ["entry_price", "current_price"]
+        key in ["entry_price", "current_price", "buy_in_price", "current_price_pct"]
         and instrument_type
         and instrument_type.lower() == "bond"
     ):
         # Bond prices are stored as percentages (100 = 100%), format them as such
-        return format_bond_price(value, digits)
+        return format_bond_price(value, 2)
+    # Bond-specific formatting rules
+    elif key in ["coupon_frequency", "is_amortizing", "aci_days", "total_days"]:
+        # Coupon frequency is a number (times per year), not currency
+        return value if value is not None else None
+    elif key in ["coupon_rate", "ytm"]:
+        # Coupon rate as percentage
+        return f"{float(value):.2f}%" if value is not None else None
+    elif key == "aci_amount":
+        return currency_format(value, currency, digits=2)
     elif isinstance(value, (Decimal, float, int)):
-        return currency_format(value, currency, digits, instrument_type)
+        return currency_format(value, currency, digits)
     else:
         return value
 
 
 def currency_format(
-    value: Union[Decimal, float, int, None] = None,
-    currency: str = None,
-    digits: int = 2,
-    instrument_type: str = None,
+    value: Union[Decimal, float, int, None] = None, currency: str = None, digits: int = 2
 ) -> str:
     """
     Format value as currency or return currency symbol.
@@ -113,7 +119,6 @@ def currency_format(
     :param value: Value to be formatted
     :param currency: Currency code
     :param digits: Number of digits for rounding
-    :param instrument_type: Type of instrument (for special formatting)
     :return: Formatted currency string or symbol
     """
     if currency is None:

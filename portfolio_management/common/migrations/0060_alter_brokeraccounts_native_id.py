@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0059_remove_annualperformance_unique_annual_performance_and_more'),
+        ("common", "0059_remove_annualperformance_unique_annual_performance_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='brokeraccounts',
-            name='native_id',
-            field=models.CharField(blank=True, help_text="Native account ID from broker's system", max_length=100, null=True),
+            model_name="brokeraccounts",
+            name="native_id",
+            field=models.CharField(
+                blank=True,
+                help_text="Native account ID from broker's system",
+                max_length=100,
+                null=True,
+            ),
         ),
     ]

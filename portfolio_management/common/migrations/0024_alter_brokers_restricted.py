@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0023_brokers_restricted'),
+        ("common", "0023_brokers_restricted"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='brokers',
-            name='restricted',
+            model_name="brokers",
+            name="restricted",
             field=models.BooleanField(default=False),
         ),
     ]

@@ -5,33 +5,32 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0043_alter_fx_date'),
+        ("common", "0043_alter_fx_date"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='fx',
-            options={'ordering': ['-date']},
+            name="fx",
+            options={"ordering": ["-date"]},
         ),
         migrations.AlterUniqueTogether(
-            name='fx',
+            name="fx",
             unique_together=set(),
         ),
         migrations.AddField(
-            model_name='fx',
-            name='investors',
-            field=models.ManyToManyField(related_name='fx_rates', to=settings.AUTH_USER_MODEL),
+            model_name="fx",
+            name="investors",
+            field=models.ManyToManyField(related_name="fx_rates", to=settings.AUTH_USER_MODEL),
         ),
         migrations.AlterField(
-            model_name='fx',
-            name='date',
+            model_name="fx",
+            name="date",
             field=models.DateField(unique=True),
         ),
         migrations.RemoveField(
-            model_name='fx',
-            name='investor',
+            model_name="fx",
+            name="investor",
         ),
     ]

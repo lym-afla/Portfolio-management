@@ -33,11 +33,10 @@ async def tinkoff_api():
 
 @pytest.mark.asyncio
 async def test_connect_success(tinkoff_api, mock_user):
-    with patch(
-        "core.broker_api_utils.get_user_token", new_callable=AsyncMock
-    ) as mock_get_token, patch(
-        "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
-    ) as mock_verify:
+    with (
+        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
+    ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = True
 
@@ -51,11 +50,10 @@ async def test_connect_success(tinkoff_api, mock_user):
 
 @pytest.mark.asyncio
 async def test_connect_invalid_token(tinkoff_api, mock_user):
-    with patch(
-        "core.broker_api_utils.get_user_token", new_callable=AsyncMock
-    ) as mock_get_token, patch(
-        "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
-    ) as mock_verify:
+    with (
+        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
+    ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = False
 
@@ -181,9 +179,12 @@ async def test_get_transactions_pagination(tinkoff_api, mock_user, mock_account)
     mock_response2.items = [mock_operation2]
     mock_response2.has_next = False
 
-    with patch.object(tinkoff_api, "client") as mock_client, patch(
-        "core.broker_api_utils.map_tinkoff_operation_to_transaction", new_callable=AsyncMock
-    ) as mock_map:
+    with (
+        patch.object(tinkoff_api, "client") as mock_client,
+        patch(
+            "core.broker_api_utils.map_tinkoff_operation_to_transaction", new_callable=AsyncMock
+        ) as mock_map,
+    ):
         # Make get_operations_by_cursor an AsyncMock with side_effect
         mock_client.operations.get_operations_by_cursor = AsyncMock(
             side_effect=[mock_response1, mock_response2]

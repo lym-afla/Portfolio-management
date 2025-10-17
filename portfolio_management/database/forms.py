@@ -18,6 +18,13 @@ class SecurityForm(forms.ModelForm):
         label="Initial notional",
         help_text="Initial par/face value per bond",
     )
+    nominal_currency = forms.ChoiceField(
+        required=False,
+        choices=[("", "---")] + list(CURRENCY_CHOICES),
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Nominal currency",
+        help_text="Currency in which the nominal/face value is denominated",
+    )
     issue_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
@@ -84,6 +91,7 @@ class SecurityForm(forms.ModelForm):
             "fund_fee",
             # Bond metadata fields (shown only for bonds)
             "initial_notional",
+            "nominal_currency",
             "issue_date",
             "maturity_date",
             "coupon_rate",
@@ -137,6 +145,7 @@ class SecurityForm(forms.ModelForm):
             try:
                 bond_meta = self.instance.bondmetadata_metadata
                 self.fields["initial_notional"].initial = bond_meta.initial_notional
+                self.fields["nominal_currency"].initial = bond_meta.nominal_currency
                 self.fields["issue_date"].initial = bond_meta.issue_date
                 self.fields["maturity_date"].initial = bond_meta.maturity_date
                 self.fields["coupon_rate"].initial = bond_meta.coupon_rate
@@ -185,6 +194,7 @@ class SecurityForm(forms.ModelForm):
         if asset.type == "Bond":
             bond_data = {
                 "initial_notional": self.cleaned_data.get("initial_notional"),
+                "nominal_currency": self.cleaned_data.get("nominal_currency"),
                 "issue_date": self.cleaned_data.get("issue_date"),
                 "maturity_date": self.cleaned_data.get("maturity_date"),
                 "coupon_rate": self.cleaned_data.get("coupon_rate"),

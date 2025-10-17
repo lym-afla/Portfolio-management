@@ -4,20 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0055_alter_brokers_options_remove_brokeraccounts_investor_and_more'),
+        ("common", "0055_alter_brokers_options_remove_brokeraccounts_investor_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='brokers',
-            name='created_at',
+            model_name="brokers",
+            name="created_at",
             field=models.DateTimeField(auto_now_add=True),
         ),
         migrations.AlterField(
-            model_name='brokers',
-            name='updated_at',
+            model_name="brokers",
+            name="updated_at",
             field=models.DateTimeField(auto_now=True),
         ),
     ]

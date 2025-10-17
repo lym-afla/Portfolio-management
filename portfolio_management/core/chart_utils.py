@@ -93,9 +93,12 @@ def get_nav_chart_data(user_id, account_ids, frequency, from_date, to_date, curr
             tuple(account_ids),
             d,
             currency,
-            tuple([breakdown])
-            if breakdown not in ["none", "value_contributions", "value_contributions_cumulative"]
-            else (),
+            (
+                tuple([breakdown])
+                if breakdown
+                not in ["none", "value_contributions", "value_contributions_cumulative"]
+                else ()
+            ),
         )
         NAV = NAV_data["Total NAV"] / 1000
 

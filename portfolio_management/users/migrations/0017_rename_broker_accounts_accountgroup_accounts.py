@@ -4,15 +4,14 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('users', '0016_remove_customuser_custom_broker_accounts_and_more'),
+        ("users", "0016_remove_customuser_custom_broker_accounts_and_more"),
     ]
 
     operations = [
         migrations.RenameField(
-            model_name='accountgroup',
-            old_name='broker_accounts',
-            new_name='accounts',
+            model_name="accountgroup",
+            old_name="broker_accounts",
+            new_name="accounts",
         ),
     ]

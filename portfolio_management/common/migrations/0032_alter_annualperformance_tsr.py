@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0031_alter_brokers_name'),
+        ("common", "0031_alter_brokers_name"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='annualperformance',
-            name='tsr',
+            model_name="annualperformance",
+            name="tsr",
             field=models.CharField(max_length=10),
         ),
     ]

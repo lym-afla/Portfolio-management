@@ -10,6 +10,9 @@ import store from './store'
 import './assets/fonts.css'
 import './plugins/vee-validate'
 import logger from './utils/logger'
+import './utils/authDebugConsole'
+import authDebug from './utils/authDebug'
+import './utils/axiosDebug'
 
 const vuetify = createVuetify({
   components,
@@ -49,9 +52,13 @@ app.use(vuetify)
 app.use(store)
 app.use(router)
 
-// Make logger available globally for debugging in development
+// Make debugging tools available globally for debugging in development
 if (process.env.NODE_ENV !== 'production') {
   window.$logger = logger
+  window.$authDebug = authDebug
+  import('./utils/axiosDebug').then((module) => {
+    window.$debugAxios = module.debugAxiosConfiguration
+  })
 }
 
 app.mount('#app')

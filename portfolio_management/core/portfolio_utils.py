@@ -253,7 +253,12 @@ def IRR(
 
         if asset_id is not None:
             first_transaction = transactions.order_by("date").first()
-            first_transaction_quantity = first_transaction.quantity if first_transaction else 0
+            # Handle case where quantity might be None
+            first_transaction_quantity = (
+                first_transaction.quantity
+                if first_transaction and first_transaction.quantity is not None
+                else 0
+            )
             if (start_portfolio_value < 0) or (
                 start_portfolio_value == 0 and first_transaction_quantity < 0
             ):
@@ -272,7 +277,30 @@ def IRR(
         )
         transaction_dates.append(transaction.date)
 
-    if not transactions.filter(date=date).exists():
+    # Check if there are any transactions on the same date
+    # Use date range for datetime field compatibility (SQLite friendly)
+    from django.utils import timezone
+
+    if isinstance(date, datetime.datetime):
+        date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        date_end = date_start + timedelta(days=1)
+    else:
+        # Create timezone-aware datetime for comparison
+        if timezone.is_aware(datetime.datetime.min.time()):
+            date_start = datetime.datetime.combine(date, datetime.datetime.min.time())
+        else:
+            # Create timezone-aware datetime at midnight
+            date_start = timezone.make_aware(
+                datetime.datetime.combine(date, datetime.datetime.min.time())
+            )
+        date_end = date_start + timedelta(days=1)
+
+        # Make timezone-aware if USE_TZ is enabled
+        if timezone.is_naive(date_start):
+            date_start = timezone.make_aware(date_start)
+            date_end = timezone.make_aware(date_end)
+
+    if not transactions.filter(date__gte=date_start, date__lt=date_end).exists():
         cash_flows.append(portfolio_value)
         transaction_dates.append(date)
     else:

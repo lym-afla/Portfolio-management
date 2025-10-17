@@ -4,35 +4,34 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0005_fx_investor'),
+        ("common", "0005_fx_investor"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='fx',
-            name='CHFGBP',
+            model_name="fx",
+            name="CHFGBP",
             field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
         ),
         migrations.AlterField(
-            model_name='fx',
-            name='PLNUSD',
+            model_name="fx",
+            name="PLNUSD",
             field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
         ),
         migrations.AlterField(
-            model_name='fx',
-            name='RUBUSD',
+            model_name="fx",
+            name="RUBUSD",
             field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
         ),
         migrations.AlterField(
-            model_name='fx',
-            name='USDEUR',
+            model_name="fx",
+            name="USDEUR",
             field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
         ),
         migrations.AlterField(
-            model_name='fx',
-            name='USDGBP',
+            model_name="fx",
+            name="USDGBP",
             field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
         ),
     ]

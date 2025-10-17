@@ -4,14 +4,13 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0056_alter_brokers_created_at_alter_brokers_updated_at'),
+        ("common", "0056_alter_brokers_created_at_alter_brokers_updated_at"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='brokeraccounts',
-            name='securities',
+            model_name="brokeraccounts",
+            name="securities",
         ),
     ]

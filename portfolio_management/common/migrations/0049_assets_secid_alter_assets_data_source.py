@@ -4,20 +4,29 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0048_alter_assets_name'),
+        ("common", "0048_alter_assets_name"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='assets',
-            name='secid',
+            model_name="assets",
+            name="secid",
             field=models.CharField(blank=True, max_length=10, null=True),
         ),
         migrations.AlterField(
-            model_name='assets',
-            name='data_source',
-            field=models.CharField(blank=True, choices=[('', 'None'), ('FT', 'Financial Times'), ('YAHOO', 'Yahoo Finance'), ('MICEX', 'MICEX')], max_length=10, null=True),
+            model_name="assets",
+            name="data_source",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("", "None"),
+                    ("FT", "Financial Times"),
+                    ("YAHOO", "Yahoo Finance"),
+                    ("MICEX", "MICEX"),
+                ],
+                max_length=10,
+                null=True,
+            ),
         ),
     ]

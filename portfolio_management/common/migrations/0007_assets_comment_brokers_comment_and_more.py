@@ -4,25 +4,33 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0006_alter_fx_chfgbp_alter_fx_plnusd_alter_fx_rubusd_and_more'),
+        ("common", "0006_alter_fx_chfgbp_alter_fx_plnusd_alter_fx_rubusd_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='assets',
-            name='comment',
+            model_name="assets",
+            name="comment",
             field=models.TextField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='brokers',
-            name='comment',
+            model_name="brokers",
+            name="comment",
             field=models.TextField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='transactions',
-            name='type',
-            field=models.CharField(choices=[('Cash in', 'Cash in'), ('Cash out', 'Cash out'), ('Buy', 'Buy'), ('Sell', 'Sell'), ('Dividend', 'Dividend')], max_length=30),
+            model_name="transactions",
+            name="type",
+            field=models.CharField(
+                choices=[
+                    ("Cash in", "Cash in"),
+                    ("Cash out", "Cash out"),
+                    ("Buy", "Buy"),
+                    ("Sell", "Sell"),
+                    ("Dividend", "Dividend"),
+                ],
+                max_length=30,
+            ),
         ),
     ]

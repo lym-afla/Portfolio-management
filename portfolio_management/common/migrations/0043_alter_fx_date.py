@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0042_alter_fx_date'),
+        ("common", "0042_alter_fx_date"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='fx',
-            name='date',
+            model_name="fx",
+            name="date",
             field=models.DateField(),
         ),
     ]

@@ -1,6 +1,6 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from . import views
 
@@ -18,8 +18,9 @@ router.register(r"", views.UserViewSet, basename="user")
 
 urlpatterns = [
     # JWT auth endpoints
-    path("api/login/", TokenObtainPairView.as_view(), name="login"),
-    path("api/refresh-token/", TokenRefreshView.as_view(), name="refresh_token"),
+    path("api/login/", views.CustomTokenObtainPairView.as_view(), name="login"),
+    path("api/refresh-token/", views.CustomTokenRefreshView.as_view(), name="refresh_token"),
+    path("api/refresh-token-standard/", TokenRefreshView.as_view(), name="refresh_token_standard"),
     path("api/register/", views.UserViewSet.as_view({"post": "create_user"}), name="api_register"),
     # Include broker groups router
     path("api/", include(broker_router.urls)),

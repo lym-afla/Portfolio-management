@@ -77,9 +77,11 @@ def api_get_security_price_history(request, security_id):
     try:
         security = Assets.objects.get(id=security_id)
         period = request.GET.get("period", "1Y")
-        effective_current_date = request.session.get(
-            "effective_current_date", datetime.now().date().isoformat()
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(
+            request, "effective_current_date", datetime.now().date().isoformat()
         )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -106,9 +108,11 @@ def api_get_security_position_history(request, security_id):
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
         period = request.GET.get("period", "1Y")
-        effective_current_date = request.session.get(
-            "effective_current_date", datetime.now().date().isoformat()
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(
+            request, "effective_current_date", datetime.now().date().isoformat()
         )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -148,14 +152,18 @@ def api_get_security_position_history(request, security_id):
 @api_view(["GET"])
 def api_get_security_transactions(request, security_id):
     try:
-        effective_current_date = request.session.get(
-            "effective_current_date", datetime.now().date().isoformat()
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(
+            request, "effective_current_date", datetime.now().date().isoformat()
         )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+        print("========= effective_current_date", effective_current_date)
         period = request.GET.get("period", "1Y")
         start_date = get_start_date(effective_current_date, period)
+        # effective_current_date = datetime.strptime(effective_current_date, "%Y-%m-%d").date()
 
         transactions = Transactions.objects.filter(
-            security__id=security_id, investor=request.user
+            security__id=security_id, investor=request.user, date__lte=effective_current_date
         ).order_by("date")
 
         if start_date:
@@ -303,15 +311,16 @@ def api_get_security_details_for_editing(request, security_id):
             bond_meta = security.bondmetadata_metadata
             result.update(
                 {
-                    "initial_notional": str(bond_meta.initial_notional)
-                    if bond_meta.initial_notional
-                    else None,
-                    "issue_date": bond_meta.issue_date.isoformat()
-                    if bond_meta.issue_date
-                    else None,
-                    "maturity_date": bond_meta.maturity_date.isoformat()
-                    if bond_meta.maturity_date
-                    else None,
+                    "initial_notional": (
+                        str(bond_meta.initial_notional) if bond_meta.initial_notional else None
+                    ),
+                    "nominal_currency": bond_meta.nominal_currency,
+                    "issue_date": (
+                        bond_meta.issue_date.isoformat() if bond_meta.issue_date else None
+                    ),
+                    "maturity_date": (
+                        bond_meta.maturity_date.isoformat() if bond_meta.maturity_date else None
+                    ),
                     "coupon_rate": str(bond_meta.coupon_rate) if bond_meta.coupon_rate else None,
                     "coupon_frequency": bond_meta.coupon_frequency,
                     "is_amortizing": bond_meta.is_amortizing,

@@ -44,13 +44,13 @@ const vuetifyComponents = [
   'v-row',
   'v-col',
   'v-spacer',
-  
+
   // Navigation
   'v-list',
   'v-list-item',
   'v-list-item-title',
   'v-list-item-subtitle',
-  
+
   // Components
   'v-card',
   'v-card-title',
@@ -65,7 +65,7 @@ const vuetifyComponents = [
   'v-tooltip',
   'v-menu',
   'v-overlay',
-  
+
   // Data display
   'v-expansion-panels',
   'v-expansion-panel',
@@ -74,12 +74,12 @@ const vuetifyComponents = [
   'v-expand-transition',
   'v-fade-transition',
   'v-avatar',
-  
+
   // Feedback
   'v-progress-linear',
   'v-alert',
   'v-snackbar',
-  
+
   // Forms
   'v-form',
   'v-text-field',
@@ -101,4 +101,4 @@ export function generateVuetifyStubs() {
   }, {})
 
   return { ...stubs, ...specialStubs }
-} 
+}

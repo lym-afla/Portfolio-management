@@ -51,7 +51,7 @@ const EXCLUDED_FILES = [
 // Find all JS and Vue files in src directory
 function findFiles(dir, fileList = []) {
   const files = fs.readdirSync(dir);
-  
+
   files.forEach(file => {
     const filePath = path.join(dir, file);
     if (fs.statSync(filePath).isDirectory()) {
@@ -62,7 +62,7 @@ function findFiles(dir, fileList = []) {
       fileList.push(filePath);
     }
   });
-  
+
   return fileList;
 }
 
@@ -94,13 +94,13 @@ function getModuleNameFromContent(content, filePath) {
     if (classMatch && classMatch[1]) {
       return classMatch[1];
     }
-    
+
     const functionMatch = content.match(/function\s+(\w+)/);
     if (functionMatch && functionMatch[1]) {
       return functionMatch[1];
     }
   }
-  
+
   return null;
 }
 
@@ -110,26 +110,26 @@ function ensureLoggerImport(content) {
     // Check for multi-line imports
     const multiLineImportRegex = /import\s+{[\s\S]*?}\s+from\s+['"][^'"]+['"]/g;
     const singleLineImportRegex = /import\s+.*?from\s+['"][^'"]+['"];?\n/g;
-    
+
     // Find all import statements
     const multiLineImports = content.match(multiLineImportRegex) || [];
     const singleLineImports = content.match(singleLineImportRegex) || [];
-    
+
     // If we have imports, add logger import after the last one
     if (multiLineImports.length > 0 || singleLineImports.length > 0) {
       // Check if the last import is multi-line or single-line
-      const lastMultiLineImport = multiLineImports.length > 0 
-        ? multiLineImports[multiLineImports.length - 1] 
+      const lastMultiLineImport = multiLineImports.length > 0
+        ? multiLineImports[multiLineImports.length - 1]
         : '';
-      const lastSingleLineImport = singleLineImports.length > 0 
-        ? singleLineImports[singleLineImports.length - 1] 
+      const lastSingleLineImport = singleLineImports.length > 0
+        ? singleLineImports[singleLineImports.length - 1]
         : '';
-      
+
       // Find the position of the last import statement
       const lastMultiLinePos = content.lastIndexOf(lastMultiLineImport) + lastMultiLineImport.length;
       const lastSingleLinePos = content.lastIndexOf(lastSingleLineImport) + lastSingleLineImport.length;
       const lastImportPos = Math.max(lastMultiLinePos, lastSingleLinePos);
-      
+
       // Add logger import after the last import
       return (
         content.slice(0, lastImportPos) +
@@ -148,16 +148,16 @@ function ensureLoggerImport(content) {
 function processFile(filePath) {
   let content = fs.readFileSync(filePath, 'utf-8');
   let hasChanges = false;
-  
+
   // Get file name for logging
   const fileName = path.basename(filePath);
-  
+
   // Skip excluded files
   if (isExcluded(fileName)) {
     console.log(`Skipping excluded file: ${fileName}`);
     return 0;
   }
-  
+
   // Check if file has any console statements to replace
   let needsLogger = false;
   for (const pattern of patterns) {
@@ -166,7 +166,7 @@ function processFile(filePath) {
       break;
     }
   }
-  
+
   // Add logger import if needed
   if (needsLogger) {
     const updatedContent = ensureLoggerImport(content);
@@ -174,20 +174,20 @@ function processFile(filePath) {
       content = updatedContent;
       hasChanges = true;
     }
-    
+
     // For Vue files, add ESLint disable comment if not already present
     if (filePath.endsWith('.vue') && !content.includes('eslint-disable no-undef')) {
       const scriptTagPos = content.indexOf('<script>');
       if (scriptTagPos !== -1) {
-        content = 
-          content.slice(0, scriptTagPos + 8) + 
+        content =
+          content.slice(0, scriptTagPos + 8) +
           '\n/* eslint-disable no-undef */\n' +
           content.slice(scriptTagPos + 8);
         hasChanges = true;
       }
     }
   }
-  
+
   // Replace console statements
   for (const pattern of patterns) {
     const newContent = content.replace(pattern.search, (match, ...args) => {
@@ -195,19 +195,19 @@ function processFile(filePath) {
       // Pass the file content and file path to the replacement function
       return pattern.replace(match, args[0], args[1], content, filePath);
     });
-    
+
     if (newContent !== content) {
       content = newContent;
     }
   }
-  
+
   // Write back if changes were made
   if (hasChanges) {
     fs.writeFileSync(filePath, content, 'utf-8');
     console.log(`Updated: ${filePath}`);
     return 1;
   }
-  
+
   return 0;
 }
 
@@ -227,4 +227,4 @@ console.log('Remember to manually review the changes before committing.');
 
 // Additional tip for searching remaining console statements
 console.log('\nTo find any remaining console statements, you can run:');
-console.log('grep -r "console\\." src --include="*.js" --include="*.vue" | grep -v "logger.js"'); 
+console.log('grep -r "console\\." src --include="*.js" --include="*.vue" | grep -v "logger.js"');

@@ -1,13 +1,18 @@
 import logging
+from datetime import date
 
 import cryptography.fernet
+import structlog
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 from tinkoff.invest import Client
 from tinkoff.invest.exceptions import RequestError
 
@@ -22,6 +27,7 @@ from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, prepare_account
 from users.models import AccountGroup, CustomUser, InteractiveBrokersApiToken, TinkoffApiToken
 from users.serializers import (
     AccountGroupSerializer,
+    CustomTokenObtainPairSerializer,
     DashboardSettingsChoicesSerializer,
     DashboardSettingsSerializer,
     InteractiveBrokersApiTokenSerializer,
@@ -60,6 +66,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def logout(self, request):
         """
         Logout the user by blacklisting the provided refresh token.
+        Clear session data including effective_current_date.
         """
         try:
             refresh_token = request.data.get("refresh_token")
@@ -70,6 +77,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
             token = RefreshToken(refresh_token)
             token.blacklist()
+
+            # Clear session data (including effective_current_date)
+            request.session.flush()
 
             logger.info(f"User {request.user.username} has been logged out.")
             return Response(
@@ -183,11 +193,14 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         serializer = DashboardSettingsSerializer(user)
 
-        # Override table_date with session value if it exists
+        # Override table_date with JWT middleware value if it exists
         data = serializer.data
-        session_date = request.session.get("effective_current_date")
-        if session_date:
-            data["table_date"] = session_date
+        effective_date = getattr(request, "effective_current_date", None)
+        if effective_date:
+            data["table_date"] = effective_date
+            logger.info("[JWT_DEBUG] Using effective_date from JWT middleware: %s", effective_date)
+        else:
+            logger.info("[JWT_DEBUG] No effective_date in request, using serializer default")
 
         choices = {
             "default_currency": CURRENCY_CHOICES,
@@ -198,11 +211,58 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def update_dashboard_settings(self, request):
+        logger = logging.getLogger("users.views")
+        logger.info("[JWT_DEBUG] update_dashboard_settings called with data: %s", request.data)
+        logger.info(
+            "[JWT_DEBUG] Effective date from request: %s",
+            getattr(request, "effective_current_date", "NOT_SET"),
+        )
+
         user = request.user
         serializer = DashboardSettingsSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
+            # Save user model fields (currency, digits)
             serializer.save()
-            return Response(serializer.data)
+
+            # Get table_date from request data
+            table_date = request.data.get("table_date")
+            if table_date:
+                logger.info("[JWT_DEBUG] Setting effective_current_date to: %s", table_date)
+
+                # Check if effective_date is changing
+                current_effective_date = getattr(request, "effective_current_date", None)
+                effective_date_changed = current_effective_date != table_date
+
+                # Store it in response - JWT middleware will handle adding it to new tokens
+                response_data = serializer.data
+                response_data["table_date"] = table_date
+                response_data["effective_current_date"] = table_date
+
+                # Signal that token refresh is needed if effective_date changed
+                if effective_date_changed:
+                    response_data["requires_token_refresh"] = True
+                    response_data["new_effective_date"] = table_date
+                    logger.info(
+                        "[JWT_DEBUG] Effective date changed, requesting token refresh: %s",
+                        table_date,
+                    )
+
+                logger.info("[JWT_DEBUG] Response data: %s", response_data)
+
+                return Response(response_data)
+            else:
+                # No table_date provided, return current effective_date from request
+                response_data = serializer.data
+                response_data["table_date"] = getattr(
+                    request, "effective_current_date", date.today().isoformat()
+                )
+                logger.info(
+                    "[JWT_DEBUG] No table_date provided, using current: %s",
+                    response_data["table_date"],
+                )
+                return Response(response_data)
+        else:
+            logger.error("[JWT_DEBUG] Serializer errors: %s", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
@@ -409,12 +469,12 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
                         "type": TINKOFF_ACCOUNT_TYPES.get(account.type.value, "UNKNOWN"),
                         "status": TINKOFF_ACCOUNT_STATUSES.get(account.status.value, "UNKNOWN"),
                         "access_level": account.access_level.name,
-                        "opened_date": account.opened_date.isoformat()
-                        if account.opened_date
-                        else None,
-                        "closed_date": account.closed_date.isoformat()
-                        if account.closed_date
-                        else None,
+                        "opened_date": (
+                            account.opened_date.isoformat() if account.opened_date else None
+                        ),
+                        "closed_date": (
+                            account.closed_date.isoformat() if account.closed_date else None
+                        ),
                     }
                     formatted_accounts.append(formatted_account)
 
@@ -432,9 +492,11 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
 
             return Response(
                 {"valid": False, "error": error_message, "error_code": error_code},
-                status=status.HTTP_401_UNAUTHORIZED
-                if error_code == "40003"
-                else status.HTTP_400_BAD_REQUEST,
+                status=(
+                    status.HTTP_401_UNAUTHORIZED
+                    if error_code == "40003"
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         except Exception as e:
@@ -606,4 +668,86 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": f"Failed to remove accounts: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Custom login view that includes effective_current_date in JWT token
+    """
+
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+class CustomTokenRefreshView(APIView):
+    """
+    Custom token refresh view that includes effective_current_date in JWT payload
+    This eliminates session dependency and uses JWT authentication only
+    """
+
+    permission_classes = [AllowAny]
+
+    def __init__(self):
+        super().__init__()
+        self.logger = structlog.get_logger(__name__)
+
+    def post(self, request, *args, **kwargs):
+        try:
+            refresh_token = request.data.get("refresh")
+            if not refresh_token:
+                return Response(
+                    {"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate and decode the refresh token
+            refresh = RefreshToken(refresh_token)
+
+            # Check if a new effective_date is provided in the request
+            new_effective_date = request.data.get("effective_current_date")
+            current_effective_date = getattr(request, "effective_current_date", None)
+
+            # Use new effective_date if provided, otherwise use current one
+            effective_date = new_effective_date or current_effective_date
+
+            # Update the refresh token with new effective_date if provided
+            if effective_date:
+                # Add effective_date to refresh token FIRST
+                refresh["effective_current_date"] = effective_date
+
+                # THEN generate the access token from the updated refresh token
+                # This ensures the access token contains the effective_date
+                access_token = refresh.access_token
+
+                self.logger.info(
+                    "CustomTokenRefresh",
+                    effective_date=effective_date,
+                    user_id=request.user.id if hasattr(request, "user") else "unknown",
+                    updated_effective_date=new_effective_date is not None,
+                )
+
+                response_data = {
+                    "access": str(access_token),
+                    "refresh": str(refresh),
+                    "effective_current_date": effective_date,
+                }
+            else:
+                # If no effective_date provided, use standard access token generation
+                access_token = refresh.access_token
+                response_data = {"access": str(access_token), "refresh": str(refresh)}
+
+            self.logger.info(
+                "CustomTokenRefresh",
+                message="Token refreshed successfully",
+                has_effective_date=effective_date is not None,
+            )
+
+            return Response(response_data)
+
+        except InvalidToken as e:
+            self.logger.warning("CustomTokenRefresh", f"Invalid refresh token: {e}")
+            return Response({"error": "Invalid refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            self.logger.error("CustomTokenRefresh", f"Token refresh failed: {e}")
+            return Response(
+                {"error": "Token refresh failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

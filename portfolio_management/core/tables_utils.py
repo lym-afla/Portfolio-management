@@ -115,9 +115,11 @@ def _calculate_closed_table_output_for_api(
             ).order_by("-date")
 
             # Determine if it's a long or short position
+            first_transaction = asset_transactions.first()
+            first_quantity = first_transaction.quantity if first_transaction else None
             is_long_position = (
-                asset_transactions.first().quantity < 0
-            )  # if asset_transactions.exists() else True
+                first_quantity is not None and first_quantity < 0
+            )  # Short position starts with negative quantity
 
             if is_long_position:
                 entry_transactions = asset_transactions.filter(quantity__gt=0)

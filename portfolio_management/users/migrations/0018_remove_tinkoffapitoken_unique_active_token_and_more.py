@@ -5,25 +5,33 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0061_rename_brokeraccounts_accounts_and_more'),
-        ('users', '0017_rename_broker_accounts_accountgroup_accounts'),
+        ("common", "0061_rename_brokeraccounts_accounts_and_more"),
+        ("users", "0017_rename_broker_accounts_accountgroup_accounts"),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='tinkoffapitoken',
-            name='unique_active_token',
+            model_name="tinkoffapitoken",
+            name="unique_active_token",
         ),
         migrations.AddField(
-            model_name='tinkoffapitoken',
-            name='broker',
-            field=models.ForeignKey(default=21, on_delete=django.db.models.deletion.CASCADE, related_name='tinkoff_tokens', to='common.brokers'),
+            model_name="tinkoffapitoken",
+            name="broker",
+            field=models.ForeignKey(
+                default=21,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="tinkoff_tokens",
+                to="common.brokers",
+            ),
             preserve_default=False,
         ),
         migrations.AddConstraint(
-            model_name='tinkoffapitoken',
-            constraint=models.UniqueConstraint(condition=models.Q(('is_active', True)), fields=('user', 'broker', 'token_type', 'sandbox_mode'), name='unique_active_token'),
+            model_name="tinkoffapitoken",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("is_active", True)),
+                fields=("user", "broker", "token_type", "sandbox_mode"),
+                name="unique_active_token",
+            ),
         ),
     ]

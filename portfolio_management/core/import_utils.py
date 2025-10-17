@@ -44,7 +44,7 @@ from constants import (
     TRANSACTION_TYPE_TAX,
 )
 from core.broker_api_utils import get_broker_api
-from core.tinkoff_utils import get_user_token
+from core.tinkoff_utils import get_user_token, save_bond_redemption_history
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -192,7 +192,14 @@ async def _process_transaction_row(row, investor, account, currency):
         if pd.isna(row["Date"]):
             return None, "skipped"
 
-        transaction_date = pd.to_datetime(row["Date"], errors="coerce").date()
+        # Keep as datetime to preserve time information
+        transaction_date = pd.to_datetime(row["Date"], errors="coerce")
+        # If no time component, set to midnight
+        if (
+            pd.isna(transaction_date.time())
+            or transaction_date.time() == pd.Timestamp("00:00:00").time()
+        ):
+            transaction_date = transaction_date.replace(hour=0, minute=0, second=0, microsecond=0)
         description = row["Description"]
         security_description = row["Stock Description"]
         price = Decimal(str(row["Price"])) if not pd.isna(row["Price"]) else None
@@ -931,7 +938,12 @@ async def parse_galaxy_account_cash_flows(file_path, currency, account, user, co
     # Iterate over each row in the DataFrame
     for index, row in df.iterrows():
         try:
-            date = row["Дата"].strftime("%Y-%m-%d")
+            # Keep as datetime object to preserve time information
+            date = row["Дата"]
+            if not pd.isna(date):
+                # Ensure it's a datetime object
+                if not isinstance(date, pd.Timestamp):
+                    date = pd.to_datetime(date)
             transactions_to_process = []
 
             # Collect all transactions from the row
@@ -1115,7 +1127,12 @@ async def parse_galaxy_account_security_transactions(
                     continue
 
                 try:
-                    date = df.iloc[row, i].strftime("%Y-%m-%d")
+                    # Keep as datetime object to preserve time information
+                    date = df.iloc[row, i]
+                    if not pd.isna(date):
+                        # Ensure it's a datetime object
+                        if not isinstance(date, pd.Timestamp):
+                            date = pd.to_datetime(date)
                     price = (
                         round(Decimal(df.iloc[row, i + 1]), price_decimal_places)
                         if not pd.isna(df.iloc[row, i + 1])
@@ -1307,6 +1324,7 @@ async def create_security_from_tinkoff(
         user: CustomUser instance
         instrument_type: Tinkoff InstrumentType enum
         instrument_uid: Tinkoff instrument UID (required for fetching metadata)
+        date_to_save: Date to save the bond redemption history
 
     Returns:
         Assets instance or None
@@ -1406,6 +1424,11 @@ async def create_security_from_tinkoff(
                     bond_data["initial_notional"] = quotation_to_decimal(
                         instrument_data.initial_nominal
                     )
+                    # Capture the nominal currency from MoneyValue
+                    if hasattr(instrument_data.initial_nominal, "currency"):
+                        bond_data[
+                            "nominal_currency"
+                        ] = instrument_data.initial_nominal.currency.upper()
 
                 if hasattr(instrument_data, "placement_date") and instrument_data.placement_date:
                     bond_data["issue_date"] = instrument_data.placement_date.date()
@@ -1482,8 +1505,6 @@ async def create_security_from_tinkoff(
         # For bonds, fetch and save redemption history to NotionalHistory
         if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND and instrument_uid:
             try:
-                from core.tinkoff_utils import save_bond_redemption_history
-
                 entries_count = await save_bond_redemption_history(
                     asset, instrument_uid, user, date_to_save
                 )
@@ -1495,6 +1516,23 @@ async def create_security_from_tinkoff(
             except Exception as e:
                 logger.warning(
                     f"Could not save bond redemption history for {asset.name}: {e}. "
+                    f"This is not critical, continuing..."
+                )
+
+            # Fetch and cache bond coupon schedule for ACI calculations
+            try:
+                from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+
+                success = await fetch_and_cache_bond_coupon_schedule(
+                    asset, user, force_refresh=False
+                )
+                if success:
+                    logger.info(f"Successfully fetched and cached coupon schedule for {asset.name}")
+                else:
+                    logger.warning(f"Could not fetch coupon schedule for {asset.name}")
+            except Exception as e:
+                logger.warning(
+                    f"Error fetching coupon schedule for {asset.name}: {e}. "
                     f"This is not critical, continuing..."
                 )
 
@@ -1619,6 +1657,11 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
                                 bond_meta.initial_notional = quotation_to_decimal(
                                     bond_instrument.initial_nominal
                                 )
+                                # Also capture nominal currency if available
+                                if hasattr(bond_instrument.initial_nominal, "currency"):
+                                    bond_meta.nominal_currency = (
+                                        bond_instrument.initial_nominal.currency.upper()
+                                    )
                                 updated = True
 
                         if updated:
@@ -1706,9 +1749,11 @@ async def fetch_security_from_micex_targeted(security_identifier, instrument_typ
                     "isin": security_info.get("ISIN"),
                     "name": security_info.get("NAME") or security_info.get("SHORTNAME"),
                     "short_name": security_info.get("SHORTNAME"),
-                    "currency": "RUB"
-                    if security_info.get("FACEUNIT") == "SUR"
-                    else security_info.get("FACEUNIT", "RUB"),
+                    "currency": (
+                        "RUB"
+                        if security_info.get("FACEUNIT") == "SUR"
+                        else security_info.get("FACEUNIT", "RUB")
+                    ),
                     "data": security_info,  # Full data for type-specific processing
                     "instrument_type": instrument_type,
                 }
@@ -1828,6 +1873,12 @@ async def create_security_from_micex(
                     except (ValueError, TypeError):
                         pass
 
+                # Nominal currency from FACEUNIT
+                if data.get("FACEUNIT"):
+                    # MICEX uses 'SUR' for RUB in bond face values
+                    nominal_curr = data["FACEUNIT"]
+                    bond_data["nominal_currency"] = "RUB" if nominal_curr == "SUR" else nominal_curr
+
                 # Determine if bond is amortizing (check if current face value < initial)
                 if data.get("FACEVALUE") and data.get("INITIALFACEVALUE"):
                     try:
@@ -1930,9 +1981,11 @@ async def create_security_from_micex(
 
             # If we got the instrument_uid, also save bond redemption history
             if instrument_uid:
-                try:
-                    from core.tinkoff_utils import save_bond_redemption_history
+                asset.tinkoff_instrument_uid = instrument_uid
+                asset.save()
 
+                # Save bond redemption history
+                try:
                     entries_count = await save_bond_redemption_history(
                         asset, instrument_uid, user, date_to_save
                     )
@@ -1944,6 +1997,25 @@ async def create_security_from_micex(
                 except Exception as e:
                     logger.warning(
                         f"Could not save bond redemption history for {asset.name}: {e}. "
+                        f"This is not critical, continuing..."
+                    )
+
+                # Fetch and cache bond coupon schedule for ACI calculations
+                try:
+                    from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+
+                    success = await fetch_and_cache_bond_coupon_schedule(
+                        asset, user, force_refresh=False
+                    )
+                    if success:
+                        logger.info(
+                            f"Successfully fetched and cached coupon schedule for {asset.name}"
+                        )
+                    else:
+                        logger.warning(f"Could not fetch coupon schedule for {asset.name}")
+                except Exception as e:
+                    logger.warning(
+                        f"Error fetching coupon schedule for {asset.name}: {e}. "
                         f"This is not critical, continuing..."
                     )
 

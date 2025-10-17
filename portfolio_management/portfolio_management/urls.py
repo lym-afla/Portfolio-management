@@ -20,5 +20,6 @@ urlpatterns = [
         views.get_effective_current_date,
         name="get_effective_current_date",
     ),
+    # path("api/test-session/", views.test_session, name="test_session"),
     path("__debug__/", include("debug_toolbar.urls")),
 ]

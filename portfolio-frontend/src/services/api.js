@@ -200,6 +200,53 @@ export const updateDashboardSettings = async (settings) => {
       '/users/api/update_dashboard_settings/',
       settings
     )
+
+    // Check if token refresh is required (effective_date changed)
+    if (
+      response.data.requires_token_refresh &&
+      response.data.new_effective_date
+    ) {
+      logger.log(
+        'Unknown',
+        `Effective date changed to ${response.data.new_effective_date}, refreshing JWT token...`
+      )
+
+      // Import the refresh function from axiosConfig
+      const { refreshTokenWithEffectiveDate } = await import(
+        '@/config/axiosConfig'
+      )
+
+      try {
+        // eslint-disable-next-line no-unused-vars
+        const newToken = await refreshTokenWithEffectiveDate(
+          response.data.new_effective_date
+        )
+        logger.log(
+          'Unknown',
+          `JWT token refreshed with new effective_date: ${response.data.new_effective_date}`
+        )
+
+        // Force update the Vuex store immediately
+        if (window.store) {
+          const accessToken = localStorage.getItem('accessToken')
+          const refreshToken = localStorage.getItem('refreshToken')
+          window.store.commit('SET_TOKENS', {
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+          })
+          logger.log('Unknown', 'Vuex store updated with new tokens')
+        }
+
+        // Small delay to ensure token propagation
+        await new Promise((resolve) => setTimeout(resolve, 50))
+
+        logger.log('Unknown', 'Token refresh and store update complete')
+      } catch (refreshError) {
+        logger.error('Unknown', 'Failed to refresh JWT token:', refreshError)
+        // Don't fail the whole operation if refresh fails, just log it
+      }
+    }
+
     return { success: true, ...response.data }
   } catch (error) {
     logger.error('Unknown', 'Error updating dashboard settings:', error)

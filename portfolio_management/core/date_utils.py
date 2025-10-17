@@ -53,7 +53,7 @@ def get_start_date(end_date, period):
     elif period == "5Y":
         return end_date - relativedelta(years=5)
     elif period == "ytd":
-        return datetime(end_date.year, 1, 1)
+        return date(end_date.year, 1, 1)  # Return date, not datetime
     elif period == "All":
         return None
     else:

@@ -11,6 +11,7 @@ repos:
     rev: 5.13.2
     hooks:
     -   id: isort
+        exclude: ^.*/migrations/.*$|^.*/venv/.*$
 
 -   repo: https://github.com/psf/black
     rev: 23.12.1
@@ -27,3 +28,4 @@ repos:
             - --max-line-length=100
             - --ignore=E203,W503,E231
             - --extend-ignore=DJ01,DJ08
+        exclude: ^.*/migrations/.*$|^.*/venv/.*$

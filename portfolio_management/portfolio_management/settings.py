@@ -31,7 +31,7 @@ SECRET_KEY = "django-insecure-a^i5!^#_$)3mc+p4gk99ik^6shvz69jm3&qo7y=+5a24--g4ex
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 
 
 # Application definition
@@ -69,8 +69,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "portfolio_management.middleware.InitializeEffectiveDateMiddleware",
     "debug_toolbar.middleware.DebugToolbarMiddleware",
+    "portfolio_management.jwt_middleware.JWTEffectiveDateMiddleware",  # JWT-based middleware
 ]
 
 CORS_ALLOWED_ORIGINS = [
@@ -79,12 +79,30 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
+CORS_EXPOSE_HEADERS = [
+    "content-type",
+    "x-csrftoken",
+]
 
 ROOT_URLCONF = "portfolio_management.urls"
 
-# SESSION_SAVE_EVERY_REQUEST = True
-# SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-# SESSION_COOKIE_AGE = 86400  # 24hr in seconds
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE = 86400  # 24hr in seconds
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = False  # Set to False for development with HTTP
+SESSION_COOKIE_SAMESITE = "Lax"  # Allow same-site requests (works for localhost)
 
 TEMPLATES = [
     {
@@ -197,7 +215,7 @@ LOGGING = {
         },
         "portfolio_management": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "INFO",
             "propagate": True,
         },
         "django.auth": {
@@ -244,6 +262,10 @@ LOGGING = {
             "level": "DEBUG",
         },
         "dashboard": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+        },
+        "users": {
             "handlers": ["console"],
             "level": "DEBUG",
         },

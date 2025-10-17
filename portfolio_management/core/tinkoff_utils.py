@@ -8,7 +8,7 @@ from tinkoff.invest.exceptions import RequestError
 from tinkoff.invest.schemas import EventType, GetBondEventsRequest
 from tinkoff.invest.utils import quotation_to_decimal
 
-from common.models import Assets, Transactions
+from common.models import Assets, BondCouponSchedule, Transactions
 from constants import (
     TRANSACTION_TYPE_ASSET_TRANSFER,
     TRANSACTION_TYPE_BOND_MATURITY,
@@ -116,9 +116,10 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
         if isinstance(date, datetime):
             target_date = date
         else:
-            from datetime import datetime as dt
+            # Use timezone-aware datetime to avoid warnings
+            from django.utils import timezone
 
-            target_date = dt.combine(date, dt.min.time())
+            target_date = timezone.make_aware(datetime.combine(date, datetime.min.time()))
 
         logger.debug(
             f"Fetching bond events for instrument {instrument_uid} up to {target_date.date()}"
@@ -179,6 +180,157 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
         return initial_notional
 
 
+async def fetch_and_cache_bond_coupon_schedule(asset: Assets, user, force_refresh=False):
+    """
+    Fetch bond coupon schedule from T-Bank API and cache it in BondCouponSchedule model.
+
+    For fixed-rate bonds, schedule is cached indefinitely as it doesn't change.
+    Use force_refresh=True for floating-rate bonds or when coupon_amount is None.
+
+    Args:
+        asset: Assets instance (must be a bond with tbank_instrument_uid)
+        user: CustomUser instance (to get API token)
+        force_refresh: If True, delete existing schedule and fetch fresh data
+                      (use when coupon_amount is empty for floating-rate bonds)
+
+    Returns:
+        bool: True if schedule was fetched and cached successfully, False otherwise
+    """
+    from datetime import timedelta
+
+    from channels.db import database_sync_to_async
+
+    # Get asset data in sync context (cache frequently used fields)
+    asset_name = await database_sync_to_async(lambda: asset.name)()
+    is_bond = await database_sync_to_async(lambda: asset.is_bond)()
+
+    if not is_bond:
+        logger.warning(f"Asset {asset_name} is not a bond")
+        return False
+
+    # Check if asset has T-Bank instrument UID
+    has_uid = await database_sync_to_async(lambda: asset.tbank_instrument_uid)()
+
+    if not has_uid:
+        # Try to get instrument UID from T-Bank API
+        instrument_uid = await get_instrument_uid(asset, user)
+        if instrument_uid:
+            # Save the UID to the asset
+            @database_sync_to_async
+            def save_uid():
+                asset.tbank_instrument_uid = instrument_uid
+                asset.save()
+
+            await save_uid()
+            # Update has_uid flag since we just saved it
+            has_uid = instrument_uid
+        else:
+            logger.warning(f"Bond {asset_name} has no T-Bank instrument UID")
+            return False
+
+    try:
+        # Check if we already have a schedule
+        # For fixed-rate bonds, schedule doesn't change so we cache indefinitely
+        if not force_refresh:
+            schedule_exists = await database_sync_to_async(
+                lambda: BondCouponSchedule.objects.filter(asset=asset).exists()
+            )()
+
+            if schedule_exists:
+                logger.debug(f"Coupon schedule exists for {asset_name}, skipping fetch")
+                return True
+
+        # Fetch from T-Bank API
+        token = await get_user_token(user)
+        if not token:
+            logger.error("No T-Bank API token found for user")
+            return False
+
+        bond_meta = await database_sync_to_async(lambda: asset.bond_metadata)()
+        if not bond_meta:
+            logger.warning(f"No bond metadata for {asset_name}")
+            return False
+
+        # Determine date range (from issue_date or 1 year ago, to maturity or 5 years ahead)
+        from_date = bond_meta.issue_date or (datetime.now().date() - timedelta(days=365))
+        to_date = bond_meta.maturity_date or (datetime.now().date() + timedelta(days=365 * 5))
+
+        logger.info(f"Fetching coupon schedule for {asset_name} from {from_date} to {to_date}")
+
+        # Get instrument UID (either from earlier check or from freshly saved value)
+        if not has_uid:
+            has_uid = await database_sync_to_async(lambda: asset.tbank_instrument_uid)()
+
+        with Client(token) as client:
+            from django.utils import timezone
+
+            response = client.instruments.get_bond_coupons(
+                instrument_id=has_uid,
+                from_=timezone.make_aware(datetime.combine(from_date, datetime.min.time())),
+                to=timezone.make_aware(datetime.combine(to_date, datetime.max.time())),
+            )
+
+            if not response.events:
+                logger.warning(f"No coupon events found for bond {asset_name}")
+                return False
+
+            # Delete existing schedule if refreshing
+            if force_refresh:
+                deleted_count = await database_sync_to_async(
+                    lambda: BondCouponSchedule.objects.filter(asset=asset).delete()[0]
+                )()
+                logger.debug(f"Deleted {deleted_count} existing coupon schedule entries")
+
+            # Cache the coupon schedule
+            coupons_created = 0
+            for coupon in response.events:
+                coupon_amount = None
+                coupon_currency = None
+                if hasattr(coupon, "pay_one_bond") and coupon.pay_one_bond:
+                    coupon_amount = quotation_to_decimal(coupon.pay_one_bond)
+                    coupon_currency = coupon.pay_one_bond.currency
+
+                # Convert coupon type enum to user-friendly string
+                coupon_type_str = None
+                if hasattr(coupon, "coupon_type"):
+                    coupon_type_mapping = {
+                        0: "Unspecified",
+                        1: "Constant",
+                        2: "Floating",
+                        3: "Discount",
+                        4: "Mortgage",
+                        5: "Fixed",
+                        6: "Variable",
+                        7: "Other",
+                    }
+                    coupon_type_str = coupon_type_mapping.get(int(coupon.coupon_type), "Unknown")
+
+                # Create or update coupon schedule entry using database_sync_to_async
+                await database_sync_to_async(BondCouponSchedule.objects.update_or_create)(
+                    asset=asset,
+                    coupon_number=coupon.coupon_number,
+                    defaults={
+                        "coupon_start_date": coupon.coupon_start_date.date(),
+                        "coupon_end_date": coupon.coupon_end_date.date(),
+                        "payment_date": coupon.coupon_date.date(),
+                        "coupon_amount": coupon_amount,
+                        "coupon_currency": coupon_currency,
+                        "coupon_type": coupon_type_str,
+                    },
+                )
+                coupons_created += 1
+
+            logger.info(f"Successfully cached {coupons_created} coupon periods for {asset_name}")
+            return True
+
+    except RequestError as e:
+        logger.error(f"T-Bank API error fetching coupon schedule for {asset_name}: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"Error fetching coupon schedule for {asset_name}: {str(e)}", exc_info=True)
+        return False
+
+
 async def save_bond_redemption_history(security, instrument_uid, user, date_to_save=None):
     """
     Fetch and save all bond redemption history to NotionalHistory model.
@@ -213,7 +365,7 @@ async def save_bond_redemption_history(security, instrument_uid, user, date_to_s
             # Fetch all MTY events from inception to now
             request = GetBondEventsRequest(
                 from_=datetime(1980, 1, 1),
-                to=date_to_save if date_to_save else datetime.now(),
+                # to=date_to_save if date_to_save else datetime.now(),
                 instrument_id=instrument_uid,
                 type=EventType.EVENT_TYPE_MTY,
             )
@@ -306,7 +458,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
         name: Optional name for fallback search
 
     Returns:
-        List of tuples (name, ISIN, instrument type) or empty list if not found.
+        List of tuples (name, ISIN, instrument type, ticker) or empty list if not found.
     """
     token = await get_user_token(user)
     try:
@@ -498,7 +650,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
     transaction_data = {
         "investor": investor,
         "account": account,
-        "date": operation.date.date(),
+        "date": operation.date,  # Keep full datetime from T-Bank API
         "comment": operation.description,
     }
 
@@ -884,7 +1036,7 @@ async def get_account_info(user):
         return None
 
 
-async def get_price_from_tbank(instrument_uid, date, user):
+async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
     """
     Get the closing price for a security from T-Bank (Tinkoff) API for a specific date.
 
@@ -915,10 +1067,14 @@ async def get_price_from_tbank(instrument_uid, date, user):
         lookback_days = [1, 7, 14]
 
         with Client(token) as client:
+            from django.utils import timezone
+
             for days_back in lookback_days:
                 # Start from 1 day before target, extend backwards based on attempt
-                from_dt = datetime.combine(date, datetime.min.time()) - timedelta(days=days_back)
-                to_dt = datetime.combine(date, datetime.max.time())
+                from_dt = timezone.make_aware(
+                    datetime.combine(date, datetime.min.time())
+                ) - timedelta(days=days_back)
+                to_dt = timezone.make_aware(datetime.combine(date, datetime.max.time()))
 
                 logger.debug(
                     f"Attempt with {days_back} day(s) lookback: "
@@ -991,4 +1147,36 @@ async def get_price_from_tbank(instrument_uid, date, user):
         import traceback
 
         logger.error(f"Traceback: {traceback.format_exc()}")
+        return None
+
+
+async def get_instrument_uid(asset: Assets, user):
+    """
+    Get instrument UID from T-Bank API
+    """
+    from channels.db import database_sync_to_async
+
+    token = await get_user_token(user)
+    if not token:
+        logger.error("No T-Bank API token found for user")
+        return None
+
+    # Get asset data in sync context
+    asset_isin = await database_sync_to_async(lambda: asset.ISIN)()
+    asset_type = await database_sync_to_async(lambda: asset.type)()
+
+    with Client(token) as client:
+        instruments = client.instruments.find_instrument(query=asset_isin).instruments
+
+        if asset_type == "Bond":
+            return instruments[0].uid if instruments else None
+        elif asset_type == "ETF":
+            for instrument in instruments:
+                if instrument.class_code == "TQTF":
+                    return instrument.uid
+        elif asset_type == "Share":
+            for instrument in instruments:
+                if instrument.class_code == "TQBR":
+                    return instrument.uid
+
         return None

@@ -20,6 +20,12 @@ import SummaryPage from '../views/SummaryPage.vue'
 import SecurityDetailPage from '../views/database/SecurityDetailPage.vue'
 import BrokersPage from '../views/database/BrokersPage.vue'
 
+// Development-only debug components
+const AuthDebugPanel =
+  process.env.NODE_ENV !== 'production'
+    ? () => import('../components/AuthDebugPanel.vue')
+    : null
+
 // export const loading = ref(true)
 
 const routes = [
@@ -126,6 +132,17 @@ const routes = [
     component: SummaryPage,
     meta: { requiresAuth: true, paddingTop: '70px' },
   },
+  // Development-only debug route
+  ...(process.env.NODE_ENV !== 'production' && AuthDebugPanel
+    ? [
+        {
+          path: '/debug-auth',
+          name: 'DebugAuth',
+          component: AuthDebugPanel,
+          meta: { requiresAuth: true },
+        },
+      ]
+    : []),
   {
     path: '/',
     redirect: '/dashboard',

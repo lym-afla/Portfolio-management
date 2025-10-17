@@ -24,9 +24,11 @@ def get_brokers_table_api(request):
     sort_by = data.get("sortBy", {})
 
     user = request.user
-    effective_current_date = datetime.strptime(
-        request.session["effective_current_date"], "%Y-%m-%d"
-    ).date()
+    # Use JWT middleware instead of session
+    effective_current_date_str = getattr(
+        request, "effective_current_date", datetime.now().date().isoformat()
+    )
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
     currency_target = user.default_currency
     number_of_digits = user.digits
 
@@ -140,8 +142,10 @@ def _calculate_totals(brokers_data, user, effective_current_date, currency_targe
         "no_of_accounts": sum(broker["no_of_accounts"] for broker in brokers_data),
         "nav": total_nav,
         "cash": total_cash,
-        "irr": IRR(user.id, effective_current_date, currency_target, account_ids=account_ids)
-        if account_ids
-        else Decimal("0"),
+        "irr": (
+            IRR(user.id, effective_current_date, currency_target, account_ids=account_ids)
+            if account_ids
+            else Decimal("0")
+        ),
     }
     return totals

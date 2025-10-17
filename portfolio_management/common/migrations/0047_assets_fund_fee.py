@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('common', '0046_remove_assets_investor_assets_investors'),
+        ("common", "0046_remove_assets_investor_assets_investors"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='assets',
-            name='fund_fee',
+            model_name="assets",
+            name="fund_fee",
             field=models.DecimalField(blank=True, decimal_places=4, max_digits=6, null=True),
         ),
     ]
