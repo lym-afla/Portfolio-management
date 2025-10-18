@@ -63,7 +63,10 @@ def test_cors_session_behavior():
     # First login to get tokens
     login_response = requests.post(
         f"{base_url}/users/api/login/",
-        json={"username": "testuser", "password": "testpass123"},  # Use actual credentials
+        json={
+            "username": "testuser",
+            "password": "testpass123",
+        },  # Use actual credentials
         headers=headers,
     )
 

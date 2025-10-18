@@ -36,21 +36,36 @@ from core.chart_utils import _chart_dates
             date(2023, 5, 15),
             date(2023, 8, 20),
             "M",
-            [date(2023, 5, 31), date(2023, 6, 30), date(2023, 7, 31), date(2023, 8, 20)],
+            [
+                date(2023, 5, 31),
+                date(2023, 6, 30),
+                date(2023, 7, 31),
+                date(2023, 8, 20),
+            ],
         ),
         # Quarterly frequency
         (
             date(2023, 5, 15),
             date(2024, 2, 20),
             "Q",
-            [date(2023, 6, 30), date(2023, 9, 30), date(2023, 12, 31), date(2024, 2, 20)],
+            [
+                date(2023, 6, 30),
+                date(2023, 9, 30),
+                date(2023, 12, 31),
+                date(2024, 2, 20),
+            ],
         ),
         # Yearly frequency
         (
             date(2023, 5, 15),
             date(2026, 2, 20),
             "Y",
-            [date(2023, 12, 31), date(2024, 12, 31), date(2025, 12, 31), date(2026, 2, 20)],
+            [
+                date(2023, 12, 31),
+                date(2024, 12, 31),
+                date(2025, 12, 31),
+                date(2026, 2, 20),
+            ],
         ),
         # Another yearly frequency
         (
