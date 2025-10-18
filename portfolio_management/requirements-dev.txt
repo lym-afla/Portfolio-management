@@ -35,6 +35,10 @@ colorama==0.4.6
     #   sphinx
 comm==0.2.3
     # via ipykernel
+coverage[toml]==7.11.0
+    # via
+    #   -r requirements-dev.in
+    #   pytest-cov
 debugpy==1.8.16
     # via ipykernel
 decorator==5.2.1
@@ -45,6 +49,10 @@ docutils==0.21.2
     # via sphinx
 executing==2.2.1
     # via stack-data
+factory-boy==3.3.3
+    # via -r requirements-dev.in
+faker==37.11.0
+    # via factory-boy
 filelock==3.20.0
     # via virtualenv
 flake8==6.1.0
@@ -122,7 +130,9 @@ platformdirs==4.4.0
     #   jupyter-core
     #   virtualenv
 pluggy==1.6.0
-    # via pytest
+    # via
+    #   pytest
+    #   pytest-cov
 pre-commit==4.3.0
     # via -r requirements-dev.in
 prompt-toolkit==3.0.52
@@ -149,8 +159,11 @@ pytest==8.4.2
     # via
     #   -r requirements-dev.in
     #   pytest-asyncio
+    #   pytest-cov
     #   pytest-django
 pytest-asyncio==1.1.0
+    # via -r requirements-dev.in
+pytest-cov==7.0.0
     # via -r requirements-dev.in
 pytest-django==4.11.1
     # via -r requirements-dev.in
@@ -201,6 +214,8 @@ traitlets==5.14.3
     #   matplotlib-inline
 typing-extensions==4.15.0
     # via mypy
+tzdata==2025.2
+    # via faker
 urllib3==2.5.0
     # via requests
 virtualenv==20.35.3

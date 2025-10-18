@@ -8,7 +8,8 @@
       "Bash(export:*)",
       "Bash(chmod:*)",
       "Bash(npm:*)",
-      "Bash(claude mcp list:*)"
+      "Bash(claude mcp list:*)",
+      "Bash(git cherry-pick:*)"
     ],
     "deny": [],
     "ask": []

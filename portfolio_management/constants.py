@@ -21,7 +21,6 @@ ACCOUNT_TYPE_CHOICES = [
     (ACCOUNT_TYPE_GROUP, "Account Group"),
     (ACCOUNT_TYPE_BROKER, "Broker"),
 ]
-
 TRANSACTION_TYPE_CASH_IN = "Cash in"
 TRANSACTION_TYPE_CASH_OUT = "Cash out"
 TRANSACTION_TYPE_BUY = "Buy"
@@ -35,7 +34,6 @@ TRANSACTION_TYPE_REPO = "Repo"
 TRANSACTION_TYPE_ASSET_TRANSFER = "Asset transfer"
 TRANSACTION_TYPE_BOND_REDEMPTION = "Bond redemption"  # Partial or full bond repayment
 TRANSACTION_TYPE_BOND_MATURITY = "Bond maturity"  # Full bond maturity
-
 
 TRANSACTION_TYPE_CHOICES = (
     (TRANSACTION_TYPE_CASH_IN, "Cash in"),
