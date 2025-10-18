@@ -16,14 +16,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
-from common.models import (
-    FX,
-    AnnualPerformance,
-    Assets,
-    Brokers,
-    FXTransaction,
-    Transactions,
-)
+from common.models import FX, AnnualPerformance, Assets, Brokers, FXTransaction, Transactions
 from users.models import CustomUser
 
 
@@ -244,9 +237,7 @@ class TestBrokerModelConstraints:
         )
 
         # Create brokers with same name for different users (should be allowed)
-        broker1 = Brokers.objects.create(
-            investor=user1, name="Same Name Broker", country="US"
-        )
+        broker1 = Brokers.objects.create(investor=user1, name="Same Name Broker", country="US")
         broker2 = Brokers.objects.create(
             investor=user2, name="Same Name Broker", country="US"  # Same name
         )
@@ -265,9 +256,7 @@ class TestTransactionModelConstraints:
         self.user = CustomUser.objects.create_user(
             username="tx_user", email="tx@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.asset = Assets.objects.create(
             type="Stock",
             ISIN="US1234567890",
@@ -518,9 +507,7 @@ class TestFXModelConstraints:
         test_date = date(2023, 6, 15)
 
         # Create first FX record
-        fx1 = FX.objects.create(
-            investor=self.user, date=test_date, USDEUR=Decimal("0.92")
-        )
+        fx1 = FX.objects.create(investor=self.user, date=test_date, USDEUR=Decimal("0.92"))
         assert fx1.date == test_date
 
         # Try to create second FX record for same date and investor
@@ -540,9 +527,7 @@ class TestFXModelConstraints:
         test_date = date(2023, 6, 15)
 
         # Create FX records for different users on same date
-        fx1 = FX.objects.create(
-            investor=self.user, date=test_date, USDEUR=Decimal("0.92")
-        )
+        fx1 = FX.objects.create(investor=self.user, date=test_date, USDEUR=Decimal("0.92"))
         fx2 = FX.objects.create(
             investor=user2,
             date=test_date,  # Same date
@@ -588,9 +573,7 @@ class TestFXModelConstraints:
         """Test that date and investor form composite primary key."""
         test_date = date(2023, 6, 15)
 
-        fx = FX.objects.create(
-            investor=self.user, date=test_date, USDEUR=Decimal("0.92")
-        )
+        fx = FX.objects.create(investor=self.user, date=test_date, USDEUR=Decimal("0.92"))
 
         # Verify the composite primary key works
         retrieved_fx = FX.objects.get(investor=self.user, date=test_date)
@@ -633,9 +616,7 @@ class TestAnnualPerformanceConstraints:
         self.user = CustomUser.objects.create_user(
             username="perf_user", email="perf@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
 
     def test_annual_performance_unique_constraints(self):
         """Test annual performance unique constraints."""
@@ -848,9 +829,7 @@ class TestFXTransactionConstraints:
         self.user = CustomUser.objects.create_user(
             username="fx_tx_user", email="fx_tx@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="FX Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="FX Broker", country="US")
 
     def test_fx_transaction_required_relationships(self):
         """Test that FX transaction must have required relationships."""

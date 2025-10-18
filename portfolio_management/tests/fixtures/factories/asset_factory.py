@@ -146,11 +146,7 @@ class AssetWithPriceFactory(AssetFactory):
 
             # Simulate price movement with some randomness
             price_change = Decimal(
-                str(
-                    self.faker.pyfloat(
-                        min_value=-float(volatility), max_value=float(volatility)
-                    )
-                )
+                str(self.faker.pyfloat(min_value=-float(volatility), max_value=float(volatility)))
             )
             current_price = current_price * (Decimal("1") + price_change)
 
@@ -234,9 +230,7 @@ def create_sector_portfolio(user, brokers, sector, num_assets=5):
     }
 
     assets = []
-    names = sector_names.get(
-        sector, [f"{sector.title()} Corp {i}" for i in range(num_assets)]
-    )
+    names = sector_names.get(sector, [f"{sector.title()} Corp {i}" for i in range(num_assets)])
 
     for i, name in enumerate(names[:num_assets]):
         asset = StockFactory.create(

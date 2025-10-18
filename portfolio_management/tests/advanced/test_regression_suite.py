@@ -17,10 +17,7 @@ import pytest
 
 from common.models import Assets
 from portfolio_management.common.models import get_exchange_rate
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from portfolio_management.portfolio.calculator import calculate_buy_in_price, calculate_nav
 from portfolio_management.portfolio.models import gain_loss
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
@@ -192,9 +189,7 @@ class TestCalculationRegression:
 
     # Test Case 7: Dividend Processing with FX
     @pytest.mark.regression_critical
-    def test_regression_dividend_fx_processing(
-        self, multi_currency_portfolio, fx_rates
-    ):
+    def test_regression_dividend_fx_processing(self, multi_currency_portfolio, fx_rates):
         """Regression test for dividend processing with FX conversion."""
         portfolio = multi_currency_portfolio
         asset = Assets.objects.get(ticker="AAPL")
@@ -542,9 +537,7 @@ class TestAPIRegression:
     These tests ensure API responses remain consistent.
     """
 
-    def test_regression_portfolio_endpoint_response_format(
-        self, api_client, sample_portfolio
-    ):
+    def test_regression_portfolio_endpoint_response_format(self, api_client, sample_portfolio):
         """Regression test for portfolio endpoint response format."""
         url = f"/api/portfolios/{sample_portfolio.id}/"
         response = api_client.get(url)
@@ -573,9 +566,7 @@ class TestAPIRegression:
         assert isinstance(data["total_value"], (int, float, str))
         assert isinstance(data["cash_balance"], (int, float, str))
 
-    def test_regression_transaction_endpoint_validation(
-        self, api_client, sample_portfolio
-    ):
+    def test_regression_transaction_endpoint_validation(self, api_client, sample_portfolio):
         """Regression test for transaction endpoint validation."""
         url = "/api/transactions/"
 
@@ -688,9 +679,7 @@ class TestDataIntegrityRegression:
         buy_in_price_1 = calculate_buy_in_price(sample_transactions)
         buy_in_price_2 = calculate_buy_in_price(sample_transactions)
 
-        assert (
-            buy_in_price_1 == buy_in_price_2
-        ), "Inconsistent buy-in price calculations"
+        assert buy_in_price_1 == buy_in_price_2, "Inconsistent buy-in price calculations"
 
         # NAV calculations should be consistent
         if hasattr(sample_transactions[0], "portfolio"):

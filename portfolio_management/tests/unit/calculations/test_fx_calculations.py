@@ -57,9 +57,7 @@ class TestFXRateCalculation:
         result = FX.get_rate("USD", "EUR", test_date)
 
         # Find the expected rate from our fixture data
-        expected_fx = FX.objects.filter(
-            date=test_date, investor=user, USDEUR__isnull=False
-        ).first()
+        expected_fx = FX.objects.filter(date=test_date, investor=user, USDEUR__isnull=False).first()
 
         assert expected_fx is not None
         assert result["dates"] == [test_date]
@@ -181,9 +179,7 @@ class TestFXRateScenarios:
         assert converted_amount > 0
         assert fx_result["conversions"] >= 2  # Should be cross-currency
 
-    def test_multi_currency_portfolio_valuation(
-        self, multi_currency_user, fx_rates_multi_currency
-    ):
+    def test_multi_currency_portfolio_valuation(self, multi_currency_user, fx_rates_multi_currency):
         """Test valuing a multi-currency portfolio in a single currency."""
         portfolio = {
             "USD": Decimal("10000.00"),
@@ -207,9 +203,7 @@ class TestFXRateScenarios:
         assert total_usd > Decimal("20000")  # Should be more than sum of USD portion
         assert isinstance(total_usd, Decimal)
 
-    def test_fx_rate_volatility_impact(
-        self, multi_currency_user, fx_rates_multi_currency
-    ):
+    def test_fx_rate_volatility_impact(self, multi_currency_user, fx_rates_multi_currency):
         """Test FX rate volatility impact on portfolio valuation."""
         amount = Decimal("10000.00")
 
@@ -235,9 +229,7 @@ class TestFXRateScenarios:
         volatility_impact = max_valuation - min_valuation
 
         assert volatility_impact > 0
-        assert (volatility_impact / min_valuation) > Decimal(
-            "0.01"
-        )  # At least 1% volatility
+        assert (volatility_impact / min_valuation) > Decimal("0.01")  # At least 1% volatility
 
 
 @pytest.mark.fx
@@ -324,9 +316,7 @@ class TestFXRateEdgeCases:
 class TestFXRatePerformance:
     """Test performance of FX rate calculations."""
 
-    def test_fx_calculation_performance_single_lookup(
-        self, user, fx_rates_multi_currency
-    ):
+    def test_fx_calculation_performance_single_lookup(self, user, fx_rates_multi_currency):
         """Test performance of single FX rate lookup."""
         import time
 
@@ -338,9 +328,7 @@ class TestFXRatePerformance:
         assert execution_time < 1.0  # Should complete within 1 second
         assert result["FX"] > 0
 
-    def test_fx_calculation_performance_batch_lookup(
-        self, user, fx_rates_multi_currency
-    ):
+    def test_fx_calculation_performance_batch_lookup(self, user, fx_rates_multi_currency):
         """Test performance of batch FX rate lookups."""
         import time
 

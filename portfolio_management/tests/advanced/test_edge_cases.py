@@ -21,10 +21,7 @@ from rest_framework.test import APIClient
 
 from common.models import FX, Assets, Portfolios, Transactions
 from portfolio_management.common.models import fx_cache, get_exchange_rate
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from portfolio_management.portfolio.calculator import calculate_buy_in_price, calculate_nav
 from portfolio_management.portfolio.models import gain_loss
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.fx_factory import FXRateFactory
@@ -112,8 +109,7 @@ class TestCalculationEdgeCases:
 
         result = calculate_buy_in_price(transactions)
         expected = (
-            Decimal("0.000001") * Decimal("1000000.00")
-            + Decimal("0.000002") * Decimal("500000.00")
+            Decimal("0.000001") * Decimal("1000000.00") + Decimal("0.000002") * Decimal("500000.00")
         ) / Decimal("0.000003")
         assert abs(result - expected) < Decimal("0.01")
 
@@ -188,27 +184,21 @@ class TestCalculationEdgeCases:
         total_cost = Decimal("100.12345678901234567890") * Decimal(
             "50.98765432109876543210"
         ) + Decimal("200.23456789012345678901") * Decimal("51.12345678901234567890")
-        total_quantity = Decimal("100.12345678901234567890") + Decimal(
-            "200.23456789012345678901"
-        )
+        total_quantity = Decimal("100.12345678901234567890") + Decimal("200.23456789012345678901")
         expected = total_cost / total_quantity
 
         assert abs(result - expected) < Decimal("0.0000000001")
 
     def test_nav_calculation_empty_portfolio(self):
         """Test NAV calculation for empty portfolio."""
-        portfolio = Portfolios.objects.create(
-            name="Empty Portfolio", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Empty Portfolio", base_currency="USD")
 
         result = calculate_nav(portfolio)
         assert result == Decimal("0")
 
     def test_nav_calculation_only_cash(self):
         """Test NAV calculation for portfolio with only cash."""
-        portfolio = Portfolios.objects.create(
-            name="Cash Only Portfolio", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Cash Only Portfolio", base_currency="USD")
 
         # Portfolio should have no positions but positive NAV from cash
         result = calculate_nav(portfolio)
@@ -216,9 +206,7 @@ class TestCalculationEdgeCases:
 
     def test_nav_calculation_negative_positions(self):
         """Test NAV calculation with negative positions (short selling)."""
-        portfolio = Portfolios.objects.create(
-            name="Short Portfolio", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Short Portfolio", base_currency="USD")
         asset = AssetFactory.create()
 
         # Create short position
@@ -391,14 +379,10 @@ class TestDatabaseEdgeCases:
     def test_transaction_model_invalid_enum_values(self):
         """Test transaction creation with invalid enum values."""
         asset = AssetFactory.create()
-        portfolio = Portfolios.objects.create(
-            name="Test Portfolio", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Test Portfolio", base_currency="USD")
 
         with pytest.raises(ValueError):
-            TransactionFactory.create(
-                asset=asset, portfolio=portfolio, type="INVALID_TYPE"
-            )
+            TransactionFactory.create(asset=asset, portfolio=portfolio, type="INVALID_TYPE")
 
     def test_asset_model_duplicate_isin(self):
         """Test asset creation with duplicate ISIN."""
@@ -449,9 +433,7 @@ class TestDatabaseEdgeCases:
     def test_concurrent_transaction_creation(self):
         """Test concurrent transaction creation."""
         asset = AssetFactory.create()
-        portfolio = Portfolios.objects.create(
-            name="Concurrent Test", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Concurrent Test", base_currency="USD")
 
         def create_transaction(index):
             return TransactionFactory.create(
@@ -468,9 +450,7 @@ class TestDatabaseEdgeCases:
         transactions = []
 
         for i in range(10):
-            thread = threading.Thread(
-                target=lambda i=i: transactions.append(create_transaction(i))
-            )
+            thread = threading.Thread(target=lambda i=i: transactions.append(create_transaction(i)))
             threads.append(thread)
             thread.start()
 
@@ -529,9 +509,7 @@ class TestAPIEdgeCases:
     def test_api_malformed_json(self, api_client):
         """Test API with malformed JSON."""
         url = reverse("transaction-list")
-        response = api_client.post(
-            url, '{"invalid": json}', content_type="application/json"
-        )
+        response = api_client.post(url, '{"invalid": json}', content_type="application/json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -539,9 +517,7 @@ class TestAPIEdgeCases:
         """Test API with very large request payload."""
         # Create large transaction data
         large_data = {
-            "portfolio": Portfolios.objects.create(
-                name="Large Test", base_currency="USD"
-            ).id,
+            "portfolio": Portfolios.objects.create(name="Large Test", base_currency="USD").id,
             "asset": AssetFactory.create().id,
             "type": "Buy",
             "quantity": "1" * 100,  # Very large number string
@@ -868,9 +844,7 @@ class TestSystemRobustness:
 
             # Get specific portfolio
             responses.append(
-                client.get(
-                    reverse("portfolio-detail", kwargs={"pk": portfolio_id})
-                ).status_code
+                client.get(reverse("portfolio-detail", kwargs={"pk": portfolio_id})).status_code
             )
 
             # List assets
@@ -884,9 +858,7 @@ class TestSystemRobustness:
 
         for portfolio in portfolios:
             thread = threading.Thread(
-                target=lambda pid=portfolio.id: all_responses.extend(
-                    simulate_user_activity(pid)
-                )
+                target=lambda pid=portfolio.id: all_responses.extend(simulate_user_activity(pid))
             )
             threads.append(thread)
             thread.start()
@@ -953,9 +925,7 @@ class TestSystemRobustness:
 
     def test_data_consistency_under_load(self):
         """Test data consistency under high load conditions."""
-        portfolio = Portfolios.objects.create(
-            name="Load Test Portfolio", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Load Test Portfolio", base_currency="USD")
         asset = AssetFactory.create()
 
         # Create many concurrent transactions

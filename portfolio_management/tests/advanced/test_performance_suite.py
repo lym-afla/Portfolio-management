@@ -23,10 +23,7 @@ from rest_framework.test import APIClient
 
 from portfolio_management.common.models import fx_cache, get_exchange_rate
 from portfolio_management.models import Assets, Portfolios, Transactions
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from portfolio_management.portfolio.calculator import calculate_buy_in_price, calculate_nav
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
 
@@ -156,14 +153,10 @@ class TestCalculationPerformance:
             if len(performance_data) > 1:
                 prev_size, prev_time = performance_data[-2]
                 scaling_factor = (calc_time / prev_time) / (size / prev_size)
-                assert (
-                    scaling_factor < 2.0
-                ), f"Super-linear scaling detected: {scaling_factor:.2f}x"
+                assert scaling_factor < 2.0, f"Super-linear scaling detected: {scaling_factor:.2f}x"
 
             assert nav > 0
-            assert (
-                calc_time < 1.0
-            ), f"NAV calculation took {calc_time:.2f}s for {size} assets"
+            assert calc_time < 1.0, f"NAV calculation took {calc_time:.2f}s for {size} assets"
 
     def test_performance_concurrent_calculations(self):
         """Test performance under concurrent calculation load."""
@@ -183,12 +176,8 @@ class TestCalculationPerformance:
         start_time = time.time()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [
-                executor.submit(calculate_asset_buy_in, asset.id) for asset in assets
-            ]
-            results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            futures = [executor.submit(calculate_asset_buy_in, asset.id) for asset in assets]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
         end_time = time.time()
         total_time = end_time - start_time
@@ -229,15 +218,11 @@ class TestDatabasePerformance:
 
         # Test transaction query performance
         start_time = time.time()
-        queried_transactions = Transactions.objects.select_related(
-            "asset", "portfolio"
-        ).all()
+        queried_transactions = Transactions.objects.select_related("asset", "portfolio").all()
         list(queried_transactions)  # Force evaluation
         transaction_query_time = time.time() - start_time
 
-        assert (
-            transaction_query_time < 0.5
-        ), f"Transaction query took {transaction_query_time:.4f}s"
+        assert transaction_query_time < 0.5, f"Transaction query took {transaction_query_time:.4f}s"
 
     def test_database_bulk_operations_performance(self):
         """Test performance of bulk database operations."""
@@ -267,9 +252,7 @@ class TestDatabasePerformance:
         Transactions.objects.bulk_create(transactions_data)
         bulk_tx_create_time = time.time() - start_time
 
-        assert (
-            bulk_tx_create_time < 2.0
-        ), f"Bulk transaction create took {bulk_tx_create_time:.4f}s"
+        assert bulk_tx_create_time < 2.0, f"Bulk transaction create took {bulk_tx_create_time:.4f}s"
 
     def test_database_index_performance(self):
         """Test database index performance for indexed queries."""
@@ -289,9 +272,7 @@ class TestDatabasePerformance:
             # Query by asset (should be indexed)
             lambda: list(Transactions.objects.filter(asset__ticker="AAPL")),
             # Query by date range (should be indexed)
-            lambda: list(
-                Transactions.objects.filter(date__gte=date.today() - timedelta(days=30))
-            ),
+            lambda: list(Transactions.objects.filter(date__gte=date.today() - timedelta(days=30))),
             # Query by type (should be indexed)
             lambda: list(Transactions.objects.filter(type="Buy")),
             # Complex query with multiple conditions
@@ -324,9 +305,7 @@ class TestDatabasePerformance:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             futures = [executor.submit(db_operation) for _ in range(50)]
-            results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
         end_time = time.time()
         total_time = end_time - start_time
@@ -402,16 +381,13 @@ class TestAPIPerformance:
         # total_pagination_time = time.time() - start_time
         avg_time_per_page = total_time / min(page, 10)
 
-        assert (
-            avg_time_per_page < 0.1
-        ), f"Average page time {avg_time_per_page:.4f}s too slow"
+        assert avg_time_per_page < 0.1, f"Average page time {avg_time_per_page:.4f}s too slow"
 
     def test_api_concurrent_requests(self, api_client):
         """Test API performance under concurrent requests."""
         # Create test data
         portfolios = [
-            Portfolios.objects.create(name=f"Portfolio {i}", base_currency="USD")
-            for i in range(5)
+            Portfolios.objects.create(name=f"Portfolio {i}", base_currency="USD") for i in range(5)
         ]
 
         def make_request(portfolio_id):
@@ -430,9 +406,7 @@ class TestAPIPerformance:
                 for portfolio in portfolios
                 for _ in range(10)
             ]
-            results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
         # end_time = time.time()
         # total_time = end_time - start_time
@@ -449,12 +423,8 @@ class TestAPIPerformance:
         avg_response_time = sum(response_times) / len(response_times)
         max_response_time = max(response_times)
 
-        assert (
-            avg_response_time < 0.5
-        ), f"Average response time {avg_response_time:.4f}s too slow"
-        assert (
-            max_response_time < 2.0
-        ), f"Max response time {max_response_time:.4f}s too slow"
+        assert avg_response_time < 0.5, f"Average response time {avg_response_time:.4f}s too slow"
+        assert max_response_time < 2.0, f"Max response time {max_response_time:.4f}s too slow"
 
     def test_api_filtering_performance(self, api_client):
         """Test API filtering performance."""
@@ -512,9 +482,7 @@ class TestFXRatePerformance:
         end_time = time.time()
         avg_lookup_time = (end_time - start_time) / 1000
 
-        assert (
-            avg_lookup_time < 0.001
-        ), f"Average lookup time {avg_lookup_time:.6f}s too slow"
+        assert avg_lookup_time < 0.001, f"Average lookup time {avg_lookup_time:.6f}s too slow"
 
     def test_fx_rate_cross_currency_performance(self, fx_rates):
         """Test cross-currency FX rate calculation performance."""
@@ -555,9 +523,7 @@ class TestFXRatePerformance:
                 for pair in currency_pairs
                 for _ in range(100)
             ]
-            rates = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            rates = [future.result() for future in concurrent.futures.as_completed(futures)]
 
         end_time = time.time()
         total_time = end_time - start_time
@@ -636,9 +602,7 @@ class TestMemoryUsage:
             before_memory = process.memory_info().rss
 
             # Perform calculations
-            for tx_batch in [
-                transactions[i : i + 100] for i in range(0, len(transactions), 100)
-            ]:
+            for tx_batch in [transactions[i : i + 100] for i in range(0, len(transactions), 100)]:
                 calculate_buy_in_price(tx_batch)
 
             # Measure memory after calculations
@@ -720,9 +684,7 @@ class TestMemoryUsage:
         # Analyze memory trend
         if len(memory_samples) > 1:
             # Calculate memory trend (slope)
-            memory_trend = (memory_samples[-1] - memory_samples[0]) / len(
-                memory_samples
-            )
+            memory_trend = (memory_samples[-1] - memory_samples[0]) / len(memory_samples)
 
             # Memory should not be consistently increasing
             assert (
@@ -748,15 +710,11 @@ class TestStressTesting:
 
             operations = [
                 # View portfolio
-                lambda: client.get(
-                    reverse("portfolio-detail", kwargs={"pk": portfolio_id})
-                ),
+                lambda: client.get(reverse("portfolio-detail", kwargs={"pk": portfolio_id})),
                 # List assets
                 lambda: client.get(reverse("asset-list")),
                 # List transactions
-                lambda: client.get(
-                    reverse("transaction-list"), {"portfolio": portfolio_id}
-                ),
+                lambda: client.get(reverse("transaction-list"), {"portfolio": portfolio_id}),
                 # Get FX rates
                 lambda: client.get(reverse("fx-rates")),
             ]
@@ -779,24 +737,18 @@ class TestStressTesting:
                 for portfolio in portfolios
                 for _ in range(5)
             ]
-            all_results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            all_results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
         end_time = time.time()
         total_time = end_time - start_time
 
         # Analyze results
-        flat_results = [
-            result for user_results in all_results for result in user_results
-        ]
+        flat_results = [result for user_results in all_results for result in user_results]
         successful_operations = [r for r in flat_results if r[0] == 200]
         response_times = [r[1] for r in successful_operations]
 
         success_rate = len(successful_operations) / len(flat_results)
-        avg_response_time = (
-            sum(response_times) / len(response_times) if response_times else 0
-        )
+        avg_response_time = sum(response_times) / len(response_times) if response_times else 0
 
         assert success_rate > 0.95, f"Success rate too low: {success_rate:.2%}"
         assert (
@@ -833,9 +785,7 @@ class TestStressTesting:
             batch_time = time.time() - start_time
             if total_processed % 5000 == 0:
                 rate = total_processed / batch_time
-                assert (
-                    rate > 1000
-                ), f"Processing rate too slow: {rate:.2f} transactions/second"
+                assert rate > 1000, f"Processing rate too slow: {rate:.2f} transactions/second"
 
         end_time = time.time()
         total_time = end_time - start_time
@@ -844,9 +794,7 @@ class TestStressTesting:
         assert (
             processing_rate > 5000
         ), f"Large dataset processing too slow: {processing_rate:.2f} transactions/second"
-        assert (
-            total_time < 60
-        ), f"Large dataset processing took too long: {total_time:.2f}s"
+        assert total_time < 60, f"Large dataset processing took too long: {total_time:.2f}s"
 
     def test_stress_api_rate_limiting(self, api_client):
         """Test API rate limiting under stress."""
@@ -869,9 +817,7 @@ class TestStressTesting:
 
         success_rate = len(successful_requests) / len(responses)
 
-        assert (
-            success_rate > 0.8
-        ), f"Success rate under stress too low: {success_rate:.2%}"
+        assert success_rate > 0.8, f"Success rate under stress too low: {success_rate:.2%}"
         assert total_time < 10, f"Rapid requests took too long: {total_time:.2f}s"
 
         # Should have some rate limiting if implemented

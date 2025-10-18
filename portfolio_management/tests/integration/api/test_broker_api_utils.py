@@ -34,12 +34,8 @@ async def tinkoff_api():
 @pytest.mark.asyncio
 async def test_connect_success(tinkoff_api, mock_user):
     with (
-        patch(
-            "core.broker_api_utils.get_user_token", new_callable=AsyncMock
-        ) as mock_get_token,
-        patch(
-            "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
-        ) as mock_verify,
+        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
     ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = True
@@ -55,19 +51,13 @@ async def test_connect_success(tinkoff_api, mock_user):
 @pytest.mark.asyncio
 async def test_connect_invalid_token(tinkoff_api, mock_user):
     with (
-        patch(
-            "core.broker_api_utils.get_user_token", new_callable=AsyncMock
-        ) as mock_get_token,
-        patch(
-            "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
-        ) as mock_verify,
+        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
     ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = False
 
-        with pytest.raises(
-            TinkoffAPIException, match="Invalid or insufficient token access"
-        ):
+        with pytest.raises(TinkoffAPIException, match="Invalid or insufficient token access"):
             await tinkoff_api.connect(mock_user)
 
 
@@ -151,9 +141,7 @@ async def test_get_transactions_success(tinkoff_api, mock_user, mock_account):
 
     with patch.object(tinkoff_api, "client") as mock_client:
         # Make the get_operations_by_cursor method an AsyncMock
-        mock_client.operations.get_operations_by_cursor = AsyncMock(
-            return_value=mock_response
-        )
+        mock_client.operations.get_operations_by_cursor = AsyncMock(return_value=mock_response)
 
         # Mock the transaction mapping function
         with patch(
@@ -244,9 +232,7 @@ async def test_get_transactions_with_dates(tinkoff_api, mock_user, mock_account)
 
     with patch.object(tinkoff_api, "client") as mock_client:
         # Make get_operations_by_cursor an AsyncMock
-        mock_client.operations.get_operations_by_cursor = AsyncMock(
-            return_value=mock_response
-        )
+        mock_client.operations.get_operations_by_cursor = AsyncMock(return_value=mock_response)
         tinkoff_api.user = mock_user
 
         date_from = "2024-01-01"

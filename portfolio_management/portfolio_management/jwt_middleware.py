@@ -22,15 +22,30 @@ class JWTEffectiveDateMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # Initialize effective_current_date from JWT token
+        # Only process JWT middleware for requests that have tokens
+        # Skip authentication endpoints like login/register
+        auth_endpoints = ["/users/api/login/", "/users/api/register/", "/users/api/refresh-token/"]
+
+        if request.path in auth_endpoints or not self._has_jwt_token(request):
+            # For auth endpoints or requests without tokens, use default date
+            default_date = date.today().isoformat()
+            request.effective_current_date = default_date
+
+            # Minimal logging for auth endpoints
+            if request.path in auth_endpoints:
+                logger.debug("JWT Middleware skipping auth endpoint", path=request.path)
+
+            return self.get_response(request)
+
+        # Process JWT token for authenticated requests
         effective_date = self._extract_effective_date_from_jwt(request)
 
         # Store it in request for views to use
         request.effective_current_date = effective_date
 
-        # Log the middleware processing
+        # Log the middleware processing (only for authenticated requests)
         logger.debug(
-            "JWT Middleware processing request",
+            "JWT Middleware processing authenticated request",
             path=request.path,
             method=request.method,
             effective_date=effective_date,
@@ -70,7 +85,14 @@ class JWTEffectiveDateMiddleware:
             access_token = AccessToken(token)
             return access_token.payload
         except (InvalidToken, TokenError) as e:
-            logger.warning("JWT Middleware invalid token", error=str(e))
+            # Only log debug info for invalid tokens, not warnings
+            # This is normal for login/register endpoints that don't have tokens yet
+            if "Token is expired" not in str(e):
+                logger.debug("JWT Middleware invalid token", error=str(e))
+            else:
+                logger.debug(
+                    "JWT Middleware expired token - this is expected for unauthenticated requests"
+                )
             return None
 
     def _get_user_id_from_jwt(self, request):

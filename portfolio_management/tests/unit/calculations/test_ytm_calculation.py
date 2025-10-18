@@ -12,14 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from common.models import (
-    Accounts,
-    Assets,
-    BondCouponSchedule,
-    BondMetadata,
-    Brokers,
-    Transactions,
-)
+from common.models import Accounts, Assets, BondCouponSchedule, BondMetadata, Brokers, Transactions
 from core.securities_utils import calculate_bond_ytm
 
 CustomUser = get_user_model()
@@ -38,9 +31,7 @@ class YTMCalculationTestCase(TestCase):
         )
 
         # Create broker and account
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
 
         self.account = Accounts.objects.create(
             broker=self.broker, name="Test Account", native_id="12345"
@@ -107,9 +98,7 @@ class YTMCalculationTestCase(TestCase):
         # Calculate YTM
         effective_date = datetime.date(2024, 6, 15)
 
-        ytm = calculate_bond_ytm(
-            user=self.user, security=self.bond, effective_date=effective_date
-        )
+        ytm = calculate_bond_ytm(user=self.user, security=self.bond, effective_date=effective_date)
 
         # YTM should be calculated and not None
         self.assertIsNotNone(ytm, "YTM should be calculated")
@@ -139,9 +128,7 @@ class YTMCalculationTestCase(TestCase):
 
         # Calculate YTM
         effective_date = datetime.date(2024, 6, 15)
-        ytm = calculate_bond_ytm(
-            user=self.user, security=self.bond, effective_date=effective_date
-        )
+        ytm = calculate_bond_ytm(user=self.user, security=self.bond, effective_date=effective_date)
 
         # YTM should still be calculated using fallback notional
         self.assertIsNotNone(ytm, "YTM should be calculated with fallback notional")
@@ -183,9 +170,7 @@ class YTMCalculationTestCase(TestCase):
 
         # Calculate YTM
         effective_date = datetime.date(2024, 6, 15)
-        ytm = calculate_bond_ytm(
-            user=self.user, security=rub_bond, effective_date=effective_date
-        )
+        ytm = calculate_bond_ytm(user=self.user, security=rub_bond, effective_date=effective_date)
 
         # YTM should be calculated even with currency conversion
         self.assertIsNotNone(ytm, "YTM should be calculated with currency conversion")
@@ -193,9 +178,7 @@ class YTMCalculationTestCase(TestCase):
     def test_ytm_calculation_no_transactions(self):
         """Test YTM calculation when no buy transactions exist."""
         effective_date = datetime.date(2024, 6, 15)
-        ytm = calculate_bond_ytm(
-            user=self.user, security=self.bond, effective_date=effective_date
-        )
+        ytm = calculate_bond_ytm(user=self.user, security=self.bond, effective_date=effective_date)
 
         # YTM should be None when no transactions exist
         self.assertIsNone(ytm, "YTM should be None when no transactions exist")
@@ -214,9 +197,7 @@ class YTMCalculationTestCase(TestCase):
         stock.investors.add(self.user)
 
         effective_date = datetime.date(2024, 6, 15)
-        ytm = calculate_bond_ytm(
-            user=self.user, security=stock, effective_date=effective_date
-        )
+        ytm = calculate_bond_ytm(user=self.user, security=stock, effective_date=effective_date)
 
         # YTM should be None for non-bond assets
         self.assertIsNone(ytm, "YTM should be None for non-bond assets")
@@ -238,14 +219,10 @@ class YTMCalculationTestCase(TestCase):
         )
 
         effective_date = datetime.date(2024, 6, 15)
-        ytm = calculate_bond_ytm(
-            user=self.user, security=self.bond, effective_date=effective_date
-        )
+        ytm = calculate_bond_ytm(user=self.user, security=self.bond, effective_date=effective_date)
 
         # YTM should be None when essential data is missing
-        self.assertIsNone(
-            ytm, "YTM should be None when essential transaction data is missing"
-        )
+        self.assertIsNone(ytm, "YTM should be None when essential transaction data is missing")
 
     def test_ytm_calculation_cash_flow_verification(self):
         """Test that YTM calculation compiles cash flows correctly."""
@@ -288,24 +265,14 @@ class YTMCalculationTestCase(TestCase):
 
             # Verify each cash flow is a tuple of (date, amount)
             for cash_flow in cash_flows:
-                self.assertIsInstance(
-                    cash_flow, tuple, "Each cash flow should be a tuple"
-                )
-                self.assertEqual(
-                    len(cash_flow), 2, "Each cash flow should have date and amount"
-                )
-                self.assertIsInstance(
-                    cash_flow[0], datetime.date, "First element should be date"
-                )
-                self.assertIsInstance(
-                    cash_flow[1], float, "Second element should be float amount"
-                )
+                self.assertIsInstance(cash_flow, tuple, "Each cash flow should be a tuple")
+                self.assertEqual(len(cash_flow), 2, "Each cash flow should have date and amount")
+                self.assertIsInstance(cash_flow[0], datetime.date, "First element should be date")
+                self.assertIsInstance(cash_flow[1], float, "Second element should be float amount")
 
             # Check that first cash flow is negative (purchase)
             first_cash_flow = cash_flows[0][1]
-            self.assertLess(
-                first_cash_flow, 0, "First cash flow should be negative (purchase)"
-            )
+            self.assertLess(first_cash_flow, 0, "First cash flow should be negative (purchase)")
 
     def test_compare_with_existing_method(self):
         """Compare new YTM function results with existing get_security_detail method."""

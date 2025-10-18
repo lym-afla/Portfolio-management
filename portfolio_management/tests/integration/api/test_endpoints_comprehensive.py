@@ -61,9 +61,7 @@ class TestUserEndpoints(APITestCase):
         url = "/users/api/update_dashboard_settings/"
         data = {"default_currency": "EUR", "digits": 2, "table_date": "2023-06-15"}
 
-        response = self.client.post(
-            url, data=json.dumps(data), content_type="application/json"
-        )
+        response = self.client.post(url, data=json.dumps(data), content_type="application/json")
 
         assert response.status_code == 200
         updated_data = response.json()
@@ -112,9 +110,7 @@ class TestPortfolioEndpoints(APITestCase):
             email="portfolio@example.com",
             password="testpass123",
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.asset = Assets.objects.create(
             type="Stock",
             ISIN="US1234567890",
@@ -193,9 +189,7 @@ class TestPortfolioEndpoints(APITestCase):
     def test_portfolio_nav_endpoint(self):
         """Test NAV calculation endpoint."""
         # Create price data
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=self.asset, price=Decimal("55.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=self.asset, price=Decimal("55.00"))
 
         url = "/dashboard/api/nav/"
         response = self.client.post(
@@ -212,9 +206,7 @@ class TestPortfolioEndpoints(APITestCase):
 
     def test_multi_currency_portfolio_endpoint(self, multi_currency_user):
         """Test multi-currency portfolio endpoint."""
-        self.client.login(
-            username=multi_currency_user.username, password="multipass123"
-        )
+        self.client.login(username=multi_currency_user.username, password="multipass123")
 
         url = "/dashboard/api/multi_currency_summary/"
         response = self.client.get(url)
@@ -236,9 +228,7 @@ class TestTransactionEndpoints(APITestCase):
         self.user = CustomUser.objects.create_user(
             username="tx_user", email="tx@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.asset = Assets.objects.create(
             type="Stock",
             ISIN="US1234567890",
@@ -398,9 +388,7 @@ class TestAssetEndpoints(APITestCase):
         self.user = CustomUser.objects.create_user(
             username="asset_user", email="asset@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.asset = Assets.objects.create(
             type="Stock",
             ISIN="US1234567890",
@@ -545,9 +533,7 @@ class TestFXEndpoints(APITestCase):
     def test_fx_conversion_endpoint(self):
         """Test FX conversion endpoint."""
         # Create FX rate data
-        FX.objects.create(
-            investor=self.user, date=date(2023, 6, 15), USDEUR=Decimal("0.92")
-        )
+        FX.objects.create(investor=self.user, date=date(2023, 6, 15), USDEUR=Decimal("0.92"))
 
         url = "/fx/api/convert/"
         conversion_data = {
@@ -768,9 +754,7 @@ class TestAPIErrorHandling(APITestCase):
         url = "/transactions/api/create/"
         invalid_json = "{invalid json}"
 
-        response = self.client.post(
-            url, data=invalid_json, content_type="application/json"
-        )
+        response = self.client.post(url, data=invalid_json, content_type="application/json")
 
         assert response.status_code == 400
 

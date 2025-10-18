@@ -61,22 +61,16 @@ def test_session_persistence():
         content_type="application/json",
     )
     print(f"Response status: {response2.status_code}")
-    print(
-        f"Response data: {response2.json() if response2.status_code == 200 else 'Error'}"
-    )
+    print(f"Response data: {response2.json() if response2.status_code == 200 else 'Error'}")
     print(f"Session data after update: {dict(client.session.items())}")
-    print(
-        f"Session cookie after update: {client.cookies.get('sessionid', 'NOT_FOUND')}"
-    )
+    print(f"Session cookie after update: {client.cookies.get('sessionid', 'NOT_FOUND')}")
 
     # Test 3: Call transactions endpoint to check if session persists
     print("\n4. Testing transactions endpoint...")
     response3 = client.post("/transactions/api/get_transactions_table/")
     print(f"Response status: {response3.status_code}")
     print(f"Session data after transactions: {dict(client.session.items())}")
-    print(
-        f"Session cookie after transactions: {client.cookies.get('sessionid', 'NOT_FOUND')}"
-    )
+    print(f"Session cookie after transactions: {client.cookies.get('sessionid', 'NOT_FOUND')}")
 
     # Test 4: Check if effective_current_date persists
     effective_date = client.session.get("effective_current_date")
@@ -159,11 +153,7 @@ if __name__ == "__main__":
         print(f"Session save every request: {settings.SESSION_SAVE_EVERY_REQUEST}")
 
         # Check CORS settings
-        print(
-            f"CORS allow credentials: {getattr(settings, 'CORS_ALLOW_CREDENTIALS', 'NOT_SET')}"
-        )
-        print(
-            f"CORS allowed origins: {getattr(settings, 'CORS_ALLOWED_ORIGINS', 'NOT_SET')}"
-        )
+        print(f"CORS allow credentials: {getattr(settings, 'CORS_ALLOW_CREDENTIALS', 'NOT_SET')}")
+        print(f"CORS allowed origins: {getattr(settings, 'CORS_ALLOWED_ORIGINS', 'NOT_SET')}")
     else:
         print("\nAll tests passed! Session persistence is working correctly.")

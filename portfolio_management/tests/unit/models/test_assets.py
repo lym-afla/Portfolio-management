@@ -216,15 +216,11 @@ class TestAssetPositionCalculation:
         assert position_broker1 == Decimal("100")
 
         # Calculate position for second broker only
-        position_broker2 = asset.position(
-            date(2023, 2, 16), broker_id_list=[broker_uk.id]
-        )
+        position_broker2 = asset.position(date(2023, 2, 16), broker_id_list=[broker_uk.id])
         assert position_broker2 == Decimal("75")
 
         # Calculate position for both brokers
-        position_both = asset.position(
-            date(2023, 2, 16), broker_id_list=[broker.id, broker_uk.id]
-        )
+        position_both = asset.position(date(2023, 2, 16), broker_id_list=[broker.id, broker_uk.id])
         assert position_both == Decimal("175")
 
     def test_position_date_boundary(self, user, broker, asset):
@@ -593,13 +589,9 @@ class TestAssetPriceMethods:
     def test_price_at_date_latest_before(self, user, broker, asset):
         """Test price retrieval getting latest price before date."""
         # Create multiple price records
-        Prices.objects.create(
-            date=date(2023, 5, 15), security=asset, price=Decimal("50.00")
-        )
+        Prices.objects.create(date=date(2023, 5, 15), security=asset, price=Decimal("50.00"))
 
-        Prices.objects.create(
-            date=date(2023, 6, 1), security=asset, price=Decimal("52.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 1), security=asset, price=Decimal("52.00"))
 
         # Request price between records
         request_date = date(2023, 6, 10)

@@ -129,9 +129,7 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     assert name is None and isin is None
 
     # Test unexpected exception
-    mock_client_instance.instruments.get_instrument_by.side_effect = Exception(
-        "Unexpected error"
-    )
+    mock_client_instance.instruments.get_instrument_by.side_effect = Exception("Unexpected error")
     securities_found = await get_security_by_uid("test-uid", user)
     name = securities_found[0][0]
     isin = securities_found[0][1]
@@ -143,9 +141,7 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 @pytest.mark.asyncio
 @patch("core.tinkoff_utils.get_security_by_uid")
 @patch("core.tinkoff_utils.create_security_from_micex")
-async def test_find_or_create_security(
-    mock_create_security, mock_get_security, user, broker
-):
+async def test_find_or_create_security(mock_create_security, mock_get_security, user, broker):
     mock_get_security.return_value = [("Test Stock", "TEST123456789", "stock")]
 
     # Test case 1: Security exists with relationships
@@ -211,9 +207,7 @@ async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, b
     )
     mock_find_or_create.return_value = (asset, "existing_with_relationships")
 
-    transaction_data = await map_tinkoff_operation_to_transaction(
-        operation, user, broker
-    )
+    transaction_data = await map_tinkoff_operation_to_transaction(operation, user, broker)
 
     assert transaction_data["type"] == TRANSACTION_TYPE_BUY
     assert transaction_data["currency"] == "USD"

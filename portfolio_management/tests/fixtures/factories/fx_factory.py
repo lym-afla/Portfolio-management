@@ -23,37 +23,27 @@ class FXRateFactory(factory.django.DjangoModelFactory):
     @factory.lazy_attribute
     def USDEUR(self):
         """USD to EUR exchange rate."""
-        return self.faker.pydecimal(
-            left_digits=1, right_digits=6, min_value=0.8, max_value=1.2
-        )
+        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.8, max_value=1.2)
 
     @factory.lazy_attribute
     def USDGBP(self):
         """USD to GBP exchange rate."""
-        return self.faker.pydecimal(
-            left_digits=1, right_digits=6, min_value=0.7, max_value=1.0
-        )
+        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.7, max_value=1.0)
 
     @factory.lazy_attribute
     def CHFGBP(self):
         """CHF to GBP exchange rate."""
-        return self.faker.pydecimal(
-            left_digits=1, right_digits=6, min_value=0.8, max_value=1.0
-        )
+        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.8, max_value=1.0)
 
     @factory.lazy_attribute
     def RUBUSD(self):
         """RUB to USD exchange rate."""
-        return self.faker.pydecimal(
-            left_digits=1, right_digits=6, min_value=0.01, max_value=0.02
-        )
+        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.01, max_value=0.02)
 
     @factory.lazy_attribute
     def PLNUSD(self):
         """PLN to USD exchange rate."""
-        return self.faker.pydecimal(
-            left_digits=1, right_digits=6, min_value=0.2, max_value=0.3
-        )
+        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.2, max_value=0.3)
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
@@ -201,17 +191,11 @@ def create_fx_rate_history(investor, start_date=date(2023, 1, 1), days=365):
 
             # Add some random noise
             noise = Decimal(
-                str(
-                    factory.Faker(
-                        "pyfloat", min_value=-0.002, max_value=0.002
-                    ).generate()
-                )
+                str(factory.Faker("pyfloat", min_value=-0.002, max_value=0.002).generate())
             )
             current_rate = current_rate * (Decimal("1") + noise)
 
-            rate_data[pair] = max(
-                current_rate, Decimal("0.001")
-            )  # Ensure positive rates
+            rate_data[pair] = max(current_rate, Decimal("0.001"))  # Ensure positive rates
 
         fx_rate = FXRateFactory.create(**rate_data)
         rates.append(fx_rate)
@@ -219,9 +203,7 @@ def create_fx_rate_history(investor, start_date=date(2023, 1, 1), days=365):
     return rates
 
 
-def create_cross_currency_rates(
-    investor, currency_pairs, start_date=date(2023, 1, 1), days=365
-):
+def create_cross_currency_rates(investor, currency_pairs, start_date=date(2023, 1, 1), days=365):
     """Create FX rates for specific currency pairs."""
 
     rates = []

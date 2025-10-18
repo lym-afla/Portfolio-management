@@ -18,10 +18,7 @@ import pytest
 
 from portfolio_management.common.models import get_exchange_rate
 from portfolio_management.models import FX, Portfolios
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from portfolio_management.portfolio.calculator import calculate_buy_in_price, calculate_nav
 from portfolio_management.portfolio.models import gain_loss
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
@@ -57,9 +54,7 @@ class TestProductionSnapshotComparison:
                     snapshots[snapshot_name] = json.load(f)
             else:
                 # Create placeholder snapshots if they don't exist
-                snapshots[snapshot_name] = self._create_placeholder_snapshot(
-                    snapshot_name
-                )
+                snapshots[snapshot_name] = self._create_placeholder_snapshot(snapshot_name)
 
         return snapshots
 
@@ -321,9 +316,7 @@ class TestProductionSnapshotComparison:
 
             # Verify cross-currency calculation
             # GBP -> USD -> JPY
-            gbp_to_usd = Decimal("1") / Decimal(
-                "0.8700"
-            )  # Inverse of EUR/GBP * USD/EUR
+            gbp_to_usd = Decimal("1") / Decimal("0.8700")  # Inverse of EUR/GBP * USD/EUR
             expected_gbp_to_jpy = gbp_to_usd * Decimal("110.00")
 
             tolerance = expected_gbp_to_jpy * Decimal("0.01")  # 1% tolerance
@@ -361,16 +354,12 @@ class TestProductionSnapshotComparison:
 
             # Compare with expected results
             expected_realized = Decimal(scenario["expected_results"]["realized_gain"])
-            expected_unrealized = Decimal(
-                scenario["expected_results"]["unrealized_gain"]
-            )
+            expected_unrealized = Decimal(scenario["expected_results"]["unrealized_gain"])
 
             tolerance = Decimal("0.01")  # 1 cent tolerance
 
             realized_diff = abs(Decimal(str(gl_result["realized"])) - expected_realized)
-            unrealized_diff = abs(
-                Decimal(str(gl_result["unrealized"])) - expected_unrealized
-            )
+            unrealized_diff = abs(Decimal(str(gl_result["unrealized"])) - expected_unrealized)
 
             assert realized_diff <= tolerance, (
                 f"Realized gain/loss mismatch for {scenario['scenario_id']}: "
@@ -439,9 +428,7 @@ class TestProductionDataValidation:
             assert rate > 0, f"FX rate should be positive: {rate}"
 
             # FX rates should be within reasonable bounds
-            assert (
-                Decimal("0.0001") <= rate <= Decimal("10000")
-            ), f"FX rate out of bounds: {rate}"
+            assert Decimal("0.0001") <= rate <= Decimal("10000"), f"FX rate out of bounds: {rate}"
 
     def test_production_portfolio_valuation_consistency(self, production_snapshots):
         """Test production portfolio valuation consistency."""
@@ -489,9 +476,7 @@ class TestProductionDataValidation:
                 if tx["type"] in ["Buy", "Sell"]:
                     assert quantity > 0, f"Invalid quantity in transaction: {quantity}"
                 elif tx["type"] == "Dividend":
-                    assert (
-                        quantity == 0
-                    ), f"Dividend should have zero quantity: {quantity}"
+                    assert quantity == 0, f"Dividend should have zero quantity: {quantity}"
 
     def test_production_calculation_precision_standards(self, production_snapshots):
         """Test production calculation precision standards."""
@@ -546,9 +531,7 @@ class TestProductionDataValidation:
         for scenario in gl_data["scenarios"]:
             for value_field in ["realized_gain", "unrealized_gain", "total_gain"]:
                 value = Decimal(scenario["expected_results"][value_field])
-                assert (
-                    value.as_tuple().exponent >= -2
-                ), f"Gain/loss precision too low: {value}"
+                assert value.as_tuple().exponent >= -2, f"Gain/loss precision too low: {value}"
 
 
 @pytest.mark.production
@@ -561,9 +544,7 @@ class TestProductionSnapshotGeneration:
     def test_generate_portfolio_valuation_snapshot(self):
         """Generate portfolio valuation snapshot from test data."""
         # Create test portfolio
-        portfolio = Portfolios.objects.create(
-            name="Snapshot Test Portfolio", base_currency="USD"
-        )
+        portfolio = Portfolios.objects.create(name="Snapshot Test Portfolio", base_currency="USD")
 
         # Create assets and positions
         assets = AssetFactory.create_batch(3)
@@ -610,9 +591,7 @@ class TestProductionSnapshotGeneration:
         # Validate generated snapshot
         assert len(snapshot["positions"]) == 3
         assert Decimal(snapshot["total_value_usd"]) > 0
-        assert all(
-            Decimal(pos["market_value_usd"]) > 0 for pos in snapshot["positions"]
-        )
+        assert all(Decimal(pos["market_value_usd"]) > 0 for pos in snapshot["positions"])
 
         return snapshot
 
@@ -650,12 +629,10 @@ class TestProductionSnapshotGeneration:
 
         # Calculate results
         buy_in_price = calculate_buy_in_price(transactions)
-        total_quantity = sum(
-            tx.quantity for tx in transactions if tx.type == "Buy"
-        ) - sum(tx.quantity for tx in transactions if tx.type == "Sell")
-        total_cost = sum(
-            tx.quantity * tx.price for tx in transactions if tx.type == "Buy"
+        total_quantity = sum(tx.quantity for tx in transactions if tx.type == "Buy") - sum(
+            tx.quantity for tx in transactions if tx.type == "Sell"
         )
+        total_cost = sum(tx.quantity * tx.price for tx in transactions if tx.type == "Buy")
 
         # Generate snapshot
         snapshot = {
@@ -697,9 +674,7 @@ class TestProductionSnapshotGeneration:
         ]
 
         for snapshot_type in required_snapshot_types:
-            assert (
-                snapshot_type in production_snapshots
-            ), f"Missing snapshot type: {snapshot_type}"
+            assert snapshot_type in production_snapshots, f"Missing snapshot type: {snapshot_type}"
             assert (
                 "metadata" in production_snapshots[snapshot_type]
             ), f"Missing metadata in {snapshot_type}"
@@ -768,9 +743,7 @@ def snapshot_validator():
         assert "metadata" in snapshot_data, f"Missing metadata in {snapshot_type}"
         metadata = snapshot_data["metadata"]
         assert "version" in metadata, f"Missing version in metadata for {snapshot_type}"
-        assert (
-            "created_date" in metadata
-        ), f"Missing created_date in metadata for {snapshot_type}"
+        assert "created_date" in metadata, f"Missing created_date in metadata for {snapshot_type}"
 
         return True
 

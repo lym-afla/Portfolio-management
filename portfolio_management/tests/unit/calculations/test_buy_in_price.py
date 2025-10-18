@@ -255,9 +255,7 @@ class TestBuyInPriceCalculation:
         assert buy_in_price_eur == Decimal("40.00")
 
         # Calculate buy-in price in USD (converted)
-        buy_in_price_usd = asset_eur.calculate_buy_in_price(
-            date(2023, 1, 16), currency="USD"
-        )
+        buy_in_price_usd = asset_eur.calculate_buy_in_price(date(2023, 1, 16), currency="USD")
         assert buy_in_price_usd > Decimal("40.00")  # EUR converted to USD
         assert buy_in_price_usd < Decimal("50.00")  # Reasonable conversion rate
 
@@ -293,9 +291,7 @@ class TestBuyInPriceCalculation:
 
         # Calculate with start date (should ignore old transaction)
         start_date = date(2023, 1, 1)
-        buy_in_price = asset.calculate_buy_in_price(
-            date(2023, 1, 16), start_date=start_date
-        )
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), start_date=start_date)
 
         # Should only consider new transaction
         assert buy_in_price == Decimal("50.00")
