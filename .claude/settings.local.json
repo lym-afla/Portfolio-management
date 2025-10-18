@@ -8,7 +8,14 @@
       "Bash(export:*)",
       "Bash(chmod:*)",
       "Bash(npm:*)",
-      "Bash(claude mcp list:*)"
+      "Bash(claude mcp list:*)",
+      "Bash(venv/Scripts/activate:*)",
+      "Bash(pytest:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=portfolio_management.settings pytest:*)",
+      "Bash(black:*)",
+      "Bash(flake8:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
