@@ -1,6 +1,8 @@
 pytest
 pytest-asyncio
 pytest-django
+pytest-cov
+coverage
 pip-tools
 ipython
 ipykernel
@@ -11,3 +13,4 @@ pre-commit
 isort
 flake8
 flake8-django
+factory-boy
