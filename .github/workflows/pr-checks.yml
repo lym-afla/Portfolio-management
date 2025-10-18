@@ -1,0 +1,379 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  quick-checks:
+    runs-on: ubuntu-latest
+    name: Quick Checks
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black isort flake8 mypy bandit safety
+
+    - name: Run Black formatting check
+      run: black --check --diff portfolio_management tests
+
+    - name: Run isort import sorting check
+      run: isort --check-only --diff portfolio_management tests
+
+    - name: Run flake8 linting
+      run: flake8 portfolio_management tests --max-line-length=88 --extend-ignore=E203,W503
+
+    - name: Run mypy type checking
+      run: mypy portfolio_management --ignore-missing-imports
+
+    - name: Run bandit security check
+      run: bandit -r portfolio_management -f json -o bandit-report.json
+
+    - name: Run safety check
+      run: safety check --json --output safety-report.json
+
+    - name: Check for TODO/FIXME comments
+      run: |
+        TODO_COUNT=$(grep -r "TODO\|FIXME" portfolio_management --include="*.py" | wc -l)
+        if [ $TODO_COUNT -gt 0 ]; then
+          echo "⚠️ Found $TODO_COUNT TODO/FIXME comments:"
+          grep -r "TODO\|FIXME" portfolio_management --include="*.py"
+          exit 1
+        fi
+
+    - name: Check migration files
+      run: |
+        # Check if migrations are needed
+        python manage.py makemigrations --check --dry-run
+        if [ $? -ne 0 ]; then
+          echo "❌ Migration files are missing. Run 'python manage.py makemigrations'"
+          exit 1
+        fi
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+        retention-days: 7
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: portfolio_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Set up test environment
+      run: |
+        cat << EOF > .env.test
+        DEBUG=True
+        SECRET_KEY=test-secret-key-for-ci
+        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/portfolio_test
+        ALLOWED_HOSTS=localhost,127.0.0.1
+        LOG_LEVEL=INFO
+        EOF
+
+    - name: Run database migrations
+      run: |
+        python manage.py migrate
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Run unit tests
+      run: |
+        pytest tests/unit/ \
+          -v \
+          --tb=short \
+          --cov=portfolio_management \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-fail-under=85 \
+          -m "not integration and not performance"
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unit-tests
+        name: codecov-umbrella
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    name: Integration Tests
+    needs: unit-tests
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: portfolio_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Set up test environment
+      run: |
+        cat << EOF > .env.test
+        DEBUG=True
+        SECRET_KEY=test-secret-key-for-ci
+        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/portfolio_test
+        ALLOWED_HOSTS=localhost,127.0.0.1
+        LOG_LEVEL=INFO
+        EOF
+
+    - name: Run database migrations
+      run: |
+        python manage.py migrate
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Run integration tests
+      run: |
+        pytest tests/integration/ \
+          -v \
+          --tb=short \
+          -m "integration"
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+  performance-checks:
+    runs-on: ubuntu-latest
+    name: Performance Checks
+    needs: unit-tests
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: portfolio_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Set up test environment
+      run: |
+        cat << EOF > .env.test
+        DEBUG=True
+        SECRET_KEY=test-secret-key-for-ci
+        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/portfolio_test
+        ALLOWED_HOSTS=localhost,127.0.0.1
+        LOG_LEVEL=INFO
+        EOF
+
+    - name: Run database migrations
+      run: |
+        python manage.py migrate
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Run performance tests
+      run: |
+        pytest tests/advanced/test_performance_suite.py \
+          --benchmark-only \
+          --benchmark-json=benchmark-results.json \
+          --benchmark-sort=mean \
+          -m "performance"
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Check for performance regressions
+      run: |
+        python scripts/check_performance_regressions.py benchmark-results.json
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: benchmark-results.json
+        retention-days: 30
+
+  size-check:
+    runs-on: ubuntu-latest
+    name: Code Size Check
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check Python file sizes
+      run: |
+        # Find large Python files (>500 lines)
+        LARGE_FILES=$(find portfolio_management -name "*.py" -exec wc -l {} + | awk '$1 > 500 {print $0}')
+        if [ ! -z "$LARGE_FILES" ]; then
+          echo "⚠️ Large Python files found (>500 lines):"
+          echo "$LARGE_FILES"
+        fi
+
+        # Find very large Python files (>1000 lines)
+        VERY_LARGE_FILES=$(find portfolio_management -name "*.py" -exec wc -l {} + | awk '$1 > 1000 {print $0}')
+        if [ ! -z "$VERY_LARGE_FILES" ]; then
+          echo "❌ Very large Python files found (>1000 lines). Consider refactoring:"
+          echo "$VERY_LARGE_FILES"
+          exit 1
+        fi
+
+    - name: Check test coverage trends
+      run: |
+        echo "📊 Code size analysis completed"
+
+  pr-summary:
+    runs-on: ubuntu-latest
+    name: PR Summary
+    needs: [quick-checks, unit-tests, integration-tests, performance-checks, size-check]
+    if: always()
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate PR summary
+      id: summary
+      run: |
+        # Get changed files
+        CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}..HEAD)
+        PYTHON_FILES=$(echo "$CHANGED_FILES" | grep -E '\.py$' || true)
+        TEST_FILES=$(echo "$PYTHON_FILES" | grep -E 'tests/' || true)
+        SRC_FILES=$(echo "$PYTHON_FILES" | grep -v -E 'tests/' || true)
+
+        # Count metrics
+        CHANGED_COUNT=$(echo "$CHANGED_FILES" | wc -l)
+        PYTHON_COUNT=$(echo "$PYTHON_FILES" | wc -l)
+        TEST_COUNT=$(echo "$TEST_FILES" | wc -l)
+        SRC_COUNT=$(echo "$SRC_FILES" | wc -l)
+
+        # Generate summary
+        SUMMARY="## 📋 PR Summary\n\n"
+        SUMMARY+="- **Files Changed:** $CHANGED_COUNT\n"
+        SUMMARY+="- **Python Files:** $PYTHON_COUNT\n"
+        SUMMARY+="- **Source Files:** $SRC_COUNT\n"
+        SUMMARY+="- **Test Files:** $TEST_COUNT\n\n"
+
+        # Add test results
+        SUMMARY+="## ✅ Check Results\n\n"
+        SUMMARY+="| Check | Status |\n"
+        SUMMARY+="|-------|--------|\n"
+        SUMMARY+="| Quick Checks | ${{ needs.quick-checks.result }} |\n"
+        SUMMARY+="| Unit Tests | ${{ needs.unit-tests.result }} |\n"
+        SUMMARY+="| Integration Tests | ${{ needs.integration-tests.result }} |\n"
+        SUMMARY+="| Performance Checks | ${{ needs.performance-checks.result }} |\n"
+        SUMMARY+="| Size Check | ${{ needs.size-check.result }} |\n\n"
+
+        # Add recommendations
+        if [ "$TEST_COUNT" -eq 0 ] && [ "$SRC_COUNT" -gt 0 ]; then
+          SUMMARY+="⚠️ **No tests found for changed source files. Consider adding tests.**\n\n"
+        fi
+
+        # Save summary to file
+        echo "$SUMMARY" > pr-summary.md
+
+        # Set output for GitHub Actions
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Comment PR with summary
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('pr-summary.md', 'utf8');
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });
+
+    - name: Upload summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: pr-summary
+        path: pr-summary.md
+        retention-days: 7

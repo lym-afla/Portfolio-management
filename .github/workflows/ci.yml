@@ -1,0 +1,256 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: portfolio_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install coverage pytest-cov pytest-xdist pytest-mock
+
+    - name: Cache pytest cache
+      uses: actions/cache@v3
+      with:
+        path: .pytest_cache
+        key: ${{ runner.os }}-pytest-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-pytest-
+
+    - name: Set up environment variables
+      run: |
+        cat << EOF > .env.test
+        DEBUG=True
+        SECRET_KEY=test-secret-key-for-ci
+        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/portfolio_test
+        ALLOWED_HOSTS=localhost,127.0.0.1
+        LOG_LEVEL=INFO
+        EOF
+
+    - name: Run database migrations
+      run: |
+        python manage.py makemigrations
+        python manage.py migrate
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Run linting
+      run: |
+        # Black formatting check
+        black --check --diff portfolio_management tests
+        # isort import sorting check
+        isort --check-only --diff portfolio_management tests
+        # flake8 linting
+        flake8 portfolio_management tests --max-line-length=88 --extend-ignore=E203,W503
+        # mypy type checking
+        mypy portfolio_management --ignore-missing-imports
+
+    - name: Run security checks
+      run: |
+        # bandit security linter
+        bandit -r portfolio_management -f json -o bandit-report.json
+        # safety check for known security vulnerabilities
+        safety check --json --output safety-report.json
+
+    - name: Run tests with coverage
+      run: |
+        coverage run -m pytest \
+          -v \
+          --tb=short \
+          --cov=portfolio_management \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=90 \
+          -n auto \
+          tests/
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Generate performance benchmarks
+      run: |
+        pytest -m performance \
+          --benchmark-only \
+          --benchmark-json=benchmark-results.json \
+          tests/advanced/test_performance_suite.py
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Run regression tests
+      run: |
+        pytest -m regression \
+          -v \
+          --tb=short \
+          tests/advanced/test_regression_suite.py
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-reports-${{ matrix.python-version }}
+        path: |
+          htmlcov/
+          bandit-report.json
+          safety-report.json
+          benchmark-results.json
+        retention-days: 30
+
+    - name: Performance regression check
+      run: |
+        python scripts/check_performance_regressions.py benchmark-results.json
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest requests
+
+    - name: Start application
+      run: |
+        python manage.py migrate &
+        sleep 10
+      env:
+        DJANGO_SETTINGS_MODULE: portfolio_management.settings.test
+
+    - name: Run API integration tests
+      run: |
+        pytest tests/integration/api/test_endpoints_comprehensive.py -v
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan, integration-tests]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add your staging deployment commands here
+
+    - name: Run smoke tests
+      run: |
+        pytest tests/smoke/ -v
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan, integration-tests]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to production
+      run: |
+        echo "Deploying to production environment..."
+        # Add your production deployment commands here
+
+    - name: Run production smoke tests
+      run: |
+        pytest tests/smoke/ -v
+
+    - name: Notify deployment
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
