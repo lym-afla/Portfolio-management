@@ -29,6 +29,11 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
   - `backend.md` — backend technical notes and key modules mapping.
   - `frontend.md` — frontend technical notes and UX for long-running tasks.
   - `infra.md` — infrastructure recommendations and migration notes.
+  - `effective-date-architecture.md` — session-based effective current date implementation.
+  - `decimal-precision-standards.md` — financial precision requirements and decimal handling standards.
+  - `bond-amortization-domain.md` — bond amortization business logic and data models.
+  - `external-api-patterns.md` — external API integration patterns and best practices.
+  - `transaction-processing-patterns.md` — unified transaction processing architecture and DRY implementation.
 
 - Tasks/
   - `backlog.md` — initial backlog items derived from the interview.
