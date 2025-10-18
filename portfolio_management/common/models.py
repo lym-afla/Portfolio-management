@@ -1348,7 +1348,6 @@ class Transactions(models.Model):
         return f"{self.type} || {self.date}"
 
 
-# Table with non-public asset prices
 class Prices(models.Model):
     date = TimezoneAwareDateField(null=False)
     security = models.ForeignKey(Assets, on_delete=models.CASCADE, related_name="prices")
