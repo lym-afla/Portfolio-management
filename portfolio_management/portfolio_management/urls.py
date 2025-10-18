@@ -14,18 +14,21 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
-from django.urls import path, include
-from dashboard import views
+from django.urls import include, path
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('dashboard/', include('dashboard.urls')),
-    path('users/', include('users.urls', namespace='users')),
-    path('accounts/', include('django.contrib.auth.urls')),
-    path('open_positions/', include('open_positions.urls', namespace='open_positions')),
-    path('closed_positions/', include('closed_positions.urls', namespace='closed_positions')),
-    path('transactions/', include('transactions.urls', namespace='transactions')),
-    path('database/', include('database.urls', namespace='database')),
-    path('summary/', include('summary_analysis.urls', namespace='summary_analysis'))
+    path("admin/", admin.site.urls),
+    path("dashboard/", include("dashboard.urls")),
+    path("users/", include("users.urls", namespace="users")),
+    path("accounts/", include("django.contrib.auth.urls")),
+    path("open_positions/", include("open_positions.urls", namespace="open_positions")),
+    path(
+        "closed_positions/",
+        include("closed_positions.urls", namespace="closed_positions"),
+    ),
+    path("transactions/", include("transactions.urls", namespace="transactions")),
+    path("database/", include("database.urls", namespace="database")),
+    path("summary/", include("summary_analysis.urls", namespace="summary_analysis")),
 ]
