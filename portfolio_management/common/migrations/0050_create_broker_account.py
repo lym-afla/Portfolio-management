@@ -15,16 +15,25 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.AutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 (
                     "native_id",
                     models.CharField(
-                        help_text="Native account ID from broker's system", max_length=100
+                        help_text="Native account ID from broker's system",
+                        max_length=100,
                     ),
                 ),
-                ("name", models.CharField(help_text="Account name or description", max_length=100)),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Account name or description", max_length=100
+                    ),
+                ),
                 ("restricted", models.BooleanField(default=False)),
                 ("comment", models.TextField(blank=True, null=True)),
                 ("is_active", models.BooleanField(default=True)),
@@ -48,7 +57,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "securities",
-                    models.ManyToManyField(related_name="broker_accounts", to="common.assets"),
+                    models.ManyToManyField(
+                        related_name="broker_accounts", to="common.assets"
+                    ),
                 ),
             ],
             options={

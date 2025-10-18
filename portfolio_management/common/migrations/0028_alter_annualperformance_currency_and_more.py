@@ -6,27 +6,58 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0027_alter_prices_price'),
+        ("common", "0027_alter_prices_price"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='annualperformance',
-            name='currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'SF')], max_length=3),
+            model_name="annualperformance",
+            name="currency",
+            field=models.CharField(
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "SF"),
+                ],
+                max_length=3,
+            ),
         ),
         migrations.AlterField(
-            model_name='assets',
-            name='currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'SF')], default='USD', max_length=3),
+            model_name="assets",
+            name="currency",
+            field=models.CharField(
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "SF"),
+                ],
+                default="USD",
+                max_length=3,
+            ),
         ),
         migrations.AlterField(
-            model_name='transactions',
-            name='currency',
-            field=models.CharField(choices=[('USD', '$'), ('EUR', '€'), ('GBP', '£'), ('RUB', '₽'), ('CHF', 'SF')], default='USD', max_length=3),
+            model_name="transactions",
+            name="currency",
+            field=models.CharField(
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "SF"),
+                ],
+                default="USD",
+                max_length=3,
+            ),
         ),
         migrations.AddConstraint(
-            model_name='prices',
-            constraint=models.UniqueConstraint(fields=('date', 'security', 'price'), name='unique_security_price_entry'),
+            model_name="prices",
+            constraint=models.UniqueConstraint(
+                fields=("date", "security", "price"), name="unique_security_price_entry"
+            ),
         ),
     ]

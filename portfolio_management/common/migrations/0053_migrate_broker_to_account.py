@@ -13,7 +13,11 @@ def migrate_brokers_to_accounts(apps, schema_editor):
     # Get or create system user
     system_user, _ = CustomUser.objects.get_or_create(
         username="system",
-        defaults={"email": "system@example.com", "is_active": False, "password": "unusable"},
+        defaults={
+            "email": "system@example.com",
+            "is_active": False,
+            "password": "unusable",
+        },
     )
 
     # Create dummy broker

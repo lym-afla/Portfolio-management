@@ -41,7 +41,9 @@ class Command(BaseCommand):
         dry_run = options.get("dry_run")
 
         if dry_run:
-            self.stdout.write(self.style.WARNING("DRY RUN MODE - No changes will be made"))
+            self.stdout.write(
+                self.style.WARNING("DRY RUN MODE - No changes will be made")
+            )
 
         # Build query for bond redemption transactions
         query = Transactions.objects.filter(
@@ -54,11 +56,15 @@ class Command(BaseCommand):
         transactions = query.order_by("security", "date")
 
         if not transactions.exists():
-            self.stdout.write(self.style.WARNING("No bond redemption transactions found"))
+            self.stdout.write(
+                self.style.WARNING("No bond redemption transactions found")
+            )
             return
 
         self.stdout.write(
-            self.style.SUCCESS(f"Found {transactions.count()} bond redemption transactions")
+            self.style.SUCCESS(
+                f"Found {transactions.count()} bond redemption transactions"
+            )
         )
 
         # Group transactions by security
@@ -70,14 +76,18 @@ class Command(BaseCommand):
         for txn in transactions:
             if not txn.security:
                 self.stdout.write(
-                    self.style.WARNING(f"Transaction {txn.id} has no security, skipping")
+                    self.style.WARNING(
+                        f"Transaction {txn.id} has no security, skipping"
+                    )
                 )
                 total_skipped += 1
                 continue
 
             if not txn.notional_change or txn.notional_change == 0:
                 self.stdout.write(
-                    self.style.WARNING(f"Transaction {txn.id} has no notional_change, skipping")
+                    self.style.WARNING(
+                        f"Transaction {txn.id} has no notional_change, skipping"
+                    )
                 )
                 total_skipped += 1
                 continue
@@ -151,5 +161,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING("\nDRY RUN MODE - Run without --dry-run to apply changes")
+                self.style.WARNING(
+                    "\nDRY RUN MODE - Run without --dry-run to apply changes"
+                )
             )

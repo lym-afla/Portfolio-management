@@ -34,18 +34,25 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
                     "issue_date",
-                    models.DateField(blank=True, help_text="Bond issue date", null=True),
+                    models.DateField(
+                        blank=True, help_text="Bond issue date", null=True
+                    ),
                 ),
                 (
                     "maturity_date",
-                    models.DateField(blank=True, help_text="Bond maturity date", null=True),
+                    models.DateField(
+                        blank=True, help_text="Bond maturity date", null=True
+                    ),
                 ),
                 (
                     "initial_notional",
@@ -78,7 +85,8 @@ class Migration(migrations.Migration):
                 (
                     "is_amortizing",
                     models.BooleanField(
-                        default=False, help_text="Whether this bond has amortizing principal"
+                        default=False,
+                        help_text="Whether this bond has amortizing principal",
                     ),
                 ),
                 (
@@ -136,13 +144,17 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 (
                     "date",
                     models.DateField(
-                        db_index=True, help_text="Date when the notional change occurred"
+                        db_index=True,
+                        help_text="Date when the notional change occurred",
                     ),
                 ),
                 (
@@ -198,7 +210,10 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
@@ -215,7 +230,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "expiration_date",
-                    models.DateField(blank=True, help_text="Option expiration date", null=True),
+                    models.DateField(
+                        blank=True, help_text="Option expiration date", null=True
+                    ),
                 ),
                 (
                     "option_type",
@@ -268,14 +285,19 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
                     "expiration_date",
-                    models.DateField(blank=True, help_text="Futures expiration date", null=True),
+                    models.DateField(
+                        blank=True, help_text="Futures expiration date", null=True
+                    ),
                 ),
                 (
                     "contract_size",

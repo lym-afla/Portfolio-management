@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0030_alter_fxtransaction_exchange_rate'),
+        ("common", "0030_alter_fxtransaction_exchange_rate"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='brokers',
-            name='name',
+            model_name="brokers",
+            name="name",
             field=models.CharField(max_length=30),
         ),
     ]

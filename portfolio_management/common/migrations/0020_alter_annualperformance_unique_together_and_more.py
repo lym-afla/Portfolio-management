@@ -7,21 +7,29 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0019_alter_annualperformance_broker'),
+        ("common", "0019_alter_annualperformance_broker"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AlterUniqueTogether(
-            name='annualperformance',
+            name="annualperformance",
             unique_together=set(),
         ),
         migrations.AddConstraint(
-            model_name='annualperformance',
-            constraint=models.UniqueConstraint(condition=models.Q(('broker__isnull', False)), fields=('investor', 'year', 'currency'), name='unique_investor_broker_year_currency'),
+            model_name="annualperformance",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("broker__isnull", False)),
+                fields=("investor", "year", "currency"),
+                name="unique_investor_broker_year_currency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='annualperformance',
-            constraint=models.UniqueConstraint(condition=models.Q(('broker_group__isnull', False)), fields=('investor', 'year', 'currency'), name='unique_investor_broker_group_year_currency'),
+            model_name="annualperformance",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("broker_group__isnull", False)),
+                fields=("investor", "year", "currency"),
+                name="unique_investor_broker_group_year_currency",
+            ),
         ),
     ]

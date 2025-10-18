@@ -14,7 +14,7 @@ register = template.Library()
 #             cur = '€'
 #         case 'GBP':
 #             cur = '£'
-#         case 'RUB':            
+#         case 'RUB':
 #             cur = '₽'
 #         case default:
 #             cur = currency.upper()
@@ -26,7 +26,8 @@ register = template.Library()
 #     else:
 #         return f"{cur}{value:,.{int(digits)}f}"
 
-@register.filter(name='mul')
+
+@register.filter(name="mul")
 def mul(value, arg):
     """Multiplies the arg and the value"""
     if isinstance(value, (int, float)) and isinstance(arg, (int, float)):
@@ -34,17 +35,20 @@ def mul(value, arg):
     else:
         return value
 
+
 # Getting items by key for Django template. Important for keys with spaces
 @register.filter
 def get_item(dictionary, key):
     return dictionary.get(key)
 
-@register.filter(name='format')
+
+@register.filter(name="format")
 def format(value, format_string):
     """Formats the value by the provided format string."""
     return format_string.format(value)
 
-@register.filter(name='div')
+
+@register.filter(name="div")
 def div(value, arg):
     """Divides the value by the arg."""
     return value / arg

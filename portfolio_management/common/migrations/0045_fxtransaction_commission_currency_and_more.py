@@ -14,7 +14,13 @@ class Migration(migrations.Migration):
             name="commission_currency",
             field=models.CharField(
                 blank=True,
-                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "Fr")],
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "Fr"),
+                ],
                 max_length=3,
                 null=True,
             ),

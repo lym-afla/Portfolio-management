@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0016_annualperformance_restricted'),
+        ("common", "0016_annualperformance_restricted"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='annualperformance',
-            name='restricted',
+            model_name="annualperformance",
+            name="restricted",
             field=models.BooleanField(blank=True, default=False, null=True),
         ),
     ]

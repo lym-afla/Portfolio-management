@@ -7,25 +7,34 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0021_remove_annualperformance_unique_investor_broker_year_currency_and_more'),
+        (
+            "common",
+            "0021_remove_annualperformance_unique_investor_broker_year_currency_and_more",
+        ),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='annualperformance',
-            name='unique_investor_broker_year_currency',
+            model_name="annualperformance",
+            name="unique_investor_broker_year_currency",
         ),
         migrations.RemoveConstraint(
-            model_name='annualperformance',
-            name='unique_investor_broker_group_year_currency',
+            model_name="annualperformance",
+            name="unique_investor_broker_group_year_currency",
         ),
         migrations.AddConstraint(
-            model_name='annualperformance',
-            constraint=models.UniqueConstraint(fields=('investor', 'year', 'currency', 'restricted', 'broker'), name='unique_investor_broker_year_currency'),
+            model_name="annualperformance",
+            constraint=models.UniqueConstraint(
+                fields=("investor", "year", "currency", "restricted", "broker"),
+                name="unique_investor_broker_year_currency",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='annualperformance',
-            constraint=models.UniqueConstraint(fields=('investor', 'year', 'currency', 'restricted', 'broker_group'), name='unique_investor_broker_group_year_currency'),
+            model_name="annualperformance",
+            constraint=models.UniqueConstraint(
+                fields=("investor", "year", "currency", "restricted", "broker_group"),
+                name="unique_investor_broker_group_year_currency",
+            ),
         ),
     ]

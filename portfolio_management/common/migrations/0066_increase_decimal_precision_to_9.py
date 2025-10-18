@@ -31,7 +31,9 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="fxtransaction",
             name="commission",
-            field=models.DecimalField(blank=True, decimal_places=9, max_digits=15, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=9, max_digits=15, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="fxtransaction",
@@ -60,12 +62,16 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="transactions",
             name="commission",
-            field=models.DecimalField(blank=True, decimal_places=9, max_digits=15, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=9, max_digits=15, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="transactions",
             name="quantity",
-            field=models.DecimalField(blank=True, decimal_places=9, max_digits=15, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=9, max_digits=15, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="transactions",

@@ -6,13 +6,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0034_assets_data_source_assets_yahoo_symbol'),
+        ("common", "0034_assets_data_source_assets_yahoo_symbol"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='assets',
-            name='data_source',
-            field=models.CharField(choices=[('FT', 'Financial Times'), ('YAHOO', 'Yahoo Finance')], max_length=10),
+            model_name="assets",
+            name="data_source",
+            field=models.CharField(
+                choices=[("FT", "Financial Times"), ("YAHOO", "Yahoo Finance")],
+                max_length=10,
+            ),
         ),
     ]

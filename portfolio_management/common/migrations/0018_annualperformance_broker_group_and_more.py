@@ -7,22 +7,36 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0017_alter_annualperformance_restricted'),
+        ("common", "0017_alter_annualperformance_restricted"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='annualperformance',
-            name='broker_group',
+            model_name="annualperformance",
+            name="broker_group",
             field=models.CharField(blank=True, max_length=100, null=True),
         ),
         migrations.AddConstraint(
-            model_name='annualperformance',
-            constraint=models.CheckConstraint(check=models.Q(('broker__isnull', False), ('broker_group__isnull', False), _connector='OR'), name='either_broker_or_group'),
+            model_name="annualperformance",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    ("broker__isnull", False),
+                    ("broker_group__isnull", False),
+                    _connector="OR",
+                ),
+                name="either_broker_or_group",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='annualperformance',
-            constraint=models.CheckConstraint(check=models.Q(('broker__isnull', False), ('broker_group__isnull', False), _negated=True), name='not_both_broker_and_group'),
+            model_name="annualperformance",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    ("broker__isnull", False),
+                    ("broker_group__isnull", False),
+                    _negated=True,
+                ),
+                name="not_both_broker_and_group",
+            ),
         ),
     ]

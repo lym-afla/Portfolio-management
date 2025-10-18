@@ -6,23 +6,36 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0013_alter_transactions_quantity'),
+        ("common", "0013_alter_transactions_quantity"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='assets',
-            name='restricted',
+            model_name="assets",
+            name="restricted",
             field=models.BooleanField(default=False),
         ),
         migrations.AlterField(
-            model_name='assets',
-            name='exposure',
-            field=models.TextField(choices=[('Equity', 'Equity'), ('FI', 'Fixed income')], default='Equity'),
+            model_name="assets",
+            name="exposure",
+            field=models.TextField(
+                choices=[("Equity", "Equity"), ("FI", "Fixed income")], default="Equity"
+            ),
         ),
         migrations.AlterField(
-            model_name='transactions',
-            name='type',
-            field=models.CharField(choices=[('Cash in', 'Cash in'), ('Cash out', 'Cash out'), ('Buy', 'Buy'), ('Sell', 'Sell'), ('Dividend', 'Dividend'), ('Broker commission', 'Broker commission'), ('Tax', 'Tax')], max_length=30),
+            model_name="transactions",
+            name="type",
+            field=models.CharField(
+                choices=[
+                    ("Cash in", "Cash in"),
+                    ("Cash out", "Cash out"),
+                    ("Buy", "Buy"),
+                    ("Sell", "Sell"),
+                    ("Dividend", "Dividend"),
+                    ("Broker commission", "Broker commission"),
+                    ("Tax", "Tax"),
+                ],
+                max_length=30,
+            ),
         ),
     ]

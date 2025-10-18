@@ -45,7 +45,14 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="annualperformance",
             constraint=models.UniqueConstraint(
-                fields=("investor", "year", "currency", "restricted", "account_type", "account_id"),
+                fields=(
+                    "investor",
+                    "year",
+                    "currency",
+                    "restricted",
+                    "account_type",
+                    "account_id",
+                ),
                 name="unique_annual_performance",
             ),
         ),

@@ -22,7 +22,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="fx",
             name="investors",
-            field=models.ManyToManyField(related_name="fx_rates", to=settings.AUTH_USER_MODEL),
+            field=models.ManyToManyField(
+                related_name="fx_rates", to=settings.AUTH_USER_MODEL
+            ),
         ),
         migrations.AlterField(
             model_name="fx",

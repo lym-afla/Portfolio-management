@@ -6,13 +6,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0022_remove_annualperformance_unique_investor_broker_year_currency_and_more'),
+        (
+            "common",
+            "0022_remove_annualperformance_unique_investor_broker_year_currency_and_more",
+        ),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='brokers',
-            name='restricted',
+            model_name="brokers",
+            name="restricted",
             field=models.BooleanField(blank=True, null=True),
         ),
     ]
