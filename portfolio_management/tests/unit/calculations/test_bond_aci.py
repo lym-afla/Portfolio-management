@@ -16,7 +16,11 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from common.models import FX, Assets, BondCouponSchedule, BondMetadata, Transactions
-from constants import TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_COUPON, TRANSACTION_TYPE_SELL
+from constants import (
+    TRANSACTION_TYPE_BUY,
+    TRANSACTION_TYPE_COUPON,
+    TRANSACTION_TYPE_SELL,
+)
 from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
 
 User = get_user_model()
@@ -337,14 +341,20 @@ class CouponScheduleFetchTests(TestCase):
         mock_response = Mock()
         mock_response.events = [mock_coupon]
 
-        with patch("core.tinkoff_utils.get_user_token", new_callable=AsyncMock) as mock_get_token:
+        with patch(
+            "core.tinkoff_utils.get_user_token", new_callable=AsyncMock
+        ) as mock_get_token:
             mock_get_token.return_value = "test-token"
 
             with patch("core.tinkoff_utils.Client") as mock_client:
                 mock_client_instance = mock_client.return_value.__enter__.return_value
-                mock_client_instance.instruments.get_bond_coupons.return_value = mock_response
+                mock_client_instance.instruments.get_bond_coupons.return_value = (
+                    mock_response
+                )
 
-                result = await fetch_and_cache_bond_coupon_schedule(self.bond, self.user)
+                result = await fetch_and_cache_bond_coupon_schedule(
+                    self.bond, self.user
+                )
 
                 self.assertTrue(result)
 
@@ -377,7 +387,9 @@ class CouponScheduleFetchTests(TestCase):
             coupon_amount=Decimal("25.00"),
         )
 
-        with patch("core.tinkoff_utils.get_user_token", new_callable=AsyncMock) as mock_get_token:
+        with patch(
+            "core.tinkoff_utils.get_user_token", new_callable=AsyncMock
+        ) as mock_get_token:
             # Should not call API if schedule is recent
             result = await fetch_and_cache_bond_coupon_schedule(self.bond, self.user)
 
@@ -412,12 +424,16 @@ class CouponScheduleFetchTests(TestCase):
         mock_response = Mock()
         mock_response.events = [mock_coupon]
 
-        with patch("core.tinkoff_utils.get_user_token", new_callable=AsyncMock) as mock_get_token:
+        with patch(
+            "core.tinkoff_utils.get_user_token", new_callable=AsyncMock
+        ) as mock_get_token:
             mock_get_token.return_value = "test-token"
 
             with patch("core.tinkoff_utils.Client") as mock_client:
                 mock_client_instance = mock_client.return_value.__enter__.return_value
-                mock_client_instance.instruments.get_bond_coupons.return_value = mock_response
+                mock_client_instance.instruments.get_bond_coupons.return_value = (
+                    mock_response
+                )
 
                 result = await fetch_and_cache_bond_coupon_schedule(
                     self.bond, self.user, force_refresh=True

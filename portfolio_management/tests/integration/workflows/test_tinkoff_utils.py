@@ -38,7 +38,11 @@ def broker(user):
 @pytest.fixture
 def tinkoff_token(user, broker):
     token = TinkoffApiToken.objects.create(
-        user=user, broker=broker, token_type="read_only", sandbox_mode=False, is_active=True
+        user=user,
+        broker=broker,
+        token_type="read_only",
+        sandbox_mode=False,
+        is_active=True,
     )
     token.set_token("test-token", user)
     return token
@@ -94,7 +98,9 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 
     # Test API error handling for insufficient privileges
     mock_client_instance.instruments.get_instrument_by.side_effect = RequestError(
-        "Token has insufficient privileges", {"code": "40002"}, {}  # message  # details  # metadata
+        "Token has insufficient privileges",
+        {"code": "40002"},
+        {},  # message  # details  # metadata
     )
     securities_found = await get_security_by_uid("test-uid", user)
     name = securities_found[0][0]
@@ -123,7 +129,9 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     assert name is None and isin is None
 
     # Test unexpected exception
-    mock_client_instance.instruments.get_instrument_by.side_effect = Exception("Unexpected error")
+    mock_client_instance.instruments.get_instrument_by.side_effect = Exception(
+        "Unexpected error"
+    )
     securities_found = await get_security_by_uid("test-uid", user)
     name = securities_found[0][0]
     isin = securities_found[0][1]
@@ -135,7 +143,9 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 @pytest.mark.asyncio
 @patch("core.tinkoff_utils.get_security_by_uid")
 @patch("core.tinkoff_utils.create_security_from_micex")
-async def test_find_or_create_security(mock_create_security, mock_get_security, user, broker):
+async def test_find_or_create_security(
+    mock_create_security, mock_get_security, user, broker
+):
     mock_get_security.return_value = [("Test Stock", "TEST123456789", "stock")]
 
     # Test case 1: Security exists with relationships
@@ -193,11 +203,17 @@ async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, b
     operation.instrument_uid = "test-uid"
 
     asset = await database_sync_to_async(Assets.objects.create)(
-        type="Stock", ISIN="TEST123456789", name="Test Stock", currency="USD", exposure="Equity"
+        type="Stock",
+        ISIN="TEST123456789",
+        name="Test Stock",
+        currency="USD",
+        exposure="Equity",
     )
     mock_find_or_create.return_value = (asset, "existing_with_relationships")
 
-    transaction_data = await map_tinkoff_operation_to_transaction(operation, user, broker)
+    transaction_data = await map_tinkoff_operation_to_transaction(
+        operation, user, broker
+    )
 
     assert transaction_data["type"] == TRANSACTION_TYPE_BUY
     assert transaction_data["currency"] == "USD"

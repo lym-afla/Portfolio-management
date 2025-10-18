@@ -51,7 +51,9 @@ def test_jwt_authenticated_session():
         access_token = login_data.get("access")
         refresh_token = login_data.get("refresh")
         print(f"Got access token: {access_token[:20] if access_token else 'None'}...")
-        print(f"Got refresh token: {refresh_token[:20] if refresh_token else 'None'}...")
+        print(
+            f"Got refresh token: {refresh_token[:20] if refresh_token else 'None'}..."
+        )
     else:
         print(f"Login failed: {login_response.content.decode()}")
         return
