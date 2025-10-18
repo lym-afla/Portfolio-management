@@ -1,0 +1,13 @@
+pytest
+pytest-asyncio
+pytest-django
+pip-tools
+ipython
+ipykernel
+Sphinx
+black
+mypy
+pre-commit
+isort
+flake8
+flake8-django

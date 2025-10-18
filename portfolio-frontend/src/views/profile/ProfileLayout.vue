@@ -1,0 +1,176 @@
+<template>
+  <v-container fluid class="mt-4">
+    <v-row>
+      <v-col cols="12" md="4">
+        <!-- Side Navigation -->
+        <v-card class="mb-4">
+          <v-list>
+            <v-list-item
+              v-for="(item, i) in menuItems"
+              :key="i"
+              :to="item.to"
+              :active="isActive(item.to)"
+              active-class="primary white--text"
+            >
+              <v-list-item-title>{{ item.title }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+          <v-divider />
+          <v-list-item @click="handleLogout">
+            <v-list-item-title>Logout</v-list-item-title>
+          </v-list-item>
+        </v-card>
+
+        <!-- Delete Account Button -->
+        <v-card flat class="pa-0">
+          <v-btn
+            @click="showDeleteConfirmation = true"
+            color="error"
+            outlined
+            block
+            class="mt-2"
+          >
+            <v-icon left>mdi-delete</v-icon>
+            Delete Account
+          </v-btn>
+        </v-card>
+      </v-col>
+      <v-col cols="12" md="8">
+        <!-- Tab Content -->
+        <router-view />
+      </v-col>
+    </v-row>
+
+    <!-- Delete Account Confirmation Dialog -->
+    <v-dialog v-model="showDeleteConfirmation" max-width="400">
+      <v-card>
+        <v-card-title class="text-h5 error--text">Delete Account</v-card-title>
+        <v-card-text>
+          <p>
+            Are you sure you want to delete your account? This action cannot be
+            undone.
+          </p>
+          <v-text-field
+            v-model="confirmationText"
+            label="Type 'DELETE' to confirm"
+            :rules="[(v) => v === 'DELETE' || 'Please type DELETE to confirm']"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" text @click="showDeleteConfirmation = false"
+            >Cancel</v-btn
+          >
+          <v-btn
+            color="error"
+            :disabled="confirmationText !== 'DELETE'"
+            @click="processDeleteAccount"
+          >
+            Delete Account
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </v-container>
+</template>
+
+<script>
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useStore } from 'vuex'
+// import store from '@/store'
+import { deleteUserAccount, logout } from '@/services/api'
+import logger from '@/utils/logger'
+
+export default {
+  setup() {
+    const router = useRouter()
+    const store = useStore()
+    const showDeleteConfirmation = ref(false)
+    const confirmationText = ref('')
+    const isLoading = ref(false)
+
+    const handleLogout = async () => {
+      isLoading.value = true
+      try {
+        await logout()
+        store.commit('CLEAR_TOKENS')
+        router.push('/login')
+      } catch (error) {
+        logger.error('Unknown', 'Error logging out:', error)
+      } finally {
+        isLoading.value = false
+      }
+    }
+
+    const processDeleteAccount = async () => {
+      if (confirmationText.value !== 'DELETE') {
+        return
+      }
+      isLoading.value = true
+      try {
+        await deleteUserAccount()
+        // Clear authentication state
+        store.commit('CLEAR_TOKENS')
+        // Redirect to register page
+        router.push('/register')
+      } catch (error) {
+        logger.error('Unknown', 'Error deleting account:', error)
+        // Handle error (e.g., show error message to user)
+      } finally {
+        isLoading.value = false
+        showDeleteConfirmation.value = false
+        confirmationText.value = ''
+      }
+    }
+
+    return {
+      router,
+      store,
+      showDeleteConfirmation,
+      confirmationText,
+      isLoading,
+      processDeleteAccount,
+      handleLogout,
+    }
+  },
+  data() {
+    return {
+      menuItems: [
+        { title: 'User details', to: '/profile' },
+        { title: 'Settings', to: '/profile/settings' },
+      ],
+    }
+  },
+  methods: {
+    // async logout() {
+    //   try {
+    //     await store.dispatch('logout')
+    //     // if (response.success) {
+    //     //   this.$emit('update-page-title', '') // Clear the page title
+    //     //   this.router.push('/login')
+    //     // } else {
+    //     //   logger.error('Unknown', 'Logout failed:', response.error)
+    //     // }
+    //   } catch (error) {
+    //     logger.error('Unknown', 'Logout error:', error)
+    //   }
+    // },
+    isActive(route) {
+      return this.$route.path === route
+    },
+  },
+  mounted() {
+    this.$emit('update-page-title', 'User Profile')
+  },
+  beforeUnmount() {
+    this.$emit('update-page-title', '') // Clear the page title when component is unmounted
+  },
+}
+</script>
+
+<style scoped>
+.v-btn.error--text {
+  border-color: currentColor;
+}
+</style>

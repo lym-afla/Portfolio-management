@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+- Activate virtual environment before running any modules or scripts.
