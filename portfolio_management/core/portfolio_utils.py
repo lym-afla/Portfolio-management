@@ -16,7 +16,9 @@ from users.models import AccountGroup, CustomUser
 logger = logging.getLogger("dashboard")
 
 
-def _portfolio_at_date(user_id: int, to_date: date, account_ids: List[int]) -> QuerySet[Assets]:
+def _portfolio_at_date(
+    user_id: int, to_date: date, account_ids: List[int]
+) -> QuerySet[Assets]:
     """
     Get the portfolio assets for a user at a specific date for given broker accounts.
 
@@ -37,7 +39,10 @@ def _portfolio_at_date(user_id: int, to_date: date, account_ids: List[int]) -> Q
         .annotate(
             total_quantity=Sum(
                 "transactions__quantity",
-                filter=Q(transactions__date__lte=to_date, transactions__account_id__in=account_ids),
+                filter=Q(
+                    transactions__date__lte=to_date,
+                    transactions__account_id__in=account_ids,
+                ),
             )
         )
         .exclude(total_quantity=0)
@@ -104,12 +109,18 @@ def NAV_at_date(
         analysis["account"] = defaultdict(Decimal)
 
     portfolio = _portfolio_at_date(user_id, date, account_ids)
-    portfolio_accounts = Accounts.objects.filter(broker__investor__id=user_id, id__in=account_ids)
+    portfolio_accounts = Accounts.objects.filter(
+        broker__investor__id=user_id, id__in=account_ids
+    )
 
     if not portfolio.exists() and not portfolio_accounts.exists():
         return analysis
 
-    item_type = {"asset_type": "type", "currency": "currency", "asset_class": "exposure"}
+    item_type = {
+        "asset_type": "type",
+        "currency": "currency",
+        "asset_class": "exposure",
+    }
 
     for security in portfolio:
         for account in portfolio_accounts:
@@ -160,11 +171,15 @@ def _calculate_portfolio_value(
     account_ids: Optional[List[int]] = None,
 ) -> Decimal:
     if asset_id is None:
-        portfolio_value = NAV_at_date(user_id, tuple(account_ids), date, currency)["Total NAV"]
+        portfolio_value = NAV_at_date(user_id, tuple(account_ids), date, currency)[
+            "Total NAV"
+        ]
     else:
         asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         try:
-            portfolio_value = asset.calculate_value_at_date(date, user_id, currency, account_ids)
+            portfolio_value = asset.calculate_value_at_date(
+                date, user_id, currency, account_ids
+            )
         except Exception:
             portfolio_value = Decimal(0)
 
@@ -183,7 +198,9 @@ def calculate_portfolio_cash(
     :param target_currency: The currency to convert all cash balances to
     :return: The total cash balance as a Decimal
     """
-    portfolio_accounts = Accounts.objects.filter(broker__investor__id=user_id, id__in=account_ids)
+    portfolio_accounts = Accounts.objects.filter(
+        broker__investor__id=user_id, id__in=account_ids
+    )
 
     cash_balance = {}
     for account in portfolio_accounts:
@@ -226,7 +243,9 @@ def IRR(
     if cached_nav is not None:
         portfolio_value = cached_nav
     else:
-        portfolio_value = _calculate_portfolio_value(user_id, date, currency, asset_id, account_ids)
+        portfolio_value = _calculate_portfolio_value(
+            user_id, date, currency, asset_id, account_ids
+        )
 
     # Not relevant for short positions
     if portfolio_value < 0:
@@ -270,10 +289,14 @@ def IRR(
     for transaction in transactions:
         cash_flow = _calculate_cash_flow(transaction)
         fx_rate = (
-            get_fx_rate(transaction.currency.upper(), currency, transaction.date) if currency else 1
+            get_fx_rate(transaction.currency.upper(), currency, transaction.date)
+            if currency
+            else 1
         )
         cash_flows.append(
-            Decimal(cash_flow * fx_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            Decimal(cash_flow * fx_rate).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
         )
         transaction_dates.append(transaction.date)
 
@@ -349,7 +372,9 @@ def get_selected_account_ids(
         List of broker account IDs
     """
     if selection_type == "all":
-        return list(Accounts.objects.filter(broker__investor=user).values_list("id", flat=True))
+        return list(
+            Accounts.objects.filter(broker__investor=user).values_list("id", flat=True)
+        )
 
     elif selection_type == "account":
         return (
@@ -368,7 +393,9 @@ def get_selected_account_ids(
     elif selection_type == "broker":
         try:
             broker = Brokers.objects.get(id=selection_id, investor=user)
-            return list(Accounts.objects.filter(broker=broker).values_list("id", flat=True))
+            return list(
+                Accounts.objects.filter(broker=broker).values_list("id", flat=True)
+            )
         except Brokers.DoesNotExist:
             return []
 
@@ -407,7 +434,9 @@ def calculate_performance(
 
     alternative_fx_check = Decimal("0")
 
-    selected_account_ids = get_selected_account_ids(user, account_group_type, account_group_id)
+    selected_account_ids = get_selected_account_ids(
+        user, account_group_type, account_group_id
+    )
     accounts = Accounts.objects.filter(
         id__in=selected_account_ids, broker__investor=user
     ).select_related("broker")
@@ -433,7 +462,10 @@ def calculate_performance(
         # bop_nav = bop_nav_dict.get(broker.id)
         if not bop_nav:
             bop_nav_account = NAV_at_date(
-                user.id, tuple([account.id]), start_date - timedelta(days=1), currency_target
+                user.id,
+                tuple([account.id]),
+                start_date - timedelta(days=1),
+                currency_target,
             )["Total NAV"]
             performance_data["bop_nav"] += bop_nav_account
 
@@ -445,14 +477,18 @@ def calculate_performance(
         )
 
         if is_restricted is not None:
-            restricted_filter = Q(security__isnull=False, security__restricted=is_restricted)
+            restricted_filter = Q(
+                security__isnull=False, security__restricted=is_restricted
+            )
             if not is_restricted:
                 restricted_filter |= Q(security__isnull=True)
             transactions = transactions.filter(restricted_filter)
 
         # Calculate transaction-based metrics
         for transaction in transactions:
-            fx_rate = get_fx_rate(transaction.currency, currency_target, transaction.date)
+            fx_rate = get_fx_rate(
+                transaction.currency, currency_target, transaction.date
+            )
 
             if transaction.cash_flow is not None:
                 converted_amount = transaction.cash_flow * fx_rate
@@ -487,29 +523,47 @@ def calculate_performance(
 
         for asset in assets:
             asset_realized_gl = asset.realized_gain_loss(
-                end_date, user, currency_target, account_ids=[account.id], start_date=start_date
+                end_date,
+                user,
+                currency_target,
+                account_ids=[account.id],
+                start_date=start_date,
             )
             asset_unrealized_gl = asset.unrealized_gain_loss(
-                end_date, user, currency_target, account_ids=[account.id], start_date=start_date
+                end_date,
+                user,
+                currency_target,
+                account_ids=[account.id],
+                start_date=start_date,
             )
 
             performance_data["price_change"] += (
-                asset_realized_gl["all_time"]["price_appreciation"] if asset_realized_gl else 0
+                asset_realized_gl["all_time"]["price_appreciation"]
+                if asset_realized_gl
+                else 0
             )
             logger.debug(f"Realized GL for {asset.name}: {asset_realized_gl}")
             alternative_fx_check += asset_realized_gl["all_time"]["fx_effect"]
-            performance_data["price_change"] += asset_unrealized_gl["price_appreciation"]
+            performance_data["price_change"] += asset_unrealized_gl[
+                "price_appreciation"
+            ]
             logger.debug(f"Unrealized GL for {asset.name}: {asset_unrealized_gl}")
             alternative_fx_check += asset_unrealized_gl["fx_effect"]
             performance_data["capital_distribution"] += asset.get_capital_distribution(
-                end_date, user, currency_target, account_ids=[account.id], start_date=start_date
+                end_date,
+                user,
+                currency_target,
+                account_ids=[account.id],
+                start_date=start_date,
             )
             logger.debug(
                 f"Capital distribution for {asset.name}: {performance_data['capital_distribution']}"
             )
 
         # Calculate EOP NAV
-        eop_nav = NAV_at_date(user.id, tuple([account.id]), end_date, currency_target)["Total NAV"]
+        eop_nav = NAV_at_date(user.id, tuple([account.id]), end_date, currency_target)[
+            "Total NAV"
+        ]
         performance_data["eop_nav"] += eop_nav
 
     if bop_nav:
@@ -568,7 +622,9 @@ def calculate_percentage_shares(data_dict, selected_keys):
         for item in data_dict[key]:
             if total_nav > 0:
                 percentage = data_dict[key][item] / total_nav * 100
-                data_dict[percentage_key][item] = format_percentage(percentage, digits=1)
+                data_dict[percentage_key][item] = format_percentage(
+                    percentage, digits=1
+                )
             else:
                 data_dict[percentage_key][item] = "–"
 
@@ -595,12 +651,15 @@ def get_last_exit_date_for_accounts(
     """
     # Ensure date is a date object
     if isinstance(effective_current_date, str):
-        effective_current_date = datetime.strptime(effective_current_date, "%Y-%m-%d").date()
+        effective_current_date = datetime.strptime(
+            effective_current_date, "%Y-%m-%d"
+        ).date()
 
     # Step 1: Check for open positions using aggregation
     open_positions = (
         Assets.objects.filter(
-            transactions__account_id__in=account_ids, transactions__date__lte=effective_current_date
+            transactions__account_id__in=account_ids,
+            transactions__date__lte=effective_current_date,
         )
         .annotate(
             total_quantity=Sum(
@@ -620,7 +679,9 @@ def get_last_exit_date_for_accounts(
 
     # Step 2: If no open positions, find the latest transaction date
     latest_transaction_date = (
-        Transactions.objects.filter(account_id__in=account_ids, date__lte=effective_current_date)
+        Transactions.objects.filter(
+            account_id__in=account_ids, date__lte=effective_current_date
+        )
         .order_by("-date")
         .values_list("date", flat=True)
         .first()

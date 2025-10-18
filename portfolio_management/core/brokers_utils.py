@@ -28,17 +28,27 @@ def get_brokers_table_api(request):
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
     )
-    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+    effective_current_date = datetime.strptime(
+        effective_current_date_str, "%Y-%m-%d"
+    ).date()
     currency_target = user.default_currency
     number_of_digits = user.digits
 
     brokers_data = _filter_brokers(user, search)
-    brokers_data = _get_brokers_data(user, brokers_data, effective_current_date, currency_target)
+    brokers_data = _get_brokers_data(
+        user, brokers_data, effective_current_date, currency_target
+    )
     brokers_data = sort_entries(brokers_data, sort_by)
-    paginated_brokers, pagination_data = paginate_table(brokers_data, page, items_per_page)
-    formatted_brokers = format_table_data(paginated_brokers, currency_target, number_of_digits)
+    paginated_brokers, pagination_data = paginate_table(
+        brokers_data, page, items_per_page
+    )
+    formatted_brokers = format_table_data(
+        paginated_brokers, currency_target, number_of_digits
+    )
 
-    totals = _calculate_totals(brokers_data, user, effective_current_date, currency_target)
+    totals = _calculate_totals(
+        brokers_data, user, effective_current_date, currency_target
+    )
     totals = format_table_data(totals, currency_target, number_of_digits)
 
     return {
@@ -67,11 +77,16 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
     brokers_data = []
 
     # Get all broker account IDs upfront
-    accounts = {broker.id: list(broker.accounts.values_list("id", flat=True)) for broker in brokers}
+    accounts = {
+        broker.id: list(broker.accounts.values_list("id", flat=True))
+        for broker in brokers
+    }
 
     # Get all assets with non-zero positions at effective_current_date
     active_assets = Assets.objects.filter(
-        transactions__account__in=[acc_id for acc_ids in accounts.values() for acc_id in acc_ids],
+        transactions__account__in=[
+            acc_id for acc_ids in accounts.values() for acc_id in acc_ids
+        ],
         transactions__date__lte=effective_current_date,
     ).distinct()
 
@@ -93,10 +108,18 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
                 1
                 for asset in active_assets
                 if asset.transactions.filter(account_id__in=account_ids).exists()
-                and asset.position(effective_current_date, user, account_ids=account_ids) != 0
+                and asset.position(
+                    effective_current_date, user, account_ids=account_ids
+                )
+                != 0
             )
 
-            irr = IRR(user.id, effective_current_date, currency_target, account_ids=account_ids)
+            irr = IRR(
+                user.id,
+                effective_current_date,
+                currency_target,
+                account_ids=account_ids,
+            )
         else:
             total_nav = Decimal("0")
             cash = Decimal("0")
@@ -110,7 +133,9 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
             "comment": broker.comment,
             "no_of_accounts": accounts_count,
             "no_of_securities": securities_count,
-            "first_investment": Transactions.objects.filter(account__in=account_ids, investor=user)
+            "first_investment": Transactions.objects.filter(
+                account__in=account_ids, investor=user
+            )
             .order_by("date")
             .values_list("date", flat=True)
             .first()
@@ -131,7 +156,9 @@ def _calculate_totals(brokers_data, user, effective_current_date, currency_targe
 
     # Calculate total NAV and cash
     if account_ids:
-        nav_data = NAV_at_date(user.id, tuple(account_ids), effective_current_date, currency_target)
+        nav_data = NAV_at_date(
+            user.id, tuple(account_ids), effective_current_date, currency_target
+        )
         total_nav = nav_data["Total NAV"]
         total_cash = nav_data.get("Cash", {}).get(currency_target, Decimal("0"))
     else:
@@ -143,7 +170,12 @@ def _calculate_totals(brokers_data, user, effective_current_date, currency_targe
         "nav": total_nav,
         "cash": total_cash,
         "irr": (
-            IRR(user.id, effective_current_date, currency_target, account_ids=account_ids)
+            IRR(
+                user.id,
+                effective_current_date,
+                currency_target,
+                account_ids=account_ids,
+            )
             if account_ids
             else Decimal("0")
         ),

@@ -5,11 +5,20 @@ from datetime import datetime, timedelta
 from typing import AsyncGenerator, Dict, Optional
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import Client, GetOperationsByCursorRequest, OperationState, RequestError
+from tinkoff.invest import (
+    Client,
+    GetOperationsByCursorRequest,
+    OperationState,
+    RequestError,
+)
 
 from common.models import Accounts, Brokers
 
-from .tinkoff_utils import get_user_token, map_tinkoff_operation_to_transaction, verify_token_access
+from .tinkoff_utils import (
+    get_user_token,
+    map_tinkoff_operation_to_transaction,
+    verify_token_access,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +53,10 @@ class BrokerAPI(ABC):
 
     @abstractmethod
     async def get_transactions(
-        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self,
+        account: Accounts,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
         Fetch transactions from broker API
@@ -134,10 +146,14 @@ class TinkoffAPI(BrokerAPI):
 
             except Exception as e:
                 last_exception = e
-                self.logger.error(f"Unexpected error during retry attempt {attempt + 1}: {str(e)}")
+                self.logger.error(
+                    f"Unexpected error during retry attempt {attempt + 1}: {str(e)}"
+                )
                 raise
 
-        raise TinkoffAPIException(f"All retry attempts failed. Last error: {str(last_exception)}")
+        raise TinkoffAPIException(
+            f"All retry attempts failed. Last error: {str(last_exception)}"
+        )
 
     async def connect(self, user) -> bool:
         """
@@ -180,7 +196,10 @@ class TinkoffAPI(BrokerAPI):
             self.logger.error(f"Error disconnecting from Tinkoff API: {str(e)}")
 
     async def get_transactions(
-        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self,
+        account: Accounts,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
         Fetch transactions from Tinkoff API using cursor-based pagination
@@ -215,7 +234,9 @@ class TinkoffAPI(BrokerAPI):
                 if date_from
                 else datetime.now() - timedelta(days=30)
             )
-            to_date = datetime.strptime(date_to, "%Y-%m-%d") if date_to else datetime.now()
+            to_date = (
+                datetime.strptime(date_to, "%Y-%m-%d") if date_to else datetime.now()
+            )
 
             # Use Client with context manager instead of storing it as instance attribute
             with Client(self.token) as client:
@@ -265,13 +286,19 @@ class TinkoffAPI(BrokerAPI):
                             )
 
                             try:
-                                transaction_data = await map_tinkoff_operation_to_transaction(
-                                    operation=operation, investor=self.user, account=account
+                                transaction_data = (
+                                    await map_tinkoff_operation_to_transaction(
+                                        operation=operation,
+                                        investor=self.user,
+                                        account=account,
+                                    )
                                 )
 
                                 if transaction_data:
                                     if isinstance(transaction_data, str):
-                                        self.logger.warning(f"{{operation.id}}: {transaction_data}")
+                                        self.logger.warning(
+                                            f"{{operation.id}}: {transaction_data}"
+                                        )
                                         continue
                                     yield transaction_data
                                 else:
@@ -306,7 +333,9 @@ class TinkoffAPI(BrokerAPI):
             self.logger.error(f"Error fetching Tinkoff transactions: {str(e)}")
             raise TinkoffAPIException(f"Failed to fetch Tinkoff transactions: {str(e)}")
         finally:
-            self.logger.info(f"Finished processing {total_operations} operations from Tinkoff API")
+            self.logger.info(
+                f"Finished processing {total_operations} operations from Tinkoff API"
+            )
 
     async def validate_connection(self) -> bool:
         """Validate API connection"""
@@ -346,7 +375,10 @@ class InteractiveBrokersAPI(BrokerAPI):
             self.logger.error(f"Error disconnecting from IB API: {str(e)}")
 
     async def get_transactions(
-        self, account: Accounts, date_from: Optional[str] = None, date_to: Optional[str] = None
+        self,
+        account: Accounts,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         self.logger.debug(f"Fetching IB transactions for account {account.id}")
         try:

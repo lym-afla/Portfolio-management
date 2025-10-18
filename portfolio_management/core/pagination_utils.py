@@ -3,7 +3,9 @@ from typing import Any, Dict, List, Tuple
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 
 
-def paginate_table(table: List[Any], page: int, items_per_page: int) -> Tuple[Any, Dict[str, int]]:
+def paginate_table(
+    table: List[Any], page: int, items_per_page: int
+) -> Tuple[Any, Dict[str, int]]:
     """
     Paginate a table of data.
 

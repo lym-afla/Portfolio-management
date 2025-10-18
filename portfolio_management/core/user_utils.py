@@ -76,7 +76,11 @@ def prepare_account_choices(user):
         broker_choices = [
             (
                 broker.name,
-                {"type": "broker", "id": broker.id, "display_name": f"All {broker.name} accounts"},
+                {
+                    "type": "broker",
+                    "id": broker.id,
+                    "display_name": f"All {broker.name} accounts",
+                },
             )
             for broker in brokers
         ]
@@ -99,7 +103,10 @@ def prepare_account_choices(user):
 
     return {
         "options": options,
-        "selected": {"type": user.selected_account_type, "id": user.selected_account_id},
+        "selected": {
+            "type": user.selected_account_type,
+            "id": user.selected_account_id,
+        },
     }
 
 
@@ -115,7 +122,9 @@ def get_account_ids_from_choice(user, choice):
         List of broker account IDs
     """
     if not choice or choice == "All accounts":
-        return list(Accounts.objects.filter(broker__investor=user).values_list("id", flat=True))
+        return list(
+            Accounts.objects.filter(broker__investor=user).values_list("id", flat=True)
+        )
 
     if choice.startswith("group_"):
         group_id = int(choice.replace("group_", ""))

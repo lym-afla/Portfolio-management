@@ -50,7 +50,9 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     effective_current_date_str = getattr(
         request, "effective_current_date", date.today().isoformat()
     )
-    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+    effective_current_date = datetime.strptime(
+        effective_current_date_str, "%Y-%m-%d"
+    ).date()
     currency_target = user.default_currency
     number_of_digits = user.digits
     use_default_currency = user.use_default_currency_where_relevant
@@ -78,12 +80,20 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
     )
 
     portfolio = sort_entries(portfolio, sort_by)
-    paginated_portfolio, pagination_data = paginate_table(portfolio, page, items_per_page)
+    paginated_portfolio, pagination_data = paginate_table(
+        portfolio, page, items_per_page
+    )
 
-    formatted_portfolio = format_table_data(paginated_portfolio, currency_target, number_of_digits)
-    formatted_totals = format_table_data(portfolio_totals, currency_target, number_of_digits)
+    formatted_portfolio = format_table_data(
+        paginated_portfolio, currency_target, number_of_digits
+    )
+    formatted_totals = format_table_data(
+        portfolio_totals, currency_target, number_of_digits
+    )
 
-    cash_balances = _get_cash_balances_for_api(user, end_date) if not is_closed else None
+    cash_balances = (
+        _get_cash_balances_for_api(user, end_date) if not is_closed else None
+    )
 
     return {
         f'portfolio_{"closed" if is_closed else "open"}': formatted_portfolio,
@@ -102,7 +112,12 @@ def _get_categories(is_closed: bool) -> List[str]:
     :param is_closed: Boolean indicating whether the position is closed
     :return: List of category names
     """
-    common_categories = ["investment_date", "realized_gl", "capital_distribution", "commission"]
+    common_categories = [
+        "investment_date",
+        "realized_gl",
+        "capital_distribution",
+        "commission",
+    ]
     closed_specific = ["exit_date"]
     open_specific = ["current_value", "unrealized_gl"]
     return common_categories + (closed_specific if is_closed else open_specific)
@@ -133,18 +148,26 @@ def _get_cash_balances_for_api(
             account = Accounts.objects.get(id=account_id, broker__investor=user)
             for currency, balance in account.balance(target_date).items():
                 aggregated_balances[currency] += balance
-            logger.debug(f"Aggregated balances after adding {account.name}: {aggregated_balances}")
+            logger.debug(
+                f"Aggregated balances after adding {account.name}: {aggregated_balances}"
+            )
         except Accounts.DoesNotExist:
             continue
 
     return {
-        currency_format("", currency, 0): currency_format(balance, currency, user.digits)
+        currency_format("", currency, 0): currency_format(
+            balance, currency, user.digits
+        )
         for currency, balance in aggregated_balances.items()
     }
 
 
 def _filter_assets(
-    user: CustomUser, end_date: date, selected_account_ids: List[int], is_closed: bool, search: str
+    user: CustomUser,
+    end_date: date,
+    selected_account_ids: List[int],
+    is_closed: bool,
+    search: str,
 ) -> QuerySet[Assets]:
     """
     Filter assets based on user, date, broker accounts, closed status, and search query.
@@ -176,7 +199,9 @@ def _filter_assets(
     )
 
     if search:
-        base_query = base_query.filter(Q(name__icontains=search) | Q(type__icontains=search))
+        base_query = base_query.filter(
+            Q(name__icontains=search) | Q(type__icontains=search)
+        )
 
     # Get all assets that match our base criteria
     assets = list(base_query)

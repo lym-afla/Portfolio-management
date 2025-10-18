@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def accounts_summary_data(
-    user, effective_date, account_group_type, account_group_id, currency_target, number_of_digits
+    user,
+    effective_date,
+    account_group_type,
+    account_group_id,
+    currency_target,
+    number_of_digits,
 ):
     def initialize_context():
         return {"years": [], "lines": []}
@@ -37,7 +42,9 @@ def accounts_summary_data(
             for year in ["YTD"] + years + ["All-time"]
         }
 
-    selected_account_ids = get_selected_account_ids(user, account_group_type, account_group_id)
+    selected_account_ids = get_selected_account_ids(
+        user, account_group_type, account_group_id
+    )
 
     public_markets_context = initialize_context()
     restricted_investments_context = initialize_context()
@@ -58,7 +65,9 @@ def accounts_summary_data(
         }
 
     start_year = first_entry.year
-    last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_accounts(
+        selected_account_ids, effective_date
+    )
     last_year = (
         last_exit_date.year
         if last_exit_date and last_exit_date.year < effective_date.year
@@ -72,10 +81,14 @@ def accounts_summary_data(
     public_totals = initialize_totals(years)
     restricted_totals = initialize_totals(years)
 
-    accounts = Accounts.objects.filter(id__in=selected_account_ids, broker__investor=user)
+    accounts = Accounts.objects.filter(
+        id__in=selected_account_ids, broker__investor=user
+    )
 
     for restricted in [False, True]:
-        context = public_markets_context if not restricted else restricted_investments_context
+        context = (
+            public_markets_context if not restricted else restricted_investments_context
+        )
         totals = public_totals if not restricted else restricted_totals
 
         accounts_subgroup = accounts.filter(restricted=restricted)
@@ -129,7 +142,10 @@ def accounts_summary_data(
 
             # Add stored data for each year
             for entry in stored_data:
-                if entry["broker_group"] == account.name and entry["restricted"] == restricted:
+                if (
+                    entry["broker_group"] == account.name
+                    and entry["restricted"] == restricted
+                ):
                     year_data = {
                         k: v
                         for k, v in entry.items()
@@ -162,10 +178,15 @@ def accounts_summary_data(
             if account.restricted == restricted:
                 try:
                     all_time_data["tsr"] = IRR(
-                        user.id, effective_date, currency_target, account_ids=[account.id]
+                        user.id,
+                        effective_date,
+                        currency_target,
+                        account_ids=[account.id],
                     )
                 except Exception as e:
-                    print(f"Error calculating all-time TSR for account {account.name}: {e}")
+                    print(
+                        f"Error calculating all-time TSR for account {account.name}: {e}"
+                    )
                     all_time_data["tsr"] = "N/A"
             else:
                 all_time_data["tsr"] = "N/R"
@@ -308,7 +329,9 @@ def compile_summary_data(data, currency_target, number_of_digits):
     # Calculate additional metrics
     cash_in_out = invested + cash_out
     return_value = price_change + capital_distribution + commission + tax
-    avg_nav = (bop_nav + eop_nav) / 2 if (bop_nav + eop_nav) != 0 else -1  # Avoid division by zero
+    avg_nav = (
+        (bop_nav + eop_nav) / 2 if (bop_nav + eop_nav) != 0 else -1
+    )  # Avoid division by zero
     fee_per_aum = (
         -(commission / avg_nav) if avg_nav != -1 else Decimal(0)
     )  # Fee per AuM as percentage
@@ -324,6 +347,8 @@ def compile_summary_data(data, currency_target, number_of_digits):
         "Fee per AuM (percentage)": fee_per_aum,
     }
 
-    formatted_data = currency_format_dict_values(formatted_data, currency_target, number_of_digits)
+    formatted_data = currency_format_dict_values(
+        formatted_data, currency_target, number_of_digits
+    )
 
     return formatted_data
