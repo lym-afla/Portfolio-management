@@ -25,7 +25,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="brokergroup",
             name="broker_accounts",
-            field=models.ManyToManyField(related_name="groups", to="common.brokeraccounts"),
+            field=models.ManyToManyField(
+                related_name="groups", to="common.brokeraccounts"
+            ),
         ),
         migrations.AddField(
             model_name="customuser",

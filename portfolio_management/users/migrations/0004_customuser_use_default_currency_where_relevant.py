@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0003_alter_customuser_digits'),
+        ("users", "0003_alter_customuser_digits"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='customuser',
-            name='use_default_currency_where_relevant',
+            model_name="customuser",
+            name="use_default_currency_where_relevant",
             field=models.BooleanField(default=False),
         ),
     ]

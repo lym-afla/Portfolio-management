@@ -6,17 +6,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0005_customuser_custom_broker'),
+        ("users", "0005_customuser_custom_broker"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='customuser',
-            name='custom_broker',
+            model_name="customuser",
+            name="custom_broker",
         ),
         migrations.AddField(
-            model_name='customuser',
-            name='custom_brokers',
+            model_name="customuser",
+            name="custom_brokers",
             field=models.JSONField(blank=True, default=list),
         ),
     ]
