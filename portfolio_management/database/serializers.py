@@ -2,7 +2,15 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from common.models import FX, Accounts, Assets, Brokers, FXTransaction, Prices, Transactions
+from common.models import (
+    FX,
+    Accounts,
+    Assets,
+    Brokers,
+    FXTransaction,
+    Prices,
+    Transactions,
+)
 from constants import (
     ACCOUNT_TYPE_ALL,
     ACCOUNT_TYPE_BROKER,
@@ -49,16 +57,18 @@ class PriceImportSerializer(serializers.Serializer):
                 "Only one of securities or broker accounts can be selected."
             )
 
-        if (data.get("start_date") or data.get("end_date") or data.get("frequency")) and data.get(
-            "single_date"
-        ):
+        if (
+            data.get("start_date") or data.get("end_date") or data.get("frequency")
+        ) and data.get("single_date"):
             raise serializers.ValidationError(
                 "Either date range or single date should be provided, not both."
             )
 
         if data.get("start_date") or data.get("end_date"):
             if not data.get("frequency"):
-                raise serializers.ValidationError("Frequency must be provided with date range.")
+                raise serializers.ValidationError(
+                    "Frequency must be provided with date range."
+                )
             if not (data.get("start_date") and data.get("end_date")):
                 raise serializers.ValidationError(
                     "Both start date and end date must be provided for date range."
@@ -110,10 +120,17 @@ class AccountSerializer(serializers.ModelSerializer):
 
 class AccountPerformanceSerializer(serializers.Serializer):
     selection_account_type = serializers.ChoiceField(
-        choices=[ACCOUNT_TYPE_ALL, ACCOUNT_TYPE_INDIVIDUAL, ACCOUNT_TYPE_GROUP, ACCOUNT_TYPE_BROKER]
+        choices=[
+            ACCOUNT_TYPE_ALL,
+            ACCOUNT_TYPE_INDIVIDUAL,
+            ACCOUNT_TYPE_GROUP,
+            ACCOUNT_TYPE_BROKER,
+        ]
     )
     selection_account_id = serializers.IntegerField(required=False, allow_null=True)
-    currency = serializers.ChoiceField(choices=CURRENCY_CHOICES + (("All", "All Currencies"),))
+    currency = serializers.ChoiceField(
+        choices=CURRENCY_CHOICES + (("All", "All Currencies"),)
+    )
     is_restricted = serializers.ChoiceField(
         choices=[
             ("All", "All"),
@@ -160,7 +177,10 @@ class AccountPerformanceSerializer(serializers.Serializer):
         for section, items in self.choices_data:
             if section != "__SEPARATOR__":
                 for _, item_data in items:
-                    if item_data["type"] == account_type and item_data.get("id") == account_id:
+                    if (
+                        item_data["type"] == account_type
+                        and item_data.get("id") == account_id
+                    ):
                         valid_selection = True
                         break
 
@@ -183,7 +203,16 @@ class AccountPerformanceSerializer(serializers.Serializer):
 class FXSerializer(serializers.ModelSerializer):
     class Meta:
         model = FX
-        fields = ["id", "date", "USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"]
+        fields = [
+            "id",
+            "date",
+            "USDEUR",
+            "USDGBP",
+            "CHFGBP",
+            "RUBUSD",
+            "PLNUSD",
+            "CNYUSD",
+        ]
         read_only_fields = ["id"]  # Remove 'investor' from read_only_fields
 
 
@@ -286,10 +315,14 @@ class TransactionSerializer(serializers.ModelSerializer):
         """Use centralized cash flow calculation"""
         # Use the centralized calculation method
         calculated_cash_flow = obj.get_calculated_cash_flow()
-        return format_value(calculated_cash_flow, "cash_flow", obj.currency, self.get_digits())
+        return format_value(
+            calculated_cash_flow, "cash_flow", obj.currency, self.get_digits()
+        )
 
     def get_commission(self, obj):
-        return format_value(obj.commission, "commission", obj.currency, self.get_digits())
+        return format_value(
+            obj.commission, "commission", obj.currency, self.get_digits()
+        )
 
     def get_aci(self, obj):
         return format_value(obj.aci, "aci", obj.currency, self.get_digits())
@@ -297,7 +330,11 @@ class TransactionSerializer(serializers.ModelSerializer):
     def get_security(self, obj):
         """Return security info as dictionary"""
         if obj.security:
-            return {"id": obj.security.id, "name": obj.security.name, "type": obj.security.type}
+            return {
+                "id": obj.security.id,
+                "name": obj.security.name,
+                "type": obj.security.type,
+            }
         return None
 
     def get_instrument_type(self, obj):
@@ -308,7 +345,9 @@ class TransactionSerializer(serializers.ModelSerializer):
         return {"id": obj.account.id, "name": obj.account.name} if obj.account else None
 
     def get_notional_change(self, obj):
-        return format_value(obj.notional_change, "notional_change", obj.currency, self.get_digits())
+        return format_value(
+            obj.notional_change, "notional_change", obj.currency, self.get_digits()
+        )
 
     def get_notional(self, obj):
         return format_value(obj.notional, "notional", obj.currency, self.get_digits())

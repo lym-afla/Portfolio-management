@@ -65,12 +65,16 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         # Rest of the validation remains the same
         if transaction_type in ["Buy", "Sell", "Dividend"] and not security:
             raise serializers.ValidationError(
-                {"security": "Security must be selected for Buy, Sell, or Dividend transactions."}
+                {
+                    "security": "Security must be selected for Buy, Sell, or Dividend transactions."
+                }
             )
 
         if transaction_type in ["Cash in", "Cash out"] and security:
             raise serializers.ValidationError(
-                {"security": "Security must not be selected for Cash in or Cash out transactions."}
+                {
+                    "security": "Security must not be selected for Cash in or Cash out transactions."
+                }
             )
 
         if cash_flow is not None and transaction_type == "Cash out" and cash_flow >= 0:
@@ -100,7 +104,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"aci": "ACI must be positive."})
 
         if commission is not None and commission >= 0:
-            raise serializers.ValidationError({"commission": "Commission must be negative."})
+            raise serializers.ValidationError(
+                {"commission": "Commission must be negative."}
+            )
 
         return data
 
@@ -122,7 +128,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         return {
             "account_choices": self.get_account_choices(investor),
             "security_choices": self.get_security_choices(investor),
-            "currency_choices": [{"value": c[0], "text": c[1]} for c in CURRENCY_CHOICES],
+            "currency_choices": [
+                {"value": c[0], "text": c[1]} for c in CURRENCY_CHOICES
+            ],
             "transaction_type_choices": [
                 {"value": t[0], "text": t[1]} for t in TRANSACTION_TYPE_CHOICES
             ],
@@ -131,7 +139,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
     def get_account_choices(self, investor):
         return [
             {"value": str(account.pk), "text": account.name}
-            for account in Accounts.objects.filter(broker__investor=investor).order_by("name")
+            for account in Accounts.objects.filter(broker__investor=investor).order_by(
+                "name"
+            )
         ]
 
     def get_security_choices(self, investor):
@@ -192,11 +202,17 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
 
         # Rest of the validation remains the same
         if data.get("from_amount") <= 0:
-            raise serializers.ValidationError({"from_amount": "From amount must be positive."})
+            raise serializers.ValidationError(
+                {"from_amount": "From amount must be positive."}
+            )
         if data.get("to_amount") <= 0:
-            raise serializers.ValidationError({"to_amount": "To amount must be positive."})
+            raise serializers.ValidationError(
+                {"to_amount": "To amount must be positive."}
+            )
         if data.get("commission") is not None and data["commission"] >= 0:
-            raise serializers.ValidationError({"commission": "Commission must be negative."})
+            raise serializers.ValidationError(
+                {"commission": "Commission must be negative."}
+            )
 
         # Calculate exchange rate
         from_amount = data.get("from_amount")
@@ -205,7 +221,9 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
             data["exchange_rate"] = from_amount / to_amount
 
         if data.get("commission") is not None and data["commission"] >= 0:
-            raise serializers.ValidationError({"commission": "Commission must be negative."})
+            raise serializers.ValidationError(
+                {"commission": "Commission must be negative."}
+            )
 
         return data
 
@@ -230,7 +248,9 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
     def get_account_choices(self, investor):
         return [
             {"value": str(account.pk), "text": account.name}
-            for account in Accounts.objects.filter(broker__investor=investor).order_by("name")
+            for account in Accounts.objects.filter(broker__investor=investor).order_by(
+                "name"
+            )
         ]
 
     def get_currency_choices(self):
