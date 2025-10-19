@@ -1430,9 +1430,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                             notional_per_bond = Decimal(
                                                 total_notional
                                             ) / abs(Decimal(position))
-                                            transaction_data["notional_change"] = (
-                                                notional_per_bond
-                                            )
+                                            transaction_data[
+                                                "notional_change"
+                                            ] = notional_per_bond
 
                                             logger.debug(
                                                 "Bond redemption: total="

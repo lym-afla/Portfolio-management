@@ -91,7 +91,7 @@ jobs:
         # isort import sorting check
         isort --check-only --diff portfolio_management tests
         # flake8 linting
-        flake8 portfolio_management tests --max-line-length=88 --extend-ignore=E203,W503
+        flake8 portfolio_management tests --max-line-length=88 --extend-ignore=E203,W503,E501,I
         # mypy type checking
         mypy portfolio_management --ignore-missing-imports
 

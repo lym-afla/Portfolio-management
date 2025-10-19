@@ -424,9 +424,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             broker = await database_sync_to_async(Brokers.objects.get)(id=broker_id)
 
             # Get matched and unmatched accounts
-            matched_pairs, unmatched_tinkoff, unmatched_db = (
-                await match_tinkoff_broker_account(broker, self.user)
-            )
+            (
+                matched_pairs,
+                unmatched_tinkoff,
+                unmatched_db,
+            ) = await match_tinkoff_broker_account(broker, self.user)
 
             # Send account matching data to frontend
             await self.send_message(

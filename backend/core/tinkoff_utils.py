@@ -826,9 +826,9 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
             transaction_data["commission"] = -1 * abs(
                 quotation_to_decimal(operation.commission)
             )
-            transaction_data["commission_currency"] = (
-                operation.commission.currency.upper()
-            )
+            transaction_data[
+                "commission_currency"
+            ] = operation.commission.currency.upper()
 
         logger.debug(
             f"✓ FX transaction created: {transaction_data['from_currency']} "
