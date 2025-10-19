@@ -1,15 +1,12 @@
+"""Import utils."""
+
 import asyncio
 import json
 import logging
-from datetime import date
-from datetime import datetime
-from datetime import timedelta
-from decimal import Decimal
-from decimal import InvalidOperation
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from io import StringIO
-from typing import Dict
-from typing import List
-from typing import Tuple
+from typing import Dict, List, Tuple
 
 import aiohttp
 import pandas as pd
@@ -22,32 +19,34 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 from fake_useragent import UserAgent
 from fuzzywuzzy import process
-from tinkoff.invest import Client
-from tinkoff.invest import InstrumentType
+from tinkoff.invest import Client, InstrumentType
 from tinkoff.invest.utils import quotation_to_decimal
 
-from common.models import Accounts
-from common.models import Assets
-from common.models import BondMetadata
-from common.models import Brokers
-from common.models import FutureMetadata
-from common.models import OptionMetadata
-from common.models import Prices
-from common.models import Transactions
-from constants import ASSET_TYPE_CHOICES
-from constants import EXPOSURE_CHOICES
-from constants import MUTUAL_FUNDS_IN_PENCES
-from constants import TRANSACTION_TYPE_BROKER_COMMISSION
-from constants import TRANSACTION_TYPE_BUY
-from constants import TRANSACTION_TYPE_CASH_IN
-from constants import TRANSACTION_TYPE_CASH_OUT
-from constants import TRANSACTION_TYPE_DIVIDEND
-from constants import TRANSACTION_TYPE_INTEREST_INCOME
-from constants import TRANSACTION_TYPE_SELL
-from constants import TRANSACTION_TYPE_TAX
+from common.models import (
+    Accounts,
+    Assets,
+    BondMetadata,
+    Brokers,
+    FutureMetadata,
+    OptionMetadata,
+    Prices,
+    Transactions,
+)
+from constants import (
+    ASSET_TYPE_CHOICES,
+    EXPOSURE_CHOICES,
+    MUTUAL_FUNDS_IN_PENCES,
+    TRANSACTION_TYPE_BROKER_COMMISSION,
+    TRANSACTION_TYPE_BUY,
+    TRANSACTION_TYPE_CASH_IN,
+    TRANSACTION_TYPE_CASH_OUT,
+    TRANSACTION_TYPE_DIVIDEND,
+    TRANSACTION_TYPE_INTEREST_INCOME,
+    TRANSACTION_TYPE_SELL,
+    TRANSACTION_TYPE_TAX,
+)
 from core.broker_api_utils import get_broker_api
-from core.tinkoff_utils import get_user_token
-from core.tinkoff_utils import save_bond_redemption_history
+from core.tinkoff_utils import get_user_token, save_bond_redemption_history
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -57,22 +56,25 @@ CustomUser = get_user_model()
 
 @database_sync_to_async
 def get_investor(investor_id):
+    """Get investor by ID asynchronously."""
     return CustomUser.objects.get(id=investor_id)
 
 
 @database_sync_to_async
 def get_broker(account):
-    """Get broker from account asynchronously"""
+    """Get broker from account asynchronously."""
     return account.broker
 
 
 @database_sync_to_async
 def get_account(account_id: int) -> Accounts:
+    """Get account by ID asynchronously."""
     return Accounts.objects.get(id=account_id)
 
 
 @database_sync_to_async
 def get_security(security_id):
+    """Get security by ID asynchronously."""
     try:
         return Assets.objects.get(id=security_id)
     except Assets.DoesNotExist:
@@ -82,6 +84,7 @@ def get_security(security_id):
 
 @database_sync_to_async
 def transaction_exists(transaction_data):
+    """Check if a transaction already exists."""
     query = Q()
     required_fields = ["investor", "account", "date", "currency", "type"]
     optional_fields = [
@@ -114,7 +117,6 @@ def transaction_exists(transaction_data):
 @database_sync_to_async
 def fx_transaction_exists(transaction_data):
     """Check if an FX transaction already exists."""
-
     from common.models import FXTransaction
 
     query = Q()
@@ -158,6 +160,7 @@ def fx_transaction_exists(transaction_data):
 
 
 def read_excel_file(file_path):
+    """Read Excel file."""
     try:
         with default_storage.open(file_path, "rb") as file:
             df = pd.read_excel(
@@ -361,6 +364,7 @@ async def parse_charles_stanley_transactions(
 ):
     """
     Refactored to ONLY yield messages without awaiting confirmations.
+
     Parse Charles Stanley transaction file.
 
     Args:
@@ -402,7 +406,7 @@ async def parse_charles_stanley_transactions(
         logger.error(f"Error getting investor or broker account: {str(e)}")
         yield {
             "error": (
-                f"An unexpected error occurred while getting investor or broker account: "
+                f"An unexpected error occurred while getting investor or broker account: "  # noqa: E501
                 f"{str(e)}"
             )
         }
@@ -472,7 +476,7 @@ async def parse_charles_stanley_transactions(
         except InvalidOperation as e:
             logger.error(f"InvalidOperation in process_transaction_row: {str(e)}")
             yield {
-                "error": f"An invalid operation occurred while processing a transaction: {str(e)}"
+                "error": f"An invalid operation occurred while processing a transaction: {str(e)}"  # noqa: E501
             }
         except Exception as e:
             logger.error(f"Error processing transaction at row {index + 1}: {str(e)}")
@@ -499,6 +503,7 @@ async def parse_charles_stanley_transactions(
 
 
 def generate_dates_for_price_import(start, end, frequency):
+    """Generate dates for price import."""
     dates = []
     if frequency == "daily":
         current = start
@@ -554,6 +559,7 @@ def generate_dates_for_price_import(start, end, frequency):
 
 
 async def import_security_prices_from_ft(security, dates):
+    """Import security prices from FT."""
     url = security.update_link
     user_agent = UserAgent().random
     headers = {"User-Agent": user_agent}
@@ -599,7 +605,7 @@ async def import_security_prices_from_ft(security, dates):
 
                 try:
                     async with session.get(
-                        "https://markets.ft.com/data/equities/ajax/get-historical-prices",
+                        "https://markets.ft.com/data/equities/ajax/get-historical-prices",  # noqa: E501
                         params={
                             "startDate": start_date,
                             "endDate": end_date,
@@ -660,7 +666,8 @@ async def import_security_prices_from_yahoo(security, dates):
     """
     Import security prices from Yahoo Finance.
 
-    Note: Modern yfinance uses curl_cffi internally to handle headers and browser mimicking.
+    Note: Modern yfinance uses curl_cffi internally
+        to handle headers and browser mimicking.
     We let yfinance handle the session to avoid conflicts.
     """
     if not security.yahoo_symbol:
@@ -692,13 +699,14 @@ async def import_security_prices_from_yahoo(security, dates):
 
         try:
             # Use run_in_executor to run yfinance operations in a separate thread
-            # Let yfinance handle the session internally (uses curl_cffi for browser mimicking)
+            # Let yfinance handle the session internally
+            # (uses curl_cffi for browser mimicking)
             loop = asyncio.get_event_loop()
             ticker = await loop.run_in_executor(None, yf.Ticker, security.yahoo_symbol)
             # Set auto_adjust to False to get unadjusted close prices
             history = await loop.run_in_executor(
                 None,
-                lambda: ticker.history(
+                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history(  # noqa: E501
                     start=start_date, end=end_date, auto_adjust=False
                 ),
             )
@@ -721,6 +729,7 @@ async def import_security_prices_from_yahoo(security, dates):
 
 
 async def import_security_prices_from_micex(security, dates):
+    """Import security prices from MICEX."""
     if not security.secid:
         yield {
             "security_name": security.name,
@@ -791,7 +800,7 @@ async def import_security_prices_from_micex(security, dates):
 
         url = (
             f"https://iss.moex.com/iss/history/engines/{selected_engine}/markets/"
-            f"{selected_market}/boards/{selected_board}/securities/{security.secid}.json"
+            f"{selected_market}/boards/{selected_board}/securities/{security.secid}.json"  # noqa: E501
             f"?from={start_date}&till={end_date}"
         )
 
@@ -847,7 +856,8 @@ async def import_security_prices_from_micex(security, dates):
                                 {
                                     "status": "updated",
                                     "message": (
-                                        f"Used price from {closest_date.strftime('%Y-%m-%d')}"
+                                        f"Used price from "
+                                        f"{closest_date.strftime('%Y-%m-%d')}"
                                         if closest_date != target_date
                                         else None
                                     ),
@@ -857,14 +867,16 @@ async def import_security_prices_from_micex(security, dates):
                             result.update(
                                 {
                                     "status": "error",
-                                    "message": "No closing price available for the closest date",
+                                    "message": "No closing price available for the "  # noqa: E501
+                                    "closest date",
                                 }
                             )
                     else:
                         result.update(
                             {
                                 "status": "error",
-                                "message": "No suitable trading day found in the date range",
+                                "message": "No suitable trading day found in the "  # noqa: E501
+                                "date range",
                             }
                         )
                 else:
@@ -948,7 +960,7 @@ async def _process_galaxy_transaction(
     user, account, date, currency, transaction_type, cash_flow=None, commission=None
 ):
     """
-    Process a Galaxy transaction.
+    Process a Galaxy transaction asynchronously.
 
     Args:
         user: User object
@@ -980,6 +992,12 @@ async def parse_galaxy_account_cash_flows(
 ):
     """
     Parse Galaxy broker account cash flows with async support and progress tracking.
+
+    Args:
+        file_path: Path to the Galaxy cash flow file
+        currency: Currency of the transactions
+        account: Accounts object
+        user: User object
     """
     yield {
         "status": "initialization",
@@ -1090,7 +1108,8 @@ async def parse_galaxy_account_cash_flows(
             logger.error(f"Error processing row {index + 1}: {str(e)}")
             import_errors += 1
             yield {
-                "error": f"An unexpected error occurred while processing row {index + 1}: {str(e)}"
+                "error": f"An unexpected error occurred while processing row "
+                f"{index + 1}: {str(e)}"
             }
 
     # Final yield with import summary
@@ -1110,7 +1129,7 @@ async def parse_galaxy_account_cash_flows(
 async def parse_galaxy_account_security_transactions(
     file_path, currency, account, user, confirm_every=False
 ):
-    """Async generator for parsing Galaxy broker account security transactions"""
+    """Async generator for parsing Galaxy broker account security transactions."""
     try:
         # Send initialization message
         yield {
@@ -1183,7 +1202,8 @@ async def parse_galaxy_account_security_transactions(
         yield {
             "status": "initialization",
             "total_to_update": total_potential_transactions,
-            "message": f"Starting processing {total_potential_transactions} transactions",
+            "message": f"Starting processing {total_potential_transactions} "
+            f"transactions",
         }
 
         # Now process transactions only for valid columns
@@ -1419,8 +1439,10 @@ async def create_security_from_tinkoff(
 ):
     """
     Create a new security using T-Bank (Tinkoff) data with type-specific API methods.
+
     Used when security is not found in MICEX (e.g., matured bonds, delisted securities).
-    Fetches comprehensive metadata using bond_by, share_by, etf_by, future_by, or option_by.
+    Fetches comprehensive metadata
+    using bond_by, share_by, etf_by, future_by, or option_by.
 
     Args:
         security_name: Name of the security from Tinkoff
@@ -1434,10 +1456,10 @@ async def create_security_from_tinkoff(
     Returns:
         Assets instance or None
     """
-
     try:
         logger.info(
-            f"Creating security from T-Bank data: {security_name} ({isin}), UID: {instrument_uid}"
+            f"Creating security from T-Bank data: {security_name} ({isin}), "
+            f"UID: {instrument_uid}"
         )
 
         if not instrument_uid:
@@ -1478,7 +1500,8 @@ async def create_security_from_tinkoff(
                     instrument_data = response.instrument
                 else:
                     logger.warning(
-                        f"Unsupported instrument type for {security_name}: {instrument_type}"
+                        f"Unsupported instrument type for {security_name}: "
+                        f"{instrument_type}"
                     )
                     return await _create_basic_tbank_asset(
                         security_name,
@@ -1656,7 +1679,8 @@ async def create_security_from_tinkoff(
 
         asset = await create_asset_with_metadata()
         logger.info(
-            f"Successfully created asset from T-Bank with metadata: {asset.name} ({asset.ISIN})"
+            f"Successfully created asset from T-Bank with metadata: "
+            f"{asset.name} ({asset.ISIN})"
         )
 
         # For bonds, fetch and save redemption history to NotionalHistory
@@ -1667,7 +1691,8 @@ async def create_security_from_tinkoff(
                 )
                 if entries_count > 0:
                     logger.info(
-                        f"Saved {entries_count} bond redemption events for {asset.name} "
+                        f"Saved {entries_count} bond redemption events for "
+                        f"{asset.name} "
                         f"up to {date_to_save if date_to_save else datetime.now()}"
                     )
             except Exception as e:
@@ -1685,7 +1710,8 @@ async def create_security_from_tinkoff(
                 )
                 if success:
                     logger.info(
-                        f"Successfully fetched and cached coupon schedule for {asset.name}"
+                        f"Successfully fetched and cached coupon schedule for "
+                        f"{asset.name}"
                     )
                 else:
                     logger.warning(f"Could not fetch coupon schedule for {asset.name}")
@@ -1756,6 +1782,7 @@ async def _create_basic_tbank_asset(
 async def _enhance_bond_metadata_from_tbank(asset, isin, user):
     """
     Enhance bond metadata with T-Bank API data.
+
     Fetches accurate amortization flag and coupon type (floating vs fixed).
 
     Args:
@@ -1766,7 +1793,6 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
     Returns:
         str: instrument_uid if successful, None otherwise
     """
-
     try:
         # Get T-Bank token
         token = await get_user_token(user)
@@ -1806,7 +1832,8 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
                             bond_meta.is_amortizing = bond_instrument.amortization_flag
                             updated = True
                             logger.info(
-                                f"Updated is_amortizing={bond_instrument.amortization_flag} "
+                                f"Updated is_amortizing="
+                                f"{bond_instrument.amortization_flag} "
                                 f"for {asset.name} from T-Bank API"
                             )
 
@@ -1828,7 +1855,8 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
                         if updated:
                             bond_meta.save()
                             logger.info(
-                                f"Enhanced BondMetadata for {asset.name} from T-Bank API"
+                                f"Enhanced BondMetadata for {asset.name} "
+                                "from T-Bank API"
                             )
 
                     except Exception as e:
@@ -1911,7 +1939,8 @@ async def fetch_security_from_micex_targeted(security_identifier, instrument_typ
                 secid = security_info.get("SECID", security_identifier)
 
                 logger.info(
-                    f"Fetched security from MICEX: {security_info.get('NAME', security_identifier)}"
+                    f"Fetched security from MICEX: "
+                    f"{security_info.get('NAME', security_identifier)}"
                 )
                 return {
                     "secid": secid,
@@ -1937,6 +1966,7 @@ async def create_security_from_micex(
 ):
     """
     Create a new security using targeted MICEX API request.
+
     Automatically creates metadata for bonds, futures, and options.
 
     Args:
@@ -2054,7 +2084,8 @@ async def create_security_from_micex(
                         "RUB" if nominal_curr == "SUR" else nominal_curr
                     )
 
-                # Determine if bond is amortizing (check if current face value < initial)
+                # Determine if bond is amortizing
+                # (check if current face value < initial)
                 if data.get("FACEVALUE") and data.get("INITIALFACEVALUE"):
                     try:
                         current_face = Decimal(str(data["FACEVALUE"]))
@@ -2152,7 +2183,8 @@ async def create_security_from_micex(
             f"with metadata and user relationships"
         )
 
-        # For bonds, also fetch from T-Bank API to get accurate amortization and coupon type
+        # For bonds, also fetch from T-Bank API to get accurate
+        # amortization and coupon type
         if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
             instrument_uid = await _enhance_bond_metadata_from_tbank(asset, isin, user)
 
@@ -2168,12 +2200,14 @@ async def create_security_from_micex(
                     )
                     if entries_count > 0:
                         logger.info(
-                            f"Saved {entries_count} bond redemption events for {asset.name} "
+                            f"Saved {entries_count} bond redemption events for "
+                            f"{asset.name} "
                             f"up to {date_to_save if date_to_save else datetime.now()}"
                         )
                 except Exception as e:
                     logger.warning(
-                        f"Could not save bond redemption history for {asset.name}: {e}. "
+                        f"Could not save bond redemption history for {asset.name}: "
+                        f"{e}. "
                         f"This is not critical, continuing..."
                     )
 
@@ -2186,7 +2220,8 @@ async def create_security_from_micex(
                     )
                     if success:
                         logger.info(
-                            f"Successfully fetched and cached coupon schedule for {asset.name}"
+                            f"Successfully fetched and cached coupon schedule for "
+                            f"{asset.name}"
                         )
                     else:
                         logger.warning(
@@ -2209,7 +2244,7 @@ async def match_tinkoff_broker_account(
     broker: Brokers, user
 ) -> Tuple[Dict[str, Dict], List[Dict], List[Dict]]:
     """
-    Match broker accounts with existing database accounts
+    Match broker accounts with existing database accounts.
 
     Args:
         broker: Brokers model instance
@@ -2217,7 +2252,8 @@ async def match_tinkoff_broker_account(
 
     Returns:
         Tuple of:
-        - matched_pairs: Dict with matched accounts {"tinkoff_account_id": matched_db_account}
+        - matched_pairs: Dict with matched accounts
+            {"tinkoff_account_id": {"tinkoff_account": tinkoff_account, "db_account": db_account}} # noqa: E501
         - unmatched_tinkoff: List of unmatched Tinkoff accounts
         - unmatched_db: List of unmatched database accounts
     """
@@ -2330,7 +2366,7 @@ async def match_tinkoff_broker_account(
 
 async def check_broker_token_active(broker: Brokers) -> bool:
     """
-    Check if broker has an active token by attempting to connect to the API
+    Check if broker has an active token by attempting to connect to the API.
 
     Args:
         broker: Broker object to check

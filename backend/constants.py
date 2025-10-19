@@ -1,5 +1,6 @@
-from tinkoff.invest import InstrumentType
-from tinkoff.invest import OperationType
+"""Constants."""
+
+from tinkoff.invest import InstrumentType, OperationType
 
 CURRENCY_CHOICES = (
     ("USD", "$"),
@@ -9,6 +10,25 @@ CURRENCY_CHOICES = (
     ("CHF", "Fr"),
     ("CNY", "¥"),
 )
+
+FREQUENCY_CHOICES = [
+    ("D", "Daily"),
+    ("W", "Weekly"),
+    ("M", "Monthly"),
+    ("Q", "Quarterly"),
+    ("Y", "Yearly"),
+]
+
+TIMELINE_CHOICES = [
+    ("YTD", "Year to Date"),
+    ("3m", "Last 3 months"),
+    ("6m", "Last 6 months"),
+    ("12m", "Last 12 months"),
+    ("3Y", "Last 3 years"),
+    ("5Y", "Last 5 years"),
+    ("All", "All history"),
+    ("Custom", "Custom"),
+]
 
 # Account selection types
 ACCOUNT_TYPE_ALL = "all"
@@ -22,6 +42,7 @@ ACCOUNT_TYPE_CHOICES = [
     (ACCOUNT_TYPE_GROUP, "Account Group"),
     (ACCOUNT_TYPE_BROKER, "Broker"),
 ]
+
 TRANSACTION_TYPE_CASH_IN = "Cash in"
 TRANSACTION_TYPE_CASH_OUT = "Cash out"
 TRANSACTION_TYPE_BUY = "Buy"
@@ -94,7 +115,8 @@ BROKER_GROUPS = {
     # Add other groups as needed
 }
 
-# Names of mutual funds that are kept in FT database in pences, so need to be divided by 100
+# Names of mutual funds that are kept in FT database in pences, so need to be
+# divided by 100
 MUTUAL_FUNDS_IN_PENCES = [
     "Fidelity Index US Fund P Accumulation",
     "BlackRock Corporate Bond",
@@ -222,16 +244,16 @@ OPERATION_TYPE_DESCRIPTIONS = {
     OperationType.OPERATION_TYPE_TRACK_MFEE: "Auto-follow Account Management Fee",
     OperationType.OPERATION_TYPE_TRACK_PFEE: "Auto-follow Account Performance Fee",
     OperationType.OPERATION_TYPE_TAX_PROGRESSIVE: "Progressive Tax (15%)",
-    OperationType.OPERATION_TYPE_BOND_TAX_PROGRESSIVE: "Progressive Bond Coupon Tax (15%)",
-    OperationType.OPERATION_TYPE_DIVIDEND_TAX_PROGRESSIVE: "Progressive Dividend Tax (15%)",
-    OperationType.OPERATION_TYPE_BENEFIT_TAX_PROGRESSIVE: "Progressive Material Benefit Tax (15%)",
-    OperationType.OPERATION_TYPE_TAX_CORRECTION_PROGRESSIVE: "Progressive Tax Correction (15%)",
+    OperationType.OPERATION_TYPE_BOND_TAX_PROGRESSIVE: "Progressive Bond Coupon Tax (15%)",  # noqa: E501
+    OperationType.OPERATION_TYPE_DIVIDEND_TAX_PROGRESSIVE: "Progressive Dividend Tax (15%)",  # noqa: E501
+    OperationType.OPERATION_TYPE_BENEFIT_TAX_PROGRESSIVE: "Progressive Material Benefit Tax (15%)",  # noqa: E501
+    OperationType.OPERATION_TYPE_TAX_CORRECTION_PROGRESSIVE: "Progressive Tax Correction (15%)",  # noqa: E501
     OperationType.OPERATION_TYPE_TAX_REPO_PROGRESSIVE: "Progressive REPO Tax (15%)",
     OperationType.OPERATION_TYPE_TAX_REPO: "REPO Tax",
     OperationType.OPERATION_TYPE_TAX_REPO_HOLD: "REPO Tax Hold",
     OperationType.OPERATION_TYPE_TAX_REPO_REFUND: "REPO Tax Refund",
-    OperationType.OPERATION_TYPE_TAX_REPO_HOLD_PROGRESSIVE: "Progressive REPO Tax Hold (15%)",
-    OperationType.OPERATION_TYPE_TAX_REPO_REFUND_PROGRESSIVE: "Progressive REPO Tax Refund (15%)",
+    OperationType.OPERATION_TYPE_TAX_REPO_HOLD_PROGRESSIVE: "Progressive REPO Tax Hold (15%)",  # noqa: E501
+    OperationType.OPERATION_TYPE_TAX_REPO_REFUND_PROGRESSIVE: "Progressive REPO Tax Refund (15%)",  # noqa: E501
     OperationType.OPERATION_TYPE_DIV_EXT: "Dividend Payment to Card",
     OperationType.OPERATION_TYPE_TAX_CORRECTION_COUPON: "Coupon Tax Correction",
     OperationType.OPERATION_TYPE_CASH_FEE: "Cash Balance Fee",

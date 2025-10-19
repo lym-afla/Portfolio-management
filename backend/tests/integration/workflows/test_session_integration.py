@@ -1,6 +1,7 @@
 """
 Integration tests to debug session persistence issues.
-Tests session behavior across multiple requests.
+
+Test session behavior across multiple requests.
 """
 
 import json
@@ -23,7 +24,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")
 django.setup()
 
 
-def test_session_persistence():
+def test_session_persistence() -> bool:
     """Test session persistence across multiple requests."""
     print("=== Testing Session Persistence ===")
 
@@ -49,7 +50,8 @@ def test_session_persistence():
     print(f"Response status: {response1.status_code}")
     print(f"Session data after dashboard settings: {dict(client.session.items())}")
     print(
-        f"Session cookie after dashboard settings: {client.cookies.get('sessionid', 'NOT_FOUND')}"
+        "Session cookie after dashboard settings: "
+        f"{client.cookies.get('sessionid', 'NOT_FOUND')}"
     )
 
     # Test 2: Call update dashboard settings
@@ -62,11 +64,13 @@ def test_session_persistence():
     )
     print(f"Response status: {response2.status_code}")
     print(
-        f"Response data: {response2.json() if response2.status_code == 200 else 'Error'}"
+        "Response data: "
+        f"{response2.json() if response2.status_code == 200 else 'Error'}"
     )
     print(f"Session data after update: {dict(client.session.items())}")
     print(
-        f"Session cookie after update: {client.cookies.get('sessionid', 'NOT_FOUND')}"
+        "Session cookie after update: "
+        f"{client.cookies.get('sessionid', 'NOT_FOUND')}"
     )
 
     # Test 3: Call transactions endpoint to check if session persists
@@ -75,7 +79,8 @@ def test_session_persistence():
     print(f"Response status: {response3.status_code}")
     print(f"Session data after transactions: {dict(client.session.items())}")
     print(
-        f"Session cookie after transactions: {client.cookies.get('sessionid', 'NOT_FOUND')}"
+        "Session cookie after transactions: "
+        f"{client.cookies.get('sessionid', 'NOT_FOUND')}"
     )
 
     # Test 4: Check if effective_current_date persists
@@ -111,7 +116,7 @@ def test_session_persistence():
     return effective_date == "2021-04-04"
 
 
-def test_session_cookies_directly():
+def test_session_cookies_directly() -> bool:
     """Test session cookie behavior directly."""
     print("\n=== Testing Session Cookies Directly ===")
 
@@ -160,10 +165,12 @@ if __name__ == "__main__":
 
         # Check CORS settings
         print(
-            f"CORS allow credentials: {getattr(settings, 'CORS_ALLOW_CREDENTIALS', 'NOT_SET')}"
+            "CORS allow credentials: "
+            f"{getattr(settings, 'CORS_ALLOW_CREDENTIALS', 'NOT_SET')}"
         )
         print(
-            f"CORS allowed origins: {getattr(settings, 'CORS_ALLOWED_ORIGINS', 'NOT_SET')}"
+            "CORS allowed origins: "
+            f"{getattr(settings, 'CORS_ALLOWED_ORIGINS', 'NOT_SET')}"
         )
     else:
         print("\nAll tests passed! Session persistence is working correctly.")

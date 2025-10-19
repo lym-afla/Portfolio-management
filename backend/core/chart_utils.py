@@ -1,7 +1,7 @@
+"""Chart utils."""
+
 import logging
-from datetime import date
-from datetime import datetime
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -10,9 +10,7 @@ from dateutil.relativedelta import relativedelta
 from django.db.models import Min
 
 from common.models import Transactions
-from core.portfolio_utils import IRR
-from core.portfolio_utils import NAV_at_date
-from core.portfolio_utils import get_fx_rate
+from core.portfolio_utils import IRR, NAV_at_date, get_fx_rate
 
 logger = logging.getLogger("dashboard")
 
@@ -20,6 +18,7 @@ logger = logging.getLogger("dashboard")
 def get_nav_chart_data(
     user_id, account_ids, frequency, from_date, to_date, currency, breakdown
 ):
+    """Get NAV chart data."""
     # Ensure dates are date objects first
     from_date = (
         date.fromisoformat(from_date) if isinstance(from_date, str) else from_date
@@ -201,6 +200,7 @@ def get_nav_chart_data(
 
 
 def _add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
+    """Add no breakdown data."""
     chart_data["datasets"][0]["data"].append(NAV)
     chart_data["datasets"][1]["data"].append(IRR)
     chart_data["datasets"][2]["data"].append(IRR_rolling)
@@ -218,6 +218,7 @@ def _add_contributions_data(
     previous_date,
     currency,
 ):
+    """Add contributions data."""
     contributions = _calculate_contributions(
         user_id, account_ids, d, previous_date, currency
     )
@@ -233,6 +234,7 @@ def _add_contributions_data(
 def add_breakdown_data(
     chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date
 ):
+    """Add breakdown data."""
     for key, value in breakdown_data.items():
         if key not in categories:
             categories[key] = current_date
@@ -256,6 +258,7 @@ def add_breakdown_data(
 
 
 def fill_missing_historical_data(chart_data, categories, frequency):
+    """Fill missing historical data."""
     for dataset in chart_data["datasets"][:-2]:  # Exclude IRR datasets
         label = dataset["label"]
         if label in categories:
@@ -271,6 +274,7 @@ def fill_missing_historical_data(chart_data, categories, frequency):
 
 
 def find_first_data_index(labels, category_date, frequency):
+    """Find first data index."""
     for index, label in enumerate(labels):
         if compare_dates(label, category_date, frequency):
             return index
@@ -278,6 +282,7 @@ def find_first_data_index(labels, category_date, frequency):
 
 
 def compare_dates(label, category_date, frequency):
+    """Compare dates."""
     # Handle None cases
     if not label or not category_date:
         return False
@@ -309,6 +314,7 @@ def compare_dates(label, category_date, frequency):
 
 
 def parse_label_date(label, frequency):
+    """Parse label date."""
     if frequency == "D" or frequency == "W":
         return datetime.strptime(label, "%d-%b-%y").date()
     elif frequency == "M":
@@ -322,6 +328,7 @@ def parse_label_date(label, frequency):
 
 
 def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
+    """Create dataset."""
     dataset = {
         "label": label,
         "data": data,
@@ -338,7 +345,8 @@ def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
     return dataset
 
 
-def get_color(index):
+def get_color(index: int) -> str:
+    """Get color."""
     colors = [
         "rgba(54, 162, 235, 0.7)",
         "rgba(255, 206, 86, 0.7)",
@@ -358,6 +366,7 @@ def _calculate_contributions(
     cumulative=False,
     cached_transactions=None,
 ):
+    """Calculate contributions."""
     if cumulative:
         if cached_transactions is None:
             # If no cache provided, fetch all transactions up to this date
@@ -407,6 +416,7 @@ def _add_cumulative_contributions_data(
     currency,
     cached_transactions=None,
 ):
+    """Add cumulative contributions data."""
     # Calculate cumulative contributions to date
     cumulative_contributions = _calculate_contributions(
         user_id,
@@ -429,6 +439,7 @@ def _add_cumulative_contributions_data(
 
 # Collect chart dates
 def _chart_dates(start_date, end_date, freq):
+    """Create chart dates."""
     # Create matching table for pandas
     frequency = {"D": "D", "W": "W-SAT", "M": "ME", "Q": "QE", "Y": "YE"}
 
@@ -469,6 +480,7 @@ def _chart_dates(start_date, end_date, freq):
 
 # Create labels according to dates
 def _chart_labels(dates, frequency):
+    """Create chart labels."""
     if frequency in ("D", "W"):
         return [d.strftime("%d-%b-%y") for d in dates]
     if frequency == "M":
@@ -480,6 +492,7 @@ def _chart_labels(dates, frequency):
 
 
 def _get_earliest_date_for_accounts(user_id, account_ids):
+    """Get earliest date for accounts."""
     try:
         earliest_date = Transactions.objects.filter(
             investor__id=user_id, account_id__in=account_ids

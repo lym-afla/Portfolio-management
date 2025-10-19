@@ -1,3 +1,5 @@
+"""Run Uvicorn server."""
+
 import logging.config
 import os
 

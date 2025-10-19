@@ -1,22 +1,25 @@
 """
 Factory classes for creating test transactions.
+
 Provides realistic transaction data for various testing scenarios.
 """
 
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import factory
 from factory import fuzzy
 
-from common.models import Transactions
+from common.models import Assets, Brokers, Transactions
+from users.models import CustomUser
 
 
 class TransactionFactory(factory.django.DjangoModelFactory):
     """Factory for creating Transactions with realistic data."""
 
     class Meta:
+        """Meta class for TransactionFactory."""
+
         model = Transactions
 
     currency = fuzzy.FuzzyChoice(["USD", "EUR", "GBP", "CHF"])
@@ -176,7 +179,7 @@ class DividendTransactionFactory(TransactionFactory):
     @factory.lazy_attribute
     def comment(self):
         """Realistic dividend comments."""
-        return f"Dividend payment - {self.faker.date_between(date(2023, 1, 1), date(2023, 12, 31))}"
+        return f"Dividend payment - {self.faker.date_between(date(2023, 1, 1), date(2023, 12, 31))}"  # noqa: E501
 
 
 class LargeBuyTransactionFactory(BuyTransactionFactory):
@@ -209,9 +212,10 @@ class SmallBuyTransactionFactory(BuyTransactionFactory):
 
 
 # Batch creation utilities
-def create_buy_sell_sequence(investor, broker, security, num_pairs=3):
+def create_buy_sell_sequence(
+    investor: CustomUser, broker: Brokers, security: Assets, num_pairs=3
+) -> list[Transactions]:
     """Create a sequence of buy-sell transaction pairs."""
-
     transactions = []
     base_date = date(2023, 1, 1)
 
@@ -244,9 +248,10 @@ def create_buy_sell_sequence(investor, broker, security, num_pairs=3):
     return transactions
 
 
-def create_dividend_schedule(investor, broker, security, num_dividends=4):
+def create_dividend_schedule(
+    investor, broker, security, num_dividends=4
+) -> list[Transactions]:
     """Create a schedule of dividend payments."""
-
     transactions = []
     base_date = date(2023, 3, 31)  # Typical dividend start date
 
@@ -265,9 +270,11 @@ def create_dividend_schedule(investor, broker, security, num_dividends=4):
 
 
 def create_dollar_cost_averaging(
-    investor, broker, security, months=12, amount=Decimal("1000")
-):
+    investor, broker, security, months=12, amount=None
+) -> list[Transactions]:
     """Create a dollar cost averaging strategy."""
+    if amount is None:
+        amount = Decimal("1000")
 
     transactions = []
     base_date = date(2023, 1, 1)
@@ -294,9 +301,10 @@ def create_dollar_cost_averaging(
     return transactions
 
 
-def create_portfolio_transactions(investor, broker, assets, transactions_per_asset=5):
+def create_portfolio_transactions(
+    investor, broker, assets, transactions_per_asset=5
+) -> list[Transactions]:
     """Create transactions for multiple assets."""
-
     all_transactions = []
 
     for asset in assets:
@@ -329,9 +337,8 @@ def create_portfolio_transactions(investor, broker, assets, transactions_per_ass
     return all_transactions
 
 
-def create_tax_loss_harvesting(investor, broker, security):
+def create_tax_loss_harvesting(investor, broker, security) -> list[Transactions]:
     """Create transactions for tax loss harvesting scenario."""
-
     transactions = []
 
     # Initial purchase at high price

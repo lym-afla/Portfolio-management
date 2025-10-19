@@ -1,6 +1,4 @@
-"""
-Test session behavior with JWT authentication like the frontend uses.
-"""
+"""Test session behavior with JWT authentication like the frontend uses."""
 
 import json
 import os
@@ -79,7 +77,7 @@ def test_jwt_authenticated_session():
     print(f"Update settings status: {response.status_code}")
     print(
         "Response data: "
-        f"{response.json() if response.status_code == 200 else response.content.decode()[:200]}"
+        f"{response.json() if response.status_code == 200 else response.content.decode()[:200]}"  # noqa: E501
     )
     print(f"Session data after update: {dict(client.session.items())}")
 

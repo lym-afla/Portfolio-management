@@ -1,6 +1,4 @@
-"""
-Simple test to validate the testing framework works without complex dependencies.
-"""
+"""Simple test to validate the testing framework works without complex dependencies."""
 
 from decimal import Decimal
 

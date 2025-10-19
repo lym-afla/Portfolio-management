@@ -1,11 +1,8 @@
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Tuple
+"""Pagination utils."""
 
-from django.core.paginator import EmptyPage
-from django.core.paginator import PageNotAnInteger
-from django.core.paginator import Paginator
+from typing import Any, Dict, List, Tuple
+
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 
 
 def paginate_table(

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Safe Django initialization for Jupyter notebooks.
+
 Import this at the top of your notebook:
 
 ```python
@@ -31,6 +32,8 @@ from django import conf
 
 def setup_django():
     """
+    Safe Django initialization for Jupyter notebooks.
+
     Safe setup for Django in notebooks that doesn't cause
     'populate() isn't reentrant' errors.
     """

@@ -1,20 +1,20 @@
 """
 BalanceTracker: Helper class for tracking multi-currency balances in transaction lists.
 
-This class provides a unified way to track and format balances across different currencies
+This class provides a unified way to track
+and format balances across different currencies
 as transactions are processed.
 """
 
 from decimal import Decimal
-from typing import Dict
-from typing import List
+from typing import Dict, List
 
 from core.formatting_utils import currency_format
 
 
 class BalanceTracker:
     """
-    Tracks running balances in multiple currencies for transaction processing.
+    Tracks running balances in multiple currencies.
 
     Usage:
         tracker = BalanceTracker(number_of_digits=2)
@@ -58,8 +58,7 @@ class BalanceTracker:
         Args:
             transaction: Transaction or FXTransaction instance
         """
-        from common.models import FXTransaction
-        from common.models import Transactions
+        from common.models import FXTransaction, Transactions
 
         if isinstance(transaction, Transactions):
             self._update_regular_transaction(transaction)
@@ -67,7 +66,7 @@ class BalanceTracker:
             self._update_fx_transaction(transaction)
 
     def _update_regular_transaction(self, transaction) -> None:
-        """Update balances for a regular transaction"""
+        """Update balances for a regular transaction."""
         currency = transaction.currency
 
         # Ensure currency exists in balance tracker
@@ -84,7 +83,7 @@ class BalanceTracker:
         self._store_transaction_balances(transaction.id)
 
     def _update_fx_transaction(self, fx_transaction) -> None:
-        """Update balances for an FX transaction using centralized method"""
+        """Update balances for an FX transaction using centralized method."""
         from_currency = fx_transaction.from_currency
         to_currency = fx_transaction.to_currency
         commission_currency = fx_transaction.commission_currency
@@ -108,7 +107,7 @@ class BalanceTracker:
         self._store_transaction_balances(fx_transaction.id)
 
     def _store_transaction_balances(self, transaction_id: int) -> None:
-        """Store formatted balances for a transaction"""
+        """Store formatted balances for a transaction."""
         formatted_balances = {}
         for currency in self.currencies:
             formatted_balances[currency] = currency_format(

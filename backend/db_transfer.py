@@ -1,3 +1,5 @@
+"""Database transfer script."""
+
 import datetime
 import os
 import shutil
@@ -5,6 +7,14 @@ import sys
 
 
 def transfer_db(direction):
+    """
+    Transfer database.
+
+    Args:
+        direction: The direction of the transfer.
+    Returns:
+        None.
+    """
     project_db = os.path.join(os.getcwd(), "db.sqlite3")
     local_folder = (
         r"C:\Users\yl\OneDrive\Personal\Development\Portfolio management database"

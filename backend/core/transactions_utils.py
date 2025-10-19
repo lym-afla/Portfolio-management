@@ -1,16 +1,14 @@
-from datetime import date
-from datetime import datetime
+"""Transactions utils."""
+
+from datetime import date, datetime
 from decimal import Decimal
 from itertools import chain
 from operator import attrgetter
 
 from django.db.models import Q
 
-from common.models import Accounts
-from common.models import FXTransaction
-from common.models import Transactions
-from database.serializers import FXTransactionSerializer
-from database.serializers import TransactionSerializer
+from common.models import Accounts, FXTransaction, Transactions
+from database.serializers import FXTransactionSerializer, TransactionSerializer
 
 from .balance_tracker import BalanceTracker
 from .pagination_utils import paginate_table
@@ -19,6 +17,7 @@ from .sorting_utils import sort_entries
 
 
 def get_transactions_table_api(request):
+    """Get transactions table API."""
     data = request.data
     start_date = (
         datetime.strptime(data.get("dateFrom", None), "%Y-%m-%d").date()
@@ -183,5 +182,5 @@ def _calculate_transactions_table_output(
 #     ...
 #
 # def _process_fx_transaction(transaction, balance, number_of_digits):
-#     """OLD: Process an FX transaction and update balances."""
+#     ."""OLD: Process an FX transaction and update balances."""
 #     ...

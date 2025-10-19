@@ -9,8 +9,7 @@ This module tests the Transaction model functionality including:
 - Multi-currency transaction handling
 """
 
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest

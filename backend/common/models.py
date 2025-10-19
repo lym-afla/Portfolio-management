@@ -1,45 +1,47 @@
+"""Common models."""
+
 import logging
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import networkx as nx
 import requests
 import yfinance as yf
 from django.db import models
-from django.db.models import F
-from django.db.models import Sum
+from django.db.models import F, Sum
 
-from constants import ACCOUNT_TYPE_ALL
-from constants import ACCOUNT_TYPE_CHOICES
-from constants import ASSET_TYPE_CHOICES
-from constants import CURRENCY_CHOICES
-from constants import DATA_SOURCE_CHOICES
-from constants import EXPOSURE_CHOICES
-from constants import TRANSACTION_TYPE_BOND_MATURITY
-from constants import TRANSACTION_TYPE_BOND_REDEMPTION
-from constants import TRANSACTION_TYPE_BROKER_COMMISSION
-from constants import TRANSACTION_TYPE_BUY
-from constants import TRANSACTION_TYPE_CASH_IN
-from constants import TRANSACTION_TYPE_CASH_OUT
-from constants import TRANSACTION_TYPE_CHOICES
-from constants import TRANSACTION_TYPE_COUPON
-from constants import TRANSACTION_TYPE_DIVIDEND
-from constants import TRANSACTION_TYPE_INTEREST_INCOME
-from constants import TRANSACTION_TYPE_SELL
-from constants import TRANSACTION_TYPE_TAX
-
+from constants import (
+    ACCOUNT_TYPE_ALL,
+    ACCOUNT_TYPE_CHOICES,
+    ASSET_TYPE_CHOICES,
+    CURRENCY_CHOICES,
+    DATA_SOURCE_CHOICES,
+    EXPOSURE_CHOICES,
+    TRANSACTION_TYPE_BOND_MATURITY,
+    TRANSACTION_TYPE_BOND_REDEMPTION,
+    TRANSACTION_TYPE_BROKER_COMMISSION,
+    TRANSACTION_TYPE_BUY,
+    TRANSACTION_TYPE_CASH_IN,
+    TRANSACTION_TYPE_CASH_OUT,
+    TRANSACTION_TYPE_CHOICES,
+    TRANSACTION_TYPE_COUPON,
+    TRANSACTION_TYPE_DIVIDEND,
+    TRANSACTION_TYPE_INTEREST_INCOME,
+    TRANSACTION_TYPE_SELL,
+    TRANSACTION_TYPE_TAX,
+)
 # from .utils import update_FX_database
 from users.models import CustomUser
 
-from .fields import TimezoneAwareDateField
-from .fields import TimezoneAwareDateTimeField
+from .fields import TimezoneAwareDateField, TimezoneAwareDateTimeField
 
 logger = logging.getLogger(__name__)
 
 
 # Table with FX data
 class FX(models.Model):
+    """FX model."""
+
     id = models.AutoField(primary_key=True)
     date = TimezoneAwareDateField(unique=True)
     investors = models.ManyToManyField(CustomUser, related_name="fx_rates")
@@ -51,11 +53,14 @@ class FX(models.Model):
     CNYUSD = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
 
     class Meta:
+        """Meta class for the FX model."""
+
         ordering = ["-date"]
 
     # Get FX quote for date
     @classmethod
     def get_rate(cls, source, target, date, investor=None):
+        """Get FX rate for a given currency and target currency at a given date."""
         fx_rate = 1
         dates_async = False
         dates_list = []
@@ -79,13 +84,15 @@ class FX(models.Model):
             if field.name not in ["date", "id", "investors"]
         ]
 
-        # Create undirected graph with currencies, import networkx library working with graphs
+        # Create undirected graph with currencies, import networkx library
+        # working with graphs
         G = nx.Graph()
         for entry in pairs_list:
             G.add_nodes_from([entry[:3], entry[3:]])
             G.add_edge(entry[:3], entry[3:])
 
-        # Finding shortest path for cross-currency conversion using "Bellman-Ford" algorithm
+        # Finding shortest path for cross-currency conversion using
+        # "Bellman-Ford" algorithm
         cross_currency = nx.shortest_path(G, source, target, method="bellman-ford")
 
         for i in range(1, len(cross_currency)):
@@ -145,6 +152,7 @@ class FX(models.Model):
 
     @classmethod
     def update_fx_rate(cls, date, investor):
+        """Update FX rate for a given date and investor."""
         # Get FX model variables, except 'date', 'id' and 'investors'
         fx_variables = [
             field
@@ -185,12 +193,13 @@ class FX(models.Model):
 
     @classmethod
     def get_investor_fx_entries(cls, investor):
+        """Get FX entries for a given investor."""
         return cls.objects.filter(investors=investor)
 
 
 # Brokers
 class Brokers(models.Model):
-    """Represents a broker entity (e.g., Tinkoff, Interactive Brokers)"""
+    """Represents a broker entity (e.g., Tinkoff, Interactive Brokers)."""
 
     investor = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name="brokers"
@@ -202,15 +211,18 @@ class Brokers(models.Model):
     updated_at = TimezoneAwareDateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class for the Brokers model."""
+
         unique_together = ["investor", "name"]
         ordering = ["name"]
 
     def __str__(self):
+        """Return the string representation of the Brokers model."""
         return self.name
 
 
 class Accounts(models.Model):
-    """Represents a specific account at a broker"""
+    """Represents a specific account at a broker."""
 
     broker = models.ForeignKey(
         Brokers, on_delete=models.CASCADE, related_name="accounts"
@@ -229,18 +241,23 @@ class Accounts(models.Model):
     updated_at = TimezoneAwareDateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class for the Accounts model."""
+
         unique_together = ["broker", "native_id"]
         ordering = ["broker", "name"]
 
     def __str__(self):
+        """Return the string representation of the Accounts model."""
         return f"Account: {self.name}"
 
     @property
     def full_name(self):
+        """Get the full name of this account."""
         return f"{self.broker.name} - {self.name}"
 
     # List of currencies used
     def get_currencies(self):
+        """Get currencies for this account."""
         currencies = set()
         for transaction in self.transactions.all():
             currencies.add(transaction.currency)
@@ -290,6 +307,8 @@ class Accounts(models.Model):
 
 # Public assets
 class Assets(models.Model):
+    """Assets model."""
+
     investors = models.ManyToManyField(CustomUser, related_name="assets", blank=True)
     type = models.CharField(max_length=15, choices=ASSET_TYPE_CHOICES, null=False)
     ISIN = models.CharField(max_length=12)
@@ -322,12 +341,12 @@ class Assets(models.Model):
     # Helper properties for bond handling
     @property
     def is_bond(self):
-        """Check if this asset is a bond"""
+        """Check if this asset is a bond."""
         return self.type == "Bond"
 
     @property
     def bond_metadata(self):
-        """Get bond metadata if this is a bond, otherwise None"""
+        """Get bond metadata if this is a bond, otherwise None."""
         if not self.is_bond:
             return None
         try:
@@ -338,6 +357,7 @@ class Assets(models.Model):
     def get_effective_notional(self, date, investor, account_ids=None, currency=None):
         """
         Get the effective notional value per bond at a given date.
+
         For amortizing bonds, this accounts for partial redemptions.
         For other assets, returns 1.0 (representing standard quantity).
         """
@@ -349,6 +369,7 @@ class Assets(models.Model):
 
     # Returns price at the date or latest available before the date
     def price_at_date(self, price_date, currency=None):
+        """Get the price of an asset at a given date."""
         logger.debug(
             f"Fetching price for {self.name} as of {price_date} in currency {currency}"
         )
@@ -363,7 +384,8 @@ class Assets(models.Model):
             )
             if last_transaction:
                 logger.debug(
-                    f"Using last transaction price for {self.name} as of {last_transaction.date}"
+                    f"Using last transaction price for {self.name} "
+                    f"as of {last_transaction.date}"
                 )
                 quote = type(
                     "obj",
@@ -383,7 +405,8 @@ class Assets(models.Model):
                 fx_rate = FX.get_rate(self.currency, currency, price_date)["FX"]
 
             logger.debug(
-                f"Converting price from {self.currency} to {currency} using FX rate {fx_rate}"
+                f"Converting price from {self.currency} to {currency} "
+                f"using FX rate {fx_rate}"
             )
             quote.price = quote.price * fx_rate
         logger.debug(
@@ -395,6 +418,7 @@ class Assets(models.Model):
     def calculate_value_at_date(self, date, investor, currency=None, account_ids=None):
         """
         Calculate the market value of this asset at a given date.
+
         For bonds, this accounts for the effective notional value.
         For other assets, this is simply position * price.
 
@@ -441,6 +465,7 @@ class Assets(models.Model):
 
     # Define position at date by summing all movements to date
     def position(self, date, investor, account_ids=None):
+        """Get the position of an asset at a given date."""
         # Convert date to timezone-aware datetime for query
         query_date = date
         query = self.transactions.filter(date__lte=query_date, investor=investor)
@@ -451,11 +476,11 @@ class Assets(models.Model):
 
     def get_accounts_with_positions(self, date, investor):
         """
-        Get list of account IDs where this security has non-zero positions at a given date.
+        Get list of accounts with non-zero positions at a given date.
 
         Args:
-            date: The date to check positions at
-            investor: The investor to check for
+            date: Date to check positions at
+            investor: Investor to check for
 
         Returns:
             list: List of account IDs with non-zero positions
@@ -480,6 +505,7 @@ class Assets(models.Model):
 
     # The very first investment date
     def investment_date(self, investor, account_ids=None):
+        """Get the investment date for this security."""
         queryset = self.transactions.filter(investor=investor)
         if account_ids:
             queryset = queryset.filter(account_id__in=account_ids)
@@ -487,9 +513,7 @@ class Assets(models.Model):
         return query
 
     def entry_dates(self, date, investor, account_ids=None, start_date=None):
-        """
-        Returns a list of dates when the position changes from 0 to non-zero.
-        """
+        """Get a list of dates when the position changes from 0 to non-zero."""
         query_date = date
         transactions = self.transactions.filter(
             date__lte=query_date, quantity__isnull=False, investor=investor
@@ -515,9 +539,7 @@ class Assets(models.Model):
         return entry_dates
 
     def exit_dates(self, end_date, investor, account_ids=None, start_date=None):
-        """
-        Returns a list of dates when the position changes from non-zero to 0.
-        """
+        """Get a list of dates when the position changes from non-zero to 0."""
         query_end_date = end_date
         transactions = self.transactions.filter(
             date__lte=query_end_date, quantity__isnull=False, investor=investor
@@ -548,21 +570,24 @@ class Assets(models.Model):
         self, date, investor, currency=None, account_ids=None, start_date=None
     ):
         """
-        Calculates the buy-in price for the given date, currency,
+        Calculate average buy-in price for an asset.
+
+        Calculates the average buy-in price for the given date, currency,
         broker account IDs, and start date.
 
         Args:
-            date (datetime.date): The date for which to calculate the buy-in price.
-            currency (str): The currency in which to calculate the buy-in price.
-            account_ids (list): A list of broker account IDs to filter the transactions by.
-            start_date (datetime.date): The start date for the calculation.
+            date (datetime.date): Date for which to calculate the buy-in price.
+            currency (str): Currency in which to calculate the buy-in price.
+            account_ids (list): List of broker account IDs to filter transactions by.
+            start_date (datetime.date): Start date for the calculation.
 
         Returns:
-            float: The calculated buy-in price. Returns None if an error occurs.
+            float: Calculated buy-in price. Returns None if an error occurs.
         """
         logger.debug(f"Calculating buy-in price for {self.name} as of {date}")
         logger.debug(
-            f"Parameters: currency={currency}, account_ids={account_ids}, start_date={start_date}"
+            f"Parameters: currency={currency}, account_ids={account_ids}, "
+            f"start_date={start_date}"
         )
 
         is_long_position = None
@@ -688,7 +713,22 @@ class Assets(models.Model):
     def realized_gain_loss(
         self, date, investor, currency=None, account_ids=None, start_date=None
     ):
+        """
+        Calculate the realized gain/loss for an asset.
+
+        Calculates the realized gain/loss for an asset
+        and breaks it down into components price appreciation, and FX effect.
+
+        Parameters:
+            self (Asset): The asset object for which realized gain/loss is calculated.
+            date (datetime.date): The date as of which the calculation is performed.
+            currency (str): The reporting currency.
+            account_ids (list): The list of account IDs.
+            start_date (datetime.date): The start date for the calculation.
+        """
+
         def calculate_position_gain_loss(start, end, investor):
+            """Calculate the position gain/loss helper function."""
             result = {
                 "price_appreciation": Decimal(0),
                 "fx_effect": Decimal(0),
@@ -712,7 +752,8 @@ class Assets(models.Model):
             for transaction in transactions:
                 logger.debug(
                     f"Transaction: {transaction.date}, {transaction.type}, "
-                    f"Quantity: {transaction.quantity}, Price: {transaction.get_price()}"
+                    f"Quantity: {transaction.quantity}, "
+                    f"Price: {transaction.get_price()}"
                 )
 
                 # Check if this is a bond redemption transaction
@@ -723,7 +764,8 @@ class Assets(models.Model):
 
                 # Handle bond redemptions separately
                 if is_bond_redemption:
-                    # For bond redemption: gain = cash_received - (notional_redeemed * buy_in_price)
+                    # For bond redemption:
+                    # gain = cash_received - (notional_redeemed * buy_in_price)
                     # Gain is zero only if bought at par and redeemed at par
                     cash_received = transaction.cash_flow or Decimal(0)
                     notional_redeemed_per_bond = getattr(
@@ -794,12 +836,14 @@ class Assets(models.Model):
                             result["fx_effect"] += Decimal(fx_effect)
 
                             logger.debug(
-                                f"Redemption G/L: notional_redeemed={notional_redeemed}, "
+                                "Redemption G/L: notional_redeemed="
+                                f"{notional_redeemed}, "
                                 f"buy_in_price%={buy_in_price_lcl_currency}, "
                                 f"gain={gl_target_currency}"
                             )
 
-                    # Position doesn't change for partial redemptions (quantity is None/0)
+                    # Position doesn't change for partial redemptions
+                    # (quantity is None/0)
                     # For final redemption with negative quantity, update position
                     if transaction.quantity:
                         position += transaction.quantity
@@ -826,8 +870,9 @@ class Assets(models.Model):
                     )
 
                     logger.debug(
-                        f"Buy-in price in target currency: {buy_in_price_target_currency}, "
-                        f"in LCL currency: {buy_in_price_lcl_currency}"
+                        "Buy-in price in target currency: "
+                        f"{buy_in_price_target_currency}, in LCL currency: "
+                        f"{buy_in_price_lcl_currency}"
                     )
 
                     if (
@@ -955,7 +1000,8 @@ class Assets(models.Model):
             for key in result["all_time"]:
                 result["all_time"][key] += position_result[key]
 
-            # If this is the current position, update the current_position result as well
+            # If this is the current position,
+            # update the current_position result as well
             if position_end == date and position_end not in exit_dates:
                 result["current_position"] = position_result.copy()
 
@@ -972,11 +1018,13 @@ class Assets(models.Model):
         self, date, investor, currency=None, account_ids=None, start_date=None
     ):
         """
-        Calculates the unrealized gain/loss for an asset and breaks it down into components:
-        price appreciation, and FX effect.
+        Calculate the unrealized gain/loss for an asset.
+
+        Calculates the unrealized gain/loss for an asset
+        and breaks it down into components price appreciation, and FX effect.
 
         Parameters:
-            asset (Asset): The asset object for which unrealized gain/loss is calculated.
+            self (Asset): The asset object for which unrealized gain/loss is calculated.
             date (datetime.date): The date as of which the calculation is performed.
             currency (str): The reporting currency.
             account_ids (list): List of broker account IDs to filter transactions.
@@ -984,9 +1032,9 @@ class Assets(models.Model):
 
         Returns:
             dict: A dictionary containing the breakdown of unrealized gain/loss:
-                - 'price_appreciation': The price appreciation component in reporting currency.
-                - 'fx_effect': The FX effect component in reporting currency.
-                - 'total': The total unrealized gain/loss in reporting currency.
+                - 'price_appreciation': Price appreciation in reporting currency.
+                - 'fx_effect': FX effect in reporting currency.
+                - 'total': Total unrealized gain/loss in reporting currency.
         """
         unrealized_gain_loss = 0
         price_appreciation = 0
@@ -1062,6 +1110,7 @@ class Assets(models.Model):
     ):
         """
         Calculate the capital distribution for this asset.
+
         Includes:
         - Dividends (for stocks/ETFs)
         - Coupons received (for bonds)
@@ -1105,7 +1154,8 @@ class Assets(models.Model):
                     if fx_rate:
                         total_distributions += transaction.cash_flow * fx_rate
 
-        # For bonds: subtract ACI paid at acquisition (negative ACI from Buy transactions)
+        # For bonds: subtract ACI paid at acquisition
+        # (negative ACI from Buy transactions)
         # This nets the ACI paid when buying against the coupons received
         if self.is_bond:
             aci_paid_transactions = self.transactions.filter(
@@ -1166,9 +1216,7 @@ class Assets(models.Model):
     def get_commission(
         self, date, investor, currency=None, account_ids=None, start_date=None
     ):
-        """
-        Calculate the comission for this asset.
-        """
+        """Calculate the comission for this asset."""
         total_commission = 0
         query_date = date
         commission_transactions = self.transactions.filter(
@@ -1203,11 +1251,14 @@ class Assets(models.Model):
             return Decimal(0)
 
     def __str__(self):
+        """Return the string representation of the Brokers model."""
         return self.name  # Define how the broker is represented as a string
 
 
 # Table with public asset transactions
 class Transactions(models.Model):
+    """Transactions model."""
+
     investor = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name="transactions"
     )
@@ -1231,7 +1282,8 @@ class Transactions(models.Model):
     )
     price = models.DecimalField(
         max_digits=18, decimal_places=9, null=True, blank=True
-    )  # For bonds: stored as percentage of par (e.g., 98.5 = 98.5%). For others: actual price
+    )  # For bonds: stored as percentage of par (e.g., 98.5 = 98.5%).
+    # For others: actual price
     notional = models.DecimalField(
         max_digits=15,
         decimal_places=2,
@@ -1242,7 +1294,8 @@ class Transactions(models.Model):
     cash_flow = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
-    # Sign reflects actual commission cash flow (negative for outflow, positive for inflow)
+    # Sign reflects actual commission cash flow
+    # (negative for outflow, positive for inflow)
     commission = models.DecimalField(
         max_digits=15, decimal_places=9, null=True, blank=True
     )
@@ -1259,7 +1312,11 @@ class Transactions(models.Model):
     comment = models.TextField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        """Override save to automatically create NotionalHistory for bond redemptions"""
+        """
+        Save the transaction.
+
+        Override save to automatically create NotionalHistory for bond redemptions.
+        """
         super().save(*args, **kwargs)
 
         # Auto-create NotionalHistory for bond redemptions
@@ -1271,7 +1328,7 @@ class Transactions(models.Model):
                 self._create_notional_history()
 
     def _create_notional_history(self):
-        """Create NotionalHistory entry for this bond redemption"""
+        """Create NotionalHistory entry for this bond redemption."""
         from datetime import timedelta
 
         try:
@@ -1298,7 +1355,8 @@ class Transactions(models.Model):
             )
 
             # Search for existing entry within ±7 days with similar change_amount
-            # This handles cases where API event dates differ from broker transaction dates
+            # This handles cases where API event dates
+            # differ from broker transaction dates
             # (e.g., event on Friday, transaction settles on Monday)
             date_range_start = self.date - timedelta(days=7)
             date_range_end = self.date + timedelta(days=7)
@@ -1330,12 +1388,16 @@ class Transactions(models.Model):
                 old_date = matching_entry.date
                 matching_entry.date = self.date
                 matching_entry.change_amount = change_amount_value
-                matching_entry.comment = f"Updated from transaction {self.id} (original API date: {old_date})"
+                matching_entry.comment = (
+                    f"Updated from transaction {self.id} "
+                    f"(original API date: {old_date})"
+                )
                 matching_entry.save()
 
                 logger.info(
                     f"Updated NotionalHistory for {self.security.name}: "
-                    f"date {old_date} → {self.date}, notional={matching_entry.notional_per_unit}, "
+                    f"date {old_date} → {self.date}, "
+                    f"notional={matching_entry.notional_per_unit}, "
                     f"change={change_amount_value}"
                 )
             else:
@@ -1432,7 +1494,6 @@ class Transactions(models.Model):
         Returns:
             Decimal: Net cash flow (can be negative or positive)
         """
-
         # Initialize cash flow
         calculated_cash_flow = Decimal(0)
 
@@ -1464,7 +1525,8 @@ class Transactions(models.Model):
                 calculated_cash_flow = -Decimal(self.quantity) * effective_price
 
                 # Add ACI (accrued interest for bonds)
-                # Buy: ACI is negative (you pay it), Sell: ACI is positive (you receive it)
+                # Buy: ACI is negative (you pay it),
+                # Sell: ACI is positive (you receive it)
                 if self.aci:
                     calculated_cash_flow += Decimal(self.aci)
 
@@ -1480,10 +1542,13 @@ class Transactions(models.Model):
         return round(calculated_cash_flow, 2)
 
     def __str__(self):
+        """Return the string representation of the Transactions model."""
         return f"{self.type} || {self.date}"
 
 
 class Prices(models.Model):
+    """Prices model."""
+
     date = TimezoneAwareDateField(null=False)
     security = models.ForeignKey(
         Assets, on_delete=models.CASCADE, related_name="prices"
@@ -1491,9 +1556,12 @@ class Prices(models.Model):
     price = models.DecimalField(max_digits=15, decimal_places=6, null=False)
 
     def __str__(self):
+        """Return the string representation of the Prices model."""
         return f"{self.security.name} is at {self.price} on {self.date}"
 
     class Meta:
+        """Meta class for the Prices model."""
+
         # Add constraints
         constraints = [
             models.UniqueConstraint(
@@ -1503,11 +1571,18 @@ class Prices(models.Model):
 
 
 def is_yahoo_finance_available():
-    """Check if Yahoo Finance is available by making a test request with proper headers"""
+    """
+    Check yahoo finance availability.
+
+    Check if Yahoo Finance is available by making a test request with proper headers.
+
+    Returns:
+        True if Yahoo Finance is available, False otherwise.
+    """
     url = "https://finance.yahoo.com"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",  # noqa: E501
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",  # noqa: E501
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate",
         "Connection": "keep-alive",
@@ -1526,7 +1601,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
     """
     Fetch FX rate from Yahoo Finance.
 
-    Note: Modern yfinance uses curl_cffi internally to handle headers and browser mimicking.
+    Note: Modern yfinance uses curl_cffi internally
+    to handle headers and browser mimicking.
     We let yfinance handle the session to avoid conflicts.
 
     Args:
@@ -1551,7 +1627,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
         # Define the date for which you want the exchange rate
         end_date = date - timedelta(
             days=attempt - 1
-        )  # Go back in time for each attempt. Need to deduct 1 to get rate for exactly the date
+        )  # Go back in time for each attempt.
+        # Need to deduct 1 to get rate for exactly the date
         start_date = end_date - timedelta(
             days=1
         )  # Go back one day to ensure the date is covered
@@ -1560,7 +1637,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
         try:
             # Let yfinance handle the session internally (uses curl_cffi for better browser mimicking) # noqa: E501
             ticker = yf.Ticker(currency_pair)
-            # Note: Only set start and end, not period (yfinance allows max 2 of period/start/end)
+            # Note: Only set start and end, not period
+            # (yfinance allows max 2 of period/start/end)
             exchange_rate_data = ticker.history(
                 start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d")
             )
@@ -1584,7 +1662,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
             actual_date = exchange_rate_data.index[0].date()  # Extract the actual date
 
             logger.info(
-                f"Successfully fetched {currency_pair} rate for {actual_date}: {exchange_rate}"
+                f"Successfully fetched {currency_pair} rate for {actual_date}: "
+                f"{exchange_rate}"
             )
 
             return {
@@ -1599,7 +1678,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
             f"Attempt {attempt}/{max_attempts} failed for {currency_pair} on {date}"
         )
 
-    # If no data is found after max_attempts, return None or an appropriate error message
+    # If no data is found after max_attempts,
+    # return None or an appropriate error message
     logger.error(
         f"Failed to fetch {currency_pair} after {max_attempts} attempts for date {date}"
     )
@@ -1608,6 +1688,8 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
 
 # Model to store the annual performance data
 class AnnualPerformance(models.Model):
+    """Annual performance model."""
+
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     account_type = models.CharField(
         max_length=50,
@@ -1630,6 +1712,8 @@ class AnnualPerformance(models.Model):
     restricted = models.BooleanField(default=False, null=True, blank=True)
 
     class Meta:
+        """Meta class for the AnnualPerformance model."""
+
         constraints = [
             models.UniqueConstraint(
                 fields=[
@@ -1654,6 +1738,8 @@ class AnnualPerformance(models.Model):
 
 
 class FXTransaction(models.Model):
+    """FX transaction model."""
+
     investor = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name="fx_transactions"
     )
@@ -1677,6 +1763,7 @@ class FXTransaction(models.Model):
     comment = models.TextField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
+        """Save the FX transaction."""
         if not self.exchange_rate:
             self.exchange_rate = self.from_amount / self.to_amount
         super().save(*args, **kwargs)
@@ -1709,7 +1796,8 @@ class FXTransaction(models.Model):
         # To currency: inflow (positive)
         elif currency == self.to_currency:
             cash_flow = self.to_amount
-            # Add commission if it's in the to_currency (commission is negative, reduces the inflow)
+            # Add commission if it's in the to_currency
+            # (commission is negative, reduces the inflow)
             if self.commission and self.commission_currency == self.to_currency:
                 cash_flow += self.commission
 
@@ -1720,6 +1808,7 @@ class FXTransaction(models.Model):
         return cash_flow
 
     def __str__(self):
+        """Return the string representation of the FX transaction."""
         return f"FX: {self.from_currency} to {self.to_currency} on {self.date}"
 
 
@@ -1727,6 +1816,7 @@ class FXTransaction(models.Model):
 class InstrumentMetadata(models.Model):
     """
     Abstract base model for instrument-specific metadata.
+
     This provides extensibility for bonds, options, futures, and other derivatives.
     """
 
@@ -1737,13 +1827,13 @@ class InstrumentMetadata(models.Model):
     updated_at = TimezoneAwareDateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class for the InstrumentMetadata model."""
+
         abstract = True
 
 
 class BondMetadata(InstrumentMetadata):
-    """
-    Bond-specific metadata for tracking fixed income instruments.
-    """
+    """Bond-specific metadata for tracking fixed income instruments."""
 
     # Core bond characteristics
     issue_date = TimezoneAwareDateField(
@@ -1786,7 +1876,8 @@ class BondMetadata(InstrumentMetadata):
     amortization_schedule = models.JSONField(
         null=True,
         blank=True,
-        help_text="Optional: predefined amortization schedule as list of {date, amount}",
+        help_text="Optional: predefined amortization schedule as list of "
+        "{date, amount}",
     )
 
     # Additional characteristics
@@ -1808,6 +1899,7 @@ class BondMetadata(InstrumentMetadata):
     )
 
     def __str__(self):
+        """Return the string representation of the bond metadata."""
         return f"Bond Metadata for {self.asset.name}"
 
     def get_current_notional(
@@ -1822,9 +1914,9 @@ class BondMetadata(InstrumentMetadata):
 
         Args:
             date: The date for which to get the notional
-            investor: Optional investor filter (used for transaction-based calculation)
-            account_ids: Optional account IDs filter (used for transaction-based calculation)
-            currency: Optional currency filter (used for transaction-based calculation)
+            investor: Optional investor filter
+            account_ids: Optional account IDs filter
+            currency: Optional currency filter
         Returns:
             Decimal: The notional value per bond at the given date
         """
@@ -1835,7 +1927,8 @@ class BondMetadata(InstrumentMetadata):
         source_currency = self.nominal_currency or self.asset.currency
         fx_rate = FX.get_rate(source_currency, currency, date)["FX"]
         logger.debug(
-            f"FX rate for {self.asset.name} at {date} ({source_currency} to {currency}): {fx_rate}"
+            f"FX rate for {self.asset.name} at {date} "
+            f"({source_currency} to {currency}): {fx_rate}"
         )
 
         if not self.is_amortizing:
@@ -1863,7 +1956,8 @@ class BondMetadata(InstrumentMetadata):
         # Fallback: Calculate from transactions
         if not investor:
             logger.warning(
-                f"No NotionalHistory found and no investor provided for {self.asset.name}, "
+                "No NotionalHistory found and no investor provided for "
+                f"{self.asset.name}, "
                 f"returning initial notional"
             )
             return self.initial_notional * fx_rate
@@ -1888,7 +1982,8 @@ class BondMetadata(InstrumentMetadata):
         current_notional = (self.initial_notional) - abs(redemptions)
         logger.debug(
             f"Calculated notional from transactions for {self.asset.name}: "
-            f"{current_notional} (initial: {self.initial_notional}, redeemed: {redemptions})"
+            f"{current_notional} (initial: {self.initial_notional}, "
+            f"redeemed: {redemptions})"
         )
 
         return current_notional
@@ -1897,14 +1992,16 @@ class BondMetadata(InstrumentMetadata):
         """
         Calculate the accrued interest for this bond at a given date.
 
-        Uses the cached coupon schedule from BondCouponSchedule. If schedule is not available,
-        and user is provided, attempts to fetch it from T-Bank API as fallback.
+        Uses the cached coupon schedule from BondCouponSchedule.
+        If schedule is not available, and user is provided,
+        attempts to fetch it from T-Bank API as fallback.
 
         Args:
             date: The date for which to calculate ACI
             currency: Optional currency for FX conversion (defaults to nominal_currency)
             user: Optional CustomUser to fetch schedule from API if not cached
-            force_refresh: If True, refresh schedule even if it exists (for floating-rate bonds)
+            force_refresh: If True, refresh schedule even if it
+                (for floating-rate bonds)
 
         Returns:
             dict with:
@@ -1930,7 +2027,8 @@ class BondMetadata(InstrumentMetadata):
             # Fallback: fetch schedule if not found and user is provided
             if not current_coupon and user:
                 logger.info(
-                    f"No coupon schedule found for {self.asset.name}, attempting to fetch from API"
+                    f"No coupon schedule found for {self.asset.name}, "
+                    "attempting to fetch from API"
                 )
                 try:
                     from asgiref.sync import async_to_sync
@@ -1955,7 +2053,8 @@ class BondMetadata(InstrumentMetadata):
                         f"Failed to fetch coupon schedule for {self.asset.name}: {e}"
                     )
 
-            # Check if coupon_amount is empty (floating-rate bond) and force_refresh is needed
+            # Check if coupon_amount is empty (floating-rate bond)
+            # and force_refresh is needed
             if (
                 current_coupon
                 and not current_coupon.coupon_amount
@@ -2003,7 +2102,8 @@ class BondMetadata(InstrumentMetadata):
             coupon_start = current_coupon.coupon_start_date
             coupon_end = current_coupon.coupon_end_date
 
-            # Days accrued: from start to current date (inclusive of start, exclusive of end)
+            # Days accrued: from start to current date
+            # (inclusive of start, exclusive of end)
             # Standard day count convention: actual/actual for most bonds
             days_accrued = (date - coupon_start).days
             total_days = (coupon_end - coupon_start).days
@@ -2036,7 +2136,8 @@ class BondMetadata(InstrumentMetadata):
                     )
                 else:
                     logger.warning(
-                        f"No coupon_frequency for {self.asset.name}, cannot calculate ACI"
+                        "No coupon_frequency for {self.asset.name}, "
+                        "cannot calculate ACI"
                     )
                     return None
             else:
@@ -2070,7 +2171,8 @@ class BondMetadata(InstrumentMetadata):
                             result_currency = micex_currency
 
                         logger.info(
-                            f"Successfully retrieved ACI from MICEX for {self.asset.name}: "
+                            "Successfully retrieved ACI from MICEX for "
+                            f"{self.asset.name}: "
                             f"{aci_amount} {result_currency}"
                         )
 
@@ -2121,6 +2223,7 @@ class BondMetadata(InstrumentMetadata):
     ):
         """
         Calculate total ACI for the entire bond position.
+
         Returns current ACI per bond * position, net of ACI paid at acquisition in the current coupon period. # noqa: E501
 
         This shows the "net accrued interest" value:
@@ -2198,6 +2301,7 @@ class BondMetadata(InstrumentMetadata):
 class NotionalHistory(models.Model):
     """
     Track notional changes over time for bonds (and potentially other instruments).
+
     This is particularly important for amortizing bonds where the par value decreases.
     """
 
@@ -2234,6 +2338,8 @@ class NotionalHistory(models.Model):
     comment = models.TextField(null=True, blank=True)
 
     class Meta:
+        """Meta class for the NotionalHistory model."""
+
         ordering = ["date"]
         # Note: Removed strict unique constraint on (asset, date, change_reason)
         # because API event dates may differ from actual broker transaction dates
@@ -2241,12 +2347,14 @@ class NotionalHistory(models.Model):
         # in application logic by matching on date proximity and change_amount.
 
     def __str__(self):
+        """Return the string representation of the notional history."""
         return f"{self.asset.name}: Notional={self.notional_per_unit} on {self.date}"
 
 
 class BondCouponSchedule(models.Model):
     """
     Cache bond coupon schedule data from T-Bank API.
+
     Used for calculating accrued interest at any given date.
     """
 
@@ -2288,6 +2396,8 @@ class BondCouponSchedule(models.Model):
     )
 
     class Meta:
+        """Meta class for the BondCouponSchedule model."""
+
         ordering = ["asset", "coupon_number"]
         indexes = [
             models.Index(fields=["asset", "coupon_end_date"]),
@@ -2296,13 +2406,12 @@ class BondCouponSchedule(models.Model):
         unique_together = [["asset", "coupon_number"]]
 
     def __str__(self):
+        """Return the string representation of the bond coupon schedule."""
         return f"{self.asset.name} - Coupon #{self.coupon_number} ({self.payment_date})"
 
 
 class OptionMetadata(InstrumentMetadata):
-    """
-    Option-specific metadata. To be implemented in future phases.
-    """
+    """Option-specific metadata. To be implemented in future phases."""
 
     strike_price = models.DecimalField(
         max_digits=18, decimal_places=6, null=True, blank=True, help_text="Strike price"
@@ -2334,13 +2443,12 @@ class OptionMetadata(InstrumentMetadata):
     )
 
     def __str__(self):
+        """Return the string representation of the option metadata."""
         return f"Option Metadata for {self.asset.name}"
 
 
 class FutureMetadata(InstrumentMetadata):
-    """
-    Futures-specific metadata. To be implemented in future phases.
-    """
+    """Futures-specific metadata. To be implemented in future phases."""
 
     expiration_date = TimezoneAwareDateField(
         null=True, blank=True, help_text="Futures expiration date"
@@ -2376,4 +2484,5 @@ class FutureMetadata(InstrumentMetadata):
     )
 
     def __str__(self):
+        """Return the string representation of the future metadata."""
         return f"Future Metadata for {self.asset.name}"

@@ -1,3 +1,5 @@
+"""Initialize effective current date middleware."""
+
 from datetime import date
 
 import structlog
@@ -6,10 +8,14 @@ logger = structlog.get_logger(__name__)
 
 
 class InitializeEffectiveDateMiddleware:
+    """Initialize effective current date middleware."""
+
     def __init__(self, get_response):
+        """Initialize effective current date middleware."""
         self.get_response = get_response
 
     def __call__(self, request):
+        """Initialize effective current date middleware."""
         # Log session state before processing
         session_key = getattr(request.session, "_session_key", "no-key")
         session_id = request.session.session_key

@@ -1,6 +1,4 @@
-"""
-Simple database test that bypasses complex fixtures.
-"""
+"""Simple database test."""
 
 from datetime import date
 from decimal import Decimal
@@ -8,8 +6,7 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 
-from common.models import Assets
-from common.models import Transactions
+from common.models import Assets, Transactions
 
 CustomUser = get_user_model()
 

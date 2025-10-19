@@ -1,35 +1,37 @@
+"""Database consumers."""
+
 import json
 import logging
-from datetime import date
-from datetime import datetime
+from datetime import date, datetime
 
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.http import AsyncHttpConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
-from django.db.models import Q
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils.dateparse import parse_date
 from django.utils.formats import date_format
 
-from common.models import FX
-from common.models import Assets
-from common.models import Transactions
+from common.models import FX, Assets, Transactions
 from constants import CURRENCY_CHOICES
-from core.database_utils import get_years_count
-from core.database_utils import save_or_update_annual_broker_performance
-from core.import_utils import generate_dates_for_price_import
-from core.import_utils import import_security_prices_from_ft
-from core.import_utils import import_security_prices_from_micex
-from core.import_utils import import_security_prices_from_tbank
-from core.import_utils import import_security_prices_from_yahoo
+from core.database_utils import (
+    get_years_count,
+    save_or_update_annual_broker_performance,
+)
+from core.import_utils import (
+    generate_dates_for_price_import,
+    import_security_prices_from_ft,
+    import_security_prices_from_micex,
+    import_security_prices_from_tbank,
+    import_security_prices_from_yahoo,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def get_cors_origin(scope):
-    """Get the appropriate CORS origin from the request headers"""
+    """Get the appropriate CORS origin from the request headers."""
     # Get origin from request headers
     origin = None
     for header_name, header_value in scope.get("headers", []):
@@ -50,12 +52,16 @@ def get_cors_origin(scope):
 
 
 class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
+    """Update account performance consumer."""
+
     async def send_sse_message(self, data):
-        """Helper function to send SSE messages"""
+        """Send SSE message."""
+        """Helper function to send SSE messages."""
         message = f"data: {json.dumps(data)}\n\n"
         await self.send_body(message.encode("utf-8"), more_body=True)
 
     async def handle(self, body):
+        """Handle update account performance."""
         headers = [
             (
                 b"Access-Control-Allow-Origin",
@@ -233,7 +239,8 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
                                 "is_restricted": str(is_restricted),
                             }
                             logger.info(
-                                f"Sending SSE message: {event} at: {progress_data['timestamp']}"
+                                f"Sending SSE message: {event} "
+                                f"at: {progress_data['timestamp']}"
                             )
                             await self.send_sse_message(event)
                         elif progress_data["status"] == "error":
@@ -256,7 +263,10 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
 
 
 class PriceImportConsumer(AsyncHttpConsumer):
+    """Price import consumer."""
+
     async def handle(self, body):
+        """Handle price import."""
         headers = [
             (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
@@ -316,6 +326,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
             )
 
     async def import_prices(self, data, user):
+        """Import prices."""
         try:
             security_ids = data.get("securities", [])
             account_ids = data.get("accounts")
@@ -365,18 +376,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
                 @database_sync_to_async
                 def get_securities_from_accounts():
-                    # accounts = Accounts.objects.filter(
-                    #     id__in=account_ids, broker__investor=user
-                    # ).prefetch_related(
-                    #     Prefetch(
-                    #         "securities", queryset=Assets.objects.all(), to_attr="all_securities"
-                    #     )
-                    # )
-                    # securities = []
-                    # for account in accounts:
-                    #     securities.extend(account.all_securities)
-                    # # return list(set(securities))  # Remove duplicates
-
+                    """Get securities from accounts."""
                     base_query = (
                         Assets.objects.filter(
                             investors__id=user.id,
@@ -459,7 +459,10 @@ class PriceImportConsumer(AsyncHttpConsumer):
                             security, dates, user
                         )
                     else:
-                        error_message = f"No valid data source or update information for {security.name}"
+                        error_message = (
+                            f"No valid data source or update information "
+                            f"for {security.name}"
+                        )
                         results.append(
                             {
                                 "security_name": security.name,
@@ -559,6 +562,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
         message=None,
         **kwargs,
     ):
+        """Format progress."""
         progress_data = {
             "status": status,
             "current": current,
@@ -579,7 +583,10 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
 
 class FXImportConsumer(AsyncHttpConsumer):
+    """FX import consumer."""
+
     async def handle(self, body):
+        """Handle FX import."""
         headers = [
             (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
@@ -659,9 +666,11 @@ class FXImportConsumer(AsyncHttpConsumer):
             )
 
     def format_sse_message(self, data):
+        """Format SSE message."""
         return f"data: {json.dumps(data)}\n\n".encode("utf-8")
 
     async def generate_dates(self, data):
+        """Generate dates."""
         date_type = data.get("date_type")
         if date_type == "single":
             single_date = parse_date(data.get("single_date"))
@@ -677,6 +686,7 @@ class FXImportConsumer(AsyncHttpConsumer):
         return []
 
     async def generate_events(self, user, import_option, dates_to_update):
+        """Generate events."""
         import_id = f"fx_import_{user.id}"
         await sync_to_async(cache.set)(import_id, "running", timeout=3600)
 
@@ -726,6 +736,7 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def get_transaction_dates(self, user):
+        """Get transaction dates."""
         return list(
             Transactions.objects.filter(investor=user)
             .values_list("date", flat=True)
@@ -734,6 +745,7 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def filter_dates_to_update(self, transaction_dates, import_option, user):
+        """Filter dates to update."""
         dates_to_update = []
         for d in transaction_dates:
             fx_instance = FX.objects.filter(date=d).first()
@@ -754,6 +766,7 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def process_fx_rate(self, date, user):
+        """Process FX rate."""
         fx_instance = FX.objects.filter(date=date).first()
         if not fx_instance:
             FX.update_fx_rate(date, user)

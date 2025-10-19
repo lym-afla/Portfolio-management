@@ -1,12 +1,10 @@
-"""
-Test CORS and session cookie behavior between frontend and backend
-"""
+"""Test CORS and session cookie behavior between frontend and backend."""
 
 import requests
 
 
-def test_cors_session_behavior():
-    """Test session behavior with CORS headers"""
+def test_cors_session_behavior() -> None:
+    """Test session behavior with CORS headers."""
     print("=== Testing CORS Session Behavior ===")
 
     # Simulate frontend request from localhost:8080
@@ -29,7 +27,7 @@ def test_cors_session_behavior():
     print(f"Set-Cookie headers: {response1.headers.get('Set-Cookie', 'None')}")
     print(
         "CORS headers: "
-        f"{dict([(k, v) for k, v in response1.headers.items() if k.startswith('Access-Control')])}"
+        f"{dict([(k, v) for k, v in response1.headers.items() if k.startswith('Access-Control')])}"  # noqa: E501
     )
 
     # Extract session cookie if set

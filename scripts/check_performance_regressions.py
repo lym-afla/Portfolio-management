@@ -192,7 +192,10 @@ def check_performance_regressions(benchmark_file):
 
 
 def main():
-    """Main function to check performance regressions."""
+    """Main function to check performance regressions.
+
+    :param benchmark_file: The file containing the benchmark results
+    """
     if len(sys.argv) != 2:
         print("Usage: python check_performance_regressions.py <benchmark-results.json>")
         sys.exit(1)

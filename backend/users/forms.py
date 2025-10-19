@@ -1,24 +1,37 @@
+"""Users forms."""
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
 from common.forms import GroupedSelect
 from common.models import Accounts
-from constants import CURRENCY_CHOICES
-from constants import NAV_BARCHART_CHOICES
-from users.models import AccountGroup
-from users.models import CustomUser
+from constants import (
+    CURRENCY_CHOICES,
+    FREQUENCY_CHOICES,
+    NAV_BARCHART_CHOICES,
+    TIMELINE_CHOICES,
+)
+from users.models import AccountGroup, CustomUser
 
 
 class SignUpForm(UserCreationForm):
+    """Sign up form."""
+
     email = forms.EmailField(required=True)
 
     class Meta:
+        """Meta class for the sign up form."""
+
         model = CustomUser
         fields = ("username", "email", "password1", "password2")
 
 
 class UserProfileForm(forms.ModelForm):
+    """User profile form."""
+
     class Meta:
+        """Meta class for the user profile form."""
+
         model = CustomUser
         fields = ["username", "first_name", "last_name", "email"]
         widgets = {
@@ -36,24 +49,7 @@ class UserProfileForm(forms.ModelForm):
 
 
 class UserSettingsForm(forms.ModelForm):
-    FREQUENCY_CHOICES = [
-        ("D", "Daily"),
-        ("W", "Weekly"),
-        ("M", "Monthly"),
-        ("Q", "Quarterly"),
-        ("Y", "Yearly"),
-    ]
-
-    TIMELINE_CHOICES = [
-        ("YTD", "Year to Date"),
-        ("3m", "Last 3 months"),
-        ("6m", "Last 6 months"),
-        ("12m", "Last 12 months"),
-        ("3Y", "Last 3 years"),
-        ("5Y", "Last 5 years"),
-        ("All", "All history"),
-        ("Custom", "Custom"),
-    ]
+    """User settings form."""
 
     default_currency = forms.ChoiceField(
         choices=CURRENCY_CHOICES,
@@ -83,6 +79,8 @@ class UserSettingsForm(forms.ModelForm):
     )
 
     class Meta:
+        """Meta class for the user settings form."""
+
         model = CustomUser
         fields = [
             "custom_accounts",
@@ -104,6 +102,7 @@ class UserSettingsForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """Initialize the user settings form."""
         user = kwargs.get("instance")
         super().__init__(*args, **kwargs)
         self.fields["custom_accounts"].choices = self.get_account_choices(user)
@@ -112,6 +111,7 @@ class UserSettingsForm(forms.ModelForm):
             self.fields["custom_accounts"].initial = user.custom_accounts
 
     def get_account_choices(self, user):
+        """Get the account choices for the user."""
         account_choices = [
             ("General", (("All accounts", "All accounts"),)),
             ("__SEPARATOR__", "__SEPARATOR__"),
@@ -132,6 +132,7 @@ class UserSettingsForm(forms.ModelForm):
         return account_choices
 
     def clean_digits(self):
+        """Clean the digits field."""
         digits = self.cleaned_data.get("digits")
         if digits > 6:
             raise forms.ValidationError(
@@ -140,6 +141,7 @@ class UserSettingsForm(forms.ModelForm):
         return digits
 
     def clean_custom_accounts(self):
+        """Clean the custom accounts field."""
         accounts = self.cleaned_data.get("custom_accounts")
         if accounts and not accounts.startswith(("All", "group_")):
             try:

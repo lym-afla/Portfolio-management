@@ -1,17 +1,18 @@
+"""Database utils."""
+
 import asyncio
 import logging
-from datetime import date
-from datetime import datetime
+from datetime import date, datetime
 
 from channels.db import database_sync_to_async
-from django.db import OperationalError
-from django.db import transaction
+from django.db import OperationalError, transaction
 
-from common.models import AnnualPerformance
-from common.models import Transactions
-from core.portfolio_utils import calculate_performance
-from core.portfolio_utils import get_last_exit_date_for_accounts
-from core.portfolio_utils import get_selected_account_ids
+from common.models import AnnualPerformance, Transactions
+from core.portfolio_utils import (
+    calculate_performance,
+    get_last_exit_date_for_accounts,
+    get_selected_account_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,10 @@ async def save_or_update_annual_broker_performance(
     is_restricted=None,
     skip_existing_years=False,
 ):
+    """Save or update annual broker performance."""
     logger.info(
-        f"Starting performance calculation for {account_group_type}, {account_group_id}, "
+        f"Starting performance calculation for {account_group_type}, "
+        f"{account_group_id}, "
         f"{currency_target}, is_restricted={is_restricted}, "
         f"skip_existing_years={skip_existing_years}"
     )
@@ -71,10 +74,10 @@ async def save_or_update_annual_broker_performance(
         f"last exit date: {last_exit_date}"
     )
 
-    for i, year in enumerate(years, 1):
+    for _, year in enumerate(years, 1):
         if skip_existing_years:
             exists = await database_sync_to_async(
-                lambda: AnnualPerformance.objects.filter(
+                lambda year=year: AnnualPerformance.objects.filter(
                     investor=user,
                     account_type=account_group_type,
                     account_id=account_group_id,
@@ -139,6 +142,7 @@ async def save_annual_performance(
     is_restricted,
     performance_data,
 ):
+    """Save annual performance."""
     max_retries = 3
     retry_delay = 1  # second
 
@@ -177,6 +181,7 @@ async def save_annual_performance(
 
 
 def get_years_count(user, effective_date, account_group_type, account_group_id):
+    """Get years count."""
     selected_account_ids = get_selected_account_ids(
         user,
         account_group_type,

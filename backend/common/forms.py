@@ -1,3 +1,5 @@
+"""Common forms."""
+
 import logging
 
 from django import forms
@@ -8,7 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class GroupedSelect(forms.Select):
-    def optgroups(self, name, value, attrs=None):
+    """Grouped select widget."""
+
+    def optgroups(self, name, value, attrs=None) -> list:
+        """Get optgroups."""
         groups = []
         has_selected = False
 
@@ -34,18 +39,23 @@ class GroupedSelect(forms.Select):
     #     output = super().render_options(*args)
     #     return output.replace('&lt;hr&gt;', '<hr>')
 
-    def check_selected(self, option_value, value):
+    def check_selected(self, option_value, value) -> bool:
+        """Check if the option is selected."""
         if isinstance(value, (list, tuple)):
             return option_value in value
         return option_value == value
 
 
 class DashboardForm(forms.ModelForm):
+    """Dashboard form."""
+
     table_date = forms.DateField(
         widget=forms.DateInput(attrs={"type": "date"}), label="Date"
     )
 
     class Meta:
+        """Meta class for the dashboard form."""
+
         model = CustomUser
         fields = ["default_currency", "digits"]
         labels = {
@@ -54,6 +64,7 @@ class DashboardForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """Initialize the dashboard form."""
         super().__init__(*args, **kwargs)
         self.fields["default_currency"].choices = [
             (choice[0], f"{choice[1]} ({choice[0]})")

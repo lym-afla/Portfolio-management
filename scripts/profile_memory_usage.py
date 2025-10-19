@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Memory Usage Profiler
+Memory Usage Profiler.
 
 Profiles memory usage for portfolio management operations.
 """
@@ -8,26 +8,23 @@ Profiles memory usage for portfolio management operations.
 import os
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
+import django
 from memory_profiler import profile
+
+from backend.common.models import Assets, Portfolios, Transactions
+from backend.core.portfolio_utils import NAV_at_date
+from backend.tests.fixtures.factories.asset_factory import AssetFactory
+from backend.tests.fixtures.factories.transaction_factory import TransactionFactory
 
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings.test")
 
-import django
-
 django.setup()
-
-from portfolio_management.models import Assets, Portfolios, Transactions
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
-from tests.fixtures.factories.asset_factory import AssetFactory
-from tests.fixtures.factories.transaction_factory import TransactionFactory
 
 
 @profile
@@ -64,14 +61,12 @@ def profile_transaction_creation():
     print("📊 Profiling transaction creation...")
 
     assets = AssetFactory.create_batch(20)
-    portfolio = Portfolios.objects.create(name="Memory Test", base_currency="USD")
 
     transactions = []
     for asset in assets:
         for i in range(10):
             tx = TransactionFactory.create(
-                portfolio=portfolio,
-                asset=asset,
+                security=asset,
                 type="Buy",
                 quantity=100,
                 price=50.00 + i,
@@ -88,15 +83,13 @@ def profile_calculation_performance():
 
     # Create test data
     assets = AssetFactory.create_batch(50)
-    portfolio = Portfolios.objects.create(name="Calc Test", base_currency="USD")
     transactions = []
 
     for asset in assets:
         transactions.extend(
             TransactionFactory.create_batch(
                 20,
-                portfolio=portfolio,
-                asset=asset,
+                security=asset,
                 type="Buy",
                 quantity=100,
                 price=50.00,
@@ -108,11 +101,16 @@ def profile_calculation_performance():
 
     # Calculate buy-in prices for each asset
     for asset in assets:
-        asset_transactions = [tx for tx in transactions if tx.asset == asset]
-        buy_in_price = calculate_buy_in_price(asset_transactions)
+        _ = asset.calculate_buy_in_price(date=date.today(), investor=asset.investor.id)
 
     # Calculate portfolio NAV
-    nav = calculate_nav(portfolio)
+    nav = NAV_at_date(
+        user_id=asset.investor.id,
+        account_ids=tuple(),
+        date=date.today(),
+        target_currency="USD",
+    )
+    nav = nav["Total NAV"]
 
     end_time = time.time()
     calculation_time = end_time - start_time
@@ -149,7 +147,7 @@ def profile_bulk_operations():
     for asset in created_assets[:100]:  # Use first 100 assets
         for i in range(10):
             tx = TransactionFactory.build(
-                asset=asset, type="Buy", quantity=100, price=50.00 + i
+                security=asset, type="Buy", quantity=100, price=50.00 + i
             )
             transactions_data.append(tx)
 
@@ -181,7 +179,7 @@ def profile_query_performance():
     for asset in assets:
         transactions.extend(
             TransactionFactory.create_batch(
-                20, asset=asset, type="Buy", quantity=100, price=50.00
+                20, security=asset, type="Buy", quantity=100, price=50.00
             )
         )
 
@@ -189,7 +187,7 @@ def profile_query_performance():
     queries = {
         "simple_select": lambda: list(Assets.objects.all()),
         "select_related": lambda: list(
-            Transactions.objects.select_related("asset", "portfolio").all()
+            Transactions.objects.select_related("security", "portfolio").all()
         ),
         "prefetch_related": lambda: list(
             Portfolios.objects.prefetch_related("transactions").all()
@@ -198,7 +196,7 @@ def profile_query_performance():
         "complex_filter": lambda: list(
             Transactions.objects.filter(
                 type="Buy", price__gte=50.00, quantity__gte=50
-            ).select_related("asset")
+            ).select_related("security")
         ),
     }
 

@@ -1,9 +1,10 @@
+"""Transactions views."""
+
 import logging
 import os
 import re
 import uuid
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -13,35 +14,33 @@ from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from fuzzywuzzy import fuzz
-from rest_framework import status
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from common.models import Accounts
-from common.models import Assets
-from common.models import FXTransaction
-from common.models import Transactions
-from constants import ACCOUNT_IDENTIFIERS
-from constants import CHARLES_STANLEY_BROKER
-from constants import CURRENCY_CHOICES
-from constants import TRANSACTION_TYPE_BOND_MATURITY
-from constants import TRANSACTION_TYPE_BOND_REDEMPTION
-from core.broker_api_utils import TinkoffAPIException
-from core.broker_api_utils import get_broker_api
-from core.import_utils import fx_transaction_exists
-from core.import_utils import get_account
-from core.import_utils import get_broker
-from core.import_utils import parse_charles_stanley_transactions
-from core.import_utils import parse_galaxy_account_cash_flows
-from core.import_utils import parse_galaxy_account_security_transactions
-from core.import_utils import transaction_exists
+from common.models import Accounts, Assets, FXTransaction, Transactions
+from constants import (
+    ACCOUNT_IDENTIFIERS,
+    CHARLES_STANLEY_BROKER,
+    CURRENCY_CHOICES,
+    TRANSACTION_TYPE_BOND_MATURITY,
+    TRANSACTION_TYPE_BOND_REDEMPTION,
+)
+from core.broker_api_utils import TinkoffAPIException, get_broker_api
+from core.import_utils import (
+    fx_transaction_exists,
+    get_account,
+    get_broker,
+    parse_charles_stanley_transactions,
+    parse_galaxy_account_cash_flows,
+    parse_galaxy_account_security_transactions,
+    transaction_exists,
+)
 from core.transactions_utils import get_transactions_table_api
 
-from .serializers import FXTransactionFormSerializer
-from .serializers import TransactionFormSerializer
+from .serializers import FXTransactionFormSerializer, TransactionFormSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +48,11 @@ logger = logging.getLogger(__name__)
 @database_sync_to_async
 def ensure_account_native_ids(user, broker_api):
     """
-    Ensures that all Tinkoff accounts have their native_id set properly.
+    Ensure that all Tinkoff accounts have their native_id set properly.
 
-    Args:
-        user: The user whose accounts should be synchronized
-        broker_api: An instance of the TinkoffAPI class
-
-    Returns:
-        dict: A dictionary mapping Tinkoff account IDs to Accounts model instances
+    :param user: The user whose accounts should be synchronized
+    :param broker_api: An instance of the TinkoffAPI class
+    :return: A dictionary mapping Tinkoff account IDs to Accounts model instances
     """
     from tinkoff.invest import Client
 
@@ -93,7 +89,8 @@ def ensure_account_native_ids(user, broker_api):
                         account.native_id = tinkoff_account_map[account.name]
                         account.save(update_fields=["native_id"])
                         logger.info(
-                            f"Updated native_id for account {account.name} to {account.native_id}"
+                            "Updated native_id for account "
+                            f"{account.name} to {account.native_id}"
                         )
                         updated_accounts[account.native_id] = account
 
@@ -113,17 +110,44 @@ def ensure_account_native_ids(user, broker_api):
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
+    """Transaction view set."""
+
     serializer_class = TransactionFormSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get the queryset for the transaction view set.
+
+        :return: The queryset for the transaction view set
+        """
+        logger.info(
+            f"Getting queryset for transaction view set for user {self.request.user.id}"
+        )
         return Transactions.objects.filter(investor=self.request.user)
 
     def perform_create(self, serializer):
+        """Perform the create action for the transaction view set.
+
+        :param serializer: The serializer object
+        """
+        logger.info(
+            f"Performing create action for transaction view set for user "
+            f"{self.request.user.id}"
+        )
         serializer.save(investor=self.request.user)
 
     def get_object(self):
+        """Get the transaction object.
+
+        :param pk: The primary key of the transaction
+        :return: The transaction object
+        :raises NotFound: If the transaction is not found
+        """
         transaction_id = self.kwargs.get("pk")
+        logger.info(
+            f"Getting transaction object for user {self.request.user.id} and "
+            f"transaction {transaction_id}"
+        )
         try:
             return Transactions.objects.get(
                 id=transaction_id, investor=self.request.user
@@ -133,10 +157,23 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def get_transactions_table(self, request):
+        """Get the transactions table API.
+
+        :param request: The request object
+        :return: A response object
+        """
         return Response(get_transactions_table_api(request))
 
     @action(detail=False, methods=["GET"])
     def form_structure(self, request):
+        """Get the form structure for the transaction.
+
+        :param request: The request object
+        :return: A response object
+        """
+        logger.info(
+            f"Getting form structure for transaction for user {request.user.id}"
+        )
         form_serializer = TransactionFormSerializer()
         return Response(
             {
@@ -203,7 +240,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "type": "number",
                         "required": False,
                         "helper_text": (
-                            "For bonds: enter as percentage of par (e.g., 98.5 for 98.5%)"
+                            "For bonds: enter as percentage of par "
+                            "(e.g., 98.5 for 98.5%)"
                         ),
                     },
                     {
@@ -242,11 +280,22 @@ class TransactionViewSet(viewsets.ModelViewSet):
         )
 
     def search_keywords_in_excel(self, file_path):
+        """Search keywords in an Excel file.
+
+        :param file_path: The path to the Excel file
+        :return: The content of the Excel file
+        """
         df = pd.read_excel(file_path)
         content = df.to_string().lower()
         return content
 
     def identify_account(self, content, user):
+        """Identify the broker account for a given content.
+
+        :param content: The content to identify the broker account for
+        :param user: The user to identify the broker account for
+        :return: The broker account
+        """
         logger.info(f"Starting broker account identification for user {user.id}")
         best_match = None
         best_score = 0
@@ -274,7 +323,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 keyword_best_score = 0
                 for match in potential_matches:
-                    # Get the surrounding context (50 characters before and after the match)
+                    # Get the surrounding context
+                    # (50 characters before and after the match)
                     start = max(0, match.start() - 50)
                     end = min(len(lower_content), match.end() + 50)
                     context = lower_content[start:end]
@@ -303,7 +353,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
             if all_keywords_perfect:
                 logger.info(
-                    f"Perfect match found for all keywords of broker account {account_name}"
+                    "Perfect match found for all keywords of broker account "
+                    f"{account_name}"
                 )
                 try:
                     account = Accounts.objects.get(
@@ -337,7 +388,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     broker__investor=user, name__iexact=best_match
                 )
                 logger.info(
-                    f"Returning best matched broker account: {account.name} (ID: {account.id})"
+                    f"Returning best matched broker account: {account.name} "
+                    f"(ID: {account.id})"
                 )
                 return account
             except Accounts.DoesNotExist:
@@ -352,6 +404,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def analyze_file(self, request):
+        """Analyze a file for broker account identification.
+
+        :param request: The request object
+        :param request: The request object
+        :return: A response object
+        """
         if "file" not in request.FILES:
             return Response(
                 {"error": "No file was uploaded."}, status=status.HTTP_400_BAD_REQUEST
@@ -414,6 +472,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def get_security_position(self, request):
         """
         Get the current position (quantity) for a security in a specific account.
+
+        :param request: The request object
+        :return: A response object
         """
         try:
             security_id = request.data.get("security_id")
@@ -482,8 +543,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def transfer_asset(self, request):
         """
         Transfer an asset from one broker account to another.
+
         Creates a sale from the source account and a purchase in the destination account
         at the average cost basis (zero realized gain).
+
+        :param request: The request object
+        :return: A response object
         """
         try:
             # Extract request data
@@ -550,7 +615,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     {
                         "error": (
                             "Unable to calculate buy-in price. "
-                            "No prior transactions found for this security in the source account."
+                            "No prior transactions found for this security in the "
+                            "source account."
                         ),
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -599,7 +665,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     comment=buy_comment,
                 )
 
-                # 3. Phantom cash-out transaction (from_account) - to balance the cash effect
+                # 3. Phantom cash-out transaction (from_account) -
+                # to balance the cash effect
                 cash_in_transaction = Transactions.objects.create(
                     investor=request.user,
                     account=from_account,
@@ -614,7 +681,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     comment=cash_comment,
                 )
 
-                # 4. Phantom cash-in transaction (to_account) - to balance the cash effect
+                # 4. Phantom cash-in transaction (to_account) -
+                # to balance the cash effect
                 cash_out_transaction = Transactions.objects.create(
                     investor=request.user,
                     account=to_account,
@@ -631,7 +699,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
             logger.info(
                 f"Asset transfer completed: {quantity} units of {security.name} "
-                f"from {from_account.name} to {to_account.name} at {buy_in_price} {currency}"
+                f"from {from_account.name} to {to_account.name} at "
+                f"{buy_in_price} {currency}"
             )
 
             return Response(
@@ -657,7 +726,19 @@ class TransactionViewSet(viewsets.ModelViewSet):
     async def import_transactions_from_file(
         self, user, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
     ):
-        logger.debug("Starting import_transactions")
+        """
+        Import transactions from a file.
+
+        :param user: The user to import transactions for
+        :param file_id: The ID of the file to import transactions from
+        :param account_id: The ID of the account to import transactions to
+        :param confirm_every: The number of transactions to confirm after
+        :param currency: The currency to import transactions in
+        :param is_galaxy: Whether the account is a Galaxy account
+        :param galaxy_type: The type of Galaxy account
+        :return: A generator of updates
+        """
+        logger.debug("Starting import transactions from file")
         file_path = None
         try:
             file_path, account_id = await self.validate_import_data(file_id, account_id)
@@ -703,7 +784,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @database_sync_to_async
     def validate_import_data(self, file_id, account_id):
-        """Validate import data"""
+        """Validate import data."""
         if not file_id or not isinstance(file_id, str):
             raise ValidationError("Invalid file ID")
 
@@ -745,11 +826,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
         Returns:
             dict: Result with 'success' boolean and optional 'error' message
         """
-        from decimal import ROUND_HALF_UP
-        from decimal import InvalidOperation as DecimalInvalidOperation
+        from decimal import ROUND_HALF_UP, InvalidOperation as DecimalInvalidOperation
 
         def normalize_decimal_field(value, max_digits, decimal_places):
-            """Normalize a Decimal value to fit database constraints"""
+            """Normalize a Decimal value to fit database constraints."""
             try:
                 original_value = Decimal(str(value))
 
@@ -883,7 +963,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     )
 
                 logger.debug(
-                    f"Saved asset transfer transaction with ID: {created_transaction.id}"
+                    "Saved asset transfer transaction with ID: "
+                    f"{created_transaction.id}"
                 )
                 return {
                     "success": True,
@@ -929,11 +1010,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         try:
                             created_transaction._create_notional_history()
                             logger.debug(
-                                f"Created NotionalHistory for transaction {created_transaction.id}"
+                                "Created NotionalHistory for transaction "
+                                f"{created_transaction.id}"
                             )
                         except Exception as e:
                             logger.error(
-                                f"Error creating NotionalHistory: {e}", exc_info=True
+                                "Error creating NotionalHistory: " f"{e}",
+                                exc_info=True,
                             )
 
                 logger.debug(
@@ -951,7 +1034,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @database_sync_to_async
     def save_transactions(self, transactions_to_create):
-        """Save transactions in bulk - regular Transactions, FX Transactions, and Asset Transfers"""
+        """
+        Save transactions in bulk.
+
+        Saves regular Transactions, FX Transactions, and Asset Transfers.
+
+        :param transactions_to_create: List of transaction data to create
+        """
         logger.debug(f"About to save {len(transactions_to_create)} transactions")
 
         # Log each transaction data for debugging
@@ -980,7 +1069,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     needs_price_calculation = data.pop("needs_price_calculation", False)
 
                     if is_fx:
-                        # Create FXTransaction - round exchange_rate to match DB precision
+                        # Create FXTransaction - round exchange_rate to match DB precision  # noqa: E501
                         if (
                             "exchange_rate" in data
                             and data["exchange_rate"] is not None
@@ -1080,7 +1169,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             )
                             phantom_cash_transactions.append(phantom_transaction)
                             logger.debug(
-                                f"Created phantom {phantom_type} transaction with cash_flow: "
+                                f"Created phantom {phantom_type} transaction with "
+                                f"cash_flow: "
                                 f"{phantom_cash_flow}"
                             )
                     else:
@@ -1094,7 +1184,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         regular_transactions
                     )
                     logger.debug(
-                        f"Successfully saved {len(regular_transactions)} regular transactions"
+                        f"Successfully saved {len(regular_transactions)} "
+                        "regular transactions"
                     )
 
                     # Manually create NotionalHistory for bond redemptions
@@ -1112,7 +1203,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 try:
                                     txn._create_notional_history()
                                     logger.debug(
-                                        f"Created NotionalHistory for transaction {txn.id}: "
+                                        f"Created NotionalHistory for transaction "
+                                        f"{txn.id}: "
                                         f"{txn.security.name}"
                                     )
                                 except Exception as e:
@@ -1153,7 +1245,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
     async def import_transactions_from_api(
         self, user, broker_account_id, confirm_every, date_from=None, date_to=None
     ):
-        """Import transactions from broker API"""
+        """Import transactions from broker API."""
         logger.debug("Starting API import")
         broker_api = None
 
@@ -1189,7 +1281,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 return
 
             # Initialize broker API connection
-            yield {"status": "initialization", "message": "Connecting to broker API..."}
+            yield {
+                "status": "initialization",
+                "message": "Connecting to broker API...",
+            }
 
             # Connect to broker API
             try:
@@ -1218,8 +1313,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         yield {
                             "status": "critical_error",
                             "message": (
-                                f"Could not find matching T-Bank account ID for {account.name}. "
-                                "Please check account names match exactly with those in T-Bank."
+                                f"Could not find matching T-Bank account ID for "
+                                f"{account.name}. "
+                                "Please check account names "
+                                "match exactly with those in T-Bank."
                             ),
                         }
                         return
@@ -1258,7 +1355,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "status": "progress",
                         "current": current_index,
                         "total": total_count,
-                        "message": f"Processing transaction {current_index} of {total_count}",
+                        "message": (
+                            f"Processing transaction {current_index} of "
+                            f"{total_count}"
+                        ),
                     }
 
                     if trans.get("unrecognized_operation"):
@@ -1274,7 +1374,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                         if is_fx:
                             logger.info(
-                                f"Processing FX transaction: {trans.get('from_currency')}"
+                                "Processing FX transaction: "
+                                f"{trans.get('from_currency')} -> "
                                 f" -> {trans.get('to_currency')}"
                             )
                             # Format FX transaction data
@@ -1317,7 +1418,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 security = trans.get("security")
 
                                 if total_notional and security:
-                                    # Get position at redemption date to calculate per-bond notional
+                                    # Get position at redemption date to calculate per-bond notional  # noqa: E501
                                     try:
                                         # Get position BEFORE this transaction
                                         position = await database_sync_to_async(
@@ -1334,14 +1435,17 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                             )
 
                                             logger.debug(
-                                                f"Bond redemption: total={total_notional}, "
-                                                f"position={position}, per_bond={notional_per_bond}"
+                                                "Bond redemption: total="
+                                                f"{total_notional}, "
+                                                f"position={position}, per_bond="
+                                                f"{notional_per_bond}"
                                             )
                                         else:
                                             logger.warning(
                                                 f"Position is 0 for {security.name} on "
                                                 f"{trans['date']}, "
-                                                f"keeping total notional_change={total_notional}"
+                                                f"keeping total notional_change="
+                                                f"{total_notional}"
                                             )
                                     except Exception as e:
                                         logger.error(
@@ -1398,7 +1502,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             }
                             continue
 
-                        # Save transaction immediately (instead of collecting for bulk save)
+                        # Save transaction immediately
+                        # (instead of collecting for bulk save)
                         yield {"status": "save_transaction", "data": transaction_data}
 
                     except Exception as e:
@@ -1434,17 +1539,22 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
 
 class FXTransactionViewSet(viewsets.ModelViewSet):
+    """FX transaction view set."""
+
     serializer_class = FXTransactionFormSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get the queryset for the FX transaction view set."""
         return FXTransaction.objects.filter(investor=self.request.user)
 
     def perform_create(self, serializer):
+        """Perform create action."""
         serializer.save(investor=self.request.user)
 
     @action(detail=False, methods=["POST"])
     def create_fx_transaction(self, request):
+        """Create a new FX transaction."""
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             self.perform_create(serializer)
@@ -1457,6 +1567,7 @@ class FXTransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"])
     def form_structure(self, request):
+        """Get the form structure for the FX transaction."""
         form_serializer = FXTransactionFormSerializer()
 
         return Response(

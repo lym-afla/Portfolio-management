@@ -1,22 +1,20 @@
+"""Accounts utils."""
+
 from datetime import datetime
 
 from django.db import models
-from django.db.models import Q
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
-from common.models import Accounts
-from common.models import Assets
-from common.models import Transactions
+from common.models import Accounts, Assets, Transactions
 
-from .formatting_utils import currency_format
-from .formatting_utils import format_table_data
+from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import IRR
-from .portfolio_utils import NAV_at_date
+from .portfolio_utils import IRR, NAV_at_date
 from .sorting_utils import sort_entries
 
 
 def get_accounts_table_api(request):
+    """Get accounts table API."""
     data = request.data
 
     page = int(data.get("page"))
@@ -61,6 +59,7 @@ def get_accounts_table_api(request):
 
 
 def _filter_accounts(user, search):
+    """Filter accounts."""
     accounts = Accounts.objects.filter(broker__investor=user, is_active=True)
     if search:
         accounts = accounts.filter(
@@ -70,6 +69,7 @@ def _filter_accounts(user, search):
 
 
 def _get_accounts_data(user, accounts, effective_current_date, currency_target):
+    """Get accounts data."""
     accounts_data = []
     for account in accounts:
         # Get all assets that have transactions for this account
@@ -92,7 +92,8 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
             .distinct()
         )
 
-        # Now we can directly count the assets since we've already filtered for non-zero positions
+        # Now we can directly count the assets
+        # since we've already filtered for non-zero positions
         securities_count = assets.count()
 
         # Get first investment date efficiently
@@ -135,6 +136,7 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
 
 
 def _calculate_totals(accounts_data, user, effective_current_date, currency_target):
+    """Calculate totals."""
     totals = {
         "nav": sum(account["nav"] for account in accounts_data),
         "irr": IRR(

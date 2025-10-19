@@ -1,32 +1,19 @@
+"""Portfolio utils."""
+
 import datetime
 import logging
 from collections import defaultdict
-from datetime import date
-from datetime import timedelta
-from decimal import ROUND_HALF_UP
-from decimal import Decimal
+from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from functools import lru_cache
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import Dict, List, Optional, Tuple, Union
 
-from django.db.models import Prefetch
-from django.db.models import Q
-from django.db.models import QuerySet
-from django.db.models import Sum
+from django.db.models import Prefetch, Q, QuerySet, Sum
 from pyxirr import xirr
 
-from common.models import FX
-from common.models import Accounts
-from common.models import AnnualPerformance
-from common.models import Assets
-from common.models import Brokers
-from common.models import Transactions
+from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
 from core.formatting_utils import format_percentage
-from users.models import AccountGroup
-from users.models import CustomUser
+from users.models import AccountGroup, CustomUser
 
 logger = logging.getLogger("dashboard")
 
@@ -83,12 +70,12 @@ def get_accounts_for_security(user_id: int, security_id: int) -> QuerySet[Accoun
 def get_fx_rate(
     currency: str, target_currency: str, date: date, user: Optional[int] = None
 ) -> Decimal:
+    """Get FX rate for a given currency and target currency at a given date."""
     return FX.get_rate(currency, target_currency, date, user)["FX"]
 
 
-# Create one dictionary from two. And add values for respective keys
-# if keys present on both dictionaries
 def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
+    """Merge two dictionaries and add values for common keys."""
     dict_3 = dict_1.copy()  # Create a copy of dict_1
     for key, value in dict_2.items():
         dict_3[key] = (
@@ -97,7 +84,6 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
     return dict_3
 
 
-# Calculate NAV breakdown for selected broker accounts at certain date and in selected currency
 @lru_cache(maxsize=None)
 def NAV_at_date(
     user_id: int,
@@ -106,6 +92,15 @@ def NAV_at_date(
     target_currency: str,
     breakdown: Tuple[str] = (),
 ) -> Dict:
+    """
+    Calculate NAV breakdown for selected broker accounts at certain date.
+
+    Args:
+        user_id: The ID of the user
+        account_ids: List of broker account IDs to filter by
+        date: The date to calculate the NAV for
+        target_currency: The currency to convert the NAV to
+    """
     account_ids = list(account_ids)  # Convert tuple back to list for internal use
     breakdown = list(breakdown)  # Convert tuple back to list for internal use
 
@@ -185,6 +180,19 @@ def _calculate_portfolio_value(
     asset_id: Optional[int] = None,
     account_ids: Optional[List[int]] = None,
 ) -> Decimal:
+    """
+    Calculate portfolio value.
+
+    Calculates the portfolio value for a given user,
+    date, currency, asset ID, and account IDs.
+
+    :param user_id: The ID of the user
+    :param date: The date for which to calculate the portfolio value
+    :param currency: The currency to use for calculations
+    :param asset_id: The ID of the specific asset to calculate the portfolio value for
+    :param account_ids: List of broker account IDs to include in the calculation
+    :return: The portfolio value as a Decimal
+    """
     if asset_id is None:
         portfolio_value = NAV_at_date(user_id, tuple(account_ids), date, currency)[
             "Total NAV"
@@ -205,7 +213,10 @@ def calculate_portfolio_cash(
     user_id: int, account_ids: List[int], date: date, target_currency: str
 ) -> Decimal:
     """
-    Calculate the total cash balance for a user's portfolio across multiple broker accounts.
+    Get portfolio cash balance.
+
+    Calculate the total cash balance
+    for a user's portfolio across multiple broker accounts.
 
     :param user_id: The ID of the user
     :param account_ids: List of broker account IDs to include in the calculation
@@ -247,11 +258,11 @@ def IRR(
 
     :param user_id: The ID of the user
     :param date: The end date for IRR calculation
-    :param currency: The currency to use for calculations (optional)
-    :param asset_id: The ID of the specific asset to calculate IRR for (optional)
-    :param account_ids: List of broker account IDs to include in the calculation (optional)
-    :param start_date: The start date for IRR calculation (optional)
-    :param cached_nav: Precalculated NAV value (optional)
+    :param currency: The currency to use for calculations
+    :param asset_id: The ID of the specific asset to calculate IRR for
+    :param account_ids: List of broker account IDs to include in the calculation
+    :param start_date: The start date for IRR calculation
+    :param cached_nav: Precalculated NAV value
     :return: The calculated IRR as a Decimal, or 'N/R' if not relevant,
                or 'N/A' if calculation fails
     """
@@ -426,10 +437,13 @@ def calculate_performance(
     currency_target,
     is_restricted=None,
 ):
+    """Calculate performance."""
     performance_data = defaultdict(Decimal)
     logger.debug(
-        f"Calculating performance for {user.username}, {account_group_type} {account_group_id} "
-        f"from {start_date} to {end_date}, currency {currency_target}, restricted {is_restricted}"
+        f"Calculating performance for {user.username}, "
+        f"{account_group_type} {account_group_id} "
+        f"from {start_date} to {end_date}, "
+        f"currency {currency_target}, restricted {is_restricted}"
     )
 
     # Initialize all required fields with Decimal(0)
@@ -572,7 +586,8 @@ def calculate_performance(
                 start_date=start_date,
             )
             logger.debug(
-                f"Capital distribution for {asset.name}: {performance_data['capital_distribution']}"
+                f"Capital distribution for {asset.name}: "
+                f"{performance_data['capital_distribution']}"
             )
 
         # Calculate EOP NAV
@@ -648,6 +663,8 @@ def get_last_exit_date_for_accounts(
     account_ids: List[int], effective_current_date: date
 ) -> Optional[date]:
     """
+    Get the last exit date for accounts.
+
     Determines the last relevant date for a set of broker accounts,
     considering both open positions and transaction history.
 

@@ -9,17 +9,12 @@ This module tests the core NAV calculation logic including:
 - NAV change calculations over time
 """
 
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
-from common.models import FX
-from common.models import AnnualPerformance
-from common.models import Assets
-from common.models import Prices
-from common.models import Transactions
+from common.models import FX, AnnualPerformance, Assets, Prices, Transactions
 
 
 @pytest.mark.nav

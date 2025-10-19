@@ -1,35 +1,33 @@
+"""Test assets model."""
+
 import logging
-from datetime import date
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 
-from common.models import FX
-from common.models import Accounts
-from common.models import Assets
-from common.models import Brokers
-from common.models import Prices
-from common.models import Transactions
-from constants import TRANSACTION_TYPE_BUY
-from constants import TRANSACTION_TYPE_SELL
+from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
+from constants import TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL
 
 User = get_user_model()
 
 
 @pytest.fixture
 def user():
+    """Create a user."""
     return User.objects.create_user(username="testuser", password="12345")
 
 
 @pytest.fixture
 def broker(user):
+    """Create a broker."""
     return Brokers.objects.create(name="Test Broker", investor=user)
 
 
 @pytest.fixture
 def account(broker):
+    """Create an account."""
     return Accounts.objects.create(
         broker=broker,
         native_id="TEST001",
@@ -41,6 +39,7 @@ def account(broker):
 
 @pytest.fixture
 def asset(user):
+    """Create an asset."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="US1234567890",
@@ -55,6 +54,7 @@ def asset(user):
 
 @pytest.fixture
 def general_transactions(user, account, asset):
+    """Create general transactions."""
     transactions_data = [
         ("01/01/2023", 2, 5),
         ("15/02/2023", 4, 2),
@@ -92,7 +92,10 @@ def general_transactions(user, account, asset):
 
 @pytest.mark.django_db
 class TestAssetsModel:
+    """Test assets model."""
+
     def test_realized_gain_loss_single_trade(self, user, account, asset, caplog):
+        """Test a simple buy and sell scenario."""
         caplog.set_level(logging.DEBUG)
 
         # Test a simple buy and sell scenario
@@ -125,6 +128,7 @@ class TestAssetsModel:
         assert result["all_time"]["total"] == Decimal("200")  # (120 - 100) * 10
 
     def test_realized_gain_loss_long_position(self, user, account, asset, caplog):
+        """Test a simple buy and sell scenario (long position)."""
         caplog.set_level(logging.INFO)
 
         # Test a simple buy and sell scenario (long position)
@@ -159,6 +163,7 @@ class TestAssetsModel:
         assert result["all_time"]["total"] == Decimal("200")  # (120 - 100) * 10
 
     def test_realized_gain_loss_short_position(self, user, account, asset):
+        """Test a simple short sell and buy to cover scenario."""
         # Test a simple short sell and buy to cover scenario
         Transactions.objects.create(
             investor=user,
@@ -185,6 +190,7 @@ class TestAssetsModel:
         assert result["all_time"]["total"] == Decimal("200")  # (100 - 80) * 10
 
     def test_realized_gain_loss_mixed_positions(self, user, account, asset):
+        """Test a scenario with both long and short positions."""
         # Test a scenario with both long and short positions
         Transactions.objects.create(
             investor=user,
@@ -221,9 +227,8 @@ class TestAssetsModel:
         expected_gain = (120 - 100) * 10 + (120 - 110) * 5
         assert result["all_time"]["total"] == Decimal(str(expected_gain))
 
-    def test_realized_gain_loss_complex_scenario(
-        self, user, account, asset, general_transactions, caplog
-    ):
+    def test_realized_gain_loss_complex_scenario(self, user, account, asset, caplog):
+        """Test realized gain loss complex scenario."""
         caplog.set_level(logging.DEBUG)
 
         test_dates = [
@@ -254,17 +259,18 @@ class TestAssetsModel:
             assert (
                 result["current_position"]["total"]
                 == expected_gain_loss_current_position
-            ), f"For date {test_date}: Expected gain/loss to be "
+            ), f"For date {test_date}: "
+            f"Expected gain/loss to be {expected_gain_loss_current_position}, "
             f"{expected_gain_loss_current_position}, but got "
             f"{result['current_position']['total']}"
             assert (
                 result["all_time"]["total"] == expected_gain_loss_all_time
-            ), f"For date {test_date}: Expected gain/loss to be {expected_gain_loss_all_time}, "
+            ), f"For date {test_date}: "
+            f"Expected gain/loss to be {expected_gain_loss_all_time}, "
             f"but got {result['all_time']['total']}"
 
-    def test_calculate_buy_in_price(
-        self, user, account, asset, general_transactions, caplog
-    ):
+    def test_calculate_buy_in_price(self, user, account, asset, caplog):
+        """Test calculate buy in price."""
         caplog.set_level(logging.DEBUG)
 
         # Test basic functionality
@@ -319,9 +325,8 @@ class TestAssetsModel:
             buy_in_price_no_transactions is None
         ), f"Expected buy-in price to be None, but got {buy_in_price_no_transactions}"
 
-    def test_calculate_buy_in_price_with_start_date(
-        self, user, account, asset, general_transactions, caplog
-    ):
+    def test_calculate_buy_in_price_with_start_date(self, user, account, asset, caplog):
+        """Test calculate buy in price with start date."""
         # Set start date and end date for the test
         start_date = datetime(2023, 5, 1).date()
         end_date = datetime(2023, 7, 30).date()
@@ -342,9 +347,8 @@ class TestAssetsModel:
         ), f"Expected current position gain/loss to be {expected_price}, "
         f"but got {result['current_position']}"
 
-    def test_calculate_buy_in_price_with_FX(
-        self, user, asset, caplog, general_transactions
-    ):
+    def test_calculate_buy_in_price_with_FX(self, user, asset, caplog):
+        """Test calculate buy in price with FX."""
         caplog.set_level(logging.INFO)
 
         # # Set start date and end date for the test
@@ -379,6 +383,7 @@ class TestAssetsModel:
             f"but got {buy_in_price}"
 
     def test_realized_gain_loss_with_start_date(self, user, account, asset):
+        """Test realized gain loss with start date."""
         # Create transactions
         Transactions.objects.create(
             investor=user,
@@ -428,6 +433,7 @@ class TestAssetsModel:
     def test_realized_gain_loss_for_closed_with_currency_conversion(
         self, user, account, asset
     ):
+        """Test realized gain loss for closed with currency conversion."""
         # Create transactions with account
         Transactions.objects.create(
             investor=user,
@@ -463,6 +469,7 @@ class TestAssetsModel:
         )
 
     def test_realized_gain_loss_for_opened_with_start_date(self, user, account, asset):
+        """Test realized gain loss for opened with start date."""
         # Create transactions
         Transactions.objects.create(
             investor=user,
@@ -525,6 +532,7 @@ class TestAssetsModel:
         assert result["all_time"]["total"] == Decimal("0")
 
     def test_unrealized_gain_loss_with_start_date(self, user, account, asset):
+        """Test unrealized gain loss with start date."""
         # Create transactions
         Transactions.objects.create(
             investor=user,
@@ -580,6 +588,7 @@ class TestAssetsModel:
     def test_unrealized_gain_loss_with_currency_conversion_and_start_date(
         self, user, account, asset
     ):
+        """Test unrealized gain loss with currency conversion and start date."""
         # Create transactions
         Transactions.objects.create(
             investor=user,
@@ -617,6 +626,7 @@ class TestAssetsModel:
         assert result["total"] == pytest.approx(expected_gain, rel=Decimal("1e-2"))
 
     def test_realized_and_unrealized_gain_loss_combined(self, user, account, asset):
+        """Test realized and unrealized gain loss combined."""
         # Create transactions
         Transactions.objects.create(
             investor=user,
@@ -658,8 +668,11 @@ class TestAssetsModel:
 
 @pytest.mark.django_db
 class TestRealizedGainLoss:
+    """Test realized gain loss."""
+
     @pytest.fixture(autouse=True)
     def setup(self, db):
+        """Set up the test."""
         self.user = User.objects.create(username="testuser")
         self.broker = Brokers.objects.create(name="Test Broker", investor=self.user)
         self.account = Accounts.objects.create(broker=self.broker, name="Test Account")
@@ -667,6 +680,7 @@ class TestRealizedGainLoss:
         self.asset.investors.add(self.user)
 
     def create_transaction(self, transaction_date, transaction_type, quantity, price):
+        """Create a transaction."""
         return Transactions.objects.create(
             investor=self.user,
             account=self.account,
@@ -679,6 +693,7 @@ class TestRealizedGainLoss:
         )
 
     def test_start_date_after_first_entry_zero_end_position(self, caplog):
+        """Test start date after first entry zero end position."""
         caplog.set_level(logging.DEBUG)
 
         self.create_transaction(date(2022, 1, 1), TRANSACTION_TYPE_BUY, "10", "100")
@@ -694,6 +709,7 @@ class TestRealizedGainLoss:
         assert result["current_position"]["total"] == Decimal("0")
 
     def test_start_date_after_first_entry_nonzero_end_position(self, caplog):
+        """Test start date after first entry nonzero end position."""
         caplog.set_level(logging.DEBUG)
 
         self.create_transaction(date(2022, 1, 1), TRANSACTION_TYPE_BUY, "15", "100")
@@ -709,6 +725,7 @@ class TestRealizedGainLoss:
         assert result["current_position"]["total"] == Decimal("150")
 
     def test_zero_position_at_start_date(self, caplog):
+        """Test zero position at start date."""
         caplog.set_level(logging.DEBUG)
 
         self.create_transaction(date(2022, 2, 1), TRANSACTION_TYPE_BUY, "10", "100")
@@ -724,6 +741,7 @@ class TestRealizedGainLoss:
         assert result["current_position"]["total"] == Decimal("0")
 
     def test_same_day_open_close(self, caplog):
+        """Test same day open and close."""
         caplog.set_level(logging.DEBUG)
 
         # Day before: zero position
@@ -762,6 +780,7 @@ class TestRealizedGainLoss:
         assert result["current_position"]["total"] == Decimal("0")
 
     def test_multiple_long_and_short_positions(self, caplog):
+        """Test multiple long and short positions."""
         caplog.set_level(logging.DEBUG)
 
         self.create_transaction(date(2022, 1, 1), TRANSACTION_TYPE_BUY, "10", "100")
@@ -778,6 +797,7 @@ class TestRealizedGainLoss:
         assert result["current_position"]["total"] == Decimal("0")
 
     def test_UBS_example(self, caplog):
+        """Test UBS example."""
         caplog.set_level(logging.DEBUG)
 
         self.create_transaction(date(2010, 9, 3), TRANSACTION_TYPE_BUY, "270", "18.09")
@@ -808,6 +828,7 @@ class TestRealizedGainLoss:
     # Print captured logs for all tests
     @pytest.fixture(autouse=True)
     def print_logs(self, caplog):
+        """Print captured logs."""
         yield
         print("\nCaptured logs:")
         for record in caplog.records:

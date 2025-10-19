@@ -1,5 +1,5 @@
 """
-Production Snapshot Comparison Tests
+Production Snapshot Comparison Tests.
 
 Tests that compare calculation results against known production snapshots
 to ensure accuracy and prevent regressions in financial calculations.
@@ -11,19 +11,13 @@ Purpose: Validate calculations against production data snapshots
 
 import json
 import os
-from datetime import date
-from datetime import datetime
-from decimal import Decimal
-from decimal import getcontext
+from datetime import date, datetime
+from decimal import Decimal, getcontext
 
 import pytest
 
-from portfolio_management.common.models import get_exchange_rate
-from portfolio_management.models import FX
-from portfolio_management.models import Portfolios
-from portfolio_management.portfolio.calculator import calculate_buy_in_price
-from portfolio_management.portfolio.calculator import calculate_nav
-from portfolio_management.portfolio.models import gain_loss
+from backend.core.portfolio_utils import NAV_at_date
+from common.models import FX
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
 
@@ -35,6 +29,7 @@ getcontext().prec = 28
 class TestProductionSnapshotComparison:
     """
     Compare test calculations against production snapshot data.
+
     These tests ensure that calculations remain consistent with production results.
     """
 
@@ -211,12 +206,6 @@ class TestProductionSnapshotComparison:
         snapshot_data = production_snapshots["portfolio_valuations"]
 
         for snapshot in snapshot_data["snapshots"]:
-            # Recreate portfolio from snapshot
-            portfolio = Portfolios.objects.create(
-                name=f"Snapshot Portfolio {snapshot['portfolio_id']}",
-                base_currency=snapshot["base_currency"],
-            )
-
             # Recreate assets and positions from snapshot
             for position in snapshot["positions"]:
                 asset = AssetFactory.create(
@@ -229,8 +218,7 @@ class TestProductionSnapshotComparison:
                 buy_in_price = Decimal(position["buy_in_price_usd"])
 
                 TransactionFactory.create(
-                    portfolio=portfolio,
-                    asset=asset,
+                    security=asset,
                     type="Buy",
                     quantity=total_quantity,
                     price=buy_in_price,
@@ -239,7 +227,7 @@ class TestProductionSnapshotComparison:
                 )
 
             # Calculate current portfolio value
-            calculated_nav = calculate_nav(portfolio)
+            calculated_nav = NAV_at_date(date.today())
 
             # Compare with snapshot
             expected_nav = Decimal(snapshot["total_value_usd"])
@@ -276,7 +264,9 @@ class TestProductionSnapshotComparison:
                 transactions.append(transaction)
 
             # Calculate buy-in price
-            calculated_buy_in = calculate_buy_in_price(transactions)
+            calculated_buy_in = asset.calculate_buy_in_price(
+                date.today(), investor=transactions[0].investor
+            )
 
             # Compare with expected result
             expected_buy_in = Decimal(scenario["expected_results"]["buy_in_price"])
@@ -305,8 +295,8 @@ class TestProductionSnapshotComparison:
             )
 
         # Test cross-currency calculations
-        usd_to_eur = get_exchange_rate("USD", "EUR", date.today())
-        eur_to_gbp = get_exchange_rate("EUR", "GBP", date.today())
+        usd_to_eur = FX.get_rate("USD", "EUR", date.today())["FX"]
+        eur_to_gbp = FX.get_rate("EUR", "GBP", date.today())["FX"]
 
         # Calculate GBP to JPY via cross-currency
         if usd_to_eur and eur_to_gbp:
@@ -318,7 +308,7 @@ class TestProductionSnapshotComparison:
                 defaults={"rate": Decimal("110.00")},
             )
 
-            gbp_to_jpy = get_exchange_rate("GBP", "JPY", date.today())
+            gbp_to_jpy = FX.get_rate("GBP", "JPY", date.today())["FX"]
 
             # Verify cross-currency calculation
             # GBP -> USD -> JPY
@@ -358,7 +348,9 @@ class TestProductionSnapshotComparison:
                 transactions.append(transaction)
 
             # Calculate gain/loss
-            gl_result = gain_loss(transactions)
+            gl_result = asset.realized_gain_loss(
+                date.today(), investor=transactions[0].investor
+            )
 
             # Compare with expected results
             expected_realized = Decimal(scenario["expected_results"]["realized_gain"])
@@ -404,7 +396,9 @@ class TestProductionSnapshotComparison:
             )
 
             # Calculate results
-            buy_in_price = calculate_buy_in_price([transaction])
+            buy_in_price = transaction.security.calculate_buy_in_price(
+                date.today(), investor=transaction.investor
+            )
 
             # Compare with expected results
             expected_buy_in = Decimal(scenario["expected_results"]["buy_in_price"])
@@ -422,6 +416,7 @@ class TestProductionSnapshotComparison:
 class TestProductionDataValidation:
     """
     Validate production data consistency and accuracy.
+
     These tests ensure production data meets quality standards.
     """
 
@@ -556,16 +551,12 @@ class TestProductionDataValidation:
 class TestProductionSnapshotGeneration:
     """
     Generate production snapshots from current test data.
+
     These tests help create and validate snapshot data.
     """
 
     def test_generate_portfolio_valuation_snapshot(self):
         """Generate portfolio valuation snapshot from test data."""
-        # Create test portfolio
-        portfolio = Portfolios.objects.create(
-            name="Snapshot Test Portfolio", base_currency="USD"
-        )
-
         # Create assets and positions
         assets = AssetFactory.create_batch(3)
         transactions = []
@@ -573,8 +564,7 @@ class TestProductionSnapshotGeneration:
         for i, asset in enumerate(assets):
             # Create buy transactions
             buy_tx = TransactionFactory.create(
-                portfolio=portfolio,
-                asset=asset,
+                security=asset,
                 type="Buy",
                 quantity=100 * (i + 1),
                 price=Decimal(f"{50 + i * 10}.00"),
@@ -584,12 +574,17 @@ class TestProductionSnapshotGeneration:
             transactions.append(buy_tx)
 
         # Generate snapshot data
-        nav = calculate_nav(portfolio)
+        nav = NAV_at_date(
+            transactions[0].investor.id,
+            (transactions[0].broker.id,),
+            date.today(),
+            "USD",
+            breakdown=("asset_type", "currency", "asset_class", "account"),
+        )["Total NAV"]
 
         snapshot = {
-            "portfolio_id": str(portfolio.id),
             "date": date.today().isoformat(),
-            "base_currency": portfolio.base_currency,
+            "base_currency": "USD",
             "total_value_usd": str(nav),
             "total_value_eur": str(nav * Decimal("0.85")),  # Mock conversion
             "positions": [],
@@ -599,7 +594,7 @@ class TestProductionSnapshotGeneration:
 
         for tx in transactions:
             position = {
-                "asset_ticker": tx.asset.ticker,
+                "asset_ticker": tx.security.ticker,
                 "quantity": str(tx.quantity),
                 "current_price_usd": str(tx.price),
                 "market_value_usd": str(tx.quantity * tx.price),
@@ -650,7 +645,9 @@ class TestProductionSnapshotGeneration:
         ]
 
         # Calculate results
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = asset.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         total_quantity = sum(
             tx.quantity for tx in transactions if tx.type == "Buy"
         ) - sum(tx.quantity for tx in transactions if tx.type == "Sell")

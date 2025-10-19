@@ -1,30 +1,14 @@
-from common.models import Accounts
-from common.models import Brokers
+"""User utilities."""
+
+from common.models import Accounts, Brokers
 from users.models import AccountGroup
-
-FREQUENCY_CHOICES = [
-    ("D", "Daily"),
-    ("W", "Weekly"),
-    ("M", "Monthly"),
-    ("Q", "Quarterly"),
-    ("Y", "Yearly"),
-]
-
-TIMELINE_CHOICES = [
-    ("YTD", "Year to Date"),
-    ("3m", "Last 3 months"),
-    ("6m", "Last 6 months"),
-    ("12m", "Last 12 months"),
-    ("3Y", "Last 3 years"),
-    ("5Y", "Last 5 years"),
-    ("All", "All history"),
-    ("Custom", "Custom"),
-]
 
 
 def prepare_account_choices(user):
     """
-    Get broker account choices for a user, including individual accounts,
+    Prepare broker account choices for a user.
+
+    Prepare broker account choices for a user, including individual accounts,
     account groups, and brokers.
 
     Args:
@@ -117,7 +101,8 @@ def get_account_ids_from_choice(user, choice):
 
     Args:
         user: The CustomUser object
-        choice: String representing the selected choice (account ID, group ID, or 'All accounts')
+        choice: String representing the selected choice
+            (account ID, group ID, or 'All accounts')
 
     Returns:
         List of broker account IDs

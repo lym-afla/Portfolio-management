@@ -1,19 +1,12 @@
+"""Tables utils."""
+
 import time
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.formatting_utils import currency_format
-from core.portfolio_utils import IRR
-from core.portfolio_utils import NAV_at_date
-from core.portfolio_utils import calculate_portfolio_cash
-from core.portfolio_utils import get_fx_rate
+from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
 
 
 def calculate_positions_table_output(
@@ -28,8 +21,9 @@ def calculate_positions_table_output(
     is_closed: bool,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
-    Wrapper function to compile either closed or open positions.
+    Calculate positions table output.
 
+    Wrapper function to compile either closed or open positions.
     """
     if is_closed:
         return _calculate_closed_table_output_for_api(
@@ -76,7 +70,8 @@ def _calculate_closed_table_output_for_api(
     :param currency_target: The target currency for calculations
     :param selected_account_ids: List of selected broker account IDs
     :param start_date: The start date for calculations (optional)
-    :return: A tuple containing a list of closed position dictionaries and a dictionary of totals
+    :return: A tuple containing a list of closed position dictionaries
+        and a dictionary of totals
     """
     closed_positions = []
     totals = [
@@ -94,7 +89,7 @@ def _calculate_closed_table_output_for_api(
         )
         entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
 
-        for i, exit_date in enumerate(exit_dates):
+        for _, exit_date in enumerate(exit_dates):
             currency_used = None if use_default_currency else currency_target
 
             # Has to be defined here to accomodate different closed positions
@@ -322,9 +317,10 @@ def _calculate_open_table_output_for_api(
     :param currency_target: The target currency for calculations
     :param selected_account_ids: List of selected broker account IDs
     :param start_date: The start date for calculations (optional)
-    :return: A tuple containing a list of open position dictionaries and a dictionary of totals
+    :return: A tuple containing a list of open position dictionaries
+        and a dictionary of totals.
     """
-    start_time = time.time()  # Start timing the overall function
+    start_time = time.time()
     portfolio_NAV = NAV_at_date(
         user_id, tuple(selected_account_ids), end_date, currency_target
     )["Total NAV"]
@@ -343,7 +339,8 @@ def _calculate_open_table_output_for_api(
     open_positions = []
     portfolio_open_totals = {"all_assets_share_of_portfolio_percentage": Decimal(0)}
 
-    total_irr_start_date = start_date  # Not to be overwritten by asset start date if start date is not defined
+    # Not to be overwritten by asset start date if start date is not defined
+    total_irr_start_date = start_date
 
     for asset in portfolio:
         asset_start_time = time.time()  # Start timing for each asset

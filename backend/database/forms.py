@@ -1,16 +1,16 @@
+"""Database forms."""
+
 from django import forms
 
 from common.forms import GroupedSelect
-from common.models import Accounts
-from common.models import Assets
-from common.models import BondMetadata
-from common.models import FXTransaction
-from constants import CURRENCY_CHOICES
-from constants import DATA_SOURCE_CHOICES
+from common.models import Accounts, Assets, BondMetadata, FXTransaction
+from constants import CURRENCY_CHOICES, DATA_SOURCE_CHOICES
 from core.user_utils import prepare_account_choices
 
 
 class SecurityForm(forms.ModelForm):
+    """Security form."""
+
     update_link = forms.URLField(
         required=False, assume_scheme="http"
     )  # Specify the default scheme
@@ -55,7 +55,8 @@ class SecurityForm(forms.ModelForm):
         required=False,
         widget=forms.NumberInput(attrs={"class": "form-control"}),
         label="Coupon frequency",
-        help_text="Coupon payments per year (1=annual, 2=semi-annual, 4=quarterly, 12=monthly)",
+        help_text="Coupon payments per year "
+        "(1=annual, 2=semi-annual, 4=quarterly, 12=monthly)",
     )
     is_amortizing = forms.BooleanField(
         required=False,
@@ -85,6 +86,8 @@ class SecurityForm(forms.ModelForm):
     )
 
     class Meta:
+        """Meta class for security form."""
+
         model = Assets
         fields = [
             "name",
@@ -132,6 +135,7 @@ class SecurityForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """Initialize security form."""
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields
         self.fields["ticker"].required = False
@@ -165,6 +169,7 @@ class SecurityForm(forms.ModelForm):
                 pass
 
     def clean(self):
+        """Clean security form."""
         cleaned_data = super().clean()
         data_source = cleaned_data.get("data_source")
         yahoo_symbol = cleaned_data.get("yahoo_symbol")
@@ -204,7 +209,7 @@ class SecurityForm(forms.ModelForm):
         return cleaned_data
 
     def save_bond_metadata(self, asset):
-        """Save bond metadata if this is a bond"""
+        """Save bond metadata if this is a bond."""
         if asset.type == "Bond":
             bond_data = {
                 "initial_notional": self.cleaned_data.get("initial_notional"),
@@ -229,6 +234,8 @@ EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (("All", "All Currencies"),)
 
 
 class AccountPerformanceForm(forms.Form):
+    """Account performance form."""
+
     selection_account_type = forms.CharField(widget=forms.HiddenInput(), required=False)
     selection_account_id = forms.IntegerField(
         widget=forms.HiddenInput(), required=False
@@ -262,6 +269,7 @@ class AccountPerformanceForm(forms.Form):
     )
 
     def __init__(self, *args, **kwargs):
+        """Initialize account performance form."""
         investor = kwargs.pop("investor", None)
         super().__init__(*args, **kwargs)
 
@@ -285,6 +293,7 @@ class AccountPerformanceForm(forms.Form):
             self.fields["account_selection"].choices = account_choices
 
     def clean(self):
+        """Clean account performance form."""
         cleaned_data = super().clean()
         account_selection = cleaned_data.get("account_selection")
 
@@ -301,9 +310,7 @@ class AccountPerformanceForm(forms.Form):
         return cleaned_data
 
     def get_selection_data(self):
-        """
-        Returns the cleaned selection type and ID for use in queries
-        """
+        """Return the cleaned selection type and ID for use in queries."""
         if self.is_valid():
             return {
                 "selection_type": self.cleaned_data["selection_type"],
@@ -313,7 +320,11 @@ class AccountPerformanceForm(forms.Form):
 
 
 class FXTransactionForm(forms.ModelForm):
+    """FX transaction form."""
+
     class Meta:
+        """Meta class for FX transaction form."""
+
         model = FXTransaction
         fields = [
             "account",
@@ -342,6 +353,7 @@ class FXTransactionForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        """Initialize FX transaction form."""
         investor = kwargs.pop("investor", None)
         super().__init__(*args, **kwargs)
         # Set choices dynamically for broker, security, and type fields

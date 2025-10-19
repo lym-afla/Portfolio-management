@@ -1,9 +1,10 @@
+"""Price utils."""
+
 from datetime import date
 
 from django.db.models import Q
 
-from common.models import Assets
-from common.models import Prices
+from common.models import Assets, Prices
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
@@ -12,6 +13,12 @@ from core.sorting_utils import sort_entries
 def get_prices_table_api(request):
     """
     Get prices table data for API response.
+
+    Args:
+        request: The HTTP request object
+
+    Returns:
+        dict: The prices table data
     """
     data = request.data
     start_date = data.get("startDate")
@@ -87,6 +94,9 @@ def _filter_prices(
         selected_account: Selected broker account ID
         selected_securities: List of security IDs to filter by
         search: Search string for security name or type
+
+    Returns:
+        QuerySet: The filtered prices
     """
     prices_query = Prices.objects.filter(security__investors=user).select_related(
         "security"
@@ -102,7 +112,8 @@ def _filter_prices(
         # Get all securities with non-zero positions in the selected account at end_date
         position_date = end_date if end_date else date.today()
 
-        # Get all securities that have transactions in this account (more efficient query)
+        # Get all securities that have transactions in this account
+        # (more efficient query)
         securities_in_account = Assets.objects.filter(
             transactions__account__id=selected_account,
             transactions__investor=user,

@@ -1,5 +1,5 @@
 """
-Regression Test Suite
+Regression Test Suite.
 
 Comprehensive regression tests to ensure financial calculation accuracy
 remains consistent over time and across code changes. These tests validate
@@ -10,17 +10,13 @@ Created: 2025-10-18
 Purpose: Prevent regressions in financial calculations
 """
 
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
-from common.models import Assets
-from portfolio_management.common.models import get_exchange_rate
-from portfolio_management.portfolio.calculator import calculate_buy_in_price
-from portfolio_management.portfolio.calculator import calculate_nav
-from portfolio_management.portfolio.models import gain_loss
+from backend.core.portfolio_utils import NAV_at_date
+from common.models import FX, Assets
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
 
@@ -29,6 +25,7 @@ from tests.fixtures.factories.transaction_factory import TransactionFactory
 class TestCalculationRegression:
     """
     Regression tests for core financial calculations.
+
     These tests ensure that calculation results remain consistent
     with expected values and don't change unexpectedly.
     """
@@ -40,7 +37,9 @@ class TestCalculationRegression:
         transactions = sample_transactions
 
         # Calculate buy-in price
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
 
         # Expected result: (100 * 50 + 50 * 55) / (100 + 50) = 51.6666667
         expected_buy_in = Decimal("51.66666666666666666666666667")
@@ -55,7 +54,7 @@ class TestCalculationRegression:
         """Regression test for buy-in price calculation with partial sale."""
         # Add a partial sale to transactions
         sale_transaction = TransactionFactory.create(
-            asset=sample_transactions[0].asset,
+            security=sample_transactions[0].security,
             type="Sell",
             quantity=25,  # Sell 25 out of 150 shares
             price=Decimal("60.00"),
@@ -66,7 +65,9 @@ class TestCalculationRegression:
         transactions = list(sample_transactions) + [sale_transaction]
 
         # Recalculate buy-in price after sale
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
 
         # Expected result should remain the same (51.6666667)
         expected_buy_in = Decimal("51.66666666666666666666666667")
@@ -115,12 +116,15 @@ class TestCalculationRegression:
             ),
         ]
 
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
 
         # Expected: Complex weighted average calculation
         # Remaining shares: 100 + 50 - 25 + 75 = 200
         # Total cost:
-        # (100*50) + (50*55) - (25*51.6667) + (75*52) = 10000 + 2750 - 1291.67 + 3900 = 15358.33
+        # (100*50) + (50*55) - (25*51.6667) + (75*52) =
+        # = 10000 + 2750 - 1291.67 + 3900 = 15358.33
         # Buy-in price: 15358.33 / 200 = 76.791667
         expected_buy_in = Decimal("76.79166666666666666666666667")
 
@@ -133,7 +137,12 @@ class TestCalculationRegression:
         portfolio = multi_currency_portfolio
 
         # Calculate NAV
-        nav_result = calculate_nav(portfolio)
+        nav_result = NAV_at_date(
+            portfolio.user.id,
+            portfolio.accounts.values_list("id", flat=True),
+            date.today(),
+            "EUR",
+        )
 
         # Expected calculation:
         # AAPL: 10 * $150 = $1500
@@ -165,8 +174,16 @@ class TestCalculationRegression:
 
         transactions = list(sample_transactions) + [sale_transaction]
 
+        securities = Assets.objects.filter(
+            id__in=transactions.values_list("security_id", flat=True)
+        )
+
         # Calculate realized gain/loss
-        gl_result = gain_loss(transactions)
+        gl_result = 0
+        for security in securities:
+            gl_result += security.realized_gain_loss(
+                date.today(), transactions[0].investor, transactions[0].account_ids
+            )
 
         # Expected calculation:
         # Sold 50 shares at $60 = $3000
@@ -182,7 +199,7 @@ class TestCalculationRegression:
     def test_regression_fx_cross_currency(self, fx_rates):
         """Regression test for cross-currency FX conversion."""
         # Test GBP to JPY conversion
-        rate = get_exchange_rate("GBP", "JPY", date.today())
+        rate = FX.get_rate("GBP", "JPY", date.today())["FX"]
 
         # Expected: GBP->USD * USD->JPY = 1.15 * 110 = 126.5
         expected_rate = Decimal("126.50")
@@ -213,7 +230,7 @@ class TestCalculationRegression:
         expected_dividend_eur = Decimal("8.50")
 
         # Verify dividend is properly converted
-        actual_dividend = dividend.price * get_exchange_rate("USD", "EUR", date.today())
+        actual_dividend = dividend.price * FX.get_rate("USD", "EUR", date.today())["FX"]
         assert abs(actual_dividend - expected_dividend_eur) < Decimal("0.01")
 
     # Test Case 8: Complex Portfolio Rebalancing
@@ -223,7 +240,12 @@ class TestCalculationRegression:
         portfolio = multi_currency_portfolio
 
         # Simulate portfolio rebalancing
-        initial_nav = calculate_nav(portfolio)
+        initial_nav = NAV_at_date(
+            portfolio.user.id,
+            portfolio.accounts.values_list("id", flat=True),
+            date.today(),
+            "EUR",
+        )
 
         # Add new positions
         new_asset = AssetFactory.create(ticker="MSFT", currency="USD")
@@ -238,7 +260,12 @@ class TestCalculationRegression:
         )
 
         # Calculate new NAV
-        new_nav = calculate_nav(portfolio)
+        new_nav = NAV_at_date(
+            portfolio.user.id,
+            portfolio.accounts.values_list("id", flat=True),
+            date.today(),
+            "EUR",
+        )
 
         # Expected increase: 20 * $300 * 0.85 = €5100
         expected_increase = Decimal("5100.00")
@@ -273,7 +300,14 @@ class TestCalculationRegression:
         )
 
         transactions = [buy_tx, sell_tx]
-        gl_result = gain_loss(transactions)
+        securities = Assets.objects.filter(
+            id__in=transactions.values_list("security_id", flat=True)
+        )
+        gl_result = 0
+        for security in securities:
+            gl_result += security.realized_gain_loss(
+                date.today(), transactions[0].investor, transactions[0].account_ids
+            )
 
         # Expected loss: 100 * ($80 - $100) = -$2000
         expected_loss = Decimal("-2000.00")
@@ -306,7 +340,9 @@ class TestCalculationRegression:
             ),
         ]
 
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
 
         # Expected: Weighted average with high precision
         expected_price = Decimal("100.12345678933333333333333333")
@@ -319,6 +355,7 @@ class TestCalculationRegression:
 class TestEdgeCaseRegression:
     """
     Regression tests for edge cases that previously caused issues.
+
     These tests ensure edge cases continue to work correctly.
     """
 
@@ -337,7 +374,9 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle gracefully without division by zero
-        buy_in_price = calculate_buy_in_price([zero_tx])
+        buy_in_price = zero_tx.security.calculate_buy_in_price(
+            date.today(), investor=zero_tx.investor
+        )
         assert buy_in_price == Decimal("0")
 
     def test_regression_negative_quantity_handling(self):
@@ -355,7 +394,9 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle short positions correctly
-        buy_in_price = calculate_buy_in_price([short_tx])
+        buy_in_price = short_tx.security.calculate_buy_in_price(
+            date.today(), investor=short_tx.investor
+        )
         assert buy_in_price == Decimal("50.00")
 
     def test_regression_very_large_numbers(self):
@@ -373,7 +414,9 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle without overflow
-        buy_in_price = calculate_buy_in_price([large_tx])
+        buy_in_price = large_tx.security.calculate_buy_in_price(
+            date.today(), investor=large_tx.investor
+        )
         assert buy_in_price == Decimal("999.99")
 
     def test_regression_very_small_numbers(self):
@@ -391,7 +434,9 @@ class TestEdgeCaseRegression:
         )
 
         # Should maintain precision
-        buy_in_price = calculate_buy_in_price([small_tx])
+        buy_in_price = small_tx.security.calculate_buy_in_price(
+            date.today(), investor=small_tx.investor
+        )
         assert buy_in_price == Decimal("0.000001")
 
     def test_regression_mixed_currency_precision(self):
@@ -419,7 +464,9 @@ class TestEdgeCaseRegression:
         ]
 
         # Should handle mixed precision correctly
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         assert buy_in_price > 0
         assert isinstance(buy_in_price, Decimal)
 
@@ -428,6 +475,7 @@ class TestEdgeCaseRegression:
 class TestPerformanceRegression:
     """
     Regression tests for performance characteristics.
+
     These tests ensure performance doesn't degrade over time.
     """
 
@@ -446,7 +494,9 @@ class TestPerformanceRegression:
         )
 
         start_time = time.time()
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         end_time = time.time()
 
         calculation_time = end_time - start_time
@@ -475,7 +525,9 @@ class TestPerformanceRegression:
             )
 
         start_time = time.time()
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         end_time = time.time()
 
         calculation_time = end_time - start_time
@@ -504,7 +556,9 @@ class TestPerformanceRegression:
             )
 
         start_time = time.time()
-        buy_in_price = calculate_buy_in_price(transactions)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         end_time = time.time()
 
         calculation_time = end_time - start_time
@@ -524,7 +578,7 @@ class TestPerformanceRegression:
 
         for i in range(1000):
             pair = currency_pairs[i % len(currency_pairs)]
-            rate = get_exchange_rate(pair[0], pair[1], date.today())
+            rate = FX.get_rate(pair[0], pair[1], date.today())["FX"]
             assert rate > 0
 
         end_time = time.time()
@@ -538,6 +592,7 @@ class TestPerformanceRegression:
 class TestAPIRegression:
     """
     Regression tests for API endpoints.
+
     These tests ensure API responses remain consistent.
     """
 
@@ -628,6 +683,7 @@ class TestAPIRegression:
 class TestDataIntegrityRegression:
     """
     Regression tests for data integrity.
+
     These tests ensure data consistency is maintained.
     """
 
@@ -668,11 +724,11 @@ class TestDataIntegrityRegression:
         original_usd = Decimal("1000.00")
 
         # USD to EUR
-        usd_to_eur_rate = get_exchange_rate("USD", "EUR", date.today())
+        usd_to_eur_rate = FX.get_rate("USD", "EUR", date.today())["FX"]
         eur_amount = original_usd * usd_to_eur_rate
 
         # EUR back to USD
-        eur_to_usd_rate = get_exchange_rate("EUR", "USD", date.today())
+        eur_to_usd_rate = FX.get_rate("EUR", "USD", date.today())["FX"]
         final_usd = eur_amount * eur_to_usd_rate
 
         # Should be very close to original (allowing for rounding)
@@ -684,8 +740,12 @@ class TestDataIntegrityRegression:
     def test_regression_financial_calculation_consistency(self, sample_transactions):
         """Regression test for financial calculation consistency."""
         # Multiple calculations should be consistent
-        buy_in_price_1 = calculate_buy_in_price(sample_transactions)
-        buy_in_price_2 = calculate_buy_in_price(sample_transactions)
+        buy_in_price_1 = sample_transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=sample_transactions[0].investor
+        )
+        buy_in_price_2 = sample_transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=sample_transactions[0].investor
+        )
 
         assert (
             buy_in_price_1 == buy_in_price_2
@@ -693,8 +753,18 @@ class TestDataIntegrityRegression:
 
         # NAV calculations should be consistent
         if hasattr(sample_transactions[0], "portfolio"):
-            nav_1 = calculate_nav(sample_transactions[0].portfolio)
-            nav_2 = calculate_nav(sample_transactions[0].portfolio)
+            nav_1 = NAV_at_date(
+                sample_transactions[0].portfolio.user.id,
+                sample_transactions[0].portfolio.accounts.values_list("id", flat=True),
+                date.today(),
+                "EUR",
+            )
+            nav_2 = NAV_at_date(
+                sample_transactions[0].portfolio.user.id,
+                sample_transactions[0].portfolio.accounts.values_list("id", flat=True),
+                date.today(),
+                "EUR",
+            )
 
             assert nav_1 == nav_2, "Inconsistent NAV calculations"
 
@@ -725,6 +795,7 @@ REGRESSION_TEST_METADATA = {
 def regression_baseline_data():
     """
     Fixture providing baseline regression data.
+
     This ensures consistent test data across regression runs.
     """
     return {

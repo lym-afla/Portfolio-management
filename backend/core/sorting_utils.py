@@ -1,12 +1,8 @@
-from datetime import date
-from datetime import datetime
-from decimal import Decimal
-from decimal import InvalidOperation
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Union
+"""Sorting utilities."""
+
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, List, Optional, Union
 
 
 def sort_entries(
@@ -33,7 +29,7 @@ def sort_entries(
             for key in portfolio[0].keys():
                 if "date" in key:
                     portfolio.sort(key=lambda x: _get_sort_value(x, key), reverse=False)
-                    return portfolio  # Return immediately after sorting by the first date key found
+                    return portfolio  # Return immediately after sorting by the first date key found  # noqa: E501
     return portfolio
 
 

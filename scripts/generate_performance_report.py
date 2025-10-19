@@ -9,11 +9,14 @@ import json
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 
 
 def generate_performance_report(benchmark_file, output_file):
-    """Generate a detailed performance report from benchmark results."""
+    """Generate a detailed performance report from benchmark results.
+
+    :param benchmark_file: The file containing the benchmark results
+    :param output_file: The file to write the performance report to
+    """
 
     with open(benchmark_file, "r") as f:
         data = json.load(f)
@@ -142,7 +145,7 @@ def generate_performance_report(benchmark_file, output_file):
 
     # Add metadata
     metadata = data.get("metadata", {})
-    report += f"## 📊 Metadata\n\n"
+    report += "## 📊 Metadata\n\n"
     report += (
         f"- **Benchmark Version:** {metadata.get('benchmark_version', 'Unknown')}\n"
     )

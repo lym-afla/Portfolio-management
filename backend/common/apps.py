@@ -1,6 +1,5 @@
 """Django app configuration for common."""
 
-
 from django.apps import AppConfig
 
 

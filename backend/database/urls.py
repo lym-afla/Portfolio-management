@@ -1,11 +1,10 @@
-from django.urls import include
-from django.urls import path
+"""Database URLs."""
+
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from . import views
-from .views import BrokerViewSet
-from .views import PriceImportView
-from .views import UpdateAccountPerformanceViewSet
+from .views import BrokerViewSet, PriceImportView, UpdateAccountPerformanceViewSet
 
 app_name = "database"
 

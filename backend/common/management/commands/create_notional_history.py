@@ -1,9 +1,13 @@
 """
-Management command to retroactively create NotionalHistory entries for existing bond redemptions.
+Retroactively create NotionalHistory entries for existing bond redemptions.
+
+Management command to retroactively create NotionalHistory entries
+for existing bond redemptions.
 
 This command is needed because:
 1. bulk_create bypasses the save() method
-2. Transactions imported before NotionalHistory was implemented don't have history entries
+2. Transactions imported before NotionalHistory was implemented
+    don't have history entries
 3. Users need to populate history for existing data after adding BondMetadata
 
 Usage:
@@ -16,16 +20,18 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from common.models import Transactions
-from constants import TRANSACTION_TYPE_BOND_MATURITY
-from constants import TRANSACTION_TYPE_BOND_REDEMPTION
+from constants import TRANSACTION_TYPE_BOND_MATURITY, TRANSACTION_TYPE_BOND_REDEMPTION
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
+    """Create NotionalHistory entries for existing bond redemption transactions."""
+
     help = "Create NotionalHistory entries for existing bond redemption transactions"
 
     def add_arguments(self, parser):
+        """Add arguments to the command."""
         parser.add_argument(
             "--security-id",
             type=int,
@@ -38,6 +44,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Handle the command."""
         security_id = options.get("security_id")
         dry_run = options.get("dry_run")
 
@@ -119,7 +126,8 @@ class Command(BaseCommand):
             if txn.security.id not in securities_processed:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"\nProcessing security: {txn.security.name} (ID: {txn.security.id})"
+                        f"\nProcessing security: {txn.security.name} "
+                        f"(ID: {txn.security.id})"
                     )
                 )
                 securities_processed.add(txn.security.id)
@@ -135,7 +143,8 @@ class Command(BaseCommand):
                         )
                 else:
                     self.stdout.write(
-                        f"  [DRY RUN] Would create NotionalHistory for transaction {txn.id} "
+                        f"  [DRY RUN] Would create NotionalHistory for transaction "
+                        f"{txn.id} "
                         f"({txn.date}): notional_change={txn.notional_change}"
                     )
                     total_created += 1
@@ -143,7 +152,8 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"  ✗ Error creating NotionalHistory for transaction {txn.id}: {e}"
+                        f"  ✗ Error creating NotionalHistory for transaction "
+                        f"{txn.id}: {e}"
                     )
                 )
                 total_errors += 1

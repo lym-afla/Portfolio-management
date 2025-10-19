@@ -1,0 +1,1 @@
+"""Open positions Django app."""

@@ -20,7 +20,8 @@
       "Bash(fi:*)",
       "Bash(done)",
       "Bash(venv/Scripts/python.exe:*)",
-      "Bash(bash -c 'sed -i \"\"1s/\\\"\"$/\\\"\"./\"\" \"\"'\"$file\"'\"\"')"
+      "Bash(bash -c 'sed -i \"\"1s/\\\"\"$/\\\"\"./\"\" \"\"'\"$file\"'\"\"')",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

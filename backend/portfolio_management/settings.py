@@ -70,7 +70,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "debug_toolbar.middleware.DebugToolbarMiddleware",
-    "portfolio_management.jwt_middleware.JWTEffectiveDateMiddleware",  # JWT-based middleware
+    "portfolio_management.jwt_middleware.JWTEffectiveDateMiddleware",
 ]
 
 CORS_ALLOWED_ORIGINS = [
@@ -140,15 +140,6 @@ AUTH_USER_MODEL = "users.CustomUser"
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
-    # {
-    #     'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    # },
-    # {
-    #     'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    # },
-    # {
-    #     'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    # },
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },

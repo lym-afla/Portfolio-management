@@ -1,3 +1,5 @@
+"""Transactions consumers."""
+
 import asyncio
 import datetime
 import json
@@ -10,14 +12,14 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.forms import model_to_dict
 
-from common.models import Accounts
-from common.models import Assets
-from common.models import Brokers
+from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import fx_transaction_exists
-from core.import_utils import get_security
-from core.import_utils import match_tinkoff_broker_account
-from core.import_utils import transaction_exists
+from core.import_utils import (
+    fx_transaction_exists,
+    get_security,
+    match_tinkoff_broker_account,
+    transaction_exists,
+)
 from users.models import CustomUser
 
 from .views import TransactionViewSet
@@ -28,7 +30,10 @@ User = get_user_model()
 
 
 class TransactionConsumer(AsyncWebsocketConsumer):
+    """Transaction consumer."""
+
     def __init__(self, *args, **kwargs):
+        """Initialize the transaction consumer."""
         super().__init__(*args, **kwargs)
         # Initialize queues to handle confirmations and mappings
         self.confirmation_events = asyncio.Queue()
@@ -43,6 +48,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         self.duplicate_count = 0
 
     async def connect(self):
+        """Connect to the WebSocket."""
         # Get the authenticated user from the scope
         self.user = self.scope["user"]
 
@@ -55,6 +61,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         logger.info(f"WebSocket connected for user: {self.user}")
 
     async def disconnect(self, close_code):
+        """Disconnect from the WebSocket."""
         logger.info(f"WebSocket disconnected with code: {close_code}")
         self.stop_event.set()
         logger.debug("WebSocket connection closed")
@@ -66,6 +73,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 logger.debug("Import task cancelled upon disconnect")
 
     async def receive(self, text_data):
+        """Receive a message from the WebSocket."""
         logger.debug(f"Raw WebSocket message received: {text_data}")
         try:
             text_data_json = json.loads(text_data)
@@ -340,8 +348,15 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             )
 
     async def start_file_import(
-        self, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
+        self,
+        file_id,
+        account_id,
+        confirm_every,
+        currency,
+        is_galaxy,
+        galaxy_type,
     ):
+        """Start the file import."""
         logger.debug("Starting file import")
         try:
             self.confirm_every = confirm_every
@@ -370,7 +385,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def send_error(self, message: str, error_type: str = "critical_error"):
         """
-        Send error message to client
+        Send error message to client.
 
         Args:
             message: Error message
@@ -382,7 +397,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def send_message(self, message_type: str, data: dict):
         """
-        Send formatted message to client
+        Send formatted message to client.
 
         Args:
             message_type: Type of message
@@ -397,7 +412,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         date_from: str = None,
         date_to: str = None,
     ):
-        """Handle API import process"""
+        """Handle API import process."""
         try:
             # Store broker_id for later use in accounts_matched handler
             self.current_broker_id = broker_id
@@ -422,7 +437,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     "matched_pairs": matched_pairs,
                     "unmatched_tinkoff": unmatched_tinkoff,
                     "unmatched_db": unmatched_db,
-                    "message": "Please confirm account matches and match remaining accounts",
+                    "message": (
+                        "Please confirm account matches and match remaining accounts"
+                    ),
                 },
             )
 
@@ -434,11 +451,10 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def process_account_matches(self, broker_id: int, pairs: list):
         """
-        Process the account matches and start importing transactions
+        Process the account matches and start importing transactions.
 
-        Args:
-            broker_id: ID of the broker
-            pairs: List of dicts with tinkoff_account_id and db_account_id
+        :param broker_id: ID of the broker
+        :param pairs: List of dicts with tinkoff_account_id and db_account_id
         """
         try:
             logger.debug(
@@ -480,7 +496,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             account.native_id = tinkoff_account_id
                             account.save(update_fields=["native_id"])
                             logger.info(
-                                f"Updated native_id for account {account.name} (ID: {account.id})"
+                                f"Updated native_id for account {account.name} "
+                                f"(ID: {account.id})"
                                 f" to {tinkoff_account_id}"
                             )
                             return account
@@ -499,7 +516,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         continue
                 except Exception as e:
                     logger.error(
-                        f"Error updating native_id for account ID {db_account_id}: {str(e)}"
+                        f"Error updating native_id for account ID {db_account_id}: "
+                        f"{str(e)}"
                     )
                     continue
 
@@ -520,9 +538,10 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 # Start import for this pair
                 try:
                     # Call the import method from view_set
+                    # Pass db_account_id instead of multiple parameters
                     self.import_generator = self.view_set.import_transactions_from_api(
                         self.user,
-                        db_account_id,  # Just pass db_account_id instead of multiple parameters
+                        db_account_id,
                         confirm_every=self.confirm_every,
                         date_from=self.date_from,
                         date_to=self.date_to,
@@ -539,7 +558,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
                 except Exception as e:
                     logger.error(
-                        f"Error importing transactions for pair {pair}: {str(e)}"
+                        f"Error importing transactions for pair {pair}: " f"{str(e)}"
                     )
                     total_errors += 1
 
@@ -569,7 +588,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             self.date_to = None
 
     async def process_import(self):
-        logger.debug("Starting process_import")
+        """Process the import."""
+        logger.debug("[process_import] Starting process_import")
         import_results = {
             "totalTransactions": 0,
             "importedTransactions": 0,
@@ -635,7 +655,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 if update.get("status") == "save_transaction":
                     transaction_data = update.get("data")
                     logger.debug(
-                        f"[process_import] Saving transaction immediately: {transaction_data}"
+                        "[process_import] Saving transaction immediately: "
+                        f"{transaction_data}"
                     )
 
                     try:
@@ -681,7 +702,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                                         "type": "import_update",
                                         "data": {
                                             "status": "save_error",
-                                            "message": f"Error saving transaction: {error_msg}",
+                                            "message": (
+                                                f"Error saving transaction: {error_msg}"
+                                            ),
                                             "error_detail": error_msg,
                                         },
                                     }
@@ -699,7 +722,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                                     "type": "import_update",
                                     "data": {
                                         "status": "save_error",
-                                        "message": f"Error saving transaction: {str(e)}",
+                                        "message": (
+                                            f"Error saving transaction: {str(e)}"
+                                        ),
                                         "error_detail": str(e),
                                     },
                                 }
@@ -726,12 +751,14 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     )
                 elif update["status"] == "transaction_confirmation":
                     logger.debug(
-                        f"[process_import] Handling transaction confirmation: {update['data']}"
+                        f"[process_import] Handling transaction confirmation: "
+                        f"{update['data']}"
                     )
                     try:
                         await self.handle_transaction_confirmation(update["data"])
                         logger.debug(
-                            "[process_import] Transaction confirmation handled successfully"
+                            "[process_import] "
+                            "Transaction confirmation handled successfully"
                         )
                     except Exception as e:
                         logger.error(f"Error in transaction confirmation: {str(e)}")
@@ -798,7 +825,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                                     continue  # Skip the rest of the loop iteration
                                 except Exception as e:
                                     logger.error(
-                                        f"Error in handle_transaction_confirmation: {str(e)}"
+                                        f"Error in handle_transaction_confirmation: "
+                                        f"{str(e)}"
                                     )
                                     logger.error(f"Error type: {type(e)}")
                                     import traceback
@@ -815,7 +843,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                                     "data": {
                                         "status": "security_mapping",
                                         "mapping_data": update["mapping_data"],
-                                        "transaction_data": self._serialize_transaction_data(
+                                        "transaction_data": self._serialize_transaction_data(  # noqa: E501
                                             update["transaction_data"]
                                         ),
                                     },
@@ -839,7 +867,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             ] = security_id
                         else:
                             logger.error(
-                                f"Unknown mapping action: {mapping_response.get('action')}"
+                                f"Unknown mapping action: "
+                                f"{mapping_response.get('action')}"
                             )
                             self.transactions_skipped += 1
                             continue  # Skip to the next iteration
@@ -861,13 +890,15 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                                     transaction_to_create
                                 )
                                 logger.debug(
-                                    "Transaction updated with mapped security and added to "
-                                    f"create list: {transaction_to_create}"
+                                    "Transaction updated with mapped security and "
+                                    "added to create list: "
+                                    f"{transaction_to_create}"
                                 )
                             else:
                                 self.duplicate_count += 1
                                 logger.debug(
-                                    f"Transaction already exists: {transaction_to_create}"
+                                    f"Transaction already exists: "
+                                    f"{transaction_to_create}"
                                 )
                         else:
                             logger.error(
@@ -898,7 +929,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         f"Transaction added to create list: {update.get('data')}"
                     )
                 elif update.get("status") == "processing_complete":
-                    # Backend finished processing - stats are tracked here, not from backend
+                    # Backend finished processing
+                    # stats are tracked here, not from backend
                     logger.debug("[process_import] Backend processing complete")
                 elif update.get("status") == "complete":
                     # Legacy handling - kept for file imports
@@ -906,7 +938,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     import_results = update.get("data")
                 else:
                     logger.debug(
-                        f"[process_import] Unhandled update status: {update.get('status')}"
+                        f"[process_import] Unhandled update status: "
+                        f"{update.get('status')}"
                     )
 
             logger.debug(
@@ -975,31 +1008,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     {
                         "type": "import_error",
                         "data": {
-                            "error": f"An error occurred during import processing: {str(e)}"
+                            "error": (
+                                "An error occurred during import processing: "
+                                f"{str(e)}"
+                            )
                         },
                     }
                 )
             )
         finally:
-            # For API imports, use import_results; for file imports, use legacy counters
-            if (
-                import_results["importedTransactions"] > 0
-                or import_results["duplicateTransactions"] > 0
-            ):
-                # API import - use tracked results
-                results = import_results
-            else:
-                # File import - use legacy counters
-                results = {
-                    "importedTransactions": len(self.transactions_to_create),
-                    "skippedTransactions": self.transactions_skipped,
-                    "duplicateTransactions": self.duplicate_count,
-                    "importErrors": import_results.get("importErrors", 0),
-                    "totalTransactions": len(self.transactions_to_create)
-                    + self.transactions_skipped
-                    + self.duplicate_count,
-                }
-
+            # Cleanup operations
             if self.stop_event.is_set():
                 await self.send(
                     text_data=json.dumps(
@@ -1014,9 +1032,29 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             self.transactions_skipped = 0
             self.duplicate_count = 0
 
-            return results
+        # For API imports, use import_results; for file imports, use legacy counters
+        if (
+            import_results["importedTransactions"] > 0
+            or import_results["duplicateTransactions"] > 0
+        ):
+            # API import - use tracked results
+            results = import_results
+        else:
+            # File import - use legacy counters
+            results = {
+                "importedTransactions": len(self.transactions_to_create),
+                "skippedTransactions": self.transactions_skipped,
+                "duplicateTransactions": self.duplicate_count,
+                "importErrors": import_results.get("importErrors", 0),
+                "totalTransactions": len(self.transactions_to_create)
+                + self.transactions_skipped
+                + self.duplicate_count,
+            }
+
+        return results
 
     async def handle_transaction_confirmation(self, transaction_data):
+        """Handle the transaction confirmation."""
         # Check if transaction already exists
         if transaction_data.get("is_fx"):
             existing_transaction = await fx_transaction_exists(transaction_data)
@@ -1044,7 +1082,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             if confirmation:
                 self.transactions_to_create.append(transaction_data)
                 logger.debug(
-                    f"Transaction confirmed and added to create list: {transaction_data}"
+                    "Transaction confirmed and added "
+                    f"to create list: {transaction_data}"
                 )
             else:
                 self.transactions_skipped += 1
@@ -1052,7 +1091,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         else:
             self.duplicate_count += 1
             logger.debug(
-                f"Duplicate count in handle_transaction_confirmation: {self.duplicate_count}."
+                f"Duplicate count in handle_transaction_confirmation: "
+                f"{self.duplicate_count}."
             )
             logger.debug(f"Transaction already exists: {transaction_data}")
 
@@ -1115,13 +1155,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         self, broker_id, tinkoff_account, name, comment=""
     ):
         """
-        Create a new account in the database and import transactions
+        Create a new account in the database and import transactions.
 
-        Args:
-            broker_id: ID of the broker
-            tinkoff_account: Dict with tinkoff account details
-            name: Name for the new account
-            comment: Optional comment for the new account
+        :param broker_id: ID of the broker
+        :param tinkoff_account: Dict with tinkoff account details
+        :param name: Name for the new account
+        :param comment: Optional comment for the new account
         """
         try:
             logger.debug(
@@ -1148,12 +1187,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             @database_sync_to_async
             def create_account():
                 broker = Brokers.objects.get(id=broker_id)
+                # Set native_id when creating the account
                 account = Accounts.objects.create(
                     name=name,
                     broker=broker,
                     investor=self.user,
                     comment=comment,
-                    native_id=tinkoff_account_id,  # Set native_id when creating the account
+                    native_id=tinkoff_account_id,
                 )
                 return account
 

@@ -14,15 +14,16 @@ from decimal import Decimal
 
 import pytest
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
-from common.models import FX
-from common.models import AnnualPerformance
-from common.models import Assets
-from common.models import Brokers
-from common.models import FXTransaction
-from common.models import Transactions
+from common.models import (
+    FX,
+    AnnualPerformance,
+    Assets,
+    Brokers,
+    FXTransaction,
+    Transactions,
+)
 from users.models import CustomUser
 
 
@@ -31,7 +32,7 @@ from users.models import CustomUser
 class TestAssetModelConstraints:
     """Test Asset model database constraints."""
 
-    def test_asset_isin_uniqueness_per_user(self, user):
+    def test_asset_isin_uniqueness_per_user(self, user: CustomUser) -> None:
         """Test that ISIN must be unique per user."""
         # Create first asset
         asset1 = Assets.objects.create(
@@ -55,7 +56,7 @@ class TestAssetModelConstraints:
                 )
                 asset2.investors.add(user)
 
-    def test_asset_isin_different_users_allowed(self):
+    def test_asset_isin_different_users_allowed(self) -> None:
         """Test that same ISIN can be used by different users."""
         user1 = CustomUser.objects.create_user(
             username="user1", email="user1@example.com", password="testpass123"
@@ -87,7 +88,7 @@ class TestAssetModelConstraints:
         assert asset1.id != asset2.id
         assert asset1.ISIN == asset2.ISIN
 
-    def test_asset_type_choices(self, user):
+    def test_asset_type_choices(self, user: CustomUser) -> None:
         """Test that asset type must be from allowed choices."""
         asset = Assets(
             type="InvalidType",  # Invalid type
@@ -100,7 +101,7 @@ class TestAssetModelConstraints:
         with pytest.raises(ValidationError):
             asset.clean()
 
-    def test_asset_currency_choices(self, user):
+    def test_asset_currency_choices(self, user: CustomUser) -> None:
         """Test that asset currency must be from allowed choices."""
         asset = Assets(
             type="Stock",
@@ -113,7 +114,7 @@ class TestAssetModelConstraints:
         with pytest.raises(ValidationError):
             asset.clean()
 
-    def test_asset_exposure_choices(self, user):
+    def test_asset_exposure_choices(self, user: CustomUser) -> None:
         """Test that asset exposure must be from allowed choices."""
         asset = Assets(
             type="Stock",
@@ -126,7 +127,7 @@ class TestAssetModelConstraints:
         with pytest.raises(ValidationError):
             asset.clean()
 
-    def test_asset_isin_format_validation(self, user):
+    def test_asset_isin_format_validation(self, user: CustomUser) -> None:
         """Test ISIN format validation."""
         # Test valid ISIN
         valid_asset = Assets.objects.create(
@@ -157,7 +158,7 @@ class TestAssetModelConstraints:
             with pytest.raises(ValidationError):
                 asset.clean()
 
-    def test_asset_required_fields(self, user):
+    def test_asset_required_fields(self, user: CustomUser) -> None:
         """Test that required fields cannot be null."""
         required_fields = ["type", "ISIN", "name", "currency", "exposure"]
 
@@ -180,7 +181,7 @@ class TestAssetModelConstraints:
 class TestBrokerModelConstraints:
     """Test Broker model database constraints."""
 
-    def test_broker_user_relationship(self, user):
+    def test_broker_user_relationship(self, user: CustomUser) -> None:
         """Test that broker must be associated with a user."""
         # Valid broker creation
         broker = Brokers.objects.create(investor=user, name="Test Broker", country="US")

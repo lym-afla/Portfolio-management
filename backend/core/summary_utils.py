@@ -1,14 +1,17 @@
+"""Summary utils."""
+
 import logging
 from datetime import date
 from decimal import Decimal
 
-from common.models import Accounts
-from common.models import AnnualPerformance
+from common.models import Accounts, AnnualPerformance
 from core.formatting_utils import currency_format_dict_values
-from core.portfolio_utils import IRR
-from core.portfolio_utils import calculate_performance
-from core.portfolio_utils import get_last_exit_date_for_accounts
-from core.portfolio_utils import get_selected_account_ids
+from core.portfolio_utils import (
+    IRR,
+    calculate_performance,
+    get_last_exit_date_for_accounts,
+    get_selected_account_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +24,14 @@ def accounts_summary_data(
     currency_target,
     number_of_digits,
 ):
+    """Accounts summary data."""
+
     def initialize_context():
+        """Initialize context."""
         return {"years": [], "lines": []}
 
     def initialize_totals(years):
+        """Initialize totals."""
         return {
             year: {
                 "bop_nav": Decimal(0),
@@ -184,7 +191,8 @@ def accounts_summary_data(
                     )
                 except Exception as e:
                     print(
-                        f"Error calculating all-time TSR for account {account.name}: {e}"
+                        "Error calculating all-time TSR"
+                        f"for account {account.name}: {e}"
                     )
                     all_time_data["tsr"] = "N/A"
             else:
@@ -314,6 +322,7 @@ def accounts_summary_data(
 
 
 def compile_summary_data(data, currency_target, number_of_digits):
+    """Compile summary data."""
     bop_nav = data.get("bop_nav", Decimal(0))
     eop_nav = data.get("eop_nav", Decimal(0))
     invested = data.get("invested", Decimal(0))

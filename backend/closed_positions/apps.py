@@ -1,6 +1,5 @@
 """Django app configuration for closed_positions."""
 
-
 from django.apps import AppConfig
 
 

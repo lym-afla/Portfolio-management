@@ -1,13 +1,13 @@
+"""Dashboard admin."""
+
 from django.contrib import admin
 
-from common.models import FX
-from common.models import Assets
-from common.models import Brokers
-from common.models import Prices
-from common.models import Transactions
+from common.models import FX, Assets, Brokers, Prices, Transactions
 
 
 class BrokersAdmin(admin.ModelAdmin):
+    """Brokers admin."""
+
     list_display = (
         "name",
         "country",
@@ -16,6 +16,8 @@ class BrokersAdmin(admin.ModelAdmin):
 
 
 class PAAdmin(admin.ModelAdmin):
+    """PA admin."""
+
     list_display = (
         "name",
         "type",
@@ -26,6 +28,8 @@ class PAAdmin(admin.ModelAdmin):
 
 
 class PATransactionsAdmin(admin.ModelAdmin):
+    """PATransactions admin."""
+
     list_display = (
         "security",
         "currency",

@@ -14,9 +14,7 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import FX
-from common.models import Prices
-from common.models import Transactions
+from common.models import FX, Prices, Transactions
 
 
 @pytest.mark.nav

@@ -12,12 +12,14 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from common.models import Accounts
-from common.models import Assets
-from common.models import BondCouponSchedule
-from common.models import BondMetadata
-from common.models import Brokers
-from common.models import Transactions
+from common.models import (
+    Accounts,
+    Assets,
+    BondCouponSchedule,
+    BondMetadata,
+    Brokers,
+    Transactions,
+)
 from core.securities_utils import calculate_bond_ytm
 
 CustomUser = get_user_model()
@@ -119,8 +121,12 @@ class YTMCalculationTestCase(TestCase):
             "YTM should be reasonable (absolute value less than 100%)",
         )
 
-    def test_ytm_calculation_without_notional_in_transaction(self):
-        """Test YTM calculation when notional is missing from transaction (uses fallback)."""
+    def test_ytm_calculation_without_notional_in_transaction(self) -> None:
+        """
+        Test YTM calculation.
+
+        When notional is missing from transaction, uses fallback.
+        """
         # Create a buy transaction without notional
         Transactions.objects.create(
             investor=self.user,

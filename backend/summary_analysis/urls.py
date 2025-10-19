@@ -1,5 +1,6 @@
-from django.urls import include
-from django.urls import path
+"""Summary analysis URLs."""
+
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from . import views
@@ -12,6 +13,4 @@ router.register(r"api", views.SummaryViewSet, basename="summary")
 urlpatterns = [
     # path('', views.summary_view, name='summary_view'),
     path("", include(router.urls)),
-    # API methods
-    # path('exposure-table/', views.exposure_table_update, name='exposure_table_update'),
 ]

@@ -1,6 +1,4 @@
-"""
-Test API endpoints directly to understand why they're returning 400 errors.
-"""
+"""Test API endpoints directly to understand why they're returning 400 errors."""
 
 import json
 import os

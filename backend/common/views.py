@@ -1,20 +1,23 @@
+"""Common views."""
+
 from datetime import datetime
 
-from rest_framework.decorators import api_view
-from rest_framework.decorators import permission_classes
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from common.models import Transactions
-from constants import ALL_TIME
-from constants import YTD
-from core.portfolio_utils import get_last_exit_date_for_accounts
-from core.portfolio_utils import get_selected_account_ids
+from constants import ALL_TIME, YTD
+from core.portfolio_utils import (
+    get_last_exit_date_for_accounts,
+    get_selected_account_ids,
+)
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_year_options_api(request):
+def get_year_options_api(request) -> Response:
+    """Get year options API."""
     user = request.user
     selected_account_ids = get_selected_account_ids(
         user, user.selected_account_type, user.selected_account_id
@@ -75,6 +78,7 @@ def get_year_options_api(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_effective_current_date(request):
+    """Get effective current date."""
     import structlog
 
     logger = structlog.get_logger(__name__)

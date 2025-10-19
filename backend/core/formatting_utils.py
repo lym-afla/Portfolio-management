@@ -1,10 +1,8 @@
-from datetime import date
-from datetime import datetime
+"""Formatting utils."""
+
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Union
+from typing import Any, Dict, List, Union
 
 from babel.numbers import get_currency_symbol
 from django.core.paginator import Page
@@ -132,6 +130,7 @@ def currency_format(
 ) -> str:
     """
     Format value as currency or return currency symbol.
+
     If only currency is provided, return the currency symbol.
 
     :param value: Value to be formatted
@@ -192,6 +191,7 @@ def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
 def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) -> str:
     """
     Format a bond price as a percentage.
+
     Bond prices are stored as actual percentages (100 = 100%), not decimals.
 
     :param value: Bond price value (100 = 100%)
@@ -214,6 +214,7 @@ def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) 
 
 
 def currency_format_dict_values(data, currency, digits):
+    """Format dictionary values as currency."""
     formatted_data = {}
     for key, value in data.items():
         if isinstance(value, dict):

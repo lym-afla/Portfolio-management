@@ -7,35 +7,30 @@ Tests cover:
 3. fetch_and_cache_bond_coupon_schedule() - T-Bank API integration
 """
 
-from datetime import date
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock
-from unittest.mock import Mock
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from common.models import FX
-from common.models import Assets
-from common.models import BondCouponSchedule
-from common.models import BondMetadata
-from common.models import Transactions
-from constants import TRANSACTION_TYPE_BUY
-from constants import TRANSACTION_TYPE_COUPON
-from constants import TRANSACTION_TYPE_SELL
+from common.models import FX, Assets, BondCouponSchedule, BondMetadata, Transactions
+from constants import (
+    TRANSACTION_TYPE_BUY,
+    TRANSACTION_TYPE_COUPON,
+    TRANSACTION_TYPE_SELL,
+)
 from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
 
 User = get_user_model()
 
 
 class BondACICalculationTests(TestCase):
-    """Test BondMetadata.get_current_aci() method"""
+    """Test BondMetadata.get_current_aci() method."""
 
     def setUp(self):
-        """Set up test bond with metadata and coupon schedule"""
+        """Set up test bond with metadata and coupon schedule."""
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
         # Create FX rates (RUBUSD = 1/75 = 0.0133, 1/80 = 0.0125)
@@ -89,7 +84,7 @@ class BondACICalculationTests(TestCase):
         )
 
     def test_aci_calculation_mid_period(self):
-        """Test ACI calculation in the middle of a coupon period"""
+        """Test ACI calculation in the middle of a coupon period."""
         # Calculate ACI as of March 1, 2024 (45 days into Q1)
         # Q1 period: Jan 15 - Apr 15 (91 days)
         test_date = date(2024, 3, 1)
@@ -109,7 +104,7 @@ class BondACICalculationTests(TestCase):
         self.assertEqual(aci_data["currency"], "RUB")
 
     def test_aci_at_period_start(self):
-        """Test ACI at the start of a coupon period (should be 0)"""
+        """Test ACI at the start of a coupon period (should be 0)."""
         test_date = date(2024, 4, 15)
 
         aci_data = self.bond_meta.get_current_aci(test_date)
@@ -120,7 +115,7 @@ class BondACICalculationTests(TestCase):
         self.assertEqual(aci_data["aci_amount"], Decimal("0.00"))
 
     def test_aci_with_currency_conversion(self):
-        """Test ACI calculation with currency conversion"""
+        """Test ACI calculation with currency conversion."""
         test_date = date(2024, 6, 1)
 
         # Calculate in USD
@@ -139,7 +134,7 @@ class BondACICalculationTests(TestCase):
         self.assertEqual(aci_data["aci_amount"], round(expected_aci_usd, 2))
 
     def test_aci_no_schedule(self):
-        """Test ACI calculation when no coupon schedule exists"""
+        """Test ACI calculation when no coupon schedule exists."""
         # Create a new bond without schedule
         bond2 = Assets.objects.create(
             name="Bond Without Schedule",
@@ -161,7 +156,7 @@ class BondACICalculationTests(TestCase):
         self.assertIsNone(aci_data)
 
     def test_aci_after_maturity(self):
-        """Test that ACI is None after bond maturity"""
+        """Test that ACI is None after bond maturity."""
         # Test date after maturity
         test_date = date(2026, 2, 1)
 
@@ -170,10 +165,10 @@ class BondACICalculationTests(TestCase):
 
 
 class CapitalDistributionTests(TestCase):
-    """Test Assets.get_capital_distribution() with ACI handling"""
+    """Test Assets.get_capital_distribution() with ACI handling."""
 
     def setUp(self):
-        """Set up test data with bond transactions including ACI"""
+        """Set up test data with bond transactions including ACI."""
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
         # Create FX rates
@@ -199,8 +194,7 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Create an account
-        from common.models import Accounts
-        from common.models import Brokers
+        from common.models import Accounts, Brokers
 
         broker = Brokers.objects.create(name="Test Broker", investor=self.user)
         self.account = Accounts.objects.create(
@@ -211,7 +205,7 @@ class CapitalDistributionTests(TestCase):
         )
 
     def test_capital_distribution_excludes_negative_aci(self):
-        """Test that negative ACI (paid when buying) is excluded from capital distribution"""
+        """Test that negative ACI (paid when buying) is excluded from capital distribution."""  # noqa: E501
         # Buy bond with negative ACI (paid to seller)
         Transactions.objects.create(
             security=self.bond,
@@ -265,7 +259,7 @@ class CapitalDistributionTests(TestCase):
         self.assertEqual(capital_dist, expected)
 
     def test_capital_distribution_with_currency_conversion(self):
-        """Test capital distribution calculation with currency conversion"""
+        """Test capital distribution calculation with currency conversion."""
         # Create a coupon transaction
         Transactions.objects.create(
             security=self.bond,
@@ -304,10 +298,10 @@ class CapitalDistributionTests(TestCase):
 
 
 class CouponScheduleFetchTests(TestCase):
-    """Test fetch_and_cache_bond_coupon_schedule() function"""
+    """Test fetch_and_cache_bond_coupon_schedule() function."""
 
     def setUp(self):
-        """Set up test bond and user"""
+        """Set up test bond and user."""
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
         self.bond = Assets.objects.create(
@@ -332,7 +326,7 @@ class CouponScheduleFetchTests(TestCase):
     @pytest.mark.asyncio
     @pytest.mark.django_db(transaction=True)
     async def test_fetch_coupon_schedule_success(self):
-        """Test successful fetching and caching of coupon schedule"""
+        """Test successful fetching and caching of coupon schedule."""
         from channels.db import database_sync_to_async
 
         # Mock T-Bank API response
@@ -380,7 +374,7 @@ class CouponScheduleFetchTests(TestCase):
     @pytest.mark.asyncio
     @pytest.mark.django_db(transaction=True)
     async def test_fetch_schedule_uses_cache(self):
-        """Test that recent schedule is not re-fetched"""
+        """Test that recent schedule is not re-fetched."""
         from channels.db import database_sync_to_async
 
         # Create a recent coupon schedule using database_sync_to_async
@@ -405,7 +399,7 @@ class CouponScheduleFetchTests(TestCase):
     @pytest.mark.asyncio
     @pytest.mark.django_db(transaction=True)
     async def test_fetch_schedule_force_refresh(self):
-        """Test force refresh deletes old schedule and fetches new"""
+        """Test force refresh deletes old schedule and fetches new."""
         from channels.db import database_sync_to_async
 
         # Create old schedule using database_sync_to_async

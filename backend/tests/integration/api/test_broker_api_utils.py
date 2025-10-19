@@ -1,32 +1,36 @@
+"""Test broker API utils."""
+
 from datetime import datetime
-from unittest.mock import AsyncMock
-from unittest.mock import Mock
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from tinkoff.invest import GetOperationsByCursorRequest
-from tinkoff.invest import Operation
-from tinkoff.invest import OperationState
-from tinkoff.invest import OperationType
-from tinkoff.invest import RequestError
+from tinkoff.invest import (
+    GetOperationsByCursorRequest,
+    Operation,
+    OperationState,
+    OperationType,
+    RequestError,
+)
 
-from core.broker_api_utils import TinkoffAPI
-from core.broker_api_utils import TinkoffAPIException
+from core.broker_api_utils import TinkoffAPI, TinkoffAPIException
 from users.models import CustomUser
 
 
 @pytest.fixture
 def mock_user():
+    """Create mock user fixture."""
     return Mock(spec=CustomUser, id=1, username="test_user")
 
 
 @pytest.fixture
 def mock_account():
+    """Create mock account fixture."""
     return {"id": "test_account_123", "name": "Test Account", "broker": "Tinkoff"}
 
 
 @pytest.fixture
 async def tinkoff_api():
+    """Create Tinkoff API fixture."""
     api = TinkoffAPI()
     yield api
     await api.disconnect()
@@ -34,6 +38,7 @@ async def tinkoff_api():
 
 @pytest.mark.asyncio
 async def test_connect_success(tinkoff_api, mock_user):
+    """Test connect with success."""
     with (
         patch(
             "core.broker_api_utils.get_user_token", new_callable=AsyncMock
@@ -42,6 +47,7 @@ async def test_connect_success(tinkoff_api, mock_user):
             "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
         ) as mock_verify,
     ):
+        """Test connect with success."""
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = True
 
@@ -55,6 +61,7 @@ async def test_connect_success(tinkoff_api, mock_user):
 
 @pytest.mark.asyncio
 async def test_connect_invalid_token(tinkoff_api, mock_user):
+    """Test connect with invalid token."""
     with (
         patch(
             "core.broker_api_utils.get_user_token", new_callable=AsyncMock
@@ -63,6 +70,7 @@ async def test_connect_invalid_token(tinkoff_api, mock_user):
             "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
         ) as mock_verify,
     ):
+        """Test connect with invalid token."""
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = False
 
@@ -74,6 +82,7 @@ async def test_connect_invalid_token(tinkoff_api, mock_user):
 
 @pytest.mark.asyncio
 async def test_disconnect(tinkoff_api):
+    """Test disconnect."""
     tinkoff_api.client = Mock()
     await tinkoff_api.disconnect()
 
@@ -84,6 +93,7 @@ async def test_disconnect(tinkoff_api):
 
 @pytest.mark.asyncio
 async def test_retry_operation_success(tinkoff_api):
+    """Test retry operation with success."""
     mock_operation = AsyncMock()
     mock_operation.return_value = "success"
 
@@ -95,6 +105,7 @@ async def test_retry_operation_success(tinkoff_api):
 
 @pytest.mark.asyncio
 async def test_retry_operation_with_retries(tinkoff_api):
+    """Test retry operation with retries."""
     mock_operation = AsyncMock()
 
     # Create proper RequestError instances with required arguments
@@ -119,6 +130,7 @@ async def test_retry_operation_with_retries(tinkoff_api):
 
 @pytest.mark.asyncio
 async def test_retry_operation_auth_error(tinkoff_api):
+    """Test retry operation with authentication error."""
     mock_operation = AsyncMock()
 
     # Create RequestError with authentication error code using positional arguments
@@ -141,6 +153,7 @@ async def test_retry_operation_auth_error(tinkoff_api):
 
 @pytest.mark.asyncio
 async def test_get_transactions_success(tinkoff_api, mock_user, mock_account):
+    """Test getting transactions with success."""
     # Setup mock response for operations
     mock_operation = Mock(spec=Operation)
     mock_operation.id = "op123"
@@ -180,6 +193,7 @@ async def test_get_transactions_success(tinkoff_api, mock_user, mock_account):
 
 @pytest.mark.asyncio
 async def test_get_transactions_pagination(tinkoff_api, mock_user, mock_account):
+    """Test getting transactions with pagination."""
     # Setup mock responses for pagination
     mock_operation1 = Mock(spec=Operation, id="op1")
     mock_operation2 = Mock(spec=Operation, id="op2")
@@ -229,7 +243,7 @@ async def test_get_transactions_pagination(tinkoff_api, mock_user, mock_account)
 
 @pytest.mark.asyncio
 async def test_get_transactions_no_client(tinkoff_api, mock_account):
-    """Test that attempting to get transactions without a client connection raises error"""
+    """Test that attempting to get transactions without a client connection raises an error."""  # noqa: E501
     tinkoff_api.client = None  # Ensure client is None
 
     with pytest.raises(TinkoffAPIException, match="Not connected to Tinkoff API"):
@@ -239,6 +253,7 @@ async def test_get_transactions_no_client(tinkoff_api, mock_account):
 
 @pytest.mark.asyncio
 async def test_get_transactions_with_dates(tinkoff_api, mock_user, mock_account):
+    """Test getting transactions with dates."""
     mock_response = Mock()
     mock_response.items = []
     mock_response.has_next = False

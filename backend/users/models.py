@@ -1,24 +1,28 @@
+"""Users models."""
+
 import base64
 import logging
 
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MaxValueValidator
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.forms import ValidationError
-from tinkoff.invest import Client
-from tinkoff.invest import RequestError
+from tinkoff.invest import Client, RequestError
 
-from constants import CURRENCY_CHOICES
-from constants import NAV_BARCHART_CHOICES
+from constants import ACCOUNT_TYPE_CHOICES, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 
 logger = logging.getLogger(__name__)
 
 
 def get_encryption_key(user):
-    """Generate a user-specific encryption key"""
+    """
+    Generate a user-specific encryption key.
+
+    :param user: The user to generate the encryption key for
+    :return: The encryption key
+    """
     # Combine the user's ID with the SECRET_KEY
     key_material = f"{settings.SECRET_KEY}_{user.id}"
     # Create a consistent key by hashing the combined material
@@ -27,6 +31,8 @@ def get_encryption_key(user):
 
 
 class CustomUser(AbstractUser):
+    """Custom user model."""
+
     default_currency = models.CharField(
         max_length=3, choices=CURRENCY_CHOICES, default="USD", blank=True, null=True
     )
@@ -48,15 +54,11 @@ class CustomUser(AbstractUser):
             "min_value": "The value for digits must be greater than or equal to 0.",
         },
     )
-    ACCOUNT_TYPE_CHOICES = [
-        ("account", "Individual Account"),
-        ("group", "Account Group"),
-        ("broker", "Broker"),
-        ("all", "All Accounts"),
-    ]
 
     selected_account_type = models.CharField(
-        max_length=50, choices=ACCOUNT_TYPE_CHOICES, default="all"
+        max_length=50,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default="all",
     )
     selected_account_id = models.IntegerField(
         null=True,
@@ -65,6 +67,8 @@ class CustomUser(AbstractUser):
     )
 
     class Meta(AbstractUser.Meta):
+        """Meta class for the custom user model."""
+
         constraints = [
             models.CheckConstraint(
                 check=(
@@ -80,7 +84,7 @@ class CustomUser(AbstractUser):
 
 
 class BaseApiToken(models.Model):
-    """Abstract base class for all broker API tokens"""
+    """Abstract base class for all broker API tokens."""
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     encrypted_token = models.BinaryField()
@@ -88,10 +92,12 @@ class BaseApiToken(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class for the base api token model."""
+
         abstract = True
 
     def set_token(self, token_value, user):
-        """Encrypt and save token value"""
+        """Encrypt and save token value."""
         try:
             key = get_encryption_key(user)
             f = Fernet(key)
@@ -102,7 +108,7 @@ class BaseApiToken(models.Model):
             raise
 
     def get_token(self, user=None):
-        """Get decrypted token value"""
+        """Get decrypted token value."""
         if not user:
             raise ValueError("User is required to decrypt token")
 
@@ -117,6 +123,7 @@ class BaseApiToken(models.Model):
             raise
 
     def __str__(self):
+        """Return the string representation of the base api token."""
         return (
             f"{self.__class__.__name__} for {self.user.username} "
             f"({'Active' if self.is_active else 'Inactive'})"
@@ -124,7 +131,7 @@ class BaseApiToken(models.Model):
 
 
 class TinkoffApiToken(BaseApiToken):
-    """Tinkoff-specific API token model"""
+    """Tinkoff-specific API token model."""
 
     broker = models.ForeignKey(
         "common.Brokers", on_delete=models.CASCADE, related_name="tinkoff_tokens"
@@ -140,6 +147,8 @@ class TinkoffApiToken(BaseApiToken):
     is_active = models.BooleanField(default=False)
 
     class Meta:
+        """Meta class for the tinkoff api token model."""
+
         verbose_name = "Tinkoff API Token"
         verbose_name_plural = "Tinkoff API Tokens"
         constraints = [
@@ -151,7 +160,7 @@ class TinkoffApiToken(BaseApiToken):
         ]
 
     def clean(self):
-        """Validate token by attempting to connect to Tinkoff API"""
+        """Validate token by attempting to connect to Tinkoff API."""
         try:
             token = self.get_token(self.user)
             with Client(token) as client:
@@ -175,6 +184,7 @@ class TinkoffApiToken(BaseApiToken):
             )
 
     def save(self, *args, **kwargs):
+        """Save the tinkoff api token."""
         if not self.pk:  # New token
             # Deactivate existing active tokens of same type
             TinkoffApiToken.objects.filter(
@@ -189,26 +199,36 @@ class TinkoffApiToken(BaseApiToken):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.get_token_type_display()} Token ({self.user.username} - {self.broker.name})"
+        """Return the string representation of the tinkoff api token."""
+        return (
+            f"{self.get_token_type_display()} Token "
+            f"({self.user.username} - {self.broker.name})"
+        )
 
 
 class InteractiveBrokersApiToken(BaseApiToken):
-    """Interactive Brokers-specific API token model"""
+    """Interactive Brokers-specific API token model."""
 
     account_id = models.CharField(
-        max_length=50, help_text="IB Account ID associated with this token"
+        max_length=50,
+        help_text="IB Account ID associated with this token",
     )
     paper_trading = models.BooleanField(
-        default=False, help_text="Whether this token is for paper trading"
+        default=False,
+        help_text="Whether this token is for paper trading",
     )
 
     class Meta:
+        """Meta class for the interactive brokers api token model."""
+
         verbose_name = "Interactive Brokers API Token"
         verbose_name_plural = "Interactive Brokers API Tokens"
         unique_together = ["user", "account_id"]
 
 
 class AccountGroup(models.Model):
+    """Account group model."""
+
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name="account_groups"
     )
@@ -218,8 +238,11 @@ class AccountGroup(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Meta class for the account group model."""
+
         unique_together = ["user", "name"]
         ordering = ["name"]
 
     def __str__(self):
+        """Return the string representation of the account group."""
         return f"{self.user.username}'s {self.name} group"

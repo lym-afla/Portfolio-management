@@ -1,55 +1,57 @@
+"""Broker API utils."""
+
 import asyncio
 import logging
-from abc import ABC
-from abc import abstractmethod
-from datetime import datetime
-from datetime import timedelta
-from typing import AsyncGenerator
-from typing import Dict
-from typing import Optional
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
+from typing import AsyncGenerator, Dict, Optional
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import Client
-from tinkoff.invest import GetOperationsByCursorRequest
-from tinkoff.invest import OperationState
-from tinkoff.invest import RequestError
+from tinkoff.invest import (
+    Client,
+    GetOperationsByCursorRequest,
+    OperationState,
+    RequestError,
+)
 
-from common.models import Accounts
-from common.models import Brokers
+from common.models import Accounts, Brokers
 
-from .tinkoff_utils import get_user_token
-from .tinkoff_utils import map_tinkoff_operation_to_transaction
-from .tinkoff_utils import verify_token_access
+from .tinkoff_utils import (
+    get_user_token,
+    map_tinkoff_operation_to_transaction,
+    verify_token_access,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class BrokerAPIException(Exception):
-    """Base exception for broker API errors"""
+    """Base exception for broker API errors."""
 
     pass
 
 
 class TinkoffAPIException(BrokerAPIException):
-    """Tinkoff-specific API exceptions"""
+    """Tinkoff-specific API exceptions."""
 
     pass
 
 
 class BrokerAPI(ABC):
-    """Base class for broker API implementations"""
+    """Base class for broker API implementations."""
 
     def __init__(self):
+        """Initialize broker API."""
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
     async def connect(self) -> bool:
-        """Establish connection to broker API"""
+        """Establish connection to broker API."""
         pass
 
     @abstractmethod
     async def disconnect(self) -> None:
-        """Close connection to broker API"""
+        """Close connection to broker API."""
         pass
 
     @abstractmethod
@@ -60,7 +62,7 @@ class BrokerAPI(ABC):
         date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
-        Fetch transactions from broker API
+        Fetch transactions from broker API.
 
         Args:
             account: Accounts model instance containing broker account details
@@ -86,9 +88,10 @@ class BrokerAPI(ABC):
 
 
 class TinkoffAPI(BrokerAPI):
-    """Tinkoff broker API implementation"""
+    """Tinkoff broker API implementation."""
 
     def __init__(self):
+        """Initialize Tinkoff API."""
         super().__init__()
         self.client = None
         self.token = None
@@ -100,7 +103,7 @@ class TinkoffAPI(BrokerAPI):
 
     async def _retry_operation(self, operation_func, *args, **kwargs):
         """
-        Retry wrapper for API operations
+        Retry wrapper for API .
 
         Args:
             operation_func: Function to retry
@@ -158,7 +161,7 @@ class TinkoffAPI(BrokerAPI):
 
     async def connect(self, user) -> bool:
         """
-        Connect to Tinkoff API using user's token
+        Connect to Tinkoff API using user's.
 
         Args:
             user: CustomUser instance
@@ -187,7 +190,7 @@ class TinkoffAPI(BrokerAPI):
             raise TinkoffAPIException(f"Tinkoff API connection failed: {str(e)}")
 
     async def disconnect(self) -> None:
-        """Close connection to Tinkoff API"""
+        """Close connection to Tinkoff API."""
         self.logger.debug("Disconnecting from Tinkoff API")
         try:
             # Just clean up references
@@ -203,7 +206,7 @@ class TinkoffAPI(BrokerAPI):
         date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
-        Fetch transactions from Tinkoff API using cursor-based pagination
+        Fetch transactions from Tinkoff API using cursor-based .
 
         Args:
             account: Accounts model instance containing broker account details
@@ -239,7 +242,8 @@ class TinkoffAPI(BrokerAPI):
                 datetime.strptime(date_to, "%Y-%m-%d") if date_to else datetime.now()
             )
 
-            # Use Client with context manager instead of storing it as instance attribute
+            # Use Client with context manager
+            # instead of storing it as instance attribute
             with Client(self.token) as client:
                 # Verify the account exists in Tinkoff
                 try:
@@ -253,7 +257,8 @@ class TinkoffAPI(BrokerAPI):
                             f"not found in Tinkoff accounts: {tinkoff_account_ids}"
                         )
                         raise TinkoffAPIException(
-                            f"Account with native ID {account.native_id} not found in Tinkoff. "
+                            f"Account with native ID {account.native_id} not found in "
+                            f"Tinkoff. "
                             f"Available accounts: {', '.join(tinkoff_account_ids)}"
                         )
 
@@ -283,7 +288,8 @@ class TinkoffAPI(BrokerAPI):
                         for operation in response.items:
                             total_operations += 1
                             self.logger.debug(
-                                f"Processing operation {total_operations}: {operation.id}"
+                                f"Processing operation {total_operations}: "
+                                f"{operation.id}"
                             )
 
                             try:
@@ -313,7 +319,8 @@ class TinkoffAPI(BrokerAPI):
 
                             except Exception as e:
                                 self.logger.error(
-                                    f"Error processing operation {operation.id}: {str(e)}"
+                                    f"Error processing operation {operation.id}: "
+                                    f"{str(e)}"
                                 )
                                 continue
 
@@ -339,7 +346,7 @@ class TinkoffAPI(BrokerAPI):
             )
 
     async def validate_connection(self) -> bool:
-        """Validate API connection"""
+        """Validate API connection."""
         try:
             if not self.token:
                 return False
@@ -356,9 +363,10 @@ class TinkoffAPI(BrokerAPI):
 
 
 class InteractiveBrokersAPI(BrokerAPI):
-    """Interactive Brokers API implementation"""
+    """Interactive Brokers API implementation."""
 
     async def connect(self) -> bool:
+        """Connect to Interactive Brokers API."""
         self.logger.debug("Connecting to Interactive Brokers API")
         try:
             # TODO: Implement IB API connection
@@ -368,6 +376,7 @@ class InteractiveBrokersAPI(BrokerAPI):
             raise BrokerAPIException(f"IB API connection failed: {str(e)}")
 
     async def disconnect(self) -> None:
+        """Disconnect from Interactive Brokers API."""
         self.logger.debug("Disconnecting from Interactive Brokers API")
         try:
             # TODO: Implement IB API disconnect
@@ -381,6 +390,7 @@ class InteractiveBrokersAPI(BrokerAPI):
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
+        """Fetch IB transactions."""
         self.logger.debug(f"Fetching IB transactions for account {account.id}")
         try:
             # TODO: Implement IB transaction fetching
@@ -394,7 +404,7 @@ class InteractiveBrokersAPI(BrokerAPI):
 
 async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
     """
-    Factory function to get appropriate broker API handler
+    Get appropriate broker API handler.
 
     Args:
         broker: Brokers model instance

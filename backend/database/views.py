@@ -1,3 +1,5 @@
+"""Database views."""
+
 import logging
 import uuid
 from datetime import datetime
@@ -8,49 +10,42 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status
-from rest_framework import viewsets
-from rest_framework.decorators import action
-from rest_framework.decorators import api_view
-from rest_framework.decorators import permission_classes
+from rest_framework import status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from common.models import FX
-from common.models import Accounts
-from common.models import Assets
-from common.models import Brokers
-from common.models import Prices
-from common.models import Transactions
-from constants import ASSET_TYPE_CHOICES
-from constants import DATA_SOURCE_CHOICES
+from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
+from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
-from core.securities_utils import get_securities_table_api
-from core.securities_utils import get_security_detail
+from core.securities_utils import get_securities_table_api, get_security_detail
 from core.sorting_utils import sort_entries
 
 from .forms import SecurityForm
-from .serializers import AccountPerformanceSerializer
-from .serializers import AccountSerializer
-from .serializers import BrokerSerializer
-from .serializers import FXRateSerializer
-from .serializers import FXSerializer
-from .serializers import PriceImportSerializer
-from .serializers import PriceSerializer
-from .serializers import TransactionSerializer
+from .serializers import (
+    AccountPerformanceSerializer,
+    AccountSerializer,
+    BrokerSerializer,
+    FXRateSerializer,
+    FXSerializer,
+    PriceImportSerializer,
+    PriceSerializer,
+    TransactionSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
 def api_get_asset_types(request):
+    """Get asset types."""
     asset_types = [{"value": value, "text": text} for value, text in ASSET_TYPE_CHOICES]
     return Response(asset_types)
 
@@ -58,6 +53,7 @@ def api_get_asset_types(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_get_securities(request):
+    """Get securities."""
     user = request.user
     asset_types = request.GET.get("asset_types", "").split(",")
     account_id = request.GET.get("account_id", None)
@@ -77,11 +73,13 @@ def api_get_securities(request):
 
 @api_view(["GET"])
 def api_get_security_detail(request, security_id):
+    """Get security detail."""
     return Response(get_security_detail(request, security_id))
 
 
 @api_view(["GET"])
 def api_get_security_price_history(request, security_id):
+    """Get security price history."""
     try:
         security = Assets.objects.get(id=security_id)
         period = request.GET.get("period", "1Y")
@@ -115,6 +113,7 @@ def api_get_security_price_history(request, security_id):
 
 @api_view(["GET"])
 def api_get_security_position_history(request, security_id):
+    """Get security position history."""
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
         period = request.GET.get("period", "1Y")
@@ -144,9 +143,9 @@ def api_get_security_position_history(request, security_id):
             position_history = []
 
         logger.info(
-            f"Current position for {security.name} as of {start_date} is {current_position}"
+            f"Current position for {security.name} "
+            f"as of {start_date} is {current_position}"
         )
-        # print(f"Current position for {security.name} as of {start_date} is {current_position}")
         for transaction in transactions:
             if transaction.type == "Buy":
                 current_position += transaction.quantity
@@ -166,6 +165,7 @@ def api_get_security_position_history(request, security_id):
 
 @api_view(["GET"])
 def api_get_security_transactions(request, security_id):
+    """Get security transactions."""
     try:
         # Use JWT middleware instead of session
         effective_current_date_str = getattr(
@@ -174,10 +174,8 @@ def api_get_security_transactions(request, security_id):
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
         ).date()
-        print("========= effective_current_date", effective_current_date)
         period = request.GET.get("period", "1Y")
         start_date = get_start_date(effective_current_date, period)
-        # effective_current_date = datetime.strptime(effective_current_date, "%Y-%m-%d").date()
 
         transactions = Transactions.objects.filter(
             security__id=security_id,
@@ -220,18 +218,21 @@ def api_get_security_transactions(request, security_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_get_prices_table(request):
+    """Get prices table."""
     return Response(get_prices_table_api(request))
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_get_securities_table(request):
+    """Get securities table."""
     return Response(get_securities_table_api(request))
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_security_form_structure(request):
+    """Get security form structure."""
     form = SecurityForm()
     structure = {"fields": []}
 
@@ -284,6 +285,7 @@ def api_security_form_structure(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_create_security(request):
+    """Create security."""
     form = SecurityForm(request.data)
     if form.is_valid():
         security = form.save(commit=False)
@@ -313,6 +315,7 @@ def api_create_security(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_get_security_details_for_editing(request, security_id):
+    """Get security details for editing."""
     security = get_object_or_404(Assets, id=security_id, investors=request.user)
 
     result = {
@@ -372,6 +375,7 @@ def api_get_security_details_for_editing(request, security_id):
 @api_view(["PUT"])
 @permission_classes([IsAuthenticated])
 def api_update_security(request, security_id):
+    """Update security."""
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
@@ -407,6 +411,7 @@ def api_update_security(request, security_id):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def api_delete_security(request, security_id):
+    """Delete security."""
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
@@ -421,6 +426,7 @@ def api_delete_security(request, security_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_add_price(request):
+    """Add price."""
     serializer = PriceSerializer(data=request.data, investor=request.user)
     if serializer.is_valid():
         price = serializer.save()
@@ -437,6 +443,7 @@ def api_add_price(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def api_delete_price(request, price_id):
+    """Delete price."""
     try:
         price = Prices.objects.get(id=price_id)
     except Prices.DoesNotExist:
@@ -458,7 +465,9 @@ def api_delete_price(request, price_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_get_price_details(request, price_id):
+    """Get price details."""
     price = get_object_or_404(Prices, id=price_id, security__investor=request.user)
+    """Get price details."""
     return Response(
         {
             "id": price.id,
@@ -474,11 +483,14 @@ def api_get_price_details(request, price_id):
 @api_view(["PUT"])
 @permission_classes([IsAuthenticated])
 def api_update_price(request, price_id):
+    """Update price."""
     price = get_object_or_404(Prices, id=price_id, security__investors=request.user)
+    """Update price."""
     serializer = PriceSerializer(
         instance=price, data=request.data, investor=request.user
     )
     if serializer.is_valid():
+        """Update price."""
         updated_price = serializer.save()
         return Response(
             {
@@ -494,7 +506,10 @@ def api_update_price(request, price_id):
 
 
 class PriceImportView(APIView):
+    """Price import view."""
+
     def get(self, request):
+        """Get price import."""
         user = request.user
         securities = Assets.objects.filter(investors=user)
         accounts = Accounts.objects.filter(broker__investor=user)
@@ -514,28 +529,35 @@ class PriceImportView(APIView):
 
 
 class AccountViewSet(viewsets.ModelViewSet):
+    """Account view set."""
+
     serializer_class = AccountSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get queryset."""
         return Accounts.objects.filter(broker__investor=self.request.user).order_by(
             "name"
         )
 
     def perform_create(self, serializer):
+        """Perform create."""
         serializer.save()
 
     def list(self, request, *args, **kwargs):
+        """List accounts."""
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=["POST"])
     def list_accounts(self, request, *args, **kwargs):
+        """List accounts."""
         return Response(get_accounts_table_api(request))
 
     @action(detail=False, methods=["GET"])
     def form_structure(self, request):
+        """Get form structure."""
         return Response(
             {
                 "fields": [
@@ -573,17 +595,19 @@ class AccountViewSet(viewsets.ModelViewSet):
 
 
 class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
+    """Update account performance view set."""
+
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        """Get form structure and choices"""
+        """List account performance."""
         serializer = AccountPerformanceSerializer(investor=request.user)
         form_data = serializer.get_form_data()
         return Response(form_data)
 
     @action(detail=False, methods=["post"])
     def validate(self, request):
-        """Validate the input data"""
+        """Validate the input data."""
         serializer = AccountPerformanceSerializer(
             data=request.data, investor=request.user
         )
@@ -597,7 +621,7 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["post"])
     def start(self, request):
-        """Start the update process"""
+        """Start update process."""
         serializer = AccountPerformanceSerializer(
             data=request.data, investor=request.user
         )
@@ -628,18 +652,23 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
 
 
 class FXViewSet(viewsets.ModelViewSet):
+    """FX view set."""
+
     serializer_class = FXSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = "id"  # Use 'id' instead of 'date' for lookups
 
     def get_queryset(self):
+        """Get queryset."""
         return FX.objects.filter(investors=self.request.user).order_by("-date")
 
     def perform_create(self, serializer):
+        """Perform create."""
         instance = serializer.save()
         instance.investors.add(self.request.user)
 
     def get_object(self):
+        """Get FX object."""
         fx_id = self.kwargs.get("id")
         try:
             return FX.objects.filter(investors=self.request.user).get(id=fx_id)
@@ -648,6 +677,7 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def get_rate(self, request):
+        """Get FX rate."""
         serializer = FXRateSerializer(data=request.data)
         if serializer.is_valid():
             source = serializer.validated_data["source"]
@@ -664,6 +694,7 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def list_fx(self, request):
+        """List FX."""
         # Extract parameters from request data
         start_date = request.data.get("startDate")
         end_date = request.data.get("endDate")
@@ -723,6 +754,7 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"])
     def form_structure(self, request):
+        """Get form structure."""
         return Response(
             {
                 "fields": [
@@ -774,6 +806,7 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"])
     def import_stats(self, request):
+        """Get import stats."""
         user = request.user
         transaction_dates = (
             Transactions.objects.filter(investor=user).values("date").distinct()
@@ -804,6 +837,7 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def cancel_import(self, request):
+        """Cancel import."""
         user = request.user
         import_id = f"fx_import_{user.id}"
         cache.delete(import_id)  # This will cause the import to stop
@@ -811,10 +845,13 @@ class FXViewSet(viewsets.ModelViewSet):
 
 
 class BrokerViewSet(viewsets.ModelViewSet):
+    """Broker view set."""
+
     serializer_class = BrokerSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get queryset."""
         queryset = Brokers.objects.filter(investor=self.request.user)
 
         # Add filter for brokers with active tokens if requested
@@ -824,14 +861,17 @@ class BrokerViewSet(viewsets.ModelViewSet):
         return queryset.order_by("name")
 
     def perform_create(self, serializer):
+        """Perform create."""
         serializer.save(investor=self.request.user)
 
     @action(detail=False, methods=["POST"])
     def list_brokers(self, request):
+        """List brokers."""
         return Response(get_brokers_table_api(request))
 
     @action(detail=False, methods=["GET"])
     def form_structure(self, request):
+        """Get form structure."""
         return Response(
             {
                 "fields": [

@@ -1,45 +1,47 @@
-from datetime import datetime
-from datetime import timezone
+"""Test Tinkoff utils."""
+
+from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from tinkoff.invest import MoneyValue
-from tinkoff.invest import OperationType
-from tinkoff.invest import Quotation
+from tinkoff.invest import MoneyValue, OperationType, Quotation
 from tinkoff.invest.exceptions import RequestError
 
-from common.models import Assets
-from common.models import Brokers
+from common.models import Assets, Brokers
 from constants import TRANSACTION_TYPE_BUY
-from core.tinkoff_utils import _find_or_create_security
-from core.tinkoff_utils import get_account_info
-from core.tinkoff_utils import get_security_by_uid
-from core.tinkoff_utils import get_user_token
-from core.tinkoff_utils import map_tinkoff_operation_to_transaction
-from core.tinkoff_utils import verify_token_access
+from core.tinkoff_utils import (
+    _find_or_create_security,
+    get_account_info,
+    get_security_by_uid,
+    get_user_token,
+    map_tinkoff_operation_to_transaction,
+    verify_token_access,
+)
 from users.models import TinkoffApiToken
 
 CustomUser = get_user_model()
 
 
 @pytest.fixture
-def user():
+def user() -> CustomUser:
+    """Create a user."""
     return CustomUser.objects.create_user(
         username="testuser", email="test@example.com", password="testpass123"
     )
 
 
 @pytest.fixture
-def broker(user):
+def broker(user) -> Brokers:
+    """Create a broker."""
     return Brokers.objects.create(name="Test Broker", investor=user)
 
 
 @pytest.fixture
-def tinkoff_token(user, broker):
+def tinkoff_token(user, broker) -> TinkoffApiToken:
+    """Create a Tinkoff API token."""
     token = TinkoffApiToken.objects.create(
         user=user,
         broker=broker,
@@ -53,8 +55,8 @@ def tinkoff_token(user, broker):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_get_user_token(user, tinkoff_token):
-    """Test token retrieval functionality"""
+async def test_get_user_token(user, tinkoff_token) -> None:
+    """Test token retrieval functionality."""
     # Test successful token retrieval
     token = await get_user_token(user)
     assert token == "test-token"
@@ -75,8 +77,8 @@ async def test_get_user_token(user, tinkoff_token):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 @patch("core.tinkoff_utils.Client")
-async def test_get_security_by_uid(mock_client, user, tinkoff_token):
-    """Test security details retrieval from Tinkoff API"""
+async def test_get_security_by_uid(mock_client, user, tinkoff_token) -> None:
+    """Test security details retrieval from Tinkoff API."""
     # Mock the Tinkoff API response
     mock_instrument = MagicMock()
     mock_instrument.instrument.name = "Test Stock"
@@ -149,6 +151,7 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 async def test_find_or_create_security(
     mock_create_security, mock_get_security, user, broker
 ):
+    """Test finding or creating security."""
     mock_get_security.return_value = [("Test Stock", "TEST123456789", "stock")]
 
     # Test case 1: Security exists with relationships
@@ -194,6 +197,7 @@ async def test_find_or_create_security(
 @pytest.mark.asyncio
 @patch("core.tinkoff_utils._find_or_create_security")
 async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, broker):
+    """Test mapping Tinkoff operation to transaction."""
     # Create mock operation
     operation = MagicMock()
     operation.date = datetime.now(timezone.utc)
@@ -231,6 +235,7 @@ async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, b
 @pytest.mark.asyncio
 @patch("core.tinkoff_utils.Client")
 async def test_verify_token_access(mock_client, user, tinkoff_token):
+    """Test token access verification."""
     mock_client_instance = MagicMock()
     mock_client_instance.users.get_info.return_value = MagicMock()
     mock_client.return_value.__enter__.return_value = mock_client_instance
@@ -247,6 +252,7 @@ async def test_verify_token_access(mock_client, user, tinkoff_token):
 @pytest.mark.asyncio
 @patch("core.tinkoff_utils.Client")
 async def test_get_account_info(mock_client, user, tinkoff_token):
+    """Test account information retrieval from Tinkoff API."""
     mock_account = MagicMock()
     mock_account.id = "test-account"
     mock_account.type.name = "broker"

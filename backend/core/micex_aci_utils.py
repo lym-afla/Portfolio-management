@@ -1,14 +1,13 @@
 """
 Utility functions for fetching Accrued Coupon Interest (ACI) data from MICEX API.
+
 Used as fallback when T-Bank API doesn't have coupon amounts for floating-rate bonds.
 """
 
 import logging
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
-from typing import Dict
-from typing import Optional
+from typing import Dict, Optional
 
 import requests
 
@@ -38,7 +37,8 @@ def fetch_aci_from_micex(secid: str, target_date: date) -> Optional[Dict]:
         return None
 
     try:
-        # MICEX API provides historical data, so we fetch a small range around the target date
+        # MICEX API provides historical data,
+        # so we fetch a small range around the target date
         from_date = target_date - timedelta(days=7)
         to_date = target_date
 

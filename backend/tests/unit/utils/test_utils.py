@@ -1,8 +1,9 @@
+"""Test utils."""
+
 from datetime import date
 
 import pytest
 
-# from utils import chart_dates_old_framework
 from core.chart_utils import _chart_dates
 
 
@@ -88,12 +89,14 @@ from core.chart_utils import _chart_dates
     ],
 )
 def test_chart_dates(start_date, end_date, freq, expected):
+    """Test chart dates."""
     result = _chart_dates(start_date, end_date, freq)
     assert list(result) == expected
 
 
 @pytest.mark.django_db
 def test_chart_dates_with_string_input():
+    """Test chart dates with string input."""
     start_date = "2023-05-15"
     end_date = "2023-05-20"
     freq = "D"

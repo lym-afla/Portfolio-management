@@ -167,8 +167,6 @@ flake8-bugbear==24.12.12
     # via -r requirements-dev.in
 flake8-docstrings==1.7.0
     # via -r requirements-dev.in
-flake8-import-order==0.19.2
-    # via -r requirements-dev.in
 flask==3.1.2
     # via
     #   flask-cors
@@ -433,9 +431,7 @@ py-cpuinfo==9.0.0
 py-spy==0.4.1
     # via -r requirements-dev.in
 pycodestyle==2.11.1
-    # via
-    #   flake8
-    #   flake8-import-order
+    # via flake8
 pycparser==2.23
     # via cffi
 pydantic==2.12.3

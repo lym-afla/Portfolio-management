@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Script to set up linting and formatting tools for the project.
+
 Run this script from the project root directory.
 """
 
@@ -28,6 +29,7 @@ def run_command(command, description):
 
 
 def main():
+    """Set up linting and formatting tools."""
     # Ensure we're in the project root directory
     if not Path("manage.py").exists():
         print("Error: This script should be run from the project root directory")

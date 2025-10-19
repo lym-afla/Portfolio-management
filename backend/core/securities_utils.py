@@ -1,19 +1,17 @@
+"""Securities utils."""
+
 import logging
-from datetime import date
-from datetime import datetime
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from pyxirr import xirr
 
-from common.models import FX
-from common.models import Assets
+from common.models import FX, Assets
 from core.portfolio_utils import IRR
 
-from .formatting_utils import format_table_data
-from .formatting_utils import format_value
+from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
 from .sorting_utils import sort_entries
 
@@ -21,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_securities_table_api(request):
+    """Get securities table API."""
     data = request.data
     page = int(data.get("page"))
     items_per_page = int(data.get("itemsPerPage"))
@@ -109,6 +108,7 @@ def _get_securities_data(user, securities, effective_current_date):
 
 
 def get_security_detail(request, security_id):
+    """Get security detail."""
     user = request.user
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(
@@ -181,7 +181,8 @@ def get_security_detail(request, security_id):
                 else Decimal(0)
             )
 
-            # Subtract ACI paid in current coupon period (same logic as get_total_aci_for_position)
+            # Subtract ACI paid in current coupon period
+            # (same logic as get_total_aci_for_position)
             current_coupon_start = aci_data.get("coupon_start")
             if current_coupon_start and position_qty:
                 query_date = effective_current_date
@@ -250,7 +251,8 @@ def get_security_detail(request, security_id):
         # Fallback: fetch coupon schedule if not available
         if not latest_coupon and security.tbank_instrument_uid:
             logger.info(
-                f"No coupon schedule found for {security.name}, attempting to fetch from API"
+                f"No coupon schedule found for {security.name}, "
+                f"attempting to fetch from API"
             )
             try:
                 from asgiref.sync import async_to_sync
@@ -352,7 +354,8 @@ def get_security_detail(request, security_id):
                         )
                         logger.info(
                             "Using fallback notional for "
-                            f"{security.name}: {notional} from bond metadata at {first_buy.date}"
+                            f"{security.name}: {notional} "
+                            f"from bond metadata at {first_buy.date}"
                         )
 
                     if notional is not None:
@@ -373,7 +376,8 @@ def get_security_detail(request, security_id):
                         if first_buy.commission is not None:
                             amount += Decimal(first_buy.commission)
                     else:
-                        # If notional is still None even after fallback, skip YTM calculation
+                        # If notional is still None even after fallback,
+                        # skip YTM calculation
                         logger.warning(
                             "Skipping YTM calculation for "
                             f"{security.name}: unable to determine notional value"
@@ -402,7 +406,8 @@ def get_security_detail(request, security_id):
                             amount *= Decimal(fx_rate)
                     except Exception as fx_error:
                         logger.warning(
-                            f"FX conversion failed for {security.name} from {first_buy.currency} "
+                            f"FX conversion failed for {security.name} "
+                            f"from {first_buy.currency} "
                             f"to {security.currency}: {fx_error}"
                         )
                         # Skip YTM calculation if FX conversion fails
@@ -418,7 +423,8 @@ def get_security_detail(request, security_id):
                     payment_date__gt=first_buy_date
                 ).order_by("payment_date")
 
-                # Use position from first buy (assuming no additional buys for simplicity)
+                # Use position from first buy
+                # (assuming no additional buys for simplicity)
                 # For multiple buys, would need weighted average calculation
                 if first_buy.quantity is not None:
                     position_qty = Decimal(first_buy.quantity)
@@ -458,7 +464,8 @@ def get_security_detail(request, security_id):
 
                 # Add redemption cash flows at maturity from notional_history
                 if bond_meta.maturity_date and position_qty > 0:
-                    # Get redemption amount from NotionalHistory (for all bonds, not amortizing)
+                    # Get redemption amount from NotionalHistory
+                    # (for all bonds, not amortizing)
                     try:
                         # Look for redemption entry at or after maturity date
                         redemption_entry = (
@@ -751,5 +758,6 @@ def calculate_bond_ytm(
 
 
 def get_security_transactions(request, security_id):
+    """Get security transactions."""
     # Implement logic to fetch and return recent transactions data
     pass

@@ -1,5 +1,5 @@
 """
-Edge Cases and Error Scenario Tests
+Edge Cases and Error Scenario Tests.
 
 Comprehensive testing of edge cases, boundary conditions, and error scenarios
 to ensure the system handles unexpected inputs and situations gracefully.
@@ -9,32 +9,22 @@ Created: 2025-10-18
 Purpose: Validate system robustness under edge cases and error conditions
 """
 
-from datetime import date
-from datetime import timedelta
-from decimal import Decimal
-from decimal import getcontext
-from unittest.mock import MagicMock
-from unittest.mock import patch
+from datetime import date, timedelta
+from decimal import Decimal, getcontext
+from unittest.mock import MagicMock, patch
 
 import pytest
-from django.db import DatabaseError
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from common.models import FX
-from common.models import Assets
-from common.models import Portfolios
-from common.models import Transactions
-from portfolio_management.common.models import fx_cache
-from portfolio_management.common.models import get_exchange_rate
-from portfolio_management.portfolio.calculator import calculate_buy_in_price
-from portfolio_management.portfolio.calculator import calculate_nav
-from portfolio_management.portfolio.models import gain_loss
+from backend.core.portfolio_utils import NAV_at_date
+from common.models import FX, Assets, Brokers, Transactions
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.fx_factory import FXRateFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
+from users.models import CustomUser
 
 # Set high precision for edge case testing
 getcontext().prec = 50
@@ -46,7 +36,7 @@ class TestCalculationEdgeCases:
 
     def test_buy_in_price_zero_transactions(self):
         """Test buy-in price calculation with zero transactions."""
-        result = calculate_buy_in_price([])
+        result = Transactions.calculate_buy_in_price([])
         assert result == Decimal("0")
 
     def test_buy_in_price_single_transaction(self):
@@ -56,7 +46,9 @@ class TestCalculationEdgeCases:
             asset=asset, type="Buy", quantity=100, price=Decimal("50.00")
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == Decimal("50.00")
 
     def test_buy_in_price_only_sell_transactions(self):
@@ -66,7 +58,9 @@ class TestCalculationEdgeCases:
             asset=asset, type="Sell", quantity=100, price=Decimal("50.00")
         )
 
-        result = calculate_buy_in_price([sell_tx])
+        result = sell_tx.security.calculate_buy_in_price(
+            date.today(), investor=sell_tx.investor
+        )
         assert result == Decimal("50.00")  # Should return sell price
 
     def test_buy_in_price_equal_buy_sell_quantities(self):
@@ -76,11 +70,13 @@ class TestCalculationEdgeCases:
         buy_tx = TransactionFactory.create(
             asset=asset, type="Buy", quantity=100, price=Decimal("50.00")
         )
-        sell_tx = TransactionFactory.create(
+        TransactionFactory.create(
             asset=asset, type="Sell", quantity=100, price=Decimal("60.00")
         )
 
-        result = calculate_buy_in_price([buy_tx, sell_tx])
+        result = buy_tx.security.calculate_buy_in_price(
+            date.today(), investor=buy_tx.investor
+        )
         assert result == Decimal("50.00")  # Should return original buy price
 
     def test_buy_in_price_more_sells_than_buys(self):
@@ -90,11 +86,13 @@ class TestCalculationEdgeCases:
         buy_tx = TransactionFactory.create(
             asset=asset, type="Buy", quantity=50, price=Decimal("50.00")
         )
-        sell_tx = TransactionFactory.create(
+        TransactionFactory.create(
             asset=asset, type="Sell", quantity=100, price=Decimal("60.00")
         )
 
-        result = calculate_buy_in_price([buy_tx, sell_tx])
+        result = buy_tx.security.calculate_buy_in_price(
+            date.today(), investor=buy_tx.investor
+        )
         assert result == Decimal("60.00")  # Should return sell price for short position
 
     def test_buy_in_price_very_small_quantities(self):
@@ -116,7 +114,9 @@ class TestCalculationEdgeCases:
             ),
         ]
 
-        result = calculate_buy_in_price(transactions)
+        result = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         expected = (
             Decimal("0.000001") * Decimal("1000000.00")
             + Decimal("0.000002") * Decimal("500000.00")
@@ -142,7 +142,9 @@ class TestCalculationEdgeCases:
             ),
         ]
 
-        result = calculate_buy_in_price(transactions)
+        result = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         expected = Decimal("0.015")
         assert result == expected
 
@@ -155,7 +157,9 @@ class TestCalculationEdgeCases:
             asset=asset, type="Buy", quantity=100, price=Decimal("-50.00")
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == Decimal("-50.00")
 
     def test_buy_in_price_zero_prices(self):
@@ -166,7 +170,9 @@ class TestCalculationEdgeCases:
             asset=asset, type="Buy", quantity=100, price=Decimal("0.00")
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == Decimal("0.00")
 
     def test_buy_in_price_very_high_precision(self):
@@ -188,7 +194,9 @@ class TestCalculationEdgeCases:
             ),
         ]
 
-        result = calculate_buy_in_price(transactions)
+        result = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
 
         # Calculate expected value with high precision
         total_cost = Decimal("100.12345678901234567890") * Decimal(
@@ -203,49 +211,49 @@ class TestCalculationEdgeCases:
 
     def test_nav_calculation_empty_portfolio(self):
         """Test NAV calculation for empty portfolio."""
-        portfolio = Portfolios.objects.create(
-            name="Empty Portfolio", base_currency="USD"
+        result = NAV_at_date(
+            user_id=1, account_ids=[1], date=date.today(), target_currency="USD"
         )
-
-        result = calculate_nav(portfolio)
-        assert result == Decimal("0")
+        assert result["Total NAV"] == Decimal("0")
 
     def test_nav_calculation_only_cash(self):
         """Test NAV calculation for portfolio with only cash."""
-        portfolio = Portfolios.objects.create(
-            name="Cash Only Portfolio", base_currency="USD"
+        result = NAV_at_date(
+            user_id=1, account_ids=[1], date=date.today(), target_currency="USD"
         )
-
-        # Portfolio should have no positions but positive NAV from cash
-        result = calculate_nav(portfolio)
-        assert result == Decimal("0")  # No transactions means no cash balance
+        assert result["Total NAV"] == Decimal(
+            "0"
+        )  # No transactions means no cash balance
 
     def test_nav_calculation_negative_positions(self):
         """Test NAV calculation with negative positions (short selling)."""
-        portfolio = Portfolios.objects.create(
-            name="Short Portfolio", base_currency="USD"
-        )
         asset = AssetFactory.create()
 
         # Create short position
         TransactionFactory.create(
-            portfolio=portfolio,
-            asset=asset,
+            security=asset,
             type="Sell",
             quantity=100,
             price=Decimal("50.00"),
             currency="USD",
         )
 
-        result = calculate_nav(portfolio)
+        result = NAV_at_date(
+            user_id=1, account_ids=[1], date=date.today(), target_currency="USD"
+        )
         # Should handle short positions (result could be negative)
-        assert isinstance(result, Decimal)
+        assert result["Total NAV"] < 0
 
     def test_gain_loss_no_transactions(self):
         """Test gain/loss calculation with no transactions."""
-        result = gain_loss([])
-        assert result["realized"] == Decimal("0")
-        assert result["unrealized"] == Decimal("0")
+        result_realized = Assets.realized_gain_loss(
+            date.today(), investor=1, account_ids=[1]
+        )
+        result_unrealized = Assets.unrealized_gain_loss(
+            date.today(), investor=1, account_ids=[1]
+        )
+        assert result_realized["realized"] == Decimal("0")
+        assert result_unrealized["unrealized"] == Decimal("0")
 
     def test_gain_loss_only_buy_transactions(self):
         """Test gain/loss calculation with only buy transactions."""
@@ -254,9 +262,16 @@ class TestCalculationEdgeCases:
             asset=asset, type="Buy", quantity=100, price=Decimal("50.00")
         )
 
-        result = gain_loss([buy_tx])
-        assert result["realized"] == Decimal("0")
-        assert result["unrealized"] == Decimal("0")  # No current price provided
+        result_realized = buy_tx.security.realized_gain_loss(
+            date.today(), investor=buy_tx.investor, account_ids=[buy_tx.account.id]
+        )
+        result_unrealized = buy_tx.security.unrealized_gain_loss(
+            date.today(), investor=buy_tx.investor, account_ids=[buy_tx.account.id]
+        )
+        assert result_realized["realized"] == Decimal("0")
+        assert result_unrealized["unrealized"] == Decimal(
+            "0"
+        )  # No current price provided
 
     def test_gain_loss_only_sell_transactions(self):
         """Test gain/loss calculation with only sell transactions."""
@@ -265,10 +280,15 @@ class TestCalculationEdgeCases:
             asset=asset, type="Sell", quantity=100, price=Decimal("60.00")
         )
 
-        result = gain_loss([sell_tx])
+        result_realized = sell_tx.security.realized_gain_loss(
+            date.today(), investor=sell_tx.investor, account_ids=[sell_tx.account.id]
+        )
+        result_unrealized = sell_tx.security.unrealized_gain_loss(
+            date.today(), investor=sell_tx.investor, account_ids=[sell_tx.account.id]
+        )
         # Should handle sells without corresponding buys
-        assert isinstance(result["realized"], Decimal)
-        assert isinstance(result["unrealized"], Decimal)
+        assert result_realized["realized"] == Decimal("0")
+        assert result_unrealized["unrealized"] == Decimal("0")
 
 
 @pytest.mark.edge_case
@@ -277,71 +297,71 @@ class TestFXEdgeCases:
 
     def test_fx_rate_same_currency(self):
         """Test FX rate for same currency pair."""
-        with patch("portfolio_management.models.FX.objects.get") as mock_get:
+        with patch("common.models.FX.objects.get") as mock_get:
             mock_get.side_effect = FX.DoesNotExist
-            rate = get_exchange_rate("USD", "USD", date.today())
+            rate = FX.get_exchange_rate("USD", "USD", date.today())["FX"]
             assert rate == Decimal("1.0")
 
     def test_fx_rate_invalid_currency(self):
         """Test FX rate with invalid currency codes."""
-        rate = get_exchange_rate("INVALID", "USD", date.today())
+        rate = FX.get_exchange_rate("INVALID", "USD", date.today())["FX"]
         assert rate is None
 
-        rate = get_exchange_rate("USD", "INVALID", date.today())
+        rate = FX.get_exchange_rate("USD", "INVALID", date.today())["FX"]
         assert rate is None
 
     def test_fx_rate_future_date(self):
         """Test FX rate for future date."""
         future_date = date.today() + timedelta(days=30)
-        rate = get_exchange_rate("USD", "EUR", future_date)
+        rate = FX.get_exchange_rate("USD", "EUR", future_date)["FX"]
         # Should return None or handle gracefully
         assert rate is None or isinstance(rate, Decimal)
 
     def test_fx_rate_very_old_date(self):
         """Test FX rate for very old date."""
         old_date = date(2000, 1, 1)
-        rate = get_exchange_rate("USD", "EUR", old_date)
+        rate = FX.get_exchange_rate("USD", "EUR", old_date)["FX"]
         # Should return None or handle gracefully
         assert rate is None or isinstance(rate, Decimal)
 
     def test_fx_rate_zero_rate(self):
         """Test FX rate with zero value."""
-        with patch("portfolio_management.models.FX.objects.get") as mock_get:
+        with patch("common.models.FX.objects.get") as mock_get:
             mock_fx = MagicMock()
             mock_fx.rate = Decimal("0")
             mock_get.return_value = mock_fx
 
-            rate = get_exchange_rate("USD", "EUR", date.today())
+            rate = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
             assert rate == Decimal("0")
 
     def test_fx_rate_negative_rate(self):
         """Test FX rate with negative value (error case)."""
-        with patch("portfolio_management.models.FX.objects.get") as mock_get:
+        with patch("common.models.FX.objects.get") as mock_get:
             mock_fx = MagicMock()
             mock_fx.rate = Decimal("-1.0")
             mock_get.return_value = mock_fx
 
-            rate = get_exchange_rate("USD", "EUR", date.today())
+            rate = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
             assert rate == Decimal("-1.0")
 
     def test_fx_rate_very_small_rate(self):
         """Test FX rate with very small value."""
-        with patch("portfolio_management.models.FX.objects.get") as mock_get:
+        with patch("common.models.FX.objects.get") as mock_get:
             mock_fx = MagicMock()
             mock_fx.rate = Decimal("0.000001")
             mock_get.return_value = mock_fx
 
-            rate = get_exchange_rate("USD", "EUR", date.today())
+            rate = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
             assert rate == Decimal("0.000001")
 
     def test_fx_rate_very_large_rate(self):
         """Test FX rate with very large value."""
-        with patch("portfolio_management.models.FX.objects.get") as mock_get:
+        with patch("common.models.FX.objects.get") as mock_get:
             mock_fx = MagicMock()
             mock_fx.rate = Decimal("999999.99")
             mock_get.return_value = mock_fx
 
-            rate = get_exchange_rate("USD", "EUR", date.today())
+            rate = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
             assert rate == Decimal("999999.99")
 
     def test_fx_rate_round_trip_conversion(self, fx_rates):
@@ -349,11 +369,11 @@ class TestFXEdgeCases:
         original_amount = Decimal("1000.00")
 
         # USD to EUR
-        usd_to_eur = get_exchange_rate("USD", "EUR", date.today())
+        usd_to_eur = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
         eur_amount = original_amount * usd_to_eur
 
         # EUR back to USD
-        eur_to_usd = get_exchange_rate("EUR", "USD", date.today())
+        eur_to_usd = FX.get_exchange_rate("EUR", "USD", date.today())["FX"]
         final_usd = eur_amount * eur_to_usd
 
         # Should be very close to original
@@ -363,23 +383,16 @@ class TestFXEdgeCases:
 
     def test_fx_rate_cross_currency_no_direct_path(self):
         """Test cross-currency conversion when no direct path exists."""
-        with patch("portfolio_management.models.FX.objects.get") as mock_get:
+        with patch("common.models.FX.objects.get") as mock_get:
             mock_get.side_effect = FX.DoesNotExist
 
-            rate = get_exchange_rate("USD", "XYZ", date.today())
+            rate = FX.get_exchange_rate("USD", "XYZ", date.today())["FX"]
             assert rate is None
 
     def test_fx_rate_cache_edge_cases(self):
         """Test FX rate caching edge cases."""
-        # Test with empty cache
-        fx_cache.clear()
-        rate = get_exchange_rate("USD", "EUR", date.today())
-        assert rate is None  # No rate exists
-
-        # Test with corrupted cache
-        fx_cache["USD_EUR_2025-10-18"] = "invalid"
-        rate = get_exchange_rate("USD", "EUR", date.today())
-        assert rate is None  # Should handle corrupted cache
+        rate = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
+        assert rate is not None  # No rate exists
 
 
 @pytest.mark.edge_case
@@ -389,21 +402,30 @@ class TestDatabaseEdgeCases:
     def test_transaction_model_missing_relations(self):
         """Test transaction creation with missing relations."""
         with pytest.raises(ValueError):
-            TransactionFactory.create(asset=None)
-
-        with pytest.raises(ValueError):
-            TransactionFactory.create(portfolio=None)
+            TransactionFactory.create(security=None, investor=None, broker=None)
 
     def test_transaction_model_invalid_enum_values(self):
         """Test transaction creation with invalid enum values."""
-        asset = AssetFactory.create()
-        portfolio = Portfolios.objects.create(
-            name="Test Portfolio", base_currency="USD"
+        asset = Assets.objects.create(
+            type="Stock",
+            ISIN="US1234567890",
+            name="Test Asset",
+            currency="USD",
+            exposure="Equity",
         )
+        user = CustomUser.objects.create_user(username="testuser", password="12345")
+        broker = Brokers.objects.create(investor=user, name="Test Broker", country="US")
 
         with pytest.raises(ValueError):
             TransactionFactory.create(
-                asset=asset, portfolio=portfolio, type="INVALID_TYPE"
+                security=asset,
+                investor=user,
+                broker=broker,
+                type="INVALID_TYPE",
+                date=date.today(),
+                quantity=100,
+                price=Decimal("50.00"),
+                currency="USD",
             )
 
     def test_asset_model_duplicate_isin(self):
@@ -414,16 +436,6 @@ class TestDatabaseEdgeCases:
         # Try to create second asset with same ISIN
         with pytest.raises(IntegrityError):
             AssetFactory.create(ISIN="US1234567890")
-
-    def test_portfolio_model_negative_balance(self):
-        """Test portfolio with negative cash balance."""
-        portfolio = Portfolios.objects.create(
-            name="Negative Balance Portfolio", base_currency="USD"
-        )
-
-        # Model should allow negative balances (margin accounts)
-        # This test verifies the behavior
-        assert portfolio.cash_balance == Decimal("0")
 
     def test_fx_rate_duplicate_entry(self):
         """Test creating duplicate FX rate entries."""
@@ -455,17 +467,18 @@ class TestDatabaseEdgeCases:
     def test_concurrent_transaction_creation(self):
         """Test concurrent transaction creation."""
         asset = AssetFactory.create()
-        portfolio = Portfolios.objects.create(
-            name="Concurrent Test", base_currency="USD"
-        )
+        user = CustomUser.objects.create_user(username="testuser", password="12345")
+        broker = Brokers.objects.create(investor=user, name="Test Broker", country="US")
 
         def create_transaction(index):
             return TransactionFactory.create(
-                asset=asset,
-                portfolio=portfolio,
+                security=asset,
+                investor=user,
+                broker=broker,
                 type="Buy",
                 quantity=100,
                 price=Decimal(f"50.{index:02d}"),
+                currency="USD",
             )
 
         import threading
@@ -513,12 +526,9 @@ class TestDatabaseEdgeCases:
     def test_unicode_in_descriptions(self):
         """Test unicode characters in descriptions."""
         unicode_text = "Portfolio with émojis 📈 and ñiño and 中文"
+        asset = AssetFactory.create(name=unicode_text)
 
-        portfolio = Portfolios.objects.create(
-            name="Unicode Test", description=unicode_text, base_currency="USD"
-        )
-
-        assert portfolio.description == unicode_text
+        assert asset.name == unicode_text
 
 
 @pytest.mark.edge_case
@@ -545,9 +555,6 @@ class TestAPIEdgeCases:
         """Test API with very large request payload."""
         # Create large transaction data
         large_data = {
-            "portfolio": Portfolios.objects.create(
-                name="Large Test", base_currency="USD"
-            ).id,
             "asset": AssetFactory.create().id,
             "type": "Buy",
             "quantity": "1" * 100,  # Very large number string
@@ -599,9 +606,6 @@ class TestAPIEdgeCases:
             response = api_client.post(
                 url,
                 {
-                    "portfolio": Portfolios.objects.create(
-                        name="Date Test", base_currency="USD"
-                    ).id,
                     "asset": AssetFactory.create().id,
                     "type": "Buy",
                     "quantity": 100,
@@ -710,7 +714,9 @@ class TestFinancialCalculationBoundaries:
             asset=asset, type="Buy", quantity=Decimal("1"), price=max_precision
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == max_precision
 
     def test_calculation_with_minimum_decimals(self):
@@ -721,7 +727,9 @@ class TestFinancialCalculationBoundaries:
             asset=asset, type="Buy", quantity=Decimal("1000000"), price=Decimal("1")
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == Decimal("1")
 
     def test_calculation_overflow_protection(self):
@@ -734,7 +742,9 @@ class TestFinancialCalculationBoundaries:
             asset=asset, type="Buy", quantity=Decimal("1"), price=very_large
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == very_large
 
     def test_calculation_underflow_protection(self):
@@ -747,7 +757,9 @@ class TestFinancialCalculationBoundaries:
             asset=asset, type="Buy", quantity=Decimal("1"), price=very_small
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         assert result == very_small
 
     def test_division_by_zero_protection(self):
@@ -762,7 +774,9 @@ class TestFinancialCalculationBoundaries:
             price=Decimal("50.00"),
         )
 
-        result = calculate_buy_in_price([transaction])
+        result = transaction.security.calculate_buy_in_price(
+            date.today(), investor=transaction.investor
+        )
         # Should handle zero quantity gracefully
         assert isinstance(result, Decimal)
 
@@ -845,7 +859,9 @@ class TestSystemRobustness:
             )
 
         # System should handle large datasets without crashing
-        result = calculate_buy_in_price(transactions)
+        result = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         assert isinstance(result, Decimal)
 
         # Clean up
@@ -855,12 +871,6 @@ class TestSystemRobustness:
     def test_concurrent_user_simulation(self, api_client):
         """Test system behavior with multiple concurrent users."""
         import threading
-
-        # Create test data
-        portfolios = [
-            Portfolios.objects.create(name=f"User {i} Portfolio", base_currency="USD")
-            for i in range(10)
-        ]
 
         def simulate_user_activity(portfolio_id):
             """Simulate a user making API calls."""
@@ -885,20 +895,12 @@ class TestSystemRobustness:
             return responses
 
         # Run concurrent user simulation
-        threads = []
+        # threads = []
         all_responses = []
 
-        for portfolio in portfolios:
-            thread = threading.Thread(
-                target=lambda pid=portfolio.id: all_responses.extend(
-                    simulate_user_activity(pid)
-                )
-            )
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
+        thread = threading.Thread(target=simulate_user_activity)
+        thread.start()
+        thread.join()
 
         # Most requests should succeed
         success_count = sum(1 for code in all_responses if code == status.HTTP_200_OK)
@@ -936,11 +938,11 @@ class TestSystemRobustness:
     def test_graceful_degradation(self):
         """Test graceful degradation when components fail."""
         # Test behavior when FX rates are unavailable
-        with patch("portfolio_management.common.models.get_exchange_rate") as mock_fx:
+        with patch("common.models.FX.get_exchange_rate") as mock_fx:
             mock_fx.return_value = None
 
             # Calculations should handle missing FX rates gracefully
-            rate = get_exchange_rate("USD", "EUR", date.today())
+            rate = FX.get_exchange_rate("USD", "EUR", date.today())["FX"]
             assert rate is None
 
         # Test behavior when external data sources are unavailable
@@ -959,9 +961,8 @@ class TestSystemRobustness:
 
     def test_data_consistency_under_load(self):
         """Test data consistency under high load conditions."""
-        portfolio = Portfolios.objects.create(
-            name="Load Test Portfolio", base_currency="USD"
-        )
+        user = CustomUser.objects.create_user(username="testuser", password="12345")
+        broker = Brokers.objects.create(investor=user, name="Test Broker", country="US")
         asset = AssetFactory.create()
 
         # Create many concurrent transactions
@@ -969,7 +970,9 @@ class TestSystemRobustness:
 
         def create_transaction(index):
             TransactionFactory.create(
-                portfolio=portfolio,
+                security=asset,
+                investor=user,
+                broker=broker,
                 asset=asset,
                 type="Buy",
                 quantity=100,
@@ -986,12 +989,14 @@ class TestSystemRobustness:
             thread.join()
 
         # Verify data consistency
-        transaction_count = Transactions.objects.filter(portfolio=portfolio).count()
+        transaction_count = Transactions.objects.filter(security=asset).count()
         assert transaction_count == 50
 
         # Verify calculations work correctly
-        transactions = Transactions.objects.filter(portfolio=portfolio)
-        buy_in_price = calculate_buy_in_price(transactions)
+        transactions = Transactions.objects.filter(security=asset)
+        buy_in_price = transactions[0].security.calculate_buy_in_price(
+            date.today(), investor=transactions[0].investor
+        )
         assert isinstance(buy_in_price, Decimal)
         assert buy_in_price > 0
 

@@ -1,11 +1,12 @@
+"""Token authentication middleware."""
+
 import logging
 
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from rest_framework_simplejwt.exceptions import InvalidToken
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ User = get_user_model()
 
 @database_sync_to_async
 def get_user(token_key):
+    """Get user from token."""
     try:
         access_token = AccessToken(token_key)
         user = User.objects.get(id=access_token["user_id"])
@@ -24,7 +26,10 @@ def get_user(token_key):
 
 
 class TokenAuthMiddleware(BaseMiddleware):
+    """Token authentication middleware."""
+
     async def __call__(self, scope, receive, send):
+        """Token authentication middleware."""
         try:
             token = None
             logger.debug(f"Processing {scope['type']} request")
@@ -53,7 +58,8 @@ class TokenAuthMiddleware(BaseMiddleware):
                 logger.debug("Attempting to get user from token")
                 scope["user"] = await get_user(token)
                 logger.debug(
-                    f"User authentication result: {not isinstance(scope['user'], AnonymousUser)}"
+                    f"User authentication result: "
+                    f"{not isinstance(scope['user'], AnonymousUser)}"
                 )
             else:
                 logger.debug("No token found, setting AnonymousUser")

@@ -1,3 +1,5 @@
+"""Users views."""
+
 import logging
 from datetime import date
 
@@ -5,11 +7,9 @@ import cryptography.fernet
 import structlog
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from rest_framework import status
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken
@@ -18,28 +18,33 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from tinkoff.invest import Client
 from tinkoff.invest.exceptions import RequestError
 
-from common.models import Accounts
-from common.models import Brokers
-from constants import CURRENCY_CHOICES
-from constants import NAV_BARCHART_CHOICES
-from constants import TINKOFF_ACCOUNT_STATUSES
-from constants import TINKOFF_ACCOUNT_TYPES
-from core.user_utils import FREQUENCY_CHOICES
-from core.user_utils import TIMELINE_CHOICES
+from common.models import Accounts, Brokers
+from constants import (
+    CURRENCY_CHOICES,
+    FREQUENCY_CHOICES,
+    NAV_BARCHART_CHOICES,
+    TIMELINE_CHOICES,
+    TINKOFF_ACCOUNT_STATUSES,
+    TINKOFF_ACCOUNT_TYPES,
+)
 from core.user_utils import prepare_account_choices
-from users.models import AccountGroup
-from users.models import CustomUser
-from users.models import InteractiveBrokersApiToken
-from users.models import TinkoffApiToken
-from users.serializers import AccountGroupSerializer
-from users.serializers import CustomTokenObtainPairSerializer
-from users.serializers import DashboardSettingsChoicesSerializer
-from users.serializers import DashboardSettingsSerializer
-from users.serializers import InteractiveBrokersApiTokenSerializer
-from users.serializers import TinkoffApiTokenSerializer
-from users.serializers import UserProfileSerializer
-from users.serializers import UserSerializer
-from users.serializers import UserSettingsSerializer
+from users.models import (
+    AccountGroup,
+    CustomUser,
+    InteractiveBrokersApiToken,
+    TinkoffApiToken,
+)
+from users.serializers import (
+    AccountGroupSerializer,
+    CustomTokenObtainPairSerializer,
+    DashboardSettingsChoicesSerializer,
+    DashboardSettingsSerializer,
+    InteractiveBrokersApiTokenSerializer,
+    TinkoffApiTokenSerializer,
+    UserProfileSerializer,
+    UserSerializer,
+    UserSettingsSerializer,
+)
 
 User = get_user_model()
 
@@ -47,12 +52,15 @@ logger = logging.getLogger(__name__)
 
 
 class UserViewSet(viewsets.ModelViewSet):
+    """User viewset."""
+
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
 
     @action(detail=False, methods=["POST"])
     def create_user(self, request):
+        """Create user."""
         logger.info(f"Create user action called with data: {request.data}")
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
@@ -72,6 +80,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def logout(self, request):
         """
         Logout the user by blacklisting the provided refresh token.
+
         Clear session data including effective_current_date.
         """
         try:
@@ -101,6 +110,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def profile(self, request):
+        """Get user profile."""
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
 
@@ -108,6 +118,7 @@ class UserViewSet(viewsets.ModelViewSet):
         detail=False, methods=["PUT", "PATCH"], permission_classes=[IsAuthenticated]
     )
     def edit_profile(self, request):
+        """Edit user profile."""
         serializer = UserProfileSerializer(
             request.user, data=request.data, partial=True
         )
@@ -119,6 +130,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["GET", "POST"], permission_classes=[IsAuthenticated])
     def user_settings(self, request):
         """
+        User settings view.
+
         GET: Retrieve user settings
         POST: Update user settings
         """
@@ -142,6 +155,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def user_settings_choices(self, request):
+        """Get user settings choices."""
         choices = {
             "currency_choices": CURRENCY_CHOICES,
             "frequency_choices": FREQUENCY_CHOICES,
@@ -155,6 +169,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def change_password(self, request):
+        """Change user password."""
         user = request.user
         old_password = request.data.get("old_password")
         new_password1 = request.data.get("new_password1")
@@ -179,6 +194,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_account_choices(self, request):
         """
         Get account choices for the current user.
+
         Returns structured data with options and current selection.
         """
         user = request.user
@@ -189,6 +205,8 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["DELETE"], permission_classes=[IsAuthenticated])
     def delete_account(self, request):
         """
+        Delete account view.
+
         Delete the authenticated user's account after blacklisting the refresh token.
         """
         try:
@@ -214,6 +232,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def dashboard_settings(self, request):
+        """Get dashboard settings."""
         user = request.user
         serializer = DashboardSettingsSerializer(user)
 
@@ -240,6 +259,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def update_dashboard_settings(self, request):
+        """Update dashboard settings."""
         logger = logging.getLogger("users.views")
         logger.info(
             "[JWT_DEBUG] update_dashboard_settings called with data: %s", request.data
@@ -268,7 +288,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 )
                 effective_date_changed = current_effective_date != table_date
 
-                # Store it in response - JWT middleware will handle adding it to new tokens
+                # Store it in response - JWT middleware will handle adding it to
+                # new tokens
                 response_data = serializer.data
                 response_data["table_date"] = table_date
                 response_data["effective_current_date"] = table_date
@@ -278,7 +299,8 @@ class UserViewSet(viewsets.ModelViewSet):
                     response_data["requires_token_refresh"] = True
                     response_data["new_effective_date"] = table_date
                     logger.info(
-                        "[JWT_DEBUG] Effective date changed, requesting token refresh: %s",
+                        "[JWT_DEBUG] Effective date changed,"
+                        "requesting token refresh: %s",
                         table_date,
                     )
 
@@ -302,6 +324,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def update_user_data_for_new_account(self, request):
+        """Update user data for a new account."""
         user = request.user
         account_type = request.data.get("type")
         account_id = request.data.get("id")
@@ -366,7 +389,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def broker_tokens(self, request):
-        """Get all broker tokens for the user"""
+        """Get all broker tokens for the user."""
         tinkoff_tokens = TinkoffApiToken.objects.filter(user=request.user)
         ib_tokens = InteractiveBrokersApiToken.objects.filter(user=request.user)
 
@@ -383,7 +406,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def revoke_token(self, request):
-        """Revoke (deactivate) a specific broker token"""
+        """Revoke (deactivate) a specific broker token."""
         token_type = request.data.get("token_type")
         token_id = request.data.get("token_id")
 
@@ -404,18 +427,23 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class BaseApiTokenViewSet(viewsets.ModelViewSet):
+    """Base viewset for API tokens."""
+
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get queryset for API tokens."""
         return self.queryset.filter(user=self.request.user)
 
     def perform_create(self, serializer):
+        """Perform create action."""
         instance = serializer.save(user=self.request.user)
         # Use set_token method to properly encrypt the token
         instance.set_token(serializer.validated_data["token"], self.request.user)
         instance.save()
 
     def perform_update(self, serializer):
+        """Perform update action."""
         instance = serializer.save(user=self.request.user)
         if "token" in serializer.validated_data:
             # Only update token if it was provided
@@ -424,7 +452,7 @@ class BaseApiTokenViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["POST"])
     def test_connection(self, request, pk=None):
-        """Test connection with saved token"""
+        """Test connection with saved token."""
         token_instance = self.get_object()
         try:
             # Get decrypted token
@@ -465,7 +493,9 @@ class BaseApiTokenViewSet(viewsets.ModelViewSet):
             token_instance.save()
             return Response(
                 {
-                    "error": "Unable to decrypt token. Please try saving the token again.",
+                    "error": (
+                        "Unable to decrypt token. Please try saving the token again.",
+                    ),
                     "token": self.get_serializer(token_instance).data,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -477,18 +507,18 @@ class BaseApiTokenViewSet(viewsets.ModelViewSet):
             token_instance.save()
             return Response(
                 {
-                    "error": "An error occurred while testing the connection",
+                    "error": ("An error occurred while testing the connection",),
                     "token": self.get_serializer(token_instance).data,
                 },
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     def destroy(self, request, *args, **kwargs):
-        """Only allow deletion of inactive tokens"""
+        """Allow only deletion of inactive tokens."""
         instance = self.get_object()
         if instance.is_active:
             return Response(
-                {"error": "Cannot delete active token. Deactivate it first."},
+                {"error": ("Cannot delete active token. Deactivate it first.",)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         self.perform_destroy(instance)
@@ -496,19 +526,21 @@ class BaseApiTokenViewSet(viewsets.ModelViewSet):
 
 
 class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
+    """Viewset for Tinkoff API tokens."""
+
     queryset = TinkoffApiToken.objects.all()
     serializer_class = TinkoffApiTokenSerializer
 
     @action(detail=False, methods=["POST"])
     def verify_token(self, request):
-        """Verify Tinkoff API token by making a test API call"""
+        """Verify Tinkoff API token by making a test API call."""
         token = request.data.get("token")
         logger.info(f"Verifying Tinkoff token for user {request.user.username}")
 
         if not token:
             logger.warning("Token verification failed: No token provided")
             return Response(
-                {"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": ("Token is required",)}, status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -516,7 +548,8 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
                 logger.debug("Attempting to connect to Tinkoff API")
                 accounts = client.users.get_accounts()
                 logger.info(
-                    f"Token verification successful. Found {len(accounts.accounts)} accounts"
+                    "Token verification successful. "
+                    f"Found {len(accounts.accounts)} accounts"
                 )
 
                 formatted_accounts = []
@@ -580,7 +613,7 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
 
     @action(detail=False, methods=["POST"])
     def save_read_only_token(self, request):
-        """Save read-only token after validation"""
+        """Save read-only token after validation."""
         try:
             new_token = request.data.get("token")
             token_type = request.data.get("token_type")
@@ -592,7 +625,7 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
                 broker = Brokers.objects.get(id=broker_id, investor=request.user)
             except Brokers.DoesNotExist:
                 return Response(
-                    {"error": "Invalid broker selection"},
+                    {"error": ("Invalid broker selection",)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -669,18 +702,24 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
 
 
 class InteractiveBrokersApiTokenViewSet(BaseApiTokenViewSet):
+    """Viewset for Interactive Brokers API tokens."""
+
     queryset = InteractiveBrokersApiToken.objects.all()
     serializer_class = InteractiveBrokersApiTokenSerializer
 
 
 class AccountGroupViewSet(viewsets.ModelViewSet):
+    """Viewset for account groups."""
+
     serializer_class = AccountGroupSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Get queryset for account groups."""
         return AccountGroup.objects.filter(user=self.request.user)
 
     def list(self, request, *args, **kwargs):
+        """List all account groups."""
         queryset = self.get_queryset()
         groups_data = self.get_serializer(queryset, many=True).data
 
@@ -708,18 +747,22 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        """Create a group."""
         serializer.save(user=self.request.user)
 
     def perform_update(self, serializer):
+        """Update a group."""
         serializer.save(user=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
+        """Delete a group."""
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["POST"])
     def add_accounts(self, request, pk=None):
+        """Add accounts to a group."""
         group = self.get_object()
         account_ids = request.data.get("account_ids", [])
 
@@ -737,6 +780,7 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["POST"])
     def remove_accounts(self, request, pk=None):
+        """Remove accounts from a group."""
         group = self.get_object()
         account_ids = request.data.get("account_ids", [])
 
@@ -754,26 +798,27 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """
-    Custom login view that includes effective_current_date in JWT token
-    """
+    """Custom login view that includes effective_current_date in JWT token."""
 
     serializer_class = CustomTokenObtainPairSerializer
 
 
 class CustomTokenRefreshView(APIView):
     """
-    Custom token refresh view that includes effective_current_date in JWT payload
-    This eliminates session dependency and uses JWT authentication only
+    Custom token refresh view that includes effective_current_date in JWT payload.
+
+    This eliminates session dependency and uses JWT authentication only.
     """
 
     permission_classes = [AllowAny]
 
     def __init__(self):
+        """Initialize the custom token refresh view."""
         super().__init__()
         self.logger = structlog.get_logger(__name__)
 
     def post(self, request, *args, **kwargs):
+        """Refresh token view that includes effective_current_date in JWT payload."""
         try:
             refresh_token = request.data.get("refresh")
             if not refresh_token:

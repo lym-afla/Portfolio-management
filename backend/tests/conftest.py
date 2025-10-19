@@ -1,24 +1,20 @@
-from datetime import date
-from datetime import timedelta
+"""Conftest file for pytest."""
+
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 
-from common.models import FX
-from common.models import Assets
-from common.models import Brokers
-from common.models import FXTransaction
-from common.models import Prices
-from common.models import Transactions
+from common.models import FX, Assets, Brokers, FXTransaction, Prices, Transactions
 
 CustomUser = get_user_model()
 
 
 @pytest.fixture(autouse=True)
 def setup_test_environment():
-    """Setup test environment with consistent encryption key and decimal context"""
+    """Set up test environment with consistent encryption key and decimal context."""
     # Use the same SECRET_KEY for all tests to ensure consistent encryption
     test_settings = {"SECRET_KEY": "test-secret-key-for-consistent-encryption"}
     with override_settings(**test_settings):
@@ -30,7 +26,7 @@ def setup_test_environment():
 
 @pytest.fixture
 def user(db):
-    """Create a basic test user"""
+    """Create a basic test user."""
     return CustomUser.objects.create_user(
         username="testuser", email="test@example.com", password="testpass123"
     )
@@ -38,7 +34,7 @@ def user(db):
 
 @pytest.fixture
 def admin_user(db):
-    """Create an admin user for permission testing"""
+    """Create an admin user for permission testing."""
     return CustomUser.objects.create_user(
         username="adminuser",
         email="admin@example.com",
@@ -50,7 +46,7 @@ def admin_user(db):
 
 @pytest.fixture
 def multi_currency_user(db):
-    """Create a user with multi-currency portfolio"""
+    """Create a user with multi-currency portfolio."""
     return CustomUser.objects.create_user(
         username="multicurrency", email="multi@example.com", password="multipass123"
     )
@@ -61,25 +57,25 @@ def multi_currency_user(db):
 
 @pytest.fixture
 def broker(user):
-    """Create a basic test broker"""
+    """Create a basic test broker."""
     return Brokers.objects.create(investor=user, name="Test Broker", country="US")
 
 
 @pytest.fixture
 def broker_uk(user):
-    """Create a UK-based broker"""
+    """Create a UK-based broker."""
     return Brokers.objects.create(investor=user, name="UK Broker", country="UK")
 
 
 @pytest.fixture
 def broker_eu(user):
-    """Create an EU-based broker"""
+    """Create an EU-based broker."""
     return Brokers.objects.create(investor=user, name="EU Broker", country="DE")
 
 
 @pytest.fixture
 def restricted_broker(user):
-    """Create a restricted broker for testing permissions"""
+    """Create a restricted broker for testing permissions."""
     return Brokers.objects.create(
         investor=user, name="Restricted Broker", country="US", restricted=True
     )
@@ -90,7 +86,7 @@ def restricted_broker(user):
 
 @pytest.fixture
 def asset(user, broker):
-    """Create a basic USD stock asset"""
+    """Create a basic USD stock asset."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="US1234567890",
@@ -107,7 +103,7 @@ def asset(user, broker):
 
 @pytest.fixture
 def asset_eur(user, broker_eu):
-    """Create a EUR-denominated stock"""
+    """Create a EUR-denominated stock."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="DE1234567890",
@@ -124,7 +120,7 @@ def asset_eur(user, broker_eu):
 
 @pytest.fixture
 def asset_gbp(user, broker_uk):
-    """Create a GBP-denominated stock"""
+    """Create a GBP-denominated stock."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="GB1234567890",
@@ -141,7 +137,7 @@ def asset_gbp(user, broker_uk):
 
 @pytest.fixture
 def bond_asset(user, broker):
-    """Create a USD bond asset"""
+    """Create a USD bond asset."""
     asset = Assets.objects.create(
         type="Bond",
         ISIN="USBOND123456",
@@ -161,7 +157,7 @@ def bond_asset(user, broker):
 
 @pytest.fixture
 def sample_transactions(user, broker, asset):
-    """Create a set of sample transactions for testing"""
+    """Create a set of sample transactions for testing."""
     transactions = []
 
     # Initial purchase
@@ -231,7 +227,7 @@ def sample_transactions(user, broker, asset):
 def multi_currency_transactions(
     multi_currency_user, broker, asset, asset_eur, asset_gbp
 ):
-    """Create multi-currency transactions for FX testing"""
+    """Create multi-currency transactions for FX testing."""
     transactions = []
 
     # USD asset purchase
@@ -287,7 +283,7 @@ def multi_currency_transactions(
 
 @pytest.fixture
 def fx_rates_usd_eur(user):
-    """Create USD/EUR FX rate history"""
+    """Create USD/EUR FX rate history."""
     rates = []
     base_date = date(2023, 1, 1)
 
@@ -302,7 +298,7 @@ def fx_rates_usd_eur(user):
 
 @pytest.fixture
 def fx_rates_multi_currency(multi_currency_user):
-    """Create comprehensive FX rate data for testing cross-currency conversions"""
+    """Create comprehensive FX rate data for testing cross-currency conversions."""
     rates = []
     base_date = date(2023, 1, 1)
 
@@ -326,7 +322,7 @@ def fx_rates_multi_currency(multi_currency_user):
 
 @pytest.fixture
 def fx_transaction(user, broker):
-    """Create a sample FX transaction"""
+    """Create a sample FX transaction."""
     return FXTransaction.objects.create(
         investor=user,
         broker=broker,
@@ -346,7 +342,7 @@ def fx_transaction(user, broker):
 
 @pytest.fixture
 def price_history(user, asset):
-    """Create price history for an asset"""
+    """Create price history for an asset."""
     prices = []
     base_date = date(2023, 1, 1)
     base_price = Decimal("50.00")
@@ -369,7 +365,7 @@ def price_history(user, asset):
 
 @pytest.fixture
 def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
-    """Create price histories for multiple assets"""
+    """Create price histories for multiple assets."""
     price_data = {}
 
     # USD asset prices
@@ -425,7 +421,7 @@ def complete_portfolio(
     price_history,
     fx_rates_usd_eur,
 ):
-    """Create a complete portfolio scenario with multiple asset types"""
+    """Create a complete portfolio scenario with multiple asset types."""
     return {
         "user": user,
         "broker": broker,
@@ -438,7 +434,7 @@ def complete_portfolio(
 
 @pytest.fixture
 def loss_making_portfolio(user, broker):
-    """Create a portfolio that shows losses for testing loss calculations"""
+    """Create a portfolio that shows losses for testing loss calculations."""
     # Create an asset that loses value
     losing_asset = Assets.objects.create(
         type="Stock",
@@ -486,7 +482,7 @@ def loss_making_portfolio(user, broker):
 
 @pytest.fixture
 def test_dates():
-    """Provide a set of common test dates"""
+    """Provide a set of common test dates."""
     return {
         "today": date.today(),
         "start_of_year": date(date.today().year, 1, 1),
@@ -499,7 +495,7 @@ def test_dates():
 
 @pytest.fixture
 def decimal_values():
-    """Provide common decimal values for testing"""
+    """Provide common decimal values for testing."""
     return {
         "zero": Decimal("0"),
         "one": Decimal("1"),
@@ -514,7 +510,7 @@ def decimal_values():
 
 @pytest.fixture
 def currency_pairs():
-    """Provide common currency pairs for FX testing"""
+    """Provide common currency pairs for FX testing."""
     return {
         "direct": [("USD", "EUR"), ("USD", "GBP"), ("EUR", "GBP")],
         "cross": [("USD", "JPY"), ("EUR", "JPY"), ("GBP", "JPY")],
@@ -525,7 +521,7 @@ def currency_pairs():
 # Legacy fixtures for backward compatibility
 @pytest.fixture
 def asset_basic(user, broker):
-    """Legacy fixture name - create a basic USD stock asset"""
+    """Legacy fixture name - create a basic USD stock asset."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="TEST123456789",

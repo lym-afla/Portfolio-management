@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Script to format and lint Python code in the project.
+
 Run this script from the project root directory.
 """
 
@@ -10,7 +11,16 @@ from pathlib import Path
 
 
 def run_command(command, description):
-    """Run a shell command and print its output."""
+    """
+    Run a shell command and print its output.
+
+    Args:
+        command: The command to run.
+        description: The description of the command.
+
+    Returns:
+        True if the command completed successfully, False otherwise.
+    """
     print(f"\n\033[1;34m=== Running {description} ===\033[0m")
     try:
         result = subprocess.run(
@@ -28,6 +38,7 @@ def run_command(command, description):
 
 
 def main():
+    """Format and lint the project."""
     # Ensure we're in the project root directory
     if not Path("manage.py").exists():
         print("Error: This script should be run from the project root directory")

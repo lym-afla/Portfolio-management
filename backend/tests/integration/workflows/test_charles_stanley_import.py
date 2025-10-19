@@ -1,3 +1,5 @@
+"""Test Charles Stanley import."""
+
 import uuid
 from decimal import Decimal
 from unittest.mock import patch
@@ -9,13 +11,12 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import connection
 
-from common.models import Accounts
-from common.models import Assets
-from common.models import Brokers
-from common.models import Transactions
-from constants import TRANSACTION_TYPE_BUY
-from constants import TRANSACTION_TYPE_DIVIDEND
-from constants import TRANSACTION_TYPE_INTEREST_INCOME
+from common.models import Accounts, Assets, Brokers, Transactions
+from constants import (
+    TRANSACTION_TYPE_BUY,
+    TRANSACTION_TYPE_DIVIDEND,
+    TRANSACTION_TYPE_INTEREST_INCOME,
+)
 from core.import_utils import parse_charles_stanley_transactions
 
 pytestmark = pytest.mark.django_db
@@ -23,6 +24,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 async def setup_data():
+    """Set up data for Charles Stanley import tests."""
     User = get_user_model()
     unique_username = f"testuser_{uuid.uuid4().hex[:8]}"
     investor = await database_sync_to_async(User.objects.create_user)(
@@ -50,12 +52,14 @@ async def setup_data():
 
 @pytest.fixture(autouse=True)
 def close_db_connection():
+    """Close database connection."""
     yield
     connection.close()
 
 
 @pytest.fixture(autouse=True)
 async def clear_database(django_db_setup, django_db_blocker):
+    """Clear database."""
     yield
 
     @database_sync_to_async
@@ -72,6 +76,7 @@ async def clear_database(django_db_setup, django_db_blocker):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_parse_charles_stanley_transactions(setup_data):
+    """Test parse Charles Stanley transactions."""
     investor, broker, asset, account = setup_data
 
     mock_data = {
@@ -108,6 +113,7 @@ async def test_parse_charles_stanley_transactions(setup_data):
 
 @pytest.mark.asyncio
 async def test_skip_existing_transaction(setup_data):
+    """Test skip existing transaction."""
     investor, broker, asset, account = setup_data
 
     # Create an existing transaction with account
@@ -147,6 +153,7 @@ async def test_skip_existing_transaction(setup_data):
 
 @pytest.mark.asyncio
 async def test_different_transaction_types(setup_data):
+    """Test different transaction types."""
     investor, broker, asset, account = setup_data
 
     mock_data = {
@@ -177,6 +184,7 @@ async def test_different_transaction_types(setup_data):
 
 @pytest.mark.asyncio
 async def test_security_mapping(setup_data):
+    """Test security mapping."""
     investor, broker, asset, account = setup_data
 
     mock_data = {
@@ -207,6 +215,7 @@ async def test_security_mapping(setup_data):
 
 @pytest.mark.asyncio
 async def test_invalid_excel_file():
+    """Test invalid Excel file."""
     with pytest.raises(
         ValueError
     ):  # Change back to ValueError if that's what you expect
@@ -220,6 +229,7 @@ async def test_invalid_excel_file():
 
 @pytest.mark.asyncio
 async def test_progress_reporting(setup_data):
+    """Test progress reporting."""
     investor, broker, asset, account = setup_data
 
     mock_data = {

@@ -1,23 +1,24 @@
 """
 Factory classes for creating FX rate test data.
+
 Provides realistic FX rate scenarios for various testing scenarios.
 """
 
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import factory
 from factory import fuzzy
 
-from common.models import FX
-from common.models import FXTransaction
+from common.models import FX, FXTransaction
 
 
 class FXRateFactory(factory.django.DjangoModelFactory):
     """Factory for creating FX rate records."""
 
     class Meta:
+        """Meta class for FXRateFactory."""
+
         model = FX
 
     date = fuzzy.FuzzyDate(date(2020, 1, 1), date.today())
@@ -72,6 +73,8 @@ class FXTransactionFactory(factory.django.DjangoModelFactory):
     """Factory for creating FX transactions."""
 
     class Meta:
+        """Meta class for FXTransactionFactory."""
+
         model = FXTransaction
 
     date = fuzzy.FuzzyDate(date(2020, 1, 1), date.today())
@@ -178,8 +181,10 @@ class EURToUSDTransactionFactory(FXTransactionFactory):
 
 
 # Batch creation utilities
-def create_fx_rate_history(investor, start_date=date(2023, 1, 1), days=365):
+def create_fx_rate_history(investor, start_date=None, days=365):
     """Create a comprehensive FX rate history."""
+    if start_date is None:
+        start_date = date(2023, 1, 1)
 
     rates = []
     base_rates = {
@@ -221,10 +226,10 @@ def create_fx_rate_history(investor, start_date=date(2023, 1, 1), days=365):
     return rates
 
 
-def create_cross_currency_rates(
-    investor, currency_pairs, start_date=date(2023, 1, 1), days=365
-):
+def create_cross_currency_rates(investor, currency_pairs, start_date=None, days=365):
     """Create FX rates for specific currency pairs."""
+    if start_date is None:
+        start_date = date(2023, 1, 1)
 
     rates = []
 
@@ -264,7 +269,6 @@ def create_cross_currency_rates(
 
 def create_fx_conversion_sequence(investor, broker, conversions):
     """Create a sequence of FX transactions."""
-
     transactions = []
     base_date = date(2023, 1, 1)
 
@@ -288,7 +292,6 @@ def create_currency_hedge_sequence(
     investor, broker, base_currency="USD", hedge_currency="EUR", periods=12
 ):
     """Create a sequence of currency hedge transactions."""
-
     transactions = []
     base_date = date(2023, 1, 1)
 
@@ -311,8 +314,10 @@ def create_currency_hedge_sequence(
     return transactions
 
 
-def create_volatility_scenario(investor, start_date=date(2023, 1, 1), days=90):
+def create_volatility_scenario(investor, start_date=None, days=90):
     """Create FX rates during high volatility period."""
+    if start_date is None:
+        start_date = date(2023, 1, 1)
 
     rates = []
 

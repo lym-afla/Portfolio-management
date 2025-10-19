@@ -1,22 +1,25 @@
 """
 Factory classes for creating test assets.
+
 Provides realistic asset data for various testing scenarios.
 """
 
-from datetime import date
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import factory
 from factory import fuzzy
 
-from common.models import Assets
+from common.models import Assets, Brokers
+from users.models import CustomUser
 
 
 class AssetFactory(factory.django.DjangoModelFactory):
     """Factory for creating Assets with realistic data."""
 
     class Meta:
+        """Meta class for AssetFactory."""
+
         model = Assets
 
     type = fuzzy.FuzzyChoice(["Stock", "Bond", "ETF", "Fund"])
@@ -59,7 +62,8 @@ class StockFactory(AssetFactory):
     data_source = "YAHOO"
 
     @factory.lazy_attribute
-    def name(self):
+    def name(self) -> str:
+        """Name for stock assets."""
         return f"{self.ISIN[:3]} Stock Corp"
 
 
@@ -70,7 +74,8 @@ class BondFactory(AssetFactory):
     exposure = "Fixed Income"
 
     @factory.lazy_attribute
-    def name(self):
+    def name(self) -> str:
+        """Name for bond assets."""
         return f"Bond {self.ISIN[-6:]} {date.today().year + 5}"
 
 
@@ -82,7 +87,8 @@ class ETFFactory(AssetFactory):
     data_source = "YAHOO"
 
     @factory.lazy_attribute
-    def name(self):
+    def name(self) -> str:
+        """Name for ETF assets."""
         return f"{self.ISIN[:3]} ETF"
 
 
@@ -92,7 +98,8 @@ class USDStockFactory(StockFactory):
     currency = "USD"
 
     @factory.lazy_attribute
-    def ISIN(self):
+    def ISIN(self) -> str:
+        """ISIN for USD-denominated stocks."""
         return f"US{self.faker.bothify(text='#########')}"
 
 
@@ -102,7 +109,8 @@ class EURStockFactory(StockFactory):
     currency = "EUR"
 
     @factory.lazy_attribute
-    def ISIN(self):
+    def ISIN(self) -> str:
+        """ISIN for EUR-denominated stocks."""
         return f"DE{self.faker.bothify(text='#########')}"
 
 
@@ -112,7 +120,8 @@ class GBPStockFactory(StockFactory):
     currency = "GBP"
 
     @factory.lazy_attribute
-    def ISIN(self):
+    def ISIN(self) -> str:
+        """ISIN for GBP-denominated stocks."""
         return f"GB{self.faker.bothify(text='#########')}"
 
 
@@ -166,9 +175,10 @@ class AssetWithPriceFactory(AssetFactory):
 
 
 # Batch creation utilities
-def create_diversified_portfolio(user, brokers, num_assets=10):
+def create_diversified_portfolio(
+    user: CustomUser, brokers: list[Brokers], num_assets=10
+) -> list[Assets]:
     """Create a diversified portfolio with various asset types."""
-
     assets = []
 
     # Create a mix of different asset types
@@ -185,24 +195,29 @@ def create_diversified_portfolio(user, brokers, num_assets=10):
     return assets
 
 
-def create_multi_currency_portfolio(user, brokers, currencies=["USD", "EUR", "GBP"]):
+def create_multi_currency_portfolio(
+    user: CustomUser, brokers: list[Brokers], currencies=None
+) -> list[Assets]:
     """Create assets in multiple currencies."""
+    if currencies is None:
+        currencies = ["USD", "EUR", "GBP"]
 
     assets = []
     factories = {"USD": USDStockFactory, "EUR": EURStockFactory, "GBP": GBPStockFactory}
 
     for currency in currencies:
         factory = factories.get(currency, USDStockFactory)
-        for i in range(3):  # 3 assets per currency
+        for _ in range(3):  # 3 assets per currency
             asset = factory.create(investors=[user], brokers=brokers)
             assets.append(asset)
 
     return assets
 
 
-def create_sector_portfolio(user, brokers, sector, num_assets=5):
+def create_sector_portfolio(
+    user: CustomUser, brokers: list[Brokers], sector: str, num_assets=5
+) -> list[Assets]:
     """Create a portfolio focused on a specific sector."""
-
     sector_names = {
         "technology": [
             "Tech Corp",
