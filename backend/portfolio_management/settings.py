@@ -194,6 +194,11 @@ LOGGING = {
         },
     },
     "loggers": {
+        "": {  # Root logger
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
         "django": {
             "handlers": ["console"],
             "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
@@ -230,31 +235,37 @@ LOGGING = {
         "transactions": {
             "handlers": ["console"],
             "level": "DEBUG",
+            "propagate": True,
         },
         "channels": {
             "handlers": ["console"],
             "level": "DEBUG",
+            "propagate": True,
         },
         "summary_analysis": {
             "handlers": ["console"],
             "level": "DEBUG",
+            "propagate": True,
         },
         "core": {
             "handlers": ["console"],
-            "level": "INFO",
-            # "propagate": True
+            "level": "DEBUG",
+            "propagate": True,
         },
         "common": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": "DEBUG",
+            "propagate": True,
         },
         "database": {
             "handlers": ["console"],
             "level": "DEBUG",
+            "propagate": True,
         },
         "dashboard": {
             "handlers": ["console"],
             "level": "DEBUG",
+            "propagate": True,
         },
         "users": {
             "handlers": ["console"],
@@ -276,8 +287,8 @@ structlog.configure(
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
+        # structlog.processors.StackInfoRenderer(),
+        # structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],

@@ -96,22 +96,34 @@ def transaction_exists(transaction_data):
         "aci",
     ]
 
-    # Add required fields to the query
+    # Add required fields to the query (except date - handle separately for precision)
     for field in required_fields:
         if field not in transaction_data:
             raise ValueError(
                 f"Required field '{field}' is missing from transaction_data"
             )
-        query &= Q(**{field: transaction_data[field]})
+        if field == "date":
+            # Use time window for date matching to handle database precision issues
+            from datetime import timedelta
+
+            time_window = timedelta(seconds=1)  # 1 second window
+            target_date = transaction_data[field]
+            start_time = target_date - time_window
+            end_time = target_date + time_window
+            query &= Q(**{f"{field}__range": (start_time, end_time)})
+        else:
+            query &= Q(**{field: transaction_data[field]})
 
     # Add optional fields to the query if they exist
     for field in optional_fields:
         if field in transaction_data and transaction_data[field] is not None:
             query &= Q(**{field: transaction_data[field]})
 
-    exists = Transactions.objects.filter(query).exists()
-
-    return exists
+    # Return the actual transaction object if found, None otherwise
+    try:
+        return Transactions.objects.get(query)
+    except Transactions.DoesNotExist:
+        return None
 
 
 @database_sync_to_async
@@ -143,20 +155,31 @@ def fx_transaction_exists(transaction_data):
             Decimal(str(data_copy["exchange_rate"])), decimal_places
         )
 
-    # Add required fields to the query
+    # Add required fields to the query (except date - handle separately for precision)
     for field in required_fields:
         if field not in data_copy:
             raise ValueError(
                 f"Required field '{field}' is missing from FX transaction_data"
             )
-        query &= Q(**{field: data_copy[field]})
+        if field == "date":
+            # Use time window for date matching to handle database precision issues
+            from datetime import timedelta
+
+            time_window = timedelta(seconds=1)  # 1 second window
+            target_date = data_copy[field]
+            start_time = target_date - time_window
+            end_time = target_date + time_window
+            query &= Q(**{f"{field}__range": (start_time, end_time)})
+        else:
+            query &= Q(**{field: data_copy[field]})
 
     # Add optional fields to the query if they exist
     for field in optional_fields:
         if field in data_copy and data_copy[field] is not None:
             query &= Q(**{field: data_copy[field]})
 
-    return FXTransaction.objects.filter(query).exists()
+    # Return the first matching transaction object if found, None otherwise
+    return FXTransaction.objects.filter(query).first()
 
 
 def read_excel_file(file_path):

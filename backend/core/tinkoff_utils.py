@@ -1,7 +1,7 @@
 """Tinkoff utils."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
@@ -735,10 +735,16 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         dict: Transaction data ready for creating a Transaction or FXTransaction instance.  # noqa: E501
     """
     # Initialize base transaction data
+    # Ensure the date is properly handled (convert to UTC if timezone-aware)
+    operation_date = operation.date
+    if hasattr(operation_date, "tzinfo") and operation_date.tzinfo is not None:
+        # Convert to UTC to ensure consistency
+        operation_date = operation_date.astimezone(dt_timezone.utc)
+
     transaction_data = {
         "investor": investor,
         "account": account,
-        "date": operation.date,  # Keep full datetime from T-Bank API
+        "date": operation_date,  # Keep full datetime from T-Bank API
         "comment": operation.description,
     }
 
@@ -1080,10 +1086,25 @@ async def create_transaction_from_tinkoff(operation, investor, account):
         return None, "Unsupported operation type"
 
     # Check if similar transaction already exists
+    # Use more flexible matching to handle timezone differences
+
+    transaction_date = transaction_data["date"]
+
+    # If transaction_date is timezone-aware, convert to UTC for comparison
+    if hasattr(transaction_date, "tzinfo") and transaction_date.tzinfo is not None:
+        transaction_date_utc = transaction_date.astimezone(dt_timezone.utc)
+    else:
+        transaction_date_utc = transaction_date
+
+    # Check for existing transactions within a reasonable time window (1 minute)
+    # to handle potential timezone or timestamp differences
+    time_window = datetime.timedelta(minutes=1)
+
     existing = await database_sync_to_async(Transactions.objects.filter)(
         investor=investor,
         account=account,
-        date=transaction_data["date"],
+        date__gte=transaction_date_utc - time_window,
+        date__lte=transaction_date_utc + time_window,
         type=transaction_data["type"],
         quantity=transaction_data.get("quantity"),
         price=transaction_data.get("price"),
@@ -1181,14 +1202,12 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
         logger.debug(f"Fetching price for instrument {instrument_uid} on {date}")
 
         # Convert target date to timezone-aware datetime (UTC)
-        target_dt = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
+        target_dt = datetime.combine(date, datetime.min.time(), tzinfo=dt_timezone.utc)
 
         # Try progressively larger date ranges: 1 day, 7 days, 14 days
         lookback_days = [1, 7, 14]
 
         with Client(token) as client:
-            from django.utils import timezone
-
             for days_back in lookback_days:
                 # Start from 1 day before target, extend backwards based on attempt
                 from_dt = timezone.make_aware(

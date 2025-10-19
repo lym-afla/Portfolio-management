@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Dict, Optional
 
 from channels.db import database_sync_to_async
@@ -234,12 +234,14 @@ class TinkoffAPI(BrokerAPI):
                 )
 
             from_date = (
-                datetime.strptime(date_from, "%Y-%m-%d")
+                datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 if date_from
-                else datetime.now() - timedelta(days=30)
+                else datetime.now(timezone.utc) - timedelta(days=30)
             )
             to_date = (
-                datetime.strptime(date_to, "%Y-%m-%d") if date_to else datetime.now()
+                datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                if date_to
+                else datetime.now(timezone.utc)
             )
 
             # Use Client with context manager

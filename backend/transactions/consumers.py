@@ -662,6 +662,45 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     )
 
                     try:
+                        # Check if transaction already exists (duplicate detection)
+                        if transaction_data.get("is_fx"):
+                            existing_transaction = await fx_transaction_exists(
+                                transaction_data
+                            )
+                        else:
+                            existing_transaction = await transaction_exists(
+                                transaction_data
+                            )
+
+                        if existing_transaction:
+                            # Transaction is a duplicate, skip it
+                            import_results["duplicateTransactions"] += 1
+                            logger.debug(
+                                "Duplicate transaction detected and skipped: "
+                                f"{transaction_data.get('date', 'Unknown date')} "
+                                f"- {transaction_data.get('type', 'Unknown type')}"
+                            )
+
+                            # Send progress update for duplicate
+                            await self.send(
+                                text_data=json.dumps(
+                                    {
+                                        "type": "import_update",
+                                        "data": {
+                                            "status": "transaction_duplicate",
+                                            "current": import_results[
+                                                "importedTransactions"
+                                            ],
+                                            "total": import_results[
+                                                "totalTransactions"
+                                            ],
+                                            "message": "Found duplicate transaction",
+                                        },
+                                    }
+                                )
+                            )
+                            continue
+
                         # Save transaction immediately
                         save_result = await self.view_set.save_single_transaction(
                             transaction_data

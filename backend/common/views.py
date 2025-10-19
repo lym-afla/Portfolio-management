@@ -1,6 +1,6 @@
 """Common views."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -26,11 +26,13 @@ def get_year_options_api(request) -> Response:
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(request, "effective_current_date", None)
 
-    # Convert effective_current_date from string to date object
+    # Convert effective_current_date from string to datetime object
     effective_current_date = (
-        datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+        datetime.strptime(effective_current_date_str, "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        )
         if effective_current_date_str
-        else datetime.now().date()
+        else datetime.now(timezone.utc)
     )
 
     first_year = (
@@ -85,7 +87,7 @@ def get_effective_current_date(request):
 
     # Use JWT middleware instead of session
     effective_current_date = getattr(
-        request, "effective_current_date", datetime.now().date().isoformat()
+        request, "effective_current_date", datetime.now(timezone.utc).date().isoformat()
     )
 
     logger.info(

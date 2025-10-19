@@ -20,6 +20,7 @@ from tinkoff.invest.exceptions import RequestError
 
 from common.models import Accounts, Brokers
 from constants import (
+    ACCOUNT_TYPE_CHOICES,
     CURRENCY_CHOICES,
     FREQUENCY_CHOICES,
     NAV_BARCHART_CHOICES,
@@ -28,12 +29,7 @@ from constants import (
     TINKOFF_ACCOUNT_TYPES,
 )
 from core.user_utils import prepare_account_choices
-from users.models import (
-    AccountGroup,
-    CustomUser,
-    InteractiveBrokersApiToken,
-    TinkoffApiToken,
-)
+from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
 from users.serializers import (
     AccountGroupSerializer,
     CustomTokenObtainPairSerializer,
@@ -329,7 +325,7 @@ class UserViewSet(viewsets.ModelViewSet):
         account_type = request.data.get("type")
         account_id = request.data.get("id")
 
-        if account_type not in dict(CustomUser.ACCOUNT_TYPE_CHOICES):
+        if account_type not in dict(ACCOUNT_TYPE_CHOICES):
             return Response(
                 {"success": False, "error": f"Invalid account type: {account_type}"},
                 status=status.HTTP_400_BAD_REQUEST,

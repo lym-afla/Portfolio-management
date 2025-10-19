@@ -466,9 +466,7 @@ class Assets(models.Model):
     # Define position at date by summing all movements to date
     def position(self, date, investor, account_ids=None):
         """Get the position of an asset at a given date."""
-        # Convert date to timezone-aware datetime for query
-        query_date = date
-        query = self.transactions.filter(date__lte=query_date, investor=investor)
+        query = self.transactions.filter(date__lte=date, investor=investor)
         if account_ids is not None:
             query = query.filter(account_id__in=account_ids)
         total_quantity = query.aggregate(total=models.Sum("quantity"))["total"]

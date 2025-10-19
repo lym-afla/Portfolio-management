@@ -1,7 +1,7 @@
 """Securities utils."""
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from django.db.models import Q
@@ -29,11 +29,11 @@ def get_securities_table_api(request):
     user = request.user
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(
-        request, "effective_current_date", datetime.now().date().isoformat()
+        request, "effective_current_date", datetime.now(timezone.utc).date().isoformat()
     )
     effective_current_date = datetime.strptime(
         effective_current_date_str, "%Y-%m-%d"
-    ).date()
+    ).replace(tzinfo=timezone.utc)
     number_of_digits = user.digits
 
     securities_data = _filter_securities(user, search)
@@ -112,11 +112,11 @@ def get_security_detail(request, security_id):
     user = request.user
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(
-        request, "effective_current_date", datetime.now().date().isoformat()
+        request, "effective_current_date", datetime.now(timezone.utc).date().isoformat()
     )
     effective_current_date = datetime.strptime(
         effective_current_date_str, "%Y-%m-%d"
-    ).date()
+    ).replace(tzinfo=timezone.utc)
     number_of_digits = user.digits
 
     security = get_object_or_404(Assets, id=security_id, investors__id=user.id)

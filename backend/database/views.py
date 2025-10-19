@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from django import forms
 from django.core.cache import cache
@@ -85,11 +85,13 @@ def api_get_security_price_history(request, security_id):
         period = request.GET.get("period", "1Y")
         # Use JWT middleware instead of session
         effective_current_date_str = getattr(
-            request, "effective_current_date", datetime.now().date().isoformat()
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).date()
+        ).replace(tzinfo=timezone.utc)
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -119,11 +121,13 @@ def api_get_security_position_history(request, security_id):
         period = request.GET.get("period", "1Y")
         # Use JWT middleware instead of session
         effective_current_date_str = getattr(
-            request, "effective_current_date", datetime.now().date().isoformat()
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).date()
+        ).replace(tzinfo=timezone.utc)
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -169,11 +173,13 @@ def api_get_security_transactions(request, security_id):
     try:
         # Use JWT middleware instead of session
         effective_current_date_str = getattr(
-            request, "effective_current_date", datetime.now().date().isoformat()
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).date()
+        ).replace(tzinfo=timezone.utc)
         period = request.GET.get("period", "1Y")
         start_date = get_start_date(effective_current_date, period)
 

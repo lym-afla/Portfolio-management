@@ -1,7 +1,7 @@
 """Summary analysis views."""
 
 import logging
-from datetime import date, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from rest_framework import viewsets
@@ -26,12 +26,17 @@ class SummaryViewSet(viewsets.ViewSet):
     def summary_data(self, request):
         """Summary data."""
         user = request.user
-        effective_current_date_str = getattr(
-            request, "effective_current_date", datetime.now().date().isoformat()
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(request, "effective_current_date", None)
+
+        # Convert effective_current_date from string to datetime object
+        effective_current_date = (
+            datetime.strptime(effective_current_date_str, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+            if effective_current_date_str
+            else datetime.now(timezone.utc)
         )
-        effective_current_date = datetime.strptime(
-            effective_current_date_str, "%Y-%m-%d"
-        ).date()
         currency_target = user.default_currency
         number_of_digits = user.digits
 
@@ -64,11 +69,13 @@ class SummaryViewSet(viewsets.ViewSet):
         user = request.user
         timespan = request.GET.get("year")
         effective_current_date_str = getattr(
-            request, "effective_current_date", datetime.now().date().isoformat()
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).date()
+        ).replace(tzinfo=timezone.utc)
         currency_target = user.default_currency
         number_of_digits = user.digits
 
@@ -85,14 +92,16 @@ class SummaryViewSet(viewsets.ViewSet):
     def get_date_range(self, timespan, effective_current_date):
         """Get date range for portfolio breakdown."""
         if timespan == "ytd":
-            start_date = date(effective_current_date.year, 1, 1)
+            start_date = datetime(
+                effective_current_date.year, 1, 1, tzinfo=timezone.utc
+            )
             end_date = effective_current_date
         elif timespan == "all_time":
             start_date = None
             end_date = effective_current_date
         else:
-            start_date = date(int(timespan), 1, 1)
-            end_date = date(int(timespan), 12, 31)
+            start_date = datetime(int(timespan), 1, 1, tzinfo=timezone.utc)
+            end_date = datetime(int(timespan), 12, 31, 23, 59, 59, tzinfo=timezone.utc)
         return start_date, end_date
 
     def get_exposure_table_data(
