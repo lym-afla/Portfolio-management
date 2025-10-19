@@ -71,7 +71,7 @@ tests/
 
 ```bash
 # Install dependencies
-pip install -r requirements-dev.txt
+pip install -r backend/requirements-dev.txt
 
 # Run all tests
 pytest
