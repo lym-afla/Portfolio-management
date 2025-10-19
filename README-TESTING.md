@@ -77,7 +77,7 @@ pip install -r requirements-dev.txt
 pytest
 
 # Run with coverage
-pytest --cov=portfolio_management --cov-report=html
+pytest --cov=backend --cov-report=html
 
 # Run specific test categories
 pytest -m unit                    # Unit tests only
@@ -108,7 +108,7 @@ docker build -f Dockerfile.test -t portfolio-test .
 docker run portfolio-test pytest
 
 # Run with coverage
-docker run portfolio-test pytest --cov=portfolio_management
+docker run portfolio-test pytest --cov=backend
 ```
 
 ### Performance Testing
@@ -221,8 +221,8 @@ omit = [
     "*/venv/*",
     "*/env/*",
     "manage.py",
-    "portfolio_management/wsgi.py",
-    "portfolio_management/asgi.py",
+    "backend/portfolio_management/wsgi.py",
+    "backend/portfolio_management/asgi.py",
 ]
 ```
 
@@ -230,13 +230,13 @@ omit = [
 
 ```bash
 # HTML report (detailed)
-pytest --cov=portfolio_management --cov-report=html
+pytest --cov=backend --cov-report=html
 
 # Terminal report
-pytest --cov=portfolio_management --cov-report=term-missing
+pytest --cov=backend --cov-report=term-missing
 
 # XML report (for CI/CD)
-pytest --cov=portfolio_management --cov-report=xml
+pytest --cov=backend --cov-report=xml
 ```
 
 ## 🔄 CI/CD Pipeline
@@ -313,7 +313,7 @@ mprof plot --output memory-profile.png mprof_*.dat
 1. **Database Connection Errors**
    ```bash
    # Ensure test database is running
-   python manage.py migrate --settings=portfolio_management.settings.test
+   python manage.py migrate --settings=backend.portfolio_management.settings.test
    ```
 
 2. **Missing Fixtures**
@@ -325,7 +325,7 @@ mprof plot --output memory-profile.png mprof_*.dat
 3. **Import Errors**
    ```bash
    # Check Python path
-   python -c "import portfolio_management; print('OK')"
+   python -c "import backend; print('OK')"
    ```
 
 ### Debugging Tools
@@ -348,7 +348,7 @@ pytest -s tests/unit/calculations/test_buy_in_price.py::test_simple_buy
 
 ```bash
 # Reset test database
-python manage.py flush --settings=portfolio_management.settings.test
+python manage.py flush --settings=backend.portfolio_management.settings.test
 
 # Create test data
 python manage.py loaddata tests/fixtures/test_data.json
@@ -428,7 +428,7 @@ coverage report
 # Run linting
 black --check .
 flake8 .
-mypy portfolio_management/
+mypy backend/
 ```
 
 ### Test Results Interpretation

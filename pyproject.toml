@@ -58,23 +58,23 @@ include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
-src_paths = ["portfolio_management", "tests"]
+src_paths = ["backend", "tests"]
 skip = ["migrations"]
 
 # Coverage configuration
 [tool.coverage.run]
-source = ["portfolio_management"]
+source = ["backend"]
 omit = [
     "*/migrations/*",
     "*/tests/*",
     "*/venv/*",
     "*/env/*",
     "manage.py",
-    "portfolio_management/wsgi.py",
-    "portfolio_management/asgi.py",
-    "portfolio_management/__init__.py",
-    "portfolio_management/settings/*",
-    "portfolio_management/urls.py",
+    "backend/portfolio_management/wsgi.py",
+    "backend/portfolio_management/asgi.py",
+    "backend/portfolio_management/__init__.py",
+    "backend/portfolio_management/settings/*",
+    "backend/portfolio_management/urls.py",
 ]
 branch = true
 
@@ -113,7 +113,8 @@ addopts = [
     "--tb=short",
     "-p no:warnings",
 ]
-testpaths = ["tests"]
+testpaths = ["backend/tests"]
+DJANGO_SETTINGS_MODULE = "backend.portfolio_management.settings"
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -126,6 +127,8 @@ markers = [
     "edge_case: marks tests as edge case tests",
     "production: marks tests as production snapshot tests",
     "smoke: marks tests as smoke tests",
+    "buy_in_price: marks tests related to buy-in price calculations",
+    "fx: marks tests related to FX rate calculations and conversions",
 ]
 filterwarnings = [
     "error",

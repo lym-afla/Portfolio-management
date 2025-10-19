@@ -38,7 +38,7 @@ This application allows users to manage and analyze their investment portfolio. 
 
 2. Set up the backend:
    ```bash
-   cd Portfolio-management/portfolio_management
+   cd Portfolio-management/backend
    python -m venv venv
    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
    pip install -r requirements.txt
@@ -82,7 +82,8 @@ npm run lint
 
 ## Folder Structure
 
-portfolio_management/
+Portfolio-management/
+├── backend/
 ├── portfolio_frontend/
 │   ├── public/
 │   ├── src/
@@ -152,7 +153,7 @@ portfolio_management/
 │   ├── package.json
 │   ├── package-lock.json
 │   ├── vue.config.js
-├── portfolio_management/
+├── backend/
 │   ├── closed_positions/
 │       ├── migrations/
 │       ├── templates/
@@ -194,7 +195,7 @@ portfolio_management/
 │           ├── open_positions_tfoot.html
 │       ├── urls.py
 │       ├── views.py
-│   ├── portfolio_management/
+│   ├── backend/
 │       ├── middleware.py
 │       ├── settings.py
 │       ├── urls.py
