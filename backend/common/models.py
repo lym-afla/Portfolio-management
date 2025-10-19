@@ -30,6 +30,7 @@ from constants import (
     TRANSACTION_TYPE_SELL,
     TRANSACTION_TYPE_TAX,
 )
+
 # from .utils import update_FX_database
 from users.models import CustomUser
 

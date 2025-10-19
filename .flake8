@@ -19,6 +19,16 @@ per-file-ignores =
     settings/*:F403,F405
     tests/*:F401,F811
 max-complexity = 20
+# Note: During refactoring period (Phase 1-2), consider temporarily increasing to 25
+# After refactoring is complete, return to 20 for better code quality
+#
+# Complexity thresholds:
+# - 15-20: Good (target for all functions)
+# - 21-25: Acceptable during refactoring
+# - 26-30: Needs attention soon
+# - 31+: High priority for refactoring
+#
+# See COMPLEXITY_REFACTORING_GUIDE.md for detailed refactoring strategies
 # Remove problematic import-order-style that conflicts with isort
 # import-order-style = django
 application-import-names = portfolio_management

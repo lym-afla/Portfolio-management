@@ -33,6 +33,7 @@ repos:
         args:
           - --max-line-length=88
           - --extend-ignore=E203,W503,E501,I
+          - --max-complexity=75
         additional_dependencies:
           - flake8-docstrings
           - flake8-bugbear
