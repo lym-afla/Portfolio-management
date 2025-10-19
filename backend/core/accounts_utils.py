@@ -1,13 +1,18 @@
 from datetime import datetime
 
 from django.db import models
-from django.db.models import Q, Sum
+from django.db.models import Q
+from django.db.models import Sum
 
-from common.models import Accounts, Assets, Transactions
+from common.models import Accounts
+from common.models import Assets
+from common.models import Transactions
 
-from .formatting_utils import currency_format, format_table_data
+from .formatting_utils import currency_format
+from .formatting_utils import format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import IRR, NAV_at_date
+from .portfolio_utils import IRR
+from .portfolio_utils import NAV_at_date
 from .sorting_utils import sort_entries
 
 

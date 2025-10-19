@@ -14,16 +14,15 @@ from decimal import Decimal
 
 import pytest
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django.db import transaction
 
-from common.models import (
-    FX,
-    AnnualPerformance,
-    Assets,
-    Brokers,
-    FXTransaction,
-    Transactions,
-)
+from common.models import FX
+from common.models import AnnualPerformance
+from common.models import Assets
+from common.models import Brokers
+from common.models import FXTransaction
+from common.models import Transactions
 from users.models import CustomUser
 
 

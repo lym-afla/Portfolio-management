@@ -1,6 +1,10 @@
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Union
 
 from babel.numbers import get_currency_symbol
 from django.core.paginator import Page

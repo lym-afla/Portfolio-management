@@ -8,35 +8,43 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework import status
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.decorators import api_view
+from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
-from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
+from common.models import FX
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
+from common.models import Prices
+from common.models import Transactions
+from constants import ASSET_TYPE_CHOICES
+from constants import DATA_SOURCE_CHOICES
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
-from core.securities_utils import get_securities_table_api, get_security_detail
+from core.securities_utils import get_securities_table_api
+from core.securities_utils import get_security_detail
 from core.sorting_utils import sort_entries
 
 from .forms import SecurityForm
-from .serializers import (
-    AccountPerformanceSerializer,
-    AccountSerializer,
-    BrokerSerializer,
-    FXRateSerializer,
-    FXSerializer,
-    PriceImportSerializer,
-    PriceSerializer,
-    TransactionSerializer,
-)
+from .serializers import AccountPerformanceSerializer
+from .serializers import AccountSerializer
+from .serializers import BrokerSerializer
+from .serializers import FXRateSerializer
+from .serializers import FXSerializer
+from .serializers import PriceImportSerializer
+from .serializers import PriceSerializer
+from .serializers import TransactionSerializer
 
 logger = logging.getLogger(__name__)
 

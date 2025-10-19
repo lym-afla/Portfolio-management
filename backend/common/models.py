@@ -1,38 +1,39 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 from decimal import Decimal
 
 import networkx as nx
 import requests
 import yfinance as yf
 from django.db import models
-from django.db.models import F, Sum
+from django.db.models import F
+from django.db.models import Sum
 
-from constants import (
-    ACCOUNT_TYPE_ALL,
-    ACCOUNT_TYPE_CHOICES,
-    ASSET_TYPE_CHOICES,
-    CURRENCY_CHOICES,
-    DATA_SOURCE_CHOICES,
-    EXPOSURE_CHOICES,
-    TRANSACTION_TYPE_BOND_MATURITY,
-    TRANSACTION_TYPE_BOND_REDEMPTION,
-    TRANSACTION_TYPE_BROKER_COMMISSION,
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_CASH_IN,
-    TRANSACTION_TYPE_CASH_OUT,
-    TRANSACTION_TYPE_CHOICES,
-    TRANSACTION_TYPE_COUPON,
-    TRANSACTION_TYPE_DIVIDEND,
-    TRANSACTION_TYPE_INTEREST_INCOME,
-    TRANSACTION_TYPE_SELL,
-    TRANSACTION_TYPE_TAX,
-)
+from constants import ACCOUNT_TYPE_ALL
+from constants import ACCOUNT_TYPE_CHOICES
+from constants import ASSET_TYPE_CHOICES
+from constants import CURRENCY_CHOICES
+from constants import DATA_SOURCE_CHOICES
+from constants import EXPOSURE_CHOICES
+from constants import TRANSACTION_TYPE_BOND_MATURITY
+from constants import TRANSACTION_TYPE_BOND_REDEMPTION
+from constants import TRANSACTION_TYPE_BROKER_COMMISSION
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_CASH_IN
+from constants import TRANSACTION_TYPE_CASH_OUT
+from constants import TRANSACTION_TYPE_CHOICES
+from constants import TRANSACTION_TYPE_COUPON
+from constants import TRANSACTION_TYPE_DIVIDEND
+from constants import TRANSACTION_TYPE_INTEREST_INCOME
+from constants import TRANSACTION_TYPE_SELL
+from constants import TRANSACTION_TYPE_TAX
 
 # from .utils import update_FX_database
 from users.models import CustomUser
 
-from .fields import TimezoneAwareDateField, TimezoneAwareDateTimeField
+from .fields import TimezoneAwareDateField
+from .fields import TimezoneAwareDateTimeField
 
 logger = logging.getLogger(__name__)
 

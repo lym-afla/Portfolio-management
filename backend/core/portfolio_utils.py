@@ -1,17 +1,32 @@
 import datetime
 import logging
 from collections import defaultdict
-from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from datetime import date
+from datetime import timedelta
+from decimal import ROUND_HALF_UP
+from decimal import Decimal
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
-from django.db.models import Prefetch, Q, QuerySet, Sum
+from django.db.models import Prefetch
+from django.db.models import Q
+from django.db.models import QuerySet
+from django.db.models import Sum
 from pyxirr import xirr
 
-from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
+from common.models import FX
+from common.models import Accounts
+from common.models import AnnualPerformance
+from common.models import Assets
+from common.models import Brokers
+from common.models import Transactions
 from core.formatting_utils import format_percentage
-from users.models import AccountGroup, CustomUser
+from users.models import AccountGroup
+from users.models import CustomUser
 
 logger = logging.getLogger("dashboard")
 

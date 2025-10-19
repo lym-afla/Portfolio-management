@@ -1,10 +1,14 @@
 import logging
-from datetime import date, datetime, timedelta
-from typing import Optional, Tuple
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
+from typing import Optional
+from typing import Tuple
 
 from dateutil.relativedelta import relativedelta
 
-from constants import ALL_TIME, YTD
+from constants import ALL_TIME
+from constants import YTD
 
 logger = logging.getLogger(__name__)
 

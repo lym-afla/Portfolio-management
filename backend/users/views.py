@@ -5,9 +5,11 @@ import cryptography.fernet
 import structlog
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import status
+from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken
@@ -16,31 +18,28 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from tinkoff.invest import Client
 from tinkoff.invest.exceptions import RequestError
 
-from common.models import Accounts, Brokers
-from constants import (
-    CURRENCY_CHOICES,
-    NAV_BARCHART_CHOICES,
-    TINKOFF_ACCOUNT_STATUSES,
-    TINKOFF_ACCOUNT_TYPES,
-)
-from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, prepare_account_choices
-from users.models import (
-    AccountGroup,
-    CustomUser,
-    InteractiveBrokersApiToken,
-    TinkoffApiToken,
-)
-from users.serializers import (
-    AccountGroupSerializer,
-    CustomTokenObtainPairSerializer,
-    DashboardSettingsChoicesSerializer,
-    DashboardSettingsSerializer,
-    InteractiveBrokersApiTokenSerializer,
-    TinkoffApiTokenSerializer,
-    UserProfileSerializer,
-    UserSerializer,
-    UserSettingsSerializer,
-)
+from common.models import Accounts
+from common.models import Brokers
+from constants import CURRENCY_CHOICES
+from constants import NAV_BARCHART_CHOICES
+from constants import TINKOFF_ACCOUNT_STATUSES
+from constants import TINKOFF_ACCOUNT_TYPES
+from core.user_utils import FREQUENCY_CHOICES
+from core.user_utils import TIMELINE_CHOICES
+from core.user_utils import prepare_account_choices
+from users.models import AccountGroup
+from users.models import CustomUser
+from users.models import InteractiveBrokersApiToken
+from users.models import TinkoffApiToken
+from users.serializers import AccountGroupSerializer
+from users.serializers import CustomTokenObtainPairSerializer
+from users.serializers import DashboardSettingsChoicesSerializer
+from users.serializers import DashboardSettingsSerializer
+from users.serializers import InteractiveBrokersApiTokenSerializer
+from users.serializers import TinkoffApiTokenSerializer
+from users.serializers import UserProfileSerializer
+from users.serializers import UserSerializer
+from users.serializers import UserSettingsSerializer
 
 User = get_user_model()
 

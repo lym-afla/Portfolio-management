@@ -1,10 +1,19 @@
 import time
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 from core.formatting_utils import currency_format
-from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
+from core.portfolio_utils import IRR
+from core.portfolio_utils import NAV_at_date
+from core.portfolio_utils import calculate_portfolio_cash
+from core.portfolio_utils import get_fx_rate
 
 
 def calculate_positions_table_output(

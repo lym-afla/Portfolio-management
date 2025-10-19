@@ -1,11 +1,17 @@
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 
-from common.models import FX, Assets, Brokers, FXTransaction, Prices, Transactions
+from common.models import FX
+from common.models import Assets
+from common.models import Brokers
+from common.models import FXTransaction
+from common.models import Prices
+from common.models import Transactions
 
 CustomUser = get_user_model()
 

@@ -12,14 +12,12 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from common.models import (
-    Accounts,
-    Assets,
-    BondCouponSchedule,
-    BondMetadata,
-    Brokers,
-    Transactions,
-)
+from common.models import Accounts
+from common.models import Assets
+from common.models import BondCouponSchedule
+from common.models import BondMetadata
+from common.models import Brokers
+from common.models import Transactions
 from core.securities_utils import calculate_bond_ytm
 
 CustomUser = get_user_model()

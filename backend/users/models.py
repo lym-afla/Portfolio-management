@@ -4,12 +4,15 @@ import logging
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.forms import ValidationError
-from tinkoff.invest import Client, RequestError
+from tinkoff.invest import Client
+from tinkoff.invest import RequestError
 
-from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from constants import CURRENCY_CHOICES
+from constants import NAV_BARCHART_CHOICES
 
 logger = logging.getLogger(__name__)
 

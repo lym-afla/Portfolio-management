@@ -14,7 +14,8 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import Prices, Transactions
+from common.models import Prices
+from common.models import Transactions
 
 
 @pytest.mark.unit

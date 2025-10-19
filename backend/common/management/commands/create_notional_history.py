@@ -16,7 +16,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from common.models import Transactions
-from constants import TRANSACTION_TYPE_BOND_MATURITY, TRANSACTION_TYPE_BOND_REDEMPTION
+from constants import TRANSACTION_TYPE_BOND_MATURITY
+from constants import TRANSACTION_TYPE_BOND_REDEMPTION
 
 logger = logging.getLogger(__name__)
 

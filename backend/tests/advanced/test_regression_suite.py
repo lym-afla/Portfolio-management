@@ -10,17 +10,16 @@ Created: 2025-10-18
 Purpose: Prevent regressions in financial calculations
 """
 
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 
 from common.models import Assets
 from portfolio_management.common.models import get_exchange_rate
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from portfolio_management.portfolio.calculator import calculate_buy_in_price
+from portfolio_management.portfolio.calculator import calculate_nav
 from portfolio_management.portfolio.models import gain_loss
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory

@@ -4,11 +4,14 @@ from decimal import Decimal
 
 from django.db import models
 
-from common.models import Assets, Brokers, Transactions
+from common.models import Assets
+from common.models import Brokers
+from common.models import Transactions
 
 from .formatting_utils import format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import IRR, NAV_at_date
+from .portfolio_utils import IRR
+from .portfolio_utils import NAV_at_date
 from .sorting_utils import sort_entries
 
 logger = logging.getLogger(__name__)

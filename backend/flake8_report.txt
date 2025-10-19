@@ -1,0 +1,1078 @@
+.\closed_positions\__init__.py:1:1: D104 Missing docstring in public package
+.\closed_positions\apps.py:1:1: D100 Missing docstring in public module
+.\closed_positions\apps.py:4:1: D101 Missing docstring in public class
+.\closed_positions\urls.py:1:1: D100 Missing docstring in public module
+.\closed_positions\views.py:1:1: D100 Missing docstring in public module
+.\closed_positions\views.py:8:1: I100 Import statements are in the wrong order. 'from core.positions_utils import get_positions_table_api' should be before 'from rest_framework.response import Response' and in a different group.
+.\closed_positions\views.py:15:1: D103 Missing docstring in public function
+.\common\__init__.py:1:1: D104 Missing docstring in public package
+.\common\apps.py:1:1: D100 Missing docstring in public module
+.\common\apps.py:4:1: D101 Missing docstring in public class
+.\common\fields.py:1:1: D205 1 blank line required between summary line and description
+.\common\fields.py:27:1: D400 First line should end with a period
+.\common\fields.py:36:1: D400 First line should end with a period
+.\common\fields.py:74:1: D400 First line should end with a period
+.\common\fields.py:81:1: D400 First line should end with a period
+.\common\fields.py:85:1: D400 First line should end with a period
+.\common\fields.py:89:1: D400 First line should end with a period
+.\common\fields.py:100:1: D400 First line should end with a period
+.\common\fields.py:117:1: D400 First line should end with a period
+.\common\fields.py:144:1: D400 First line should end with a period
+.\common\fields.py:151:1: D400 First line should end with a period
+.\common\fields.py:155:1: D400 First line should end with a period
+.\common\fields.py:159:1: D400 First line should end with a period
+.\common\fields.py:170:1: D400 First line should end with a period
+.\common\forms.py:1:1: D100 Missing docstring in public module
+.\common\forms.py:10:1: D101 Missing docstring in public class
+.\common\forms.py:11:1: D102 Missing docstring in public method
+.\common\forms.py:37:1: D102 Missing docstring in public method
+.\common\forms.py:43:1: D101 Missing docstring in public class
+.\common\forms.py:48:1: D106 Missing docstring in public nested class
+.\common\forms.py:56:1: D107 Missing docstring in __init__
+.\common\management\__init__.py:1:1: D104 Missing docstring in public package
+.\common\management\commands\__init__.py:1:1: D104 Missing docstring in public package
+.\common\management\commands\create_notional_history.py:18:1: I100 Import statements are in the wrong order. 'from common.models import Transactions' should be before 'from django.db import transaction' and in a different group.
+.\common\management\commands\create_notional_history.py:19:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BOND_MATURITY' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\common\management\commands\create_notional_history.py:25:1: D101 Missing docstring in public class
+.\common\management\commands\create_notional_history.py:28:1: D102 Missing docstring in public method
+.\common\management\commands\create_notional_history.py:40:1: D102 Missing docstring in public method
+.\common\management\commands\fetch_bond_coupon_schedules.py:1:1: D200 One-line docstring should fit on one line with quotes
+.\common\management\commands\fetch_bond_coupon_schedules.py:9:1: I201 Missing newline between import groups. 'from django.core.management.base import BaseCommand' is identified as Third Party and 'from asgiref.sync import async_to_sync' is identified as Third Party.
+.\common\management\commands\fetch_bond_coupon_schedules.py:11:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from django.core.management.base import BaseCommand' and in a different group.
+.\common\management\commands\fetch_bond_coupon_schedules.py:12:1: I201 Missing newline between import groups. 'from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule' is identified as Third Party and 'from common.models import Assets' is identified as Third Party.
+.\common\management\commands\fetch_bond_coupon_schedules.py:13:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule' is identified as Third Party.
+.\common\management\commands\fetch_bond_coupon_schedules.py:18:1: D101 Missing docstring in public class
+.\common\management\commands\fetch_bond_coupon_schedules.py:21:1: D102 Missing docstring in public method
+.\common\management\commands\fetch_bond_coupon_schedules.py:38:1: D102 Missing docstring in public method
+.\common\models.py:1:1: D100 Missing docstring in public module
+.\common\models.py:7:1: I201 Missing newline between import groups. 'import requests' is identified as Third Party and 'import networkx' is identified as Third Party.
+.\common\models.py:8:1: I201 Missing newline between import groups. 'import yfinance' is identified as Third Party and 'import requests' is identified as Third Party.
+.\common\models.py:9:1: I100 Import statements are in the wrong order. 'from django.db import models' should be before 'import yfinance' and in a different group.
+.\common\models.py:9:1: I201 Missing newline between import groups. 'from django.db import models' is identified as Third Party and 'import yfinance' is identified as Third Party.
+.\common\models.py:13:1: I100 Import statements are in the wrong order. 'from constants import ACCOUNT_TYPE_ALL' should be before 'from django.db.models import Sum' and in a different group.
+.\common\models.py:42:1: D101 Missing docstring in public class
+.\common\models.py:53:1: D106 Missing docstring in public nested class
+.\common\models.py:58:1: D102 Missing docstring in public method
+.\common\models.py:147:1: D102 Missing docstring in public method
+.\common\models.py:187:1: D102 Missing docstring in public method
+.\common\models.py:193:1: D400 First line should end with a period
+.\common\models.py:204:1: D106 Missing docstring in public nested class
+.\common\models.py:208:1: D105 Missing docstring in magic method
+.\common\models.py:213:1: D400 First line should end with a period
+.\common\models.py:231:1: D106 Missing docstring in public nested class
+.\common\models.py:235:1: D105 Missing docstring in magic method
+.\common\models.py:239:1: D102 Missing docstring in public method
+.\common\models.py:243:1: D102 Missing docstring in public method
+.\common\models.py:292:1: D101 Missing docstring in public class
+.\common\models.py:325:1: D400 First line should end with a period
+.\common\models.py:330:1: D400 First line should end with a period
+.\common\models.py:339:1: D205 1 blank line required between summary line and description
+.\common\models.py:351:1: D102 Missing docstring in public method
+.\common\models.py:396:1: D205 1 blank line required between summary line and description
+.\common\models.py:443:1: D102 Missing docstring in public method
+.\common\models.py:482:1: D102 Missing docstring in public method
+.\common\models.py:490:1: D200 One-line docstring should fit on one line with quotes
+.\common\models.py:490:1: D401 First line should be in imperative mood
+.\common\models.py:518:1: D200 One-line docstring should fit on one line with quotes
+.\common\models.py:518:1: D401 First line should be in imperative mood
+.\common\models.py:550:1: D205 1 blank line required between summary line and description
+.\common\models.py:550:1: D400 First line should end with a period
+.\common\models.py:550:1: D401 First line should be in imperative mood
+.\common\models.py:688:1: D102 Missing docstring in public method
+.\common\models.py:974:1: D205 1 blank line required between summary line and description
+.\common\models.py:974:1: D400 First line should end with a period
+.\common\models.py:974:1: D401 First line should be in imperative mood
+.\common\models.py:1063:1: D205 1 blank line required between summary line and description
+.\common\models.py:1169:1: D200 One-line docstring should fit on one line with quotes
+.\common\models.py:1205:1: D105 Missing docstring in magic method
+.\common\models.py:1210:1: D101 Missing docstring in public class
+.\common\models.py:1262:1: D400 First line should end with a period
+.\common\models.py:1274:1: D400 First line should end with a period
+.\common\models.py:1333:101: E501 line too long (110 > 100 characters)
+.\common\models.py:1412:1: D202 No blank lines allowed after function docstring
+.\common\models.py:1482:1: D105 Missing docstring in magic method
+.\common\models.py:1486:1: D101 Missing docstring in public class
+.\common\models.py:1493:1: D105 Missing docstring in magic method
+.\common\models.py:1496:1: D106 Missing docstring in public nested class
+.\common\models.py:1506:1: D400 First line should end with a period
+.\common\models.py:1610:1: D101 Missing docstring in public class
+.\common\models.py:1632:1: D106 Missing docstring in public nested class
+.\common\models.py:1656:1: D101 Missing docstring in public class
+.\common\models.py:1679:1: D102 Missing docstring in public method
+.\common\models.py:1722:1: D105 Missing docstring in magic method
+.\common\models.py:1728:1: D205 1 blank line required between summary line and description
+.\common\models.py:1739:1: D106 Missing docstring in public nested class
+.\common\models.py:1744:1: D200 One-line docstring should fit on one line with quotes
+.\common\models.py:1810:1: D105 Missing docstring in magic method
+.\common\models.py:2122:1: D205 1 blank line required between summary line and description
+.\common\models.py:2199:1: D205 1 blank line required between summary line and description
+.\common\models.py:2236:1: D106 Missing docstring in public nested class
+.\common\models.py:2243:1: D105 Missing docstring in magic method
+.\common\models.py:2248:1: D205 1 blank line required between summary line and description
+.\common\models.py:2290:1: D106 Missing docstring in public nested class
+.\common\models.py:2298:1: D105 Missing docstring in magic method
+.\common\models.py:2303:1: D200 One-line docstring should fit on one line with quotes
+.\common\models.py:2336:1: D105 Missing docstring in magic method
+.\common\models.py:2341:1: D200 One-line docstring should fit on one line with quotes
+.\common\models.py:2378:1: D105 Missing docstring in magic method
+.\common\templatetags\custom_filters.py:1:1: D100 Missing docstring in public module
+.\common\templatetags\custom_filters.py:32:1: D400 First line should end with a period
+.\common\templatetags\custom_filters.py:41:1: D103 Missing docstring in public function
+.\common\templatetags\custom_filters.py:47:1: D401 First line should be in imperative mood
+.\common\test.py:1:1: D100 Missing docstring in public module
+.\common\test.py:8:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.test import TestCase' and in a different group.
+.\common\test.py:9:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from common.models import FX'
+.\common\test.py:16:1: D101 Missing docstring in public class
+.\common\test.py:17:1: D102 Missing docstring in public method
+.\common\test.py:89:1: D102 Missing docstring in public method
+.\common\test.py:94:1: D102 Missing docstring in public method
+.\common\test.py:99:1: D102 Missing docstring in public method
+.\common\test.py:104:1: D102 Missing docstring in public method
+.\common\test.py:109:1: D102 Missing docstring in public method
+.\common\test.py:116:1: D102 Missing docstring in public method
+.\common\test.py:123:1: D102 Missing docstring in public method
+.\common\test.py:149:1: D102 Missing docstring in public method
+.\common\test.py:158:1: D102 Missing docstring in public method
+.\common\test.py:167:1: D102 Missing docstring in public method
+.\common\test.py:173:1: D102 Missing docstring in public method
+.\common\views.py:1:1: D100 Missing docstring in public module
+.\common\views.py:8:1: I100 Import statements are in the wrong order. 'from common.models import Transactions' should be before 'from rest_framework.response import Response' and in a different group.
+.\common\views.py:9:1: I201 Missing newline between import groups. 'from constants import ALL_TIME' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\common\views.py:11:1: I201 Missing newline between import groups. 'from core.portfolio_utils import get_last_exit_date_for_accounts' is identified as Third Party and 'from constants import YTD' is identified as Third Party.
+.\common\views.py:17:1: D103 Missing docstring in public function
+.\common\views.py:77:1: D103 Missing docstring in public function
+.\constants.py:1:1: D100 Missing docstring in public module
+.\core\__init__.py:1:1: D104 Missing docstring in public package
+.\core\accounts_utils.py:1:1: D100 Missing docstring in public module
+.\core\accounts_utils.py:7:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.db.models import Sum' and in a different group.
+.\core\accounts_utils.py:19:1: D103 Missing docstring in public function
+.\core\balance_tracker.py:70:1: D400 First line should end with a period
+.\core\balance_tracker.py:87:1: D400 First line should end with a period
+.\core\balance_tracker.py:111:1: D400 First line should end with a period
+.\core\broker_api_utils.py:1:1: D100 Missing docstring in public module
+.\core\broker_api_utils.py:12:1: I201 Missing newline between import groups. 'from tinkoff.invest import Client' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\core\broker_api_utils.py:17:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from tinkoff.invest import RequestError' and in a different group.
+.\core\broker_api_utils.py:28:1: D400 First line should end with a period
+.\core\broker_api_utils.py:34:1: D400 First line should end with a period
+.\core\broker_api_utils.py:40:1: D400 First line should end with a period
+.\core\broker_api_utils.py:42:1: D107 Missing docstring in __init__
+.\core\broker_api_utils.py:47:1: D400 First line should end with a period
+.\core\broker_api_utils.py:52:1: D400 First line should end with a period
+.\core\broker_api_utils.py:62:1: D400 First line should end with a period
+.\core\broker_api_utils.py:89:1: D400 First line should end with a period
+.\core\broker_api_utils.py:91:1: D107 Missing docstring in __init__
+.\core\broker_api_utils.py:102:1: D400 First line should end with a period
+.\core\broker_api_utils.py:160:1: D400 First line should end with a period
+.\core\broker_api_utils.py:190:1: D400 First line should end with a period
+.\core\broker_api_utils.py:205:1: D400 First line should end with a period
+.\core\broker_api_utils.py:342:1: D400 First line should end with a period
+.\core\broker_api_utils.py:359:1: D400 First line should end with a period
+.\core\broker_api_utils.py:361:1: D102 Missing docstring in public method
+.\core\broker_api_utils.py:370:1: D102 Missing docstring in public method
+.\core\broker_api_utils.py:378:1: D102 Missing docstring in public method
+.\core\broker_api_utils.py:396:1: D400 First line should end with a period
+.\core\broker_api_utils.py:396:1: D401 First line should be in imperative mood; try rephrasing
+.\core\brokers_utils.py:1:1: D100 Missing docstring in public module
+.\core\brokers_utils.py:7:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from django.db import models' and in a different group.
+.\core\brokers_utils.py:21:1: D400 First line should end with a period
+.\core\brokers_utils.py:67:1: D400 First line should end with a period
+.\core\brokers_utils.py:79:1: D400 First line should end with a period
+.\core\brokers_utils.py:155:1: D400 First line should end with a period
+.\core\chart_utils.py:1:1: D100 Missing docstring in public module
+.\core\chart_utils.py:8:1: I201 Missing newline between import groups. 'import pandas' is identified as Third Party and 'import numpy' is identified as Third Party.
+.\core\chart_utils.py:9:1: I100 Import statements are in the wrong order. 'from dateutil.relativedelta import relativedelta' should be before 'import pandas' and in a different group.
+.\core\chart_utils.py:9:1: I201 Missing newline between import groups. 'from dateutil.relativedelta import relativedelta' is identified as Third Party and 'import pandas' is identified as Third Party.
+.\core\chart_utils.py:10:1: I201 Missing newline between import groups. 'from django.db.models import Min' is identified as Third Party and 'from dateutil.relativedelta import relativedelta' is identified as Third Party.
+.\core\chart_utils.py:12:1: I100 Import statements are in the wrong order. 'from common.models import Transactions' should be before 'from django.db.models import Min' and in a different group.
+.\core\chart_utils.py:13:1: I201 Missing newline between import groups. 'from core.portfolio_utils import IRR' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\core\chart_utils.py:20:1: D103 Missing docstring in public function
+.\core\chart_utils.py:233:1: D103 Missing docstring in public function
+.\core\chart_utils.py:258:1: D103 Missing docstring in public function
+.\core\chart_utils.py:273:1: D103 Missing docstring in public function
+.\core\chart_utils.py:280:1: D103 Missing docstring in public function
+.\core\chart_utils.py:311:1: D103 Missing docstring in public function
+.\core\chart_utils.py:341:1: D103 Missing docstring in public function
+.\core\database_utils.py:1:1: D100 Missing docstring in public module
+.\core\database_utils.py:7:1: I201 Missing newline between import groups. 'from django.db import OperationalError' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\core\database_utils.py:10:1: I100 Import statements are in the wrong order. 'from common.models import AnnualPerformance' should be before 'from django.db import transaction' and in a different group.
+.\core\database_utils.py:12:1: I201 Missing newline between import groups. 'from core.portfolio_utils import calculate_performance' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\core\database_utils.py:19:1: D103 Missing docstring in public function
+.\core\database_utils.py:74:9: B007 Loop control variable 'i' not used within the loop body. If this is intended, start the name with an underscore.
+.\core\database_utils.py:81:26: B023 Function definition does not bind loop variable 'year'.
+.\core\database_utils.py:133:1: D103 Missing docstring in public function
+.\core\database_utils.py:179:1: D103 Missing docstring in public function
+.\core\date_utils.py:1:1: D100 Missing docstring in public module
+.\core\date_utils.py:10:1: I100 Import statements are in the wrong order. 'from constants import ALL_TIME' should be before 'from dateutil.relativedelta import relativedelta' and in a different group.
+.\core\date_utils.py:17:1: D202 No blank lines allowed after function docstring
+.\core\date_utils.py:41:1: D103 Missing docstring in public function
+.\core\formatting_utils.py:1:1: D100 Missing docstring in public module
+.\core\formatting_utils.py:10:1: I201 Missing newline between import groups. 'from django.core.paginator import Page' is identified as Third Party and 'from babel.numbers import get_currency_symbol' is identified as Third Party.
+.\core\formatting_utils.py:12:1: I100 Import statements are in the wrong order. 'from constants import CURRENCY_CHOICES' should be before 'from django.core.paginator import Page' and in a different group.
+.\core\formatting_utils.py:133:1: D205 1 blank line required between summary line and description
+.\core\formatting_utils.py:193:1: D205 1 blank line required between summary line and description
+.\core\formatting_utils.py:216:1: D103 Missing docstring in public function
+.\core\import_utils.py:1:1: D100 Missing docstring in public module
+.\core\import_utils.py:15:1: I201 Missing newline between import groups. 'import pandas' is identified as Third Party and 'import aiohttp' is identified as Third Party.
+.\core\import_utils.py:16:1: I201 Missing newline between import groups. 'import yfinance' is identified as Third Party and 'import pandas' is identified as Third Party.
+.\core\import_utils.py:17:1: I100 Import statements are in the wrong order. 'from bs4 import BeautifulSoup' should be before 'import yfinance' and in a different group.
+.\core\import_utils.py:17:1: I201 Missing newline between import groups. 'from bs4 import BeautifulSoup' is identified as Third Party and 'import yfinance' is identified as Third Party.
+.\core\import_utils.py:18:1: I201 Missing newline between import groups. 'from channels.db import database_sync_to_async' is identified as Third Party and 'from bs4 import BeautifulSoup' is identified as Third Party.
+.\core\import_utils.py:19:1: I201 Missing newline between import groups. 'from dateutil.relativedelta import relativedelta' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\core\import_utils.py:20:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'from dateutil.relativedelta import relativedelta' is identified as Third Party.
+.\core\import_utils.py:23:1: I201 Missing newline between import groups. 'from fake_useragent import UserAgent' is identified as Third Party and 'from django.db.models import Q' is identified as Third Party.
+.\core\import_utils.py:24:1: I201 Missing newline between import groups. 'from fuzzywuzzy import process' is identified as Third Party and 'from fake_useragent import UserAgent' is identified as Third Party.
+.\core\import_utils.py:25:1: I201 Missing newline between import groups. 'from tinkoff.invest import Client' is identified as Third Party and 'from fuzzywuzzy import process' is identified as Third Party.
+.\core\import_utils.py:29:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from tinkoff.invest.utils import quotation_to_decimal' and in a different group.
+.\core\import_utils.py:37:1: I201 Missing newline between import groups. 'from constants import ASSET_TYPE_CHOICES' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\core\import_utils.py:48:1: I201 Missing newline between import groups. 'from core.broker_api_utils import get_broker_api' is identified as Third Party and 'from constants import TRANSACTION_TYPE_TAX' is identified as Third Party.
+.\core\import_utils.py:59:1: D103 Missing docstring in public function
+.\core\import_utils.py:65:1: D400 First line should end with a period
+.\core\import_utils.py:70:1: D103 Missing docstring in public function
+.\core\import_utils.py:75:1: D103 Missing docstring in public function
+.\core\import_utils.py:84:1: D103 Missing docstring in public function
+.\core\import_utils.py:116:1: D202 No blank lines allowed after function docstring
+.\core\import_utils.py:160:1: D103 Missing docstring in public function
+.\core\import_utils.py:362:1: D205 1 blank line required between summary line and description
+.\core\import_utils.py:501:1: D103 Missing docstring in public function
+.\core\import_utils.py:556:1: D103 Missing docstring in public function
+.\core\import_utils.py:701:25: B023 Function definition does not bind loop variable 'ticker'.
+.\core\import_utils.py:702:27: B023 Function definition does not bind loop variable 'start_date'.
+.\core\import_utils.py:702:43: B023 Function definition does not bind loop variable 'end_date'.
+.\core\import_utils.py:723:1: D103 Missing docstring in public function
+.\core\import_utils.py:981:1: D200 One-line docstring should fit on one line with quotes
+.\core\import_utils.py:1113:1: D400 First line should end with a period
+.\core\import_utils.py:1420:1: D202 No blank lines allowed after function docstring
+.\core\import_utils.py:1420:1: D205 1 blank line required between summary line and description
+.\core\import_utils.py:1757:1: D202 No blank lines allowed after function docstring
+.\core\import_utils.py:1757:1: D205 1 blank line required between summary line and description
+.\core\import_utils.py:1938:1: D205 1 blank line required between summary line and description
+.\core\import_utils.py:2211:1: D400 First line should end with a period
+.\core\import_utils.py:2332:1: D400 First line should end with a period
+.\core\micex_aci_utils.py:1:1: D205 1 blank line required between summary line and description
+.\core\pagination_utils.py:1:1: D100 Missing docstring in public module
+.\core\portfolio_utils.py:1:1: D100 Missing docstring in public module
+.\core\portfolio_utils.py:7:1: I100 Import statements are in the wrong order. 'from decimal import Decimal' should be before 'from decimal import ROUND_HALF_UP'
+.\core\portfolio_utils.py:19:1: I201 Missing newline between import groups. 'from pyxirr import xirr' is identified as Third Party and 'from django.db.models import Sum' is identified as Third Party.
+.\core\portfolio_utils.py:21:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from pyxirr import xirr' and in a different group.
+.\core\portfolio_utils.py:22:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from common.models import FX'
+.\core\portfolio_utils.py:27:1: I201 Missing newline between import groups. 'from core.formatting_utils import format_percentage' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\core\portfolio_utils.py:28:1: I201 Missing newline between import groups. 'from users.models import AccountGroup' is identified as Third Party and 'from core.formatting_utils import format_percentage' is identified as Third Party.
+.\core\portfolio_utils.py:83:1: D103 Missing docstring in public function
+.\core\portfolio_utils.py:91:1: D103 Missing docstring in public function
+.\core\portfolio_utils.py:102:1: D103 Missing docstring in public function
+.\core\portfolio_utils.py:420:1: D103 Missing docstring in public function
+.\core\portfolio_utils.py:650:1: D205 1 blank line required between summary line and description
+.\core\portfolio_utils.py:650:1: D400 First line should end with a period
+.\core\portfolio_utils.py:650:1: D401 First line should be in imperative mood
+.\core\positions_utils.py:1:1: D100 Missing docstring in public module
+.\core\positions_utils.py:15:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.http import HttpRequest' and in a different group.
+.\core\positions_utils.py:17:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from common.models import Assets' is identified as Third Party.
+.\core\price_utils.py:1:1: D100 Missing docstring in public module
+.\core\price_utils.py:5:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from django.db.models import Q' and in a different group.
+.\core\price_utils.py:7:1: I201 Missing newline between import groups. 'from core.formatting_utils import format_table_data' is identified as Third Party and 'from common.models import Prices' is identified as Third Party.
+.\core\price_utils.py:13:1: D200 One-line docstring should fit on one line with quotes
+.\core\securities_utils.py:1:1: D100 Missing docstring in public module
+.\core\securities_utils.py:9:1: I201 Missing newline between import groups. 'from pyxirr import xirr' is identified as Third Party and 'from django.shortcuts import get_object_or_404' is identified as Third Party.
+.\core\securities_utils.py:11:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from pyxirr import xirr' and in a different group.
+.\core\securities_utils.py:12:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\core\securities_utils.py:13:1: I201 Missing newline between import groups. 'from core.portfolio_utils import IRR' is identified as Third Party and 'from common.models import Assets' is identified as Third Party.
+.\core\securities_utils.py:23:1: D103 Missing docstring in public function
+.\core\securities_utils.py:111:1: D103 Missing docstring in public function
+.\core\securities_utils.py:753:1: D103 Missing docstring in public function
+.\core\sorting_utils.py:1:1: D100 Missing docstring in public module
+.\core\summary_utils.py:1:1: D100 Missing docstring in public module
+.\core\summary_utils.py:7:1: I201 Missing newline between import groups. 'from core.formatting_utils import currency_format_dict_values' is identified as Third Party and 'from common.models import AnnualPerformance' is identified as Third Party.
+.\core\summary_utils.py:16:1: D103 Missing docstring in public function
+.\core\summary_utils.py:316:1: D103 Missing docstring in public function
+.\core\tables_utils.py:1:1: D100 Missing docstring in public module
+.\core\tables_utils.py:30:1: D200 One-line docstring should fit on one line with quotes
+.\core\tables_utils.py:30:1: D401 First line should be in imperative mood; try rephrasing
+.\core\tables_utils.py:97:13: B007 Loop control variable 'i' not used within the loop body. If this is intended, start the name with an underscore.
+.\core\tables_utils.py:346:101: E501 line too long (111 > 100 characters)
+.\core\tinkoff_utils.py:1:1: D100 Missing docstring in public module
+.\core\tinkoff_utils.py:6:1: I201 Missing newline between import groups. 'from tinkoff.invest import CandleInterval' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\core\tinkoff_utils.py:15:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from tinkoff.invest.utils import quotation_to_decimal' and in a different group.
+.\core\tinkoff_utils.py:18:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_ASSET_TRANSFER' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\core\tinkoff_utils.py:30:1: I201 Missing newline between import groups. 'from users.models import TinkoffApiToken' is identified as Third Party and 'from constants import TRANSACTION_TYPE_TAX' is identified as Third Party.
+.\core\tinkoff_utils.py:36:1: D400 First line should end with a period
+.\core\tinkoff_utils.py:505:1: D205 1 blank line required between summary line and description
+.\core\tinkoff_utils.py:714:1: D401 First line should be in imperative mood
+.\core\tinkoff_utils.py:1048:1: D401 First line should be in imperative mood
+.\core\tinkoff_utils.py:1094:1: D400 First line should end with a period
+.\core\tinkoff_utils.py:1114:1: D400 First line should end with a period
+.\core\tinkoff_utils.py:1268:1: D200 One-line docstring should fit on one line with quotes
+.\core\tinkoff_utils.py:1268:1: D400 First line should end with a period
+.\core\transactions_utils.py:1:1: D100 Missing docstring in public module
+.\core\transactions_utils.py:9:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.db.models import Q' and in a different group.
+.\core\transactions_utils.py:12:1: I201 Missing newline between import groups. 'from database.serializers import FXTransactionSerializer' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\core\transactions_utils.py:21:1: D103 Missing docstring in public function
+.\core\user_utils.py:1:1: D100 Missing docstring in public module
+.\core\user_utils.py:3:1: I201 Missing newline between import groups. 'from users.models import AccountGroup' is identified as Third Party and 'from common.models import Brokers' is identified as Third Party.
+.\core\user_utils.py:26:1: D205 1 blank line required between summary line and description
+.\core\user_utils.py:26:1: D400 First line should end with a period
+.\dashboard\__init__.py:1:1: D104 Missing docstring in public package
+.\dashboard\admin.py:1:1: D100 Missing docstring in public module
+.\dashboard\admin.py:3:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.contrib import admin' and in a different group.
+.\dashboard\admin.py:4:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\dashboard\admin.py:10:1: D101 Missing docstring in public class
+.\dashboard\admin.py:18:1: D101 Missing docstring in public class
+.\dashboard\admin.py:28:1: D101 Missing docstring in public class
+.\dashboard\apps.py:1:1: D100 Missing docstring in public module
+.\dashboard\apps.py:4:1: D101 Missing docstring in public class
+.\dashboard\urls.py:1:1: D100 Missing docstring in public module
+.\dashboard\views.py:1:1: D100 Missing docstring in public module
+.\dashboard\views.py:10:1: I201 Missing newline between import groups. 'from rest_framework import status' is identified as Third Party and 'from django.db.models import Sum' is identified as Third Party.
+.\dashboard\views.py:16:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework.response import Response' and in a different group.
+.\dashboard\views.py:17:1: I100 Import statements are in the wrong order. 'from common.models import AnnualPerformance' should be before 'from common.models import FX'
+.\dashboard\views.py:19:1: I201 Missing newline between import groups. 'from core.chart_utils import get_nav_chart_data' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\dashboard\views.py:35:1: D103 Missing docstring in public function
+.\dashboard\views.py:109:1: D103 Missing docstring in public function
+.\dashboard\views.py:163:1: D103 Missing docstring in public function
+.\dashboard\views.py:320:1: D103 Missing docstring in public function
+.\database\__init__.py:1:1: D104 Missing docstring in public package
+.\database\admin.py:1:1: D100 Missing docstring in public module
+.\database\apps.py:1:1: D100 Missing docstring in public module
+.\database\apps.py:4:1: D101 Missing docstring in public class
+.\database\consumers.py:1:1: D100 Missing docstring in public module
+.\database\consumers.py:7:1: I201 Missing newline between import groups. 'from channels.db import database_sync_to_async' is identified as Third Party and 'from asgiref.sync import sync_to_async' is identified as Third Party.
+.\database\consumers.py:9:1: I201 Missing newline between import groups. 'from django.contrib.auth.models import AnonymousUser' is identified as Third Party and 'from channels.generic.http import AsyncHttpConsumer' is identified as Third Party.
+.\database\consumers.py:16:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.utils.formats import date_format' and in a different group.
+.\database\consumers.py:17:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\database\consumers.py:19:1: I201 Missing newline between import groups. 'from constants import CURRENCY_CHOICES' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\database\consumers.py:20:1: I201 Missing newline between import groups. 'from core.database_utils import get_years_count' is identified as Third Party and 'from constants import CURRENCY_CHOICES' is identified as Third Party.
+.\database\consumers.py:32:1: D400 First line should end with a period
+.\database\consumers.py:52:1: D101 Missing docstring in public class
+.\database\consumers.py:54:1: D400 First line should end with a period
+.\database\consumers.py:54:1: D401 First line should be in imperative mood; try rephrasing
+.\database\consumers.py:58:1: D102 Missing docstring in public method
+.\database\consumers.py:258:1: D101 Missing docstring in public class
+.\database\consumers.py:259:1: D102 Missing docstring in public method
+.\database\consumers.py:318:1: D102 Missing docstring in public method
+.\database\consumers.py:462:101: E501 line too long (105 > 100 characters)
+.\database\consumers.py:551:1: D102 Missing docstring in public method
+.\database\consumers.py:581:1: D101 Missing docstring in public class
+.\database\consumers.py:582:1: D102 Missing docstring in public method
+.\database\consumers.py:661:1: D102 Missing docstring in public method
+.\database\consumers.py:664:1: D102 Missing docstring in public method
+.\database\consumers.py:679:1: D102 Missing docstring in public method
+.\database\consumers.py:728:1: D102 Missing docstring in public method
+.\database\consumers.py:736:1: D102 Missing docstring in public method
+.\database\consumers.py:756:1: D102 Missing docstring in public method
+.\database\forms.py:1:1: D100 Missing docstring in public module
+.\database\forms.py:3:1: I100 Import statements are in the wrong order. 'from common.forms import GroupedSelect' should be before 'from django import forms' and in a different group.
+.\database\forms.py:8:1: I201 Missing newline between import groups. 'from constants import CURRENCY_CHOICES' is identified as Third Party and 'from common.models import FXTransaction' is identified as Third Party.
+.\database\forms.py:10:1: I201 Missing newline between import groups. 'from core.user_utils import prepare_account_choices' is identified as Third Party and 'from constants import DATA_SOURCE_CHOICES' is identified as Third Party.
+.\database\forms.py:13:1: D101 Missing docstring in public class
+.\database\forms.py:87:1: D106 Missing docstring in public nested class
+.\database\forms.py:134:1: D107 Missing docstring in __init__
+.\database\forms.py:167:1: D102 Missing docstring in public method
+.\database\forms.py:207:1: D400 First line should end with a period
+.\database\forms.py:231:1: D101 Missing docstring in public class
+.\database\forms.py:264:1: D107 Missing docstring in __init__
+.\database\forms.py:287:1: D102 Missing docstring in public method
+.\database\forms.py:304:1: D200 One-line docstring should fit on one line with quotes
+.\database\forms.py:304:1: D400 First line should end with a period
+.\database\forms.py:304:1: D401 First line should be in imperative mood
+.\database\forms.py:315:1: D101 Missing docstring in public class
+.\database\forms.py:316:1: D106 Missing docstring in public nested class
+.\database\forms.py:344:1: D107 Missing docstring in __init__
+.\database\serializers.py:1:1: D100 Missing docstring in public module
+.\database\serializers.py:5:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework import serializers' and in a different group.
+.\database\serializers.py:6:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from common.models import FX'
+.\database\serializers.py:12:1: I201 Missing newline between import groups. 'from constants import ACCOUNT_TYPE_ALL' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\database\serializers.py:17:1: I201 Missing newline between import groups. 'from core.formatting_utils import format_bond_price' is identified as Third Party and 'from constants import CURRENCY_CHOICES' is identified as Third Party.
+.\database\serializers.py:22:1: D101 Missing docstring in public class
+.\database\serializers.py:45:1: D102 Missing docstring in public method
+.\database\serializers.py:84:1: D101 Missing docstring in public class
+.\database\serializers.py:87:1: D106 Missing docstring in public nested class
+.\database\serializers.py:91:1: D102 Missing docstring in public method
+.\database\serializers.py:96:1: D102 Missing docstring in public method
+.\database\serializers.py:118:1: D101 Missing docstring in public class
+.\database\serializers.py:142:1: D107 Missing docstring in __init__
+.\database\serializers.py:151:1: D205 1 blank line required between summary line and description
+.\database\serializers.py:192:1: D400 First line should end with a period
+.\database\serializers.py:200:1: D101 Missing docstring in public class
+.\database\serializers.py:201:1: D106 Missing docstring in public nested class
+.\database\serializers.py:216:1: D101 Missing docstring in public class
+.\database\serializers.py:222:1: D101 Missing docstring in public class
+.\database\serializers.py:252:1: D106 Missing docstring in public nested class
+.\database\serializers.py:274:1: D102 Missing docstring in public method
+.\database\serializers.py:278:1: D400 First line should end with a period
+.\database\serializers.py:282:1: D400 First line should end with a period
+.\database\serializers.py:285:1: D102 Missing docstring in public method
+.\database\serializers.py:288:1: D102 Missing docstring in public method
+.\database\serializers.py:293:1: D400 First line should end with a period
+.\database\serializers.py:305:1: D400 First line should end with a period
+.\database\serializers.py:312:1: D400 First line should end with a period
+.\database\serializers.py:319:1: D102 Missing docstring in public method
+.\database\serializers.py:324:1: D102 Missing docstring in public method
+.\database\serializers.py:328:1: D400 First line should end with a period
+.\database\serializers.py:338:1: D400 First line should end with a period
+.\database\serializers.py:341:1: D102 Missing docstring in public method
+.\database\serializers.py:344:1: D102 Missing docstring in public method
+.\database\serializers.py:349:1: D102 Missing docstring in public method
+.\database\serializers.py:353:1: D400 First line should end with a period
+.\database\serializers.py:362:1: D400 First line should end with a period
+.\database\serializers.py:387:1: D106 Missing docstring in public nested class
+.\database\serializers.py:405:1: D102 Missing docstring in public method
+.\database\serializers.py:409:1: D400 First line should end with a period
+.\database\serializers.py:413:1: D400 First line should end with a period
+.\database\serializers.py:416:1: D102 Missing docstring in public method
+.\database\serializers.py:419:1: D102 Missing docstring in public method
+.\database\serializers.py:423:1: D400 First line should end with a period
+.\database\serializers.py:428:1: D400 First line should end with a period
+.\database\serializers.py:432:1: D102 Missing docstring in public method
+.\database\serializers.py:435:1: D102 Missing docstring in public method
+.\database\serializers.py:442:1: D102 Missing docstring in public method
+.\database\serializers.py:446:1: D400 First line should end with a period
+.\database\serializers.py:454:1: D101 Missing docstring in public class
+.\database\serializers.py:455:1: D106 Missing docstring in public nested class
+.\database\serializers.py:460:1: D101 Missing docstring in public class
+.\database\serializers.py:461:1: D106 Missing docstring in public nested class
+.\database\serializers.py:465:1: D107 Missing docstring in __init__
+.\database\tests.py:1:1: D100 Missing docstring in public module
+.\database\urls.py:1:1: D100 Missing docstring in public module
+.\database\urls.py:3:1: I201 Missing newline between import groups. 'from rest_framework.routers import DefaultRouter' is identified as Third Party and 'from django.urls import path' is identified as Third Party.
+.\database\views.py:1:1: D100 Missing docstring in public module
+.\database\views.py:11:1: I201 Missing newline between import groups. 'from rest_framework import status' is identified as Third Party and 'from django.shortcuts import get_object_or_404' is identified as Third Party.
+.\database\views.py:21:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework.views import APIView' and in a different group.
+.\database\views.py:22:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from common.models import FX'
+.\database\views.py:27:1: I201 Missing newline between import groups. 'from constants import ASSET_TYPE_CHOICES' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\database\views.py:29:1: I201 Missing newline between import groups. 'from core.accounts_utils import get_accounts_table_api' is identified as Third Party and 'from constants import DATA_SOURCE_CHOICES' is identified as Third Party.
+.\database\views.py:53:1: D103 Missing docstring in public function
+.\database\views.py:60:1: D103 Missing docstring in public function
+.\database\views.py:79:1: D103 Missing docstring in public function
+.\database\views.py:84:1: D103 Missing docstring in public function
+.\database\views.py:117:1: D103 Missing docstring in public function
+.\database\views.py:168:1: D103 Missing docstring in public function
+.\database\views.py:222:1: D103 Missing docstring in public function
+.\database\views.py:228:1: D103 Missing docstring in public function
+.\database\views.py:234:1: D103 Missing docstring in public function
+.\database\views.py:286:1: D103 Missing docstring in public function
+.\database\views.py:315:1: D103 Missing docstring in public function
+.\database\views.py:374:1: D103 Missing docstring in public function
+.\database\views.py:409:1: D103 Missing docstring in public function
+.\database\views.py:423:1: D103 Missing docstring in public function
+.\database\views.py:439:1: D103 Missing docstring in public function
+.\database\views.py:460:1: D103 Missing docstring in public function
+.\database\views.py:476:1: D103 Missing docstring in public function
+.\database\views.py:496:1: D101 Missing docstring in public class
+.\database\views.py:497:1: D102 Missing docstring in public method
+.\database\views.py:516:1: D101 Missing docstring in public class
+.\database\views.py:520:1: D102 Missing docstring in public method
+.\database\views.py:525:1: D102 Missing docstring in public method
+.\database\views.py:528:1: D102 Missing docstring in public method
+.\database\views.py:534:1: D102 Missing docstring in public method
+.\database\views.py:538:1: D102 Missing docstring in public method
+.\database\views.py:575:1: D101 Missing docstring in public class
+.\database\views.py:579:1: D400 First line should end with a period
+.\database\views.py:586:1: D400 First line should end with a period
+.\database\views.py:600:1: D400 First line should end with a period
+.\database\views.py:630:1: D101 Missing docstring in public class
+.\database\views.py:635:1: D102 Missing docstring in public method
+.\database\views.py:638:1: D102 Missing docstring in public method
+.\database\views.py:642:1: D102 Missing docstring in public method
+.\database\views.py:650:1: D102 Missing docstring in public method
+.\database\views.py:666:1: D102 Missing docstring in public method
+.\database\views.py:725:1: D102 Missing docstring in public method
+.\database\views.py:776:1: D102 Missing docstring in public method
+.\database\views.py:806:1: D102 Missing docstring in public method
+.\database\views.py:813:1: D101 Missing docstring in public class
+.\database\views.py:817:1: D102 Missing docstring in public method
+.\database\views.py:826:1: D102 Missing docstring in public method
+.\database\views.py:830:1: D102 Missing docstring in public method
+.\database\views.py:834:1: D102 Missing docstring in public method
+.\db_transfer.py:1:1: D100 Missing docstring in public module
+.\db_transfer.py:7:1: D103 Missing docstring in public function
+.\notebook_setup.py:2:1: D205 1 blank line required between summary line and description
+.\notebook_setup.py:33:1: D205 1 blank line required between summary line and description
+.\notebook_setup.py:33:1: D400 First line should end with a period
+.\open_positions\__init__.py:1:1: D104 Missing docstring in public package
+.\open_positions\apps.py:1:1: D100 Missing docstring in public module
+.\open_positions\apps.py:4:1: D101 Missing docstring in public class
+.\open_positions\urls.py:1:1: D100 Missing docstring in public module
+.\open_positions\views.py:1:1: D100 Missing docstring in public module
+.\open_positions\views.py:2:1: I201 Missing newline between import groups. 'from rest_framework.decorators import api_view' is identified as Third Party and 'from django.views.decorators.csrf import ensure_csrf_cookie' is identified as Third Party.
+.\open_positions\views.py:7:1: I100 Import statements are in the wrong order. 'from core.positions_utils import get_positions_table_api' should be before 'from rest_framework.response import Response' and in a different group.
+.\open_positions\views.py:13:1: D103 Missing docstring in public function
+.\portfolio_management\__init__.py:1:1: D104 Missing docstring in public package
+.\portfolio_management\asgi.py:1:1: D100 Missing docstring in public module
+.\portfolio_management\asgi.py:6:1: I201 Missing newline between import groups. 'from django.core.asgi import get_asgi_application' is identified as Third Party and 'from channels.security.websocket import AllowedHostsOriginValidator' is identified as Third Party.
+.\portfolio_management\asgi.py:10:1: I100 Import statements are in the wrong order. 'from database.consumers import FXImportConsumer' should be before 'from django.urls import re_path' and in a different group.
+.\portfolio_management\asgi.py:13:1: I201 Missing newline between import groups. 'from transactions.consumers import TransactionConsumer' is identified as Third Party and 'from database.consumers import UpdateAccountPerformanceConsumer' is identified as Third Party.
+.\portfolio_management\auth_middleware.py:1:1: D100 Missing docstring in public module
+.\portfolio_management\auth_middleware.py:5:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'from channels.middleware import BaseMiddleware' is identified as Third Party.
+.\portfolio_management\auth_middleware.py:7:1: I201 Missing newline between import groups. 'from rest_framework_simplejwt.exceptions import InvalidToken' is identified as Third Party and 'from django.contrib.auth.models import AnonymousUser' is identified as Third Party.
+.\portfolio_management\auth_middleware.py:17:1: D103 Missing docstring in public function
+.\portfolio_management\auth_middleware.py:26:1: D101 Missing docstring in public class
+.\portfolio_management\auth_middleware.py:27:1: D102 Missing docstring in public method
+.\portfolio_management\jwt_middleware.py:1:1: D205 1 blank line required between summary line and description
+.\portfolio_management\jwt_middleware.py:1:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:9:1: I100 Import statements are in the wrong order. 'from rest_framework_simplejwt.exceptions import InvalidToken' should be before 'import structlog' and in a different group.
+.\portfolio_management\jwt_middleware.py:9:1: I201 Missing newline between import groups. 'from rest_framework_simplejwt.exceptions import InvalidToken' is identified as Third Party and 'import structlog' is identified as Third Party.
+.\portfolio_management\jwt_middleware.py:17:1: D205 1 blank line required between summary line and description
+.\portfolio_management\jwt_middleware.py:17:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:22:1: D107 Missing docstring in __init__
+.\portfolio_management\jwt_middleware.py:25:1: D102 Missing docstring in public method
+.\portfolio_management\jwt_middleware.py:71:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:76:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:83:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:104:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:111:1: D205 1 blank line required between summary line and description
+.\portfolio_management\jwt_middleware.py:111:1: D400 First line should end with a period
+.\portfolio_management\jwt_middleware.py:143:1: D205 1 blank line required between summary line and description
+.\portfolio_management\jwt_middleware.py:143:1: D400 First line should end with a period
+.\portfolio_management\middleware.py:1:1: D100 Missing docstring in public module
+.\portfolio_management\middleware.py:8:1: D101 Missing docstring in public class
+.\portfolio_management\middleware.py:9:1: D107 Missing docstring in __init__
+.\portfolio_management\middleware.py:12:1: D102 Missing docstring in public method
+.\portfolio_management\urls.py:1:1: D100 Missing docstring in public module
+.\portfolio_management\urls.py:5:1: I100 Import statements are in the wrong order. 'from common import views' should be before 'from django.urls import path' and in a different group.
+.\run_uvicorn.py:1:1: D100 Missing docstring in public module
+.\run_uvicorn.py:5:1: I201 Missing newline between import groups. 'import uvicorn' is identified as Third Party and 'import django' is identified as Third Party.
+.\run_uvicorn.py:6:1: I100 Import statements are in the wrong order. 'from django.conf import settings' should be before 'import uvicorn' and in a different group.
+.\run_uvicorn.py:6:1: I201 Missing newline between import groups. 'from django.conf import settings' is identified as Third Party and 'import uvicorn' is identified as Third Party.
+.\scripts\format_and_lint.py:2:1: D205 1 blank line required between summary line and description
+.\scripts\format_and_lint.py:30:1: D103 Missing docstring in public function
+.\scripts\setup_linting.py:2:1: D205 1 blank line required between summary line and description
+.\scripts\setup_linting.py:30:1: D103 Missing docstring in public function
+.\summary_analysis\__init__.py:1:1: D104 Missing docstring in public package
+.\summary_analysis\apps.py:1:1: D100 Missing docstring in public module
+.\summary_analysis\apps.py:4:1: D101 Missing docstring in public class
+.\summary_analysis\urls.py:1:1: D100 Missing docstring in public module
+.\summary_analysis\urls.py:3:1: I201 Missing newline between import groups. 'from rest_framework.routers import DefaultRouter' is identified as Third Party and 'from django.urls import path' is identified as Third Party.
+.\summary_analysis\views.py:1:1: D100 Missing docstring in public module
+.\summary_analysis\views.py:11:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from rest_framework.response import Response' and in a different group.
+.\summary_analysis\views.py:14:1: I201 Missing newline between import groups. 'from core.formatting_utils import currency_format' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\summary_analysis\views.py:23:1: D101 Missing docstring in public class
+.\summary_analysis\views.py:27:1: D102 Missing docstring in public method
+.\summary_analysis\views.py:62:1: D102 Missing docstring in public method
+.\summary_analysis\views.py:84:1: D102 Missing docstring in public method
+.\summary_analysis\views.py:96:1: D102 Missing docstring in public method
+.\summary_analysis\views.py:300:1: D102 Missing docstring in public method
+.\summary_analysis\views.py:314:1: D102 Missing docstring in public method
+.\summary_analysis\views.py:402:1: D102 Missing docstring in public method
+.\tests\advanced\test_edge_cases.py:1:1: D400 First line should end with a period
+.\tests\advanced\test_edge_cases.py:20:1: I100 Import statements are in the wrong order. 'from django.db import DatabaseError' should be before 'import pytest' and in a different group.
+.\tests\advanced\test_edge_cases.py:20:1: I201 Missing newline between import groups. 'from django.db import DatabaseError' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\advanced\test_edge_cases.py:23:1: I201 Missing newline between import groups. 'from rest_framework import status' is identified as Third Party and 'from django.urls import reverse' is identified as Third Party.
+.\tests\advanced\test_edge_cases.py:26:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework.test import APIClient' and in a different group.
+.\tests\advanced\test_edge_cases.py:27:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\tests\advanced\test_edge_cases.py:30:1: I201 Missing newline between import groups. 'from portfolio_management.common.models import fx_cache' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\advanced\test_edge_cases.py:35:1: I201 Missing newline between import groups. 'from tests.fixtures.factories.asset_factory import AssetFactory' is identified as Third Party and 'from portfolio_management.portfolio.models import gain_loss' is identified as Third Party.
+.\tests\advanced\test_performance_suite.py:1:1: D400 First line should end with a period
+.\tests\advanced\test_performance_suite.py:20:1: I201 Missing newline between import groups. 'import pytest' is identified as Third Party and 'import psutil' is identified as Third Party.
+.\tests\advanced\test_performance_suite.py:21:1: I100 Import statements are in the wrong order. 'from django.db import transaction' should be before 'import pytest' and in a different group.
+.\tests\advanced\test_performance_suite.py:21:1: I201 Missing newline between import groups. 'from django.db import transaction' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\advanced\test_performance_suite.py:23:1: I201 Missing newline between import groups. 'from rest_framework.test import APIClient' is identified as Third Party and 'from django.urls import reverse' is identified as Third Party.
+.\tests\advanced\test_performance_suite.py:25:1: I100 Import statements are in the wrong order. 'from portfolio_management.common.models import fx_cache' should be before 'from rest_framework.test import APIClient' and in a different group.
+.\tests\advanced\test_performance_suite.py:32:1: I201 Missing newline between import groups. 'from tests.fixtures.factories.asset_factory import AssetFactory' is identified as Third Party and 'from portfolio_management.portfolio.calculator import calculate_nav' is identified as Third Party.
+.\tests\advanced\test_performance_suite.py:307:16: B007 Loop control variable 'query_func' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\advanced\test_performance_suite.py:349:1: D202 No blank lines allowed after function docstring
+.\tests\advanced\test_performance_suite.py:695:13: B007 Loop control variable 'iteration' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\advanced\test_performance_suite.py:861:13: B007 Loop control variable 'i' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\advanced\test_production_snapshots.py:1:1: D400 First line should end with a period
+.\tests\advanced\test_production_snapshots.py:21:1: I100 Import statements are in the wrong order. 'from portfolio_management.common.models import get_exchange_rate' should be before 'import pytest' and in a different group.
+.\tests\advanced\test_production_snapshots.py:27:1: I201 Missing newline between import groups. 'from tests.fixtures.factories.asset_factory import AssetFactory' is identified as Third Party and 'from portfolio_management.portfolio.models import gain_loss' is identified as Third Party.
+.\tests\advanced\test_production_snapshots.py:36:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_production_snapshots.py:423:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_production_snapshots.py:557:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_regression_suite.py:1:1: D400 First line should end with a period
+.\tests\advanced\test_regression_suite.py:19:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'import pytest' and in a different group.
+.\tests\advanced\test_regression_suite.py:20:1: I201 Missing newline between import groups. 'from portfolio_management.common.models import get_exchange_rate' is identified as Third Party and 'from common.models import Assets' is identified as Third Party.
+.\tests\advanced\test_regression_suite.py:24:1: I201 Missing newline between import groups. 'from tests.fixtures.factories.asset_factory import AssetFactory' is identified as Third Party and 'from portfolio_management.portfolio.models import gain_loss' is identified as Third Party.
+.\tests\advanced\test_regression_suite.py:30:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_regression_suite.py:320:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_regression_suite.py:429:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_regression_suite.py:539:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_regression_suite.py:629:1: D205 1 blank line required between summary line and description
+.\tests\advanced\test_regression_suite.py:726:1: D205 1 blank line required between summary line and description
+.\tests\conftest.py:1:1: D100 Missing docstring in public module
+.\tests\conftest.py:6:1: I100 Import statements are in the wrong order. 'from django.contrib.auth import get_user_model' should be before 'import pytest' and in a different group.
+.\tests\conftest.py:6:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\conftest.py:9:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.test import override_settings' and in a different group.
+.\tests\conftest.py:10:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\tests\conftest.py:21:1: D400 First line should end with a period
+.\tests\conftest.py:21:1: D401 First line should be in imperative mood; try rephrasing
+.\tests\conftest.py:33:1: D400 First line should end with a period
+.\tests\conftest.py:41:1: D400 First line should end with a period
+.\tests\conftest.py:53:1: D400 First line should end with a period
+.\tests\conftest.py:64:1: D400 First line should end with a period
+.\tests\conftest.py:70:1: D400 First line should end with a period
+.\tests\conftest.py:76:1: D400 First line should end with a period
+.\tests\conftest.py:82:1: D400 First line should end with a period
+.\tests\conftest.py:93:1: D400 First line should end with a period
+.\tests\conftest.py:110:1: D400 First line should end with a period
+.\tests\conftest.py:127:1: D400 First line should end with a period
+.\tests\conftest.py:144:1: D400 First line should end with a period
+.\tests\conftest.py:164:1: D400 First line should end with a period
+.\tests\conftest.py:234:1: D400 First line should end with a period
+.\tests\conftest.py:290:1: D400 First line should end with a period
+.\tests\conftest.py:305:1: D400 First line should end with a period
+.\tests\conftest.py:329:1: D400 First line should end with a period
+.\tests\conftest.py:349:1: D400 First line should end with a period
+.\tests\conftest.py:372:1: D400 First line should end with a period
+.\tests\conftest.py:428:1: D400 First line should end with a period
+.\tests\conftest.py:441:1: D400 First line should end with a period
+.\tests\conftest.py:489:1: D400 First line should end with a period
+.\tests\conftest.py:502:1: D400 First line should end with a period
+.\tests\conftest.py:517:1: D400 First line should end with a period
+.\tests\conftest.py:528:1: D400 First line should end with a period
+.\tests\fixtures\factories\asset_factory.py:1:1: D205 1 blank line required between summary line and description
+.\tests\fixtures\factories\asset_factory.py:13:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from factory import fuzzy' and in a different group.
+.\tests\fixtures\factories\asset_factory.py:19:1: D106 Missing docstring in public nested class
+.\tests\fixtures\factories\asset_factory.py:62:1: D102 Missing docstring in public method
+.\tests\fixtures\factories\asset_factory.py:73:1: D102 Missing docstring in public method
+.\tests\fixtures\factories\asset_factory.py:85:1: D102 Missing docstring in public method
+.\tests\fixtures\factories\asset_factory.py:95:1: D102 Missing docstring in public method
+.\tests\fixtures\factories\asset_factory.py:105:1: D102 Missing docstring in public method
+.\tests\fixtures\factories\asset_factory.py:115:1: D102 Missing docstring in public method
+.\tests\fixtures\factories\asset_factory.py:170:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\asset_factory.py:188:63: B006 Do not use mutable data structures for argument defaults.  They are created during function definition time. All calls to the function reuse this one instance of that data structure, persisting changes between them.
+.\tests\fixtures\factories\asset_factory.py:189:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\asset_factory.py:196:13: B007 Loop control variable 'i' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\fixtures\factories\asset_factory.py:204:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\fx_factory.py:1:1: D205 1 blank line required between summary line and description
+.\tests\fixtures\factories\fx_factory.py:13:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from factory import fuzzy' and in a different group.
+.\tests\fixtures\factories\fx_factory.py:20:1: D106 Missing docstring in public nested class
+.\tests\fixtures\factories\fx_factory.py:74:1: D106 Missing docstring in public nested class
+.\tests\fixtures\factories\fx_factory.py:181:49: B008 Do not perform function calls in argument defaults.  The call is performed only once at function definition time. All calls to your function will reuse the result of that definition-time function call.  If this is intended, assign the function call to a module-level variable and use that variable as a default value.
+.\tests\fixtures\factories\fx_factory.py:182:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\fx_factory.py:225:42: B008 Do not perform function calls in argument defaults.  The call is performed only once at function definition time. All calls to your function will reuse the result of that definition-time function call.  If this is intended, assign the function call to a module-level variable and use that variable as a default value.
+.\tests\fixtures\factories\fx_factory.py:227:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\fx_factory.py:266:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\fx_factory.py:290:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\fx_factory.py:314:53: B008 Do not perform function calls in argument defaults.  The call is performed only once at function definition time. All calls to your function will reuse the result of that definition-time function call.  If this is intended, assign the function call to a module-level variable and use that variable as a default value.
+.\tests\fixtures\factories\fx_factory.py:315:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\transaction_factory.py:1:1: D205 1 blank line required between summary line and description
+.\tests\fixtures\factories\transaction_factory.py:13:1: I100 Import statements are in the wrong order. 'from common.models import Transactions' should be before 'from factory import fuzzy' and in a different group.
+.\tests\fixtures\factories\transaction_factory.py:19:1: D106 Missing docstring in public nested class
+.\tests\fixtures\factories\transaction_factory.py:213:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\transaction_factory.py:248:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\transaction_factory.py:268:51: B008 Do not perform function calls in argument defaults.  The call is performed only once at function definition time. All calls to your function will reuse the result of that definition-time function call.  If this is intended, assign the function call to a module-level variable and use that variable as a default value.
+.\tests\fixtures\factories\transaction_factory.py:270:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\transaction_factory.py:298:1: D202 No blank lines allowed after function docstring
+.\tests\fixtures\factories\transaction_factory.py:333:1: D202 No blank lines allowed after function docstring
+.\tests\integration\api\test_api_endpoints.py:1:1: D200 One-line docstring should fit on one line with quotes
+.\tests\integration\api\test_broker_api_utils.py:1:1: D100 Missing docstring in public module
+.\tests\integration\api\test_broker_api_utils.py:7:1: I201 Missing newline between import groups. 'from tinkoff.invest import GetOperationsByCursorRequest' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\api\test_broker_api_utils.py:13:1: I100 Import statements are in the wrong order. 'from core.broker_api_utils import TinkoffAPI' should be before 'from tinkoff.invest import RequestError' and in a different group.
+.\tests\integration\api\test_broker_api_utils.py:15:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from core.broker_api_utils import TinkoffAPIException' is identified as Third Party.
+.\tests\integration\api\test_broker_api_utils.py:19:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:24:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:29:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:36:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:57:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:76:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:86:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:97:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:121:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:143:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:182:1: D103 Missing docstring in public function
+.\tests\integration\api\test_broker_api_utils.py:232:1: D400 First line should end with a period
+.\tests\integration\api\test_broker_api_utils.py:241:1: D103 Missing docstring in public function
+.\tests\integration\api\test_cors_session.py:1:1: D200 One-line docstring should fit on one line with quotes
+.\tests\integration\api\test_cors_session.py:1:1: D400 First line should end with a period
+.\tests\integration\api\test_cors_session.py:9:1: D400 First line should end with a period
+.\tests\integration\api\test_endpoints_comprehensive.py:18:1: I100 Import statements are in the wrong order. 'from django.test import Client' should be before 'import pytest' and in a different group.
+.\tests\integration\api\test_endpoints_comprehensive.py:18:1: I201 Missing newline between import groups. 'from django.test import Client' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\api\test_endpoints_comprehensive.py:19:1: I201 Missing newline between import groups. 'from rest_framework.test import APITestCase' is identified as Third Party and 'from django.test import Client' is identified as Third Party.
+.\tests\integration\api\test_endpoints_comprehensive.py:21:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework.test import APITestCase' and in a different group.
+.\tests\integration\api\test_endpoints_comprehensive.py:22:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\tests\integration\api\test_endpoints_comprehensive.py:26:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\integration\api\test_jwt_session_behavior.py:1:1: D200 One-line docstring should fit on one line with quotes
+.\tests\integration\database\test_constraints.py:16:1: I100 Import statements are in the wrong order. 'from django.core.exceptions import ValidationError' should be before 'import pytest' and in a different group.
+.\tests\integration\database\test_constraints.py:16:1: I201 Missing newline between import groups. 'from django.core.exceptions import ValidationError' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\database\test_constraints.py:20:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.db import transaction' and in a different group.
+.\tests\integration\database\test_constraints.py:21:1: I100 Import statements are in the wrong order. 'from common.models import AnnualPerformance' should be before 'from common.models import FX'
+.\tests\integration\database\test_constraints.py:26:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\integration\workflows\test_charles_stanley_import.py:1:1: D100 Missing docstring in public module
+.\tests\integration\workflows\test_charles_stanley_import.py:6:1: I201 Missing newline between import groups. 'import pytest' is identified as Third Party and 'import pandas' is identified as Third Party.
+.\tests\integration\workflows\test_charles_stanley_import.py:7:1: I100 Import statements are in the wrong order. 'from channels.db import database_sync_to_async' should be before 'import pytest' and in a different group.
+.\tests\integration\workflows\test_charles_stanley_import.py:7:1: I201 Missing newline between import groups. 'from channels.db import database_sync_to_async' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\workflows\test_charles_stanley_import.py:8:1: I201 Missing newline between import groups. 'from django.apps import apps' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\tests\integration\workflows\test_charles_stanley_import.py:12:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.db import connection' and in a different group.
+.\tests\integration\workflows\test_charles_stanley_import.py:16:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\integration\workflows\test_charles_stanley_import.py:19:1: I201 Missing newline between import groups. 'from core.import_utils import parse_charles_stanley_transactions' is identified as Third Party and 'from constants import TRANSACTION_TYPE_INTEREST_INCOME' is identified as Third Party.
+.\tests\integration\workflows\test_charles_stanley_import.py:25:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:52:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:58:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:74:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:110:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:149:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:179:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:209:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_charles_stanley_import.py:222:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_fx_integration.py:1:1: D400 First line should end with a period
+.\tests\integration\workflows\test_fx_integration.py:24:1: I100 Import statements are in the wrong order. 'from django.urls import reverse' should be before 'import pytest' and in a different group.
+.\tests\integration\workflows\test_fx_integration.py:24:1: I201 Missing newline between import groups. 'from django.urls import reverse' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\workflows\test_fx_integration.py:25:1: I201 Missing newline between import groups. 'from rest_framework import status' is identified as Third Party and 'from django.urls import reverse' is identified as Third Party.
+.\tests\integration\workflows\test_fx_integration.py:27:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework import status' and in a different group.
+.\tests\integration\workflows\test_fx_integration.py:28:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\tests\integration\workflows\test_fx_integration.py:29:1: I201 Missing newline between import groups. 'from portfolio_management.common.models import fx_cache' is identified as Third Party and 'from common.models import Assets' is identified as Third Party.
+.\tests\integration\workflows\test_fx_integration.py:32:1: I201 Missing newline between import groups. 'from tests.fixtures.factories.fx_factory import FXRateFactory' is identified as Third Party and 'from portfolio_management.common.models import update_fx_rate' is identified as Third Party.
+.\tests\integration\workflows\test_fx_integration.py:815:13: B007 Loop control variable 'pair' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\integration\workflows\test_fx_integration.py:815:19: B007 Loop control variable 'd' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\integration\workflows\test_fx_integration.py:953:13: B007 Loop control variable 'i' not used within the loop body. If this is intended, start the name with an underscore.
+.\tests\integration\workflows\test_session_integration.py:1:1: D205 1 blank line required between summary line and description
+.\tests\integration\workflows\test_tinkoff_utils.py:1:1: D100 Missing docstring in public module
+.\tests\integration\workflows\test_tinkoff_utils.py:8:1: I100 Import statements are in the wrong order. 'from channels.db import database_sync_to_async' should be before 'import pytest' and in a different group.
+.\tests\integration\workflows\test_tinkoff_utils.py:8:1: I201 Missing newline between import groups. 'from channels.db import database_sync_to_async' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\workflows\test_tinkoff_utils.py:9:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\tests\integration\workflows\test_tinkoff_utils.py:10:1: I201 Missing newline between import groups. 'from tinkoff.invest import MoneyValue' is identified as Third Party and 'from django.contrib.auth import get_user_model' is identified as Third Party.
+.\tests\integration\workflows\test_tinkoff_utils.py:15:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from tinkoff.invest.exceptions import RequestError' and in a different group.
+.\tests\integration\workflows\test_tinkoff_utils.py:17:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party and 'from common.models import Brokers' is identified as Third Party.
+.\tests\integration\workflows\test_tinkoff_utils.py:18:1: I201 Missing newline between import groups. 'from core.tinkoff_utils import _find_or_create_security' is identified as Third Party and 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party.
+.\tests\integration\workflows\test_tinkoff_utils.py:24:1: I201 Missing newline between import groups. 'from users.models import TinkoffApiToken' is identified as Third Party and 'from core.tinkoff_utils import verify_token_access' is identified as Third Party.
+.\tests\integration\workflows\test_tinkoff_utils.py:30:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_tinkoff_utils.py:37:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_tinkoff_utils.py:42:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_tinkoff_utils.py:57:1: D400 First line should end with a period
+.\tests\integration\workflows\test_tinkoff_utils.py:79:1: D400 First line should end with a period
+.\tests\integration\workflows\test_tinkoff_utils.py:149:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_tinkoff_utils.py:196:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_tinkoff_utils.py:233:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_tinkoff_utils.py:249:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_transaction_flow.py:17:1: I100 Import statements are in the wrong order. 'from django.core.validators import ValidationError' should be before 'import pytest' and in a different group.
+.\tests\integration\workflows\test_transaction_flow.py:17:1: I201 Missing newline between import groups. 'from django.core.validators import ValidationError' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\workflows\test_transaction_flow.py:19:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.core.validators import ValidationError' and in a different group.
+.\tests\integration\workflows\test_transaction_flow.py:20:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\tests\integration\workflows\test_transaction_flow.py:25:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\integration\workflows\test_transaction_unification.py:15:1: I100 Import statements are in the wrong order. 'from django.contrib.auth import get_user_model' should be before 'import pytest' and in a different group.
+.\tests\integration\workflows\test_transaction_unification.py:15:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\integration\workflows\test_transaction_unification.py:17:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.contrib.auth import get_user_model' and in a different group.
+.\tests\integration\workflows\test_transaction_unification.py:22:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\integration\workflows\test_transaction_unification.py:26:1: I201 Missing newline between import groups. 'from core.balance_tracker import BalanceTracker' is identified as Third Party and 'from constants import TRANSACTION_TYPE_SELL' is identified as Third Party.
+.\tests\integration\workflows\test_transaction_unification.py:27:1: I201 Missing newline between import groups. 'from database.serializers import FXTransactionSerializer' is identified as Third Party and 'from core.balance_tracker import BalanceTracker' is identified as Third Party.
+.\tests\integration\workflows\test_transaction_unification.py:35:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:38:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:56:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:74:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:95:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:109:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:126:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:129:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:149:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:172:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:175:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:201:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:227:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:230:1: D400 First line should end with a period
+.\tests\integration\workflows\test_transaction_unification.py:254:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_transaction_unification.py:265:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_transaction_unification.py:270:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_transaction_unification.py:275:1: D103 Missing docstring in public function
+.\tests\integration\workflows\test_transaction_unification.py:284:1: D103 Missing docstring in public function
+.\tests\performance\test_save_update_broker_performance.py:1:1: D100 Missing docstring in public module
+.\tests\performance\test_save_update_broker_performance.py:9:1: I100 Import statements are in the wrong order. 'from asgiref.sync import sync_to_async' should be before 'import pytest' and in a different group.
+.\tests\performance\test_save_update_broker_performance.py:9:1: I201 Missing newline between import groups. 'from asgiref.sync import sync_to_async' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:10:1: I201 Missing newline between import groups. 'from channels.db import database_sync_to_async' is identified as Third Party and 'from asgiref.sync import sync_to_async' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:12:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'from channels.testing import HttpCommunicator' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:14:1: I201 Missing newline between import groups. 'from rest_framework.test import APIClient' is identified as Third Party and 'from django.core.cache import cache' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:16:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from rest_framework.test import APIClient' and in a different group.
+.\tests\performance\test_save_update_broker_performance.py:17:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from common.models import FX'
+.\tests\performance\test_save_update_broker_performance.py:22:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:26:1: I201 Missing newline between import groups. 'from core.accounts_utils import get_accounts_table_api' is identified as Third Party and 'from constants import TRANSACTION_TYPE_SELL' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:29:1: I201 Missing newline between import groups. 'from database.consumers import UpdateAccountPerformanceConsumer' is identified as Third Party and 'from core.portfolio_utils import get_last_exit_date_for_accounts' is identified as Third Party.
+.\tests\performance\test_save_update_broker_performance.py:36:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:42:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:48:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:60:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:110:1: D103 Missing docstring in public function
+.\tests\performance\test_save_update_broker_performance.py:130:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:164:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:183:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:231:1: D202 No blank lines allowed after function docstring
+.\tests\performance\test_save_update_broker_performance.py:231:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:277:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:333:1: D103 Missing docstring in public function
+.\tests\performance\test_save_update_broker_performance.py:378:1: D103 Missing docstring in public function
+.\tests\performance\test_save_update_broker_performance.py:463:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:659:1: D400 First line should end with a period
+.\tests\performance\test_save_update_broker_performance.py:753:1: D400 First line should end with a period
+.\tests\simple_db_test.py:1:1: D200 One-line docstring should fit on one line with quotes
+.\tests\simple_db_test.py:9:1: I100 Import statements are in the wrong order. 'from django.contrib.auth import get_user_model' should be before 'import pytest' and in a different group.
+.\tests\simple_db_test.py:9:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\simple_db_test.py:11:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from django.contrib.auth import get_user_model' and in a different group.
+.\tests\simple_test.py:1:1: D200 One-line docstring should fit on one line with quotes
+.\tests\unit\calculations\test_bond_aci.py:18:1: I100 Import statements are in the wrong order. 'from django.contrib.auth import get_user_model' should be before 'import pytest' and in a different group.
+.\tests\unit\calculations\test_bond_aci.py:18:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\unit\calculations\test_bond_aci.py:21:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.test import TestCase' and in a different group.
+.\tests\unit\calculations\test_bond_aci.py:22:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'from common.models import FX'
+.\tests\unit\calculations\test_bond_aci.py:26:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\unit\calculations\test_bond_aci.py:29:1: I201 Missing newline between import groups. 'from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule' is identified as Third Party and 'from constants import TRANSACTION_TYPE_SELL' is identified as Third Party.
+.\tests\unit\calculations\test_bond_aci.py:35:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:38:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:92:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:112:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:123:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:142:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:164:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:173:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:176:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:214:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:268:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:307:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:310:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:335:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:383:1: D400 First line should end with a period
+.\tests\unit\calculations\test_bond_aci.py:408:1: D400 First line should end with a period
+.\tests\unit\calculations\test_buy_in_price.py:18:1: I100 Import statements are in the wrong order. 'from common.models import Assets' should be before 'import pytest' and in a different group.
+.\tests\unit\calculations\test_fx_calculations.py:16:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'import pytest' and in a different group.
+.\tests\unit\calculations\test_gain_loss.py:17:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'import pytest' and in a different group.
+.\tests\unit\calculations\test_nav_calculations.py:18:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'import pytest' and in a different group.
+.\tests\unit\calculations\test_nav_calculations.py:19:1: I100 Import statements are in the wrong order. 'from common.models import AnnualPerformance' should be before 'from common.models import FX'
+.\tests\unit\calculations\test_ytm_calculation.py:15:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.utils import timezone' and in a different group.
+.\tests\unit\calculations\test_ytm_calculation.py:21:1: I201 Missing newline between import groups. 'from core.securities_utils import calculate_bond_ytm' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\unit\models\test_assets.py:17:1: I100 Import statements are in the wrong order. 'from common.models import Prices' should be before 'import pytest' and in a different group.
+.\tests\unit\models\test_assets_model.py:1:1: D100 Missing docstring in public module
+.\tests\unit\models\test_assets_model.py:7:1: I100 Import statements are in the wrong order. 'from django.contrib.auth import get_user_model' should be before 'import pytest' and in a different group.
+.\tests\unit\models\test_assets_model.py:7:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'import pytest' is identified as Third Party.
+.\tests\unit\models\test_assets_model.py:9:1: I100 Import statements are in the wrong order. 'from common.models import FX' should be before 'from django.contrib.auth import get_user_model' and in a different group.
+.\tests\unit\models\test_assets_model.py:10:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from common.models import FX'
+.\tests\unit\models\test_assets_model.py:15:1: I201 Missing newline between import groups. 'from constants import TRANSACTION_TYPE_BUY' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\tests\unit\models\test_assets_model.py:22:1: D103 Missing docstring in public function
+.\tests\unit\models\test_assets_model.py:27:1: D103 Missing docstring in public function
+.\tests\unit\models\test_assets_model.py:32:1: D103 Missing docstring in public function
+.\tests\unit\models\test_assets_model.py:43:1: D103 Missing docstring in public function
+.\tests\unit\models\test_assets_model.py:57:1: D103 Missing docstring in public function
+.\tests\unit\models\test_assets_model.py:94:1: D101 Missing docstring in public class
+.\tests\unit\models\test_assets_model.py:95:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:127:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:161:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:187:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:224:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:265:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:322:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:345:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:381:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:428:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:465:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:527:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:580:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:619:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:660:1: D101 Missing docstring in public class
+.\tests\unit\models\test_assets_model.py:662:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:669:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:681:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:696:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:711:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:726:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:764:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:780:1: D102 Missing docstring in public method
+.\tests\unit\models\test_assets_model.py:810:1: D102 Missing docstring in public method
+.\tests\unit\models\test_transactions.py:18:1: I100 Import statements are in the wrong order. 'from common.models import Transactions' should be before 'import pytest' and in a different group.
+.\tests\unit\utils\test_utils.py:1:1: D100 Missing docstring in public module
+.\tests\unit\utils\test_utils.py:6:1: I100 Import statements are in the wrong order. 'from core.chart_utils import _chart_dates' should be before 'import pytest' and in a different group.
+.\tests\unit\utils\test_utils.py:90:1: D103 Missing docstring in public function
+.\tests\unit\utils\test_utils.py:96:1: D103 Missing docstring in public function
+.\transactions\__init__.py:1:1: D104 Missing docstring in public package
+.\transactions\admin.py:1:1: D100 Missing docstring in public module
+.\transactions\apps.py:1:1: D100 Missing docstring in public module
+.\transactions\apps.py:4:1: D101 Missing docstring in public class
+.\transactions\consumers.py:1:1: D100 Missing docstring in public module
+.\transactions\consumers.py:10:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'from channels.generic.websocket import AsyncWebsocketConsumer' is identified as Third Party.
+.\transactions\consumers.py:13:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from django.forms import model_to_dict' and in a different group.
+.\transactions\consumers.py:16:1: I201 Missing newline between import groups. 'from core.formatting_utils import format_table_data' is identified as Third Party and 'from common.models import Brokers' is identified as Third Party.
+.\transactions\consumers.py:21:1: I201 Missing newline between import groups. 'from users.models import CustomUser' is identified as Third Party and 'from core.import_utils import transaction_exists' is identified as Third Party.
+.\transactions\consumers.py:30:1: D101 Missing docstring in public class
+.\transactions\consumers.py:31:1: D107 Missing docstring in __init__
+.\transactions\consumers.py:45:1: D102 Missing docstring in public method
+.\transactions\consumers.py:57:1: D102 Missing docstring in public method
+.\transactions\consumers.py:68:1: D102 Missing docstring in public method
+.\transactions\consumers.py:342:1: D102 Missing docstring in public method
+.\transactions\consumers.py:372:1: D400 First line should end with a period
+.\transactions\consumers.py:384:1: D400 First line should end with a period
+.\transactions\consumers.py:400:1: D400 First line should end with a period
+.\transactions\consumers.py:436:1: D400 First line should end with a period
+.\transactions\consumers.py:571:1: D102 Missing docstring in public method
+.\transactions\consumers.py:1017:13: B012 return/continue/break inside finally blocks cause exceptions to be silenced. Exceptions should be silenced in except blocks. Control statements can be moved outside the finally block.
+.\transactions\consumers.py:1019:1: D102 Missing docstring in public method
+.\transactions\consumers.py:1117:1: D400 First line should end with a period
+.\transactions\serializers.py:1:1: D100 Missing docstring in public module
+.\transactions\serializers.py:3:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from rest_framework import serializers' and in a different group.
+.\transactions\serializers.py:7:1: I201 Missing newline between import groups. 'from constants import CURRENCY_CHOICES' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\transactions\serializers.py:11:1: D101 Missing docstring in public class
+.\transactions\serializers.py:21:1: D106 Missing docstring in public nested class
+.\transactions\serializers.py:41:1: D400 First line should end with a period
+.\transactions\serializers.py:47:1: D102 Missing docstring in public method
+.\transactions\serializers.py:80:101: E501 line too long (101 > 100 characters)
+.\transactions\serializers.py:117:1: D102 Missing docstring in public method
+.\transactions\serializers.py:131:1: D400 First line should end with a period
+.\transactions\serializers.py:143:1: D102 Missing docstring in public method
+.\transactions\serializers.py:151:1: D102 Missing docstring in public method
+.\transactions\serializers.py:163:1: D101 Missing docstring in public class
+.\transactions\serializers.py:173:1: D106 Missing docstring in public nested class
+.\transactions\serializers.py:190:1: D400 First line should end with a period
+.\transactions\serializers.py:196:1: D102 Missing docstring in public method
+.\transactions\serializers.py:235:1: D400 First line should end with a period
+.\transactions\serializers.py:243:1: D400 First line should end with a period
+.\transactions\serializers.py:252:1: D102 Missing docstring in public method
+.\transactions\serializers.py:260:1: D102 Missing docstring in public method
+.\transactions\tests.py:1:1: D100 Missing docstring in public module
+.\transactions\urls.py:1:1: D100 Missing docstring in public module
+.\transactions\urls.py:3:1: I201 Missing newline between import groups. 'from rest_framework.routers import DefaultRouter' is identified as Third Party and 'from django.urls import path' is identified as Third Party.
+.\transactions\views.py:1:1: D100 Missing docstring in public module
+.\transactions\views.py:10:1: I100 Import statements are in the wrong order. 'from channels.db import database_sync_to_async' should be before 'import pandas' and in a different group.
+.\transactions\views.py:10:1: I201 Missing newline between import groups. 'from channels.db import database_sync_to_async' is identified as Third Party and 'import pandas' is identified as Third Party.
+.\transactions\views.py:11:1: I201 Missing newline between import groups. 'from django.conf import settings' is identified as Third Party and 'from channels.db import database_sync_to_async' is identified as Third Party.
+.\transactions\views.py:15:1: I201 Missing newline between import groups. 'from fuzzywuzzy import fuzz' is identified as Third Party and 'from django.db import transaction' is identified as Third Party.
+.\transactions\views.py:16:1: I201 Missing newline between import groups. 'from rest_framework import status' is identified as Third Party and 'from fuzzywuzzy import fuzz' is identified as Third Party.
+.\transactions\views.py:23:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from rest_framework.response import Response' and in a different group.
+.\transactions\views.py:27:1: I201 Missing newline between import groups. 'from constants import ACCOUNT_IDENTIFIERS' is identified as Third Party and 'from common.models import Transactions' is identified as Third Party.
+.\transactions\views.py:32:1: I201 Missing newline between import groups. 'from core.broker_api_utils import TinkoffAPIException' is identified as Third Party and 'from constants import TRANSACTION_TYPE_BOND_REDEMPTION' is identified as Third Party.
+.\transactions\views.py:51:1: D401 First line should be in imperative mood
+.\transactions\views.py:115:1: D101 Missing docstring in public class
+.\transactions\views.py:119:1: D102 Missing docstring in public method
+.\transactions\views.py:122:1: D102 Missing docstring in public method
+.\transactions\views.py:125:1: D102 Missing docstring in public method
+.\transactions\views.py:135:1: D102 Missing docstring in public method
+.\transactions\views.py:139:1: D102 Missing docstring in public method
+.\transactions\views.py:244:1: D102 Missing docstring in public method
+.\transactions\views.py:249:1: D102 Missing docstring in public method
+.\transactions\views.py:354:1: D102 Missing docstring in public method
+.\transactions\views.py:415:1: D200 One-line docstring should fit on one line with quotes
+.\transactions\views.py:483:1: D205 1 blank line required between summary line and description
+.\transactions\views.py:657:1: D102 Missing docstring in public method
+.\transactions\views.py:706:1: D400 First line should end with a period
+.\transactions\views.py:752:1: D400 First line should end with a period
+.\transactions\views.py:954:1: D400 First line should end with a period
+.\transactions\views.py:1156:1: D400 First line should end with a period
+.\transactions\views.py:1436:1: D101 Missing docstring in public class
+.\transactions\views.py:1440:1: D102 Missing docstring in public method
+.\transactions\views.py:1443:1: D102 Missing docstring in public method
+.\transactions\views.py:1447:1: D102 Missing docstring in public method
+.\transactions\views.py:1459:1: D102 Missing docstring in public method
+.\users\__init__.py:1:1: D104 Missing docstring in public package
+.\users\apps.py:1:1: D100 Missing docstring in public module
+.\users\apps.py:4:1: D101 Missing docstring in public class
+.\users\forms.py:1:1: D100 Missing docstring in public module
+.\users\forms.py:4:1: I100 Import statements are in the wrong order. 'from common.forms import GroupedSelect' should be before 'from django.contrib.auth.forms import UserCreationForm' and in a different group.
+.\users\forms.py:6:1: I201 Missing newline between import groups. 'from constants import CURRENCY_CHOICES' is identified as Third Party and 'from common.models import Accounts' is identified as Third Party.
+.\users\forms.py:8:1: I201 Missing newline between import groups. 'from users.models import AccountGroup' is identified as Third Party and 'from constants import NAV_BARCHART_CHOICES' is identified as Third Party.
+.\users\forms.py:12:1: D101 Missing docstring in public class
+.\users\forms.py:15:1: D106 Missing docstring in public nested class
+.\users\forms.py:20:1: D101 Missing docstring in public class
+.\users\forms.py:21:1: D106 Missing docstring in public nested class
+.\users\forms.py:38:1: D101 Missing docstring in public class
+.\users\forms.py:85:1: D106 Missing docstring in public nested class
+.\users\forms.py:106:1: D107 Missing docstring in __init__
+.\users\forms.py:114:1: D102 Missing docstring in public method
+.\users\forms.py:134:1: D102 Missing docstring in public method
+.\users\forms.py:142:1: D102 Missing docstring in public method
+.\users\models.py:1:1: D100 Missing docstring in public module
+.\users\models.py:5:1: I201 Missing newline between import groups. 'from django.conf import settings' is identified as Third Party and 'from cryptography.fernet import Fernet' is identified as Third Party.
+.\users\models.py:11:1: I201 Missing newline between import groups. 'from tinkoff.invest import Client' is identified as Third Party and 'from django.forms import ValidationError' is identified as Third Party.
+.\users\models.py:14:1: I100 Import statements are in the wrong order. 'from constants import CURRENCY_CHOICES' should be before 'from tinkoff.invest import RequestError' and in a different group.
+.\users\models.py:21:1: D400 First line should end with a period
+.\users\models.py:29:1: D101 Missing docstring in public class
+.\users\models.py:67:1: D106 Missing docstring in public nested class
+.\users\models.py:83:1: D400 First line should end with a period
+.\users\models.py:90:1: D106 Missing docstring in public nested class
+.\users\models.py:94:1: D400 First line should end with a period
+.\users\models.py:105:1: D400 First line should end with a period
+.\users\models.py:119:1: D105 Missing docstring in magic method
+.\users\models.py:127:1: D400 First line should end with a period
+.\users\models.py:142:1: D106 Missing docstring in public nested class
+.\users\models.py:154:1: D400 First line should end with a period
+.\users\models.py:177:1: D102 Missing docstring in public method
+.\users\models.py:191:1: D105 Missing docstring in magic method
+.\users\models.py:196:1: D400 First line should end with a period
+.\users\models.py:205:1: D106 Missing docstring in public nested class
+.\users\models.py:211:1: D101 Missing docstring in public class
+.\users\models.py:220:1: D106 Missing docstring in public nested class
+.\users\models.py:224:1: D105 Missing docstring in magic method
+.\users\serializers.py:1:1: D100 Missing docstring in public module
+.\users\serializers.py:6:1: I201 Missing newline between import groups. 'from rest_framework import serializers' is identified as Third Party and 'from django.utils import timezone' is identified as Third Party.
+.\users\serializers.py:7:1: I201 Missing newline between import groups. 'from rest_framework_simplejwt.serializers import TokenObtainPairSerializer' is identified as Third Party and 'from rest_framework import serializers' is identified as Third Party.
+.\users\serializers.py:10:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from rest_framework_simplejwt.tokens import RefreshToken' and in a different group.
+.\users\serializers.py:12:1: I201 Missing newline between import groups. 'from constants import ACCOUNT_TYPE_ALL' is identified as Third Party and 'from common.models import Brokers' is identified as Third Party.
+.\users\serializers.py:19:1: I201 Missing newline between import groups. 'from core.user_utils import FREQUENCY_CHOICES' is identified as Third Party and 'from constants import NAV_BARCHART_CHOICES' is identified as Third Party.
+.\users\serializers.py:21:1: I201 Missing newline between import groups. 'from users.models import AccountGroup' is identified as Third Party and 'from core.user_utils import TIMELINE_CHOICES' is identified as Third Party.
+.\users\serializers.py:28:1: D101 Missing docstring in public class
+.\users\serializers.py:34:1: D106 Missing docstring in public nested class
+.\users\serializers.py:50:1: D102 Missing docstring in public method
+.\users\serializers.py:57:1: D102 Missing docstring in public method
+.\users\serializers.py:66:1: D101 Missing docstring in public class
+.\users\serializers.py:67:1: D106 Missing docstring in public nested class
+.\users\serializers.py:73:1: D101 Missing docstring in public class
+.\users\serializers.py:83:1: D106 Missing docstring in public nested class
+.\users\serializers.py:96:1: D102 Missing docstring in public method
+.\users\serializers.py:104:1: D200 One-line docstring should fit on one line with quotes
+.\users\serializers.py:104:1: D400 First line should end with a period
+.\users\serializers.py:140:1: D101 Missing docstring in public class
+.\users\serializers.py:156:1: D101 Missing docstring in public class
+.\users\serializers.py:159:1: D106 Missing docstring in public nested class
+.\users\serializers.py:168:1: D101 Missing docstring in public class
+.\users\serializers.py:175:1: D101 Missing docstring in public class
+.\users\serializers.py:178:1: D106 Missing docstring in public nested class
+.\users\serializers.py:183:1: D102 Missing docstring in public method
+.\users\serializers.py:190:1: D102 Missing docstring in public method
+.\users\serializers.py:200:1: D101 Missing docstring in public class
+.\users\serializers.py:215:1: D106 Missing docstring in public nested class
+.\users\serializers.py:227:1: D200 One-line docstring should fit on one line with quotes
+.\users\serializers.py:227:1: D400 First line should end with a period
+.\users\serializers.py:235:1: D101 Missing docstring in public class
+.\users\serializers.py:236:1: D106 Missing docstring in public nested class
+.\users\serializers.py:242:1: D200 One-line docstring should fit on one line with quotes
+.\users\serializers.py:242:1: D400 First line should end with a period
+.\users\serializers.py:246:1: D102 Missing docstring in public method
+.\users\serializers.py:284:1: D101 Missing docstring in public class
+.\users\serializers.py:289:1: D106 Missing docstring in public nested class
+.\users\serializers.py:294:1: D102 Missing docstring in public method
+.\users\serializers.py:308:1: D102 Missing docstring in public method
+.\users\serializers.py:320:1: D102 Missing docstring in public method
+.\users\urls.py:1:1: D100 Missing docstring in public module
+.\users\urls.py:3:1: I201 Missing newline between import groups. 'from rest_framework.routers import DefaultRouter' is identified as Third Party and 'from django.urls import path' is identified as Third Party.
+.\users\urls.py:4:1: I201 Missing newline between import groups. 'from rest_framework_simplejwt.views import TokenRefreshView' is identified as Third Party and 'from rest_framework.routers import DefaultRouter' is identified as Third Party.
+.\users\views.py:1:1: D100 Missing docstring in public module
+.\users\views.py:5:1: I201 Missing newline between import groups. 'import structlog' is identified as Third Party and 'import cryptography.fernet' is identified as Third Party.
+.\users\views.py:6:1: I100 Import statements are in the wrong order. 'from django.contrib.auth import get_user_model' should be before 'import structlog' and in a different group.
+.\users\views.py:6:1: I201 Missing newline between import groups. 'from django.contrib.auth import get_user_model' is identified as Third Party and 'import structlog' is identified as Third Party.
+.\users\views.py:8:1: I201 Missing newline between import groups. 'from rest_framework import status' is identified as Third Party and 'from django.shortcuts import get_object_or_404' is identified as Third Party.
+.\users\views.py:15:1: I201 Missing newline between import groups. 'from rest_framework_simplejwt.exceptions import InvalidToken' is identified as Third Party and 'from rest_framework.views import APIView' is identified as Third Party.
+.\users\views.py:18:1: I201 Missing newline between import groups. 'from tinkoff.invest import Client' is identified as Third Party and 'from rest_framework_simplejwt.views import TokenObtainPairView' is identified as Third Party.
+.\users\views.py:21:1: I100 Import statements are in the wrong order. 'from common.models import Accounts' should be before 'from tinkoff.invest.exceptions import RequestError' and in a different group.
+.\users\views.py:23:1: I201 Missing newline between import groups. 'from constants import CURRENCY_CHOICES' is identified as Third Party and 'from common.models import Brokers' is identified as Third Party.
+.\users\views.py:27:1: I201 Missing newline between import groups. 'from core.user_utils import FREQUENCY_CHOICES' is identified as Third Party and 'from constants import TINKOFF_ACCOUNT_TYPES' is identified as Third Party.
+.\users\views.py:30:1: I201 Missing newline between import groups. 'from users.models import AccountGroup' is identified as Third Party and 'from core.user_utils import prepare_account_choices' is identified as Third Party.
+.\users\views.py:49:1: D101 Missing docstring in public class
+.\users\views.py:55:1: D102 Missing docstring in public method
+.\users\views.py:73:1: D205 1 blank line required between summary line and description
+.\users\views.py:103:1: D102 Missing docstring in public method
+.\users\views.py:110:1: D102 Missing docstring in public method
+.\users\views.py:121:1: D205 1 blank line required between summary line and description
+.\users\views.py:121:1: D400 First line should end with a period
+.\users\views.py:144:1: D102 Missing docstring in public method
+.\users\views.py:157:1: D102 Missing docstring in public method
+.\users\views.py:180:1: D205 1 blank line required between summary line and description
+.\users\views.py:191:1: D200 One-line docstring should fit on one line with quotes
+.\users\views.py:216:1: D102 Missing docstring in public method
+.\users\views.py:242:1: D102 Missing docstring in public method
+.\users\views.py:304:1: D102 Missing docstring in public method
+.\users\views.py:369:1: D400 First line should end with a period
+.\users\views.py:386:1: D400 First line should end with a period
+.\users\views.py:406:1: D101 Missing docstring in public class
+.\users\views.py:409:1: D102 Missing docstring in public method
+.\users\views.py:412:1: D102 Missing docstring in public method
+.\users\views.py:418:1: D102 Missing docstring in public method
+.\users\views.py:427:1: D400 First line should end with a period
+.\users\views.py:487:1: D400 First line should end with a period
+.\users\views.py:498:1: D101 Missing docstring in public class
+.\users\views.py:504:1: D400 First line should end with a period
+.\users\views.py:583:1: D400 First line should end with a period
+.\users\views.py:671:1: D101 Missing docstring in public class
+.\users\views.py:676:1: D101 Missing docstring in public class
+.\users\views.py:680:1: D102 Missing docstring in public method
+.\users\views.py:683:1: D102 Missing docstring in public method
+.\users\views.py:710:1: D102 Missing docstring in public method
+.\users\views.py:713:1: D102 Missing docstring in public method
+.\users\views.py:716:1: D102 Missing docstring in public method
+.\users\views.py:722:1: D102 Missing docstring in public method
+.\users\views.py:739:1: D102 Missing docstring in public method
+.\users\views.py:757:1: D200 One-line docstring should fit on one line with quotes
+.\users\views.py:757:1: D400 First line should end with a period
+.\users\views.py:765:1: D205 1 blank line required between summary line and description
+.\users\views.py:765:1: D400 First line should end with a period
+.\users\views.py:772:1: D107 Missing docstring in __init__
+.\users\views.py:776:1: D102 Missing docstring in public method

@@ -1,15 +1,15 @@
 import os
 
-from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.routing import ProtocolTypeRouter
+from channels.routing import URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
-from django.urls import path, re_path
+from django.urls import path
+from django.urls import re_path
 
-from database.consumers import (
-    FXImportConsumer,
-    PriceImportConsumer,
-    UpdateAccountPerformanceConsumer,
-)
+from database.consumers import FXImportConsumer
+from database.consumers import PriceImportConsumer
+from database.consumers import UpdateAccountPerformanceConsumer
 from transactions.consumers import TransactionConsumer
 
 from .auth_middleware import TokenAuthMiddleware

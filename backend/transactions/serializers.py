@@ -1,7 +1,11 @@
 from rest_framework import serializers
 
-from common.models import Accounts, Assets, FXTransaction, Transactions
-from constants import CURRENCY_CHOICES, TRANSACTION_TYPE_CHOICES
+from common.models import Accounts
+from common.models import Assets
+from common.models import FXTransaction
+from common.models import Transactions
+from constants import CURRENCY_CHOICES
+from constants import TRANSACTION_TYPE_CHOICES
 
 
 class TransactionFormSerializer(serializers.ModelSerializer):

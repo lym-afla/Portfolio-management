@@ -1,24 +1,25 @@
 import asyncio
 import logging
-from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
-from typing import AsyncGenerator, Dict, Optional
+from abc import ABC
+from abc import abstractmethod
+from datetime import datetime
+from datetime import timedelta
+from typing import AsyncGenerator
+from typing import Dict
+from typing import Optional
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import (
-    Client,
-    GetOperationsByCursorRequest,
-    OperationState,
-    RequestError,
-)
+from tinkoff.invest import Client
+from tinkoff.invest import GetOperationsByCursorRequest
+from tinkoff.invest import OperationState
+from tinkoff.invest import RequestError
 
-from common.models import Accounts, Brokers
+from common.models import Accounts
+from common.models import Brokers
 
-from .tinkoff_utils import (
-    get_user_token,
-    map_tinkoff_operation_to_transaction,
-    verify_token_access,
-)
+from .tinkoff_utils import get_user_token
+from .tinkoff_utils import map_tinkoff_operation_to_transaction
+from .tinkoff_utils import verify_token_access
 
 logger = logging.getLogger(__name__)
 

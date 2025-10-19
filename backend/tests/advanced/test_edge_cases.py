@@ -9,22 +9,28 @@ Created: 2025-10-18
 Purpose: Validate system robustness under edge cases and error conditions
 """
 
-from datetime import date, timedelta
-from decimal import Decimal, getcontext
-from unittest.mock import MagicMock, patch
+from datetime import date
+from datetime import timedelta
+from decimal import Decimal
+from decimal import getcontext
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
-from django.db import DatabaseError, IntegrityError
+from django.db import DatabaseError
+from django.db import IntegrityError
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from common.models import FX, Assets, Portfolios, Transactions
-from portfolio_management.common.models import fx_cache, get_exchange_rate
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from common.models import FX
+from common.models import Assets
+from common.models import Portfolios
+from common.models import Transactions
+from portfolio_management.common.models import fx_cache
+from portfolio_management.common.models import get_exchange_rate
+from portfolio_management.portfolio.calculator import calculate_buy_in_price
+from portfolio_management.portfolio.calculator import calculate_nav
 from portfolio_management.portfolio.models import gain_loss
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.fx_factory import FXRateFactory

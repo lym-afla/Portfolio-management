@@ -1,17 +1,23 @@
 import logging
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any
+from typing import Dict
+from typing import List
 
-from django.db.models import Q, Sum
+from django.db.models import Q
+from django.db.models import Sum
 from django.db.models.query import QuerySet
 from django.http import HttpRequest
 
-from common.models import Accounts, Assets
+from common.models import Accounts
+from common.models import Assets
 from users.models import CustomUser
 
-from .formatting_utils import currency_format, format_table_data
+from .formatting_utils import currency_format
+from .formatting_utils import format_table_data
 from .pagination_utils import paginate_table
 from .portfolio_utils import get_selected_account_ids
 from .sorting_utils import sort_entries

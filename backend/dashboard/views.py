@@ -1,27 +1,31 @@
 import decimal
 import logging
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 from decimal import Decimal
 
 from django.db import DatabaseError
 from django.db.models import Sum
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view
+from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from common.models import FX, AnnualPerformance, Transactions
+from common.models import FX
+from common.models import AnnualPerformance
+from common.models import Transactions
 from core.chart_utils import get_nav_chart_data
-from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.portfolio_utils import (
-    IRR,
-    NAV_at_date,
-    calculate_percentage_shares,
-    calculate_performance,
-    get_last_exit_date_for_accounts,
-    get_selected_account_ids,
-)
+from core.formatting_utils import currency_format
+from core.formatting_utils import format_percentage
+from core.formatting_utils import format_table_data
+from core.portfolio_utils import IRR
+from core.portfolio_utils import NAV_at_date
+from core.portfolio_utils import calculate_percentage_shares
+from core.portfolio_utils import calculate_performance
+from core.portfolio_utils import get_last_exit_date_for_accounts
+from core.portfolio_utils import get_selected_account_ids
 
 logger = logging.getLogger(__name__)
 

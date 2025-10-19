@@ -1,16 +1,17 @@
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 
 from channels.db import database_sync_to_async
-from django.db import OperationalError, transaction
+from django.db import OperationalError
+from django.db import transaction
 
-from common.models import AnnualPerformance, Transactions
-from core.portfolio_utils import (
-    calculate_performance,
-    get_last_exit_date_for_accounts,
-    get_selected_account_ids,
-)
+from common.models import AnnualPerformance
+from common.models import Transactions
+from core.portfolio_utils import calculate_performance
+from core.portfolio_utils import get_last_exit_date_for_accounts
+from core.portfolio_utils import get_selected_account_ids
 
 logger = logging.getLogger(__name__)
 

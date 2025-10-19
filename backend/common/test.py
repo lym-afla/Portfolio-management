@@ -5,7 +5,12 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
+from common.models import FX
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
+from common.models import Prices
+from common.models import Transactions
 
 
 class AssetsBuyInPriceTestCase(TestCase):

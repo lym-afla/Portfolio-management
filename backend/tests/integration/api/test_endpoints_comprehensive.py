@@ -10,14 +10,19 @@ This module tests all API endpoints including:
 """
 
 import json
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.test import Client
 from rest_framework.test import APITestCase
 
-from common.models import FX, Assets, Brokers, Prices, Transactions
+from common.models import FX
+from common.models import Assets
+from common.models import Brokers
+from common.models import Prices
+from common.models import Transactions
 from users.models import CustomUser
 
 

@@ -1,16 +1,17 @@
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
+from unittest.mock import patch
 
 import pytest
-from tinkoff.invest import (
-    GetOperationsByCursorRequest,
-    Operation,
-    OperationState,
-    OperationType,
-    RequestError,
-)
+from tinkoff.invest import GetOperationsByCursorRequest
+from tinkoff.invest import Operation
+from tinkoff.invest import OperationState
+from tinkoff.invest import OperationType
+from tinkoff.invest import RequestError
 
-from core.broker_api_utils import TinkoffAPI, TinkoffAPIException
+from core.broker_api_utils import TinkoffAPI
+from core.broker_api_utils import TinkoffAPIException
 from users.models import CustomUser
 
 

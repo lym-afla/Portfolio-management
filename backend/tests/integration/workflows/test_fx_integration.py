@@ -14,20 +14,21 @@ Created: 2025-10-18
 Purpose: Validate FX rate integration across the system
 """
 
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from common.models import FX, Assets
-from portfolio_management.common.models import (
-    fx_cache,
-    get_exchange_rate,
-    update_fx_rate,
-)
+from common.models import FX
+from common.models import Assets
+from portfolio_management.common.models import fx_cache
+from portfolio_management.common.models import get_exchange_rate
+from portfolio_management.common.models import update_fx_rate
 from tests.fixtures.factories.fx_factory import FXRateFactory
 
 

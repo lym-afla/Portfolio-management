@@ -1,4 +1,5 @@
-from tinkoff.invest import InstrumentType, OperationType
+from tinkoff.invest import InstrumentType
+from tinkoff.invest import OperationType
 
 CURRENCY_CHOICES = (
     ("USD", "$"),

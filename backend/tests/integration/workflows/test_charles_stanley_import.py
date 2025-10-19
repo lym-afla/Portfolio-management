@@ -9,12 +9,13 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import connection
 
-from common.models import Accounts, Assets, Brokers, Transactions
-from constants import (
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_DIVIDEND,
-    TRANSACTION_TYPE_INTEREST_INCOME,
-)
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
+from common.models import Transactions
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_DIVIDEND
+from constants import TRANSACTION_TYPE_INTEREST_INCOME
 from core.import_utils import parse_charles_stanley_transactions
 
 pytestmark = pytest.mark.django_db

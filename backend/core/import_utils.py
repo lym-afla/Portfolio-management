@@ -1,10 +1,15 @@
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
+from decimal import Decimal
+from decimal import InvalidOperation
 from io import StringIO
-from typing import Dict, List, Tuple
+from typing import Dict
+from typing import List
+from typing import Tuple
 
 import aiohttp
 import pandas as pd
@@ -17,34 +22,32 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 from fake_useragent import UserAgent
 from fuzzywuzzy import process
-from tinkoff.invest import Client, InstrumentType
+from tinkoff.invest import Client
+from tinkoff.invest import InstrumentType
 from tinkoff.invest.utils import quotation_to_decimal
 
-from common.models import (
-    Accounts,
-    Assets,
-    BondMetadata,
-    Brokers,
-    FutureMetadata,
-    OptionMetadata,
-    Prices,
-    Transactions,
-)
-from constants import (
-    ASSET_TYPE_CHOICES,
-    EXPOSURE_CHOICES,
-    MUTUAL_FUNDS_IN_PENCES,
-    TRANSACTION_TYPE_BROKER_COMMISSION,
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_CASH_IN,
-    TRANSACTION_TYPE_CASH_OUT,
-    TRANSACTION_TYPE_DIVIDEND,
-    TRANSACTION_TYPE_INTEREST_INCOME,
-    TRANSACTION_TYPE_SELL,
-    TRANSACTION_TYPE_TAX,
-)
+from common.models import Accounts
+from common.models import Assets
+from common.models import BondMetadata
+from common.models import Brokers
+from common.models import FutureMetadata
+from common.models import OptionMetadata
+from common.models import Prices
+from common.models import Transactions
+from constants import ASSET_TYPE_CHOICES
+from constants import EXPOSURE_CHOICES
+from constants import MUTUAL_FUNDS_IN_PENCES
+from constants import TRANSACTION_TYPE_BROKER_COMMISSION
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_CASH_IN
+from constants import TRANSACTION_TYPE_CASH_OUT
+from constants import TRANSACTION_TYPE_DIVIDEND
+from constants import TRANSACTION_TYPE_INTEREST_INCOME
+from constants import TRANSACTION_TYPE_SELL
+from constants import TRANSACTION_TYPE_TAX
 from core.broker_api_utils import get_broker_api
-from core.tinkoff_utils import get_user_token, save_bond_redemption_history
+from core.tinkoff_utils import get_user_token
+from core.tinkoff_utils import save_bond_redemption_history
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)

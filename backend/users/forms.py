@@ -3,8 +3,10 @@ from django.contrib.auth.forms import UserCreationForm
 
 from common.forms import GroupedSelect
 from common.models import Accounts
-from constants import CURRENCY_CHOICES, NAV_BARCHART_CHOICES
-from users.models import AccountGroup, CustomUser
+from constants import CURRENCY_CHOICES
+from constants import NAV_BARCHART_CHOICES
+from users.models import AccountGroup
+from users.models import CustomUser
 
 
 class SignUpForm(UserCreationForm):

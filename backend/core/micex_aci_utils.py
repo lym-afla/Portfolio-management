@@ -4,9 +4,11 @@ Used as fallback when T-Bank API doesn't have coupon amounts for floating-rate b
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
-from typing import Dict, Optional
+from typing import Dict
+from typing import Optional
 
 import requests
 

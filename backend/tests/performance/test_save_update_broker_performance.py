@@ -1,6 +1,8 @@
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -11,15 +13,19 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework.test import APIClient
 
-from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
-from constants import (
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_CASH_IN,
-    TRANSACTION_TYPE_CASH_OUT,
-    TRANSACTION_TYPE_SELL,
-)
+from common.models import FX
+from common.models import Accounts
+from common.models import AnnualPerformance
+from common.models import Assets
+from common.models import Brokers
+from common.models import Transactions
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_CASH_IN
+from constants import TRANSACTION_TYPE_CASH_OUT
+from constants import TRANSACTION_TYPE_SELL
 from core.accounts_utils import get_accounts_table_api
-from core.portfolio_utils import calculate_performance, get_last_exit_date_for_accounts
+from core.portfolio_utils import calculate_performance
+from core.portfolio_utils import get_last_exit_date_for_accounts
 from database.consumers import UpdateAccountPerformanceConsumer
 
 User = get_user_model()

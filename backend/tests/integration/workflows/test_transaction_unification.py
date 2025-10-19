@@ -14,15 +14,18 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 
-from common.models import Accounts, Assets, Brokers, FXTransaction, Transactions
-from constants import (
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_CASH_IN,
-    TRANSACTION_TYPE_DIVIDEND,
-    TRANSACTION_TYPE_SELL,
-)
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
+from common.models import FXTransaction
+from common.models import Transactions
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_CASH_IN
+from constants import TRANSACTION_TYPE_DIVIDEND
+from constants import TRANSACTION_TYPE_SELL
 from core.balance_tracker import BalanceTracker
-from database.serializers import FXTransactionSerializer, TransactionSerializer
+from database.serializers import FXTransactionSerializer
+from database.serializers import TransactionSerializer
 
 User = get_user_model()
 

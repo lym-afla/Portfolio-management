@@ -6,7 +6,8 @@ as transactions are processed.
 """
 
 from decimal import Decimal
-from typing import Dict, List
+from typing import Dict
+from typing import List
 
 from core.formatting_utils import currency_format
 
@@ -57,7 +58,8 @@ class BalanceTracker:
         Args:
             transaction: Transaction or FXTransaction instance
         """
-        from common.models import FXTransaction, Transactions
+        from common.models import FXTransaction
+        from common.models import Transactions
 
         if isinstance(transaction, Transactions):
             self._update_regular_transaction(transaction)

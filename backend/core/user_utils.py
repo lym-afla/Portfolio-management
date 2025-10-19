@@ -1,4 +1,5 @@
-from common.models import Accounts, Brokers
+from common.models import Accounts
+from common.models import Brokers
 from users.models import AccountGroup
 
 FREQUENCY_CHOICES = [

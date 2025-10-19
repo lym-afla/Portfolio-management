@@ -6,7 +6,8 @@ This eliminates session dependency and uses JWT authentication only
 from datetime import date
 
 import structlog
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 logger = structlog.get_logger(__name__)

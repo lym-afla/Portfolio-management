@@ -2,7 +2,8 @@ from datetime import date
 
 from django.db.models import Q
 
-from common.models import Assets, Prices
+from common.models import Assets
+from common.models import Prices
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries

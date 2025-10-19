@@ -3,7 +3,8 @@ Factory classes for creating test transactions.
 Provides realistic transaction data for various testing scenarios.
 """
 
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 import factory

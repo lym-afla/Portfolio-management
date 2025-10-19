@@ -1,8 +1,12 @@
 from django import forms
 
 from common.forms import GroupedSelect
-from common.models import Accounts, Assets, BondMetadata, FXTransaction
-from constants import CURRENCY_CHOICES, DATA_SOURCE_CHOICES
+from common.models import Accounts
+from common.models import Assets
+from common.models import BondMetadata
+from common.models import FXTransaction
+from constants import CURRENCY_CHOICES
+from constants import DATA_SOURCE_CHOICES
 from core.user_utils import prepare_account_choices
 
 

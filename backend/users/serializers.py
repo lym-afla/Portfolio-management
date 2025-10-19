@@ -7,18 +7,20 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from common.models import Accounts, Brokers
-from constants import (
-    ACCOUNT_TYPE_ALL,
-    ACCOUNT_TYPE_BROKER,
-    ACCOUNT_TYPE_CHOICES,
-    ACCOUNT_TYPE_GROUP,
-    ACCOUNT_TYPE_INDIVIDUAL,
-    CURRENCY_CHOICES,
-    NAV_BARCHART_CHOICES,
-)
-from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
-from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
+from common.models import Accounts
+from common.models import Brokers
+from constants import ACCOUNT_TYPE_ALL
+from constants import ACCOUNT_TYPE_BROKER
+from constants import ACCOUNT_TYPE_CHOICES
+from constants import ACCOUNT_TYPE_GROUP
+from constants import ACCOUNT_TYPE_INDIVIDUAL
+from constants import CURRENCY_CHOICES
+from constants import NAV_BARCHART_CHOICES
+from core.user_utils import FREQUENCY_CHOICES
+from core.user_utils import TIMELINE_CHOICES
+from users.models import AccountGroup
+from users.models import InteractiveBrokersApiToken
+from users.models import TinkoffApiToken
 
 User = get_user_model()
 

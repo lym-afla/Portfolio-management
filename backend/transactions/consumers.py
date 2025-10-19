@@ -10,14 +10,14 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.forms import model_to_dict
 
-from common.models import Accounts, Assets, Brokers
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import (
-    fx_transaction_exists,
-    get_security,
-    match_tinkoff_broker_account,
-    transaction_exists,
-)
+from core.import_utils import fx_transaction_exists
+from core.import_utils import get_security
+from core.import_utils import match_tinkoff_broker_account
+from core.import_utils import transaction_exists
 from users.models import CustomUser
 
 from .views import TransactionViewSet

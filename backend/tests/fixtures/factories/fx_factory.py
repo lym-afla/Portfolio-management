@@ -3,13 +3,15 @@ Factory classes for creating FX rate test data.
 Provides realistic FX rate scenarios for various testing scenarios.
 """
 
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 import factory
 from factory import fuzzy
 
-from common.models import FX, FXTransaction
+from common.models import FX
+from common.models import FXTransaction
 
 
 class FXRateFactory(factory.django.DjangoModelFactory):

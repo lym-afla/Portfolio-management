@@ -11,17 +11,18 @@ Purpose: Validate calculations against production data snapshots
 
 import json
 import os
-from datetime import date, datetime
-from decimal import Decimal, getcontext
+from datetime import date
+from datetime import datetime
+from decimal import Decimal
+from decimal import getcontext
 
 import pytest
 
 from portfolio_management.common.models import get_exchange_rate
-from portfolio_management.models import FX, Portfolios
-from portfolio_management.portfolio.calculator import (
-    calculate_buy_in_price,
-    calculate_nav,
-)
+from portfolio_management.models import FX
+from portfolio_management.models import Portfolios
+from portfolio_management.portfolio.calculator import calculate_buy_in_price
+from portfolio_management.portfolio.calculator import calculate_nav
 from portfolio_management.portfolio.models import gain_loss
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory

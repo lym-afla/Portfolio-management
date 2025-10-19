@@ -1,5 +1,7 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -8,7 +10,9 @@ from dateutil.relativedelta import relativedelta
 from django.db.models import Min
 
 from common.models import Transactions
-from core.portfolio_utils import IRR, NAV_at_date, get_fx_rate
+from core.portfolio_utils import IRR
+from core.portfolio_utils import NAV_at_date
+from core.portfolio_utils import get_fx_rate
 
 logger = logging.getLogger("dashboard")
 

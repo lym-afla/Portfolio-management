@@ -1,23 +1,26 @@
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from tinkoff.invest import MoneyValue, OperationType, Quotation
+from tinkoff.invest import MoneyValue
+from tinkoff.invest import OperationType
+from tinkoff.invest import Quotation
 from tinkoff.invest.exceptions import RequestError
 
-from common.models import Assets, Brokers
+from common.models import Assets
+from common.models import Brokers
 from constants import TRANSACTION_TYPE_BUY
-from core.tinkoff_utils import (
-    _find_or_create_security,
-    get_account_info,
-    get_security_by_uid,
-    get_user_token,
-    map_tinkoff_operation_to_transaction,
-    verify_token_access,
-)
+from core.tinkoff_utils import _find_or_create_security
+from core.tinkoff_utils import get_account_info
+from core.tinkoff_utils import get_security_by_uid
+from core.tinkoff_utils import get_user_token
+from core.tinkoff_utils import map_tinkoff_operation_to_transaction
+from core.tinkoff_utils import verify_token_access
 from users.models import TinkoffApiToken
 
 CustomUser = get_user_model()

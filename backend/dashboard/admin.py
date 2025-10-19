@@ -1,6 +1,10 @@
 from django.contrib import admin
 
-from common.models import FX, Assets, Brokers, Prices, Transactions
+from common.models import FX
+from common.models import Assets
+from common.models import Brokers
+from common.models import Prices
+from common.models import Transactions
 
 
 class BrokersAdmin(admin.ModelAdmin):

@@ -7,20 +7,25 @@ Tests cover:
 3. fetch_and_cache_bond_coupon_schedule() - T-Bank API integration
 """
 
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from common.models import FX, Assets, BondCouponSchedule, BondMetadata, Transactions
-from constants import (
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_COUPON,
-    TRANSACTION_TYPE_SELL,
-)
+from common.models import FX
+from common.models import Assets
+from common.models import BondCouponSchedule
+from common.models import BondMetadata
+from common.models import Transactions
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_COUPON
+from constants import TRANSACTION_TYPE_SELL
 from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
 
 User = get_user_model()
@@ -194,7 +199,8 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Create an account
-        from common.models import Accounts, Brokers
+        from common.models import Accounts
+        from common.models import Brokers
 
         broker = Brokers.objects.create(name="Test Broker", investor=self.user)
         self.account = Accounts.objects.create(

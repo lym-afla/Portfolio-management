@@ -1,15 +1,19 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from pyxirr import xirr
 
-from common.models import FX, Assets
+from common.models import FX
+from common.models import Assets
 from core.portfolio_utils import IRR
 
-from .formatting_utils import format_table_data, format_value
+from .formatting_utils import format_table_data
+from .formatting_utils import format_value
 from .pagination_utils import paginate_table
 from .sorting_utils import sort_entries
 

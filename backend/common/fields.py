@@ -3,7 +3,8 @@ Custom Django fields for timezone-aware date handling.
 This eliminates the need to manually call ensure_datetime_for_query everywhere.
 """
 
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 
 from django.db import models
 from django.utils import timezone

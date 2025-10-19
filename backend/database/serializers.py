@@ -2,23 +2,20 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from common.models import (
-    FX,
-    Accounts,
-    Assets,
-    Brokers,
-    FXTransaction,
-    Prices,
-    Transactions,
-)
-from constants import (
-    ACCOUNT_TYPE_ALL,
-    ACCOUNT_TYPE_BROKER,
-    ACCOUNT_TYPE_GROUP,
-    ACCOUNT_TYPE_INDIVIDUAL,
-    CURRENCY_CHOICES,
-)
-from core.formatting_utils import format_bond_price, format_value
+from common.models import FX
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
+from common.models import FXTransaction
+from common.models import Prices
+from common.models import Transactions
+from constants import ACCOUNT_TYPE_ALL
+from constants import ACCOUNT_TYPE_BROKER
+from constants import ACCOUNT_TYPE_GROUP
+from constants import ACCOUNT_TYPE_INDIVIDUAL
+from constants import CURRENCY_CHOICES
+from core.formatting_utils import format_bond_price
+from core.formatting_utils import format_value
 from core.user_utils import prepare_account_choices
 
 

@@ -1,12 +1,19 @@
 import logging
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 
-from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
-from constants import TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL
+from common.models import FX
+from common.models import Accounts
+from common.models import Assets
+from common.models import Brokers
+from common.models import Prices
+from common.models import Transactions
+from constants import TRANSACTION_TYPE_BUY
+from constants import TRANSACTION_TYPE_SELL
 
 User = get_user_model()
 
