@@ -27,7 +27,11 @@ def format_table_data(
         return [
             {
                 k: format_value(
-                    v, k, currency_target, number_of_digits, position.get("instrument_type", None)
+                    v,
+                    k,
+                    currency_target,
+                    number_of_digits,
+                    position.get("instrument_type", None),
                 )
                 for k, v in position.items()
             }
@@ -36,7 +40,11 @@ def format_table_data(
     elif isinstance(data, dict):
         return {
             k: format_value(
-                v, k, currency_target, number_of_digits, data.get("instrument_type", None)
+                v,
+                k,
+                currency_target,
+                number_of_digits,
+                data.get("instrument_type", None),
             )
             for k, v in data.items()
         }
@@ -44,7 +52,11 @@ def format_table_data(
         return [
             {
                 k: format_value(
-                    v, k, currency_target, number_of_digits, position.get("instrument_type", None)
+                    v,
+                    k,
+                    currency_target,
+                    number_of_digits,
+                    position.get("instrument_type", None),
                 )
                 for k, v in position.items()
             }
@@ -110,7 +122,9 @@ def format_value(
 
 
 def currency_format(
-    value: Union[Decimal, float, int, None] = None, currency: str = None, digits: int = 2
+    value: Union[Decimal, float, int, None] = None,
+    currency: str = None,
+    digits: int = 2,
 ) -> str:
     """
     Format value as currency or return currency symbol.

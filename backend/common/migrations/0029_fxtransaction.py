@@ -18,7 +18,10 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("date", models.DateField()),
@@ -53,7 +56,9 @@ class Migration(migrations.Migration):
                 ("exchange_rate", models.DecimalField(decimal_places=6, max_digits=15)),
                 (
                     "commission",
-                    models.DecimalField(blank=True, decimal_places=6, max_digits=15, null=True),
+                    models.DecimalField(
+                        blank=True, decimal_places=6, max_digits=15, null=True
+                    ),
                 ),
                 ("comment", models.TextField(blank=True, null=True)),
                 (

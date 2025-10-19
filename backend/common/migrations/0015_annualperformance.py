@@ -18,14 +18,22 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("year", models.IntegerField()),
                 (
                     "currency",
                     models.CharField(
-                        choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽")],
+                        choices=[
+                            ("USD", "$"),
+                            ("EUR", "€"),
+                            ("GBP", "£"),
+                            ("RUB", "₽"),
+                        ],
                         max_length=3,
                     ),
                 ),
@@ -33,7 +41,10 @@ class Migration(migrations.Migration):
                 ("invested", models.DecimalField(decimal_places=2, max_digits=20)),
                 ("cash_out", models.DecimalField(decimal_places=2, max_digits=20)),
                 ("price_change", models.DecimalField(decimal_places=2, max_digits=20)),
-                ("capital_distribution", models.DecimalField(decimal_places=2, max_digits=20)),
+                (
+                    "capital_distribution",
+                    models.DecimalField(decimal_places=2, max_digits=20),
+                ),
                 ("commission", models.DecimalField(decimal_places=2, max_digits=20)),
                 ("tax", models.DecimalField(decimal_places=2, max_digits=20)),
                 ("fx", models.DecimalField(decimal_places=2, max_digits=20)),
@@ -48,7 +59,8 @@ class Migration(migrations.Migration):
                 (
                     "investor",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
                     ),
                 ),
             ],

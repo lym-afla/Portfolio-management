@@ -42,7 +42,8 @@ class Migration(migrations.Migration):
             constraint=models.CheckConstraint(
                 check=models.Q(
                     models.Q(
-                        ("selected_account_id__isnull", True), ("selected_account_type", "all")
+                        ("selected_account_id__isnull", True),
+                        ("selected_account_type", "all"),
                     ),
                     models.Q(
                         models.Q(("selected_account_type", "all"), _negated=True),

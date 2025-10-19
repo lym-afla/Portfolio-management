@@ -13,7 +13,8 @@ class Migration(migrations.Migration):
             model_name="assets",
             name="data_source",
             field=models.CharField(
-                choices=[("FT", "Financial Times"), ("YAHOO", "Yahoo Finance")], max_length=10
+                choices=[("FT", "Financial Times"), ("YAHOO", "Yahoo Finance")],
+                max_length=10,
             ),
         ),
     ]

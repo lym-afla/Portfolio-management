@@ -18,7 +18,9 @@ class InitializeEffectiveDateMiddleware:
         cookies = {}
         for name, value in request.COOKIES.items():
             if "session" in name.lower() or "csrftoken" in name.lower():
-                cookies[name] = value[:10] + "..." if value and len(value) > 10 else value
+                cookies[name] = (
+                    value[:10] + "..." if value and len(value) > 10 else value
+                )
 
         logger.info(
             "Middleware start",
@@ -26,7 +28,9 @@ class InitializeEffectiveDateMiddleware:
             method=request.method,
             session_id=session_id,
             session_key=(
-                session_key[:20] + "..." if session_key and len(session_key) > 20 else session_key
+                session_key[:20] + "..."
+                if session_key and len(session_key) > 20
+                else session_key
             ),
             session_cookies=cookies,
             session_data=dict(request.session.items()),
@@ -40,7 +44,9 @@ class InitializeEffectiveDateMiddleware:
             "Middleware checking session",
             has_effective_date=has_effective_date,
             session_keys=list(request.session.keys()),
-            effective_current_date=request.session.get("effective_current_date", "NOT_FOUND"),
+            effective_current_date=request.session.get(
+                "effective_current_date", "NOT_FOUND"
+            ),
         )
 
         if not has_effective_date:
@@ -77,7 +83,9 @@ class InitializeEffectiveDateMiddleware:
         if hasattr(response, "cookies"):
             for name, value in response.cookies.items():
                 all_response_cookies[name] = (
-                    str(value)[:50] + "..." if str(value) and len(str(value)) > 50 else str(value)
+                    str(value)[:50] + "..."
+                    if str(value) and len(str(value)) > 50
+                    else str(value)
                 )
 
         # Check Django's session cookie settings
@@ -89,7 +97,9 @@ class InitializeEffectiveDateMiddleware:
             "SESSION_COOKIE_HTTPONLY": settings.SESSION_COOKIE_HTTPONLY,
             "SESSION_COOKIE_SAMESITE": settings.SESSION_COOKIE_SAMESITE,
             "SESSION_COOKIE_AGE": settings.SESSION_COOKIE_AGE,
-            "CORS_ALLOW_CREDENTIALS": getattr(settings, "CORS_ALLOW_CREDENTIALS", False),
+            "CORS_ALLOW_CREDENTIALS": getattr(
+                settings, "CORS_ALLOW_CREDENTIALS", False
+            ),
             "CORS_ALLOWED_ORIGINS": getattr(settings, "CORS_ALLOWED_ORIGINS", []),
         }
 
@@ -103,7 +113,9 @@ class InitializeEffectiveDateMiddleware:
             response_status=response.status_code,
             response_cookies=response_cookies,
             all_response_cookies=all_response_cookies,
-            set_cookie_header=response.get("Set-Cookie") if "Set-Cookie" in response else None,
+            set_cookie_header=(
+                response.get("Set-Cookie") if "Set-Cookie" in response else None
+            ),
             session_settings=session_settings,
         )
 

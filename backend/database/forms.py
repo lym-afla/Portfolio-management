@@ -7,7 +7,9 @@ from core.user_utils import prepare_account_choices
 
 
 class SecurityForm(forms.ModelForm):
-    update_link = forms.URLField(required=False, assume_scheme="http")  # Specify the default scheme
+    update_link = forms.URLField(
+        required=False, assume_scheme="http"
+    )  # Specify the default scheme
 
     # Bond metadata fields
     initial_notional = forms.DecimalField(
@@ -130,7 +132,9 @@ class SecurityForm(forms.ModelForm):
         # Set choices dynamically for broker, security, and type fields
         self.fields["ticker"].required = False
         self.fields["type"].choices = [
-            (choice[0], choice[0]) for choice in Assets._meta.get_field("type").choices if choice[0]
+            (choice[0], choice[0])
+            for choice in Assets._meta.get_field("type").choices
+            if choice[0]
         ]
 
         self.fields["data_source"].choices = [("", "None")] + DATA_SOURCE_CHOICES
@@ -167,24 +171,30 @@ class SecurityForm(forms.ModelForm):
 
         if data_source == "YAHOO" and not yahoo_symbol:
             self.add_error(
-                "yahoo_symbol", "Yahoo symbol is required for Yahoo Finance data source."
+                "yahoo_symbol",
+                "Yahoo symbol is required for Yahoo Finance data source.",
             )
         elif data_source == "FT" and not update_link:
             self.add_error(
-                "update_link", "Update link is required for Financial Times data source."
+                "update_link",
+                "Update link is required for Financial Times data source.",
             )
         elif data_source == "MICEX" and not secid:
             self.add_error("secid", "Secid is required for MICEX data source.")
         elif data_source == "TBANK" and not tbank_instrument_uid:
             self.add_error(
-                "tbank_instrument_uid", "T-Bank instrument UID is required for T-Bank data source."
+                "tbank_instrument_uid",
+                "T-Bank instrument UID is required for T-Bank data source.",
             )
 
         # Validate bond-specific fields
         if asset_type == "Bond":
-            if cleaned_data.get("is_amortizing") and not cleaned_data.get("initial_notional"):
+            if cleaned_data.get("is_amortizing") and not cleaned_data.get(
+                "initial_notional"
+            ):
                 self.add_error(
-                    "initial_notional", "Initial notional is required for amortizing bonds."
+                    "initial_notional",
+                    "Initial notional is required for amortizing bonds.",
                 )
 
         return cleaned_data
@@ -216,7 +226,9 @@ EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (("All", "All Currencies"),)
 
 class AccountPerformanceForm(forms.Form):
     selection_account_type = forms.CharField(widget=forms.HiddenInput(), required=False)
-    selection_account_id = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    selection_account_id = forms.IntegerField(
+        widget=forms.HiddenInput(), required=False
+    )
 
     account_selection = forms.ChoiceField(
         choices=[],
@@ -225,7 +237,8 @@ class AccountPerformanceForm(forms.Form):
     )
 
     currency = forms.ChoiceField(
-        choices=EXTENDED_CURRENCY_CHOICES, widget=forms.Select(attrs={"class": "form-select"})
+        choices=EXTENDED_CURRENCY_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     is_restricted = forms.ChoiceField(
@@ -275,7 +288,9 @@ class AccountPerformanceForm(forms.Form):
             try:
                 selection_type, selection_id = account_selection.split(":")
                 cleaned_data["selection_type"] = selection_type
-                cleaned_data["selection_id"] = int(selection_id) if selection_id else None
+                cleaned_data["selection_id"] = (
+                    int(selection_id) if selection_id else None
+                )
             except ValueError:
                 raise forms.ValidationError("Invalid account selection format")
 
@@ -308,7 +323,9 @@ class FXTransactionForm(forms.ModelForm):
             "comment",
         ]
         widgets = {
-            "account": forms.Select(attrs={"class": "form-select", "data-live-search": "true"}),
+            "account": forms.Select(
+                attrs={"class": "form-select", "data-live-search": "true"}
+            ),
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "from_currency": forms.Select(attrs={"class": "form-select"}),
             "to_currency": forms.Select(attrs={"class": "form-select"}),
@@ -327,5 +344,7 @@ class FXTransactionForm(forms.ModelForm):
         if investor is not None:
             self.fields["account"].choices = [
                 (account.pk, account.name)
-                for account in Accounts.objects.filter(broker__investor=investor).order_by("name")
+                for account in Accounts.objects.filter(
+                    broker__investor=investor
+                ).order_by("name")
             ]

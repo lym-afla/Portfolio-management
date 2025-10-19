@@ -24,7 +24,12 @@ from constants import (
     TINKOFF_ACCOUNT_TYPES,
 )
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES, prepare_account_choices
-from users.models import AccountGroup, CustomUser, InteractiveBrokersApiToken, TinkoffApiToken
+from users.models import (
+    AccountGroup,
+    CustomUser,
+    InteractiveBrokersApiToken,
+    TinkoffApiToken,
+)
 from users.serializers import (
     AccountGroupSerializer,
     CustomTokenObtainPairSerializer,
@@ -60,7 +65,9 @@ class UserViewSet(viewsets.ModelViewSet):
                 headers=headers,
             )
         logger.error(f"Serializer errors: {serializer.errors}")
-        return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+        )
 
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def logout(self, request):
@@ -72,7 +79,8 @@ class UserViewSet(viewsets.ModelViewSet):
             refresh_token = request.data.get("refresh_token")
             if not refresh_token:
                 return Response(
-                    {"error": "Refresh token is required."}, status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Refresh token is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             token = RefreshToken(refresh_token)
@@ -83,20 +91,27 @@ class UserViewSet(viewsets.ModelViewSet):
 
             logger.info(f"User {request.user.username} has been logged out.")
             return Response(
-                {"success": "Logged out successfully."}, status=status.HTTP_205_RESET_CONTENT
+                {"success": "Logged out successfully."},
+                status=status.HTTP_205_RESET_CONTENT,
             )
         except Exception as e:
             logger.error(f"Logout failed: {e}")
-            return Response({"error": "Invalid refresh token."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid refresh token."}, status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def profile(self, request):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
 
-    @action(detail=False, methods=["PUT", "PATCH"], permission_classes=[IsAuthenticated])
+    @action(
+        detail=False, methods=["PUT", "PATCH"], permission_classes=[IsAuthenticated]
+    )
     def edit_profile(self, request):
-        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        serializer = UserProfileSerializer(
+            request.user, data=request.data, partial=True
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -113,13 +128,17 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         elif request.method == "POST":
             serializer = UserSettingsSerializer(
-                request.user, data=request.data, partial=True, context={"request": request}
+                request.user,
+                data=request.data,
+                partial=True,
+                context={"request": request},
             )
             if serializer.is_valid():
                 serializer.save()
                 return Response({"success": True, "data": serializer.data})
             return Response(
-                {"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+                {"success": False, "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
@@ -143,11 +162,14 @@ class UserViewSet(viewsets.ModelViewSet):
         new_password2 = request.data.get("new_password2")
 
         if not user.check_password(old_password):
-            return Response({"error": "Incorrect old password"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Incorrect old password"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         if new_password1 != new_password2:
             return Response(
-                {"error": "New passwords do not match"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "New passwords do not match"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         user.set_password(new_password1)
@@ -181,11 +203,14 @@ class UserViewSet(viewsets.ModelViewSet):
             user = request.user
             user.delete()
             logger.info(f"User {user.username} has been deleted.")
-            return Response({"detail": "User account has been deleted."}, status=status.HTTP_200_OK)
+            return Response(
+                {"detail": "User account has been deleted."}, status=status.HTTP_200_OK
+            )
         except Exception as e:
             logger.error(f"Error deleting account: {e}")
             return Response(
-                {"error": "Failed to delete account."}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Failed to delete account."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
@@ -198,9 +223,14 @@ class UserViewSet(viewsets.ModelViewSet):
         effective_date = getattr(request, "effective_current_date", None)
         if effective_date:
             data["table_date"] = effective_date
-            logger.info("[JWT_DEBUG] Using effective_date from JWT middleware: %s", effective_date)
+            logger.info(
+                "[JWT_DEBUG] Using effective_date from JWT middleware: %s",
+                effective_date,
+            )
         else:
-            logger.info("[JWT_DEBUG] No effective_date in request, using serializer default")
+            logger.info(
+                "[JWT_DEBUG] No effective_date in request, using serializer default"
+            )
 
         choices = {
             "default_currency": CURRENCY_CHOICES,
@@ -212,7 +242,9 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["POST"], permission_classes=[IsAuthenticated])
     def update_dashboard_settings(self, request):
         logger = logging.getLogger("users.views")
-        logger.info("[JWT_DEBUG] update_dashboard_settings called with data: %s", request.data)
+        logger.info(
+            "[JWT_DEBUG] update_dashboard_settings called with data: %s", request.data
+        )
         logger.info(
             "[JWT_DEBUG] Effective date from request: %s",
             getattr(request, "effective_current_date", "NOT_SET"),
@@ -227,10 +259,14 @@ class UserViewSet(viewsets.ModelViewSet):
             # Get table_date from request data
             table_date = request.data.get("table_date")
             if table_date:
-                logger.info("[JWT_DEBUG] Setting effective_current_date to: %s", table_date)
+                logger.info(
+                    "[JWT_DEBUG] Setting effective_current_date to: %s", table_date
+                )
 
                 # Check if effective_date is changing
-                current_effective_date = getattr(request, "effective_current_date", None)
+                current_effective_date = getattr(
+                    request, "effective_current_date", None
+                )
                 effective_date_changed = current_effective_date != table_date
 
                 # Store it in response - JWT middleware will handle adding it to new tokens
@@ -284,17 +320,26 @@ class UserViewSet(viewsets.ModelViewSet):
             else:
                 # Validate that the ID exists for the given type
                 if account_type == "account":
-                    exists = Accounts.objects.filter(id=account_id, broker__investor=user).exists()
+                    exists = Accounts.objects.filter(
+                        id=account_id, broker__investor=user
+                    ).exists()
                 elif account_type == "group":
-                    exists = AccountGroup.objects.filter(id=account_id, user=user).exists()
+                    exists = AccountGroup.objects.filter(
+                        id=account_id, user=user
+                    ).exists()
                 elif account_type == "broker":
-                    exists = Brokers.objects.filter(id=account_id, investor=user).exists()
+                    exists = Brokers.objects.filter(
+                        id=account_id, investor=user
+                    ).exists()
                 else:
                     exists = False
 
                 if not exists:
                     return Response(
-                        {"success": False, "error": f"Invalid {account_type} ID: {account_id}"},
+                        {
+                            "success": False,
+                            "error": f"Invalid {account_type} ID: {account_id}",
+                        },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
@@ -316,7 +361,9 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
         except Exception as e:
-            return Response({"success": False, "error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"success": False, "error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def broker_tokens(self, request):
@@ -326,8 +373,12 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return Response(
             {
-                "tinkoff_tokens": TinkoffApiTokenSerializer(tinkoff_tokens, many=True).data,
-                "ib_tokens": InteractiveBrokersApiTokenSerializer(ib_tokens, many=True).data,
+                "tinkoff_tokens": TinkoffApiTokenSerializer(
+                    tinkoff_tokens, many=True
+                ).data,
+                "ib_tokens": InteractiveBrokersApiTokenSerializer(
+                    ib_tokens, many=True
+                ).data,
             }
         )
 
@@ -340,9 +391,13 @@ class UserViewSet(viewsets.ModelViewSet):
         if token_type == "tinkoff":
             token = get_object_or_404(TinkoffApiToken, id=token_id, user=request.user)
         elif token_type == "ib":
-            token = get_object_or_404(InteractiveBrokersApiToken, id=token_id, user=request.user)
+            token = get_object_or_404(
+                InteractiveBrokersApiToken, id=token_id, user=request.user
+            )
         else:
-            return Response({"error": "Invalid token type"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid token type"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         token.is_active = False
         token.save()
@@ -379,7 +434,9 @@ class BaseApiTokenViewSet(viewsets.ModelViewSet):
 
             # Create a mock request with the token
             mock_request = type(
-                "MockRequest", (), {"data": {"token": decrypted_token}, "user": request.user}
+                "MockRequest",
+                (),
+                {"data": {"token": decrypted_token}, "user": request.user},
             )
 
             # Reuse verify_token method
@@ -451,7 +508,9 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
 
         if not token:
             logger.warning("Token verification failed: No token provided")
-            return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             with Client(token) as client:
@@ -466,20 +525,32 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
                     formatted_account = {
                         "id": account.id,
                         "name": account.name,
-                        "type": TINKOFF_ACCOUNT_TYPES.get(account.type.value, "UNKNOWN"),
-                        "status": TINKOFF_ACCOUNT_STATUSES.get(account.status.value, "UNKNOWN"),
+                        "type": TINKOFF_ACCOUNT_TYPES.get(
+                            account.type.value, "UNKNOWN"
+                        ),
+                        "status": TINKOFF_ACCOUNT_STATUSES.get(
+                            account.status.value, "UNKNOWN"
+                        ),
                         "access_level": account.access_level.name,
                         "opened_date": (
-                            account.opened_date.isoformat() if account.opened_date else None
+                            account.opened_date.isoformat()
+                            if account.opened_date
+                            else None
                         ),
                         "closed_date": (
-                            account.closed_date.isoformat() if account.closed_date else None
+                            account.closed_date.isoformat()
+                            if account.closed_date
+                            else None
                         ),
                     }
                     formatted_accounts.append(formatted_account)
 
                 return Response(
-                    {"valid": True, "message": "Token is valid", "accounts": formatted_accounts}
+                    {
+                        "valid": True,
+                        "message": "Token is valid",
+                        "accounts": formatted_accounts,
+                    }
                 )
 
         except RequestError as e:
@@ -487,7 +558,9 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
             error_code = e.args[1] if len(e.args) > 1 else "unknown"
             metadata = e.args[2] if len(e.args) > 2 else None
             error_message = (
-                metadata.message if metadata and hasattr(metadata, "message") else "Unknown error"
+                metadata.message
+                if metadata and hasattr(metadata, "message")
+                else "Unknown error"
             )
 
             return Response(
@@ -502,7 +575,8 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
         except Exception as e:
             logger.exception("Unexpected error during token verification")
             return Response(
-                {"valid": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"valid": False, "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=False, methods=["POST"])
@@ -519,7 +593,8 @@ class TinkoffApiTokenViewSet(BaseApiTokenViewSet):
                 broker = Brokers.objects.get(id=broker_id, investor=request.user)
             except Brokers.DoesNotExist:
                 return Response(
-                    {"error": "Invalid broker selection"}, status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Invalid broker selection"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # Verify the new token first
@@ -623,7 +698,10 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "groups": {
-                    str(group["id"]): {"name": group["name"], "accounts": group["accounts"]}
+                    str(group["id"]): {
+                        "name": group["name"],
+                        "accounts": group["accounts"],
+                    }
                     for group in groups_data
                 },
                 "available_accounts": account_choices,
@@ -647,12 +725,15 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         account_ids = request.data.get("account_ids", [])
 
         try:
-            accounts = Accounts.objects.filter(id__in=account_ids, broker__investor=request.user)
+            accounts = Accounts.objects.filter(
+                id__in=account_ids, broker__investor=request.user
+            )
             group.accounts.add(*accounts)
             return Response({"status": "accounts added"})
         except Exception as e:
             return Response(
-                {"error": f"Failed to add accounts: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Failed to add accounts: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
     @action(detail=True, methods=["POST"])
@@ -661,7 +742,9 @@ class AccountGroupViewSet(viewsets.ModelViewSet):
         account_ids = request.data.get("account_ids", [])
 
         try:
-            accounts = Accounts.objects.filter(id__in=account_ids, broker__investor=request.user)
+            accounts = Accounts.objects.filter(
+                id__in=account_ids, broker__investor=request.user
+            )
             group.accounts.remove(*accounts)
             return Response({"status": "accounts removed"})
         except Exception as e:
@@ -696,7 +779,8 @@ class CustomTokenRefreshView(APIView):
             refresh_token = request.data.get("refresh")
             if not refresh_token:
                 return Response(
-                    {"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Refresh token is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # Validate and decode the refresh token
@@ -745,9 +829,12 @@ class CustomTokenRefreshView(APIView):
 
         except InvalidToken as e:
             self.logger.warning("CustomTokenRefresh", f"Invalid refresh token: {e}")
-            return Response({"error": "Invalid refresh token"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response(
+                {"error": "Invalid refresh token"}, status=status.HTTP_401_UNAUTHORIZED
+            )
         except Exception as e:
             self.logger.error("CustomTokenRefresh", f"Token refresh failed: {e}")
             return Response(
-                {"error": "Token refresh failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Token refresh failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

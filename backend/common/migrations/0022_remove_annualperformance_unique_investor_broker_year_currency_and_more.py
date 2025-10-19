@@ -6,7 +6,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("common", "0021_remove_annualperformance_unique_investor_broker_year_currency_and_more"),
+        (
+            "common",
+            "0021_remove_annualperformance_unique_investor_broker_year_currency_and_more",
+        ),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

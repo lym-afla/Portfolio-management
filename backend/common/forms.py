@@ -41,7 +41,9 @@ class GroupedSelect(forms.Select):
 
 
 class DashboardForm(forms.ModelForm):
-    table_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="Date")
+    table_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}), label="Date"
+    )
 
     class Meta:
         model = CustomUser

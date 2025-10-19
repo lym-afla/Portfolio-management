@@ -18,13 +18,19 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("name", models.CharField(max_length=50)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                ("brokers", models.ManyToManyField(related_name="groups", to="common.brokers")),
+                (
+                    "brokers",
+                    models.ManyToManyField(related_name="groups", to="common.brokers"),
+                ),
                 (
                     "user",
                     models.ForeignKey(

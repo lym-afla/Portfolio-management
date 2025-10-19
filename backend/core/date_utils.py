@@ -36,7 +36,9 @@ def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
 
 def get_start_date(end_date, period):
     end_date = (
-        datetime.strptime(end_date, "%Y-%m-%d").date() if isinstance(end_date, str) else end_date
+        datetime.strptime(end_date, "%Y-%m-%d").date()
+        if isinstance(end_date, str)
+        else end_date
     )
     if period == "7d":
         return end_date - timedelta(days=7)

@@ -53,7 +53,8 @@ class Migration(migrations.Migration):
             model_name="tinkoffapitoken",
             name="token_type",
             field=models.CharField(
-                choices=[("read_only", "Read Only"), ("full_access", "Full Access")], max_length=20
+                choices=[("read_only", "Read Only"), ("full_access", "Full Access")],
+                max_length=20,
             ),
         ),
         migrations.AlterField(

@@ -149,7 +149,12 @@ ACCOUNT_IDENTIFIERS = {
         "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
     "Charles Stanley – ISA": {
-        "keywords": ["Charles Stanley & Co. Limited", "1903304", "Mr Y Linik", "4681921"],
+        "keywords": [
+            "Charles Stanley & Co. Limited",
+            "1903304",
+            "Mr Y Linik",
+            "4681921",
+        ],
         "fuzzy_threshold": 65,  # Adjust this threshold as needed
     },
     "Charles Stanley – Investment": {
@@ -261,7 +266,12 @@ INSTRUMENT_KIND_DESCRIPTIONS = {
 }
 
 # Tinkoff account types
-TINKOFF_ACCOUNT_TYPES = {0: "UNSPECIFIED", 1: "TINKOFF", 2: "TINKOFF_IIS", 3: "INVEST_BOX"}
+TINKOFF_ACCOUNT_TYPES = {
+    0: "UNSPECIFIED",
+    1: "TINKOFF",
+    2: "TINKOFF_IIS",
+    3: "INVEST_BOX",
+}
 
 # Tinkoff account statuses
 TINKOFF_ACCOUNT_STATUSES = {0: "UNSPECIFIED", 1: "NEW", 2: "OPEN", 3: "CLOSED"}

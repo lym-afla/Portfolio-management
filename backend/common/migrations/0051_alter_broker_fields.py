@@ -12,21 +12,27 @@ class Migration(migrations.Migration):
             model_name="transactions",
             name="broker",
             field=models.ForeignKey(
-                null=True, on_delete=django.db.models.deletion.CASCADE, to="common.brokers"
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                to="common.brokers",
             ),
         ),
         migrations.AlterField(
             model_name="fxtransaction",
             name="broker",
             field=models.ForeignKey(
-                null=True, on_delete=django.db.models.deletion.CASCADE, to="common.brokers"
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                to="common.brokers",
             ),
         ),
         migrations.AlterField(
             model_name="annualperformance",
             name="broker",
             field=models.ForeignKey(
-                null=True, on_delete=django.db.models.deletion.CASCADE, to="common.brokers"
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                to="common.brokers",
             ),
         ),
     ]

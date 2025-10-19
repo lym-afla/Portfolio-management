@@ -12,6 +12,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="assets",
             name="fund_fee",
-            field=models.DecimalField(blank=True, decimal_places=4, max_digits=6, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=4, max_digits=6, null=True
+            ),
         ),
     ]

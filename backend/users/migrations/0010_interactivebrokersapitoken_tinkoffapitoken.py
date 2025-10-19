@@ -17,11 +17,22 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
-                ("encrypted_token", models.BinaryField(help_text="Encrypted API token")),
-                ("key_part", models.BinaryField(help_text="User-specific part of encryption key")),
+                (
+                    "encrypted_token",
+                    models.BinaryField(help_text="Encrypted API token"),
+                ),
+                (
+                    "key_part",
+                    models.BinaryField(
+                        help_text="User-specific part of encryption key"
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
@@ -33,13 +44,15 @@ class Migration(migrations.Migration):
                 (
                     "account_id",
                     models.CharField(
-                        help_text="IB Account ID associated with this token", max_length=50
+                        help_text="IB Account ID associated with this token",
+                        max_length=50,
                     ),
                 ),
                 (
                     "paper_trading",
                     models.BooleanField(
-                        default=False, help_text="Whether this token is for paper trading"
+                        default=False,
+                        help_text="Whether this token is for paper trading",
                     ),
                 ),
                 (
@@ -63,11 +76,22 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
-                ("encrypted_token", models.BinaryField(help_text="Encrypted API token")),
-                ("key_part", models.BinaryField(help_text="User-specific part of encryption key")),
+                (
+                    "encrypted_token",
+                    models.BinaryField(help_text="Encrypted API token"),
+                ),
+                (
+                    "key_part",
+                    models.BinaryField(
+                        help_text="User-specific part of encryption key"
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
@@ -79,7 +103,10 @@ class Migration(migrations.Migration):
                 (
                     "token_type",
                     models.CharField(
-                        choices=[("read_only", "Read Only"), ("full_access", "Full Access")],
+                        choices=[
+                            ("read_only", "Read Only"),
+                            ("full_access", "Full Access"),
+                        ],
                         default="read_only",
                         max_length=20,
                     ),
@@ -87,7 +114,8 @@ class Migration(migrations.Migration):
                 (
                     "sandbox_mode",
                     models.BooleanField(
-                        default=False, help_text="Whether this token is for sandbox environment"
+                        default=False,
+                        help_text="Whether this token is for sandbox environment",
                     ),
                 ),
                 (

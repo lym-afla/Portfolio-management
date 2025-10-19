@@ -16,19 +16,30 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
-                ("coupon_number", models.IntegerField(help_text="Sequential coupon number")),
+                (
+                    "coupon_number",
+                    models.IntegerField(help_text="Sequential coupon number"),
+                ),
                 (
                     "coupon_start_date",
                     models.DateField(help_text="Start date of the coupon period"),
                 ),
                 (
                     "coupon_end_date",
-                    models.DateField(help_text="End date of the coupon period (accrual cutoff)"),
+                    models.DateField(
+                        help_text="End date of the coupon period (accrual cutoff)"
+                    ),
                 ),
-                ("payment_date", models.DateField(help_text="Actual payment date for the coupon")),
+                (
+                    "payment_date",
+                    models.DateField(help_text="Actual payment date for the coupon"),
+                ),
                 (
                     "coupon_rate",
                     models.DecimalField(
@@ -61,7 +72,8 @@ class Migration(migrations.Migration):
                 (
                     "last_updated",
                     models.DateTimeField(
-                        auto_now=True, help_text="When this schedule was last fetched from API"
+                        auto_now=True,
+                        help_text="When this schedule was last fetched from API",
                     ),
                 ),
                 (
@@ -77,10 +89,12 @@ class Migration(migrations.Migration):
                 "ordering": ["asset", "coupon_number"],
                 "indexes": [
                     models.Index(
-                        fields=["asset", "coupon_end_date"], name="common_bond_asset_i_729fca_idx"
+                        fields=["asset", "coupon_end_date"],
+                        name="common_bond_asset_i_729fca_idx",
                     ),
                     models.Index(
-                        fields=["asset", "payment_date"], name="common_bond_asset_i_9a2ea9_idx"
+                        fields=["asset", "payment_date"],
+                        name="common_bond_asset_i_9a2ea9_idx",
                     ),
                 ],
                 "unique_together": {("asset", "coupon_number")},

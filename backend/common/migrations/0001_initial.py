@@ -16,7 +16,10 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("type", models.CharField(max_length=10)),
@@ -32,7 +35,10 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("name", models.CharField(max_length=20)),
@@ -71,7 +77,10 @@ class Migration(migrations.Migration):
                 (
                     "id",
                     models.BigAutoField(
-                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
                     ),
                 ),
                 ("currency", models.CharField(max_length=3)),
@@ -79,19 +88,27 @@ class Migration(migrations.Migration):
                 ("date", models.DateField()),
                 (
                     "quantity",
-                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True),
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
                 ),
                 (
                     "price",
-                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True),
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
                 ),
                 (
                     "cash_flow",
-                    models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True),
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
                 ),
                 (
                     "commission",
-                    models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True),
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=5, null=True
+                    ),
                 ),
                 ("comment", models.TextField(blank=True, null=True)),
                 (

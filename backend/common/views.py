@@ -6,7 +6,10 @@ from rest_framework.response import Response
 
 from common.models import Transactions
 from constants import ALL_TIME, YTD
-from core.portfolio_utils import get_last_exit_date_for_accounts, get_selected_account_ids
+from core.portfolio_utils import (
+    get_last_exit_date_for_accounts,
+    get_selected_account_ids,
+)
 
 
 @api_view(["GET"])
@@ -36,7 +39,9 @@ def get_year_options_api(request):
     if first_year:
         first_year = first_year.date.year
 
-    last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_current_date)
+    last_exit_date = get_last_exit_date_for_accounts(
+        selected_account_ids, effective_current_date
+    )
     last_year = (
         last_exit_date.year
         if last_exit_date and last_exit_date.year < effective_current_date.year

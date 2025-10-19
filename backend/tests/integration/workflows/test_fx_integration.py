@@ -23,7 +23,11 @@ from django.urls import reverse
 from rest_framework import status
 
 from common.models import FX, Assets
-from portfolio_management.common.models import fx_cache, get_exchange_rate, update_fx_rate
+from portfolio_management.common.models import (
+    fx_cache,
+    get_exchange_rate,
+    update_fx_rate,
+)
 from tests.fixtures.factories.fx_factory import FXRateFactory
 
 
@@ -165,7 +169,9 @@ class TestFXRateCalculationIntegration:
         assert rate > 0
 
         # Compare with database rate
-        fx_rate = FX.objects.get(from_currency="USD", to_currency="EUR", date=date.today())
+        fx_rate = FX.objects.get(
+            from_currency="USD", to_currency="EUR", date=date.today()
+        )
         assert rate == fx_rate.rate
 
     def test_get_exchange_rate_cross(self, fx_rates):
@@ -229,7 +235,9 @@ class TestFXRateCalculationIntegration:
         assert success is True
 
         # Verify rate was saved
-        fx_obj = FX.objects.get(from_currency="CHF", to_currency="USD", date=date.today())
+        fx_obj = FX.objects.get(
+            from_currency="CHF", to_currency="USD", date=date.today()
+        )
         assert fx_obj.rate == new_rate
 
     def test_update_fx_rate_existing(self, fx_rates):
@@ -240,7 +248,9 @@ class TestFXRateCalculationIntegration:
         assert success is True
 
         # Verify rate was updated
-        fx_obj = FX.objects.get(from_currency="USD", to_currency="EUR", date=date.today())
+        fx_obj = FX.objects.get(
+            from_currency="USD", to_currency="EUR", date=date.today()
+        )
         assert fx_obj.rate == updated_rate
 
     def test_fx_rate_precision_validation(self, fx_rates):
@@ -252,7 +262,9 @@ class TestFXRateCalculationIntegration:
         assert success is True
 
         # Verify rate is stored with proper precision
-        fx_obj = FX.objects.get(from_currency="USD", to_currency="EUR", date=date.today())
+        fx_obj = FX.objects.get(
+            from_currency="USD", to_currency="EUR", date=date.today()
+        )
         assert fx_obj.rate == high_precision_rate
 
     def test_fx_rate_error_handling(self, fx_rates):
@@ -274,7 +286,9 @@ class TestFXRateCalculationIntegration:
 class TestTransactionFXIntegration:
     """Test FX rate integration with transaction processing."""
 
-    def test_multi_currency_transaction_flow(self, multi_currency_portfolio, fx_rates, api_client):
+    def test_multi_currency_transaction_flow(
+        self, multi_currency_portfolio, fx_rates, api_client
+    ):
         """Test transaction flow across multiple currencies."""
         portfolio = multi_currency_portfolio
 
@@ -316,7 +330,9 @@ class TestTransactionFXIntegration:
         assert "currency" in data
         assert data["total_value"] > 0
 
-    def test_fx_gain_loss_calculation(self, multi_currency_portfolio, fx_rates, api_client):
+    def test_fx_gain_loss_calculation(
+        self, multi_currency_portfolio, fx_rates, api_client
+    ):
         """Test FX gain/loss calculation in portfolio."""
         portfolio = multi_currency_portfolio
 
@@ -334,7 +350,9 @@ class TestTransactionFXIntegration:
             "date": (date.today() - timedelta(days=30)).isoformat(),
         }
 
-        response = api_client.post(reverse("transaction-list"), initial_tx_data, format="json")
+        response = api_client.post(
+            reverse("transaction-list"), initial_tx_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
         # Simulate FX rate change and sell transaction
@@ -351,7 +369,9 @@ class TestTransactionFXIntegration:
             "date": date.today().isoformat(),
         }
 
-        response = api_client.post(reverse("transaction-list"), sell_tx_data, format="json")
+        response = api_client.post(
+            reverse("transaction-list"), sell_tx_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
         # Check portfolio performance includes FX effect
@@ -363,7 +383,9 @@ class TestTransactionFXIntegration:
         assert "fx_gain_loss" in data
         assert "total_gain_loss" in data
 
-    def test_dividend_fx_conversion(self, multi_currency_portfolio, fx_rates, api_client):
+    def test_dividend_fx_conversion(
+        self, multi_currency_portfolio, fx_rates, api_client
+    ):
         """Test dividend payment with FX conversion."""
         portfolio = multi_currency_portfolio
 
@@ -381,7 +403,9 @@ class TestTransactionFXIntegration:
             "date": (date.today() - timedelta(days=10)).isoformat(),
         }
 
-        response = api_client.post(reverse("transaction-list"), position_tx_data, format="json")
+        response = api_client.post(
+            reverse("transaction-list"), position_tx_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
         # Create dividend transaction
@@ -395,7 +419,9 @@ class TestTransactionFXIntegration:
             "date": date.today().isoformat(),
         }
 
-        response = api_client.post(reverse("transaction-list"), dividend_tx_data, format="json")
+        response = api_client.post(
+            reverse("transaction-list"), dividend_tx_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
         # Verify dividend is converted to portfolio currency
@@ -407,10 +433,16 @@ class TestTransactionFXIntegration:
         assert "cash_balance" in data
 
         # Dividend should be converted from USD to EUR at current rate
-        expected_dividend_eur = Decimal("10.00") * get_exchange_rate("USD", "EUR", date.today())
-        assert data["cash_balance"] >= expected_dividend_eur * Decimal("0.9")  # Allow for rounding
+        expected_dividend_eur = Decimal("10.00") * get_exchange_rate(
+            "USD", "EUR", date.today()
+        )
+        assert data["cash_balance"] >= expected_dividend_eur * Decimal(
+            "0.9"
+        )  # Allow for rounding
 
-    def test_corporate_action_fx_handling(self, multi_currency_portfolio, fx_rates, api_client):
+    def test_corporate_action_fx_handling(
+        self, multi_currency_portfolio, fx_rates, api_client
+    ):
         """Test corporate actions with FX implications."""
         portfolio = multi_currency_portfolio
 
@@ -442,7 +474,9 @@ class TestTransactionFXIntegration:
             "date": date.today().isoformat(),
         }
 
-        response = api_client.post(reverse("transaction-list"), split_tx_data, format="json")
+        response = api_client.post(
+            reverse("transaction-list"), split_tx_data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
         # Verify position quantity is updated correctly
@@ -452,11 +486,15 @@ class TestTransactionFXIntegration:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
 
-        aapl_position = next((pos for pos in data if pos["asset"]["ticker"] == "AAPL"), None)
+        aapl_position = next(
+            (pos for pos in data if pos["asset"]["ticker"] == "AAPL"), None
+        )
         assert aapl_position is not None
         assert aapl_position["quantity"] == 200  # Original 100 + 100 from split
 
-    def test_currency_reporting_integration(self, multi_currency_portfolio, fx_rates, api_client):
+    def test_currency_reporting_integration(
+        self, multi_currency_portfolio, fx_rates, api_client
+    ):
         """Test currency-specific reporting with FX conversion."""
         portfolio = multi_currency_portfolio
 
@@ -479,7 +517,9 @@ class TestTransactionFXIntegration:
                 "date": date.today().isoformat(),
             }
 
-            response = api_client.post(reverse("transaction-list"), tx_data, format="json")
+            response = api_client.post(
+                reverse("transaction-list"), tx_data, format="json"
+            )
             assert response.status_code == status.HTTP_201_CREATED
 
         # Test currency breakdown report
@@ -501,7 +541,9 @@ class TestTransactionFXIntegration:
         # Check conversion consistency
         if total_usd > 0:
             calculated_eur = total_usd * get_exchange_rate("USD", "EUR", date.today())
-            assert abs(total_eur - calculated_eur) < total_eur * Decimal("0.01")  # 1% tolerance
+            assert abs(total_eur - calculated_eur) < total_eur * Decimal(
+                "0.01"
+            )  # 1% tolerance
 
 
 @pytest.mark.integration
@@ -610,7 +652,9 @@ class TestFXRateDataManagement:
 
         # Create some old FX rates for cleanup testing
         old_date = date.today() - timedelta(days=400)
-        FXRateFactory.create_batch(5, from_currency="USD", to_currency="EUR", date=old_date)
+        FXRateFactory.create_batch(
+            5, from_currency="USD", to_currency="EUR", date=old_date
+        )
 
         cleanup_params = {
             "older_than_days": 365,
@@ -695,7 +739,9 @@ class TestFXRatePerformance:
 
         for from_curr, to_curr in currency_pairs:
             for i in range(10):  # 10 lookups per pair
-                rate = get_exchange_rate(from_curr, to_curr, date.today() - timedelta(days=i))
+                rate = get_exchange_rate(
+                    from_curr, to_curr, date.today() - timedelta(days=i)
+                )
                 assert rate is not None
 
         end_time = time.time()
@@ -885,7 +931,9 @@ class TestFXRateErrorRecovery:
 
         # Restore from backup
         restore_url = reverse("fx-rates-restore")
-        restore_response = admin_client.post(restore_url, {"backup_id": backup_id}, format="json")
+        restore_response = admin_client.post(
+            restore_url, {"backup_id": backup_id}, format="json"
+        )
 
         assert restore_response.status_code == status.HTTP_200_OK
         restore_data = restore_response.json()

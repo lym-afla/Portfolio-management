@@ -222,7 +222,9 @@ def sample_transactions(user, broker, asset):
 
 
 @pytest.fixture
-def multi_currency_transactions(multi_currency_user, broker, asset, asset_eur, asset_gbp):
+def multi_currency_transactions(
+    multi_currency_user, broker, asset, asset_eur, asset_gbp
+):
     """Create multi-currency transactions for FX testing"""
     transactions = []
 
@@ -347,9 +349,13 @@ def price_history(user, asset):
         current_date = base_date + timedelta(days=i)
         # Simulate price movement with some volatility
         price_change = Decimal("0.01") * (i % 20 - 10)  # +/- $0.10 movement
-        current_price = base_price + price_change + (Decimal("0.001") * i)  # Slight upward trend
+        current_price = (
+            base_price + price_change + (Decimal("0.001") * i)
+        )  # Slight upward trend
 
-        price = Prices.objects.create(date=current_date, security=asset, price=current_price)
+        price = Prices.objects.create(
+            date=current_date, security=asset, price=current_price
+        )
         prices.append(price)
 
     return prices
@@ -365,24 +371,36 @@ def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
     prices_usd = []
     for i in range(365):
         current_date = base_date + timedelta(days=i)
-        price = Decimal("50.00") + (Decimal("0.02") * i) + (Decimal("0.5") * (i % 10 - 5))
-        prices_usd.append(Prices.objects.create(date=current_date, security=asset, price=price))
+        price = (
+            Decimal("50.00") + (Decimal("0.02") * i) + (Decimal("0.5") * (i % 10 - 5))
+        )
+        prices_usd.append(
+            Prices.objects.create(date=current_date, security=asset, price=price)
+        )
     price_data["USD"] = prices_usd
 
     # EUR asset prices
     prices_eur = []
     for i in range(365):
         current_date = base_date + timedelta(days=i)
-        price = Decimal("40.00") + (Decimal("0.015") * i) + (Decimal("0.3") * (i % 10 - 5))
-        prices_eur.append(Prices.objects.create(date=current_date, security=asset_eur, price=price))
+        price = (
+            Decimal("40.00") + (Decimal("0.015") * i) + (Decimal("0.3") * (i % 10 - 5))
+        )
+        prices_eur.append(
+            Prices.objects.create(date=current_date, security=asset_eur, price=price)
+        )
     price_data["EUR"] = prices_eur
 
     # GBP asset prices
     prices_gbp = []
     for i in range(365):
         current_date = base_date + timedelta(days=i)
-        price = Decimal("35.00") + (Decimal("0.018") * i) + (Decimal("0.4") * (i % 10 - 5))
-        prices_gbp.append(Prices.objects.create(date=current_date, security=asset_gbp, price=price))
+        price = (
+            Decimal("35.00") + (Decimal("0.018") * i) + (Decimal("0.4") * (i % 10 - 5))
+        )
+        prices_gbp.append(
+            Prices.objects.create(date=current_date, security=asset_gbp, price=price)
+        )
     price_data["GBP"] = prices_gbp
 
     return price_data

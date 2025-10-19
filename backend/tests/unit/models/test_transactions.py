@@ -506,8 +506,12 @@ class TestTransactionProcessing:
         assert buy_tx.quantity == -sell_tx.quantity  # Same quantity, opposite signs
 
         # Calculate profit/loss
-        profit = (sell_tx.cash_flow - sell_tx.commission) + (buy_tx.cash_flow + buy_tx.commission)
-        expected_profit = (Decimal("6000") - Decimal("5")) + (Decimal("-5000") + Decimal("5"))
+        profit = (sell_tx.cash_flow - sell_tx.commission) + (
+            buy_tx.cash_flow + buy_tx.commission
+        )
+        expected_profit = (Decimal("6000") - Decimal("5")) + (
+            Decimal("-5000") + Decimal("5")
+        )
         assert profit == expected_profit
 
     def test_transaction_sequence_multiple_buys(self, user, broker, asset):
@@ -590,7 +594,9 @@ class TestTransactionProcessing:
 
         # Verify sequence
         assert initial_buy.date < dividend.date < reinvestment.date
-        assert dividend.cash_flow + reinvestment.cash_flow == Decimal("0.00")  # Full reinvestment
+        assert dividend.cash_flow + reinvestment.cash_flow == Decimal(
+            "0.00"
+        )  # Full reinvestment
 
     def test_transaction_sequence_tax_loss_harvesting(self, user, broker, asset):
         """Test tax loss harvesting transaction sequence."""
@@ -644,7 +650,9 @@ class TestTransactionProcessing:
         loss = (loss_sale.cash_flow - loss_sale.commission) + (
             purchase.cash_flow + purchase.commission
         )
-        expected_loss = (Decimal("7000") - Decimal("10")) + (Decimal("-10000") + Decimal("10"))
+        expected_loss = (Decimal("7000") - Decimal("10")) + (
+            Decimal("-10000") + Decimal("10")
+        )
         assert loss == expected_loss
 
     def test_transaction_sequence_dollar_cost_averaging(self, user, broker, asset):
@@ -656,7 +664,9 @@ class TestTransactionProcessing:
         for i in range(6):
             investment_date = date(2023, 1, 15) + timedelta(days=i * 30)
             price = Decimal("50.00") + (i * 2)  # Increasing prices
-            quantity = (investment_amount - Decimal("5.00")) / price  # Subtract commission
+            quantity = (
+                investment_amount - Decimal("5.00")
+            ) / price  # Subtract commission
 
             tx = Transactions.objects.create(
                 investor=user,

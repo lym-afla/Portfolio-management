@@ -19,20 +19,30 @@ router.register(
 urlpatterns = [
     path("api/get-asset-types/", views.api_get_asset_types, name="api_get_asset_types"),
     path("api/get-securities/", views.api_get_securities, name="api_get_securities"),
-    path("api/get-prices-table/", views.api_get_prices_table, name="api_get_prices_table"),
+    path(
+        "api/get-prices-table/", views.api_get_prices_table, name="api_get_prices_table"
+    ),
     path(
         "api/get-securities-for-database/",
         views.api_get_securities_table,
         name="api_get_securities_for_database",
     ),
     path("api/add-price/", views.api_add_price, name="api_add_price"),
-    path("api/delete-price/<int:price_id>/", views.api_delete_price, name="api_delete_price"),
+    path(
+        "api/delete-price/<int:price_id>/",
+        views.api_delete_price,
+        name="api_delete_price",
+    ),
     path(
         "api/get-price-details/<int:price_id>/",
         views.api_get_price_details,
         name="api_get_price_details",
     ),
-    path("api/update-price/<int:price_id>/", views.api_update_price, name="api_update_price"),
+    path(
+        "api/update-price/<int:price_id>/",
+        views.api_update_price,
+        name="api_update_price",
+    ),
     path(
         "api/security-form-structure/",
         views.api_security_form_structure,

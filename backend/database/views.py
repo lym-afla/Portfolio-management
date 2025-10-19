@@ -81,7 +81,9 @@ def api_get_security_price_history(request, security_id):
         effective_current_date_str = getattr(
             request, "effective_current_date", datetime.now().date().isoformat()
         )
-        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+        effective_current_date = datetime.strptime(
+            effective_current_date_str, "%Y-%m-%d"
+        ).date()
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -112,7 +114,9 @@ def api_get_security_position_history(request, security_id):
         effective_current_date_str = getattr(
             request, "effective_current_date", datetime.now().date().isoformat()
         )
-        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+        effective_current_date = datetime.strptime(
+            effective_current_date_str, "%Y-%m-%d"
+        ).date()
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -141,7 +145,10 @@ def api_get_security_position_history(request, security_id):
             elif transaction.type == "Sell":
                 current_position += transaction.quantity
             position_history.append(
-                {"date": transaction.date.strftime("%Y-%m-%d"), "position": current_position}
+                {
+                    "date": transaction.date.strftime("%Y-%m-%d"),
+                    "position": current_position,
+                }
             )
 
         return JsonResponse(position_history, safe=False)
@@ -156,14 +163,18 @@ def api_get_security_transactions(request, security_id):
         effective_current_date_str = getattr(
             request, "effective_current_date", datetime.now().date().isoformat()
         )
-        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+        effective_current_date = datetime.strptime(
+            effective_current_date_str, "%Y-%m-%d"
+        ).date()
         print("========= effective_current_date", effective_current_date)
         period = request.GET.get("period", "1Y")
         start_date = get_start_date(effective_current_date, period)
         # effective_current_date = datetime.strptime(effective_current_date, "%Y-%m-%d").date()
 
         transactions = Transactions.objects.filter(
-            security__id=security_id, investor=request.user, date__lte=effective_current_date
+            security__id=security_id,
+            investor=request.user,
+            date__lte=effective_current_date,
         ).order_by("date")
 
         if start_date:
@@ -173,8 +184,12 @@ def api_get_security_transactions(request, security_id):
         page = int(request.GET.get("page", 1))
         items_per_page = int(request.GET.get("itemsPerPage", 10))
 
-        paginated_transactions, pagination_data = paginate_table(transactions, page, items_per_page)
-        logger.info(f"Paginated transactions for {security_id}: {paginated_transactions}")
+        paginated_transactions, pagination_data = paginate_table(
+            transactions, page, items_per_page
+        )
+        logger.info(
+            f"Paginated transactions for {security_id}: {paginated_transactions}"
+        )
 
         # Serialize the transactions
         serializer = TransactionSerializer(
@@ -237,7 +252,8 @@ def api_security_form_structure(request):
 
         if field_name == "data_source":
             field_data["choices"] = [{"value": "", "text": "None"}] + [
-                {"value": choice[0], "text": choice[1]} for choice in DATA_SOURCE_CHOICES
+                {"value": choice[0], "text": choice[1]}
+                for choice in DATA_SOURCE_CHOICES
             ]
 
         # Handle specific widget types
@@ -281,7 +297,9 @@ def api_create_security(request):
             },
             status=status.HTTP_201_CREATED,
         )
-    return Response({"success": False, "errors": form.errors}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(
+        {"success": False, "errors": form.errors}, status=status.HTTP_400_BAD_REQUEST
+    )
 
 
 @api_view(["GET"])
@@ -312,16 +330,24 @@ def api_get_security_details_for_editing(request, security_id):
             result.update(
                 {
                     "initial_notional": (
-                        str(bond_meta.initial_notional) if bond_meta.initial_notional else None
+                        str(bond_meta.initial_notional)
+                        if bond_meta.initial_notional
+                        else None
                     ),
                     "nominal_currency": bond_meta.nominal_currency,
                     "issue_date": (
-                        bond_meta.issue_date.isoformat() if bond_meta.issue_date else None
+                        bond_meta.issue_date.isoformat()
+                        if bond_meta.issue_date
+                        else None
                     ),
                     "maturity_date": (
-                        bond_meta.maturity_date.isoformat() if bond_meta.maturity_date else None
+                        bond_meta.maturity_date.isoformat()
+                        if bond_meta.maturity_date
+                        else None
                     ),
-                    "coupon_rate": str(bond_meta.coupon_rate) if bond_meta.coupon_rate else None,
+                    "coupon_rate": (
+                        str(bond_meta.coupon_rate) if bond_meta.coupon_rate else None
+                    ),
                     "coupon_frequency": bond_meta.coupon_frequency,
                     "is_amortizing": bond_meta.is_amortizing,
                     "bond_type": bond_meta.bond_type,
@@ -341,7 +367,9 @@ def api_update_security(request, security_id):
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
-        return Response({"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND
+        )
 
     # Use form for validation and updating
     form = SecurityForm(request.data, instance=security)
@@ -363,7 +391,8 @@ def api_update_security(request, security_id):
         )
     else:
         return Response(
-            {"success": False, "errors": form.errors}, status=status.HTTP_400_BAD_REQUEST
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
 
@@ -373,7 +402,9 @@ def api_delete_security(request, security_id):
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
     except Assets.DoesNotExist:
-        return Response({"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND
+        )
 
     security.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
@@ -390,7 +421,8 @@ def api_add_price(request):
             status=status.HTTP_201_CREATED,
         )
     return Response(
-        {"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+        {"success": False, "errors": serializer.errors},
+        status=status.HTTP_400_BAD_REQUEST,
     )
 
 
@@ -400,13 +432,19 @@ def api_delete_price(request, price_id):
     try:
         price = Prices.objects.get(id=price_id)
     except Prices.DoesNotExist:
-        return Response({"message": "Price not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"message": "Price not found"}, status=status.HTTP_404_NOT_FOUND
+        )
 
     try:
         price.delete()
-        return Response({"message": "Price deleted successfully"}, status=status.HTTP_200_OK)
+        return Response(
+            {"message": "Price deleted successfully"}, status=status.HTTP_200_OK
+        )
     except Exception as e:
-        return Response({"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(["GET"])
@@ -418,7 +456,9 @@ def api_get_price_details(request, price_id):
             "id": price.id,
             "date": price.date.isoformat(),
             "security": price.security.id,
-            "price": str(price.price),  # Convert Decimal to string to preserve precision
+            "price": str(
+                price.price
+            ),  # Convert Decimal to string to preserve precision
         }
     )
 
@@ -427,7 +467,9 @@ def api_get_price_details(request, price_id):
 @permission_classes([IsAuthenticated])
 def api_update_price(request, price_id):
     price = get_object_or_404(Prices, id=price_id, security__investors=request.user)
-    serializer = PriceSerializer(instance=price, data=request.data, investor=request.user)
+    serializer = PriceSerializer(
+        instance=price, data=request.data, investor=request.user
+    )
     if serializer.is_valid():
         updated_price = serializer.save()
         return Response(
@@ -468,7 +510,9 @@ class AccountViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Accounts.objects.filter(broker__investor=self.request.user).order_by("name")
+        return Accounts.objects.filter(broker__investor=self.request.user).order_by(
+            "name"
+        )
 
     def perform_create(self, serializer):
         serializer.save()
@@ -532,7 +576,9 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"])
     def validate(self, request):
         """Validate the input data"""
-        serializer = AccountPerformanceSerializer(data=request.data, investor=request.user)
+        serializer = AccountPerformanceSerializer(
+            data=request.data, investor=request.user
+        )
         if not serializer.is_valid():
             return Response(
                 {"valid": False, "type": "validation", "errors": serializer.errors},
@@ -544,7 +590,9 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"])
     def start(self, request):
         """Start the update process"""
-        serializer = AccountPerformanceSerializer(data=request.data, investor=request.user)
+        serializer = AccountPerformanceSerializer(
+            data=request.data, investor=request.user
+        )
         if not serializer.is_valid():
             return Response(
                 {"valid": False, "type": "validation", "errors": serializer.errors},
@@ -556,9 +604,13 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
             update_data = {"user_id": request.user.id, **serializer.validated_data}
 
             session_id = str(uuid.uuid4())
-            cache.set(f"account_performance_update_{session_id}", update_data, timeout=3600)
+            cache.set(
+                f"account_performance_update_{session_id}", update_data, timeout=3600
+            )
 
-            return Response({"session_id": session_id, "message": "Update process started"})
+            return Response(
+                {"session_id": session_id, "message": "Update process started"}
+            )
 
         except Exception as e:
             return Response(
@@ -642,7 +694,9 @@ class FXViewSet(viewsets.ModelViewSet):
         fx_data = sort_entries(fx_data, sort_by)
 
         # Paginate results
-        paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
+        paginated_fx_data, pagination_info = paginate_table(
+            fx_data, page, items_per_page
+        )
 
         # Format the data
         formatted_fx_data = format_table_data(
@@ -713,10 +767,14 @@ class FXViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["GET"])
     def import_stats(self, request):
         user = request.user
-        transaction_dates = Transactions.objects.filter(investor=user).values("date").distinct()
+        transaction_dates = (
+            Transactions.objects.filter(investor=user).values("date").distinct()
+        )
         total_dates = transaction_dates.count()
 
-        fx_instances = FX.objects.filter(investors=user, date__in=transaction_dates.values("date"))
+        fx_instances = FX.objects.filter(
+            investors=user, date__in=transaction_dates.values("date")
+        )
         missing_instances = total_dates - fx_instances.count()
 
         incomplete_instances = fx_instances.filter(

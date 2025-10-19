@@ -28,7 +28,9 @@ application = ProtocolTypeRouter(
                         "database/api/update-account-performance/sse/",
                         UpdateAccountPerformanceConsumer.as_asgi(),
                     ),
-                    path("database/api/price-import/sse/", PriceImportConsumer.as_asgi()),
+                    path(
+                        "database/api/price-import/sse/", PriceImportConsumer.as_asgi()
+                    ),
                     path("database/api/fx-import/sse/", FXImportConsumer.as_asgi()),
                     # Route all other HTTP requests to Django
                     re_path(r"", django_asgi_app),  # This should be the last route

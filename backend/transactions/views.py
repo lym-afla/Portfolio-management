@@ -70,7 +70,9 @@ def ensure_account_native_ids(user, broker_api):
 
             # Get all user's broker accounts for Tinkoff
             tinkoff_brokers = [
-                broker for broker in user.brokers.all() if broker.tinkoff_tokens.exists()
+                broker
+                for broker in user.brokers.all()
+                if broker.tinkoff_tokens.exists()
             ]
 
             updated_accounts = {}
@@ -120,7 +122,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def get_object(self):
         transaction_id = self.kwargs.get("pk")
         try:
-            return Transactions.objects.get(id=transaction_id, investor=self.request.user)
+            return Transactions.objects.get(
+                id=transaction_id, investor=self.request.user
+            )
         except Transactions.DoesNotExist:
             raise NotFound(f"Transaction with id {transaction_id} not found.")
 
@@ -166,7 +170,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "type": "select",
                         "required": True,
                         "choices": [
-                            {"value": currency[0], "text": f"{currency[1]} ({currency[0]})"}
+                            {
+                                "value": currency[0],
+                                "text": f"{currency[1]} ({currency[0]})",
+                            }
                             for currency in CURRENCY_CHOICES
                         ],
                     },
@@ -258,7 +265,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
             for keyword in keywords:
                 logger.debug(f"Searching for keyword: {keyword}")
                 # Use regex to find potential matches quickly
-                potential_matches = re.finditer(re.escape(keyword.lower()), lower_content)
+                potential_matches = re.finditer(
+                    re.escape(keyword.lower()), lower_content
+                )
 
                 keyword_best_score = 0
                 for match in potential_matches:
@@ -281,7 +290,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 if keyword_best_score < perfect_match_threshold:
                     all_keywords_perfect = False
 
-                logger.debug(f"Best score for keyword '{keyword}': {keyword_best_score}")
+                logger.debug(
+                    f"Best score for keyword '{keyword}': {keyword_best_score}"
+                )
 
             # Calculate the average score for this account
             avg_score = sum(account_scores) / len(account_scores)
@@ -292,7 +303,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     f"Perfect match found for all keywords of broker account {account_name}"
                 )
                 try:
-                    account = Accounts.objects.get(broker__investor=user, name__iexact=account_name)
+                    account = Accounts.objects.get(
+                        broker__investor=user, name__iexact=account_name
+                    )
                     logger.info(
                         f"Returning perfectly matched broker account: {account.name} "
                         f"(ID: {account.id})"
@@ -308,12 +321,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if avg_score > threshold and avg_score > best_score:
                 best_score = avg_score
                 best_match = account_name
-                logger.debug(f"New best match: {best_match} with average score {best_score}")
+                logger.debug(
+                    f"New best match: {best_match} with average score {best_score}"
+                )
 
         if best_match:
-            logger.info(f"Best match found: {best_match} with average score {best_score}")
+            logger.info(
+                f"Best match found: {best_match} with average score {best_score}"
+            )
             try:
-                account = Accounts.objects.get(broker__investor=user, name__iexact=best_match)
+                account = Accounts.objects.get(
+                    broker__investor=user, name__iexact=best_match
+                )
                 logger.info(
                     f"Returning best matched broker account: {account.name} (ID: {account.id})"
                 )
@@ -331,7 +350,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["POST"])
     def analyze_file(self, request):
         if "file" not in request.FILES:
-            return Response({"error": "No file was uploaded."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "No file was uploaded."}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         file = request.FILES["file"]
         file_id = str(uuid.uuid4())
@@ -382,7 +403,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_200_OK,
                 )
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=["POST"])
     def get_security_position(self, request):
@@ -468,7 +491,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
             transfer_date_str = request.data.get("date")
 
             # Validate required fields
-            if not all([security_id, from_account_id, to_account_id, quantity, transfer_date_str]):
+            if not all(
+                [
+                    security_id,
+                    from_account_id,
+                    to_account_id,
+                    quantity,
+                    transfer_date_str,
+                ]
+            ):
                 return Response(
                     {
                         "error": (
@@ -495,7 +526,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 from_account = Accounts.objects.get(
                     id=from_account_id, broker__investor=request.user
                 )
-                to_account = Accounts.objects.get(id=to_account_id, broker__investor=request.user)
+                to_account = Accounts.objects.get(
+                    id=to_account_id, broker__investor=request.user
+                )
             except Accounts.DoesNotExist:
                 return Response(
                     {"error": "One or both accounts not found"},
@@ -748,21 +781,37 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
             # Check if this is an asset transfer
             is_asset_transfer = transaction_data.pop("is_asset_transfer", False)
-            needs_price_calculation = transaction_data.pop("needs_price_calculation", False)
+            needs_price_calculation = transaction_data.pop(
+                "needs_price_calculation", False
+            )
 
             if is_fx:
                 # Normalize FX transaction decimal fields
-                decimal_fields = ["exchange_rate", "from_amount", "to_amount", "commission"]
+                decimal_fields = [
+                    "exchange_rate",
+                    "from_amount",
+                    "to_amount",
+                    "commission",
+                ]
                 for field_name in decimal_fields:
-                    if field_name in transaction_data and transaction_data[field_name] is not None:
+                    if (
+                        field_name in transaction_data
+                        and transaction_data[field_name] is not None
+                    ):
                         field = FXTransaction._meta.get_field(field_name)
                         transaction_data[field_name] = normalize_decimal_field(
-                            transaction_data[field_name], field.max_digits, field.decimal_places
+                            transaction_data[field_name],
+                            field.max_digits,
+                            field.decimal_places,
                         )
 
                 fx_transaction = FXTransaction.objects.create(**transaction_data)
                 logger.debug(f"Saved FX transaction with ID: {fx_transaction.id}")
-                return {"success": True, "transaction_id": fx_transaction.id, "type": "fx"}
+                return {
+                    "success": True,
+                    "transaction_id": fx_transaction.id,
+                    "type": "fx",
+                }
 
             elif is_asset_transfer:
                 # Handle asset transfer
@@ -787,7 +836,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 .order_by("-date")
                                 .first()
                             )
-                            transaction_data["price"] = price_obj.price if price_obj else Decimal(0)
+                            transaction_data["price"] = (
+                                price_obj.price if price_obj else Decimal(0)
+                            )
                         except Exception:
                             transaction_data["price"] = Decimal(0)
 
@@ -799,10 +850,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 # Create phantom cash transaction
                 if transaction_data.get("price") and transaction_data.get("quantity"):
-                    transfer_value = abs(transaction_data["price"] * transaction_data["quantity"])
-                    phantom_type = "Cash in" if transaction_data["type"] == "Buy" else "Cash out"
+                    transfer_value = abs(
+                        transaction_data["price"] * transaction_data["quantity"]
+                    )
+                    phantom_type = (
+                        "Cash in" if transaction_data["type"] == "Buy" else "Cash out"
+                    )
                     phantom_cash_flow = (
-                        transfer_value if transaction_data["type"] == "Buy" else -transfer_value
+                        transfer_value
+                        if transaction_data["type"] == "Buy"
+                        else -transfer_value
                     )
 
                     Transactions.objects.create(
@@ -822,7 +879,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         ),
                     )
 
-                logger.debug(f"Saved asset transfer transaction with ID: {created_transaction.id}")
+                logger.debug(
+                    f"Saved asset transfer transaction with ID: {created_transaction.id}"
+                )
                 return {
                     "success": True,
                     "transaction_id": created_transaction.id,
@@ -841,10 +900,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     "notional_change",
                 ]
                 for field_name in decimal_fields:
-                    if field_name in transaction_data and transaction_data[field_name] is not None:
+                    if (
+                        field_name in transaction_data
+                        and transaction_data[field_name] is not None
+                    ):
                         field = Transactions._meta.get_field(field_name)
                         transaction_data[field_name] = normalize_decimal_field(
-                            transaction_data[field_name], field.max_digits, field.decimal_places
+                            transaction_data[field_name],
+                            field.max_digits,
+                            field.decimal_places,
                         )
 
                 created_transaction = Transactions.objects.create(**transaction_data)
@@ -865,9 +929,13 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 f"Created NotionalHistory for transaction {created_transaction.id}"
                             )
                         except Exception as e:
-                            logger.error(f"Error creating NotionalHistory: {e}", exc_info=True)
+                            logger.error(
+                                f"Error creating NotionalHistory: {e}", exc_info=True
+                            )
 
-                logger.debug(f"Saved regular transaction with ID: {created_transaction.id}")
+                logger.debug(
+                    f"Saved regular transaction with ID: {created_transaction.id}"
+                )
                 return {
                     "success": True,
                     "transaction_id": created_transaction.id,
@@ -910,9 +978,14 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                     if is_fx:
                         # Create FXTransaction - round exchange_rate to match DB precision
-                        if "exchange_rate" in data and data["exchange_rate"] is not None:
+                        if (
+                            "exchange_rate" in data
+                            and data["exchange_rate"] is not None
+                        ):
                             # Get decimal_places from the model field dynamically
-                            exchange_rate_field = FXTransaction._meta.get_field("exchange_rate")
+                            exchange_rate_field = FXTransaction._meta.get_field(
+                                "exchange_rate"
+                            )
                             decimal_places = exchange_rate_field.decimal_places
                             data["exchange_rate"] = round(
                                 Decimal(str(data["exchange_rate"])), decimal_places
@@ -951,12 +1024,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                     )
                                     if price_obj:
                                         data["price"] = price_obj.price
-                                        logger.debug(f"Using market price: {price_obj.price}")
+                                        logger.debug(
+                                            f"Using market price: {price_obj.price}"
+                                        )
                                     else:
-                                        logger.warning("No price found for asset transfer, using 0")
+                                        logger.warning(
+                                            "No price found for asset transfer, using 0"
+                                        )
                                         data["price"] = Decimal(0)
                                 except Exception as e:
-                                    logger.error(f"Error getting price for asset transfer: {e}")
+                                    logger.error(
+                                        f"Error getting price for asset transfer: {e}"
+                                    )
                                     data["price"] = Decimal(0)
 
                         # Ensure cash_flow and commission are None for asset transfers
@@ -1008,7 +1087,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 # Use bulk_create for efficiency
                 if regular_transactions:
-                    created_transactions = Transactions.objects.bulk_create(regular_transactions)
+                    created_transactions = Transactions.objects.bulk_create(
+                        regular_transactions
+                    )
                     logger.debug(
                         f"Successfully saved {len(regular_transactions)} regular transactions"
                     )
@@ -1020,7 +1101,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             TRANSACTION_TYPE_BOND_REDEMPTION,
                             TRANSACTION_TYPE_BOND_MATURITY,
                         ]:
-                            if txn.security and txn.notional_change and txn.notional_change != 0:
+                            if (
+                                txn.security
+                                and txn.notional_change
+                                and txn.notional_change != 0
+                            ):
                                 try:
                                     txn._create_notional_history()
                                     logger.debug(
@@ -1036,7 +1121,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 if fx_transactions:
                     FXTransaction.objects.bulk_create(fx_transactions)
-                    logger.debug(f"Successfully saved {len(fx_transactions)} FX transactions")
+                    logger.debug(
+                        f"Successfully saved {len(fx_transactions)} FX transactions"
+                    )
 
                 if phantom_cash_transactions:
                     Transactions.objects.bulk_create(phantom_cash_transactions)
@@ -1071,7 +1158,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
             # Get account and validate
             account = await get_account(broker_account_id)
             if not account:
-                yield {"status": "critical_error", "message": "Invalid broker account ID"}
+                yield {
+                    "status": "critical_error",
+                    "message": "Invalid broker account ID",
+                }
                 return
 
             # Get broker asynchronously
@@ -1102,12 +1192,21 @@ class TransactionViewSet(viewsets.ModelViewSet):
             try:
                 connected = await broker_api.connect(user)
                 if not connected:
-                    yield {"status": "critical_error", "message": "Failed to connect to broker API"}
+                    yield {
+                        "status": "critical_error",
+                        "message": "Failed to connect to broker API",
+                    }
                     return
 
                 # For T-Bank API, ensure account native IDs are synchronized
-                if broker.name.lower() == "tinkoff" or "тинькофф" in broker.name.lower():
-                    yield {"status": "progress", "message": "Fetching transactions from T-Bank..."}
+                if (
+                    broker.name.lower() == "tinkoff"
+                    or "тинькофф" in broker.name.lower()
+                ):
+                    yield {
+                        "status": "progress",
+                        "message": "Fetching transactions from T-Bank...",
+                    }
                     await ensure_account_native_ids(user, broker_api)
 
                     # Refetch account to get updated native_id
@@ -1218,16 +1317,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                     # Get position at redemption date to calculate per-bond notional
                                     try:
                                         # Get position BEFORE this transaction
-                                        position = await database_sync_to_async(security.position)(
-                                            trans["date"], user, [account.id]
-                                        )
+                                        position = await database_sync_to_async(
+                                            security.position
+                                        )(trans["date"], user, [account.id])
 
                                         if position and position != 0:
                                             # Calculate per-bond notional
-                                            notional_per_bond = Decimal(total_notional) / abs(
-                                                Decimal(position)
+                                            notional_per_bond = Decimal(
+                                                total_notional
+                                            ) / abs(Decimal(position))
+                                            transaction_data["notional_change"] = (
+                                                notional_per_bond
                                             )
-                                            transaction_data["notional_change"] = notional_per_bond
 
                                             logger.debug(
                                                 f"Bond redemption: total={total_notional}, "
@@ -1252,7 +1353,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 yield {
                                     "status": "security_mapping",
                                     "mapping_data": {
-                                        "security_description": trans["security_description"],
+                                        "security_description": trans[
+                                            "security_description"
+                                        ],
                                         "isin": trans.get("isin"),
                                         "symbol": trans.get("symbol"),
                                     },
@@ -1261,29 +1364,44 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 continue
 
                             # Check for duplicates for regular transactions
-                            existing_transaction = await transaction_exists(transaction_data)
+                            existing_transaction = await transaction_exists(
+                                transaction_data
+                            )
                             if existing_transaction:
-                                logger.debug("Duplicate regular transaction found, skipping")
-                                yield {"status": "duplicate_transaction", "data": transaction_data}
+                                logger.debug(
+                                    "Duplicate regular transaction found, skipping"
+                                )
+                                yield {
+                                    "status": "duplicate_transaction",
+                                    "data": transaction_data,
+                                }
                                 continue
                         else:
                             # Check for duplicates for FX transactionss
                             existing_fx = await fx_transaction_exists(transaction_data)
                             if existing_fx:
                                 logger.debug("Duplicate FX transaction found, skipping")
-                                yield {"status": "duplicate_transaction", "data": transaction_data}
+                                yield {
+                                    "status": "duplicate_transaction",
+                                    "data": transaction_data,
+                                }
                                 continue
 
                         # Handle confirmation if needed
                         if confirm_every:
-                            yield {"status": "transaction_confirmation", "data": transaction_data}
+                            yield {
+                                "status": "transaction_confirmation",
+                                "data": transaction_data,
+                            }
                             continue
 
                         # Save transaction immediately (instead of collecting for bulk save)
                         yield {"status": "save_transaction", "data": transaction_data}
 
                     except Exception as e:
-                        logger.error(f"Error processing transaction: {str(e)}", exc_info=True)
+                        logger.error(
+                            f"Error processing transaction: {str(e)}", exc_info=True
+                        )
                         yield {
                             "status": "transaction_error",
                             "message": f"Error processing transaction: {str(e)}",

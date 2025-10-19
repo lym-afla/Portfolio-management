@@ -28,15 +28,24 @@ def get_securities_table_api(request):
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
     )
-    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+    effective_current_date = datetime.strptime(
+        effective_current_date_str, "%Y-%m-%d"
+    ).date()
     number_of_digits = user.digits
 
     securities_data = _filter_securities(user, search)
-    securities_data = _get_securities_data(user, securities_data, effective_current_date)
+    securities_data = _get_securities_data(
+        user, securities_data, effective_current_date
+    )
     securities_data = sort_entries(securities_data, sort_by)
-    paginated_securities, pagination_data = paginate_table(securities_data, page, items_per_page)
+    paginated_securities, pagination_data = paginate_table(
+        securities_data, page, items_per_page
+    )
     formatted_securities = [
-        {k: format_value(v, k, position["currency"], number_of_digits) for k, v in position.items()}
+        {
+            k: format_value(v, k, position["currency"], number_of_digits)
+            for k, v in position.items()
+        }
         for position in paginated_securities.object_list
     ]
 
@@ -53,7 +62,9 @@ def _filter_securities(user, search):
     if search:
         # Create Q objects for each field we want to search
         search_query = (
-            Q(name__icontains=search) | Q(ISIN__icontains=search) | Q(currency__icontains=search)
+            Q(name__icontains=search)
+            | Q(ISIN__icontains=search)
+            | Q(currency__icontains=search)
         )
 
         securities = securities.filter(search_query)
@@ -75,12 +86,18 @@ def _get_securities_data(user, securities, effective_current_date):
             "current_value": security.calculate_value_at_date(
                 effective_current_date, user, security.currency
             ),
-            "realized": security.realized_gain_loss(effective_current_date, user)["all_time"][
+            "realized": security.realized_gain_loss(effective_current_date, user)[
+                "all_time"
+            ]["total"],
+            "unrealized": security.unrealized_gain_loss(effective_current_date, user)[
                 "total"
             ],
-            "unrealized": security.unrealized_gain_loss(effective_current_date, user)["total"],
-            "capital_distribution": security.get_capital_distribution(effective_current_date, user),
-            "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
+            "capital_distribution": security.get_capital_distribution(
+                effective_current_date, user
+            ),
+            "irr": IRR(
+                user.id, effective_current_date, security.currency, asset_id=security.id
+            ),
         }
 
         securities_data.append(security_data)
@@ -93,7 +110,9 @@ def get_security_detail(request, security_id):
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
     )
-    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
+    effective_current_date = datetime.strptime(
+        effective_current_date_str, "%Y-%m-%d"
+    ).date()
     number_of_digits = user.digits
 
     security = get_object_or_404(Assets, id=security_id, investors__id=user.id)
@@ -110,10 +129,18 @@ def get_security_detail(request, security_id):
         "current_value": security.calculate_value_at_date(
             effective_current_date, user, security.currency
         ),
-        "realized": security.realized_gain_loss(effective_current_date, user)["all_time"]["total"],
-        "unrealized": security.unrealized_gain_loss(effective_current_date, user)["total"],
-        "capital_distribution": security.get_capital_distribution(effective_current_date, user),
-        "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
+        "realized": security.realized_gain_loss(effective_current_date, user)[
+            "all_time"
+        ]["total"],
+        "unrealized": security.unrealized_gain_loss(effective_current_date, user)[
+            "total"
+        ],
+        "capital_distribution": security.get_capital_distribution(
+            effective_current_date, user
+        ),
+        "irr": IRR(
+            user.id, effective_current_date, security.currency, asset_id=security.id
+        ),
         "data_source": security.data_source,
         "update_link": security.update_link,
         "yahoo_symbol": security.yahoo_symbol,
@@ -145,7 +172,9 @@ def get_security_detail(request, security_id):
         if aci_data:
             position_qty = security.position(effective_current_date, user)
             total_aci = (
-                aci_data["aci_amount"] * Decimal(position_qty) if position_qty else Decimal(0)
+                aci_data["aci_amount"] * Decimal(position_qty)
+                if position_qty
+                else Decimal(0)
             )
 
             # Subtract ACI paid in current coupon period (same logic as get_total_aci_for_position)
@@ -166,8 +195,14 @@ def get_security_detail(request, security_id):
                     aci_paid_total = Decimal(0)
                     for txn in aci_paid_in_period:
                         # Convert date to ensure proper comparison
-                        txn_date = txn.date.date() if isinstance(txn.date, datetime) else txn.date
-                        fx_rate = FX.get_rate(txn.currency, security.currency, txn_date)["FX"]
+                        txn_date = (
+                            txn.date.date()
+                            if isinstance(txn.date, datetime)
+                            else txn.date
+                        )
+                        fx_rate = FX.get_rate(
+                            txn.currency, security.currency, txn_date
+                        )["FX"]
                         if fx_rate:
                             aci_paid_total += txn.aci * Decimal(fx_rate)
 
@@ -190,12 +225,16 @@ def get_security_detail(request, security_id):
 
         # Get coupon information from the latest coupon schedule entry
         latest_coupon = (
-            bond_meta.asset.coupon_schedule.filter(payment_date__lte=effective_current_date)
+            bond_meta.asset.coupon_schedule.filter(
+                payment_date__lte=effective_current_date
+            )
             .order_by("-coupon_number")
             .first()
         )
         coupon_amount = (
-            latest_coupon.coupon_amount if latest_coupon and latest_coupon.coupon_amount else None
+            latest_coupon.coupon_amount
+            if latest_coupon and latest_coupon.coupon_amount
+            else None
         )
         coupon_currency = (
             latest_coupon.coupon_currency
@@ -239,7 +278,9 @@ def get_security_detail(request, security_id):
                     )
                     coupon_type = latest_coupon.coupon_type if latest_coupon else None
             except Exception as e:
-                logger.error(f"Failed to fetch coupon schedule for {security.name}: {e}")
+                logger.error(
+                    f"Failed to fetch coupon schedule for {security.name}: {e}"
+                )
 
         # Fallback: fetch redemption history if not available for all bonds
         if security.tbank_instrument_uid:
@@ -264,21 +305,27 @@ def get_security_detail(request, security_id):
                             f"{security.name}"
                         )
                 except Exception as e:
-                    logger.error(f"Failed to fetch redemption history for {security.name}: {e}")
+                    logger.error(
+                        f"Failed to fetch redemption history for {security.name}: {e}"
+                    )
 
         # Calculate YTM for bonds using XIRR (fixed at first position opening)
         ytm = None
         try:
             # Get first buy transaction (position opening)
             first_buy = (
-                security.transactions.filter(type="Buy", investor=user, quantity__isnull=False)
+                security.transactions.filter(
+                    type="Buy", investor=user, quantity__isnull=False
+                )
                 .order_by("date")
                 .first()
             )
 
             if first_buy:
                 first_buy_date = (
-                    first_buy.date.date() if hasattr(first_buy.date, "date") else first_buy.date
+                    first_buy.date.date()
+                    if hasattr(first_buy.date, "date")
+                    else first_buy.date
                 )
 
                 # Build cash flow list for XIRR calculation
@@ -314,7 +361,9 @@ def get_security_detail(request, security_id):
 
                         # Add ACI (None is treated as 0)
                         if first_buy.aci is not None:
-                            amount += Decimal(first_buy.aci)  # ACI paid (negative value)
+                            amount += Decimal(
+                                first_buy.aci
+                            )  # ACI paid (negative value)
 
                         # Add commission if not None
                         if first_buy.commission is not None:
@@ -325,7 +374,9 @@ def get_security_detail(request, security_id):
                             "Skipping YTM calculation for "
                             f"{security.name}: unable to determine notional value"
                         )
-                        raise ValueError("Unable to determine notional value for YTM calculation")
+                        raise ValueError(
+                            "Unable to determine notional value for YTM calculation"
+                        )
                 else:
                     # If essential fields are None, skip YTM calculation
                     logger.warning(
@@ -333,7 +384,9 @@ def get_security_detail(request, security_id):
                         f"{security.name}: missing transaction data "
                         f"(quantity={first_buy.quantity}, price={first_buy.price})"
                     )
-                    raise ValueError("Missing essential transaction data for YTM calculation")
+                    raise ValueError(
+                        "Missing essential transaction data for YTM calculation"
+                    )
 
                 # Convert to bond's currency if needed
                 if first_buy.currency != security.currency:
@@ -349,7 +402,9 @@ def get_security_detail(request, security_id):
                             f"to {security.currency}: {fx_error}"
                         )
                         # Skip YTM calculation if FX conversion fails
-                        raise ValueError(f"FX conversion failed for YTM calculation: {fx_error}")
+                        raise ValueError(
+                            f"FX conversion failed for YTM calculation: {fx_error}"
+                        )
 
                 cash_flows.append((first_buy_date, float(amount)))
 
@@ -370,7 +425,9 @@ def get_security_detail(request, security_id):
                     for coupon in coupon_schedule:
                         # Cash inflow from coupon (positive)
                         coupon_amount = (
-                            Decimal(coupon.coupon_amount) if coupon.coupon_amount else Decimal(0)
+                            Decimal(coupon.coupon_amount)
+                            if coupon.coupon_amount
+                            else Decimal(0)
                         )
                         amount = coupon_amount * position_qty
 
@@ -378,7 +435,9 @@ def get_security_detail(request, security_id):
                         if coupon.coupon_currency != security.currency:
                             try:
                                 fx_rate = FX.get_rate(
-                                    coupon.coupon_currency, security.currency, coupon.payment_date
+                                    coupon.coupon_currency,
+                                    security.currency,
+                                    coupon.payment_date,
                                 )["FX"]
                                 if fx_rate:
                                     amount *= Decimal(fx_rate)
@@ -424,13 +483,19 @@ def get_security_detail(request, security_id):
                         amount = redemption_notional * position_qty
 
                         # Convert to bond's currency if needed
-                        nominal_currency = bond_meta.nominal_currency or security.currency
-                        add_redemption = True  # Flag to determine if we should add this cash flow
+                        nominal_currency = (
+                            bond_meta.nominal_currency or security.currency
+                        )
+                        add_redemption = (
+                            True  # Flag to determine if we should add this cash flow
+                        )
 
                         if nominal_currency != security.currency:
                             try:
                                 fx_rate = FX.get_rate(
-                                    nominal_currency, security.currency, bond_meta.maturity_date
+                                    nominal_currency,
+                                    security.currency,
+                                    bond_meta.maturity_date,
                                 )["FX"]
                                 if fx_rate:
                                     amount *= Decimal(fx_rate)
@@ -462,12 +527,16 @@ def get_security_detail(request, security_id):
                             # Convert to percentage
                             ytm = float(ytm_decimal) * 100
                     except Exception as xirr_error:
-                        logger.warning(f"XIRR calculation failed for {security.name}: {xirr_error}")
+                        logger.warning(
+                            f"XIRR calculation failed for {security.name}: {xirr_error}"
+                        )
         except Exception as e:
             logger.warning(f"Error calculating YTM for {security.name}: {e}")
 
         bond_data = {
-            "current_notional": float(current_notional) if current_notional is not None else None,
+            "current_notional": (
+                float(current_notional) if current_notional is not None else None
+            ),
             "notional_currency": bond_meta.nominal_currency or security.currency,
             "initial_notional": (
                 float(bond_meta.initial_notional)
@@ -475,12 +544,16 @@ def get_security_detail(request, security_id):
                 else None
             ),
             "is_amortizing": bond_meta.is_amortizing,
-            "issue_date": bond_meta.issue_date.isoformat() if bond_meta.issue_date else None,
+            "issue_date": (
+                bond_meta.issue_date.isoformat() if bond_meta.issue_date else None
+            ),
             "maturity_date": (
                 bond_meta.maturity_date.isoformat() if bond_meta.maturity_date else None
             ),
             "coupon_rate": (
-                float(bond_meta.coupon_rate) if bond_meta.coupon_rate is not None else None
+                float(bond_meta.coupon_rate)
+                if bond_meta.coupon_rate is not None
+                else None
             ),
             "coupon_frequency": bond_meta.coupon_frequency,
             "coupon_amount": (
@@ -490,7 +563,9 @@ def get_security_detail(request, security_id):
             ),
             "coupon_currency": coupon_currency,
             "coupon_type": coupon_type,
-            "current_price_pct": float(current_price) if current_price is not None else None,
+            "current_price_pct": (
+                float(current_price) if current_price is not None else None
+            ),
             "total_aci": float(total_aci) if total_aci is not None else None,
             "bond_type": bond_meta.bond_type,
             "credit_rating": bond_meta.credit_rating,
@@ -540,7 +615,9 @@ def calculate_bond_ytm(
 
     try:
         # Get first buy transaction (position opening)
-        first_buy = security.transactions.filter(type="Buy", investor=user, quantity__isnull=False)
+        first_buy = security.transactions.filter(
+            type="Buy", investor=user, quantity__isnull=False
+        )
 
         if account_ids:
             first_buy = first_buy.filter(account_id__in=account_ids)
@@ -567,7 +644,10 @@ def calculate_bond_ytm(
             # Fallback: get notional from bond metadata at purchase date
             # Use same parameters as the working old method
             notional = bond_meta.get_current_notional(
-                first_buy.date, investor=user, currency=security.currency, account_ids=None
+                first_buy.date,
+                investor=user,
+                currency=security.currency,
+                account_ids=None,
             )
             logger.info(f"Using fallback notional for {security.name}: {notional}")
 
@@ -594,7 +674,9 @@ def calculate_bond_ytm(
         if first_buy.currency != security.currency:
             try:
                 fx_rate = FX.get_rate(
-                    first_buy.currency.upper(), security.currency.upper(), first_buy.date
+                    first_buy.currency.upper(),
+                    security.currency.upper(),
+                    first_buy.date,
                 )["FX"]
                 if fx_rate:
                     amount *= Decimal(fx_rate)
@@ -630,14 +712,19 @@ def calculate_bond_ytm(
         else:
             # Add to last cash flow if transaction exists on effective_date
             if cash_flows:
-                cash_flows[-1] = (cash_flows[-1][0], cash_flows[-1][1] + float(current_value))
+                cash_flows[-1] = (
+                    cash_flows[-1][0],
+                    cash_flows[-1][1] + float(current_value),
+                )
             else:
                 cash_flows.append((effective_date, float(current_value)))
                 transaction_dates.append(effective_date)
 
         # Step 4: Calculate XIRR
         if len(cash_flows) < 2:
-            logger.warning(f"Insufficient cash flows for YTM calculation of {security.name}")
+            logger.warning(
+                f"Insufficient cash flows for YTM calculation of {security.name}"
+            )
             return None
 
         logger.debug(f"YTM cash flows for {security.name}: {cash_flows}")

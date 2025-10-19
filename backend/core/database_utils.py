@@ -46,7 +46,11 @@ async def save_or_update_annual_broker_performance(
     if not first_transaction:
         error_msg = "No transactions found"
         logger.error(error_msg)
-        yield {"status": "error", "message": error_msg, "timestamp": datetime.now().isoformat()}
+        yield {
+            "status": "error",
+            "message": error_msg,
+            "timestamp": datetime.now().isoformat(),
+        }
         return
 
     start_year = first_transaction.date.year
@@ -105,7 +109,11 @@ async def save_or_update_annual_broker_performance(
                 performance_data,
             )
 
-            yield {"status": "progress", "year": year, "timestamp": datetime.now().isoformat()}
+            yield {
+                "status": "progress",
+                "year": year,
+                "timestamp": datetime.now().isoformat(),
+            }
         except ValueError as e:
             if "No FX rate found" in str(e):
                 error_msg = f"Missing FX rate processing year {year}: {str(e)}"
@@ -161,7 +169,9 @@ async def save_annual_performance(
             else:
                 raise
 
-    logger.error(f"Failed to save AnnualPerformance for year {year} after {max_retries} attempts")
+    logger.error(
+        f"Failed to save AnnualPerformance for year {year} after {max_retries} attempts"
+    )
     raise OperationalError(f"Database locked, unable to save data for year {year}")
 
 
@@ -172,7 +182,9 @@ def get_years_count(user, effective_date, account_group_type, account_group_id):
         account_group_id,
     )
     first_transaction = (
-        Transactions.objects.filter(account_id__in=selected_account_ids, date__lte=effective_date)
+        Transactions.objects.filter(
+            account_id__in=selected_account_ids, date__lte=effective_date
+        )
         .order_by("date")
         .first()
     )
@@ -181,7 +193,9 @@ def get_years_count(user, effective_date, account_group_type, account_group_id):
         return 0
 
     start_year = first_transaction.date.year
-    last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_date)
+    last_exit_date = get_last_exit_date_for_accounts(
+        selected_account_ids, effective_date
+    )
     last_year = (
         last_exit_date.year
         if last_exit_date and last_exit_date.year < effective_date.year

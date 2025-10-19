@@ -12,26 +12,36 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="fx",
             name="CHFGBP",
-            field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=4, max_digits=7, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="fx",
             name="PLNUSD",
-            field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=4, max_digits=7, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="fx",
             name="RUBUSD",
-            field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=4, max_digits=7, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="fx",
             name="USDEUR",
-            field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=4, max_digits=7, null=True
+            ),
         ),
         migrations.AlterField(
             model_name="fx",
             name="USDGBP",
-            field=models.DecimalField(blank=True, decimal_places=4, max_digits=7, null=True),
+            field=models.DecimalField(
+                blank=True, decimal_places=4, max_digits=7, null=True
+            ),
         ),
     ]

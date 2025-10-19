@@ -18,7 +18,7 @@ flake8>=6.1.0
 flake8-docstrings>=1.7.0
 flake8-import-order>=0.18.2
 flake8-bugbear>=23.9.16
-flake8-django
+ruff>=0.14.0
 mypy>=1.6.1
 pre-commit>=3.4.0
 

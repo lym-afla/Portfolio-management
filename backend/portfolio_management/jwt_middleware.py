@@ -24,7 +24,11 @@ class JWTEffectiveDateMiddleware:
     def __call__(self, request):
         # Only process JWT middleware for requests that have tokens
         # Skip authentication endpoints like login/register
-        auth_endpoints = ["/users/api/login/", "/users/api/register/", "/users/api/refresh-token/"]
+        auth_endpoints = [
+            "/users/api/login/",
+            "/users/api/register/",
+            "/users/api/refresh-token/",
+        ]
 
         if request.path in auth_endpoints or not self._has_jwt_token(request):
             # For auth endpoints or requests without tokens, use default date
@@ -124,7 +128,8 @@ class JWTEffectiveDateMiddleware:
             effective_date = self._get_effective_date_from_database(user_id)
             if effective_date:
                 logger.debug(
-                    "JWT Middleware found effective_date in database", effective_date=effective_date
+                    "JWT Middleware found effective_date in database",
+                    effective_date=effective_date,
                 )
                 return effective_date
 
@@ -148,7 +153,9 @@ class JWTEffectiveDateMiddleware:
             from django.contrib.sessions.models import Session
 
             recent_sessions = (
-                Session.objects.filter(session_data__contains=f'"_auth_user_id": "{user_id}"')
+                Session.objects.filter(
+                    session_data__contains=f'"_auth_user_id": "{user_id}"'
+                )
                 .order_by("-expire_date")
                 .first()
             )
@@ -161,6 +168,9 @@ class JWTEffectiveDateMiddleware:
         # except CustomUser.DoesNotExist:
         #     pass
         except Exception as e:
-            logger.error("JWT Middleware error getting effective date from database", error=str(e))
+            logger.error(
+                "JWT Middleware error getting effective date from database",
+                error=str(e),
+            )
 
         return None

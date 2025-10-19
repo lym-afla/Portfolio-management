@@ -199,12 +199,16 @@ async def test_security_mapping(setup_data):
                 mapping_required = True
                 break
 
-    assert mapping_required, "Security mapping should be required for unknown securities"
+    assert (
+        mapping_required
+    ), "Security mapping should be required for unknown securities"
 
 
 @pytest.mark.asyncio
 async def test_invalid_excel_file():
-    with pytest.raises(ValueError):  # Change back to ValueError if that's what you expect
+    with pytest.raises(
+        ValueError
+    ):  # Change back to ValueError if that's what you expect
         generator = parse_charles_stanley_transactions(
             "invalid.xlsx", "GBP", 1, 1, confirm_every=False
         )

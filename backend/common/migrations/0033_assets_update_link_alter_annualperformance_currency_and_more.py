@@ -18,7 +18,13 @@ class Migration(migrations.Migration):
             model_name="annualperformance",
             name="currency",
             field=models.CharField(
-                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "₣")],
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "₣"),
+                ],
                 max_length=3,
             ),
         ),
@@ -26,7 +32,13 @@ class Migration(migrations.Migration):
             model_name="assets",
             name="currency",
             field=models.CharField(
-                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "₣")],
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "₣"),
+                ],
                 default="USD",
                 max_length=3,
             ),
@@ -35,7 +47,13 @@ class Migration(migrations.Migration):
             model_name="fxtransaction",
             name="from_currency",
             field=models.CharField(
-                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "₣")],
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "₣"),
+                ],
                 max_length=3,
             ),
         ),
@@ -43,7 +61,13 @@ class Migration(migrations.Migration):
             model_name="fxtransaction",
             name="to_currency",
             field=models.CharField(
-                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "₣")],
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "₣"),
+                ],
                 max_length=3,
             ),
         ),
@@ -51,7 +75,13 @@ class Migration(migrations.Migration):
             model_name="transactions",
             name="currency",
             field=models.CharField(
-                choices=[("USD", "$"), ("EUR", "€"), ("GBP", "£"), ("RUB", "₽"), ("CHF", "₣")],
+                choices=[
+                    ("USD", "$"),
+                    ("EUR", "€"),
+                    ("GBP", "£"),
+                    ("RUB", "₽"),
+                    ("CHF", "₣"),
+                ],
                 default="USD",
                 max_length=3,
             ),

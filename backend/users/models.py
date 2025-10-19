@@ -31,7 +31,11 @@ class CustomUser(AbstractUser):
     chart_frequency = models.CharField(max_length=1, default="M")
     chart_timeline = models.CharField(max_length=3, default="6m")
     NAV_barchart_default_breakdown = models.CharField(
-        max_length=12, choices=NAV_BARCHART_CHOICES, default="Asset type", blank=True, null=True
+        max_length=12,
+        choices=NAV_BARCHART_CHOICES,
+        default="Asset type",
+        blank=True,
+        null=True,
     )
     digits = models.IntegerField(
         default=0,
@@ -61,7 +65,9 @@ class CustomUser(AbstractUser):
         constraints = [
             models.CheckConstraint(
                 check=(
-                    models.Q(selected_account_type="all", selected_account_id__isnull=True)
+                    models.Q(
+                        selected_account_type="all", selected_account_id__isnull=True
+                    )
                     | ~models.Q(selected_account_type="all")
                     & models.Q(selected_account_id__isnull=False)
                 ),
@@ -151,7 +157,9 @@ class TinkoffApiToken(BaseApiToken):
         except RequestError as e:
             metadata = e.args[2] if len(e.args) > 2 else None
             error_message = (
-                metadata.message if metadata and hasattr(metadata, "message") else "Invalid token"
+                metadata.message
+                if metadata and hasattr(metadata, "message")
+                else "Invalid token"
             )
             logger.error(f"Token validation failed: {error_message}")
             raise ValidationError(
@@ -159,7 +167,9 @@ class TinkoffApiToken(BaseApiToken):
             )
         except Exception as e:
             logger.error(f"Token validation failed with unexpected error: {str(e)}")
-            raise ValidationError({"encrypted_token": "Could not validate Tinkoff API token"})
+            raise ValidationError(
+                {"encrypted_token": "Could not validate Tinkoff API token"}
+            )
 
     def save(self, *args, **kwargs):
         if not self.pk:  # New token
@@ -196,7 +206,9 @@ class InteractiveBrokersApiToken(BaseApiToken):
 
 
 class AccountGroup(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="account_groups")
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="account_groups"
+    )
     name = models.CharField(max_length=50)
     accounts = models.ManyToManyField("common.Accounts", related_name="groups")
     created_at = models.DateTimeField(auto_now_add=True)

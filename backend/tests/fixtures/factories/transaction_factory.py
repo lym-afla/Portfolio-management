@@ -19,7 +19,9 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         model = Transactions
 
     currency = fuzzy.FuzzyChoice(["USD", "EUR", "GBP", "CHF"])
-    type = fuzzy.FuzzyChoice(["Buy", "Sell", "Dividend", "Interest", "Corporate Action"])
+    type = fuzzy.FuzzyChoice(
+        ["Buy", "Sell", "Dividend", "Interest", "Corporate Action"]
+    )
     date = fuzzy.FuzzyDate(date(2020, 1, 1), date.today())
     # quantity = fuzzy.FuzzyDecimal(-1000, 1000, 6)
     # price = fuzzy.FuzzyDecimal(1, 1000, 6)
@@ -32,14 +34,18 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         """Generate quantity based on transaction type."""
         if self.type in ["Dividend", "Interest"]:
             return None
-        return self.faker.pydecimal(left_digits=6, right_digits=6, min_value=-1000, max_value=1000)
+        return self.faker.pydecimal(
+            left_digits=6, right_digits=6, min_value=-1000, max_value=1000
+        )
 
     @factory.lazy_attribute
     def price(self):
         """Generate price based on transaction type."""
         if self.type in ["Dividend", "Interest"]:
             return None
-        return self.faker.pydecimal(left_digits=3, right_digits=6, min_value=1, max_value=1000)
+        return self.faker.pydecimal(
+            left_digits=3, right_digits=6, min_value=1, max_value=1000
+        )
 
     @factory.lazy_attribute
     def cash_flow(self):
@@ -80,7 +86,9 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         """Generate commission based on transaction type."""
         if self.type in ["Dividend", "Interest"]:
             return None
-        return self.faker.pydecimal(left_digits=2, right_digits=2, min_value=0, max_value=100)
+        return self.faker.pydecimal(
+            left_digits=2, right_digits=2, min_value=0, max_value=100
+        )
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
@@ -90,7 +98,9 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         security = kwargs.pop("security", None)
 
         if not all([investor, broker, security]):
-            raise ValueError("TransactionFactory requires investor, broker, and security")
+            raise ValueError(
+                "TransactionFactory requires investor, broker, and security"
+            )
 
         return model_class.objects.create(
             investor=investor, broker=broker, security=security, **kwargs
@@ -105,7 +115,9 @@ class BuyTransactionFactory(TransactionFactory):
     @factory.lazy_attribute
     def quantity(self):
         """Positive quantity for buys."""
-        return self.faker.pydecimal(left_digits=6, right_digits=6, min_value=1, max_value=1000)
+        return self.faker.pydecimal(
+            left_digits=6, right_digits=6, min_value=1, max_value=1000
+        )
 
     @factory.lazy_attribute
     def cash_flow(self):
@@ -128,7 +140,9 @@ class SellTransactionFactory(TransactionFactory):
     @factory.lazy_attribute
     def quantity(self):
         """Negative quantity for sells."""
-        return -self.faker.pydecimal(left_digits=6, right_digits=6, min_value=1, max_value=1000)
+        return -self.faker.pydecimal(
+            left_digits=6, right_digits=6, min_value=1, max_value=1000
+        )
 
     @factory.lazy_attribute
     def cash_flow(self):
@@ -138,7 +152,9 @@ class SellTransactionFactory(TransactionFactory):
             if self.commission:
                 amount -= self.commission
             return amount
-        return self.faker.pydecimal(left_digits=6, right_digits=2, min_value=100, max_value=100000)
+        return self.faker.pydecimal(
+            left_digits=6, right_digits=2, min_value=100, max_value=100000
+        )
 
 
 class DividendTransactionFactory(TransactionFactory):
@@ -152,7 +168,9 @@ class DividendTransactionFactory(TransactionFactory):
     @factory.lazy_attribute
     def cash_flow(self):
         """Positive cash flow for dividends."""
-        return self.faker.pydecimal(left_digits=4, right_digits=2, min_value=10, max_value=10000)
+        return self.faker.pydecimal(
+            left_digits=4, right_digits=2, min_value=10, max_value=10000
+        )
 
     @factory.lazy_attribute
     def comment(self):
@@ -166,12 +184,16 @@ class LargeBuyTransactionFactory(BuyTransactionFactory):
     @factory.lazy_attribute
     def quantity(self):
         """Large quantity for institutional trades."""
-        return self.faker.pydecimal(left_digits=6, right_digits=6, min_value=1000, max_value=100000)
+        return self.faker.pydecimal(
+            left_digits=6, right_digits=6, min_value=1000, max_value=100000
+        )
 
     @factory.lazy_attribute
     def price(self):
         """Lower price for large quantities."""
-        return self.faker.pydecimal(left_digits=2, right_digits=6, min_value=1, max_value=100)
+        return self.faker.pydecimal(
+            left_digits=2, right_digits=6, min_value=1, max_value=100
+        )
 
 
 class SmallBuyTransactionFactory(BuyTransactionFactory):
@@ -180,7 +202,9 @@ class SmallBuyTransactionFactory(BuyTransactionFactory):
     @factory.lazy_attribute
     def quantity(self):
         """Small quantity for retail trades."""
-        return self.faker.pydecimal(left_digits=3, right_digits=6, min_value=1, max_value=1000)
+        return self.faker.pydecimal(
+            left_digits=3, right_digits=6, min_value=1, max_value=1000
+        )
 
 
 # Batch creation utilities
@@ -239,7 +263,9 @@ def create_dividend_schedule(investor, broker, security, num_dividends=4):
     return transactions
 
 
-def create_dollar_cost_averaging(investor, broker, security, months=12, amount=Decimal("1000")):
+def create_dollar_cost_averaging(
+    investor, broker, security, months=12, amount=Decimal("1000")
+):
     """Create a dollar cost averaging strategy."""
 
     transactions = []

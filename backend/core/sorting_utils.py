@@ -31,7 +31,9 @@ def sort_entries(
     return portfolio
 
 
-def _get_sort_value(item: Dict[str, Any], key: str) -> Union[Decimal, date, datetime, str]:
+def _get_sort_value(
+    item: Dict[str, Any], key: str
+) -> Union[Decimal, date, datetime, str]:
     """
     Get a comparable value for sorting based on the item and key.
 

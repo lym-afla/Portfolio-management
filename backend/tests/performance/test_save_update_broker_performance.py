@@ -133,7 +133,9 @@ async def test_update_broker_performance_unauthorized(user, broker, account):
         "effective_current_date": "2023-01-01",
     }
 
-    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
+    await sync_to_async(cache.set)(
+        f"account_performance_update_{session_id}", update_data
+    )
 
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
@@ -233,7 +235,9 @@ async def test_update_broker_performance_no_transactions(user, broker):
         "effective_current_date": "2023-01-01",
     }
 
-    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
+    await sync_to_async(cache.set)(
+        f"account_performance_update_{session_id}", update_data
+    )
 
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
@@ -279,7 +283,9 @@ async def test_update_broker_performance_streaming(
         "effective_current_date": "2023-01-01",
     }
 
-    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
+    await sync_to_async(cache.set)(
+        f"account_performance_update_{session_id}", update_data
+    )
 
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
@@ -553,7 +559,9 @@ async def test_update_broker_performance_skip_existing(user, broker, account, ca
         "effective_current_date": "2024-01-01",
     }
 
-    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
+    await sync_to_async(cache.set)(
+        f"account_performance_update_{session_id}", update_data
+    )
 
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
@@ -639,7 +647,9 @@ async def test_update_broker_performance_skip_existing(user, broker, account, ca
 
 @pytest.mark.django_db(transaction=True)  # Use transaction=True to avoid db locks
 @pytest.mark.asyncio
-async def test_update_broker_performance_initial(user, broker, account, transactions, caplog):
+async def test_update_broker_performance_initial(
+    user, broker, account, transactions, caplog
+):
     """Test initial broker performance calculation"""
     caplog.set_level(logging.INFO)
 
@@ -665,7 +675,9 @@ async def test_update_broker_performance_initial(user, broker, account, transact
         "effective_current_date": "2023-01-01",
     }
 
-    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
+    await sync_to_async(cache.set)(
+        f"account_performance_update_{session_id}", update_data
+    )
 
     # Create communicator with session_id in query params
     communicator = HttpCommunicator(
@@ -768,7 +780,9 @@ async def test_get_accounts_table_api(user, broker, account, transactions, fx_ra
             user.digits = 2
 
     # Test basic functionality
-    request = MockRequest(user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}})
+    request = MockRequest(
+        user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}}
+    )
 
     response = await database_sync_to_async(get_accounts_table_api)(request)
 
@@ -787,7 +801,9 @@ async def test_get_accounts_table_api(user, broker, account, transactions, fx_ra
     first_account = next(acc for acc in accounts if acc["id"] == account.id)
     assert first_account["name"] == account.name
     assert first_account["broker_name"] == broker.name
-    assert first_account["no_of_securities"] == 0  # Security was sold in transactions fixture
+    assert (
+        first_account["no_of_securities"] == 0
+    )  # Security was sold in transactions fixture
     assert first_account["first_investment"] == date(2022, 1, 1).strftime("%d-%b-%y")
     assert isinstance(first_account["nav"], str)
     assert any(
@@ -800,7 +816,9 @@ async def test_get_accounts_table_api(user, broker, account, transactions, fx_ra
     assert isinstance(first_account["irr"], str)  # IRR is formatted as percentage
 
     # Verify second account data
-    second_account_data = next(acc for acc in accounts if acc["id"] == second_account.id)
+    second_account_data = next(
+        acc for acc in accounts if acc["id"] == second_account.id
+    )
     assert second_account_data["name"] == "Second Test Account"
     assert second_account_data["broker_name"] == "Second Test Broker"
     assert second_account_data["no_of_securities"] == 1  # Has one active position
@@ -831,7 +849,9 @@ async def test_get_accounts_table_api(user, broker, account, transactions, fx_ra
     request.data["sortBy"] = {"key": "name", "order": "desc"}
     sorted_response = await database_sync_to_async(get_accounts_table_api)(request)
     assert len(sorted_response["accounts"]) == 2  # Verify we get all accounts
-    assert sorted_response["accounts"][0]["name"] > sorted_response["accounts"][1]["name"]
+    assert (
+        sorted_response["accounts"][0]["name"] > sorted_response["accounts"][1]["name"]
+    )
 
     # Test totals calculation
     totals = response["totals"]

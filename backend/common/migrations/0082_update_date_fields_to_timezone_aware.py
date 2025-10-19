@@ -21,7 +21,9 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="bondcouponschedule",
             name="coupon_start_date",
-            field=common.fields.TimezoneAwareDateField(help_text="Start date of the coupon period"),
+            field=common.fields.TimezoneAwareDateField(
+                help_text="Start date of the coupon period"
+            ),
         ),
         migrations.AlterField(
             model_name="bondcouponschedule",
