@@ -1,4 +1,4 @@
-"""Fixed conftest file for pytest - removed broken Asset-Broker relationships."""
+"""Conftest file for pytest."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -81,11 +81,11 @@ def restricted_broker(user):
     )
 
 
-# ========== ASSET FIXTURES (Fixed - removed broker relationships) ==========
+# ========== ASSET FIXTURES ==========
 
 
 @pytest.fixture
-def asset(user):
+def asset(user, broker):
     """Create a basic USD stock asset."""
     asset = Assets.objects.create(
         type="Stock",
@@ -97,12 +97,12 @@ def asset(user):
         yahoo_symbol="TEST",
     )
     asset.investors.add(user)
-    # Note: Asset no longer has brokers relationship
+    asset.brokers.add(broker)
     return asset
 
 
 @pytest.fixture
-def asset_eur(user):
+def asset_eur(user, broker_eu):
     """Create a EUR-denominated stock."""
     asset = Assets.objects.create(
         type="Stock",
@@ -114,12 +114,12 @@ def asset_eur(user):
         yahoo_symbol="EURTEST",
     )
     asset.investors.add(user)
-    # Note: Asset no longer has brokers relationship
+    asset.brokers.add(broker_eu)
     return asset
 
 
 @pytest.fixture
-def asset_gbp(user):
+def asset_gbp(user, broker_uk):
     """Create a GBP-denominated stock."""
     asset = Assets.objects.create(
         type="Stock",
@@ -131,12 +131,12 @@ def asset_gbp(user):
         yahoo_symbol="GBPTEST",
     )
     asset.investors.add(user)
-    # Note: Asset no longer has brokers relationship
+    asset.brokers.add(broker_uk)
     return asset
 
 
 @pytest.fixture
-def bond_asset(user):
+def bond_asset(user, broker):
     """Create a USD bond asset."""
     asset = Assets.objects.create(
         type="Bond",
@@ -148,7 +148,7 @@ def bond_asset(user):
         yahoo_symbol="TESTBOND",
     )
     asset.investors.add(user)
-    # Note: Asset no longer has brokers relationship
+    asset.brokers.add(broker)
     return asset
 
 
@@ -408,6 +408,75 @@ def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
     return price_data
 
 
+# ========== COMPLEX SCENARIO FIXTURES ==========
+
+
+@pytest.fixture
+def complete_portfolio(
+    user,
+    broker,
+    asset,
+    bond_asset,
+    sample_transactions,
+    price_history,
+    fx_rates_usd_eur,
+):
+    """Create a complete portfolio scenario with multiple asset types."""
+    return {
+        "user": user,
+        "broker": broker,
+        "assets": [asset, bond_asset],
+        "transactions": sample_transactions,
+        "price_history": price_history,
+        "fx_rates": fx_rates_usd_eur,
+    }
+
+
+@pytest.fixture
+def loss_making_portfolio(user, broker):
+    """Create a portfolio that shows losses for testing loss calculations."""
+    # Create an asset that loses value
+    losing_asset = Assets.objects.create(
+        type="Stock",
+        ISIN="LOSS123456789",
+        name="Losing Stock Corp",
+        currency="USD",
+        exposure="Equity",
+    )
+    losing_asset.investors.add(user)
+    losing_asset.brokers.add(broker)
+
+    # Create high buy price transactions
+    tx1 = Transactions.objects.create(
+        investor=user,
+        broker=broker,
+        security=losing_asset,
+        currency="USD",
+        type="Buy",
+        date=date(2023, 1, 15),
+        quantity=Decimal("100"),
+        price=Decimal("100.00"),  # High buy price
+        cash_flow=Decimal("-10000.00"),
+        commission=Decimal("10.00"),
+    )
+
+    # Create current low prices
+    for i in range(30):  # Create recent low prices
+        current_date = date(2023, 2, 1) + timedelta(days=i)
+        Prices.objects.create(
+            date=current_date,
+            security=losing_asset,
+            price=Decimal("30.00"),  # Low current price
+        )
+
+    return {
+        "asset": losing_asset,
+        "transactions": [tx1],
+        "buy_price": Decimal("100.00"),
+        "current_price": Decimal("30.00"),
+    }
+
+
 # ========== UTILITY FIXTURES ==========
 
 
@@ -437,3 +506,29 @@ def decimal_values():
         "percentage": Decimal("0.05"),  # 5%
         "rate": Decimal("1.234567"),
     }
+
+
+@pytest.fixture
+def currency_pairs():
+    """Provide common currency pairs for FX testing."""
+    return {
+        "direct": [("USD", "EUR"), ("USD", "GBP"), ("EUR", "GBP")],
+        "cross": [("USD", "JPY"), ("EUR", "JPY"), ("GBP", "JPY")],
+        "exotic": [("USD", "RUB"), ("EUR", "PLN"), ("GBP", "CHF")],
+    }
+
+
+# Legacy fixtures for backward compatibility
+@pytest.fixture
+def asset_basic(user, broker):
+    """Legacy fixture name - create a basic USD stock asset."""
+    asset = Assets.objects.create(
+        type="Stock",
+        ISIN="TEST123456789",
+        name="Test Stock",
+        currency="USD",
+        exposure="Equity",
+    )
+    asset.investors.add(user)
+    asset.brokers.add(broker)
+    return asset

@@ -20,7 +20,7 @@ format:
 # Lint code
 lint:
 	@echo "Running flake8 linting..."
-	@cd backend && python -m flake8 --max-line-length=88 --extend-ignore=E203,W503,E501,I .
+	@cd backend && python -m flake8 --max-line-length=88 --max-complexity=20 --extend-ignore=E203,W503,E501,I .
 
 # Run all checks (format, sort, lint)
 check: format lint
@@ -53,7 +53,7 @@ pre-commit:
 # Quick check (only linting, no formatting)
 quick-check:
 	@echo "Running quick linting check..."
-	@cd backend && python -m flake8 --max-line-length=88 --extend-ignore=E203,W503,E501,I .
+	@cd backend && python -m flake8 --max-line-length=88 --max-complexity=20 --extend-ignore=E203,W503,E501,I .
 
 # Format specific file
 format-file:

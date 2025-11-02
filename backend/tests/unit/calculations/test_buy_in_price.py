@@ -307,7 +307,7 @@ class TestBuyInPriceCalculation:
 
     def test_buy_in_price_no_transactions(self, user, broker, asset):
         """Test buy-in price calculation with no transactions."""
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
         assert buy_in_price is None
 
     def test_buy_in_price_zero_position(self, user, broker, asset):

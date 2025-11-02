@@ -21,7 +21,15 @@
       "Bash(done)",
       "Bash(venv/Scripts/python.exe:*)",
       "Bash(bash -c 'sed -i \"\"1s/\\\"\"$/\\\"\"./\"\" \"\"'\"$file\"'\"\"')",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(dir:*)",
+      "Bash(venvScriptspython.exe:*)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest --version)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest:*)",
+      "Bash(set:*)",
+      "Bash(\"venv\\Scripts\\python.exe\" manage.py test:*)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m django test:*)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/unit/calculations/test_nav_calculations.py::TestNAVCalculation::test_simple_portfolio_nav -v --no-migrations)"
     ],
     "deny": [],
     "ask": []
