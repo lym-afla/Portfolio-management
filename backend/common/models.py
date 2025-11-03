@@ -34,7 +34,7 @@ from constants import (
 # from .utils import update_FX_database
 from users.models import CustomUser
 
-from .fields import TimezoneAwareDateField, TimezoneAwareDateTimeField
+from .fields import NaiveDateTimeField
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class FX(models.Model):
     """FX model."""
 
     id = models.AutoField(primary_key=True)
-    date = TimezoneAwareDateField(unique=True)
+    date = models.DateField(unique=True)
     investors = models.ManyToManyField(CustomUser, related_name="fx_rates")
     USDEUR = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
     USDGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
@@ -208,8 +208,8 @@ class Brokers(models.Model):
     name = models.CharField(max_length=30, null=False)
     country = models.CharField(max_length=20)
     comment = models.TextField(null=True, blank=True)
-    created_at = TimezoneAwareDateTimeField(auto_now_add=True)
-    updated_at = TimezoneAwareDateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         """Meta class for the Brokers model."""
@@ -238,8 +238,8 @@ class Accounts(models.Model):
     restricted = models.BooleanField(default=False, null=False, blank=False)
     comment = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    created_at = TimezoneAwareDateTimeField(auto_now_add=True)
-    updated_at = TimezoneAwareDateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         """Meta class for the Accounts model."""
@@ -273,7 +273,7 @@ class Accounts(models.Model):
         """
         balance = {}
 
-        # Convert date to timezone-aware datetime for query
+        # Use date directly for query (now using naive datetime objects)
         query_date = date
 
         # Process regular transactions using centralized cash flow calculation
@@ -374,7 +374,7 @@ class Assets(models.Model):
         logger.debug(
             f"Fetching price for {self.name} as of {price_date} in currency {currency}"
         )
-        # Convert date to timezone-aware datetime for query
+        # Use date directly for query (now using naive datetime objects)
         quote = self.prices.filter(date__lte=price_date).order_by("-date").first()
         if quote is None:
             # If no quote is found, take the price from the last transaction
@@ -755,11 +755,9 @@ class Assets(models.Model):
                 "total": Decimal(0),
             }
 
-            query_start = start
-            query_end = end
             transactions = self.transactions.filter(
-                date__gte=query_start,
-                date__lte=query_end,
+                date__gte=start,
+                date__lte=end,
                 quantity__isnull=False,
                 investor=investor,
             ).order_by("date")
@@ -1305,7 +1303,7 @@ class Transactions(models.Model):
         max_length=3, choices=CURRENCY_CHOICES, default="USD", null=False, blank=False
     )
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
-    date = TimezoneAwareDateTimeField(db_index=True, null=False)
+    date = NaiveDateTimeField(db_index=True, null=False)
     quantity = models.DecimalField(
         max_digits=25, decimal_places=9, null=True, blank=True
     )
@@ -1578,7 +1576,7 @@ class Transactions(models.Model):
 class Prices(models.Model):
     """Prices model."""
 
-    date = TimezoneAwareDateField(null=False)
+    date = models.DateField(null=False)
     security = models.ForeignKey(
         Assets, on_delete=models.CASCADE, related_name="prices"
     )
@@ -1775,7 +1773,7 @@ class FXTransaction(models.Model):
     account = models.ForeignKey(
         Accounts, on_delete=models.CASCADE, related_name="fx_transactions"
     )
-    date = TimezoneAwareDateTimeField(null=False)
+    date = NaiveDateTimeField(null=False)
     from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
     from_amount = models.DecimalField(max_digits=20, decimal_places=9, null=False)
@@ -1852,8 +1850,8 @@ class InstrumentMetadata(models.Model):
     asset = models.OneToOneField(
         Assets, on_delete=models.CASCADE, related_name="%(class)s_metadata"
     )
-    created_at = TimezoneAwareDateTimeField(auto_now_add=True)
-    updated_at = TimezoneAwareDateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         """Meta class for the InstrumentMetadata model."""
@@ -1865,10 +1863,8 @@ class BondMetadata(InstrumentMetadata):
     """Bond-specific metadata for tracking fixed income instruments."""
 
     # Core bond characteristics
-    issue_date = TimezoneAwareDateField(
-        null=True, blank=True, help_text="Bond issue date"
-    )
-    maturity_date = TimezoneAwareDateField(
+    issue_date = models.DateField(null=True, blank=True, help_text="Bond issue date")
+    maturity_date = models.DateField(
         null=True, blank=True, help_text="Bond maturity date"
     )
     initial_notional = models.DecimalField(
@@ -2373,7 +2369,7 @@ class NotionalHistory(models.Model):
     asset = models.ForeignKey(
         Assets, on_delete=models.CASCADE, related_name="notional_history"
     )
-    date = TimezoneAwareDateField(
+    date = models.DateField(
         null=False, db_index=True, help_text="Date when the notional change occurred"
     )
     notional_per_unit = models.DecimalField(
@@ -2452,7 +2448,7 @@ class BondCouponSchedule(models.Model):
         blank=True,
         help_text="Coupon type (FIXED, FLOATING, etc.)",
     )
-    last_updated = TimezoneAwareDateTimeField(
+    last_updated = models.DateTimeField(
         auto_now=True, help_text="When this schedule was last fetched from API"
     )
 
@@ -2477,7 +2473,7 @@ class OptionMetadata(InstrumentMetadata):
     strike_price = models.DecimalField(
         max_digits=18, decimal_places=6, null=True, blank=True, help_text="Strike price"
     )
-    expiration_date = TimezoneAwareDateField(
+    expiration_date = models.DateField(
         null=True, blank=True, help_text="Option expiration date"
     )
     option_type = models.CharField(
@@ -2511,7 +2507,7 @@ class OptionMetadata(InstrumentMetadata):
 class FutureMetadata(InstrumentMetadata):
     """Futures-specific metadata. To be implemented in future phases."""
 
-    expiration_date = TimezoneAwareDateField(
+    expiration_date = models.DateField(
         null=True, blank=True, help_text="Futures expiration date"
     )
     underlying_asset = models.ForeignKey(

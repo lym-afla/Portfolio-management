@@ -31,11 +31,9 @@ class SummaryViewSet(viewsets.ViewSet):
 
         # Convert effective_current_date from string to datetime object
         effective_current_date = (
-            datetime.strptime(effective_current_date_str, "%Y-%m-%d").replace(
-                tzinfo=timezone.utc
-            )
+            datetime.strptime(effective_current_date_str, "%Y-%m-%d")
             if effective_current_date_str
-            else datetime.now(timezone.utc)
+            else datetime.now()
         )
         currency_target = user.default_currency
         number_of_digits = user.digits
@@ -75,7 +73,7 @@ class SummaryViewSet(viewsets.ViewSet):
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).replace(tzinfo=timezone.utc)
+        )
         currency_target = user.default_currency
         number_of_digits = user.digits
 

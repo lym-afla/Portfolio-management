@@ -98,6 +98,18 @@ def restricted_broker(user):
     )
 
 
+# ========== ACCOUNT FIXTURES ==========
+
+
+@pytest.fixture
+def account(broker):
+    """Create a basic test account."""
+    return Accounts.objects.create(
+        broker=broker,
+        name="Test Account",
+    )
+
+
 # ========== ASSET FIXTURES (Fixed - removed broker relationships) ==========
 
 
@@ -318,7 +330,7 @@ def fx_rates_usd_eur(user):
 
     for i in range(365):  # One year of data
         current_date = base_date + timedelta(days=i)
-        rate = Decimal("1.1") + (Decimal("0.02") * (i % 30) / 30)  # Some variation
+        rate = Decimal("1.3") + (Decimal("0.02") * (i % 30) / 30)  # Some variation
         fx = FX.objects.create(date=current_date, USDEUR=rate)
         fx.investors.add(user)
         rates.append(fx)

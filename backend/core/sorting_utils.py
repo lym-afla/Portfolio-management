@@ -48,15 +48,8 @@ def _get_sort_value(
     if value == "N/R" or value is None:
         return Decimal("-Infinity")
     elif "date" in key:
-        # Use timezone-aware datetime.min to avoid warnings
-        from django.utils import timezone
-
-        if timezone.is_aware(datetime.min):
-            return value if isinstance(value, (date, datetime)) else datetime.min
-        else:
-            # Create timezone-aware minimum datetime
-            min_dt = timezone.make_aware(datetime.min)
-            return value if isinstance(value, (date, datetime)) else min_dt
+        # Always use naive datetime.min for consistent sorting
+        return value if isinstance(value, (date, datetime)) else datetime.min
     elif isinstance(value, (int, float, Decimal)):
         return Decimal(value)
     elif isinstance(value, str):

@@ -1,6 +1,6 @@
 """Test duplicate detection for transactions and FX transactions."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -40,7 +40,7 @@ def sample_transaction(user, account):
     return Transactions.objects.create(
         investor=user,
         account=account,
-        date=datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        date=datetime(2023, 1, 15, 10, 30, 0),
         type="Buy",
         currency="RUB",
         cash_flow=Decimal("1000.00"),
@@ -54,7 +54,7 @@ def sample_fx_transaction(user, account):
     return FXTransaction.objects.create(
         investor=user,
         account=account,
-        date=datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        date=datetime(2023, 1, 15, 10, 30, 0),
         from_currency="RUB",
         to_currency="USD",
         exchange_rate=Decimal("75.50"),
@@ -124,7 +124,7 @@ async def test_transaction_exists_no_match(user, account):
     transaction_data = {
         "investor": user,
         "account": account,
-        "date": datetime(2023, 1, 16, 10, 30, 0, tzinfo=timezone.utc),
+        "date": datetime(2023, 1, 16, 10, 30, 0),
         "type": "Buy",
         "currency": "RUB",
         "cash_flow": Decimal("1000.00"),
@@ -222,7 +222,7 @@ async def test_fx_transaction_exists_no_match(user, account):
     fx_transaction_data = {
         "investor": user,
         "account": account,
-        "date": datetime(2023, 1, 16, 10, 30, 0, tzinfo=timezone.utc),
+        "date": datetime(2023, 1, 16, 10, 30, 0),
         "from_currency": "RUB",
         "to_currency": "EUR",
         "exchange_rate": Decimal("85.50"),
@@ -262,7 +262,7 @@ async def test_fx_transaction_exists_missing_required_field(user, account):
     fx_transaction_data = {
         "investor": user,
         "account": account,
-        "date": datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        "date": datetime(2023, 1, 15, 10, 30, 0),
         "from_currency": "RUB",
         # Missing 'to_currency' field
         "exchange_rate": Decimal("75.50"),

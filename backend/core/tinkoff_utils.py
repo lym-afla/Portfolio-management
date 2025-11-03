@@ -1,7 +1,7 @@
 """Tinkoff utils."""
 
 import logging
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
@@ -126,14 +126,14 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
 
         # Convert date to datetime if needed
         if isinstance(date, datetime):
-            target_date = date
+            # Strip timezone if present to ensure naive datetime
+            if hasattr(date, "tzinfo") and date.tzinfo is not None:
+                target_date = date.replace(tzinfo=None)
+            else:
+                target_date = date
         else:
-            # Use timezone-aware datetime to avoid warnings
-            from django.utils import timezone
-
-            target_date = timezone.make_aware(
-                datetime.combine(date, datetime.min.time())
-            )
+            # Use naive datetime for consistency
+            target_date = datetime.combine(date, datetime.min.time())
 
         logger.debug(
             f"Fetching bond events for instrument {instrument_uid} "
@@ -293,14 +293,10 @@ async def fetch_and_cache_bond_coupon_schedule(
             has_uid = await database_sync_to_async(lambda: asset.tbank_instrument_uid)()
 
         with Client(token) as client:
-            from django.utils import timezone
-
             response = client.instruments.get_bond_coupons(
                 instrument_id=has_uid,
-                from_=timezone.make_aware(
-                    datetime.combine(from_date, datetime.min.time())
-                ),
-                to=timezone.make_aware(datetime.combine(to_date, datetime.max.time())),
+                from_=from_date,
+                to=to_date,
             )
 
             if not response.events:
@@ -739,11 +735,11 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         dict: Transaction data ready for creating a Transaction or FXTransaction instance.  # noqa: E501
     """
     # Initialize base transaction data
-    # Ensure the date is properly handled (convert to UTC if timezone-aware)
+    # Convert timezone-aware dates to naive for database storage
     operation_date = operation.date
     if hasattr(operation_date, "tzinfo") and operation_date.tzinfo is not None:
-        # Convert to UTC to ensure consistency
-        operation_date = operation_date.astimezone(dt_timezone.utc)
+        # Strip timezone information for naive datetime storage
+        operation_date = operation_date.replace(tzinfo=None)
 
     transaction_data = {
         "investor": investor,
@@ -1090,25 +1086,25 @@ async def create_transaction_from_tinkoff(operation, investor, account):
         return None, "Unsupported operation type"
 
     # Check if similar transaction already exists
-    # Use more flexible matching to handle timezone differences
+    # All dates are now naive datetime objects for consistent comparison
 
     transaction_date = transaction_data["date"]
 
-    # If transaction_date is timezone-aware, convert to UTC for comparison
+    # Ensure the transaction date is naive (strip timezone if present)
     if hasattr(transaction_date, "tzinfo") and transaction_date.tzinfo is not None:
-        transaction_date_utc = transaction_date.astimezone(dt_timezone.utc)
-    else:
-        transaction_date_utc = transaction_date
+        transaction_date = transaction_date.replace(tzinfo=None)
 
     # Check for existing transactions within a reasonable time window (1 minute)
-    # to handle potential timezone or timestamp differences
-    time_window = datetime.timedelta(minutes=1)
+    # to handle potential timestamp differences
+    from datetime import timedelta
+
+    time_window = timedelta(minutes=1)
 
     existing = await database_sync_to_async(Transactions.objects.filter)(
         investor=investor,
         account=account,
-        date__gte=transaction_date_utc - time_window,
-        date__lte=transaction_date_utc + time_window,
+        date__gte=transaction_date - time_window,
+        date__lte=transaction_date + time_window,
         type=transaction_data["type"],
         quantity=transaction_data.get("quantity"),
         price=transaction_data.get("price"),
@@ -1195,7 +1191,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
     Returns:
         Decimal: The closing price, or None if not found
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
     try:
         token = await get_user_token(user)
@@ -1205,19 +1201,15 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
 
         logger.debug(f"Fetching price for instrument {instrument_uid} on {date}")
 
-        # Convert target date to timezone-aware datetime (UTC)
-        target_dt = datetime.combine(date, datetime.min.time(), tzinfo=dt_timezone.utc)
-
         # Try progressively larger date ranges: 1 day, 7 days, 14 days
         lookback_days = [1, 7, 14]
 
         with Client(token) as client:
             for days_back in lookback_days:
-                # Start from 1 day before target, extend backwards based on attempt
-                from_dt = timezone.make_aware(
-                    datetime.combine(date, datetime.min.time())
-                ) - timedelta(days=days_back)
-                to_dt = timezone.make_aware(datetime.combine(date, datetime.max.time()))
+                # Convert naive dates to timezone-aware for API call
+                # Tinkoff API expects timezone-aware datetime objects
+                from_dt = date - timedelta(days=days_back)
+                to_dt = date
 
                 logger.debug(
                     f"Attempt with {days_back} day(s) lookback: "
@@ -1246,7 +1238,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
                                 break
 
                             # Track the most recent candle before or on target date
-                            if candle.time <= target_dt:
+                            if candle.time <= date:
                                 if (
                                     selected_candle is None
                                     or candle.time > selected_candle.time

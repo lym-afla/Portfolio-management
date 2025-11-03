@@ -34,6 +34,8 @@ class TestFXRateCalculation:
         """Test successful direct FX rate lookup."""
         result = FX.get_rate("USD", "EUR", date(2023, 6, 15))
 
+        print("==============", result)
+
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
         assert result["FX"] < 1  # EUR is worth less than USD

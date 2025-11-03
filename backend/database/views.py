@@ -91,7 +91,7 @@ def api_get_security_price_history(request, security_id):
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).replace(tzinfo=timezone.utc)
+        )
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -127,7 +127,7 @@ def api_get_security_position_history(request, security_id):
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).replace(tzinfo=timezone.utc)
+        )
 
         start_date = get_start_date(effective_current_date, period)
 
@@ -179,7 +179,7 @@ def api_get_security_transactions(request, security_id):
         )
         effective_current_date = datetime.strptime(
             effective_current_date_str, "%Y-%m-%d"
-        ).replace(tzinfo=timezone.utc)
+        )
         period = request.GET.get("period", "1Y")
         start_date = get_start_date(effective_current_date, period)
 

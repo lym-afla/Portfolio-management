@@ -10,7 +10,6 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from common.models import (
     Accounts,
@@ -62,16 +61,16 @@ class YTMCalculationTestCase(TestCase):
             asset=self.bond,
             initial_notional=Decimal("1000.00"),
             nominal_currency="USD",
-            maturity_date=timezone.make_aware(datetime.datetime(2030, 12, 31)),
+            maturity_date=datetime.date(2030, 12, 31),
         )
 
         # Create coupon schedule
         self.coupon_1 = BondCouponSchedule.objects.create(
             asset=self.bond,
             coupon_number=1,
-            coupon_start_date=timezone.make_aware(datetime.datetime(2023, 6, 1)),
-            coupon_end_date=timezone.make_aware(datetime.datetime(2023, 12, 1)),
-            payment_date=timezone.make_aware(datetime.datetime(2023, 12, 1)),
+            coupon_start_date=datetime.date(2023, 6, 1),
+            coupon_end_date=datetime.date(2023, 12, 1),
+            payment_date=datetime.date(2023, 12, 1),
             coupon_amount=Decimal("50.00"),
             coupon_currency="USD",
             coupon_type="FIXED",
@@ -80,9 +79,9 @@ class YTMCalculationTestCase(TestCase):
         self.coupon_2 = BondCouponSchedule.objects.create(
             asset=self.bond,
             coupon_number=2,
-            coupon_start_date=timezone.make_aware(datetime.datetime(2023, 12, 1)),
-            coupon_end_date=timezone.make_aware(datetime.datetime(2024, 6, 1)),
-            payment_date=timezone.make_aware(datetime.datetime(2024, 6, 1)),
+            coupon_start_date=datetime.date(2023, 12, 1),
+            coupon_end_date=datetime.date(2024, 6, 1),
+            payment_date=datetime.date(2024, 6, 1),
             coupon_amount=Decimal("50.00"),
             coupon_currency="USD",
             coupon_type="FIXED",

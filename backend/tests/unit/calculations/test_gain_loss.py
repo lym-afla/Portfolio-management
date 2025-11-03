@@ -9,7 +9,7 @@ This module tests the core gain/loss calculation logic including:
 - FX effects on gain/loss
 """
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -22,14 +22,8 @@ from common.models import FX, Accounts, Prices, Transactions
 class TestRealizedGainLoss:
     """Test realized gain/loss calculation functionality."""
 
-    def test_realized_gain_simple_profit(self, user, broker, asset):
+    def test_realized_gain_simple_profit(self, user, account, asset):
         """Test realized gain calculation for simple profitable sale."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -37,11 +31,10 @@ class TestRealizedGainLoss:
             security=asset,
             currency="USD",
             type="Buy",
-            date=date(2023, 1, 15),
+            date=datetime(2023, 1, 15, 12, 0, 0),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create profitable sale
@@ -51,26 +44,48 @@ class TestRealizedGainLoss:
             security=asset,
             currency="USD",
             type="Sell",
-            date=date(2023, 6, 15),
+            date=datetime(2023, 6, 15, 14, 0, 0),
             quantity=Decimal("-100"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("6000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
-        # Create price data for buy-in price calculation
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
-        )
+        transactions = asset.transactions.filter(
+            date__gte=datetime(2023, 1, 15, 12, 0, 0),
+            date__lte=datetime(2023, 6, 15, 14, 0, 0),
+        ).order_by("date")
+        print(f"\nTransactions: {transactions}")
 
-        result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
+        buy_dt = datetime(2023, 1, 15, 12, 0, 0)
+        sell_dt = datetime(2023, 6, 15, 14, 0, 0)
+
+        # Fetch created objects
+        for t in Transactions.objects.order_by("date"):
+            print(
+                "DB stored date:",
+                repr(t.date),
+                "tzinfo:",
+                getattr(t.date, "tzinfo", None),
+                "micro:",
+                t.date.microsecond,
+                "timestamp:",
+                t.date.timestamp(),
+            )
+
+        # Show the queryset SQL (to see what value is passed to DB)
+        qs = asset.transactions.filter(date__gte=buy_dt, date__lte=sell_dt).order_by(
+            "date"
+        )
+        print("\nSQL of query:\n", qs.query)
+        print("\nRaw repr of the bound parameters (if available):")
+        # sometimes the query string contains placeholders only — but the SQL helps
+
+        result = asset.realized_gain_loss(date(2023, 7, 16), investor=user)
 
         # Expected: (60 - 50) * 100 = 1000 profit
         expected_profit = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
-        assert result["current_position"] == expected_profit - Decimal(
-            "10"
-        )  # Subtract commission
-        assert result["all_time"] == expected_profit - Decimal("10")
+        assert result["current_position"]["total"] == Decimal("0")  # closed position
+        assert result["all_time"]["total"] == expected_profit - Decimal("10")
 
     def test_realized_gain_simple_loss(self, user, broker, asset):
         """Test realized gain calculation for simple loss sale."""
@@ -90,8 +105,7 @@ class TestRealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create loss sale
@@ -104,23 +118,15 @@ class TestRealizedGainLoss:
             date=date(2023, 6, 15),
             quantity=Decimal("-100"),
             price=Decimal("40.00"),
-            cash_flow=Decimal("4000.00"),
-            commission=Decimal("5.00"),
-        )
-
-        # Create price data for buy-in price calculation
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("40.00")
+            commission=Decimal("-5.00"),
         )
 
         result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
 
         # Expected: (40 - 50) * 100 = -1000 loss
         expected_loss = (Decimal("40.00") - Decimal("50.00")) * Decimal("100")
-        assert result["current_position"] == expected_loss - Decimal(
-            "10"
-        )  # Subtract commission
-        assert result["all_time"] == expected_loss - Decimal("10")
+        assert result["current_position"]["total"] == Decimal("0")  # closed position
+        assert result["all_time"]["total"] == expected_loss - Decimal("10")
 
     def test_realized_gain_partial_sale(self, user, broker, asset):
         """Test realized gain calculation for partial sale."""
@@ -140,8 +146,7 @@ class TestRealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create additional purchase
@@ -154,8 +159,7 @@ class TestRealizedGainLoss:
             date=date(2023, 2, 15),
             quantity=Decimal("50"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("-2750.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         # Create partial sale
@@ -168,13 +172,7 @@ class TestRealizedGainLoss:
             date=date(2023, 6, 15),
             quantity=Decimal("-30"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("1800.00"),
-            commission=Decimal("3.00"),
-        )
-
-        # Create price data
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
+            commission=Decimal("-3.00"),
         )
 
         result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
@@ -184,7 +182,7 @@ class TestRealizedGainLoss:
         buy_in_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
         expected_gain = (Decimal("60.00") - buy_in_price) * Decimal("30")
         assert abs(
-            result["current_position"] - (expected_gain - Decimal("3"))
+            result["current_position"]["total"] - (expected_gain - Decimal("3"))
         ) < Decimal("0.01")
 
     def test_realized_gain_multiple_partial_sales(self, user, broker, asset):
@@ -205,8 +203,7 @@ class TestRealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("200"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-10000.00"),
-            commission=Decimal("10.00"),
+            commission=Decimal("-10.00"),
         )
 
         # First partial sale
@@ -219,8 +216,7 @@ class TestRealizedGainLoss:
             date=date(2023, 3, 15),
             quantity=Decimal("-50"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("2750.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         # Second partial sale
@@ -233,19 +229,13 @@ class TestRealizedGainLoss:
             date=date(2023, 6, 15),
             quantity=Decimal("-30"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("1800.00"),
-            commission=Decimal("3.00"),
-        )
-
-        # Create price data
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
+            commission=Decimal("-3.00"),
         )
 
         result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
 
         # Should calculate realized gain for both sales
-        assert result["current_position"] > 0  # Should be profitable
+        assert result["current_position"]["total"] > 0  # Should be profitable
         assert result["all_time"] > 0
 
     def test_realized_gain_with_dividends(self, user, broker, asset):
@@ -266,8 +256,7 @@ class TestRealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create dividend
@@ -294,20 +283,15 @@ class TestRealizedGainLoss:
             date=date(2023, 6, 15),
             quantity=Decimal("-100"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("6000.00"),
-            commission=Decimal("5.00"),
-        )
-
-        # Create price data
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
+            commission=Decimal("-5.00"),
         )
 
         result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
 
         # Dividend should not affect realized gain calculation
         expected_gain = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
-        assert result["current_position"] == expected_gain - Decimal("10")
+        assert result["current_position"]["total"] == Decimal("0")  # closed position
+        assert result["all_time"]["total"] == expected_gain - Decimal("10")
 
     def test_realized_gain_no_sales(self, user, broker, asset):
         """Test realized gain calculation when no sales have occurred."""
@@ -327,14 +311,13 @@ class TestRealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
 
-        assert result["current_position"] == 0
-        assert result["all_time"] == 0
+        assert result["current_position"]["total"] == Decimal("0")
+        assert result["all_time"]["total"] == Decimal("0")
 
 
 @pytest.mark.nav

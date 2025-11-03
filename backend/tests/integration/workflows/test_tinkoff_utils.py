@@ -1,6 +1,6 @@
 """Test Tinkoff utils."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -200,7 +200,7 @@ async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, b
     """Test mapping Tinkoff operation to transaction."""
     # Create mock operation
     operation = MagicMock()
-    operation.date = datetime.now(timezone.utc)
+    operation.date = datetime.now()
     operation.description = "Test transaction"
     operation.type = OperationType.OPERATION_TYPE_BUY
     operation.payment = MoneyValue(currency="USD", units=-100, nano=0)
