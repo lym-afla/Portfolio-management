@@ -8,7 +8,15 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 
-from common.models import FX, Assets, Brokers, FXTransaction, Prices, Transactions
+from common.models import (
+    FX,
+    Accounts,
+    Assets,
+    Brokers,
+    FXTransaction,
+    Prices,
+    Transactions,
+)
 
 CustomUser = get_user_model()
 
@@ -169,10 +177,16 @@ def sample_transactions(user, broker, asset):
     """Create a set of sample transactions for testing."""
     transactions = []
 
+    # Create account
+    account = Accounts.objects.create(
+        broker=broker,
+        name="Test Account",
+    )
+
     # Initial purchase
     tx1 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Buy",
@@ -187,7 +201,7 @@ def sample_transactions(user, broker, asset):
     # Additional purchase
     tx2 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Buy",
@@ -202,7 +216,7 @@ def sample_transactions(user, broker, asset):
     # Partial sale
     tx3 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Sell",
@@ -217,7 +231,7 @@ def sample_transactions(user, broker, asset):
     # Dividend
     tx4 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Dividend",
@@ -239,10 +253,16 @@ def multi_currency_transactions(
     """Create multi-currency transactions for FX testing."""
     transactions = []
 
+    # Create account
+    account = Accounts.objects.create(
+        broker=broker,
+        name="Multi-Currency Account",
+    )
+
     # USD asset purchase
     tx1 = Transactions.objects.create(
         investor=multi_currency_user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Buy",
@@ -257,7 +277,7 @@ def multi_currency_transactions(
     # EUR asset purchase
     tx2 = Transactions.objects.create(
         investor=multi_currency_user,
-        broker=broker,
+        account=account,
         security=asset_eur,
         currency="EUR",
         type="Buy",
@@ -272,7 +292,7 @@ def multi_currency_transactions(
     # GBP asset purchase
     tx3 = Transactions.objects.create(
         investor=multi_currency_user,
-        broker=broker,
+        account=account,
         security=asset_gbp,
         currency="GBP",
         type="Buy",
@@ -299,7 +319,8 @@ def fx_rates_usd_eur(user):
     for i in range(365):  # One year of data
         current_date = base_date + timedelta(days=i)
         rate = Decimal("1.1") + (Decimal("0.02") * (i % 30) / 30)  # Some variation
-        fx = FX.objects.create(date=current_date, investor=user, USDEUR=rate)
+        fx = FX.objects.create(date=current_date, USDEUR=rate)
+        fx.investors.add(user)
         rates.append(fx)
 
     return rates
