@@ -1,7 +1,7 @@
 """Common models."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, DecimalException
 
 import networkx as nx
@@ -60,7 +60,7 @@ class FX(models.Model):
 
     # Get FX quote for date
     @classmethod
-    def get_rate(cls, source, target, date, investor=None):
+    def get_rate(cls, source, target, date_as_of, investor=None):
         """
         Get FX rate for a given currency and target currency at a given date.
 
@@ -73,7 +73,7 @@ class FX(models.Model):
         Args:
             source: Source currency code (e.g., 'USD')
             target: Target currency code (e.g., 'EUR')
-            date: Date for which to get the FX rate
+            date_as_of: Date for which to get the FX rate
             investor: Optional investor filter for FX rates
 
         Returns:
@@ -88,6 +88,14 @@ class FX(models.Model):
 
         if not target or not isinstance(target, str) or not target.strip():
             raise ValueError("No FX rate found")
+
+        # Convert date to date object if it's a datetime
+        if isinstance(date_as_of, datetime):
+            date_as_of = date_as_of.date()
+        elif isinstance(date_as_of, date):
+            pass
+        else:
+            raise ValueError("Invalid date")
 
         # Convert to uppercase and strip whitespace
         source = source.upper().strip()
@@ -135,10 +143,10 @@ class FX(models.Model):
                 raise ValueError("No FX rate found")
 
             # Don't allow dates more than 5 years before earliest data or 1 year after latest data
-            if date < earliest_date - timedelta(days=5 * 365):
+            if date_as_of < earliest_date - timedelta(days=5 * 365):
                 raise ValueError("No FX rate found")
 
-            if date > latest_date + timedelta(days=365):
+            if date_as_of > latest_date + timedelta(days=365):
                 raise ValueError("No FX rate found")
 
             # Create undirected graph with currencies
@@ -205,7 +213,7 @@ class FX(models.Model):
 
             # Try to find FX rate on or before the requested date
             fx_call = (
-                cls.objects.filter(date__lte=date, **filter_kwargs)
+                cls.objects.filter(date__lte=date_as_of, **filter_kwargs)
                 .values("date", quote=F(field_name))
                 .order_by("-date")
                 .first()
@@ -214,7 +222,7 @@ class FX(models.Model):
             # If not found before date, try after the date
             if fx_call is None or fx_call["quote"] is None:
                 fx_call = (
-                    cls.objects.filter(date__gte=date, **filter_kwargs)
+                    cls.objects.filter(date__gte=date_as_of, **filter_kwargs)
                     .values("date", quote=F(field_name))
                     .order_by("date")
                     .first()
@@ -605,11 +613,10 @@ class Assets(models.Model):
         query = queryset.order_by("date").values_list("date", flat=True).first()
         return query
 
-    def entry_dates(self, date, investor, account_ids=None, start_date=None):
+    def entry_dates(self, date_as_of, investor, account_ids=None, start_date=None):
         """Get a list of dates when the position changes from 0 to non-zero."""
-        query_date = date
         transactions = self.transactions.filter(
-            date__lte=query_date, quantity__isnull=False, investor=investor
+            date__lte=date_as_of, quantity__isnull=False, investor=investor
         )
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
@@ -667,7 +674,7 @@ class Assets(models.Model):
         return exit_dates
 
     def calculate_buy_in_price(
-        self, date, investor, currency=None, account_ids=None, start_date=None
+        self, date_as_of, investor, currency=None, account_ids=None, start_date=None
     ):
         """
         Calculate average buy-in price for an asset.
@@ -676,7 +683,8 @@ class Assets(models.Model):
         broker account IDs, and start date.
 
         Args:
-            date (datetime.date): Date for which to calculate the buy-in price.
+            date_as_of (datetime.date): Date for which to calculate the buy-in price.
+            investor (User): Investor for which to calculate the buy-in price.
             currency (str): Currency in which to calculate the buy-in price.
             account_ids (list): List of broker account IDs to filter transactions by.
             start_date (datetime.date): Start date for the calculation.
@@ -684,7 +692,7 @@ class Assets(models.Model):
         Returns:
             float: Calculated buy-in price. Returns None if an error occurs.
         """
-        logger.debug(f"Calculating buy-in price for {self.name} as of {date}")
+        logger.debug(f"Calculating buy-in price for {self.name} as of {date_as_of}")
         logger.debug(
             f"Parameters: currency={currency}, account_ids={account_ids}, "
             f"start_date={start_date}"
@@ -692,9 +700,8 @@ class Assets(models.Model):
 
         is_long_position = None
 
-        query_date = date
         transactions = self.transactions.filter(
-            quantity__isnull=False, investor=investor, date__lte=query_date
+            quantity__isnull=False, investor=investor, date__lte=date_as_of
         ).order_by("date")
 
         if account_ids is not None:
@@ -707,19 +714,32 @@ class Assets(models.Model):
             return None
 
         # Get latest entry date
-        entry_dates = self.entry_dates(date, investor, account_ids)
+        entry_dates = self.entry_dates(date_as_of, investor, account_ids)
         if not entry_dates:
             logger.warning("No entry dates found")
             return None
         entry_date = entry_dates[-1]
         logger.debug(f"Latest entry date: {entry_date}")
 
-        # Convert entry_date to date object for comparison if it's a datetime
-        entry_date_for_comparison = (
-            entry_date.date() if hasattr(entry_date, "date") else entry_date
-        )
+        # Convert start_date to datetime object if it's a date
+        if start_date and isinstance(start_date, date):
+            start_date = datetime.combine(start_date, datetime.min.time()).replace(
+                tzinfo=None
+            )
+        elif start_date and isinstance(start_date, datetime):
+            pass
+        elif start_date is None:
+            pass
+        else:
+            raise ValueError("Invalid start date")
 
-        if start_date and start_date > entry_date_for_comparison:
+        # Convert entry_date to datetime offset-naive object if it's a date
+        if entry_date and isinstance(entry_date, date):
+            entry_date = datetime.combine(entry_date, datetime.min.time()).replace(
+                tzinfo=None
+            )
+
+        if start_date and start_date > entry_date:
             # Add artificial transaction at start_date
             logger.debug(
                 f"Start date {start_date} is after latest entry date {entry_date}"
@@ -749,11 +769,8 @@ class Assets(models.Model):
         # Handle both date and datetime objects in comparison
         filtered_transactions = []
         for t in transactions:
-            t_date = t.date.date() if hasattr(t.date, "date") else t.date
-            entry_date_for_comparison = (
-                entry_date.date() if hasattr(entry_date, "date") else entry_date
-            )
-            if t_date >= entry_date_for_comparison:
+            print("==============", t.date, entry_date)
+            if t.date >= entry_date:
                 filtered_transactions.append(t)
         transactions = filtered_transactions
         logger.debug(f"Number of transactions after filtering: {len(transactions)}")

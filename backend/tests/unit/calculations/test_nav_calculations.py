@@ -46,10 +46,61 @@ class TestNAVCalculation:
         expected_value = Decimal("120") * expected_price
         assert abs(market_value - expected_value) < Decimal("0.01")
 
-    def test_multi_asset_portfolio_nav(self, user, broker, complete_portfolio):
+    def test_multi_asset_portfolio_nav(self, user, broker, asset):
         """Test NAV calculation for portfolio with multiple assets."""
+        # Create multiple assets for testing
+        asset2 = Assets.objects.create(
+            type="Stock",
+            ISIN="US9876543210",
+            name="Second Test Stock",
+            currency="USD",
+            exposure="Equity",
+            data_source="YAHOO",
+            yahoo_symbol="SECOND",
+        )
+        asset2.investors.add(user)
+
+        # Create account and transactions
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Multi Asset Account",
+        )
+
+        # Create transactions for both assets
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Buy",
+            date=date(2023, 1, 15),
+            quantity=Decimal("100"),
+            price=Decimal("50.00"),
+            commission=Decimal("5.00"),
+        )
+
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset2,
+            currency="USD",
+            type="Buy",
+            date=date(2023, 2, 15),
+            quantity=Decimal("75"),
+            price=Decimal("30.00"),
+            commission=Decimal("3.00"),
+        )
+
+        # Create prices for both assets
+        Prices.objects.create(
+            date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
+        )
+        Prices.objects.create(
+            date=date(2023, 6, 15), security=asset2, price=Decimal("32.00")
+        )
+
         total_nav = Decimal("0")
-        assets = complete_portfolio["assets"]
+        assets = [asset, asset2]
         valuation_date = date(2023, 6, 15)
 
         for asset in assets:
@@ -86,14 +137,11 @@ class TestNAVCalculation:
                     # Calculate market value in local currency
                     local_value = position * current_price.price
 
-                    # Convert to target currency if needed
-                    if asset.currency != target_currency:
-                        fx_rate = FX.get_rate(
-                            asset.currency, target_currency, valuation_date
-                        )
-                        converted_value = local_value * fx_rate["FX"]
-                    else:
-                        converted_value = local_value
+                    # Convert to target currency
+                    fx_rate = FX.get_rate(
+                        asset.currency, target_currency, valuation_date
+                    )
+                    converted_value = local_value * fx_rate["FX"]
 
                     total_nav_usd += converted_value
 
@@ -101,11 +149,11 @@ class TestNAVCalculation:
         assert isinstance(total_nav_usd, Decimal)
 
     def test_nav_calculation_with_cash_balances(
-        self, user, broker, asset, sample_transactions, fx_transaction
+        self, user, account, asset, sample_transactions, fx_transaction
     ):
         """Test NAV calculation including cash balances."""
-        # Calculate broker cash balance
-        cash_balance = broker.balance(date(2023, 6, 15))
+        # Calculate account cash balance
+        cash_balance = account.balance(date(2023, 6, 15))
         assert isinstance(cash_balance, dict)
 
         # Total cash across all currencies
@@ -167,7 +215,7 @@ class TestNAVCalculation:
         asset_value = position * current_price.price
 
         # Calculate total dividends received
-        dividends = asset.get_capital_distribution(valuation_date)
+        dividends = asset.get_capital_distribution(valuation_date, investor=user)
         assert dividends > 0  # Should have dividend from sample_transactions
 
         # Total return includes both asset value and dividends
@@ -206,7 +254,7 @@ class TestNAVCalculation:
         # asset_value = position * current_price.price
 
         # Get cash balance (should include commission)
-        cash_balance = broker.balance(date(2023, 6, 15))
+        cash_balance = account.balance(date(2023, 6, 15))
         total_cash = sum(cash_balance.values())
 
         # NAV should be reduced by commission costs
@@ -267,15 +315,9 @@ class TestNAVAggregation:
 
     def test_portfolio_nav_multiple_brokers(self, user, broker, broker_uk, asset):
         """Test portfolio NAV across multiple brokers."""
-        # Create accounts
-        account_us = Accounts.objects.create(
-            broker=broker,
-            name="US Account",
-        )
-        account_uk = Accounts.objects.create(
-            broker=broker_uk,
-            name="UK Account",
-        )
+        # Create accounts with different brokers
+        account_us = Accounts.objects.create(broker=broker, name="US Test Account")
+        account_uk = Accounts.objects.create(broker=broker_uk, name="UK Test Account")
 
         # Create transactions with different brokers
         Transactions.objects.create(
@@ -287,8 +329,7 @@ class TestNAVAggregation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         Transactions.objects.create(
@@ -300,8 +341,7 @@ class TestNAVAggregation:
             date=date(2023, 2, 15),
             quantity=Decimal("75"),
             price=Decimal("52.00"),
-            cash_flow=Decimal("-3900.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         # Create current price
@@ -314,10 +354,10 @@ class TestNAVAggregation:
         asset_value = total_position * current_price.price
 
         # Calculate total cash across brokers
-        broker_cash = broker.balance(date(2023, 6, 15))
-        broker_uk_cash = broker_uk.balance(date(2023, 6, 15))
+        account_us_cash = account_us.balance(date(2023, 6, 15))
+        account_uk_cash = account_uk.balance(date(2023, 6, 15))
 
-        total_cash = sum(broker_cash.values()) + sum(broker_uk_cash.values())
+        total_cash = sum(account_us_cash.values()) + sum(account_uk_cash.values())
 
         # Total portfolio NAV
         portfolio_nav = asset_value + total_cash
@@ -498,7 +538,9 @@ class TestNAVPerformance:
         end_nav = end_position * end_price.price if end_price else Decimal("0")
 
         # Calculate dividends received
-        dividends = asset.get_capital_distribution(end_date, start_date=start_date)
+        dividends = asset.get_capital_distribution(
+            end_date, investor=user, start_date=start_date
+        )
 
         # Calculate total return
         total_return = (end_nav + dividends) - start_nav
@@ -511,14 +553,9 @@ class TestNAVPerformance:
         assert isinstance(total_return, Decimal)
         assert isinstance(return_percentage, Decimal)
 
-    def test_annual_performance_calculation(self, user, broker, asset):
+    def test_annual_performance_calculation(self, user, account, asset):
         """Test annual performance calculation."""
         # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create transactions throughout the year
         Transactions.objects.create(
             investor=user,
@@ -529,14 +566,13 @@ class TestNAVPerformance:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create annual performance record
         AnnualPerformance.objects.create(
             investor=user,
-            broker=broker,
+            account_id=account.id,
             year=2023,
             currency="USD",
             bop_nav=Decimal("0"),
@@ -552,7 +588,9 @@ class TestNAVPerformance:
         )
 
         # Retrieve annual performance
-        perf = AnnualPerformance.objects.get(investor=user, broker=broker, year=2023)
+        perf = AnnualPerformance.objects.get(
+            investor=user, account_id=account.id, year=2023
+        )
 
         # Verify calculations
         assert perf.bop_nav == Decimal("0")
@@ -569,14 +607,8 @@ class TestNAVPerformance:
         ) * Decimal("100")
         assert abs(Decimal(perf.tsr) - expected_tsr) < Decimal("0.1")
 
-    def test_volatility_adjusted_nav(self, user, broker, asset):
+    def test_volatility_adjusted_nav(self, user, account, asset):
         """Test NAV calculations with volatility considerations."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create position
         Transactions.objects.create(
             investor=user,
@@ -587,8 +619,7 @@ class TestNAVPerformance:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create price history with volatility
@@ -633,14 +664,8 @@ class TestNAVPerformance:
 class TestNAVEdgeCases:
     """Test edge cases in NAV calculations."""
 
-    def test_nav_missing_price_data(self, user, broker, asset):
+    def test_nav_missing_price_data(self, user, account, asset):
         """Test NAV calculation when price data is missing."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create transaction but no price data
         Transactions.objects.create(
             investor=user,
@@ -651,8 +676,7 @@ class TestNAVEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Try to calculate NAV without price data
@@ -667,14 +691,8 @@ class TestNAVEdgeCases:
 
         assert isinstance(asset_value, Decimal)
 
-    def test_nav_very_large_positions(self, user, broker, asset):
+    def test_nav_very_large_positions(self, user, account, asset):
         """Test NAV calculation with very large positions."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create large transaction
         Transactions.objects.create(
             investor=user,
@@ -685,8 +703,7 @@ class TestNAVEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("1000000"),
             price=Decimal("0.01"),
-            cash_flow=Decimal("-10000.00"),
-            commission=Decimal("10.00"),
+            commission=Decimal("-10.00"),
         )
 
         # Create current price
@@ -701,14 +718,8 @@ class TestNAVEdgeCases:
         assert asset_value == Decimal("20000.00")
         assert isinstance(asset_value, Decimal)
 
-    def test_nav_precision_requirements(self, user, broker, asset):
+    def test_nav_precision_requirements(self, user, account, asset):
         """Test NAV calculation with high precision requirements."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create transaction with high precision
         Transactions.objects.create(
             investor=user,
@@ -719,8 +730,7 @@ class TestNAVEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("1.234567"),
             price=Decimal("123.456789"),
-            cash_flow=Decimal("-152.41579"),
-            commission=Decimal("0.15"),
+            commission=Decimal("-0.15"),
         )
 
         # Create current price with high precision
@@ -736,14 +746,8 @@ class TestNAVEdgeCases:
         assert asset_value.as_tuple().exponent <= -6
         assert isinstance(asset_value, Decimal)
 
-    def test_nav_negative_positions(self, user, broker, asset):
+    def test_nav_negative_positions(self, user, account, asset):
         """Test NAV calculation with short positions."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create short position
         Transactions.objects.create(
             investor=user,
@@ -754,8 +758,7 @@ class TestNAVEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("-100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create current price (higher for short loss)

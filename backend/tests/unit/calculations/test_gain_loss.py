@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import FX, Accounts, Prices, Transactions
+from common.models import FX, Prices, Transactions
 
 
 @pytest.mark.nav
@@ -50,51 +50,15 @@ class TestRealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        transactions = asset.transactions.filter(
-            date__gte=datetime(2023, 1, 15, 12, 0, 0),
-            date__lte=datetime(2023, 6, 15, 14, 0, 0),
-        ).order_by("date")
-        print(f"\nTransactions: {transactions}")
-
-        buy_dt = datetime(2023, 1, 15, 12, 0, 0)
-        sell_dt = datetime(2023, 6, 15, 14, 0, 0)
-
-        # Fetch created objects
-        for t in Transactions.objects.order_by("date"):
-            print(
-                "DB stored date:",
-                repr(t.date),
-                "tzinfo:",
-                getattr(t.date, "tzinfo", None),
-                "micro:",
-                t.date.microsecond,
-                "timestamp:",
-                t.date.timestamp(),
-            )
-
-        # Show the queryset SQL (to see what value is passed to DB)
-        qs = asset.transactions.filter(date__gte=buy_dt, date__lte=sell_dt).order_by(
-            "date"
-        )
-        print("\nSQL of query:\n", qs.query)
-        print("\nRaw repr of the bound parameters (if available):")
-        # sometimes the query string contains placeholders only — but the SQL helps
-
         result = asset.realized_gain_loss(date(2023, 7, 16), investor=user)
 
         # Expected: (60 - 50) * 100 = 1000 profit
         expected_profit = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
         assert result["current_position"]["total"] == Decimal("0")  # closed position
-        assert result["all_time"]["total"] == expected_profit - Decimal("10")
+        assert result["all_time"]["total"] == expected_profit
 
-    def test_realized_gain_simple_loss(self, user, broker, asset):
+    def test_realized_gain_simple_loss(self, user, account, asset):
         """Test realized gain calculation for simple loss sale."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -126,16 +90,10 @@ class TestRealizedGainLoss:
         # Expected: (40 - 50) * 100 = -1000 loss
         expected_loss = (Decimal("40.00") - Decimal("50.00")) * Decimal("100")
         assert result["current_position"]["total"] == Decimal("0")  # closed position
-        assert result["all_time"]["total"] == expected_loss - Decimal("10")
+        assert result["all_time"]["total"] == expected_loss
 
-    def test_realized_gain_partial_sale(self, user, broker, asset):
+    def test_realized_gain_partial_sale(self, user, account, asset):
         """Test realized gain calculation for partial sale."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create initial purchase
         Transactions.objects.create(
             investor=user,
@@ -181,18 +139,12 @@ class TestRealizedGainLoss:
         # Realized gain: (60 - 51.666...) * 30 = 250
         buy_in_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
         expected_gain = (Decimal("60.00") - buy_in_price) * Decimal("30")
-        assert abs(
-            result["current_position"]["total"] - (expected_gain - Decimal("3"))
-        ) < Decimal("0.01")
-
-    def test_realized_gain_multiple_partial_sales(self, user, broker, asset):
-        """Test realized gain calculation with multiple partial sales."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
+        assert abs(result["current_position"]["total"] - expected_gain) < Decimal(
+            "0.01"
         )
 
+    def test_realized_gain_multiple_partial_sales(self, user, account, asset):
+        """Test realized gain calculation with multiple partial sales."""
         # Create initial purchase
         Transactions.objects.create(
             investor=user,
@@ -236,16 +188,13 @@ class TestRealizedGainLoss:
 
         # Should calculate realized gain for both sales
         assert result["current_position"]["total"] > 0  # Should be profitable
-        assert result["all_time"] > 0
+        expected_gain = (Decimal("55.00") - Decimal("50.00")) * Decimal("50") + (
+            Decimal("60.00") - Decimal("50.00")
+        ) * Decimal("30")
+        assert result["all_time"]["total"] == expected_gain
 
-    def test_realized_gain_with_dividends(self, user, broker, asset):
+    def test_realized_gain_with_dividends(self, user, account, asset):
         """Test that dividends don't affect realized gain calculations."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -291,16 +240,10 @@ class TestRealizedGainLoss:
         # Dividend should not affect realized gain calculation
         expected_gain = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
         assert result["current_position"]["total"] == Decimal("0")  # closed position
-        assert result["all_time"]["total"] == expected_gain - Decimal("10")
+        assert result["all_time"]["total"] == expected_gain
 
-    def test_realized_gain_no_sales(self, user, broker, asset):
+    def test_realized_gain_no_sales(self, user, account, asset):
         """Test realized gain calculation when no sales have occurred."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase only
         Transactions.objects.create(
             investor=user,
@@ -325,14 +268,8 @@ class TestRealizedGainLoss:
 class TestUnrealizedGainLoss:
     """Test unrealized gain/loss calculation functionality."""
 
-    def test_unrealized_gain_profit(self, user, broker, asset, price_history):
+    def test_unrealized_gain_profit(self, user, account, asset, price_history):
         """Test unrealized gain calculation for profitable position."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -343,24 +280,23 @@ class TestUnrealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
-        # Current price should be higher than purchase price (from price_history)
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        # Create price
+        Prices.objects.update_or_create(
+            date=date(2024, 6, 15),
+            security=asset,
+            price=Decimal("65.00"),
+        )
 
-        assert result > 0  # Should be unrealized profit
-        assert isinstance(result, Decimal)
+        result = asset.unrealized_gain_loss(date(2024, 6, 15), investor=user)
 
-    def test_unrealized_gain_loss(self, user, broker, asset):
+        expected_gain = (Decimal("65.00") - Decimal("50.00")) * Decimal("100")
+        assert result["total"] == expected_gain
+
+    def test_unrealized_gain_loss(self, user, account, asset):
         """Test unrealized gain calculation for loss position."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -371,29 +307,24 @@ class TestUnrealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create current lower price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("40.00")
+        Prices.objects.update_or_create(
+            date=date(2023, 6, 15),
+            security=asset,
+            price=Decimal("35.00"),
         )
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
-        # Expected: (40 - 50) * 100 = -1000 loss
-        expected_loss = (Decimal("40.00") - Decimal("50.00")) * Decimal("100")
-        assert result == expected_loss
+        # Expected: (35 - 50) * 100 = -1500 loss
+        expected_loss = (Decimal("35.00") - Decimal("50.00")) * Decimal("100")
+        assert result["total"] == expected_loss
 
-    def test_unrealized_gain_multiple_purchases(self, user, broker, asset):
+    def test_unrealized_gain_multiple_purchases(self, user, account, asset):
         """Test unrealized gain calculation with multiple purchases."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchases at different prices
         Transactions.objects.create(
             investor=user,
@@ -404,8 +335,7 @@ class TestUnrealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         Transactions.objects.create(
@@ -417,8 +347,7 @@ class TestUnrealizedGainLoss:
             date=date(2023, 2, 15),
             quantity=Decimal("50"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("-2750.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         # Create current price
@@ -432,16 +361,10 @@ class TestUnrealizedGainLoss:
         # Unrealized gain: (60 - 51.666...) * 150 = 1250
         buy_in_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
         expected_gain = (Decimal("60.00") - buy_in_price) * Decimal("150")
-        assert abs(result - expected_gain) < Decimal("0.01")
+        assert abs(result["total"] - expected_gain) < Decimal("0.01")
 
-    def test_unrealized_gain_after_partial_sale(self, user, broker, asset):
+    def test_unrealized_gain_after_partial_sale(self, user, account, asset):
         """Test unrealized gain calculation after partial sale."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create initial purchase
         Transactions.objects.create(
             investor=user,
@@ -452,8 +375,7 @@ class TestUnrealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create partial sale
@@ -466,8 +388,7 @@ class TestUnrealizedGainLoss:
             date=date(2023, 3, 15),
             quantity=Decimal("-30"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("1650.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         # Create current price
@@ -481,16 +402,10 @@ class TestUnrealizedGainLoss:
         # Buy-in price should still be 50.00
         # Unrealized gain: (60 - 50) * 70 = 700
         expected_gain = (Decimal("60.00") - Decimal("50.00")) * Decimal("70")
-        assert result == expected_gain
+        assert result["total"] == expected_gain
 
-    def test_unrealized_gain_zero_position(self, user, broker, asset):
+    def test_unrealized_gain_zero_position(self, user, account, asset):
         """Test unrealized gain calculation when position is zero."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -501,8 +416,7 @@ class TestUnrealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create full sale
@@ -515,22 +429,15 @@ class TestUnrealizedGainLoss:
             date=date(2023, 3, 15),
             quantity=Decimal("-100"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("5500.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
-        assert result == 0
+        assert result["total"] == 0
 
-    def test_unrealized_gain_no_price_data(self, user, broker, asset):
+    def test_unrealized_gain_no_price_data(self, user, account, asset):
         """Test unrealized gain calculation when no price data available."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase
         Transactions.objects.create(
             investor=user,
@@ -541,13 +448,12 @@ class TestUnrealizedGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
-        assert result == 0  # Should return 0 when no price data
+        assert result["total"] == 0  # Should return 0 when no price data
 
 
 @pytest.mark.nav
@@ -556,15 +462,9 @@ class TestMultiCurrencyGainLoss:
     """Test gain/loss calculations with multi-currency positions."""
 
     def test_realized_gain_currency_conversion(
-        self, multi_currency_user, broker, asset_eur, fx_rates_multi_currency
+        self, multi_currency_user, account, asset_eur, fx_rates_multi_currency
     ):
         """Test realized gain calculation with currency conversion."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create EUR purchase
         Transactions.objects.create(
             investor=multi_currency_user,
@@ -575,8 +475,7 @@ class TestMultiCurrencyGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("40.00"),
-            cash_flow=Decimal("-4000.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         # Create EUR sale
@@ -589,42 +488,33 @@ class TestMultiCurrencyGainLoss:
             date=date(2023, 6, 15),
             quantity=Decimal("-100"),
             price=Decimal("45.00"),
-            cash_flow=Decimal("4500.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         # Create price data
         Prices.objects.create(
-            date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00")
+            date=date(2024, 6, 15), security=asset_eur, price=Decimal("45.00")
         )
 
         # Calculate realized gain in EUR (local currency)
         result_eur = asset_eur.realized_gain_loss(
-            date(2023, 6, 15), currency="EUR", investor=multi_currency_user
+            date(2024, 6, 15), currency="EUR", investor=multi_currency_user
         )
-        expected_eur = (Decimal("45.00") - Decimal("40.00")) * Decimal("100") - Decimal(
-            "8"
-        )
-        assert abs(result_eur["current_position"] - expected_eur) < Decimal("0.01")
+        expected_eur = (Decimal("45.00") - Decimal("40.00")) * Decimal("100")
+        assert abs(result_eur["all_time"]["total"] - expected_eur) < Decimal("0.01")
 
         # Calculate realized gain in USD (converted)
         result_usd = asset_eur.realized_gain_loss(
-            date(2023, 6, 15), currency="USD", investor=multi_currency_user
+            date(2024, 6, 15), currency="USD", investor=multi_currency_user
         )
         assert (
-            result_usd["current_position"] > result_eur["current_position"]
+            result_usd["all_time"]["total"] > result_eur["all_time"]["total"]
         )  # USD conversion should increase value
 
     def test_unrealized_gain_currency_conversion(
-        self, multi_currency_user, broker, asset_eur, fx_rates_multi_currency
+        self, multi_currency_user, account, asset_eur, fx_rates_multi_currency
     ):
         """Test unrealized gain calculation with currency conversion."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create EUR purchase
         Transactions.objects.create(
             investor=multi_currency_user,
@@ -635,8 +525,7 @@ class TestMultiCurrencyGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("40.00"),
-            cash_flow=Decimal("-4000.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         # Create current EUR price
@@ -649,24 +538,20 @@ class TestMultiCurrencyGainLoss:
             date(2023, 6, 15), currency="EUR", investor=multi_currency_user
         )
         expected_eur = (Decimal("45.00") - Decimal("40.00")) * Decimal("100")
-        assert result_eur == expected_eur
+        assert result_eur["total"] == expected_eur
 
         # Calculate unrealized gain in USD
         result_usd = asset_eur.unrealized_gain_loss(
             date(2023, 6, 15), currency="USD", investor=multi_currency_user
         )
-        assert result_usd > result_eur  # USD conversion should increase value
+        assert (
+            result_usd["total"] > result_eur["total"]
+        )  # USD conversion should increase value
 
     def test_fx_effect_on_gain_loss(
-        self, multi_currency_user, broker, asset_eur, fx_rates_multi_currency
+        self, multi_currency_user, account, asset_eur, fx_rates_multi_currency
     ):
         """Test FX effect on gain/loss calculations."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create EUR purchase
         Transactions.objects.create(
             investor=multi_currency_user,
@@ -677,8 +562,7 @@ class TestMultiCurrencyGainLoss:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("40.00"),
-            cash_flow=Decimal("-4000.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         # Create current EUR price
@@ -695,8 +579,8 @@ class TestMultiCurrencyGainLoss:
         )
 
         # FX effect should be the difference
-        fx_effect = gain_usd - (
-            gain_eur * FX.get_rate("EUR", "USD", date(2023, 6, 15))["FX"]
+        fx_effect = gain_usd["total"] - (
+            gain_eur["total"] * FX.get_rate("EUR", "USD", date(2023, 6, 15))["FX"]
         )
 
         # FX effect should be minimal due to similar conversion rates
@@ -708,14 +592,8 @@ class TestMultiCurrencyGainLoss:
 class TestGainLossEdgeCases:
     """Test edge cases and complex scenarios in gain/loss calculations."""
 
-    def test_gain_loss_short_position(self, user, broker, asset):
+    def test_gain_loss_short_position(self, user, account, asset):
         """Test gain/loss calculation for short positions."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create short sale
         Transactions.objects.create(
             investor=user,
@@ -726,8 +604,7 @@ class TestGainLossEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("-100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create current price (higher than short price - loss for short)
@@ -739,16 +616,10 @@ class TestGainLossEdgeCases:
 
         # For short position: (50 - 60) * 100 = -1000 (loss)
         expected_loss = (Decimal("50.00") - Decimal("60.00")) * Decimal("100")
-        assert result == expected_loss
+        assert result["total"] == expected_loss
 
-    def test_gain_loss_very_small_amounts(self, user, broker, asset):
+    def test_gain_loss_very_small_amounts(self, user, account, asset):
         """Test gain/loss calculation with very small amounts."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create small purchase
         Transactions.objects.create(
             investor=user,
@@ -759,8 +630,7 @@ class TestGainLossEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("0.001"),
             price=Decimal("1000.00"),
-            cash_flow=Decimal("-1.00"),
-            commission=Decimal("0.01"),
+            commission=Decimal("-0.01"),
         )
 
         # Create current price
@@ -772,16 +642,10 @@ class TestGainLossEdgeCases:
 
         # Expected: (1100 - 1000) * 0.001 = 0.1
         expected_gain = (Decimal("1100.00") - Decimal("1000.00")) * Decimal("0.001")
-        assert result == expected_gain
+        assert result["total"] == expected_gain
 
-    def test_gain_loss_high_precision(self, user, broker, asset):
+    def test_gain_loss_high_precision(self, user, account, asset):
         """Test gain/loss calculation with high precision requirements."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase with high precision
         Transactions.objects.create(
             investor=user,
@@ -792,31 +656,25 @@ class TestGainLossEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("1.234567"),
             price=Decimal("123.456789"),
-            cash_flow=Decimal("-152.41579"),
-            commission=Decimal("0.15"),
+            commission=Decimal("-0.15"),
         )
 
         # Create current price
         Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("125.678901")
+            date=date(2024, 6, 15), security=asset, price=Decimal("125.678901")
         )
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = asset.unrealized_gain_loss(date(2024, 6, 15), investor=user)
 
         # Expected: (125.678901 - 123.456789) * 1.234567
-        expected_gain = (Decimal("125.678901") - Decimal("123.456789")) * Decimal(
-            "1.234567"
+        # rounded to 2 decimal places as per the method definition
+        expected_gain = round(
+            (Decimal("125.678901") - Decimal("123.456789")) * Decimal("1.234567"), 2
         )
-        assert abs(result - expected_gain) < Decimal("0.000001")
+        assert result["total"] == expected_gain
 
-    def test_gain_loss_commission_impact(self, user, broker, asset):
+    def test_gain_loss_commission_impact(self, user, account, asset):
         """Test that commission doesn't affect unrealized gain calculations."""
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         # Create purchase with high commission
         Transactions.objects.create(
             investor=user,
@@ -827,8 +685,7 @@ class TestGainLossEdgeCases:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5100.00"),  # Includes $100 commission
-            commission=Decimal("100.00"),
+            commission=Decimal("-100.00"),
         )
 
         # Create current price
@@ -840,48 +697,34 @@ class TestGainLossEdgeCases:
 
         # Commission should not affect unrealized gain calculation
         expected_gain = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
-        assert result == expected_gain
+        assert result["total"] == expected_gain
 
-    def test_gain_loss_broker_filtering(self, user, broker, broker_uk, asset):
+    def test_gain_loss_broker_filtering(self, user, account, account_uk, asset):
         """Test gain/loss calculation with broker filtering."""
-        # Create account for first broker
-        account1 = Accounts.objects.create(
-            broker=broker,
-            name="Test Account 1",
-        )
-
-        # Create account for second broker
-        account2 = Accounts.objects.create(
-            broker=broker_uk,
-            name="Test Account 2",
-        )
-
-        # Create transaction with first broker
+        # Create transaction with first account
         Transactions.objects.create(
             investor=user,
-            account=account1,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
-        # Create transaction with second broker
+        # Create transaction with second account
         Transactions.objects.create(
             investor=user,
-            account=account2,
+            account=account_uk,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 2, 15),
             quantity=Decimal("100"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("-6000.00"),
-            commission=Decimal("6.00"),
+            commission=Decimal("-6.00"),
         )
 
         # Create current price
@@ -889,24 +732,24 @@ class TestGainLossEdgeCases:
             date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
         )
 
-        # Calculate for first broker only
-        result_broker1 = asset.unrealized_gain_loss(
-            date(2023, 6, 15), broker_id_list=[broker.id], investor=user
+        # Calculate for first account only
+        result_account1 = asset.unrealized_gain_loss(
+            date(2023, 6, 15), account_ids=[account.id], investor=user
         )
-        expected_broker1 = (Decimal("55.00") - Decimal("50.00")) * Decimal("100")
-        assert result_broker1 == expected_broker1
+        expected_account1 = (Decimal("55.00") - Decimal("50.00")) * Decimal("100")
+        assert result_account1["total"] == expected_account1
 
-        # Calculate for second broker only
-        result_broker2 = asset.unrealized_gain_loss(
-            date(2023, 6, 15), broker_id_list=[broker_uk.id], investor=user
+        # Calculate for second account only
+        result_account2 = asset.unrealized_gain_loss(
+            date(2023, 6, 15), account_ids=[account_uk.id], investor=user
         )
-        expected_broker2 = (Decimal("55.00") - Decimal("60.00")) * Decimal("100")
-        assert result_broker2 == expected_broker2
+        expected_account2 = (Decimal("55.00") - Decimal("60.00")) * Decimal("100")
+        assert result_account2["total"] == expected_account2
 
-        # Calculate for both brokers
-        result_both = asset.unrealized_gain_loss(
-            date(2023, 6, 15), broker_id_list=[broker.id, broker_uk.id], investor=user
+        # Calculate for both accounts
+        result_both_accounts = asset.unrealized_gain_loss(
+            date(2023, 6, 15), account_ids=[account.id, account_uk.id], investor=user
         )
         # Average buy-in price: (5000 + 6000) / 200 = 55
         # No gain/loss as current price equals average buy-in price
-        assert result_both == 0
+        assert result_both_accounts["total"] == Decimal("0")

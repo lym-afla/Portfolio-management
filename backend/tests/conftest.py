@@ -110,6 +110,24 @@ def account(broker):
     )
 
 
+@pytest.fixture
+def account_uk(broker_uk):
+    """Create a UK-based account."""
+    return Accounts.objects.create(
+        broker=broker_uk,
+        name="UK Account",
+    )
+
+
+@pytest.fixture
+def account_us(broker):
+    """Create a US-based account."""
+    return Accounts.objects.create(
+        broker=broker,
+        name="US Account",
+    )
+
+
 # ========== ASSET FIXTURES (Fixed - removed broker relationships) ==========
 
 
@@ -205,8 +223,7 @@ def sample_transactions(user, broker, asset):
         date=date(2023, 1, 15),
         quantity=Decimal("100"),
         price=Decimal("50.00"),
-        cash_flow=Decimal("-5000.00"),
-        commission=Decimal("5.00"),
+        commission=Decimal("-5.00"),
     )
     transactions.append(tx1)
 
@@ -220,8 +237,7 @@ def sample_transactions(user, broker, asset):
         date=date(2023, 3, 20),
         quantity=Decimal("50"),
         price=Decimal("55.00"),
-        cash_flow=Decimal("-2750.00"),
-        commission=Decimal("3.00"),
+        commission=Decimal("-3.00"),
     )
     transactions.append(tx2)
 
@@ -235,8 +251,7 @@ def sample_transactions(user, broker, asset):
         date=date(2023, 6, 10),
         quantity=Decimal("-30"),
         price=Decimal("60.00"),
-        cash_flow=Decimal("1800.00"),
-        commission=Decimal("3.00"),
+        commission=Decimal("-3.00"),
     )
     transactions.append(tx3)
 

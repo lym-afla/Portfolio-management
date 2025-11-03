@@ -328,15 +328,9 @@ class TestBuyInPriceCalculation:
         assert buy_in_price_usd > Decimal("40.00")  # EUR converted to USD
         assert buy_in_price_usd < Decimal("50.00")  # Reasonable conversion rate
 
-    def test_buy_in_price_with_start_date(self, user, broker, asset):
+    def test_buy_in_price_with_start_date(self, user, account, asset):
         """Test buy-in price calculation with start date constraint."""
         # Create old transaction
-        # Create account
-        account = Accounts.objects.create(
-            broker=broker,
-            name="Test Account",
-        )
-
         Transactions.objects.create(
             investor=user,
             account=account,
