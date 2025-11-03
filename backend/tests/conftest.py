@@ -352,7 +352,9 @@ def fx_rates_multi_currency(multi_currency_user):
         fx = FX.objects.create(
             date=current_date,
             USDEUR=Decimal("1.1")
-            + (Decimal("0.02") * (i % 30) / 30),  # 1.1 USD per 1 EUR
+            + (
+                Decimal("0.10") * (i % 30) / 30
+            ),  # 1.1 USD per 1 EUR (higher volatility)
             USDGBP=Decimal("1.22")
             + (Decimal("0.03") * (i % 30) / 30),  # 1.22 USD per 1 GBP
             CHFGBP=Decimal("1.14")

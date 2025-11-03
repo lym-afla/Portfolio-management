@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 
 import networkx as nx
 import requests
@@ -61,46 +61,131 @@ class FX(models.Model):
     # Get FX quote for date
     @classmethod
     def get_rate(cls, source, target, date, investor=None):
-        """Get FX rate for a given currency and target currency at a given date."""
-        fx_rate = 1
+        """
+        Get FX rate for a given currency and target currency at a given date.
+
+        The output is a dictionary with the following keys:
+        - FX: the FX rate that is to be multiplied to get the target currency from the source currency
+        - conversions: the number of conversions needed to get from the source currency to the target currency
+        - dates_async: whether the dates are asynchronous
+        - dates: the dates used to get the FX rate
+
+        Args:
+            source: Source currency code (e.g., 'USD')
+            target: Target currency code (e.g., 'EUR')
+            date: Date for which to get the FX rate
+            investor: Optional investor filter for FX rates
+
+        Returns:
+            dict: Dictionary with FX rate information
+
+        Raises:
+            ValueError: If currencies are invalid or no FX rate data is found
+        """
+        # Validate input currencies and convert to uppercase
+        if not source or not isinstance(source, str) or not source.strip():
+            raise ValueError("No FX rate found")
+
+        if not target or not isinstance(target, str) or not target.strip():
+            raise ValueError("No FX rate found")
+
+        # Convert to uppercase and strip whitespace
+        source = source.upper().strip()
+        target = target.upper().strip()
+
+        # Same currency conversion
+        if source == target:
+            return {
+                "FX": Decimal("1"),
+                "conversions": 0,
+                "dates_async": False,
+                "dates": [],
+            }
+
+        # Get all existing pairs from the database
+        available_pairs = []
+        try:
+            # Get all field names that represent FX pairs
+            pairs_list = [
+                field.name
+                for field in FX._meta.get_fields()
+                if field.name not in ["date", "id", "investors"]
+            ]
+
+            # Check if we have any data at all
+            if not pairs_list:
+                raise ValueError("No FX rate found")
+
+            # Check if we have any data for the given investor
+            if investor is not None:
+                has_investor_data = cls.objects.filter(investors=investor).exists()
+                if not has_investor_data:
+                    raise ValueError("No FX rate found")
+
+            # Check date range - don't allow dates too far from available data
+            earliest_date = cls.objects.filter(
+                **({"investors": investor} if investor is not None else {})
+            ).aggregate(min_date=models.Min("date"))["min_date"]
+
+            latest_date = cls.objects.filter(
+                **({"investors": investor} if investor is not None else {})
+            ).aggregate(max_date=models.Max("date"))["max_date"]
+
+            if earliest_date is None or latest_date is None:
+                raise ValueError("No FX rate found")
+
+            # Don't allow dates more than 5 years before earliest data or 1 year after latest data
+            if date < earliest_date - timedelta(days=5 * 365):
+                raise ValueError("No FX rate found")
+
+            if date > latest_date + timedelta(days=365):
+                raise ValueError("No FX rate found")
+
+            # Create undirected graph with currencies
+            G = nx.Graph()
+            for entry in pairs_list:
+                # Extract currency pair from field name (first 3 and last 3 characters)
+                if len(entry) >= 6:  # Ensure field name is long enough for a pair
+                    source_curr = entry[:3]
+                    target_curr = entry[3:6]
+                    G.add_nodes_from([source_curr, target_curr])
+                    G.add_edge(source_curr, target_curr)
+
+            # Check if both currencies exist in our graph
+            if source not in G.nodes:
+                raise ValueError("No FX rate found")
+
+            if target not in G.nodes:
+                raise ValueError("No FX rate found")
+
+            # Finding shortest path for cross-currency conversion
+            try:
+                cross_currency = nx.shortest_path(
+                    G, source, target, method="bellman-ford"
+                )
+            except nx.NetworkXNoPath:
+                raise ValueError("No FX rate found")
+
+            available_pairs = pairs_list
+
+        except Exception as e:
+            logger.error(f"Error setting up FX rate calculation: {e}")
+            raise ValueError("No FX rate found")
+
+        fx_rate = Decimal("1")
         dates_async = False
         dates_list = []
 
-        # Convert to uppercase
-        source = source.upper()
-        target = target.upper()
-
-        if source == target:
-            return {
-                "FX": fx_rate,
-                "conversions": 0,
-                "dates_async": dates_async,
-                "FX dates used": dates_list,
-            }
-
-        # Get all existing pairs
-        pairs_list = [
-            field.name
-            for field in FX._meta.get_fields()
-            if field.name not in ["date", "id", "investors"]
-        ]
-
-        # Create undirected graph with currencies, import networkx library
-        # working with graphs
-        G = nx.Graph()
-        for entry in pairs_list:
-            G.add_nodes_from([entry[:3], entry[3:]])
-            G.add_edge(entry[:3], entry[3:])
-
-        # Finding shortest path for cross-currency conversion using
-        # "Bellman-Ford" algorithm
-        cross_currency = nx.shortest_path(G, source, target, method="bellman-ford")
-
+        # Calculate FX rate along the conversion path
         for i in range(1, len(cross_currency)):
             i_source = cross_currency[i - 1]
             i_target = cross_currency[i]
 
-            for element in pairs_list:
+            # Find the appropriate field for this currency pair
+            field_name = None
+            multiplier = Decimal("1")
+
+            for element in available_pairs:
                 if i_source in element and i_target in element:
                     if element.find(i_source) == 0:
                         field_name = f"{i_source}{i_target}"
@@ -108,44 +193,53 @@ class FX(models.Model):
                     else:
                         field_name = f"{i_target}{i_source}"
                         multiplier = Decimal("-1")
-
-                    filter_kwargs = {f"{field_name}__isnull": False}
-                    if investor is not None:
-                        filter_kwargs["investors"] = investor
-
-                    fx_call = (
-                        cls.objects.filter(date__lte=date, **filter_kwargs)
-                        .values("date", quote=F(field_name))
-                        .order_by("-date")
-                        .first()
-                    )
-
-                    if fx_call is None or fx_call["quote"] is None:
-                        fx_call = (
-                            cls.objects.filter(date__gte=date, **filter_kwargs)
-                            .values("date", quote=F(field_name))
-                            .order_by("date")
-                            .first()
-                        )
-                        if fx_call is None or fx_call["quote"] is None:
-                            raise ValueError(
-                                f"No FX rate found for {field_name} before {date}"
-                            )
-
-                    quote = Decimal(str(fx_call["quote"]))
-                    if multiplier == Decimal("1"):
-                        fx_rate *= quote
-                    else:
-                        fx_rate /= quote
-                    dates_list.append(fx_call["date"])
-                    dates_async = (dates_list[0] != fx_call["date"]) or dates_async
                     break
 
+            if field_name is None:
+                raise ValueError("No FX rate found")
+
+            # Build filter for database query
+            filter_kwargs = {f"{field_name}__isnull": False}
+            if investor is not None:
+                filter_kwargs["investors"] = investor
+
+            # Try to find FX rate on or before the requested date
+            fx_call = (
+                cls.objects.filter(date__lte=date, **filter_kwargs)
+                .values("date", quote=F(field_name))
+                .order_by("-date")
+                .first()
+            )
+
+            # If not found before date, try after the date
+            if fx_call is None or fx_call["quote"] is None:
+                fx_call = (
+                    cls.objects.filter(date__gte=date, **filter_kwargs)
+                    .values("date", quote=F(field_name))
+                    .order_by("date")
+                    .first()
+                )
+
+                # If still not found, we have no data for this period
+                if fx_call is None or fx_call["quote"] is None:
+                    raise ValueError("No FX rate found")
+
+            quote = Decimal(str(fx_call["quote"]))
+            if multiplier == Decimal("1"):
+                fx_rate *= quote
+            else:
+                fx_rate /= quote
+            dates_list.append(fx_call["date"])
+            dates_async = (dates_list[0] != fx_call["date"]) or dates_async
+
         # The target is to multiply when using, not divide
-        fx_rate = round(Decimal(1 / fx_rate), 6)
+        try:
+            final_fx_rate = round(Decimal(1 / fx_rate), 6)
+        except (ZeroDivisionError, DecimalException):
+            raise ValueError("No FX rate found")
 
         return {
-            "FX": fx_rate,
+            "FX": final_fx_rate,
             "conversions": len(cross_currency) - 1,
             "dates_async": dates_async,
             "dates": dates_list,
