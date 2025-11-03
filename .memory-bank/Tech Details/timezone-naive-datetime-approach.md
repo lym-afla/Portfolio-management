@@ -176,8 +176,9 @@ If you're working with code that still uses timezone-aware objects:
 ## Compatibility
 
 ### Django Settings
-- Application works with `USE_TZ = True` or `USE_TZ = False`
-- Custom field classes ensure consistent behavior regardless of Django timezone settings
+- Application requires `USE_TZ = False` for proper timezone-naive datetime handling
+- Custom field classes work with `USE_TZ = False` to ensure consistent behavior
+- Changed from `USE_TZ = True` to `USE_TZ = False` to prevent Django from automatically adding timezone information
 
 ### Database Backend
 - Compatible with all supported Django database backends
