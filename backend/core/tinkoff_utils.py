@@ -328,19 +328,23 @@ async def fetch_and_cache_bond_coupon_schedule(
                 # Convert coupon type enum to user-friendly string
                 coupon_type_str = None
                 if hasattr(coupon, "coupon_type"):
-                    coupon_type_mapping = {
-                        0: "Unspecified",
-                        1: "Constant",
-                        2: "Floating",
-                        3: "Discount",
-                        4: "Mortgage",
-                        5: "Fixed",
-                        6: "Variable",
-                        7: "Other",
-                    }
-                    coupon_type_str = coupon_type_mapping.get(
-                        int(coupon.coupon_type), "Unknown"
-                    )
+                    # Handle both numeric and string coupon types
+                    if isinstance(coupon.coupon_type, str):
+                        coupon_type_str = coupon.coupon_type
+                    else:
+                        coupon_type_mapping = {
+                            0: "Unspecified",
+                            1: "Constant",
+                            2: "Floating",
+                            3: "Discount",
+                            4: "Mortgage",
+                            5: "Fixed",
+                            6: "Variable",
+                            7: "Other",
+                        }
+                        coupon_type_str = coupon_type_mapping.get(
+                            int(coupon.coupon_type), "Unknown"
+                        )
 
                 # Create or update coupon schedule entry using database_sync_to_async
                 await database_sync_to_async(

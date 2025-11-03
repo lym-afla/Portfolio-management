@@ -71,7 +71,7 @@ class CustomUser(AbstractUser):
 
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(
                         selected_account_type="all", selected_account_id__isnull=True
                     )

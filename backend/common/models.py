@@ -8,7 +8,7 @@ import networkx as nx
 import requests
 import yfinance as yf
 from django.db import models
-from django.db.models import F, Sum
+from django.db.models import F, Q, Sum
 
 from constants import (
     ACCOUNT_TYPE_ALL,
@@ -1155,35 +1155,32 @@ class Assets(models.Model):
 
         # For bonds: subtract ACI paid at acquisition
         # (negative ACI from Buy transactions)
-        # This nets the ACI paid when buying against the coupons received
         if self.is_bond:
-            aci_paid_transactions = self.transactions.filter(
-                type="Buy", aci__lt=0, date__lte=query_date, investor=investor
+            aci_transactions = self.transactions.filter(
+                ((Q(type="Buy") & Q(aci__lt=0)) | (Q(type="Sell") & Q(aci__gt=0))),
+                date__lte=query_date,
+                investor=investor,
             )
 
             if account_ids is not None:
-                aci_paid_transactions = aci_paid_transactions.filter(
-                    account_id__in=account_ids
-                )
+                aci_transactions = aci_transactions.filter(account_id__in=account_ids)
 
             if start_date is not None:
-                aci_paid_transactions = aci_paid_transactions.filter(
-                    date__gte=query_start_date
-                )
+                aci_transactions = aci_transactions.filter(date__gte=query_start_date)
 
-            # Subtract ACI paid (it's negative, so this reduces distributions)
-            if aci_paid_transactions:
+            # Handle ACI paid and received
+            if aci_transactions:
                 if currency is None:
                     total_distributions += (
-                        aci_paid_transactions.aggregate(total=Sum("aci"))["total"] or 0
+                        aci_transactions.aggregate(total=Sum("aci"))["total"] or 0
                     )
                 else:
-                    for transaction in aci_paid_transactions:
+                    for transaction in aci_transactions:
                         fx_rate = FX.get_rate(
                             transaction.currency, currency, transaction.date
                         )["FX"]
                         if fx_rate:
-                            total_distributions += transaction.aci * fx_rate
+                            total_distributions += transaction.aci * Decimal(fx_rate)
 
         # Get tax transactions (typically negative, reducing net distributions)
         tax_transactions = self.transactions.filter(
@@ -1726,7 +1723,7 @@ class AnnualPerformance(models.Model):
                 name="unique_annual_performance",
             ),
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(account_type=ACCOUNT_TYPE_ALL, account_id__isnull=True)
                     | ~models.Q(account_type=ACCOUNT_TYPE_ALL)
                     & models.Q(account_id__isnull=False)
@@ -2093,19 +2090,55 @@ class BondMetadata(InstrumentMetadata):
                 return None
 
             # Check if date is past bond maturity
-            if self.maturity_date and date >= self.maturity_date:
-                logger.debug(f"Bond {self.asset.name} has matured, no ACI")
-                return None
+            if self.maturity_date:
+                # Convert to date objects for comparison
+                if hasattr(self.maturity_date, "date"):
+                    maturity_date = self.maturity_date.date()
+                else:
+                    maturity_date = self.maturity_date
+
+                if hasattr(date, "date"):
+                    date_compare = date.date()
+                else:
+                    date_compare = date
+
+                if date_compare >= maturity_date:
+                    logger.debug(f"Bond {self.asset.name} has matured, no ACI")
+                    return None
 
             # Calculate days in period
             coupon_start = current_coupon.coupon_start_date
             coupon_end = current_coupon.coupon_end_date
 
+            # Validate that coupon dates exist
+            if not coupon_start or not coupon_end:
+                logger.error(
+                    f"Invalid coupon schedule for {self.asset.name}: "
+                    f"coupon_start={coupon_start}, coupon_end={coupon_end}"
+                )
+                return None
+
+            # Convert to date objects for comparison
+            if hasattr(coupon_start, "date"):
+                coupon_start_date = coupon_start.date()
+            else:
+                coupon_start_date = coupon_start
+
+            if hasattr(coupon_end, "date"):
+                coupon_end_date = coupon_end.date()
+            else:
+                coupon_end_date = coupon_end
+
+            if hasattr(date, "date"):
+                date_compare = date.date()
+            else:
+                date_compare = date
+
             # Days accrued: from start to current date
             # (inclusive of start, exclusive of end)
             # Standard day count convention: actual/actual for most bonds
-            days_accrued = (date - coupon_start).days
-            total_days = (coupon_end - coupon_start).days
+            days_accrued = (date_compare - coupon_start_date).days
+            total_days = (coupon_end_date - coupon_start_date).days
 
             # Don't allow negative days (if date is before coupon start)
             if days_accrued < 0:
@@ -2205,8 +2238,8 @@ class BondMetadata(InstrumentMetadata):
                 "aci_amount": round(aci_amount, 2),
                 "aci_days": days_accrued,
                 "total_days": total_days,
-                "coupon_start": coupon_start,
-                "coupon_end": coupon_end,
+                "coupon_start": coupon_start_date,
+                "coupon_end": coupon_end_date,
                 "next_payment": current_coupon.payment_date,
                 "currency": currency,
             }
@@ -2361,15 +2394,11 @@ class BondCouponSchedule(models.Model):
         Assets, on_delete=models.CASCADE, related_name="coupon_schedule"
     )
     coupon_number = models.IntegerField(help_text="Sequential coupon number")
-    coupon_start_date = TimezoneAwareDateField(
-        help_text="Start date of the coupon period"
-    )
-    coupon_end_date = TimezoneAwareDateField(
+    coupon_start_date = models.DateField(help_text="Start date of the coupon period")
+    coupon_end_date = models.DateField(
         help_text="End date of the coupon period (accrual cutoff)"
     )
-    payment_date = TimezoneAwareDateField(
-        help_text="Actual payment date for the coupon"
-    )
+    payment_date = models.DateField(help_text="Actual payment date for the coupon")
     coupon_amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,

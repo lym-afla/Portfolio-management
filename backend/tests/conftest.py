@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+import factory
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
@@ -10,6 +11,14 @@ from django.test import override_settings
 from common.models import FX, Assets, Brokers, FXTransaction, Prices, Transactions
 
 CustomUser = get_user_model()
+
+
+def pytest_configure():
+    """Configure global test settings before tests collect/run.
+
+    Set a single Faker locale to avoid provider locale probing and DEBUG logs.
+    """
+    factory.Faker._DEFAULT_LOCALE = "en_GB"
 
 
 @pytest.fixture(autouse=True)

@@ -35,8 +35,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
@@ -55,8 +54,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         Transactions.objects.create(
@@ -68,8 +66,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 2, 15),
             quantity=Decimal("50"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("-2750.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16))
@@ -90,8 +87,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         Transactions.objects.create(
@@ -103,8 +99,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 2, 15),
             quantity=Decimal("50"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("-2750.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         # Partial sale
@@ -117,8 +112,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 3, 15),
             quantity=Decimal("-30"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("1800.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16))
@@ -139,8 +133,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Full sale
@@ -153,8 +146,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 2, 15),
             quantity=Decimal("-100"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("5500.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Buy new position
@@ -167,8 +159,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 3, 15),
             quantity=Decimal("75"),
             price=Decimal("52.00"),
-            cash_flow=Decimal("-3900.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16))
@@ -188,8 +179,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("-100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
@@ -209,8 +199,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("-100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Cover part of short position
@@ -223,8 +212,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 2, 15),
             quantity=Decimal("50"),
             price=Decimal("45.00"),
-            cash_flow=Decimal("-2250.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16))
@@ -246,8 +234,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("40.00"),
-            cash_flow=Decimal("-4000.00"),
-            commission=Decimal("4.00"),
+            commission=Decimal("-4.00"),
         )
 
         # Calculate buy-in price in EUR (local currency)
@@ -273,8 +260,7 @@ class TestBuyInPriceCalculation:
             date=date(2022, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("30.00"),
-            cash_flow=Decimal("-3000.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
 
         # Create new transaction
@@ -287,8 +273,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Calculate with start date (should ignore old transaction)
@@ -322,8 +307,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create equal sale
@@ -336,8 +320,7 @@ class TestBuyInPriceCalculation:
             date=date(2023, 2, 15),
             quantity=Decimal("-100"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("5500.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16))

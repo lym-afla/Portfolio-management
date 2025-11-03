@@ -30,6 +30,8 @@ repos:
     rev: 6.1.0
     hooks:
       - id: flake8
+        # Exclude migrations explicitly (handles both / and \ path separators)
+        files: '^(?!.*(?:/migrations/)).*\.py$'
         args:
           - --max-line-length=88
           - --extend-ignore=E203,W503,E501,I
