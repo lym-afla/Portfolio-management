@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import FX, AnnualPerformance, Assets, Prices, Transactions
+from common.models import FX, Accounts, AnnualPerformance, Assets, Prices, Transactions
 
 
 @pytest.mark.nav
@@ -176,10 +176,16 @@ class TestNAVCalculation:
 
     def test_nav_with_commission_costs(self, user, broker, asset):
         """Test NAV calculation including commission costs."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create transactions with high commission
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -209,10 +215,16 @@ class TestNAVCalculation:
 
     def test_nav_zero_position(self, user, broker, asset):
         """Test NAV calculation when position is zero."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create and close position
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -225,7 +237,7 @@ class TestNAVCalculation:
 
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
@@ -255,10 +267,20 @@ class TestNAVAggregation:
 
     def test_portfolio_nav_multiple_brokers(self, user, broker, broker_uk, asset):
         """Test portfolio NAV across multiple brokers."""
+        # Create accounts
+        account_us = Accounts.objects.create(
+            broker=broker,
+            name="US Account",
+        )
+        account_uk = Accounts.objects.create(
+            broker=broker_uk,
+            name="UK Account",
+        )
+
         # Create transactions with different brokers
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account_us,
             security=asset,
             currency="USD",
             type="Buy",
@@ -271,7 +293,7 @@ class TestNAVAggregation:
 
         Transactions.objects.create(
             investor=user,
-            broker=broker_uk,
+            account=account_uk,
             security=asset,
             currency="USD",
             type="Buy",
@@ -303,6 +325,12 @@ class TestNAVAggregation:
 
     def test_sector_nav_allocation(self, user, broker):
         """Test NAV allocation by sector."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create assets from different sectors
         tech_asset = Assets.objects.create(
             type="Stock",
@@ -312,7 +340,6 @@ class TestNAVAggregation:
             exposure="Equity",
         )
         tech_asset.investors.add(user)
-        tech_asset.brokers.add(broker)
 
         finance_asset = Assets.objects.create(
             type="Stock",
@@ -322,12 +349,11 @@ class TestNAVAggregation:
             exposure="Equity",
         )
         finance_asset.investors.add(user)
-        finance_asset.brokers.add(broker)
 
         # Create transactions
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=tech_asset,
             currency="USD",
             type="Buy",
@@ -340,7 +366,7 @@ class TestNAVAggregation:
 
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=finance_asset,
             currency="USD",
             type="Buy",
@@ -378,10 +404,16 @@ class TestNAVAggregation:
         """Test NAV allocation by currency."""
         valuation_date = date(2023, 6, 15)
 
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Multi Currency Account",
+        )
+
         # Create transactions
         Transactions.objects.create(
             investor=multi_currency_user,
-            broker=broker,
+            account=account,
             security=asset_eur,
             currency="EUR",
             type="Buy",
@@ -394,7 +426,7 @@ class TestNAVAggregation:
 
         Transactions.objects.create(
             investor=multi_currency_user,
-            broker=broker,
+            account=account,
             security=asset_gbp,
             currency="GBP",
             type="Buy",
@@ -473,10 +505,16 @@ class TestNAVPerformance:
 
     def test_annual_performance_calculation(self, user, broker, asset):
         """Test annual performance calculation."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create transactions throughout the year
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -525,10 +563,16 @@ class TestNAVPerformance:
 
     def test_volatility_adjusted_nav(self, user, broker, asset):
         """Test NAV calculations with volatility considerations."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create position
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -583,10 +627,16 @@ class TestNAVEdgeCases:
 
     def test_nav_missing_price_data(self, user, broker, asset):
         """Test NAV calculation when price data is missing."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create transaction but no price data
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -611,10 +661,16 @@ class TestNAVEdgeCases:
 
     def test_nav_very_large_positions(self, user, broker, asset):
         """Test NAV calculation with very large positions."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create large transaction
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -639,10 +695,16 @@ class TestNAVEdgeCases:
 
     def test_nav_precision_requirements(self, user, broker, asset):
         """Test NAV calculation with high precision requirements."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create transaction with high precision
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -668,10 +730,16 @@ class TestNAVEdgeCases:
 
     def test_nav_negative_positions(self, user, broker, asset):
         """Test NAV calculation with short positions."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create short position
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
