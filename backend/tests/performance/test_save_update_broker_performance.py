@@ -114,7 +114,7 @@ def fx_rates(user):
     fx.investors.add(user)
     fx.USDEUR = Decimal("1.15")
     fx.USDGBP = Decimal("1.25")
-    fx.CHFGBP = Decimal("0.85")
+    fx.CHFGBP = Decimal("1.14")
     fx.RUBUSD = Decimal("65")
     fx.PLNUSD = Decimal("4")
     fx.save()

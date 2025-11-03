@@ -528,9 +528,16 @@ class Assets(models.Model):
         for transaction in transactions:
             new_position = position + transaction.quantity
             if position == 0 and new_position != 0:
-                if start_date is not None and transaction.date < start_date:
-                    position = new_position
-                    continue
+                if start_date is not None:
+                    # Convert transaction.date to date for comparison if it's a datetime
+                    transaction_date_for_comparison = (
+                        transaction.date.date()
+                        if hasattr(transaction.date, "date")
+                        else transaction.date
+                    )
+                    if transaction_date_for_comparison < start_date:
+                        position = new_position
+                        continue
                 entry_dates.append(transaction.date)
 
             position = new_position
@@ -613,7 +620,12 @@ class Assets(models.Model):
         entry_date = entry_dates[-1]
         logger.debug(f"Latest entry date: {entry_date}")
 
-        if start_date and start_date > entry_date:
+        # Convert entry_date to date object for comparison if it's a datetime
+        entry_date_for_comparison = (
+            entry_date.date() if hasattr(entry_date, "date") else entry_date
+        )
+
+        if start_date and start_date > entry_date_for_comparison:
             # Add artificial transaction at start_date
             logger.debug(
                 f"Start date {start_date} is after latest entry date {entry_date}"
@@ -640,7 +652,16 @@ class Assets(models.Model):
                     )
             entry_date = start_date
 
-        transactions = [t for t in transactions if t.date >= entry_date]
+        # Handle both date and datetime objects in comparison
+        filtered_transactions = []
+        for t in transactions:
+            t_date = t.date.date() if hasattr(t.date, "date") else t.date
+            entry_date_for_comparison = (
+                entry_date.date() if hasattr(entry_date, "date") else entry_date
+            )
+            if t_date >= entry_date_for_comparison:
+                filtered_transactions.append(t)
+        transactions = filtered_transactions
         logger.debug(f"Number of transactions after filtering: {len(transactions)}")
 
         if is_long_position is None and transactions:
@@ -978,9 +999,21 @@ class Assets(models.Model):
         adjusted_pairs = []
         for entry_date, exit_date in date_pairs:
             logger.debug(f"Unadjusted pair: {entry_date} to {exit_date}")
-            if start_date and start_date > entry_date and start_date <= exit_date:
+            # Convert dates to date objects for comparison if they're datetime
+            entry_date_for_comparison = (
+                entry_date.date() if hasattr(entry_date, "date") else entry_date
+            )
+            exit_date_for_comparison = (
+                exit_date.date() if hasattr(exit_date, "date") else exit_date
+            )
+
+            if (
+                start_date
+                and start_date > entry_date_for_comparison
+                and start_date <= exit_date_for_comparison
+            ):
                 entry_date = start_date
-            if exit_date > date and date >= start_date:
+            if exit_date_for_comparison > date and date >= start_date:
                 exit_date = date
             adjusted_pairs.append((entry_date, exit_date))
 

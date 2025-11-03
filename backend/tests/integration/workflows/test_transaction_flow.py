@@ -617,9 +617,9 @@ class TestMultiAssetWorkflows:
         fx_data = FX.objects.create(
             investor=user,
             date=date(2023, 6, 15),
-            USDEUR=Decimal("0.92"),
-            USDGBP=Decimal("0.82"),
-            EURGBP=Decimal("0.89"),
+            USDEUR=Decimal("1.09"),
+            USDGBP=Decimal("1.22"),
+            EURGBP=Decimal("1.14"),
         )
 
         # Multi-currency investments

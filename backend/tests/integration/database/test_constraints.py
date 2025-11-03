@@ -519,7 +519,7 @@ class TestFXModelConstraints:
 
         # Create first FX record
         fx1 = FX.objects.create(
-            investor=self.user, date=test_date, USDEUR=Decimal("0.92")
+            investor=self.user, date=test_date, USDEUR=Decimal("1.09")
         )
         assert fx1.date == test_date
 
@@ -529,7 +529,7 @@ class TestFXModelConstraints:
                 FX.objects.create(
                     investor=self.user,
                     date=test_date,  # Same date
-                    USDEUR=Decimal("0.93"),  # Different rate
+                    USDEUR=Decimal("1.10"),  # Different rate
                 )
 
     def test_fx_different_investors_same_date(self):
@@ -541,12 +541,12 @@ class TestFXModelConstraints:
 
         # Create FX records for different users on same date
         fx1 = FX.objects.create(
-            investor=self.user, date=test_date, USDEUR=Decimal("0.92")
+            investor=self.user, date=test_date, USDEUR=Decimal("1.09")
         )
         fx2 = FX.objects.create(
             investor=user2,
             date=test_date,  # Same date
-            USDEUR=Decimal("0.93"),  # Different rate
+            USDEUR=Decimal("1.10"),  # Different rate
         )
 
         assert fx1.id != fx2.id
@@ -558,12 +558,12 @@ class TestFXModelConstraints:
         fx = FX.objects.create(
             investor=self.user,
             date=date(2023, 6, 15),
-            USDEUR=Decimal("0.123456"),  # 6 decimal places
+            USDEUR=Decimal("1.123456"),  # 6 decimal places
         )
-        assert fx.USDEUR == Decimal("0.123456")
+        assert fx.USDEUR == Decimal("1.123456")
 
         # Test higher precision (should be rounded or handled)
-        high_precision = Decimal("0.123456789012345")
+        high_precision = Decimal("1.123456789012345")
         try:
             fx_high = FX.objects.create(
                 investor=self.user, date=date(2023, 6, 16), USDEUR=high_precision
@@ -580,7 +580,7 @@ class TestFXModelConstraints:
             fx = FX(
                 investor=self.user,
                 date=date(2023, 6, 15),
-                USDEUR=Decimal("-0.92"),  # Negative rate
+                USDEUR=Decimal("-1.09"),  # Negative rate
             )
             fx.clean()
 
@@ -589,7 +589,7 @@ class TestFXModelConstraints:
         test_date = date(2023, 6, 15)
 
         fx = FX.objects.create(
-            investor=self.user, date=test_date, USDEUR=Decimal("0.92")
+            investor=self.user, date=test_date, USDEUR=Decimal("1.09")
         )
 
         # Verify the composite primary key works

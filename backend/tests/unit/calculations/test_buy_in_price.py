@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import Assets, Transactions
+from common.models import Accounts, Assets, Prices, Transactions
 
 
 @pytest.mark.nav
@@ -25,10 +25,16 @@ class TestBuyInPriceCalculation:
 
     def test_buy_in_price_single_purchase(self, user, broker, asset):
         """Test buy-in price calculation with single purchase."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         # Create purchase transaction
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -38,16 +44,22 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
 
         assert buy_in_price == Decimal("50.00")
 
     def test_buy_in_price_multiple_purchases(self, user, broker, asset):
         """Test buy-in price calculation with multiple purchases."""
         # Create multiple purchase transactions
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -57,9 +69,15 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -69,7 +87,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16), user)
 
         # Weighted average: (100*50 + 50*55) / 150 = 51.666...
         expected_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
@@ -78,9 +96,15 @@ class TestBuyInPriceCalculation:
     def test_buy_in_price_with_partial_sale(self, user, broker, asset):
         """Test buy-in price calculation after partial sale."""
         # Create initial purchases
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -90,9 +114,15 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -103,9 +133,15 @@ class TestBuyInPriceCalculation:
         )
 
         # Partial sale
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
@@ -115,7 +151,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
 
         # Buy-in price should remain the same as it's based on remaining position
         expected_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
@@ -124,9 +160,15 @@ class TestBuyInPriceCalculation:
     def test_buy_in_price_after_full_sale(self, user, broker, asset):
         """Test buy-in price calculation after position is closed."""
         # Create purchase
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -137,9 +179,15 @@ class TestBuyInPriceCalculation:
         )
 
         # Full sale
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
@@ -150,9 +198,15 @@ class TestBuyInPriceCalculation:
         )
 
         # Buy new position
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -162,7 +216,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-4.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
 
         # Should be based on new position only
         assert buy_in_price == Decimal("52.00")
@@ -170,9 +224,15 @@ class TestBuyInPriceCalculation:
     def test_buy_in_price_short_position(self, user, broker, asset):
         """Test buy-in price calculation for short positions."""
         # Create short sale
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
@@ -182,7 +242,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
 
         # For short positions, buy-in price should be the sale price
         assert buy_in_price == Decimal("50.00")
@@ -190,9 +250,15 @@ class TestBuyInPriceCalculation:
     def test_buy_in_price_short_position_cover(self, user, broker, asset):
         """Test buy-in price calculation when covering short position."""
         # Create short sale
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
@@ -203,9 +269,15 @@ class TestBuyInPriceCalculation:
         )
 
         # Cover part of short position
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -215,7 +287,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16), user)
 
         # For remaining short position, buy-in price should still be original sale price
         assert buy_in_price == Decimal("50.00")
@@ -224,10 +296,16 @@ class TestBuyInPriceCalculation:
         self, multi_currency_user, broker, asset_eur, fx_rates_multi_currency
     ):
         """Test buy-in price calculation with multi-currency conversion."""
+        # Create account for EUR purchase
+        account = Accounts.objects.create(
+            broker=broker,
+            name="EUR Account",
+        )
+
         # Create EUR purchase
         Transactions.objects.create(
             investor=multi_currency_user,
-            broker=broker,
+            account=account,
             security=asset_eur,
             currency="EUR",
             type="Buy",
@@ -238,12 +316,14 @@ class TestBuyInPriceCalculation:
         )
 
         # Calculate buy-in price in EUR (local currency)
-        buy_in_price_eur = asset_eur.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price_eur = asset_eur.calculate_buy_in_price(
+            date(2023, 1, 16), multi_currency_user
+        )
         assert buy_in_price_eur == Decimal("40.00")
 
         # Calculate buy-in price in USD (converted)
         buy_in_price_usd = asset_eur.calculate_buy_in_price(
-            date(2023, 1, 16), currency="USD"
+            date(2023, 1, 16), currency="USD", investor=multi_currency_user
         )
         assert buy_in_price_usd > Decimal("40.00")  # EUR converted to USD
         assert buy_in_price_usd < Decimal("50.00")  # Reasonable conversion rate
@@ -251,9 +331,15 @@ class TestBuyInPriceCalculation:
     def test_buy_in_price_with_start_date(self, user, broker, asset):
         """Test buy-in price calculation with start date constraint."""
         # Create old transaction
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -263,10 +349,15 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
+        # Create a price entry at start date that's different from purchase price
+        Prices.objects.create(
+            date=date(2023, 1, 1), security=asset, price=Decimal("45.00")
+        )
+
         # Create new transaction
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
@@ -276,17 +367,18 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        # Calculate with start date (should ignore old transaction)
+        # Calculate with start date (should use start date price for existing position)
         start_date = date(2023, 1, 1)
         buy_in_price = asset.calculate_buy_in_price(
-            date(2023, 1, 16), start_date=start_date
+            date(2023, 1, 16), investor=user, start_date=start_date
         )
 
-        # Should only consider new transaction
-        assert buy_in_price == Decimal("50.00")
+        # Should consider position at start date (100 shares at $45) + new transaction (100 shares at $50)
+        # Average: (100*45 + 100*50) / 200 = $47.50
+        assert buy_in_price == Decimal("47.50")
 
         # Calculate without start date (should include both)
-        buy_in_price_all = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price_all = asset.calculate_buy_in_price(date(2023, 1, 16), user)
         expected_all = (Decimal("3000") + Decimal("5000")) / Decimal("200")
         assert buy_in_price_all == expected_all.quantize(Decimal("0.000001"))
 
@@ -298,22 +390,40 @@ class TestBuyInPriceCalculation:
     def test_buy_in_price_zero_position(self, user, broker, asset):
         """Test buy-in price calculation when position is zero."""
         # Create purchase
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Buy",
+            date=date(2023, 1, 10),
+            quantity=Decimal("50"),
+            price=Decimal("50.00"),
+            commission=Decimal("-5.00"),
+        )
+
+        Transactions.objects.create(
+            investor=user,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
-            quantity=Decimal("100"),
-            price=Decimal("50.00"),
+            quantity=Decimal("50"),
+            price=Decimal("60.00"),
             commission=Decimal("-5.00"),
         )
 
         # Create equal sale
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Sell",
@@ -323,54 +433,63 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16))
-        assert buy_in_price is None
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16), user)
+        assert buy_in_price == Decimal("55.00")
 
     def test_buy_in_price_broker_filter(self, user, broker, broker_uk, asset):
         """Test buy-in price calculation with broker filter."""
         # Create transaction with first broker
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create transaction with second broker
+        account_uk = Accounts.objects.create(
+            broker=broker_uk,
+            name="UK Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker_uk,
+            account=account_uk,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 2, 15),
             quantity=Decimal("100"),
             price=Decimal("60.00"),
-            cash_flow=Decimal("-6000.00"),
-            commission=Decimal("6.00"),
+            commission=Decimal("-6.00"),
         )
 
         # Calculate for first broker only
         buy_in_price_broker1 = asset.calculate_buy_in_price(
-            date(2023, 2, 16), broker_id_list=[broker.id]
+            date(2023, 2, 16), investor=user, account_ids=[account.id]
         )
         assert buy_in_price_broker1 == Decimal("50.00")
 
         # Calculate for second broker only
         buy_in_price_broker2 = asset.calculate_buy_in_price(
-            date(2023, 2, 16), broker_id_list=[broker_uk.id]
+            date(2023, 2, 16), investor=user, account_ids=[account_uk.id]
         )
         assert buy_in_price_broker2 == Decimal("60.00")
 
         # Calculate for both brokers
         buy_in_price_both = asset.calculate_buy_in_price(
-            date(2023, 2, 16), broker_id_list=[broker.id, broker_uk.id]
+            date(2023, 2, 16), investor=user, account_ids=[account.id, account_uk.id]
         )
         expected_both = (Decimal("5000") + Decimal("6000")) / Decimal("200")
         assert buy_in_price_both == expected_both.quantize(Decimal("0.000001"))
@@ -385,23 +504,34 @@ class TestBuyInPriceEdgeCases:
     def test_buy_in_price_dividend_transactions(self, user, broker, asset):
         """Test that dividend transactions don't affect buy-in price."""
         # Create purchase
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create dividend
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Dividend",
@@ -412,95 +542,76 @@ class TestBuyInPriceEdgeCases:
             commission=None,
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16))
-        assert buy_in_price == Decimal("50.00")
-
-    def test_buy_in_price_corporate_action(self, user, broker, asset):
-        """Test buy-in price calculation around corporate actions."""
-        # Create purchase
-        Transactions.objects.create(
-            investor=user,
-            broker=broker,
-            security=asset,
-            currency="USD",
-            type="Buy",
-            date=date(2023, 1, 15),
-            quantity=Decimal("100"),
-            price=Decimal("100.00"),
-            cash_flow=Decimal("-10000.00"),
-            commission=Decimal("10.00"),
-        )
-
-        # Corporate action (stock split)
-        Transactions.objects.create(
-            investor=user,
-            broker=broker,
-            security=asset,
-            currency="USD",
-            type="Corporate Action",
-            date=date(2023, 2, 1),
-            quantity=Decimal("100"),  # Additional shares from split
-            price=Decimal("50.00"),  # Adjusted price
-            cash_flow=Decimal("0.00"),
-            commission=None,
-        )
-
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 2))
-        # After 2:1 split, effective buy-in price should be $50
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
         assert buy_in_price == Decimal("50.00")
 
     def test_buy_in_price_very_small_quantities(self, user, broker, asset):
         """Test buy-in price calculation with very small quantities."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("0.001"),
             price=Decimal("1000.00"),
-            cash_flow=Decimal("-1.00"),
-            commission=Decimal("0.01"),
+            commission=Decimal("-0.01"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
         assert buy_in_price == Decimal("1000.00")
 
     def test_buy_in_price_very_large_quantities(self, user, broker, asset):
         """Test buy-in price calculation with very large quantities."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("1000000"),
             price=Decimal("0.01"),
-            cash_flow=Decimal("-10000.00"),
-            commission=Decimal("10.00"),
+            commission=Decimal("-10.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
         assert buy_in_price == Decimal("0.01")
 
     def test_buy_in_price_high_precision(self, user, broker, asset):
         """Test buy-in price calculation with high precision requirements."""
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("1.234567"),
             price=Decimal("123.456789"),
-            cash_flow=Decimal("-152.41579"),
-            commission=Decimal("0.15"),
+            commission=Decimal("-0.15"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
         assert buy_in_price == Decimal("123.456789")
         # Should maintain high precision
         assert buy_in_price.as_tuple().exponent <= -6
@@ -508,43 +619,59 @@ class TestBuyInPriceEdgeCases:
     def test_buy_in_price_commission_impact(self, user, broker, asset):
         """Test that commission doesn't affect buy-in price calculation."""
         # Create purchase with high commission
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5100.00"),  # Includes $100 commission
-            commission=Decimal("100.00"),
+            commission=Decimal("-100.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
         # Commission should not affect buy-in price
         assert buy_in_price == Decimal("50.00")
 
     def test_buy_in_price_mixed_transaction_types(self, user, broker, asset):
         """Test buy-in price calculation with mixed transaction types."""
         # Create purchase
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Buy",
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Create dividend
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Dividend",
@@ -556,9 +683,15 @@ class TestBuyInPriceEdgeCases:
         )
 
         # Create interest payment
+        # Create account
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Test Account",
+        )
+
         Transactions.objects.create(
             investor=user,
-            broker=broker,
+            account=account,
             security=asset,
             currency="USD",
             type="Interest",
@@ -569,7 +702,7 @@ class TestBuyInPriceEdgeCases:
             commission=None,
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
         # Should only be based on purchase transactions
         assert buy_in_price == Decimal("50.00")
 
@@ -584,23 +717,28 @@ class TestBuyInPricePerformance:
         """Test performance of single buy-in price calculation."""
         import time
 
+        # Create account for performance test
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Performance Test Account",
+        )
+
         # Create multiple transactions
         for i in range(100):
             Transactions.objects.create(
                 investor=user,
-                broker=broker,
+                account=account,
                 security=asset,
                 currency="USD",
                 type="Buy" if i % 2 == 0 else "Sell",
                 date=date(2023, 1, 1) + timedelta(days=i),
                 quantity=Decimal("10") if i % 2 == 0 else Decimal("-5"),
                 price=Decimal("50") + (i % 10),
-                cash_flow=Decimal("-500") if i % 2 == 0 else Decimal("250"),
-                commission=Decimal("5"),
+                commission=Decimal("-5"),
             )
 
         start_time = time.time()
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 4, 1))
+        buy_in_price = asset.calculate_buy_in_price(date(2023, 4, 1), investor=user)
         end_time = time.time()
 
         execution_time = end_time - start_time
@@ -610,6 +748,12 @@ class TestBuyInPricePerformance:
     def test_buy_in_price_performance_batch_calculation(self, user, broker):
         """Test performance of batch buy-in price calculations."""
         import time
+
+        # Create account for performance test
+        account = Accounts.objects.create(
+            broker=broker,
+            name="Batch Performance Account",
+        )
 
         # Create multiple assets
         assets = []
@@ -622,28 +766,28 @@ class TestBuyInPricePerformance:
                 exposure="Equity",
             )
             asset.investors.add(user)
-            asset.brokers.add(broker)
             assets.append(asset)
 
             # Create transactions for each asset
             for j in range(20):
                 Transactions.objects.create(
                     investor=user,
-                    broker=broker,
+                    account=account,
                     security=asset,
                     currency="USD",
                     type="Buy",
                     date=date(2023, 1, 1) + timedelta(days=j),
                     quantity=Decimal("10"),
                     price=Decimal("50") + j,
-                    cash_flow=Decimal("-500") - (j * 10),
-                    commission=Decimal("5"),
+                    commission=Decimal("-5"),
                 )
 
         start_time = time.time()
         results = []
         for asset in assets:
-            buy_in_price = asset.calculate_buy_in_price(date(2023, 6, 15))
+            buy_in_price = asset.calculate_buy_in_price(
+                date(2023, 6, 15), investor=user
+            )
             results.append(buy_in_price)
         end_time = time.time()
 

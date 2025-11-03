@@ -530,8 +530,8 @@ class TestFXEndpoints(APITestCase):
         FX.objects.create(
             investor=self.user,
             date=date(2023, 6, 15),
-            USDEUR=Decimal("0.92"),
-            USDGBP=Decimal("0.82"),
+            USDEUR=Decimal("1.09"),
+            USDGBP=Decimal("1.22"),
         )
 
         url = "/fx/api/rates/"
@@ -546,7 +546,7 @@ class TestFXEndpoints(APITestCase):
         """Test FX conversion endpoint."""
         # Create FX rate data
         FX.objects.create(
-            investor=self.user, date=date(2023, 6, 15), USDEUR=Decimal("0.92")
+            investor=self.user, date=date(2023, 6, 15), USDEUR=Decimal("1.09")
         )
 
         url = "/fx/api/convert/"
@@ -574,7 +574,7 @@ class TestFXEndpoints(APITestCase):
             FX.objects.create(
                 investor=self.user,
                 date=date(2023, 6, 1) + timedelta(days=i),
-                USDEUR=Decimal("0.92") + (i * Decimal("0.001")),
+                USDEUR=Decimal("1.09") + (i * Decimal("0.001")),
             )
 
         url = "/fx/api/history/"
