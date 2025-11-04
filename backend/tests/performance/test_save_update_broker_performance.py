@@ -36,7 +36,7 @@ def user():
 @pytest.fixture
 def broker(user):
     """Create test broker."""
-    return Brokers.objects.create(name="Test Broker", investor=user)
+    return Brokers.objects.create(investor=user, name="Test Broker", country="US")
 
 
 @pytest.fixture
@@ -465,7 +465,9 @@ async def test_update_broker_performance_skip_existing(user, broker, account, ca
     # Create a new broker specifically for this test
     @database_sync_to_async
     def create_test_broker():
-        return Brokers.objects.create(name="Test Broker Skip Existing", investor=user)
+        return Brokers.objects.create(
+            investor=user, name="Test Broker Skip Existing", country="US"
+        )
 
     test_broker = await create_test_broker()
 
@@ -751,7 +753,7 @@ async def test_get_accounts_table_api(user, broker, account, transactions, fx_ra
     """Test the accounts table API functionality."""
     # Use existing broker and account, create only one additional set
     second_broker = await database_sync_to_async(Brokers.objects.create)(
-        name="Second Test Broker", investor=user
+        investor=user, name="Second Test Broker", country="US"
     )
     second_account = await database_sync_to_async(Accounts.objects.create)(
         name="Second Test Account", broker=second_broker, restricted=True
