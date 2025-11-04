@@ -29,7 +29,13 @@
       "Bash(set:*)",
       "Bash(\"venv\\Scripts\\python.exe\" manage.py test:*)",
       "Bash(\"venv\\Scripts\\python.exe\" -m django test:*)",
-      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/unit/calculations/test_nav_calculations.py::TestNAVCalculation::test_simple_portfolio_nav -v --no-migrations)"
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/unit/calculations/test_nav_calculations.py::TestNAVCalculation::test_simple_portfolio_nav -v --no-migrations)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_tinkoff_utils.py -v)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_tinkoff_utils.py -v --tb=short --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_tinkoff_utils.py::test_map_tinkoff_operation_to_transaction -v --tb=long --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_tinkoff_utils.py -v --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_session_integration.py -v --no-migrations)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_transaction_flow.py -v --tb=short --no-cov)"
     ],
     "deny": [],
     "ask": []

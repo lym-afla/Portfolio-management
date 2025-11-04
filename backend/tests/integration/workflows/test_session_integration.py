@@ -1,176 +1,201 @@
 """
-Integration tests to debug session persistence issues.
+Integration tests for JWT-based authentication and effective_date handling.
 
-Test session behavior across multiple requests.
+Test JWT authentication and how effective_current_date is managed via JWT tokens.
 """
 
 import json
-import os
-import sys
 
-import django
+import pytest
 from django.contrib.sessions.models import Session
 from django.test import Client
 
 from users.models import CustomUser
 
-# Add the project root to Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
 
-# Set up Django environment
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")
-
-django.setup()
-
-
-def test_session_persistence() -> bool:
-    """Test session persistence across multiple requests."""
-    print("=== Testing Session Persistence ===")
-
-    # Create a test client (simulates browser)
-    client = Client()
+@pytest.mark.django_db
+def test_jwt_authentication_with_effective_date():
+    """Test JWT authentication with effective_date handling."""
+    print("=== Testing JWT Authentication with Effective Date ===")
 
     # Create a test user
     user = CustomUser.objects.create_user(
         username="testuser", email="test@example.com", password="testpass123"
     )
 
-    # Login the user
-    print("\n1. Testing login...")
-    client.login(username="testuser", password="testpass123")
+    try:
+        # Create a test client (simulates browser)
+        client = Client()
 
-    # Check initial session state
-    print(f"Initial session data: {dict(client.session.items())}")
-    print(f"Session cookie: {client.cookies.get('sessionid', 'NOT_FOUND')}")
+        # Step 1: Login to get JWT tokens
+        print("\n1. Logging in to get JWT tokens...")
+        login_response = client.post(
+            "/users/api/login/",
+            {"username": "testuser", "password": "testpass123"},
+            content_type="application/json",
+        )
+        print(f"Login response status: {login_response.status_code}")
 
-    # Test 1: Call dashboard settings endpoint
-    print("\n2. Testing dashboard settings endpoint...")
-    response1 = client.get("/users/api/dashboard_settings/")
-    print(f"Response status: {response1.status_code}")
-    print(f"Session data after dashboard settings: {dict(client.session.items())}")
-    print(
-        "Session cookie after dashboard settings: "
-        f"{client.cookies.get('sessionid', 'NOT_FOUND')}"
-    )
+        assert (
+            login_response.status_code == 200
+        ), f"Login failed: {login_response.content.decode()}"
 
-    # Test 2: Call update dashboard settings
-    print("\n3. Testing update dashboard settings...")
+        login_data = login_response.json()
+        access_token = login_data.get("access")
+        refresh_token = login_data.get("refresh")
+
+        print(f"Got access token: {access_token[:20] if access_token else 'None'}...")
+        print(
+            f"Got refresh token: {refresh_token[:20] if refresh_token else 'None'}..."
+        )
+
+        assert access_token is not None, "Access token should be provided"
+        assert refresh_token is not None, "Refresh token should be provided"
+
+        # Step 2: Get dashboard settings with JWT token
+        print("\n2. Testing dashboard settings with JWT token...")
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {access_token}"}
+
+        response1 = client.get("/users/api/dashboard_settings/", **headers)
+        print(f"GET dashboard settings status: {response1.status_code}")
+        assert (
+            response1.status_code == 200
+        ), f"Dashboard settings failed: {response1.content.decode()}"
+
+        # Step 3: Update dashboard settings with table_date
+        print("\n3. Updating dashboard settings with JWT token...")
+        update_data = {
+            "default_currency": "RUB",
+            "digits": 0,
+            "table_date": "2021-04-04",
+        }
+
+        response2 = client.post(
+            "/users/api/update_dashboard_settings/",
+            data=json.dumps(update_data),
+            content_type="application/json",
+            **headers,
+        )
+        print(f"Update settings status: {response2.status_code}")
+
+        if response2.status_code == 200:
+            response_data = response2.json()
+            print(f"Response data: {response_data}")
+
+            # The endpoint should return the effective_current_date in the response
+            effective_date = response_data.get(
+                "effective_current_date"
+            ) or response_data.get("table_date")
+            print(f"Effective date from response: {effective_date}")
+
+            # Assert that the effective_date was set correctly
+            assert (
+                effective_date == "2021-04-04"
+            ), f"Expected effective_date to be '2021-04-04', got '{effective_date}'"
+
+            # Check if token refresh is required
+            requires_refresh = response_data.get("requires_token_refresh", False)
+            print(f"Requires token refresh: {requires_refresh}")
+
+            if requires_refresh:
+                print("\n4. Token refresh required, refreshing token...")
+                # In a real app, the frontend would refresh the token here
+                # For now, we just verify the flag is set
+                assert response_data.get("new_effective_date") == "2021-04-04"
+        else:
+            print(f"Update failed: {response2.content.decode()}")
+            raise AssertionError(
+                f"Update settings failed with status {response2.status_code}"
+            )
+
+        print("\n=== Test PASSED ===")
+
+    finally:
+        # Cleanup
+        user.delete()
+        Session.objects.all().delete()
+
+
+@pytest.mark.django_db
+def test_jwt_token_required_for_protected_endpoints():
+    """Test that protected endpoints require JWT authentication."""
+    print("\n=== Testing JWT Token Requirement ===")
+
+    client = Client()
+
+    # Test 1: Access dashboard settings without token
+    print("\n1. Testing dashboard settings without token...")
+    response = client.get("/users/api/dashboard_settings/")
+    print(f"Response status: {response.status_code}")
+
+    # Should return 401 Unauthorized or 403 Forbidden
+    assert response.status_code in [
+        401,
+        403,
+    ], f"Expected 401/403 for unauthenticated request, got {response.status_code}"
+
+    # Test 2: Access update settings without token
+    print("\n2. Testing update settings without token...")
     update_data = {"default_currency": "RUB", "digits": 0, "table_date": "2021-04-04"}
-    response2 = client.post(
+
+    response = client.post(
         "/users/api/update_dashboard_settings/",
         data=json.dumps(update_data),
         content_type="application/json",
     )
-    print(f"Response status: {response2.status_code}")
-    print(
-        "Response data: "
-        f"{response2.json() if response2.status_code == 200 else 'Error'}"
-    )
-    print(f"Session data after update: {dict(client.session.items())}")
-    print(
-        "Session cookie after update: "
-        f"{client.cookies.get('sessionid', 'NOT_FOUND')}"
-    )
+    print(f"Response status: {response.status_code}")
 
-    # Test 3: Call transactions endpoint to check if session persists
-    print("\n4. Testing transactions endpoint...")
-    response3 = client.post("/transactions/api/get_transactions_table/")
-    print(f"Response status: {response3.status_code}")
-    print(f"Session data after transactions: {dict(client.session.items())}")
-    print(
-        "Session cookie after transactions: "
-        f"{client.cookies.get('sessionid', 'NOT_FOUND')}"
-    )
+    # Should return 401 Unauthorized or 403 Forbidden
+    assert response.status_code in [
+        401,
+        403,
+    ], f"Expected 401/403 for unauthenticated request, got {response.status_code}"
 
-    # Test 4: Check if effective_current_date persists
-    effective_date = client.session.get("effective_current_date")
-    print(f"\n5. Final effective_date in session: {effective_date}")
-    print("Expected: 2021-04-04")
-    print(f"Test {'PASSED' if effective_date == '2021-04-04' else 'FAILED'}")
+    print("\n=== Test PASSED ===")
 
-    # Test database sessions
-    print("\n6. Checking database sessions...")
-    sessions = Session.objects.all()
-    print(f"Total sessions in database: {sessions.count()}")
-    for session in sessions:
-        session_data = session.get_decoded()
-        print(f"Session {session.session_key[:8]}...: {session_data}")
 
-    # Test with new client to simulate new browser session
-    print("\n7. Testing with new client (simulates new browser session)...")
-    new_client = Client()
-    new_client.login(username="testuser", password="testpass123")
+@pytest.mark.django_db
+def test_session_cookie_not_required_with_jwt():
+    """Test that session cookies are not required when using JWT authentication."""
+    print("\n=== Testing Session Cookie Not Required with JWT ===")
 
-    new_client.get("/users/api/dashboard_settings/")
-    print(f"New client session data: {dict(new_client.session.items())}")
-    print(
-        "New client effective_date: "
-        f"{new_client.session.get('effective_current_date', 'NOT_FOUND')}"
+    # Create a test user
+    user = CustomUser.objects.create_user(
+        username="testuser2", email="test2@example.com", password="testpass123"
     )
 
-    # Cleanup
-    user.delete()
-    Session.objects.all().delete()
+    try:
+        client = Client()
 
-    return effective_date == "2021-04-04"
-
-
-def test_session_cookies_directly() -> bool:
-    """Test session cookie behavior directly."""
-    print("\n=== Testing Session Cookies Directly ===")
-
-    client = Client()
-
-    # Test 1: Initial request
-    print("\n1. Testing initial request...")
-    client.get("/users/api/dashboard_settings/")
-
-    # Check response cookies
-    print(f"Response cookies: {dict(client.cookies)}")
-    session_cookie = client.cookies.get("sessionid")
-    print(f"Session cookie value: {session_cookie}")
-
-    # Test 2: Second request with same client
-    print("\n2. Testing second request with same client...")
-    client.get("/users/api/dashboard_settings/")
-    print(f"Session cookie on second request: {client.cookies.get('sessionid')}")
-
-    return session_cookie is not None
-
-
-if __name__ == "__main__":
-    print("Starting session persistence tests...")
-
-    # Test 1: Basic session persistence
-    test1_passed = test_session_persistence()
-
-    # Test 2: Cookie behavior
-    test2_passed = test_session_cookies_directly()
-
-    print("\n=== RESULTS ===")
-    print(f"Session persistence test: {'PASSED' if test1_passed else 'FAILED'}")
-    print(f"Cookie behavior test: {'PASSED' if test2_passed else 'FAILED'}")
-
-    if not test1_passed or not test2_passed:
-        print("\nSession issues detected. Analyzing...")
-
-        # Check Django settings
-        from django.conf import settings
-
-        print(f"Session engine: {settings.SESSION_ENGINE}")
-        print(f"Session cookie secure: {settings.SESSION_COOKIE_SECURE}")
-        print(f"Session cookie samesite: {settings.SESSION_COOKIE_SAMESITE}")
-        print(f"Session save every request: {settings.SESSION_SAVE_EVERY_REQUEST}")
-
-        # Check CORS settings
-        print(
-            "CORS allow credentials: "
-            f"{getattr(settings, 'CORS_ALLOW_CREDENTIALS', 'NOT_SET')}"
+        # Login to get JWT tokens
+        print("\n1. Logging in to get JWT tokens...")
+        login_response = client.post(
+            "/users/api/login/",
+            {"username": "testuser2", "password": "testpass123"},
+            content_type="application/json",
         )
-        print(
-            "CORS allowed origins: "
-            f"{getattr(settings, 'CORS_ALLOWED_ORIGINS', 'NOT_SET')}"
-        )
-    else:
-        print("\nAll tests passed! Session persistence is working correctly.")
+
+        assert login_response.status_code == 200
+        access_token = login_response.json().get("access")
+
+        # Access protected endpoint with JWT token (no session cookies needed)
+        print("\n2. Accessing protected endpoint with JWT token...")
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {access_token}"}
+        response = client.get("/users/api/dashboard_settings/", **headers)
+
+        print(f"Response status: {response.status_code}")
+        assert (
+            response.status_code == 200
+        ), "JWT token should provide access without session cookies"
+
+        # Verify no session cookie is set
+        session_cookie = client.cookies.get("sessionid")
+        print(f"Session cookie: {session_cookie}")
+
+        # Session cookie may or may not exist, but JWT should work regardless
+        print("\n=== Test PASSED ===")
+
+    finally:
+        # Cleanup
+        user.delete()
+        Session.objects.all().delete()

@@ -7,6 +7,7 @@ import factory
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
+from rest_framework.test import APIClient
 
 from common.models import (
     FX,
@@ -500,3 +501,66 @@ def decimal_values():
         "percentage": Decimal("0.05"),  # 5%
         "rate": Decimal("1.234567"),
     }
+
+
+# ========== API FIXTURES ==========
+
+
+@pytest.fixture
+def api_client():
+    """Create an API client."""
+    return APIClient()
+
+
+@pytest.fixture
+def admin_client(admin_user):
+    """Create an authenticated API client for admin user."""
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    return client
+
+
+@pytest.fixture
+def authenticated_client(user):
+    """Create an authenticated API client."""
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
+
+
+# ========== FX FIXTURES ==========
+
+
+@pytest.fixture
+def fx_rates(user):
+    """Create a set of basic FX rates for testing."""
+    rates = []
+    base_date = date(2023, 1, 1)
+
+    for i in range(10):  # Create 10 days of FX data
+        current_date = base_date + timedelta(days=i)
+        rate = Decimal("0.92") + (Decimal("0.01") * (i % 5) / 5)  # Small variation
+        fx = FX.objects.create(
+            date=current_date,
+            USDEUR=rate,
+            USDGBP=Decimal("0.82") + (Decimal("0.01") * (i % 5) / 5),
+            CHFGBP=Decimal("0.88") + (Decimal("0.01") * (i % 5) / 5),
+        )
+        fx.investors.add(user)
+        rates.append(fx)
+
+    return rates
+
+
+@pytest.fixture
+def multi_currency_portfolio(multi_currency_user, broker):
+    """Create a multi-currency portfolio for testing."""
+    from common.models import Accounts
+
+    # Create account
+    account = Accounts.objects.create(
+        broker=broker,
+        name="Multi-Currency Account",
+    )
+
+    return account

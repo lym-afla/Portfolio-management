@@ -6,6 +6,103 @@ This document captures the unified transaction processing architecture and patte
 
 ---
 
+## Transaction Model Conventions
+
+### Field Usage for Buy/Sell Transactions
+
+**IMPORTANT**: For buy and sell transactions with price and quantity:
+
+1. **cash_flow field**: Should be `None` (not set)
+   - The cash flow is calculated from `price * quantity + commission`
+   - Do NOT duplicate this calculation in the cash_flow field
+
+2. **commission field**: Uses natural sign convention
+   - **Negative value** = expense (most common case)
+   - **Positive value** = rebate/credit
+   - Example: `commission=Decimal("-5.00")` means a $5 expense
+
+3. **Required fields for Buy/Sell**:
+   - `type`: Transaction type ("Buy", "Sell", etc.)
+   - `date`: Transaction date
+   - `quantity`: Number of units (positive for Buy, negative for Sell)
+   - `price`: Price per unit
+   - `commission`: Commission amount with natural sign
+   - `account`: Account reference (not `broker`)
+   - `investor`: User reference
+   - `security`: Asset reference
+
+### Correct Transaction Creation Example
+
+```python
+# BUY transaction
+buy_tx = Transactions.objects.create(
+    investor=user,
+    account=account,  # Note: account, not broker
+    security=asset,
+    currency="USD",
+    type="Buy",
+    date=date(2023, 1, 15),
+    quantity=Decimal("100"),
+    price=Decimal("50.00"),
+    commission=Decimal("-5.00"),  # Negative = expense
+    # cash_flow is NOT set - it's calculated
+)
+
+# SELL transaction
+sell_tx = Transactions.objects.create(
+    investor=user,
+    account=account,
+    security=asset,
+    currency="USD",
+    type="Sell",
+    date=date(2023, 3, 15),
+    quantity=Decimal("-100"),  # Negative for sell
+    price=Decimal("55.00"),
+    commission=Decimal("-5.00"),  # Negative = expense
+    # cash_flow is NOT set - it's calculated
+)
+```
+
+### Special Transaction Types
+
+**Dividend Transactions**:
+- `quantity`: `None`
+- `price`: `None`
+- `cash_flow`: The dividend amount received (positive)
+- `commission`: Usually `None`, or negative if fees apply
+
+**Corporate Actions** (splits, etc.):
+- `cash_flow`: `Decimal("0.00")` (no cash movement)
+- `quantity`: Adjusted share count
+- `price`: Adjusted price after split
+- `commission`: `None`
+
+### Model Relationships
+
+**Assets Model**:
+- Uses `investors` (ManyToManyField) - NOT `investor`
+- Does NOT have a `brokers` field
+- Has `type` field (e.g., "Stock", "Bond") - NOT `instrument_type`
+
+**Transactions/FXTransaction Models**:
+- Use `account` field (ForeignKey to Accounts)
+- Do NOT use `broker` field directly
+- Must have `investor` field (ForeignKey to CustomUser)
+
+**Brokers and Accounts**:
+- Brokers have a ManyToOne relationship with investors
+- Accounts belong to Brokers
+- Transactions reference Accounts (which link to Brokers)
+
+**Assets.position() Method**:
+```python
+# Requires investor parameter
+position = asset.position(date, investor)  # Correct
+position = asset.position(date)  # Wrong - missing investor
+```
+
+---
+
 ## Centralized Transaction Architecture
 
 ### Core Principle: Single Source of Truth
