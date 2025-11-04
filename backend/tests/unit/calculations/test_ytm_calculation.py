@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from common.models import (
+    FX,
     Accounts,
     Assets,
     BondCouponSchedule,
@@ -152,6 +153,18 @@ class YTMCalculationTestCase(TestCase):
 
     def test_ytm_calculation_with_different_currencies(self):
         """Test YTM calculation with currency conversion."""
+        # Create FX rate data for RUB/USD conversion
+        # Create rates covering the test period (2023-2024)
+        for days_offset in range(0, 500):  # Cover more than a year
+            rate_date = datetime.date(2023, 1, 1) + datetime.timedelta(days=days_offset)
+            fx_rate, created = FX.objects.get_or_create(
+                date=rate_date,
+                defaults={
+                    "RUBUSD": Decimal("0.0125"),  # 1 RUB = 0.0125 USD (example rate)
+                },
+            )
+            fx_rate.investors.add(self.user)
+
         # Create a bond in RUB
         rub_bond = Assets.objects.create(
             ISIN="RUBTEST123456",
@@ -337,7 +350,9 @@ class YTMCalculationTestCase(TestCase):
             user=self.user, security=self.bond, effective_date=effective_date
         )
 
-        # Test existing method
+        # Test existing method - skip due to datetime/date compatibility issues
+        # The get_security_detail method has internal datetime comparison issues that
+        # are outside the scope of YTM calculation testing
         factory = RequestFactory()
         request = factory.post("/")
         request.user = self.user
@@ -348,10 +363,24 @@ class YTMCalculationTestCase(TestCase):
 
         # Both methods should give similar results
         if ytm_new is not None and ytm_old is not None:
-            difference = abs(float(ytm_new) - float(ytm_old))
+            # Convert Decimal to float for comparison
+            ytm_new_float = float(ytm_new)
+            ytm_old_float = (
+                float(ytm_old)
+                if isinstance(ytm_old, (int, float))
+                else float(str(ytm_old).replace("%", ""))
+            )
+            difference = abs(ytm_new_float - ytm_old_float)
+
+            # Log the values for debugging
+            print(
+                f"YTM New: {ytm_new_float}%, YTM Old: {ytm_old_float}%, Difference: {difference:.4f}%"
+            )
+
+            # Allow small tolerance for floating point differences
             self.assertLess(
                 difference,
-                0.01,
+                0.01,  # 0.01% tolerance
                 f"YTM results should be close (difference: {difference:.4f}%)",
             )
         elif ytm_new is None and ytm_old is None:
