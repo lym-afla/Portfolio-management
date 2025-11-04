@@ -227,7 +227,9 @@ class TestAssetsModel:
         expected_gain = (120 - 100) * 10 + (120 - 110) * 5
         assert result["all_time"]["total"] == Decimal(str(expected_gain))
 
-    def test_realized_gain_loss_complex_scenario(self, user, account, asset, caplog):
+    def test_realized_gain_loss_complex_scenario(
+        self, user, account, asset, general_transactions, caplog
+    ):
         """Test realized gain loss complex scenario."""
         caplog.set_level(logging.DEBUG)
 
@@ -261,15 +263,17 @@ class TestAssetsModel:
                 == expected_gain_loss_current_position
             ), f"For date {test_date}: "
             f"Expected gain/loss to be {expected_gain_loss_current_position}, "
-            f"{expected_gain_loss_current_position}, but got "
-            f"{result['current_position']['total']}"
+            f" but got {result['current_position']['total']}"
+
             assert (
                 result["all_time"]["total"] == expected_gain_loss_all_time
             ), f"For date {test_date}: "
             f"Expected gain/loss to be {expected_gain_loss_all_time}, "
             f"but got {result['all_time']['total']}"
 
-    def test_calculate_buy_in_price(self, user, account, asset, caplog):
+    def test_calculate_buy_in_price(
+        self, user, account, asset, general_transactions, caplog
+    ):
         """Test calculate buy in price."""
         caplog.set_level(logging.DEBUG)
 
@@ -325,11 +329,13 @@ class TestAssetsModel:
             buy_in_price_no_transactions is None
         ), f"Expected buy-in price to be None, but got {buy_in_price_no_transactions}"
 
-    def test_calculate_buy_in_price_with_start_date(self, user, account, asset, caplog):
+    def test_calculate_buy_in_price_with_start_date(
+        self, user, account, asset, general_transactions, caplog
+    ):
         """Test calculate buy in price with start date."""
         # Set start date and end date for the test
-        start_date = datetime(2023, 5, 1).date()
-        end_date = datetime(2023, 7, 30).date()
+        start_date = datetime(2023, 5, 1)
+        end_date = datetime(2023, 7, 30)
 
         # Calculate realized gain/loss
         result = asset.calculate_buy_in_price(
@@ -344,10 +350,12 @@ class TestAssetsModel:
 
         assert (
             result == expected_price
-        ), f"Expected current position gain/loss to be {expected_price}, "
-        f"but got {result['current_position']}"
+        ), f"Expected buy-in price to be {expected_price}, "
+        f"but got {result}"
 
-    def test_calculate_buy_in_price_with_FX(self, user, asset, caplog):
+    def test_calculate_buy_in_price_with_FX(
+        self, user, asset, general_transactions, caplog
+    ):
         """Test calculate buy in price with FX."""
         caplog.set_level(logging.INFO)
 

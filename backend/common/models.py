@@ -630,13 +630,7 @@ class Assets(models.Model):
             new_position = position + transaction.quantity
             if position == 0 and new_position != 0:
                 if start_date is not None:
-                    # Convert transaction.date to date for comparison if it's a datetime
-                    transaction_date_for_comparison = (
-                        transaction.date.date()
-                        if hasattr(transaction.date, "date")
-                        else transaction.date
-                    )
-                    if transaction_date_for_comparison < start_date:
+                    if transaction.date < start_date:
                         position = new_position
                         continue
                 entry_dates.append(transaction.date)
@@ -647,9 +641,8 @@ class Assets(models.Model):
 
     def exit_dates(self, end_date, investor, account_ids=None, start_date=None):
         """Get a list of dates when the position changes from non-zero to 0."""
-        query_end_date = end_date
         transactions = self.transactions.filter(
-            date__lte=query_end_date, quantity__isnull=False, investor=investor
+            date__lte=end_date, quantity__isnull=False, investor=investor
         )
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
@@ -842,7 +835,7 @@ class Assets(models.Model):
         return final_price
 
     def realized_gain_loss(
-        self, date, investor, currency=None, account_ids=None, start_date=None
+        self, date_as_of, investor, currency=None, account_ids=None, start_date=None
     ):
         """
         Calculate the realized gain/loss for an asset.
@@ -852,7 +845,8 @@ class Assets(models.Model):
 
         Parameters:
             self (Asset): The asset object for which realized gain/loss is calculated.
-            date (datetime.date): The date as of which the calculation is performed.
+            date_as_of (datetime.date): The date as of which the calculation is performed.
+            investor (User): The investor for which the calculation is performed.
             currency (str): The reporting currency.
             account_ids (list): The list of account IDs.
             start_date (datetime.date): The start date for the calculation.
@@ -1088,9 +1082,33 @@ class Assets(models.Model):
             },
         }
 
+        # Convert date_as_of to datetime object if it's a date
+        if date_as_of and isinstance(date_as_of, date):
+            date_as_of = datetime.combine(date_as_of, datetime.max.time()).replace(
+                tzinfo=None
+            )
+        elif date_as_of and isinstance(date_as_of, datetime):
+            pass
+        elif date_as_of is None:
+            pass
+        else:
+            raise ValueError("Invalid date_as_of")
+
+        # Convert start_date to datetime object if it's a date
+        if start_date and isinstance(start_date, date):
+            start_date = datetime.combine(start_date, datetime.min.time()).replace(
+                tzinfo=None
+            )
+        elif start_date and isinstance(start_date, datetime):
+            pass
+        elif start_date is None:
+            pass
+        else:
+            raise ValueError("Invalid start_date")
+
         # Calculate all-time realized gain/loss
-        exit_dates = self.exit_dates(date, investor, account_ids, start_date)
-        entry_dates = self.entry_dates(date, investor, account_ids, start_date)
+        exit_dates = self.exit_dates(date_as_of, investor, account_ids, start_date)
+        entry_dates = self.entry_dates(date_as_of, investor, account_ids, start_date)
 
         if start_date is not None and len(entry_dates) == 0:
             entry_dates = [start_date]
@@ -1101,29 +1119,18 @@ class Assets(models.Model):
         # Pair entry and exit dates
         date_pairs = []
         for entry_date in entry_dates:
-            exit_date = next((d for d in exit_dates if d >= entry_date), date)
+            exit_date = next((d for d in exit_dates if d >= entry_date), date_as_of)
             date_pairs.append((entry_date, exit_date))
 
         # Adjust date pairs based on start_date and end_date
         adjusted_pairs = []
         for entry_date, exit_date in date_pairs:
             logger.debug(f"Unadjusted pair: {entry_date} to {exit_date}")
-            # Convert dates to date objects for comparison if they're datetime
-            entry_date_for_comparison = (
-                entry_date.date() if hasattr(entry_date, "date") else entry_date
-            )
-            exit_date_for_comparison = (
-                exit_date.date() if hasattr(exit_date, "date") else exit_date
-            )
 
-            if (
-                start_date
-                and start_date > entry_date_for_comparison
-                and start_date <= exit_date_for_comparison
-            ):
+            if start_date and start_date > entry_date and start_date <= exit_date:
                 entry_date = start_date
-            if exit_date_for_comparison > date and date >= start_date:
-                exit_date = date
+            if exit_date > date_as_of and date_as_of >= start_date:
+                exit_date = date_as_of
             adjusted_pairs.append((entry_date, exit_date))
 
         logger.debug(f"Adjusted date pairs: {adjusted_pairs}")
@@ -1143,7 +1150,7 @@ class Assets(models.Model):
 
             # If this is the current position,
             # update the current_position result as well
-            if position_end == date and position_end not in exit_dates:
+            if position_end == date_as_of and position_end not in exit_dates:
                 result["current_position"] = position_result.copy()
 
             logger.debug(f"Current position result: {result['current_position']}")
