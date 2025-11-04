@@ -384,11 +384,11 @@ def fx_rates_multi_currency(multi_currency_user):
 
 
 @pytest.fixture
-def fx_transaction(user, broker):
+def fx_transaction(user, account):
     """Create a sample FX transaction."""
     return FXTransaction.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         date=date(2023, 2, 15),
         from_currency="USD",
         to_currency="EUR",
