@@ -5,7 +5,7 @@ Successfully implemented a DRY (Don't Repeat Yourself) approach to transaction p
 
 ## Key Changes
 
-### 1. Centralized Cash Flow Calculation (`Transactions.get_calculated_cash_flow()`)
+### 1. Centralized Cash Flow Calculation (`Transactions.total_cash_flow()`)
 
 **Location**: `portfolio_management/common/models.py`
 
@@ -19,10 +19,10 @@ Created a single source of truth for cash flow calculations that:
 **Usage Example**:
 ```python
 # Get cash flow in transaction's currency
-cash_flow = transaction.get_calculated_cash_flow()
+cash_flow = transaction.total_cash_flow()
 
 # Get cash flow converted to USD
-cash_flow_usd = transaction.get_calculated_cash_flow(target_currency='USD')
+cash_flow_usd = transaction.total_cash_flow(target_currency='USD')
 ```
 
 ### 2. Enhanced Serializers
@@ -39,7 +39,7 @@ cash_flow_usd = transaction.get_calculated_cash_flow(target_currency='USD')
 
 - **Improved Methods**:
   - `get_price()`: Properly formats bonds as percentage, others as actual price
-  - `get_cash_flow()`: Uses centralized `get_calculated_cash_flow()` method
+  - `get_cash_flow()`: Uses centralized `total_cash_flow()` method
   - `get_balances()`: Returns formatted balances if balance tracking is enabled
 
 #### FXTransactionSerializer
@@ -88,7 +88,7 @@ Marked old processing functions as deprecated:
 **Location**: `portfolio_management/common/models.py` - `Accounts.balance()`
 
 - **OLD**: Manual calculation with `effective_price * quantity - aci - cash_flow - commission`
-- **NEW**: Uses `transaction.get_calculated_cash_flow()`
+- **NEW**: Uses `transaction.total_cash_flow()`
 - Ensures balance calculations match transaction table exactly
 
 ### 6. Updated IRR Calculation
@@ -96,7 +96,7 @@ Marked old processing functions as deprecated:
 **Location**: `portfolio_management/core/portfolio_utils.py` - `_calculate_cash_flow()`
 
 - **OLD**: Complex conditional logic to calculate cash flow
-- **NEW**: Uses `transaction.get_calculated_cash_flow()` with sign adjustment for IRR
+- **NEW**: Uses `transaction.total_cash_flow()` with sign adjustment for IRR
 - Maintains correct sign convention (negative = outflow, positive = inflow)
 
 ## Benefits
@@ -190,12 +190,12 @@ The implementation correctly distinguishes bond price display:
 1. **Storage**: Bond prices stored as percentage of par (e.g., 98.5 = 98.5%)
 2. **Display in Transaction List**: Shows as percentage (e.g., "98.50%")
 3. **Calculations**: Uses `get_price()` to convert to actual price (98.5% * notional / 100)
-4. **Cash Flow**: Automatically uses correct actual price via `get_calculated_cash_flow()`
+4. **Cash Flow**: Automatically uses correct actual price via `total_cash_flow()`
 
 ## Testing Recommendations
 
 1. **Unit Tests**:
-   - Test `get_calculated_cash_flow()` with various transaction types
+   - Test `total_cash_flow()` with various transaction types
    - Test bond price formatting (percentage display vs. actual calculation)
    - Test BalanceTracker with multiple currencies
    - Test ACI inclusion in cash flow for bonds
@@ -226,7 +226,7 @@ The implementation correctly distinguishes bond price display:
 
 ## Files Modified
 
-1. `portfolio_management/common/models.py` - Added `get_calculated_cash_flow()` method, updated `balance()`
+1. `portfolio_management/common/models.py` - Added `total_cash_flow()` method, updated `balance()`
 2. `portfolio_management/database/serializers.py` - Enhanced serializers
 3. `portfolio_management/core/balance_tracker.py` - **NEW** Helper class
 4. `portfolio_management/core/transactions_utils.py` - Refactored to use serializers

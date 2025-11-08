@@ -369,11 +369,11 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     """
     Calculate cash flow for a transaction for IRR calculation.
 
-    Uses the centralized get_calculated_cash_flow() method and applies
+    Uses the centralized total_cash_flow() method and applies
     sign convention for IRR (negative = outflow, positive = inflow).
     """
     # Get the cash flow using the centralized method
-    cash_flow = transaction.get_calculated_cash_flow()
+    cash_flow = transaction.total_cash_flow()
 
     # For IRR calculation, "Cash in" and "Cash out" need to be inverted
     # because they represent external cash flows

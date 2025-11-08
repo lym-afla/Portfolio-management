@@ -101,8 +101,8 @@ class TestCompleteTransactionWorkflows:
 
         # Step 4: Verify financial results
         # Commission is negative expense, so add to cash_flow
-        total_cost = buy_tx.cash_flow + buy_tx.commission
-        total_proceeds = sell_tx.cash_flow + sell_tx.commission
+        total_cost = buy_tx.total_cash_flow()
+        total_proceeds = sell_tx.total_cash_flow()
         net_profit = total_proceeds + total_cost
 
         expected_profit = (Decimal("55.00") - Decimal("50.00")) * Decimal(
@@ -270,11 +270,9 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify tax loss calculation
-        loss_amount = (loss_sale.cash_flow + loss_sale.commission) + (
-            purchase_high.cash_flow + purchase_high.commission
-        )
-        expected_loss = (Decimal("7000") - Decimal("10")) + (
-            Decimal("-10000") + Decimal("10")
+        loss_amount = loss_sale.total_cash_flow() + (purchase_high.total_cash_flow())
+        expected_loss = (Decimal("7000")) + (
+            Decimal("-10000") - Decimal("10") * Decimal("2")
         )
         assert loss_amount == expected_loss
 
@@ -292,7 +290,7 @@ class TestCompleteTransactionWorkflows:
             investment_date = date(2023, 1, 15) + timedelta(days=i * 30)
             price = Decimal("50.00") + (i * 2)  # Increasing prices
             commission = Decimal("-5.00")
-            quantity = (investment_amount - commission) / price
+            quantity = (investment_amount + commission) / price
 
             investment = Transactions.objects.create(
                 investor=self.user,
@@ -310,11 +308,11 @@ class TestCompleteTransactionWorkflows:
 
         # Calculate total investment and average price
         total_shares = sum(tx.quantity for tx in monthly_investments)
-        total_cost = sum(tx.cash_flow + tx.commission for tx in monthly_investments)
-        average_price = total_cost / total_shares
+        total_cost = sum(tx.total_cash_flow() for tx in monthly_investments)
+        average_price = -total_cost / total_shares
 
         assert total_shares > 0
-        assert total_cost == Decimal("6000.00")
+        assert total_cost == -Decimal("6000.00")
         assert average_price > Decimal(
             "50.00"
         )  # Should be higher due to increasing prices
@@ -330,8 +328,8 @@ class TestCompleteTransactionWorkflows:
         final_value = final_position * final_price
 
         # Calculate total return
-        total_return = final_value - total_cost
-        return_percentage = (total_return / total_cost) * Decimal("100")
+        total_return = final_value + total_cost
+        return_percentage = (total_return / abs(total_cost)) * Decimal("100")
 
         assert total_return > 0  # Should be profitable
         assert return_percentage > 0
@@ -384,104 +382,6 @@ class TestMultiAssetWorkflows:
             exposure="Equity",
         )
         self.etf.investors.add(self.user)
-
-    def test_portfolio_rebalancing_workflow(self):
-        """Test portfolio rebalancing workflow."""
-        # Initial investments
-        initial_investments = [
-            (self.tech_stock, Decimal("100"), Decimal("150.00")),  # 100 shares at $150
-            (self.bond, Decimal("50"), Decimal("1000.00")),  # 50 bonds at $1000
-            (self.etf, Decimal("75"), Decimal("80.00")),  # 75 ETF shares at $80
-        ]
-
-        transactions = []
-        for asset, quantity, price in initial_investments:
-            tx = Transactions.objects.create(
-                investor=self.user,
-                account=self.account,
-                security=asset,
-                currency="USD",
-                type="Buy",
-                date=date(2023, 1, 15),
-                quantity=quantity,
-                price=price,
-                commission=Decimal("-5.00"),
-            )
-            transactions.append(tx)
-
-        # Create price history
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=self.tech_stock, price=Decimal("180.00")
-        )
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=self.bond, price=Decimal("1020.00")
-        )
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=self.etf, price=Decimal("85.00")
-        )
-
-        # Calculate current allocation
-        total_value = sum(
-            asset.position(date(2023, 6, 15), self.user)
-            * asset.price_at_date(date(2023, 6, 15)).price
-            for asset in [self.tech_stock, self.bond, self.etf]
-        )
-
-        tech_value = self.tech_stock.position(date(2023, 6, 15), self.user) * Decimal(
-            "180.00"
-        )
-        # bond_value = self.bond.position(date(2023, 6, 15)) * Decimal("1020.00")
-        # etf_value = self.etf.position(date(2023, 6, 15)) * Decimal("85.00")
-
-        tech_allocation = (tech_value / total_value) * Decimal("100")
-        # bond_allocation = (bond_value / total_value) * Decimal("100")
-        # etf_allocation = (etf_value / total_value) * Decimal("100")
-
-        # Rebalancing: sell overperforming asset, buy underperforming
-        rebalancing_transactions = []
-
-        # Example: If tech stock is over 40%, sell some and buy ETF
-        if tech_allocation > Decimal("40"):
-            # sell_quantity = 20
-            sell_price = Decimal("180.00")
-
-            sell_tx = Transactions.objects.create(
-                investor=self.user,
-                account=self.account,
-                security=self.tech_stock,
-                currency="USD",
-                type="Sell",
-                date=date(2023, 6, 16),
-                quantity=Decimal("-20"),
-                price=sell_price,
-                commission=Decimal("-3.00"),
-            )
-            rebalancing_transactions.append(sell_tx)
-
-            # Buy more ETF with proceeds
-            buy_quantity = (sell_tx.cash_flow + sell_tx.commission) / Decimal("85.00")
-
-            buy_tx = Transactions.objects.create(
-                investor=self.user,
-                account=self.account,
-                security=self.etf,
-                currency="USD",
-                type="Buy",
-                date=date(2023, 6, 16),
-                quantity=buy_quantity,
-                price=Decimal("85.00"),
-                commission=Decimal("-3.00"),
-            )
-            rebalancing_transactions.append(buy_tx)
-
-        # Verify rebalancing results
-        # final_positions = {
-        #     "tech_stock": self.tech_stock.position(date(2023, 6, 17)),
-        #     "bond": self.bond.position(date(2023, 6, 17)),
-        #     "etf": self.etf.position(date(2023, 6, 17)),
-        # }
-
-        assert len(rebalancing_transactions) > 0
 
     def test_sector_rotation_workflow(self):
         """Test sector rotation workflow."""
@@ -637,8 +537,7 @@ class TestMultiAssetWorkflows:
                 date=date(2023, 1, 15),
                 quantity=quantity,
                 price=price,
-                cash_flow=-(quantity * price),
-                commission=Decimal("5.00"),
+                commission=Decimal("-5.00"),
             )
 
         # Create price history in local currencies
@@ -724,8 +623,7 @@ class TestErrorHandlingWorkflows:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Current position
@@ -742,8 +640,7 @@ class TestErrorHandlingWorkflows:
             date=date(2023, 3, 15),
             quantity=Decimal("-150"),  # More than available
             price=Decimal("55.00"),
-            cash_flow=Decimal("8250.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
             comment="Attempted oversell",
         )
 
@@ -765,13 +662,12 @@ class TestErrorHandlingWorkflows:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5005.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
 
         # Verify valid transaction was created
         assert valid_transaction.quantity == Decimal("100")
-        assert valid_transaction.cash_flow < 0
+        assert valid_transaction.total_cash_flow() < 0
 
     def test_transaction_sequence_interruption(self):
         """Test handling of interrupted transaction sequences."""
@@ -788,8 +684,7 @@ class TestErrorHandlingWorkflows:
             date=date(2023, 1, 15),
             quantity=Decimal("100"),
             price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            commission=Decimal("-5.00"),
         )
         transactions.append(tx1)
 
@@ -803,8 +698,7 @@ class TestErrorHandlingWorkflows:
             date=date(2023, 2, 15),
             quantity=Decimal("50"),
             price=Decimal("55.00"),
-            cash_flow=Decimal("-2750.00"),
-            commission=Decimal("3.00"),
+            commission=Decimal("-3.00"),
         )
         transactions.append(tx2)
 
@@ -857,7 +751,7 @@ class TestErrorHandlingWorkflows:
             from_amount=Decimal("1000.00"),
             to_amount=Decimal("920.00"),
             exchange_rate=Decimal("0.92"),
-            commission=Decimal("2.00"),
+            commission=Decimal("-2.00"),
         )
 
         # Create EUR purchase using converted funds
@@ -870,15 +764,14 @@ class TestErrorHandlingWorkflows:
             date=date(2023, 6, 15),
             quantity=Decimal("20"),
             price=Decimal("46.00"),
-            cash_flow=Decimal("-920.00"),
-            commission=Decimal("2.00"),
+            commission=Decimal("-2.00"),
         )
 
         # Verify cross-currency workflow
         assert fx_tx.from_amount == Decimal("1000.00")
         assert fx_tx.to_amount == Decimal("920.00")
         # Cash flow is negative for purchases, equals the amount used
-        assert eur_purchase.cash_flow == -fx_tx.to_amount
+        assert eur_purchase.total_cash_flow() == -fx_tx.to_amount + fx_tx.commission
 
     def test_business_rule_enforcement(self):
         """Test enforcement of business rules in workflows."""

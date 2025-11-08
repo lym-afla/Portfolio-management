@@ -342,7 +342,7 @@ class TransactionSerializer(serializers.ModelSerializer):
     def get_cash_flow(self, obj):
         """Use centralized cash flow calculation."""
         # Use the centralized calculation method
-        calculated_cash_flow = obj.get_calculated_cash_flow()
+        calculated_cash_flow = obj.total_cash_flow()
         return format_value(
             calculated_cash_flow, "cash_flow", obj.currency, self.get_digits()
         )

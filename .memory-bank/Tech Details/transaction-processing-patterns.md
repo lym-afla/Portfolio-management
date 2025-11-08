@@ -109,7 +109,7 @@ position = asset.position(date)  # Wrong - missing investor
 
 All transaction processing now flows through centralized methods to ensure consistency across the application:
 
-1. **Central Cash Flow Calculation** - `Transactions.get_calculated_cash_flow()`
+1. **Central Cash Flow Calculation** - `Transactions.total_cash_flow()`
 2. **Unified Serializers** - `TransactionSerializer` and `FXTransactionSerializer`
 3. **Balance Tracking** - `BalanceTracker` helper class
 4. **Consistent Formatting** - Single formatting logic for all views
@@ -120,11 +120,11 @@ All transaction processing now flows through centralized methods to ensure consi
 
 ### Location: `common/models.py`
 
-The `get_calculated_cash_flow()` method serves as the single source of truth for all cash flow calculations:
+The `total_cash_flow()` method serves as the single source of truth for all cash flow calculations:
 
 ```python
 class Transactions(models.Model):
-    def get_calculated_cash_flow(self, target_currency=None):
+    def total_cash_flow(self, target_currency=None):
         """
         Calculate the cash flow for this transaction with consistent logic.
 
@@ -253,7 +253,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_cash_flow(self, obj):
         """Use centralized cash flow calculation"""
-        cash_flow = obj.get_calculated_cash_flow()
+        cash_flow = obj.total_cash_flow()
         return currency_format(cash_flow, obj.currency, absolute_value=True)
 
     def get_value(self, obj):
@@ -360,7 +360,7 @@ class BalanceTracker:
 
         if transaction.__class__.__name__ == 'Transactions':
             # Regular transaction
-            cash_flow = transaction.get_calculated_cash_flow()
+            cash_flow = transaction.total_cash_flow()
             currency = transaction.currency
 
             # Update balance
@@ -507,7 +507,7 @@ def balance(self, date, currency=None):
 
     for transaction in self.get_transactions_up_to(date):
         # Use centralized cash flow calculation
-        cash_flow = transaction.get_calculated_cash_flow(target_currency=currency)
+        cash_flow = transaction.total_cash_flow(target_currency=currency)
         total_balance += cash_flow
 
     return total_balance
@@ -528,7 +528,7 @@ def _calculate_cash_flow(transaction, investor):
 # After: Centralized calculation
 def _calculate_cash_flow(transaction, investor):
     # Use centralized method with sign adjustment for IRR
-    cash_flow = transaction.get_calculated_cash_flow()
+    cash_flow = transaction.total_cash_flow()
 
     # Adjust sign for IRR convention (negative = outflow, positive = inflow)
     if transaction.type in ['Buy', 'Cash Out']:
@@ -676,7 +676,7 @@ def calculate_balance_old(transactions):
 def calculate_balance_new(transactions):
     balance = Decimal('0')
     for txn in transactions:
-        balance += txn.get_calculated_cash_flow()
+        balance += txn.total_cash_flow()
     return balance
 ```
 
@@ -716,7 +716,7 @@ def track_balances_old(transactions):
         # Manual balance calculation
         if txn.currency not in balances:
             balances[txn.currency] = Decimal('0')
-        balances[txn.currency] += calculate_cash_flow_old(txn)
+        balances[txn.currency] += txn.total_cash_flow()
     return balances
 
 # New approach
@@ -746,7 +746,7 @@ def test_get_calculated_cash_flow_buy():
     )
 
     expected = -(100 * 150.25 + 9.95)  # -15034.95
-    actual = transaction.get_calculated_cash_flow()
+    actual = transaction.total_cash_flow()
     assert actual == expected
 
 def test_get_calculated_cash_flow_bond():
@@ -763,7 +763,7 @@ def test_get_calculated_cash_flow_bond():
 
     # Price should be converted using get_price()
     expected = -(10 * (98.5 * 1000 / 100) + 50 + 10)  # -(9850 + 50 + 10)
-    actual = transaction.get_calculated_cash_flow()
+    actual = transaction.total_cash_flow()
     assert actual == expected
 ```
 
@@ -854,7 +854,7 @@ def process_transactions_batch(transactions, batch_size=1000):
 @lru_cache(maxsize=1000)
 def get_cached_cash_flow(transaction_id, target_currency=None):
     transaction = Transactions.objects.get(id=transaction_id)
-    return transaction.get_calculated_cash_flow(target_currency)
+    return transaction.total_cash_flow(target_currency)
 
 # Cache balance snapshots
 def cache_balances_for_user(user_id, date):
@@ -880,11 +880,11 @@ def cache_balances_for_user(user_id, date):
 
 ### Issue 2: Balance Calculations Don't Match
 **Problem**: Transaction table balances don't match account balance calculations
-**Solution**: Both should use `get_calculated_cash_flow()` method
+**Solution**: Both should use `total_cash_flow()` method
 
 ### Issue 3: Missing ACI in Some Views
 **Problem**: Accrued interest included in some calculations but not others
-**Solution**: Centralized in `get_calculated_cash_flow()` - automatically included for bonds
+**Solution**: Centralized in `total_cash_flow()` - automatically included for bonds
 
 ### Issue 4: FX Rate Formatting Inconsistency
 **Problem**: Different formats for exchange rates across views

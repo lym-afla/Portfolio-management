@@ -371,7 +371,7 @@ class Accounts(models.Model):
         """
         Calculate account cash balance as of a given date.
 
-        Uses the centralized get_calculated_cash_flow() method for consistency.
+        Uses the centralized total_cash_flow() method for consistency.
         """
         balance = {}
 
@@ -381,7 +381,7 @@ class Accounts(models.Model):
         # Process regular transactions using centralized cash flow calculation
         transactions = self.transactions.filter(date__lte=query_date)
         for transaction in transactions:
-            cash_flow = transaction.get_calculated_cash_flow()
+            cash_flow = transaction.total_cash_flow()
             balance[transaction.currency] = (
                 balance.get(transaction.currency, Decimal(0)) + cash_flow
             )
@@ -1615,7 +1615,7 @@ class Transactions(models.Model):
             # For non-bonds, price is already in actual money terms
             return self.price
 
-    def get_calculated_cash_flow(self, target_currency=None):
+    def total_cash_flow(self, target_currency=None):
         """
         Calculate the net cash flow for this transaction.
 
