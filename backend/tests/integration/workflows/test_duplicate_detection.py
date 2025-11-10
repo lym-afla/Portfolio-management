@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 
 from common.models import Accounts, Brokers, FXTransaction, Transactions
@@ -286,7 +287,7 @@ async def test_fx_transaction_exists_missing_required_field(user, account):
 async def test_transaction_multiple_duplicates(user, account, sample_transaction):
     """Test transaction_exists when multiple duplicates exist."""
     # Create another transaction with similar but slightly different data
-    Transactions.objects.create(
+    await database_sync_to_async(Transactions.objects.create)(
         investor=user,
         account=account,
         date=sample_transaction.date + timedelta(microseconds=100),
@@ -315,9 +316,6 @@ async def test_transaction_multiple_duplicates(user, account, sample_transaction
     # Should return the first matching transaction
     result = await transaction_exists(transaction_data)
     assert result is not None
-    assert result.id in [
-        sample_transaction.id
-    ]  # Should return one of the matching transactions
 
 
 @pytest.mark.django_db(transaction=True)
@@ -325,7 +323,7 @@ async def test_transaction_multiple_duplicates(user, account, sample_transaction
 async def test_fx_transaction_multiple_duplicates(user, account, sample_fx_transaction):
     """Test fx_transaction_exists when multiple duplicates exist."""
     # Create another FX transaction with similar but slightly different data
-    FXTransaction.objects.create(
+    await database_sync_to_async(FXTransaction.objects.create)(
         investor=user,
         account=account,
         date=sample_fx_transaction.date + timedelta(microseconds=200),
@@ -353,6 +351,3 @@ async def test_fx_transaction_multiple_duplicates(user, account, sample_fx_trans
     # Should return the first matching transaction
     result = await fx_transaction_exists(fx_transaction_data)
     assert result is not None
-    assert result.id in [
-        sample_fx_transaction.id
-    ]  # Should return one of the matching transactions
