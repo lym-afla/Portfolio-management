@@ -15,8 +15,8 @@ from decimal import Decimal
 
 import pytest
 
-from backend.core.portfolio_utils import NAV_at_date
 from common.models import FX, Assets
+from core.portfolio_utils import NAV_at_date
 from tests.fixtures.factories.asset_factory import AssetFactory
 from tests.fixtures.factories.transaction_factory import TransactionFactory
 
