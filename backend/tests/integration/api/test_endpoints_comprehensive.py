@@ -86,26 +86,6 @@ class TestUserEndpoints(APITestCase):
         # Test that we can update dashboard settings with JWT auth
         assert response.status_code == 200
 
-    @pytest.mark.skip(reason="Endpoint /users/api/preferences/ does not exist")
-    def test_user_preferences_endpoint(self):
-        """Test user preferences management."""
-        # Test getting preferences
-        url = "/users/api/preferences/"
-        response = self.client.get(url)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, dict)
-
-        # Test updating preferences
-        preferences = {"theme": "dark", "language": "en", "timezone": "UTC"}
-
-        response = self.client.post(
-            url, data=json.dumps(preferences), content_type="application/json"
-        )
-
-        assert response.status_code == 200
-
     def test_unauthorized_access(self):
         """Test that unauthorized access is properly blocked."""
         # Clear JWT authorization header
@@ -163,95 +143,144 @@ class TestPortfolioEndpoints(APITestCase):
         data = response.json()
         assert isinstance(data, (dict, list))  # Response should be valid JSON
 
-    @pytest.mark.skip(reason="Endpoint /dashboard/api/holdings/ does not exist")
-    def test_portfolio_holdings_endpoint(self):
-        """Test portfolio holdings retrieval."""
-        # Create a test transaction
+    def test_dashboard_summary_endpoint(self):
+        """Test dashboard summary API endpoint."""
+        url = "/dashboard/api/get-summary/"
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        data = response.json()
+        # Check for expected fields in summary
+        assert "Current NAV" in data
+        assert "Invested" in data
+        assert "Cash-out" in data
+        # total_return and irr may be None if no data, so just check they exist
+        assert "total_return" in data or data.get("total_return") is not None
+        assert "irr" in data or data.get("irr") is not None
+
+    def test_dashboard_breakdown_endpoint(self):
+        """Test dashboard breakdown API endpoint."""
+        url = "/dashboard/api/get-breakdown/"
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        data = response.json()
+        # Check for breakdown structure
+        assert "assetType" in data
+        assert "currency" in data
+        assert "assetClass" in data
+        assert "totalNAV" in data
+
+        # Each breakdown should have data and percentage
+        assert "data" in data["assetType"]
+        assert "percentage" in data["assetType"]
+        assert "data" in data["currency"]
+        assert "percentage" in data["currency"]
+        assert "data" in data["assetClass"]
+        assert "percentage" in data["assetClass"]
+
+    def test_dashboard_summary_over_time_endpoint(self):
+        """Test dashboard summary over time API endpoint."""
+        # Create some annual performance data for testing
+        from common.models import AnnualPerformance
+
+        AnnualPerformance.objects.create(
+            investor=self.user,
+            year=2023,
+            account_type=self.user.selected_account_type,
+            account_id=self.user.selected_account_id,
+            currency=self.user.default_currency,
+            bop_nav=Decimal("10000.00"),
+            invested=Decimal("5000.00"),
+            cash_out=Decimal("0.00"),
+            price_change=Decimal("500.00"),
+            capital_distribution=Decimal("0.00"),
+            commission=Decimal("-50.00"),
+            tax=Decimal("0.00"),
+            fx=Decimal("0.00"),
+            eop_nav=Decimal("15450.00"),
+            tsr=0.545,
+        )
+
+        url = "/dashboard/api/get-summary-over-time/"
+        response = self.client.get(url)
+
+        # May return 404 if no data or 200 with data
+        assert response.status_code in [200, 404]
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "years" in data
+            assert "lines" in data
+            assert "currentYear" in data
+            assert isinstance(data["years"], list)
+            assert isinstance(data["lines"], list)
+
+    def test_nav_chart_data_endpoint(self):
+        """Test NAV chart data API endpoint."""
+        # Create some test data
         Transactions.objects.create(
             investor=self.user,
             account=self.account,
             security=self.asset,
             currency="USD",
-            type="Buy",
-            date=date(2023, 1, 15),
-            quantity=Decimal("100"),
-            price=Decimal("50.00"),
-            cash_flow=Decimal("-5000.00"),
-            commission=Decimal("5.00"),
+            type="Cash in",
+            date=datetime(2023, 1, 15, 10, 30),
+            quantity=Decimal("0"),
+            price=Decimal("0.00"),
+            cash_flow=Decimal("10000.00"),
+            commission=Decimal("0.00"),
         )
 
-        url = "/dashboard/api/holdings/"
-        response = self.client.get(url)
+        url = "/dashboard/api/get-nav-chart-data/"
+        params = {
+            "frequency": "monthly",
+            "dateFrom": "2023-01-01",
+            "dateTo": "2023-12-31",
+            "breakdown": "none",
+        }
+        response = self.client.get(url, params)
 
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        if data:  # If there are holdings
-            holding = data[0]
-            assert "asset_name" in holding
-            assert "quantity" in holding
-            assert "current_price" in holding
-            assert "market_value" in holding
-
-    @pytest.mark.skip(reason="Endpoint /dashboard/api/performance/ does not exist")
-    def test_portfolio_performance_endpoint(self):
-        """Test portfolio performance data retrieval."""
-        url = "/dashboard/api/performance/"
-        response = self.client.get(url)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "period_return" in data
-        assert "year_to_date" in data
-        assert "annualized_return" in data
-
-    @pytest.mark.skip(reason="Endpoint /dashboard/api/allocation/ does not exist")
-    def test_portfolio_allocation_endpoint(self):
-        """Test portfolio allocation breakdown."""
-        url = "/dashboard/api/allocation/"
-        response = self.client.get(url)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "by_sector" in data
-        assert "by_currency" in data
-        assert "by_asset_type" in data
-
-    @pytest.mark.skip(reason="Endpoint /dashboard/api/nav/ does not exist")
-    def test_portfolio_nav_endpoint(self):
-        """Test NAV calculation endpoint."""
-        # Create price data
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=self.asset, price=Decimal("55.00")
-        )
-
-        url = "/dashboard/api/nav/"
-        response = self.client.post(
-            url,
-            data=json.dumps({"date": "2023-06-15"}),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "nav_value" in data
+        # Chart data should have labels, datasets, and currency
+        assert "labels" in data
+        assert "datasets" in data
         assert "currency" in data
-        assert "date" in data
+        assert isinstance(data["labels"], list)
+        assert isinstance(data["datasets"], list)
 
-    @pytest.mark.skip(
-        reason="Endpoint /dashboard/api/multi_currency_summary/ does not exist"
-    )
-    def test_multi_currency_portfolio_endpoint(self):
-        """Test multi-currency portfolio endpoint."""
-        # Removed multi_currency_user parameter - not needed for skipped test
-        url = "/dashboard/api/multi_currency_summary/"
-        response = self.client.get(url)
+    def test_nav_chart_data_with_parameters(self):
+        """Test NAV chart data endpoint with different parameters."""
+        # Create some test data
+        Transactions.objects.create(
+            investor=self.user,
+            account=self.account,
+            security=self.asset,
+            currency="USD",
+            type="Cash in",
+            date=datetime(2023, 6, 15, 10, 30),
+            quantity=Decimal("0"),
+            price=Decimal("0.00"),
+            cash_flow=Decimal("5000.00"),
+            commission=Decimal("0.00"),
+        )
+
+        url = "/dashboard/api/get-nav-chart-data/"
+        # Test with different frequency
+        params = {
+            "frequency": "weekly",
+            "breakdown": "currency",
+        }
+        response = self.client.get(url, params)
 
         assert response.status_code == 200
         data = response.json()
-        assert "base_currency" in data
-        assert "total_nav_base" in data
-        assert "currency_breakdown" in data
+        assert "labels" in data
+        assert "datasets" in data
+        assert "currency" in data
+        assert isinstance(data["labels"], list)
+        assert isinstance(data["datasets"], list)
 
 
 @pytest.mark.api
