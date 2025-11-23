@@ -1,8 +1,12 @@
 """Test CORS and session cookie behavior between frontend and backend."""
 
+import pytest
 import requests
 
 
+@pytest.mark.skip(
+    reason="Requires live server running on localhost:8000. Run manually with: python -m pytest tests/integration/api/test_cors_session.py -v -s"
+)
 def test_cors_session_behavior() -> None:
     """Test session behavior with CORS headers."""
     print("=== Testing CORS Session Behavior ===")
