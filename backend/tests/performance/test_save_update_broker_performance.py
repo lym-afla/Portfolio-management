@@ -8,7 +8,6 @@ from decimal import Decimal
 import pytest
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
-from channels.testing import HttpCommunicator
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework.test import APIClient
@@ -23,6 +22,21 @@ from constants import (
 from core.accounts_utils import get_accounts_table_api
 from core.portfolio_utils import calculate_performance, get_last_exit_date_for_accounts
 from database.consumers import UpdateAccountPerformanceConsumer
+
+# Try to import HttpCommunicator, skip tests if not available
+try:
+    from channels.testing import HttpCommunicator
+
+    CHANNELS_AVAILABLE = True
+except ImportError:
+    CHANNELS_AVAILABLE = False
+    HttpCommunicator = None
+
+# Skip all async consumer tests if channels/daphne not available
+pytestmark = pytest.mark.skipif(
+    not CHANNELS_AVAILABLE,
+    reason="Requires channels and daphne for SSE/websocket testing. Install with: pip install daphne",
+)
 
 User = get_user_model()
 
