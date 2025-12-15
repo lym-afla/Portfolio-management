@@ -88,6 +88,7 @@ The following are protected and must not be auto-edited without explicit human s
   - `area:calculations` for financial changes
   - `risk:high` for any changes touching protected logic
   - `needs-approval` when `REQUIRES APPROVAL` applies
+- PR must not contain any references to be made by the AI agent
 
 **Auto-merge rules for AI agent:**
 - The AI **may** auto-merge if change is in "Allowed automated changes", tests pass, and the change is not in protected globs.

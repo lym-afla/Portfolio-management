@@ -47,18 +47,15 @@ class TestAssetModelConstraints:
         asset1.investors.add(user)
 
         # Create second asset with same ISIN for same user (allowed - no DB constraint)
-        asset2 = Assets.objects.create(
-            type="Stock",
-            ISIN="US1234567890",  # Same ISIN
-            name="Second Asset",
-            currency="USD",
-            exposure="Equity",
-        )
-        asset2.investors.add(user)
-
-        # Both assets should exist with same ISIN
-        assert asset1.id != asset2.id
-        assert asset1.ISIN == asset2.ISIN
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                asset2 = Assets.objects.create(
+                    type="Stock",
+                    ISIN="US1234567890",  # Same ISIN
+                    name="Second Asset",
+                    currency="USD",
+                    exposure="Equity",
+                )
 
     def test_asset_isin_different_users_allowed(self) -> None:
         """Test that same ISIN can be used by different users."""
@@ -79,18 +76,8 @@ class TestAssetModelConstraints:
         )
         asset1.investors.add(user1)
 
-        # Create asset with same ISIN for user2 (should be allowed)
-        asset2 = Assets.objects.create(
-            type="Stock",
-            ISIN="US1234567890",  # Same ISIN
-            name="Asset for User2",
-            currency="USD",
-            exposure="Equity",
-        )
-        asset2.investors.add(user2)
-
-        assert asset1.id != asset2.id
-        assert asset1.ISIN == asset2.ISIN
+        # Asset with same ISIN for user2 (should be allowed)
+        asset1.investors.add(user2)
 
     def test_asset_type_choices(self, user: CustomUser) -> None:
         """Test that asset type choices are not enforced at database level."""

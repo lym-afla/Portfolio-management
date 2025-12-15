@@ -762,17 +762,80 @@ class Assets(models.Model):
         # Handle both date and datetime objects in comparison
         filtered_transactions = []
         for t in transactions:
-            print("==============", t.date, entry_date)
             if t.date >= entry_date:
                 filtered_transactions.append(t)
         transactions = filtered_transactions
         logger.debug(f"Number of transactions after filtering: {len(transactions)}")
 
-        if is_long_position is None and transactions:
-            is_long_position = transactions[0].quantity > 0
-        logger.debug(f"Is long position: {is_long_position}")
+        # Determine position direction based on current position
+        current_position = self.position(date_as_of, investor, account_ids)
 
-        # Calculate the buy-in price
+        # Determine if it's a long or short position:
+        # - If current_position > 0: currently long → use average buy price
+        # - If current_position < 0: currently short → use average sell price
+        # - If current_position == 0: closed position → look at the LAST non-zero
+        #   position direction to determine what was being closed
+        if abs(current_position) > Decimal("1e-6"):
+            # Non-zero position: direction based on current position
+            is_long_position = current_position > 0
+        elif transactions:
+            # Zero position: find the direction of the last non-zero position
+            # This handles mixed position scenarios (long → short → zero)
+            temp_position = Decimal(0)
+            last_non_zero_direction = None
+            for t in transactions:
+                temp_position += t.quantity
+                if abs(temp_position) > Decimal("1e-6"):
+                    last_non_zero_direction = temp_position > 0
+            # If we found a non-zero state, use that direction
+            # Otherwise, fall back to first transaction direction
+            if last_non_zero_direction is not None:
+                is_long_position = last_non_zero_direction
+            else:
+                first_transaction = transactions[0]
+                is_long_position = first_transaction.quantity > 0
+        else:
+            is_long_position = True  # Default to long if no transactions
+
+        logger.debug(
+            f"Current position: {current_position}, Is long position: {is_long_position}"
+        )
+
+        # For short positions, find the price at which the short position was established
+        if not is_long_position:
+            # For short positions, find the average sell price that created the short
+            sell_value = Decimal(0)
+            sell_quantity = Decimal(0)
+            buy_value = Decimal(0)
+            buy_quantity = Decimal(0)
+
+            for transaction in transactions:
+                if currency is not None:
+                    fx_rate = FX.get_rate(
+                        transaction.currency, currency, transaction.date
+                    )["FX"]
+                else:
+                    fx_rate = Decimal(1)
+
+                current_price = transaction.price * fx_rate
+
+                if transaction.quantity < 0:  # Sell transaction
+                    sell_value += current_price * abs(transaction.quantity)
+                    sell_quantity += abs(transaction.quantity)
+                else:  # Buy transaction
+                    buy_value += current_price * transaction.quantity
+                    buy_quantity += transaction.quantity
+
+            # For short positions (including closed shorts), return the average sell price
+            # This is the "entry price" for the short position
+            if sell_quantity >= buy_quantity and sell_quantity > 0:
+                avg_sell_price = sell_value / sell_quantity
+                logger.debug(
+                    f"Short position buy-in price (avg sell): {avg_sell_price}"
+                )
+                return round(avg_sell_price, 6)
+
+        # For long positions, use the original calculation logic
         value_entry = Decimal(0)
         quantity_entry = Decimal(0)
         previous_entry_price = Decimal(0)
@@ -800,13 +863,10 @@ class Assets(models.Model):
                 value_entry / quantity_entry if quantity_entry != 0 else Decimal(0)
             )
             weight_entry_previous = quantity_entry
-            # If it's a long position and the quantity is positive,
-            # or if it's a short position and the quantity is negative,
-            # use the current price. Otherwise, use the previous buy-in price.
+            # For long positions, use the current price for buy transactions
             entry_price = (
                 current_price
                 if (is_long_position and transaction.quantity > 0)
-                or (not is_long_position and transaction.quantity < 0)
                 else previous_entry_price
             )
 
@@ -1163,7 +1223,7 @@ class Assets(models.Model):
         return result
 
     def unrealized_gain_loss(
-        self, date, investor, currency=None, account_ids=None, start_date=None
+        self, date_as_of, investor, currency=None, account_ids=None, start_date=None
     ):
         """
         Calculate the unrealized gain/loss for an asset.
@@ -1173,7 +1233,8 @@ class Assets(models.Model):
 
         Parameters:
             self (Asset): The asset object for which unrealized gain/loss is calculated.
-            date (datetime.date): The date as of which the calculation is performed.
+            date_as_of (datetime.date): The date as of which the calculation is performed.
+            investor (CustomUser): The investor for whom the calculation is performed.
             currency (str): The reporting currency.
             account_ids (list): List of broker account IDs to filter transactions.
             start_date (datetime.date): The start date for calculating buy-in price.
@@ -1188,29 +1249,31 @@ class Assets(models.Model):
         price_appreciation = 0
         fx_effect = 0
 
-        current_position = self.position(date, investor, account_ids)
+        current_position = self.position(date_as_of, investor, account_ids)
 
         current_price_in_lcl_cur = (
-            self.price_at_date(date, currency=None).price
-            if self.price_at_date(date)
+            self.price_at_date(date_as_of, currency=None).price
+            if self.price_at_date(date_as_of)
             else 0
         )
         current_price_in_target_cur = (
-            self.price_at_date(date, currency).price if self.price_at_date(date) else 0
+            self.price_at_date(date_as_of, currency).price
+            if self.price_at_date(date_as_of)
+            else 0
         )
         buy_in_price_in_lcl_cur = self.calculate_buy_in_price(
-            date,
+            date_as_of,
             investor,
             currency=None,
             account_ids=account_ids,
             start_date=start_date,
         )
         buy_in_price_in_target_cur = self.calculate_buy_in_price(
-            date, investor, currency, account_ids, start_date
+            date_as_of, investor, currency, account_ids, start_date
         )
 
         fx_rate_eop = (
-            FX.get_rate(self.currency, currency, date)["FX"] if currency else 1
+            FX.get_rate(self.currency, currency, date_as_of)["FX"] if currency else 1
         )
 
         if (
@@ -1220,7 +1283,9 @@ class Assets(models.Model):
             # For bonds: unrealized G/L = notional_at_date * (price_at_date% - buy_in_price%) * position / 100 # noqa: E501
             # For others: unrealized G/L = (current_price - buy_in_price) * position
             if self.is_bond:
-                notional_lcl = self.get_effective_notional(date, investor, account_ids)
+                notional_lcl = self.get_effective_notional(
+                    date_as_of, investor, account_ids
+                )
 
                 price_appreciation = (
                     notional_lcl

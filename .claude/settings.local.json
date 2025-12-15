@@ -35,7 +35,11 @@
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_tinkoff_utils.py::test_map_tinkoff_operation_to_transaction -v --tb=long --no-cov)",
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_tinkoff_utils.py -v --no-cov)",
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_session_integration.py -v --no-migrations)",
-      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_transaction_flow.py -v --tb=short --no-cov)"
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/integration/workflows/test_transaction_flow.py -v --tb=short --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/advanced/ -v --tb=short --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/advanced/test_regression_suite.py::TestAPIRegression::test_regression_fx_endpoint_pagination tests/advanced/test_regression_suite.py::TestAPIRegression::test_regression_transaction_endpoint_validation -v --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/unit/models/test_assets_model.py::TestAssetsModel::test_realized_gain_loss_short_position -v --no-cov)",
+      "Bash(\"venv\\Scripts\\python.exe\" -c \"import daphne; print(''daphne installed'')\")"
     ],
     "deny": [],
     "ask": []
