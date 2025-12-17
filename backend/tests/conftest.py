@@ -340,13 +340,13 @@ def multi_currency_transactions(
 
 @pytest.fixture
 def fx_rates_usd_eur(user):
-    """Create USD/EUR FX rate history."""
+    """Create USD/EUR FX rate history with reduced data for performance."""
     rates = []
     base_date = date(2023, 1, 1)
 
-    for i in range(365):  # One year of data
-        current_date = base_date + timedelta(days=i)
-        rate = Decimal("1.3") + (Decimal("0.02") * (i % 30) / 30)  # Some variation
+    for i in range(10):  # Reduced from 365 to 10 for performance
+        current_date = base_date + timedelta(days=i * 30)  # Monthly data
+        rate = Decimal("1.3") + (Decimal("0.02") * (i % 5) / 5)  # Some variation
         fx = FX.objects.create(date=current_date, USDEUR=rate)
         fx.investors.add(user)
         rates.append(fx)
@@ -360,23 +360,21 @@ def fx_rates_multi_currency(multi_currency_user):
     rates = []
     base_date = date(2023, 1, 1)
 
-    for i in range(365):
-        current_date = base_date + timedelta(days=i)
+    for i in range(10):  # Reduced from 365 to 10 for performance
+        current_date = base_date + timedelta(days=i * 30)  # Monthly data
 
         # Create FX rates with realistic variations
         # Using correct convention: CUR1CUR2 = number of CUR1 per 1 CUR2
         fx = FX.objects.create(
             date=current_date,
             USDEUR=Decimal("1.1")
-            + (
-                Decimal("0.10") * (i % 30) / 30
-            ),  # 1.1 USD per 1 EUR (higher volatility)
+            + (Decimal("0.10") * (i % 5) / 5),  # 1.1 USD per 1 EUR
             USDGBP=Decimal("1.22")
-            + (Decimal("0.03") * (i % 30) / 30),  # 1.22 USD per 1 GBP
+            + (Decimal("0.03") * (i % 5) / 5),  # 1.22 USD per 1 GBP
             CHFGBP=Decimal("1.14")
-            + (Decimal("0.02") * (i % 30) / 30),  # 1.14 CHF per 1 GBP
-            RUBUSD=Decimal("75") + (Decimal("5") * (i % 30) / 30),  # 75 RUB per 1 USD
-            PLNUSD=Decimal("4") + (Decimal("0.3") * (i % 30) / 30),  # 4 PLN per 1 USD
+            + (Decimal("0.02") * (i % 5) / 5),  # 1.14 CHF per 1 GBP
+            RUBUSD=Decimal("75") + (Decimal("5") * (i % 5) / 5),  # 75 RUB per 1 USD
+            PLNUSD=Decimal("4") + (Decimal("0.3") * (i % 5) / 5),  # 4 PLN per 1 USD
         )
         fx.investors.add(multi_currency_user)
         rates.append(fx)
@@ -405,18 +403,18 @@ def fx_transaction(user, account):
 
 
 @pytest.fixture
-def price_history(user, asset):
-    """Create price history for an asset."""
+def price_history(asset):
+    """Create price history for an asset with reduced data for performance."""
     prices = []
     base_date = date(2023, 1, 1)
     base_price = Decimal("50.00")
 
-    for i in range(365):
-        current_date = base_date + timedelta(days=i)
+    for i in range(12):  # Reduced from 365 to 12 for performance
+        current_date = base_date + timedelta(days=i * 30)  # Monthly data
         # Simulate price movement with some volatility
-        price_change = Decimal("0.01") * (i % 20 - 10)  # +/- $0.10 movement
+        price_change = Decimal("0.01") * (i % 4 - 2)  # +/- $0.02 movement
         current_price = (
-            base_price + price_change + (Decimal("0.001") * i)
+            base_price + price_change + (Decimal("0.01") * i)
         )  # Slight upward trend
 
         price = Prices.objects.create(
@@ -428,18 +426,16 @@ def price_history(user, asset):
 
 
 @pytest.fixture
-def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
-    """Create price histories for multiple assets."""
+def price_history_multi_asset(asset, asset_eur, asset_gbp):
+    """Create price histories for multiple assets with reduced data for performance."""
     price_data = {}
 
     # USD asset prices
     base_date = date(2023, 1, 1)
     prices_usd = []
-    for i in range(365):
-        current_date = base_date + timedelta(days=i)
-        price = (
-            Decimal("50.00") + (Decimal("0.02") * i) + (Decimal("0.5") * (i % 10 - 5))
-        )
+    for i in range(12):  # Reduced from 365 to 12 for performance
+        current_date = base_date + timedelta(days=i * 30)  # Monthly data
+        price = Decimal("50.00") + (Decimal("0.2") * i) + (Decimal("0.5") * (i % 4 - 2))
         prices_usd.append(
             Prices.objects.create(date=current_date, security=asset, price=price)
         )
@@ -447,10 +443,10 @@ def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
 
     # EUR asset prices
     prices_eur = []
-    for i in range(365):
-        current_date = base_date + timedelta(days=i)
+    for i in range(12):
+        current_date = base_date + timedelta(days=i * 30)
         price = (
-            Decimal("40.00") + (Decimal("0.015") * i) + (Decimal("0.3") * (i % 10 - 5))
+            Decimal("40.00") + (Decimal("0.15") * i) + (Decimal("0.3") * (i % 4 - 2))
         )
         prices_eur.append(
             Prices.objects.create(date=current_date, security=asset_eur, price=price)
@@ -459,10 +455,10 @@ def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
 
     # GBP asset prices
     prices_gbp = []
-    for i in range(365):
-        current_date = base_date + timedelta(days=i)
+    for i in range(12):
+        current_date = base_date + timedelta(days=i * 30)
         price = (
-            Decimal("35.00") + (Decimal("0.018") * i) + (Decimal("0.4") * (i % 10 - 5))
+            Decimal("35.00") + (Decimal("0.18") * i) + (Decimal("0.4") * (i % 4 - 2))
         )
         prices_gbp.append(
             Prices.objects.create(date=current_date, security=asset_gbp, price=price)
@@ -537,14 +533,14 @@ def fx_rates(user):
     rates = []
     base_date = date(2023, 1, 1)
 
-    for i in range(10):  # Create 10 days of FX data
+    for i in range(5):  # Reduced from 10 to 5 for performance
         current_date = base_date + timedelta(days=i)
-        rate = Decimal("0.92") + (Decimal("0.01") * (i % 5) / 5)  # Small variation
+        rate = Decimal("0.92") + (Decimal("0.01") * (i % 3) / 3)  # Small variation
         fx = FX.objects.create(
             date=current_date,
             USDEUR=rate,
-            USDGBP=Decimal("0.82") + (Decimal("0.01") * (i % 5) / 5),
-            CHFGBP=Decimal("0.88") + (Decimal("0.01") * (i % 5) / 5),
+            USDGBP=Decimal("0.82") + (Decimal("0.01") * (i % 3) / 3),
+            CHFGBP=Decimal("0.88") + (Decimal("0.01") * (i % 3) / 3),
         )
         fx.investors.add(user)
         rates.append(fx)
