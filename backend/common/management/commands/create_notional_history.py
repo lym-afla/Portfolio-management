@@ -22,9 +22,23 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
+    """
+    Django management command to create NotionalHistory entries.
+
+    This command retroactively creates NotionalHistory entries for existing
+    bond redemption transactions that were imported before the NotionalHistory
+    feature was implemented.
+    """
+
     help = "Create NotionalHistory entries for existing bond redemption transactions"
 
     def add_arguments(self, parser):
+        """
+        Add command line arguments to the parser.
+
+        Args:
+            parser: ArgumentParser to add arguments to.
+        """
         parser.add_argument(
             "--security-id",
             type=int,
@@ -37,6 +51,13 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """
+        Execute the command.
+
+        Args:
+            *args: Additional positional arguments.
+            **options: Additional keyword arguments from command line.
+        """
         security_id = options.get("security_id")
         dry_run = options.get("dry_run")
 

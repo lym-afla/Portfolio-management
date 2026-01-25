@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_user_token(user, sandbox_mode=False):
-    """Get user's Tinkoff API token"""
+    """Get user's Tinkoff API token."""
     try:
         token = await database_sync_to_async(TinkoffApiToken.objects.get)(
             user=user, token_type="read_only", sandbox_mode=sandbox_mode, is_active=True
@@ -57,7 +57,7 @@ async def get_bond_initial_notional(instrument_uid, user):
         user: CustomUser instance (to get API token)
 
     Returns:
-        Decimal: The initial notional value per bond, or None if not found
+        Decimal: The initial notional value per bond, or None if not found.
     """
     try:
         token = await get_user_token(user)
@@ -506,6 +506,7 @@ async def save_bond_redemption_history(
 async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None):
     """
     Get security details from Tinkoff API using instrument_uid.
+
     Falls back to find_instrument if get_instrument_by fails.
 
     Args:
@@ -716,7 +717,7 @@ async def _find_or_create_security(
 
 async def map_tinkoff_operation_to_transaction(operation, investor, account):
     """
-    Maps a Tinkoff API operation to our Transaction model format.
+    Map a Tinkoff API operation to our Transaction model format.
 
     Args:
         operation: Tinkoff API OperationItem
@@ -724,7 +725,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        dict: Transaction data ready for creating a Transaction or FXTransaction instance
+        dict: Transaction data ready for creating a Transaction or FXTransaction instance.
     """
     # Initialize base transaction data
     transaction_data = {
@@ -1050,7 +1051,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
 async def create_transaction_from_tinkoff(operation, investor, account):
     """
-    Creates a Transaction instance from Tinkoff operation data if it doesn't exist.
+    Create a Transaction instance from Tinkoff operation data if it doesn't exist.
 
     Args:
         operation: Tinkoff API OperationItem
@@ -1058,7 +1059,7 @@ async def create_transaction_from_tinkoff(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        tuple: (Transaction instance or None, str status message)
+        tuple: (Transaction instance or None, str status message).
     """
     transaction_data = await map_tinkoff_operation_to_transaction(
         operation, investor, account
@@ -1096,14 +1097,14 @@ async def create_transaction_from_tinkoff(operation, investor, account):
 # New utility functions for token management
 async def verify_token_access(user, required_access="read_only"):
     """
-    Verify if user has valid token with required access level
+    Verify if user has valid token with required access level.
 
     Args:
         user: CustomUser instance
         required_access: str, access level required ('read_only' or 'full_access')
 
     Returns:
-        bool: True if token is valid and has required access
+        bool: True if token is valid and has required access.
     """
     try:
         token = await get_user_token(user)
@@ -1116,7 +1117,7 @@ async def verify_token_access(user, required_access="read_only"):
 
 async def get_account_info(user):
     """
-    Get user's Tinkoff account information
+    Get user's Tinkoff account information.
 
     Args:
         user: CustomUser instance
@@ -1267,9 +1268,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
 
 
 async def get_instrument_uid(asset: Assets, user):
-    """
-    Get instrument UID from T-Bank API
-    """
+    """Get instrument UID from T-Bank API."""
     from channels.db import database_sync_to_async
 
     token = await get_user_token(user)

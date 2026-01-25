@@ -1,3 +1,9 @@
+"""Test cases for broker performance calculation and caching.
+
+This module contains integration tests for the annual broker
+performance calculation system including SSE endpoint testing.
+"""
+
 import json
 import logging
 from datetime import date, datetime, timedelta
@@ -27,19 +33,19 @@ User = get_user_model()
 
 @pytest.fixture
 def user():
-    """Create test user"""
+    """Create test user."""
     return User.objects.create_user(username="testuser", password="testpass")
 
 
 @pytest.fixture
 def broker(user):
-    """Create test broker"""
+    """Create test broker."""
     return Brokers.objects.create(name="Test Broker", investor=user)
 
 
 @pytest.fixture
 def account(broker):
-    """Create test broker account"""
+    """Create test broker account."""
     return Accounts.objects.create(
         broker=broker,
         name="Test Account",
@@ -51,7 +57,7 @@ def account(broker):
 
 @pytest.fixture
 def transactions(user, account):
-    """Create test transactions"""
+    """Create test transactions."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="US0378331005",
@@ -102,6 +108,7 @@ def transactions(user, account):
 
 @pytest.fixture
 def fx_rates(user):
+    """Create test FX rates."""
     # Create FX rates for the test period
     start_date = date(2010, 1, 1)
     # end_date = date(2023, 1, 1)
@@ -121,7 +128,7 @@ def fx_rates(user):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_unauthorized(user, broker, account):
-    """Test unauthorized access"""
+    """Test unauthorized access."""
     session_id = "test_session_123"
     update_data = {
         "user_id": user.id + 1,  # Different user ID
@@ -155,7 +162,8 @@ async def test_update_broker_performance_unauthorized(user, broker, account):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_missing_session(user, broker, account):
-    """Test missing session ID"""
+    """Test missing session ID."""
+    """Test missing session ID."""
     communicator = HttpCommunicator(
         UpdateAccountPerformanceConsumer.as_asgi(),
         "GET",
@@ -174,7 +182,8 @@ async def test_update_broker_performance_missing_session(user, broker, account):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_invalid_data(user):
-    """Test broker performance calculation with invalid data"""
+    """Test broker performance calculation with invalid data."""
+    """Test broker performance calculation with invalid data."""
     # Use DRF's APIClient instead of Django's client
     client = APIClient()
     await sync_to_async(client.force_authenticate)(user=user)
@@ -222,8 +231,9 @@ async def test_update_broker_performance_invalid_data(user):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_no_transactions(user, broker):
-    """Test broker performance calculation with no transactions"""
-
+    """Test broker performance calculation with no transactions."""
+    """Test broker performance calculation with no transactions."""
+    session_id = "test_session_invalid"
     session_id = "test_session_invalid"
     update_data = {
         "user_id": user.id,
@@ -268,7 +278,8 @@ async def test_update_broker_performance_no_transactions(user, broker):
 async def test_update_broker_performance_streaming(
     user, broker, account, transactions, fx_rates, capsys
 ):
-    """Test broker performance streaming with all currencies and restrictions"""
+    """Test broker performance streaming with all currencies and restrictions."""
+    """Test broker performance streaming with all currencies and restrictions."""
     print("Starting test_update_broker_performance_streaming")
 
     # Create session ID and cache the update data
@@ -325,6 +336,7 @@ async def test_update_broker_performance_streaming(
 
 @pytest.mark.django_db
 def test_get_last_exit_date_for_brokers(user, account):
+    """Test getting last exit date for brokers."""
     asset = Assets.objects.create(
         type="Stock",
         ISIN="US1234567890",
@@ -370,6 +382,7 @@ def test_get_last_exit_date_for_brokers(user, account):
 
 @pytest.mark.django_db
 def test_calculate_performance(user, account, caplog):
+    """Test performance calculation."""
     caplog.set_level(logging.DEBUG)
 
     asset = Assets.objects.create(
@@ -454,7 +467,8 @@ def test_calculate_performance(user, account, caplog):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_skip_existing(user, broker, account, caplog):
-    """Test broker performance calculation with skip_existing_years=True"""
+    """Test broker performance calculation with skip_existing_years=True."""
+    """Test broker performance calculation with skip_existing_years=True."""
     print("\nStarting test_update_broker_performance_skip_existing")
     caplog.set_level(logging.INFO)
 
@@ -650,7 +664,8 @@ async def test_update_broker_performance_skip_existing(user, broker, account, ca
 async def test_update_broker_performance_initial(
     user, broker, account, transactions, caplog
 ):
-    """Test initial broker performance calculation"""
+    """Test initial broker performance calculation."""
+    """Test initial broker performance calculation."""
     caplog.set_level(logging.INFO)
 
     # Create a unique session ID for this test
@@ -744,7 +759,8 @@ async def test_update_broker_performance_initial(
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
-    """Test the accounts table API functionality"""
+    """Test the accounts table API functionality."""
+    """Test the accounts table API functionality."""
     # Use existing broker and account, create only one additional set
     second_broker = await database_sync_to_async(Brokers.objects.create)(
         name="Second Test Broker", investor=user

@@ -1,3 +1,9 @@
+"""Test cases for Charles Stanley transaction import functionality.
+
+This module contains integration tests for parsing and importing
+transactions from Charles Stanley Excel files.
+"""
+
 import uuid
 from decimal import Decimal
 from unittest.mock import patch
@@ -22,6 +28,11 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 async def setup_data():
+    """Set up test data for Charles Stanley import tests.
+
+    Returns:
+        dict: Dictionary containing test user, broker, and account.
+    """
     User = get_user_model()
     unique_username = f"testuser_{uuid.uuid4().hex[:8]}"
     investor = await database_sync_to_async(User.objects.create_user)(
@@ -49,12 +60,14 @@ async def setup_data():
 
 @pytest.fixture(autouse=True)
 def close_db_connection():
+    """Close database connection after each test."""
     yield
     connection.close()
 
 
 @pytest.fixture(autouse=True)
 async def clear_database(django_db_setup, django_db_blocker):
+    """Clear database after each test."""
     yield
 
     @database_sync_to_async
@@ -71,6 +84,7 @@ async def clear_database(django_db_setup, django_db_blocker):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_parse_charles_stanley_transactions(setup_data):
+    """Test parsing Charles Stanley transactions."""
     investor, broker, asset, account = setup_data
 
     mock_data = {
@@ -107,6 +121,7 @@ async def test_parse_charles_stanley_transactions(setup_data):
 
 @pytest.mark.asyncio
 async def test_skip_existing_transaction(setup_data):
+    """Test skipping existing transactions."""
     investor, broker, asset, account = setup_data
 
     # Create an existing transaction with account
@@ -146,6 +161,7 @@ async def test_skip_existing_transaction(setup_data):
 
 @pytest.mark.asyncio
 async def test_different_transaction_types(setup_data):
+    """Test different transaction types."""
     investor, broker, asset, account = setup_data
 
     mock_data = {
@@ -176,6 +192,7 @@ async def test_different_transaction_types(setup_data):
 
 @pytest.mark.asyncio
 async def test_security_mapping(setup_data):
+    """Test security mapping for unknown securities."""
     investor, broker, asset, account = setup_data
 
     mock_data = {
@@ -206,6 +223,7 @@ async def test_security_mapping(setup_data):
 
 @pytest.mark.asyncio
 async def test_invalid_excel_file():
+    """Test handling of invalid Excel file."""
     with pytest.raises(
         ValueError
     ):  # Change back to ValueError if that's what you expect
@@ -219,6 +237,7 @@ async def test_invalid_excel_file():
 
 @pytest.mark.asyncio
 async def test_progress_reporting(setup_data):
+    """Test progress reporting during import."""
     investor, broker, asset, account = setup_data
 
     mock_data = {

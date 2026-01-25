@@ -1,12 +1,14 @@
-"""
-Test CORS and session cookie behavior between frontend and backend
+"""Test CORS and session cookie behavior between frontend and backend.
+
+This module contains integration tests for CORS headers
+and session cookie persistence across requests.
 """
 
 import requests
 
 
 def test_cors_session_behavior():
-    """Test session behavior with CORS headers"""
+    """Test session behavior with CORS headers."""
     print("=== Testing CORS Session Behavior ===")
 
     # Simulate frontend request from localhost:8080

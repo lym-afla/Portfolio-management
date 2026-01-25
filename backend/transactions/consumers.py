@@ -1,3 +1,9 @@
+"""Django Channels WebSocket consumers for transaction management.
+
+This module provides AsyncWebsocketConsumer implementations for handling
+real-time transaction imports and updates via WebSocket connections.
+"""
+
 import asyncio
 import datetime
 import json
@@ -28,7 +34,19 @@ User = get_user_model()
 
 
 class TransactionConsumer(AsyncWebsocketConsumer):
+    """WebSocket consumer for transaction import and management.
+
+    Handles real-time transaction imports from Excel files with
+    progress updates and duplicate detection.
+    """
+
     def __init__(self, *args, **kwargs):
+        """Initialize the transaction consumer.
+
+        Args:
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        """
         super().__init__(*args, **kwargs)
         # Initialize queues to handle confirmations and mappings
         self.confirmation_events = asyncio.Queue()
@@ -43,6 +61,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         self.duplicate_count = 0
 
     async def connect(self):
+        """Handle WebSocket connection.
+
+        Accepts the connection if the user is authenticated,
+        otherwise closes the connection.
+        """
         # Get the authenticated user from the scope
         self.user = self.scope["user"]
 
@@ -55,6 +78,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         logger.info(f"WebSocket connected for user: {self.user}")
 
     async def disconnect(self, close_code):
+        """Handle WebSocket disconnection.
+
+        Args:
+            close_code: WebSocket close code.
+        """
         logger.info(f"WebSocket disconnected with code: {close_code}")
         self.stop_event.set()
         logger.debug("WebSocket connection closed")
@@ -66,6 +94,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                 logger.debug("Import task cancelled upon disconnect")
 
     async def receive(self, text_data):
+        """Handle incoming WebSocket messages.
+
+        Args:
+            text_data: JSON-encoded message data.
+        """
         logger.debug(f"Raw WebSocket message received: {text_data}")
         try:
             text_data_json = json.loads(text_data)
@@ -342,6 +375,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
     async def start_file_import(
         self, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
     ):
+        """Start the file import process.
+
+        Args:
+            file_id: ID of the uploaded file.
+            account_id: ID of the target account.
+            confirm_every: Whether to confirm each transaction.
+            currency: Currency code.
+            is_galaxy: Whether this is a Galaxy import.
+            galaxy_type: Type of Galaxy import.
+        """
         logger.debug("Starting file import")
         try:
             self.confirm_every = confirm_every
@@ -370,11 +413,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def send_error(self, message: str, error_type: str = "critical_error"):
         """
-        Send error message to client
+        Send error message to client.
 
         Args:
             message: Error message
-            error_type: Type of error ('critical_error', 'import_error', 'save_error')
+            error_type: Type of error ('critical_error', 'import_error', 'save_error').
         """
         await self.send(
             text_data=json.dumps({"type": error_type, "data": {"error": message}})
@@ -382,11 +425,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def send_message(self, message_type: str, data: dict):
         """
-        Send formatted message to client
+        Send formatted message to client.
 
         Args:
             message_type: Type of message
-            data: Message data
+            data: Message data.
         """
         await self.send(text_data=json.dumps({"type": message_type, "data": data}))
 
@@ -397,7 +440,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         date_from: str = None,
         date_to: str = None,
     ):
-        """Handle API import process"""
+        """Handle API import process."""
         try:
             # Store broker_id for later use in accounts_matched handler
             self.current_broker_id = broker_id
@@ -436,11 +479,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
     async def process_account_matches(self, broker_id: int, pairs: list):
         """
-        Process the account matches and start importing transactions
+        Process the account matches and start importing transactions.
 
         Args:
             broker_id: ID of the broker
-            pairs: List of dicts with tinkoff_account_id and db_account_id
+            pairs: List of dicts with tinkoff_account_id and db_account_id.
         """
         try:
             logger.debug(
@@ -571,6 +614,10 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             self.date_to = None
 
     async def process_import(self):
+        """Process the import of transactions.
+
+        Iterates through the import generator and sends progress updates.
+        """
         logger.debug("Starting process_import")
         import_results = {
             "totalTransactions": 0,
@@ -1053,6 +1100,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         return results
 
     async def handle_transaction_confirmation(self, transaction_data):
+        """Handle transaction confirmation during import.
+
+        Args:
+            transaction_data: Dictionary containing transaction data.
+        """
         # Check if transaction already exists
         if transaction_data.get("is_fx"):
             existing_transaction = await fx_transaction_exists(transaction_data)
@@ -1151,13 +1203,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         self, broker_id, tinkoff_account, name, comment=""
     ):
         """
-        Create a new account in the database and import transactions
+        Create a new account in the database and import transactions.
 
         Args:
             broker_id: ID of the broker
             tinkoff_account: Dict with tinkoff account details
             name: Name for the new account
-            comment: Optional comment for the new account
+            comment: Optional comment for the new account.
         """
         try:
             logger.debug(

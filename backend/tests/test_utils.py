@@ -1,3 +1,9 @@
+"""Test cases for utility functions.
+
+This module contains unit tests for various utility functions
+including chart date generation.
+"""
+
 from datetime import date
 
 import pytest
@@ -88,12 +94,14 @@ from core.chart_utils import _chart_dates
     ],
 )
 def test_chart_dates(start_date, end_date, freq, expected):
+    """Test chart date generation with various frequencies."""
     result = _chart_dates(start_date, end_date, freq)
     assert list(result) == expected
 
 
 @pytest.mark.django_db
 def test_chart_dates_with_string_input():
+    """Test chart date generation with string input."""
     start_date = "2023-05-15"
     end_date = "2023-05-20"
     freq = "D"

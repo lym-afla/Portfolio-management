@@ -29,8 +29,9 @@ TIMELINE_CHOICES = [
 
 def prepare_account_choices(user):
     """
-    Get broker account choices for a user, including individual accounts,
-    account groups, and brokers.
+    Get broker account choices for a user.
+
+    Includes individual accounts, account groups, and brokers.
 
     Args:
         user: The CustomUser object
@@ -38,7 +39,7 @@ def prepare_account_choices(user):
     Returns:
         Dictionary containing:
         - options: List of tuples with sections and choices, including separators
-        - selected: Dictionary with type and id of current selection
+        - selected: Dictionary with type and id of current selection.
     """
     if user is None:
         return {"options": [], "selected": {"type": "all", "id": None}}

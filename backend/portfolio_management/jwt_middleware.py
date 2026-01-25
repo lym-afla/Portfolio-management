@@ -1,6 +1,6 @@
-"""
-JWT-based middleware for handling effective_current_date
-This eliminates session dependency and uses JWT authentication only
+"""JWT-based middleware for handling effective_current_date.
+
+This eliminates session dependency and uses JWT authentication only.
 """
 
 from datetime import date
@@ -14,14 +14,29 @@ logger = structlog.get_logger(__name__)
 
 class JWTEffectiveDateMiddleware:
     """
-    Middleware to handle effective_current_date using JWT authentication
-    instead of Django sessions. Much more reliable for SPA applications.
+    Middleware to handle effective_current_date using JWT authentication.
+
+    Uses JWT authentication instead of Django sessions for better reliability
+    in SPA applications.
     """
 
     def __init__(self, get_response):
+        """Initialize the middleware.
+
+        Args:
+            get_response: Next middleware or view in the chain.
+        """
         self.get_response = get_response
 
     def __call__(self, request):
+        """Process the request to handle effective_current_date.
+
+        Args:
+            request: HTTP request object.
+
+        Returns:
+            HTTP response object.
+        """
         # Initialize effective_current_date from JWT token
         effective_date = self._extract_effective_date_from_jwt(request)
 
@@ -48,19 +63,19 @@ class JWTEffectiveDateMiddleware:
         return response
 
     def _has_jwt_token(self, request):
-        """Check if request has JWT token"""
+        """Check if request has JWT token."""
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
         return auth_header.startswith("Bearer ")
 
     def _extract_jwt_token(self, request):
-        """Extract JWT token from request"""
+        """Extract JWT token from request."""
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
         if auth_header.startswith("Bearer "):
             return auth_header[7:]  # Remove 'Bearer ' prefix
         return None
 
     def _decode_jwt_token(self, request):
-        """Decode JWT token and return payload"""
+        """Decode JWT token and return payload."""
         token = self._extract_jwt_token(request)
         if not token:
             return None
@@ -74,7 +89,7 @@ class JWTEffectiveDateMiddleware:
             return None
 
     def _get_user_id_from_jwt(self, request):
-        """Get user ID from JWT token"""
+        """Get user ID from JWT token."""
         payload = self._decode_jwt_token(request)
         if payload:
             return payload.get("user_id")
@@ -82,8 +97,9 @@ class JWTEffectiveDateMiddleware:
 
     def _extract_effective_date_from_jwt(self, request):
         """
-        Extract effective_current_date from JWT token
-        This should be stored in the JWT token when it's issued
+        Extract effective_current_date from JWT token.
+
+        This should be stored in the JWT token when it's issued.
         """
         payload = self._decode_jwt_token(request)
         if payload:
@@ -114,8 +130,9 @@ class JWTEffectiveDateMiddleware:
 
     def _get_effective_date_from_database(self, user_id):
         """
-        Get effective_current_date from user preferences in database
-        This is a fallback mechanism for existing users
+        Get effective_current_date from user preferences in database.
+
+        This is a fallback mechanism for existing users.
         """
         try:
             # from users.models import CustomUser

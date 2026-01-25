@@ -1,5 +1,5 @@
-"""
-Integration tests to debug session persistence issues.
+"""Integration tests to debug session persistence issues.
+
 Tests session behavior across multiple requests.
 """
 

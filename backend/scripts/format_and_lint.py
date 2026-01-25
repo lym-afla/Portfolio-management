@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Script to format and lint Python code in the project.
+
 Run this script from the project root directory.
 """
 
@@ -28,6 +29,11 @@ def run_command(command, description):
 
 
 def main():
+    """Run formatting and linting commands.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
     # Ensure we're in the project root directory
     if not Path("manage.py").exists():
         print("Error: This script should be run from the project root directory")

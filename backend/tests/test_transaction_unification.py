@@ -29,10 +29,10 @@ User = get_user_model()
 
 @pytest.mark.django_db
 class TestCashFlowCalculation:
-    """Test the centralized get_calculated_cash_flow() method"""
+    """Test the centralized get_calculated_cash_flow() method."""
 
     def test_buy_transaction_cash_flow(self, user, account, stock):
-        """Test cash flow calculation for a buy transaction"""
+        """Test cash flow calculation for a buy transaction."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -50,7 +50,7 @@ class TestCashFlowCalculation:
         assert cash_flow == Decimal("-15009.95")
 
     def test_sell_transaction_cash_flow(self, user, account, stock):
-        """Test cash flow calculation for a sell transaction"""
+        """Test cash flow calculation for a sell transaction."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -68,7 +68,7 @@ class TestCashFlowCalculation:
         assert cash_flow == Decimal("15990.05")
 
     def test_bond_buy_with_aci(self, user, account, bond):
-        """Test cash flow calculation for a bond with ACI"""
+        """Test cash flow calculation for a bond with ACI."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -89,7 +89,7 @@ class TestCashFlowCalculation:
         assert cash_flow == Decimal("-9890.50")
 
     def test_cash_in_transaction(self, user, account):
-        """Test cash flow for cash in transaction"""
+        """Test cash flow for cash in transaction."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -103,7 +103,7 @@ class TestCashFlowCalculation:
         assert cash_flow == Decimal("10000.00")
 
     def test_dividend_transaction(self, user, account, stock):
-        """Test cash flow for dividend transaction"""
+        """Test cash flow for dividend transaction."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -120,10 +120,10 @@ class TestCashFlowCalculation:
 
 @pytest.mark.django_db
 class TestTransactionSerializer:
-    """Test the enhanced TransactionSerializer"""
+    """Test the enhanced TransactionSerializer."""
 
     def test_serializer_includes_instrument_type(self, user, account, stock):
-        """Verify instrument_type field is included"""
+        """Verify instrument_type field is included."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -143,7 +143,7 @@ class TestTransactionSerializer:
         assert data["id"] == f"regular_{transaction.id}"
 
     def test_bond_price_formatted_as_percentage(self, user, account, bond):
-        """Verify bonds show price as percentage"""
+        """Verify bonds show price as percentage."""
         transaction = Transactions.objects.create(
             investor=user,
             account=account,
@@ -166,10 +166,10 @@ class TestTransactionSerializer:
 
 @pytest.mark.django_db
 class TestBalanceTracker:
-    """Test the BalanceTracker helper class"""
+    """Test the BalanceTracker helper class."""
 
     def test_balance_tracking_single_currency(self, user, account, stock):
-        """Test balance tracking with single currency"""
+        """Test balance tracking with single currency."""
         tracker = BalanceTracker(number_of_digits=2)
         tracker.set_initial_balances({"USD": Decimal("10000.00")})
 
@@ -195,7 +195,7 @@ class TestBalanceTracker:
         assert "(" in balances["USD"]
 
     def test_balance_tracking_with_fx(self, user, account):
-        """Test balance tracking with FX transaction"""
+        """Test balance tracking with FX transaction."""
         tracker = BalanceTracker(number_of_digits=2)
         tracker.set_initial_balances({"USD": Decimal("10000.00"), "EUR": Decimal("0")})
 
@@ -221,10 +221,10 @@ class TestBalanceTracker:
 
 @pytest.mark.django_db
 class TestFXTransactionSerializer:
-    """Test the FXTransactionSerializer"""
+    """Test the FXTransactionSerializer."""
 
     def test_fx_serializer_structure(self, user, account):
-        """Verify FX transaction serializer produces correct structure"""
+        """Verify FX transaction serializer produces correct structure."""
         fx_transaction = FXTransaction.objects.create(
             investor=user,
             account=account,
@@ -249,6 +249,7 @@ class TestFXTransactionSerializer:
 # Fixtures
 @pytest.fixture
 def user():
+    """Create test user."""
     return User.objects.create_user(
         username="testuser",
         email="test@example.com",
@@ -260,16 +261,19 @@ def user():
 
 @pytest.fixture
 def broker(user):
+    """Create test broker."""
     return Brokers.objects.create(investor=user, name="Test Broker", country="US")
 
 
 @pytest.fixture
 def account(broker):
+    """Create test account."""
     return Accounts.objects.create(broker=broker, name="Test Account")
 
 
 @pytest.fixture
 def stock(user):
+    """Create test stock asset."""
     asset = Assets.objects.create(
         name="Apple Inc.", ticker="AAPL", type="Stock", currency="USD"
     )
@@ -279,6 +283,7 @@ def stock(user):
 
 @pytest.fixture
 def bond(user):
+    """Create test bond asset."""
     asset = Assets.objects.create(
         name="US Treasury Bond", ticker="UST", type="Bond", currency="USD"
     )

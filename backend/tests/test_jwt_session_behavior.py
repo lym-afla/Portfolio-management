@@ -1,6 +1,4 @@
-"""
-Test session behavior with JWT authentication like the frontend uses.
-"""
+"""Test session behavior with JWT authentication like the frontend uses."""
 
 import json
 import os
