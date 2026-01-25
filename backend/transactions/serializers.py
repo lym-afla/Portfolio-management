@@ -93,7 +93,9 @@ class TransactionFormSerializer(serializers.ModelSerializer):
 
         if transaction_type in ["Cash in", "Cash out"] and security:
             raise serializers.ValidationError(
-                {"security": "Security must not be selected for Cash in/out transactions."}
+                {
+                    "security": "Security must not be selected for Cash in/out transactions."
+                }
             )
 
         if cash_flow is not None and transaction_type == "Cash out" and cash_flow >= 0:

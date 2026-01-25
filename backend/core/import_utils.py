@@ -774,7 +774,7 @@ async def import_security_prices_from_yahoo(security, dates):
                 lambda: ticker.history(  # noqa: B023
                     start=start_date,  # noqa: B023
                     end=end_date,  # noqa: B023
-                    auto_adjust=False
+                    auto_adjust=False,  # noqa: B023
                 ),
             )
 
