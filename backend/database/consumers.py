@@ -1,4 +1,8 @@
-"""Database consumers."""
+"""Django Channels consumers for real-time database updates.
+
+This module provides AsyncHttpConsumer implementations for handling
+Server-Sent Events (SSE) endpoints for various database operations.
+"""
 
 import json
 import logging
@@ -52,16 +56,29 @@ def get_cors_origin(scope):
 
 
 class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
-    """Update account performance consumer."""
+    """
+    Async consumer for updating account performance via SSE.
+
+    Handles Server-Sent Events for real-time updates during
+    account performance calculations.
+    """
 
     async def send_sse_message(self, data):
-        """Send SSE message."""
-        """Helper function to send SSE messages."""
+        """
+        Send Server-Sent Event message to the client.
+
+        Args:
+            data: Dictionary containing message data to send.
+        """
         message = f"data: {json.dumps(data)}\n\n"
         await self.send_body(message.encode("utf-8"), more_body=True)
 
     async def handle(self, body):
-        """Handle update account performance."""
+        """Handle incoming HTTP request for account performance updates.
+
+        Args:
+            body: Request body content.
+        """
         headers = [
             (
                 b"Access-Control-Allow-Origin",
@@ -263,10 +280,18 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
 
 
 class PriceImportConsumer(AsyncHttpConsumer):
-    """Price import consumer."""
+    """Async consumer for security price imports via SSE.
+
+    Handles Server-Sent Events for real-time updates during
+    security price import operations from various data sources.
+    """
 
     async def handle(self, body):
-        """Handle price import."""
+        """Handle incoming HTTP request for price imports.
+
+        Args:
+            body: Request body content.
+        """
         headers = [
             (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
@@ -326,7 +351,15 @@ class PriceImportConsumer(AsyncHttpConsumer):
             )
 
     async def import_prices(self, data, user):
-        """Import prices."""
+        """Import prices for securities asynchronously.
+
+        Args:
+            data: Dictionary containing import parameters.
+            user: User instance.
+
+        Yields:
+            str: SSE formatted progress messages.
+        """
         try:
             security_ids = data.get("securities", [])
             account_ids = data.get("accounts")
@@ -562,7 +595,21 @@ class PriceImportConsumer(AsyncHttpConsumer):
         message=None,
         **kwargs,
     ):
-        """Format progress."""
+        """Format progress data for SSE messages.
+
+        Args:
+            status: Status string.
+            current: Current progress count.
+            total: Total count.
+            security_name: Optional security name.
+            date: Optional date string.
+            result: Optional result string.
+            message: Optional message string.
+            **kwargs: Additional fields to include.
+
+        Returns:
+            str: JSON formatted progress data.
+        """
         progress_data = {
             "status": status,
             "current": current,
@@ -583,10 +630,18 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
 
 class FXImportConsumer(AsyncHttpConsumer):
-    """FX import consumer."""
+    """Async consumer for FX rate imports via SSE.
+
+    Handles Server-Sent Events for real-time updates during
+    foreign exchange rate import operations.
+    """
 
     async def handle(self, body):
-        """Handle FX import."""
+        """Handle incoming HTTP request for FX rate imports.
+
+        Args:
+            body: Request body content.
+        """
         headers = [
             (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
@@ -666,11 +721,25 @@ class FXImportConsumer(AsyncHttpConsumer):
             )
 
     def format_sse_message(self, data):
-        """Format SSE message."""
+        """Format data as SSE message.
+
+        Args:
+            data: Dictionary to format as SSE message.
+
+        Returns:
+            bytes: Encoded SSE message.
+        """
         return f"data: {json.dumps(data)}\n\n".encode("utf-8")
 
     async def generate_dates(self, data):
-        """Generate dates."""
+        """Generate list of dates for FX import.
+
+        Args:
+            data: Dictionary containing date parameters.
+
+        Returns:
+            list: List of date objects.
+        """
         date_type = data.get("date_type")
         if date_type == "single":
             single_date = parse_date(data.get("single_date"))
@@ -686,7 +755,16 @@ class FXImportConsumer(AsyncHttpConsumer):
         return []
 
     async def generate_events(self, user, import_option, dates_to_update):
-        """Generate events."""
+        """Generate SSE events for FX import process.
+
+        Args:
+            user: User instance.
+            import_option: Import option string.
+            dates_to_update: List of dates to process.
+
+        Yields:
+            str: SSE formatted progress messages.
+        """
         import_id = f"fx_import_{user.id}"
         await sync_to_async(cache.set)(import_id, "running", timeout=3600)
 
@@ -736,7 +814,14 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def get_transaction_dates(self, user):
-        """Get transaction dates."""
+        """Get list of unique transaction dates for user.
+
+        Args:
+            user: User instance.
+
+        Returns:
+            list: List of date objects.
+        """
         return list(
             Transactions.objects.filter(investor=user)
             .values_list("date", flat=True)
@@ -745,7 +830,16 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def filter_dates_to_update(self, transaction_dates, import_option, user):
-        """Filter dates to update."""
+        """Filter dates that need FX rate updates.
+
+        Args:
+            transaction_dates: List of transaction dates.
+            import_option: Import option string.
+            user: User instance.
+
+        Returns:
+            list: Filtered list of dates to update.
+        """
         dates_to_update = []
         for d in transaction_dates:
             fx_instance = FX.objects.filter(date=d).first()
@@ -766,7 +860,15 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def process_fx_rate(self, date, user):
-        """Process FX rate."""
+        """Process FX rate for a specific date.
+
+        Args:
+            date: Date object to process.
+            user: User instance.
+
+        Returns:
+            tuple: (status_message, count_field) tuple.
+        """
         fx_instance = FX.objects.filter(date=date).first()
         if not fx_instance:
             FX.update_fx_rate(date, user)

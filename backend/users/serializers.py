@@ -1,4 +1,8 @@
-"""Users serializers."""
+"""Django REST Framework serializers for user models.
+
+This module provides serializers for User, AccountGroup, API tokens,
+and other user-related models in the portfolio management system.
+"""
 
 from datetime import date
 
@@ -27,7 +31,7 @@ User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """Serializer for the user model."""
+    """Serializer for user registration and profile management."""
 
     password = serializers.CharField(
         write_only=True, required=True, validators=[validate_password]
@@ -35,7 +39,7 @@ class UserSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(write_only=True, required=True)
 
     class Meta:
-        """Meta class for the user serializer."""
+        """Meta class for UserSerializer."""
 
         model = User
         fields = (
@@ -53,7 +57,17 @@ class UserSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
-        """Validate the user data."""
+        """Validate password fields match.
+
+        Args:
+            attrs: Dictionary of field data.
+
+        Returns:
+            dict: Validated data.
+
+        Raises:
+            ValidationError: If passwords don't match.
+        """
         if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError(
                 {"password": "Password fields didn't match."}
@@ -61,7 +75,14 @@ class UserSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        """Create a new user."""
+        """Create a new user instance.
+
+        Args:
+            validated_data: Dictionary of validated field data.
+
+        Returns:
+            User: Created user instance.
+        """
         user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data["email"],
@@ -71,10 +92,10 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    """Serializer for the user profile."""
+    """Serializer for user profile information."""
 
     class Meta:
-        """Meta class for the user profile serializer."""
+        """Meta class for UserProfileSerializer."""
 
         model = User
         fields = ("username", "first_name", "last_name", "email", "default_currency")
@@ -82,8 +103,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):
-    """Serializer for the user settings."""
+    """Serializer for user settings and preferences."""
 
+    default_currency = serializers.ChoiceField(choices=CURRENCY_CHOICES)
     default_currency = serializers.ChoiceField(choices=CURRENCY_CHOICES)
     chart_frequency = serializers.ChoiceField(choices=FREQUENCY_CHOICES)
     chart_timeline = serializers.ChoiceField(choices=TIMELINE_CHOICES)
@@ -94,7 +116,7 @@ class UserSettingsSerializer(serializers.ModelSerializer):
     selected_account_id = serializers.IntegerField(allow_null=True)
 
     class Meta:
-        """Meta class for the user settings serializer."""
+        """Meta class for UserSettingsSerializer."""
 
         model = User
         fields = [
@@ -109,7 +131,17 @@ class UserSettingsSerializer(serializers.ModelSerializer):
         ]
 
     def validate_digits(self, value):
-        """Validate the digits."""
+        """Validate digits field is not too large.
+
+        Args:
+            value: Digits value to validate.
+
+        Returns:
+            int: Validated digits value.
+
+        Raises:
+            ValidationError: If value exceeds 6.
+        """
         if value > 6:
             raise serializers.ValidationError(
                 "The value for digits must be less than or equal to 6."
@@ -117,7 +149,17 @@ class UserSettingsSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
-        """Validate the combination of account_type and account_id."""
+        """Validate the combination of account_type and account_id.
+
+        Args:
+            data: Dictionary of field data.
+
+        Returns:
+            dict: Validated data.
+
+        Raises:
+            ValidationError: If validation fails.
+        """
         account_type = data.get("selected_account_type")
         account_id = data.get("selected_account_id")
         user = self.context.get("request").user
@@ -152,7 +194,7 @@ class UserSettingsSerializer(serializers.ModelSerializer):
 
 
 class UserSettingsChoicesSerializer(serializers.Serializer):
-    """Serializer for the user settings choices."""
+    """Serializer for user settings choices."""
 
     currency_choices = serializers.ListField(
         child=serializers.ListField(child=serializers.CharField())
@@ -170,12 +212,12 @@ class UserSettingsChoicesSerializer(serializers.Serializer):
 
 
 class DashboardSettingsSerializer(serializers.ModelSerializer):
-    """Serializer for the dashboard settings."""
+    """Serializer for dashboard settings."""
 
     table_date = serializers.DateField(default=timezone.now().date())
 
     class Meta:
-        """Meta class for the dashboard settings serializer."""
+        """Meta class for DashboardSettingsSerializer."""
 
         model = User
         fields = ["default_currency", "digits", "table_date"]
@@ -186,7 +228,7 @@ class DashboardSettingsSerializer(serializers.ModelSerializer):
 
 
 class DashboardSettingsChoicesSerializer(serializers.Serializer):
-    """Serializer for the dashboard settings choices."""
+    """Serializer for dashboard settings choices."""
 
     default_currency = serializers.ListField(
         child=serializers.ListField(child=serializers.CharField())
@@ -195,19 +237,26 @@ class DashboardSettingsChoicesSerializer(serializers.Serializer):
 
 # Add new serializers for token management
 class BaseApiTokenSerializer(serializers.ModelSerializer):
-    """Base serializer for API tokens."""
+    """Base serializer for API token management."""
 
     token = serializers.CharField(write_only=True)
 
     class Meta:
-        """Meta class for the base api token serializer."""
+        """Meta class for BaseApiTokenSerializer."""
 
         abstract = True
         fields = ["id", "token"]
         read_only_fields = ["id"]
 
     def create(self, validated_data):
-        """Create a new API token for the user."""
+        """Create API token instance.
+
+        Args:
+            validated_data: Dictionary of validated field data.
+
+        Returns:
+            Created model instance.
+        """
         token = validated_data.pop("token")
         user = validated_data.get("user")
         instance = super().create(validated_data)
@@ -215,7 +264,15 @@ class BaseApiTokenSerializer(serializers.ModelSerializer):
         return instance
 
     def update(self, instance, validated_data):
-        """Update an existing API token for the user."""
+        """Update API token instance.
+
+        Args:
+            instance: Model instance to update.
+            validated_data: Dictionary of validated field data.
+
+        Returns:
+            Updated model instance.
+        """
         if "token" in validated_data:
             token = validated_data.pop("token")
             user = validated_data.get("user")
@@ -226,7 +283,7 @@ class BaseApiTokenSerializer(serializers.ModelSerializer):
 
 
 class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
-    """Serializer for the tinkoff api token model."""
+    """Serializer for T-Bank API token management."""
 
     broker = serializers.PrimaryKeyRelatedField(
         queryset=Brokers.objects.all(), write_only=True  # We only need it for writing
@@ -243,7 +300,7 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
     updated_at = serializers.DateTimeField(read_only=True)
 
     class Meta(BaseApiTokenSerializer.Meta):
-        """Meta class for the tinkoff api token serializer."""
+        """Meta class for TinkoffApiTokenSerializer."""
 
         model = TinkoffApiToken
         fields = BaseApiTokenSerializer.Meta.fields + [
@@ -256,12 +313,16 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
         ]
 
     def validate_broker(self, value):
-        """
-        Check if the broker belongs to the user and is appropriate for the token type.
+        """Check if the broker belongs to the user and is appropriate for the token type.
 
-        :param value: The broker to check
-        :return: The broker if it is valid
-        :raises serializers.ValidationError: If the broker is not valid
+        Args:
+            value: Broker instance to validate.
+
+        Returns:
+            Brokers: Validated broker instance.
+
+        Raises:
+            ValidationError: If broker doesn't belong to user.
         """
         if not value.investor == self.context["request"].user:
             raise serializers.ValidationError("Invalid broker selection")
@@ -269,24 +330,27 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
 
 
 class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):
-    """Serializer for the interactive brokers api token model."""
+    """Serializer for Interactive Brokers API token management."""
 
     class Meta(BaseApiTokenSerializer.Meta):
-        """Meta class for the interactive brokers api token serializer."""
+        """Meta class for InteractiveBrokersApiTokenSerializer."""
 
         model = InteractiveBrokersApiToken
         fields = BaseApiTokenSerializer.Meta.fields
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    Custom JWT token serializer.
-
-    Includes effective_current_date in the token payload.
-    """
+    """Custom JWT token serializer that includes effective_current_date in the token payload."""
 
     def validate(self, attrs):
-        """Validate the user's credentials and return the token."""
+        """Validate and customize token response.
+
+        Args:
+            attrs: Dictionary of authentication attributes.
+
+        Returns:
+            dict: Token response data with effective_current_date.
+        """
         data = super().validate(attrs)
 
         # Get or create default effective_current_date
@@ -325,21 +389,31 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class AccountGroupSerializer(serializers.ModelSerializer):
-    """Serializer for the account group model."""
+    """Serializer for account group management."""
 
     accounts = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Accounts.objects.all()
     )
 
     class Meta:
-        """Meta class for the account group serializer."""
+        """Meta class for AccountGroupSerializer."""
 
         model = AccountGroup
         fields = ["id", "name", "accounts", "created_at", "updated_at"]
         read_only_fields = ["created_at", "updated_at"]
 
     def validate(self, data):
-        """Validate the account group data."""
+        """Ensure user can only add their own broker accounts to groups.
+
+        Args:
+            data: Dictionary of field data.
+
+        Returns:
+            dict: Validated data.
+
+        Raises:
+            ValidationError: If invalid accounts are included.
+        """
         # Ensure user can only add their own broker accounts to groups
         request = self.context.get("request")
         if request and request.user:
@@ -354,7 +428,14 @@ class AccountGroupSerializer(serializers.ModelSerializer):
         return data
 
     def to_representation(self, instance):
-        """Return the representation of the account group."""
+        """Convert instance to representation with account details.
+
+        Args:
+            instance: AccountGroup instance.
+
+        Returns:
+            dict: Dictionary representation.
+        """
         representation = super().to_representation(instance)
         # Add broker account details to the response
         representation["accounts"] = [
@@ -367,7 +448,14 @@ class AccountGroupSerializer(serializers.ModelSerializer):
         return representation
 
     def create(self, validated_data):
-        """Create a new account group for the user."""
+        """Create account group for user.
+
+        Args:
+            validated_data: Dictionary of validated field data.
+
+        Returns:
+            AccountGroup: Created instance.
+        """
         user = self.context["request"].user
         validated_data["user"] = user
         return super().create(validated_data)

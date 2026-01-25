@@ -41,6 +41,7 @@ def accounts_summary_data(
     Returns:
         dict: Dictionary containing summary data with years, totals, and formatted values.
     """
+
     def initialize_context():
         """Initialize context."""
         return {"years": [], "lines": []}

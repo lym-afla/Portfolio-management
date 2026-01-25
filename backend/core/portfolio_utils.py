@@ -703,14 +703,12 @@ def get_last_exit_date_for_accounts(
     account_ids: List[int], effective_current_date: date
 ) -> Optional[date]:
     """
-    Get the last exit date for accounts.
+    Determine the last relevant date for a set of broker accounts.
 
-    Determines the last relevant date for a set of broker accounts,
-    considering both open positions and transaction history.
-
-    If any account has open positions, returns the effective_current_date.
-    If all positions are closed, returns the date of the last transaction.
-    If no transactions exist, returns the effective_current_date.
+    Considers both open positions and transaction history. If any account has
+    open positions, returns the effective_current_date. If all positions are
+    closed, returns the date of the last transaction. If no transactions exist,
+    returns the effective_current_date.
 
     Args:
         account_ids (List[int]): List of broker account IDs to analyze

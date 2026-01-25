@@ -1,5 +1,4 @@
-"""
-Utility functions for fetching Accrued Coupon Interest (ACI) data from MICEX API.
+"""Utility functions for fetching Accrued Coupon Interest (ACI) data from MICEX API.
 
 Used as fallback when T-Bank API doesn't have coupon amounts for floating-rate bonds.
 """

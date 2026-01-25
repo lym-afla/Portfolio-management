@@ -796,7 +796,7 @@ async def import_security_prices_from_yahoo(security, dates):
             # Set auto_adjust to False to get unadjusted close prices
             history = await loop.run_in_executor(
                 None,
-                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history( 
+                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history(
                     start=start_date, end=end_date, auto_adjust=False
                 ),
             )

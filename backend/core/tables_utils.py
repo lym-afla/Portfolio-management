@@ -24,8 +24,7 @@ def calculate_positions_table_output(
     start_date: Union[date, None],
     is_closed: bool,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """
-    Calculate positions table output.
+    """Calculate positions table output.
 
     Wrapper function to compile either closed or open positions.
     """

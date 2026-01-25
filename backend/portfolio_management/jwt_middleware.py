@@ -1,5 +1,4 @@
-"""
-JWT-based middleware for handling effective_current_date.
+"""JWT-based middleware for handling effective_current_date.
 
 This eliminates session dependency and uses JWT authentication only.
 """
@@ -15,38 +14,30 @@ logger = structlog.get_logger(__name__)
 
 class JWTEffectiveDateMiddleware:
     """
-    JWT-based middleware for handling effective_current_date.
+    Middleware to handle effective_current_date using JWT authentication.
 
-    Middleware to handle effective_current_date using JWT authentication
-    instead of Django sessions. Much more reliable for SPA applications.
+    Uses JWT authentication instead of Django sessions for better reliability
+    in SPA applications.
     """
 
     def __init__(self, get_response):
-        """Initialize the middleware."""
+        """Initialize the middleware.
+
+        Args:
+            get_response: Next middleware or view in the chain.
+        """
         self.get_response = get_response
 
     def __call__(self, request):
-        """Call the middleware."""
-        # Only process JWT middleware for requests that have tokens
-        # Skip authentication endpoints like login/register
-        auth_endpoints = [
-            "/users/api/login/",
-            "/users/api/register/",
-            "/users/api/refresh-token/",
-        ]
+        """Process the request to handle effective_current_date.
 
-        if request.path in auth_endpoints or not self._has_jwt_token(request):
-            # For auth endpoints or requests without tokens, use default date
-            default_date = date.today().isoformat()
-            request.effective_current_date = default_date
+        Args:
+            request: HTTP request object.
 
-            # Minimal logging for auth endpoints
-            if request.path in auth_endpoints:
-                logger.debug("JWT Middleware skipping auth endpoint", path=request.path)
-
-            return self.get_response(request)
-
-        # Process JWT token for authenticated requests
+        Returns:
+            HTTP response object.
+        """
+        # Initialize effective_current_date from JWT token
         effective_date = self._extract_effective_date_from_jwt(request)
 
         # Store it in request for views to use

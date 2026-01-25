@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Safe Django initialization for Jupyter notebooks.
+"""Safe Django initialization for Jupyter notebooks.
 
 Import this at the top of your notebook:
 
@@ -32,10 +31,9 @@ from django import conf
 
 def setup_django():
     """
-    Safe Django initialization for Jupyter notebooks.
+    Safely set up Django in notebooks.
 
-    Safe setup for Django in notebooks that doesn't cause
-    'populate() isn't reentrant' errors.
+    This setup doesn't cause 'populate() isn't reentrant' errors.
     """
     # Set environment variables
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")

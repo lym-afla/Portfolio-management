@@ -57,7 +57,7 @@ async def get_bond_initial_notional(instrument_uid, user):
         user: CustomUser instance (to get API token)
 
     Returns:
-        Decimal: The initial notional value per bond, or None if not found
+        Decimal: The initial notional value per bond, or None if not found.
     """
     try:
         token = await get_user_token(user)
@@ -736,7 +736,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        dict: Transaction data ready for creating a Transaction or FXTransaction instance.  # noqa: E501
+        dict: Transaction data ready for creating a Transaction or FXTransaction instance.
     """
     # Initialize base transaction data
     # Convert timezone-aware dates to naive for database storage
@@ -1080,7 +1080,7 @@ async def create_transaction_from_tinkoff(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        tuple: (Transaction instance or None, str status message)
+        tuple: (Transaction instance or None, str status message).
     """
     transaction_data = await map_tinkoff_operation_to_transaction(
         operation, investor, account
@@ -1140,7 +1140,7 @@ async def verify_token_access(user, required_access="read_only"):
         required_access: str, access level required ('read_only' or 'full_access')
 
     Returns:
-        bool: True if token is valid and has required access
+        bool: True if token is valid and has required access.
     """
     try:
         token = await get_user_token(user)
@@ -1298,8 +1298,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
 
 
 async def get_instrument_uid(asset: Assets, user):
-    """
-    Get instrument UID from T-Bank API.
+    """Get instrument UID from T-Bank API.
 
     Args:
         asset: Assets instance
