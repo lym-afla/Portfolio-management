@@ -126,7 +126,8 @@ class BondACICalculationTests(TestCase):
         self.assertIsNotNone(aci_data)
         self.assertEqual(aci_data["currency"], "USD")
 
-        # ACI should be converted using FX rate (RUBUSD = 80 at 2024-6-1, so 1 RUB = 1/80 USD = 0.0125 USD)
+        # ACI should be converted using FX rate
+        # (RUBUSD = 80 at 2024-6-1, so 1 RUB = 1/80 USD = 0.0125 USD)
         # First calculate RUB ACI, then convert
         days_accrued = (test_date - date(2024, 4, 15)).days
         total_days = (date(2024, 7, 15) - date(2024, 4, 15)).days

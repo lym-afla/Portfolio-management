@@ -1,4 +1,8 @@
-"""Tables utils."""
+"""Utility functions for generating table data for positions and transactions.
+
+This module provides functions to calculate and format data for display
+in positions and transactions tables.
+"""
 
 import time
 from datetime import date, timedelta
@@ -89,7 +93,7 @@ def _calculate_closed_table_output_for_api(
         )
         entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
 
-        for _, exit_date in enumerate(exit_dates):
+        for exit_date in exit_dates:
             currency_used = None if use_default_currency else currency_target
 
             # Has to be defined here to accomodate different closed positions

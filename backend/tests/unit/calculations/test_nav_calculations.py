@@ -605,7 +605,7 @@ class TestNAVPerformance:
         # Create annual performance record
         AnnualPerformance.objects.create(
             investor=user,
-            account_type=ACCOUNT_TYPE_INDIVIDUAL,  # Use individual account type when providing account_id
+            account_type=ACCOUNT_TYPE_INDIVIDUAL,  # Use individual account type
             account_id=account.id,
             year=2023,
             currency="USD",

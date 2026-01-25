@@ -1,4 +1,8 @@
-"""Database utils."""
+"""Utility functions for database operations and performance calculations.
+
+This module provides asynchronous functions for saving and updating
+performance data in the database, including annual broker performance metrics.
+"""
 
 import asyncio
 import logging
@@ -26,7 +30,20 @@ async def save_or_update_annual_broker_performance(
     is_restricted=None,
     skip_existing_years=False,
 ):
-    """Save or update annual broker performance."""
+    """Save or update annual performance metrics for brokers.
+
+    Args:
+        user: The user instance.
+        effective_date: The effective date for calculations.
+        account_group_type: The type of account group.
+        account_group_id: The ID of the account group.
+        currency_target: The target currency for calculations.
+        is_restricted: Whether to calculate restricted performance (optional).
+        skip_existing_years: Whether to skip years that already have data (optional).
+
+    Returns:
+        dict: Summary of the performance calculation results.
+    """
     logger.info(
         f"Starting performance calculation for {account_group_type}, "
         f"{account_group_id}, "
@@ -74,17 +91,17 @@ async def save_or_update_annual_broker_performance(
         f"last exit date: {last_exit_date}"
     )
 
-    for _, year in enumerate(years, 1):
+    for year in years:
         if skip_existing_years:
             exists = await database_sync_to_async(
-                lambda year=year: AnnualPerformance.objects.filter(
+                AnnualPerformance.objects.filter(
                     investor=user,
                     account_type=account_group_type,
                     account_id=account_group_id,
                     year=year,
                     currency=currency_target,
                     restricted=is_restricted,
-                ).exists()
+                ).exists
             )()
 
             if exists:
@@ -142,7 +159,20 @@ async def save_annual_performance(
     is_restricted,
     performance_data,
 ):
-    """Save annual performance."""
+    """Save annual performance data to the database.
+
+    Args:
+        user: The user instance.
+        account_group_type: The type of account group.
+        account_group_id: The ID of the account group.
+        year: The year for which to save performance.
+        currency_target: The target currency for performance values.
+        is_restricted: Whether this is restricted performance.
+        performance_data: Dictionary containing performance metrics.
+
+    Returns:
+        AnnualPerformance: The created or updated performance instance.
+    """
     max_retries = 3
     retry_delay = 1  # second
 
@@ -181,7 +211,17 @@ async def save_annual_performance(
 
 
 def get_years_count(user, effective_date, account_group_type, account_group_id):
-    """Get years count."""
+    """Calculate the number of years with transaction data.
+
+    Args:
+        user: The user instance.
+        effective_date: The effective date for calculation.
+        account_group_type: The type of account group.
+        account_group_id: The ID of the account group.
+
+    Returns:
+        int: Number of years with transaction data.
+    """
     selected_account_ids = get_selected_account_ids(
         user,
         account_group_type,

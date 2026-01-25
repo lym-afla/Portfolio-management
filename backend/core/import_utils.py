@@ -1,4 +1,8 @@
-"""Import utils."""
+"""Utility functions for importing transaction and account data from external sources.
+
+This module provides functions to parse Excel files, validate data, and import
+transactions from various broker formats.
+"""
 
 import asyncio
 import json
@@ -56,7 +60,14 @@ CustomUser = get_user_model()
 
 @database_sync_to_async
 def get_investor(investor_id):
-    """Get investor by ID asynchronously."""
+    """Retrieve investor/user by ID.
+
+    Args:
+        investor_id: The ID of the investor to retrieve.
+
+    Returns:
+        CustomUser: The user instance.
+    """
     return CustomUser.objects.get(id=investor_id)
 
 
@@ -68,13 +79,30 @@ def get_broker(account):
 
 @database_sync_to_async
 def get_account(account_id: int) -> Accounts:
-    """Get account by ID asynchronously."""
+    """Retrieve an account by ID.
+
+    Args:
+        account_id: The ID of the account to retrieve.
+
+    Returns:
+        Accounts: The account instance.
+
+    Raises:
+        Accounts.DoesNotExist: If account doesn't exist.
+    """
     return Accounts.objects.get(id=account_id)
 
 
 @database_sync_to_async
 def get_security(security_id):
-    """Get security by ID asynchronously."""
+    """Retrieve a security/asset by ID.
+
+    Args:
+        security_id: The ID of the security to retrieve.
+
+    Returns:
+        Assets: The security instance, or None if not found.
+    """
     try:
         return Assets.objects.get(id=security_id)
     except Assets.DoesNotExist:
@@ -84,7 +112,17 @@ def get_security(security_id):
 
 @database_sync_to_async
 def transaction_exists(transaction_data):
-    """Check if a transaction already exists."""
+    """Check if a transaction already exists in the database.
+
+    Args:
+        transaction_data: Dictionary containing transaction field values.
+
+    Returns:
+        bool: True if transaction exists, False otherwise.
+
+    Raises:
+        ValueError: If required fields are missing.
+    """
     query = Q()
     required_fields = ["investor", "account", "date", "currency", "type"]
     optional_fields = [
@@ -183,7 +221,17 @@ def fx_transaction_exists(transaction_data):
 
 
 def read_excel_file(file_path):
-    """Read Excel file."""
+    """Read an Excel file and extract transaction data.
+
+    Args:
+        file_path: Path to the Excel file to read.
+
+    Returns:
+        DataFrame: Pandas DataFrame containing the transaction data.
+
+    Raises:
+        Exception: If file reading fails.
+    """
     try:
         with default_storage.open(file_path, "rb") as file:
             df = pd.read_excel(
@@ -385,10 +433,9 @@ async def _process_transaction_row(row, investor, account, currency):
 async def parse_charles_stanley_transactions(
     file_path, currency, account_id, user_id, confirm_every
 ):
-    """
-    Refactored to ONLY yield messages without awaiting confirmations.
+    """Parse Charles Stanley transaction file.
 
-    Parse Charles Stanley transaction file.
+    Refactored to ONLY yield messages without awaiting confirmations.
 
     Args:
         file_path: Path to the transaction file
@@ -526,7 +573,16 @@ async def parse_charles_stanley_transactions(
 
 
 def generate_dates_for_price_import(start, end, frequency):
-    """Generate dates for price import."""
+    """Generate a list of dates based on frequency for price import.
+
+    Args:
+        start: Start date for the range.
+        end: End date for the range.
+        frequency: The frequency of dates ('daily', 'weekly', 'monthly').
+
+    Returns:
+        list: List of date objects.
+    """
     dates = []
     if frequency == "daily":
         current = start
@@ -582,7 +638,18 @@ def generate_dates_for_price_import(start, end, frequency):
 
 
 async def import_security_prices_from_ft(security, dates):
-    """Import security prices from FT."""
+    """Import security prices from Financial Times.
+
+    Args:
+        security: The security instance to import prices for.
+        dates: List of dates to fetch prices for.
+
+    Yields:
+        dict: Status updates during the import process.
+
+    Raises:
+        Exception: If HTTP request or parsing fails.
+    """
     url = security.update_link
     user_agent = UserAgent().random
     headers = {"User-Agent": user_agent}
@@ -729,7 +796,7 @@ async def import_security_prices_from_yahoo(security, dates):
             # Set auto_adjust to False to get unadjusted close prices
             history = await loop.run_in_executor(
                 None,
-                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history(  # noqa: E501
+                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history( 
                     start=start_date, end=end_date, auto_adjust=False
                 ),
             )
@@ -752,7 +819,15 @@ async def import_security_prices_from_yahoo(security, dates):
 
 
 async def import_security_prices_from_micex(security, dates):
-    """Import security prices from MICEX."""
+    """Import security prices from Moscow Exchange (MICEX).
+
+    Args:
+        security: The security instance to import prices for.
+        dates: List of dates to fetch prices for.
+
+    Yields:
+        dict: Status updates during the import process.
+    """
     if not security.secid:
         yield {
             "security_name": security.name,
@@ -1013,15 +1088,7 @@ async def _process_galaxy_transaction(
 async def parse_galaxy_account_cash_flows(
     file_path, currency, account, user, confirm_every
 ):
-    """
-    Parse Galaxy broker account cash flows with async support and progress tracking.
-
-    Args:
-        file_path: Path to the Galaxy cash flow file
-        currency: Currency of the transactions
-        account: Accounts object
-        user: User object
-    """
+    """Parse Galaxy broker account cash flows with async support and progress tracking."""
     yield {
         "status": "initialization",
         "message": "Opening and reading Galaxy cash flow file",

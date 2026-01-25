@@ -599,6 +599,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             "duplicateTransactions": 0,
             "importErrors": 0,
         }
+        results = {}
         security_cache = defaultdict(lambda: None)
         total_to_process = 0
         try:
@@ -1000,6 +1001,26 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
             logger.debug(f"Final import results: {import_results}")
 
+            # Calculate results to return
+            # For API imports, use import_results; for file imports, use legacy counters
+            if (
+                import_results["importedTransactions"] > 0
+                or import_results["duplicateTransactions"] > 0
+            ):
+                # API import - use tracked results
+                results = import_results
+            else:
+                # File import - use legacy counters
+                results = {
+                    "importedTransactions": len(self.transactions_to_create),
+                    "skippedTransactions": self.transactions_skipped,
+                    "duplicateTransactions": self.duplicate_count,
+                    "importErrors": import_results.get("importErrors", 0),
+                    "totalTransactions": len(self.transactions_to_create)
+                    + self.transactions_skipped
+                    + self.duplicate_count,
+                }
+
             await self.send(
                 text_data=json.dumps(
                     {
@@ -1019,6 +1040,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
+            # Use legacy counters for StopAsyncIteration
+            results = {
+                "importedTransactions": len(self.transactions_to_create),
+                "skippedTransactions": self.transactions_skipped,
+                "duplicateTransactions": self.duplicate_count,
+                "importErrors": 0,
+                "totalTransactions": len(self.transactions_to_create)
+                + self.transactions_skipped
+                + self.duplicate_count,
+            }
         except asyncio.CancelledError:
             logger.info("Import task was cancelled")
             await self.send(
@@ -1029,6 +1060,16 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
+            # Use legacy counters for CancelledError
+            results = {
+                "importedTransactions": len(self.transactions_to_create),
+                "skippedTransactions": self.transactions_skipped,
+                "duplicateTransactions": self.duplicate_count,
+                "importErrors": 0,
+                "totalTransactions": len(self.transactions_to_create)
+                + self.transactions_skipped
+                + self.duplicate_count,
+            }
         except Exception as e:
             logger.error(f"Error in process_import: {str(e)}")
             logger.error(f"Error type: {type(e)}")
@@ -1057,8 +1098,18 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
+            # Use legacy counters for Exception
+            results = {
+                "importedTransactions": len(self.transactions_to_create),
+                "skippedTransactions": self.transactions_skipped,
+                "duplicateTransactions": self.duplicate_count,
+                "importErrors": 1,
+                "totalTransactions": len(self.transactions_to_create)
+                + self.transactions_skipped
+                + self.duplicate_count,
+            }
         finally:
-            # Cleanup operations
+            # Send stop message if event was set
             if self.stop_event.is_set():
                 await self.send(
                     text_data=json.dumps(
@@ -1068,29 +1119,11 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         }
                     )
                 )
+            # Reset state
             self.stop_event.clear()
             self.transactions_to_create = []
             self.transactions_skipped = 0
             self.duplicate_count = 0
-
-        # For API imports, use import_results; for file imports, use legacy counters
-        if (
-            import_results["importedTransactions"] > 0
-            or import_results["duplicateTransactions"] > 0
-        ):
-            # API import - use tracked results
-            results = import_results
-        else:
-            # File import - use legacy counters
-            results = {
-                "importedTransactions": len(self.transactions_to_create),
-                "skippedTransactions": self.transactions_skipped,
-                "duplicateTransactions": self.duplicate_count,
-                "importErrors": import_results.get("importErrors", 0),
-                "totalTransactions": len(self.transactions_to_create)
-                + self.transactions_skipped
-                + self.duplicate_count,
-            }
 
         return results
 

@@ -1,4 +1,8 @@
-"""Brokers utils."""
+"""Utility functions for managing and displaying broker information.
+
+This module provides functions to retrieve, filter, and format broker data
+for display in tables, including calculations for NAV, IRR, and performance metrics.
+"""
 
 import logging
 from datetime import datetime

@@ -1,4 +1,8 @@
-"""Sorting utilities."""
+"""Utility functions for sorting table and portfolio data.
+
+This module provides functions to sort portfolio entries, securities,
+and other data structures by various fields and orders.
+"""
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation

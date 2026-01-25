@@ -11,7 +11,7 @@ Purpose: Validate system robustness under edge cases and error conditions
 
 from datetime import date, timedelta
 from decimal import Decimal, DecimalException, getcontext
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.db import DatabaseError, IntegrityError
@@ -21,7 +21,6 @@ from rest_framework.test import APIClient
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
 from core.portfolio_utils import NAV_at_date
 from tests.fixtures.factories.asset_factory import AssetFactory, StockFactory
-from tests.fixtures.factories.fx_factory import FXRateFactory
 from tests.fixtures.factories.transaction_factory import (
     BuyTransactionFactory,
     SellTransactionFactory,
@@ -520,7 +519,8 @@ class TestFXEdgeCases:
             username=f"testuser_large_{id(object())}", password="12345"
         )
         test_date = date.today()
-        # Create FX rate with very large value (within field constraints: max_digits=8, decimal_places=6)
+        # Create FX rate with very large value
+        # (within field constraints: max_digits=8, decimal_places=6)
         # So max value is 99.999999
         fx = FX.objects.create(date=test_date, USDEUR=Decimal("99.999999"))
         fx.investors.add(user)

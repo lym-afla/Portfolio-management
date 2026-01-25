@@ -374,7 +374,8 @@ class YTMCalculationTestCase(TestCase):
 
             # Log the values for debugging
             print(
-                f"YTM New: {ytm_new_float}%, YTM Old: {ytm_old_float}%, Difference: {difference:.4f}%"
+                f"YTM New: {ytm_new_float}%, YTM Old: {ytm_old_float}%, "
+                f"Difference: {difference:.4f}%"
             )
 
             # Allow small tolerance for floating point differences

@@ -1,4 +1,8 @@
-"""User utilities."""
+"""Utility functions and constants for user-related operations.
+
+This module provides choice definitions and utility functions for handling
+user settings, account groups, and frequency/timeline options.
+"""
 
 from common.models import Accounts, Brokers
 from users.models import AccountGroup

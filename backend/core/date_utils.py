@@ -1,4 +1,8 @@
-"""Date utils."""
+"""Utility functions for date manipulation and range calculations.
+
+This module provides functions to calculate date ranges, handle timespans,
+and perform various date-related operations for portfolio analysis.
+"""
 
 import logging
 from datetime import date, datetime, timedelta
@@ -12,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
-    """
-    Get the date range based on the given timespan and end date.
+    """Get the date range based on the given timespan and end date.
 
     :param timespan: A string representing the timespan
         ('YTD', 'All-time', or a year as string)
@@ -38,7 +41,15 @@ def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
 
 
 def get_start_date(end_date, period):
-    """Get start date."""
+    """Calculate the start date based on an end date and time period.
+
+    Args:
+        end_date: The end date (string in YYYY-MM-DD format or date object).
+        period: The time period to subtract (e.g., '1M' for 1 month, '1Y' for 1 year).
+
+    Returns:
+        date: The calculated start date.
+    """
     end_date = (
         datetime.strptime(end_date, "%Y-%m-%d").date()
         if isinstance(end_date, str)

@@ -1,4 +1,8 @@
-"""Accounts utils."""
+"""Utility functions for managing and displaying account information.
+
+This module provides functions to retrieve, filter, and format account data
+for display in tables, including calculations for NAV, IRR, and cash balances.
+"""
 
 from datetime import datetime
 
@@ -14,7 +18,16 @@ from .sorting_utils import sort_entries
 
 
 def get_accounts_table_api(request):
-    """Get accounts table API."""
+    """Retrieve and format accounts table data for API response.
+
+    Args:
+        request: The HTTP request object containing user context and parameters.
+
+    Returns:
+        dict: A dictionary containing formatted accounts data, totals, and pagination
+            information with keys: accounts, totals, total_items, current_page,
+            total_pages.
+    """
     data = request.data
 
     page = int(data.get("page"))

@@ -181,7 +181,7 @@ async def test_update_broker_performance_missing_session():
         base_url="http://testserver",
     ) as client:
         response = await client.get(
-            f"/database/api/update-account-performance/sse/?token={token}"  # No session_id but with token
+            f"/database/api/update-account-performance/sse/?token={token}"  # noqa: E501
         )
 
         assert response.status_code == 400

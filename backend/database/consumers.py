@@ -460,7 +460,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                         )
                     else:
                         error_message = (
-                            f"No valid data source or update information "
+                            "No valid data source or update information "
                             f"for {security.name}"
                         )
                         results.append(
