@@ -1,3 +1,9 @@
+"""Utility functions for formatting data for display.
+
+This module provides functions to format currency, dates, percentages,
+and other data types for display in tables and API responses.
+"""
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Union
@@ -128,6 +134,7 @@ def currency_format(
 ) -> str:
     """
     Format value as currency or return currency symbol.
+
     If only currency is provided, return the currency symbol.
 
     :param value: Value to be formatted
@@ -188,6 +195,7 @@ def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
 def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) -> str:
     """
     Format a bond price as a percentage.
+
     Bond prices are stored as actual percentages (100 = 100%), not decimals.
 
     :param value: Bond price value (100 = 100%)
@@ -210,6 +218,16 @@ def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) 
 
 
 def currency_format_dict_values(data, currency, digits):
+    """Recursively format all Decimal values in a dictionary to currency format.
+
+    Args:
+        data: Dictionary containing values to format.
+        currency: Currency code for formatting.
+        digits: Number of decimal places.
+
+    Returns:
+        dict: Dictionary with formatted values.
+    """
     formatted_data = {}
     for key, value in data.items():
         if isinstance(value, dict):

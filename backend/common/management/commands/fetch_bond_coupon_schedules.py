@@ -1,6 +1,4 @@
-"""
-Django management command to fetch and cache coupon schedules for all bonds in the database.
-"""
+"""Django management command to fetch and cache coupon schedules for all bonds in the database."""
 
 import asyncio
 import logging

@@ -10,7 +10,10 @@ def transfer_db(direction):
         r"C:\Users\yl\OneDrive\Personal\Web development\Portfolio management database"
     )
     if not os.path.exists(local_folder):
-        local_folder = r"C:\Users\fyl\OneDrive\Personal\Web development\Portfolio management database"
+        local_folder = (
+            r"C:\Users\fyl\OneDrive\Personal\Web development\Portfolio "
+            r"management database"
+        )
     local_db = os.path.join(local_folder, "db.sqlite3")
 
     if direction == "export":

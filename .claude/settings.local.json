@@ -1,1 +1,13 @@
-{}
+{
+  "permissions": {
+    "allow": [
+      "Bash(git show:*)",
+      "Bash(venv/Scripts/flake8.exe:*)",
+      "Bash(for:*)",
+      "Bash(do if [ -f \"$file\" ])",
+      "Bash(then head -15 \"$file\")",
+      "Bash(fi:*)",
+      "Bash(done:*)"
+    ]
+  }
+}

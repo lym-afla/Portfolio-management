@@ -1,3 +1,9 @@
+"""Utility functions for retrieving and formatting transaction data.
+
+This module provides functions to retrieve transactions, calculate running
+balances, and format transaction data for display in tables.
+"""
+
 from datetime import date, datetime
 from decimal import Decimal
 from itertools import chain
@@ -15,6 +21,16 @@ from .sorting_utils import sort_entries
 
 
 def get_transactions_table_api(request):
+    """Retrieve and format transactions table data for API response.
+
+    Args:
+        request: The HTTP request object containing user context and parameters.
+
+    Returns:
+        dict: Dictionary containing formatted transactions data, balances, and
+            pagination information with keys: transactions, balances, total_items,
+            current_page, total_pages.
+    """
     data = request.data
     start_date = (
         datetime.strptime(data.get("dateFrom", None), "%Y-%m-%d").date()

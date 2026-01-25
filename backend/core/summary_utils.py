@@ -1,3 +1,9 @@
+"""Utility functions for calculating portfolio summary data.
+
+This module provides functions to calculate summary statistics, performance
+metrics, and aggregations for portfolio display and analysis.
+"""
+
 import logging
 from datetime import date
 from decimal import Decimal
@@ -22,6 +28,19 @@ def accounts_summary_data(
     currency_target,
     number_of_digits,
 ):
+    """Calculate summary data for accounts across multiple years.
+
+    Args:
+        user: The user instance.
+        effective_date: The effective date for calculations.
+        account_group_type: Type of account group.
+        account_group_id: ID of the account group.
+        currency_target: Target currency for values.
+        number_of_digits: Number of decimal places for formatting.
+
+    Returns:
+        dict: Dictionary containing summary data with years, totals, and formatted values.
+    """
     def initialize_context():
         return {"years": [], "lines": []}
 
@@ -315,6 +334,16 @@ def accounts_summary_data(
 
 
 def compile_summary_data(data, currency_target, number_of_digits):
+    """Compile and format summary data for display.
+
+    Args:
+        data: Dictionary containing raw summary metrics.
+        currency_target: Target currency for formatting.
+        number_of_digits: Number of decimal places for formatting.
+
+    Returns:
+        dict: Dictionary with formatted summary values.
+    """
     bop_nav = data.get("bop_nav", Decimal(0))
     eop_nav = data.get("eop_nav", Decimal(0))
     invested = data.get("invested", Decimal(0))

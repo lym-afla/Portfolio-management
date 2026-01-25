@@ -1,3 +1,9 @@
+"""Utility functions for managing security price data.
+
+This module provides functions to retrieve, update, and format
+price data for securities in the portfolio.
+"""
+
 from datetime import date
 
 from django.db.models import Q

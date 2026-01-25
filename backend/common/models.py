@@ -64,8 +64,8 @@ class FX(models.Model):
         Get FX rate for a given currency and target currency at a given date.
 
         The output is a dictionary with the following keys:
-        - FX: the FX rate that is to be multiplied to get the target currency from the source currency
-        - conversions: the number of conversions needed to get from the source currency to the target currency
+        - FX: the FX rate to multiply to get target currency from source
+        - conversions: number of conversions needed from source to target
         - dates_async: whether the dates are asynchronous
         - dates: the dates used to get the FX rate
 
@@ -1058,10 +1058,10 @@ class Assets(models.Model):
                 # Determine the quantity that is actually closing the position
                 # vs opening a new position in the opposite direction
                 if position > 0 and transaction.type == TRANSACTION_TYPE_SELL:
-                    # Closing long position: the portion that closes it is min(abs(transaction.quantity), position)
+                    # Closing long: portion that closes is min(abs(tx.quantity), position)
                     closing_quantity = -min(abs(transaction.quantity), position)
                 elif position < 0 and transaction.type == TRANSACTION_TYPE_BUY:
-                    # Closing short position: the portion that closes it is min(transaction.quantity, abs(position))
+                    # Closing short: portion that closes is min(tx.quantity, abs(position))
                     closing_quantity = min(transaction.quantity, abs(position))
                 else:
                     closing_quantity = transaction.quantity
@@ -1080,16 +1080,17 @@ class Assets(models.Model):
                     #   - closing_quantity is the amount that closes the short position
                     #   - The remaining transaction quantity opens a long position (no gain/loss)
                     #
-                    # We use position (before current transaction) to determine the buy-in price:
+                    # We use position (before current transaction) for the buy-in price:
                     # - If position > 0 (closing long): calculate avg buy price up to this point
-                    # - If position < 0 (closing short): calculate avg sell price (short position logic)
+                    # - If position < 0 (closing short): calculate avg sell price
                     #
                     # Importantly: we calculate buy-in price using the running position, which
                     # represents the quantity of shares that are actually being closed.
 
                     if position > 0:
                         # Closing long position: calculate avg buy price of these shares
-                        # Use transaction.date and exclude current transaction to include same-day earlier transactions
+                        # Use transaction.date and exclude current transaction to include
+                        # same-day earlier transactions
                         buy_in_price_target_currency = self.calculate_buy_in_price(
                             transaction.date,
                             investor,
@@ -1108,7 +1109,8 @@ class Assets(models.Model):
                         )
                     else:
                         # Closing short position: use the avg sell price that created the short
-                        # Use transaction.date and exclude current transaction to include same-day earlier transactions
+                        # Use transaction.date and exclude current transaction to include
+                        # same-day earlier transactions
                         buy_in_price_target_currency = self.calculate_buy_in_price(
                             transaction.date,
                             investor,
@@ -1174,8 +1176,9 @@ class Assets(models.Model):
                             )
                         else:
                             # Standard calculation for non-bonds
-                            # Use closing_quantity to only calculate gain/loss on the portion
-                            # that actually closes the position (not the portion that opens a new one)
+                            # Use closing_quantity to only calculate gain/loss on the
+                            # portion that actually closes the position (not the portion
+                            # that opens a new one)
                             price_appreciation = (
                                 -(transaction.price - buy_in_price_lcl_currency)
                                 * closing_quantity

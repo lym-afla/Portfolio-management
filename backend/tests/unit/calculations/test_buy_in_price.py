@@ -367,7 +367,8 @@ class TestBuyInPriceCalculation:
             date(2023, 1, 16), investor=user, start_date=start_date
         )
 
-        # Should consider position at start date (100 shares at $45) + new transaction (100 shares at $50)
+        # Should consider position at start date (100 shares at $45) +
+        # new transaction (100 shares at $50)
         # Average: (100*45 + 100*50) / 200 = $47.50
         assert buy_in_price == Decimal("47.50")
 

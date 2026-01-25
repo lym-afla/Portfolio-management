@@ -1,3 +1,9 @@
+"""Utility functions for generating table data for positions and transactions.
+
+This module provides functions to calculate and format data for display
+in positions and transactions tables.
+"""
+
 import time
 from datetime import date, timedelta
 from decimal import Decimal
@@ -85,7 +91,7 @@ def _calculate_closed_table_output_for_api(
         )
         entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
 
-        for i, exit_date in enumerate(exit_dates):
+        for exit_date in exit_dates:
             currency_used = None if use_default_currency else currency_target
 
             # Has to be defined here to accomodate different closed positions
@@ -334,7 +340,8 @@ def _calculate_open_table_output_for_api(
     open_positions = []
     portfolio_open_totals = {"all_assets_share_of_portfolio_percentage": Decimal(0)}
 
-    total_irr_start_date = start_date  # Not to be overwritten by asset start date if start date is not defined
+    # Not to be overwritten by asset start date if start date is not defined
+    total_irr_start_date = start_date
 
     for asset in portfolio:
         asset_start_time = time.time()  # Start timing for each asset

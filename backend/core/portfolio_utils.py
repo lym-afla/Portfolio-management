@@ -1,3 +1,10 @@
+"""Core portfolio calculation utilities.
+
+This module provides functions for calculating Net Asset Value (NAV),
+Internal Rate of Return (IRR), performance metrics, and other
+portfolio-level calculations.
+"""
+
 import datetime
 import logging
 from collections import defaultdict
@@ -68,12 +75,30 @@ def get_accounts_for_security(user_id: int, security_id: int) -> QuerySet[Accoun
 def get_fx_rate(
     currency: str, target_currency: str, date: date, user: Optional[int] = None
 ) -> Decimal:
+    """Get FX rate with caching for performance.
+
+    Args:
+        currency: Source currency code.
+        target_currency: Target currency code.
+        date: The date for the FX rate.
+        user: User ID for user-specific rates (optional).
+
+    Returns:
+        Decimal: The FX rate.
+    """
     return FX.get_rate(currency, target_currency, date, user)["FX"]
 
 
-# Create one dictionary from two. And add values for respective keys
-# if keys present on both dictionaries
 def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
+    """Merge two dictionaries, adding values for matching keys.
+
+    Args:
+        dict_1: First dictionary.
+        dict_2: Second dictionary.
+
+    Returns:
+        dict: Merged dictionary with combined values.
+    """
     dict_3 = dict_1.copy()  # Create a copy of dict_1
     for key, value in dict_2.items():
         dict_3[key] = (
@@ -82,7 +107,6 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
     return dict_3
 
 
-# Calculate NAV breakdown for selected broker accounts at certain date and in selected currency
 @lru_cache(maxsize=None)
 def NAV_at_date(
     user_id: int,
@@ -91,6 +115,18 @@ def NAV_at_date(
     target_currency: str,
     breakdown: Tuple[str] = (),
 ) -> Dict:
+    """Calculate NAV breakdown for selected accounts at a given date.
+
+    Args:
+        user_id: The ID of the user.
+        account_ids: Tuple of account IDs to include in calculation.
+        date: The date for NAV calculation.
+        target_currency: Target currency for NAV values.
+        breakdown: Tuple of breakdown categories (optional).
+
+    Returns:
+        dict: Dictionary containing Total NAV and breakdown values by category.
+    """
     account_ids = list(account_ids)  # Convert tuple back to list for internal use
     breakdown = list(breakdown)  # Convert tuple back to list for internal use
 
@@ -411,6 +447,21 @@ def calculate_performance(
     currency_target,
     is_restricted=None,
 ):
+    """Calculate performance metrics for a given date range and account group.
+
+    Args:
+        user: The user instance.
+        start_date: Start date for performance calculation.
+        end_date: End date for performance calculation.
+        account_group_type: Type of account group.
+        account_group_id: ID of the account group.
+        currency_target: Target currency for values.
+        is_restricted: Whether to calculate restricted performance (optional).
+
+    Returns:
+        dict: Dictionary containing performance metrics including gain_loss,
+            nav_start, nav_end, tsr, and breakdown values.
+    """
     performance_data = defaultdict(Decimal)
     logger.debug(
         f"Calculating performance for {user.username}, {account_group_type} {account_group_id} "

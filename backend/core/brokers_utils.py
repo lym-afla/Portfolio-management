@@ -1,3 +1,9 @@
+"""Utility functions for managing and displaying broker information.
+
+This module provides functions to retrieve, filter, and format broker data
+for display in tables, including calculations for NAV, IRR, and performance metrics.
+"""
+
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -15,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_brokers_table_api(request):
-    """Get brokers table data with pagination, sorting, and search"""
+    """Get brokers table data with pagination, sorting, and search."""
     data = request.data
 
     page = int(data.get("page"))
@@ -61,7 +67,7 @@ def get_brokers_table_api(request):
 
 
 def _filter_brokers(user, search):
-    """Filter brokers based on search criteria"""
+    """Filter brokers based on search criteria."""
     brokers = Brokers.objects.filter(investor=user)
     if search:
         brokers = brokers.filter(
@@ -73,7 +79,7 @@ def _filter_brokers(user, search):
 
 
 def _get_brokers_data(user, brokers, effective_current_date, currency_target):
-    """Get detailed data for each broker"""
+    """Get detailed data for each broker."""
     brokers_data = []
 
     # Get all broker account IDs upfront
@@ -149,7 +155,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
 
 
 def _calculate_totals(brokers_data, user, effective_current_date, currency_target):
-    """Calculate totals for all brokers"""
+    """Calculate totals for all brokers."""
     account_ids = []
     for broker in Brokers.objects.filter(investor=user):
         account_ids.extend(list(broker.accounts.values_list("id", flat=True)))

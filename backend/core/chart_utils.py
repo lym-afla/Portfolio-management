@@ -1,3 +1,9 @@
+"""Utility functions for generating chart data and visualizations.
+
+This module provides functions to calculate and format data for various charts
+including NAV (Net Asset Value) charts, performance charts, and other visualizations.
+"""
+
 import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -16,6 +22,20 @@ logger = logging.getLogger("dashboard")
 def get_nav_chart_data(
     user_id, account_ids, frequency, from_date, to_date, currency, breakdown
 ):
+    """Calculate NAV chart data for a given user and date range.
+
+    Args:
+        user_id: The ID of the user to calculate NAV for.
+        account_ids: Tuple of account IDs to include in calculation.
+        frequency: The frequency of data points ('daily', 'weekly', 'monthly').
+        from_date: Start date for the chart data.
+        to_date: End date for the chart data.
+        currency: Target currency for NAV calculations.
+        breakdown: Whether to breakdown by asset type.
+
+    Returns:
+        dict: Dictionary containing chart data with dates and NAV values.
+    """
     # Ensure dates are date objects first
     from_date = (
         date.fromisoformat(from_date) if isinstance(from_date, str) else from_date
@@ -229,6 +249,16 @@ def _add_contributions_data(
 def add_breakdown_data(
     chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date
 ):
+    """Add breakdown data to chart datasets.
+
+    Args:
+        chart_data: Dictionary containing chart structure and datasets.
+        IRR: Internal Rate of Return value.
+        IRR_rolling: Rolling IRR value.
+        breakdown_data: Dictionary of category breakdown values.
+        categories: Dictionary tracking categories and their first occurrence dates.
+        current_date: Current date for the chart data point.
+    """
     for key, value in breakdown_data.items():
         if key not in categories:
             categories[key] = current_date
@@ -252,6 +282,13 @@ def add_breakdown_data(
 
 
 def fill_missing_historical_data(chart_data, categories, frequency):
+    """Fill missing historical data points for chart datasets.
+
+    Args:
+        chart_data: Dictionary containing chart structure and datasets.
+        categories: Dictionary tracking categories and their first occurrence dates.
+        frequency: The frequency of data points.
+    """
     for dataset in chart_data["datasets"][:-2]:  # Exclude IRR datasets
         label = dataset["label"]
         if label in categories:
@@ -267,6 +304,16 @@ def fill_missing_historical_data(chart_data, categories, frequency):
 
 
 def find_first_data_index(labels, category_date, frequency):
+    """Find the first data index for a category based on its start date.
+
+    Args:
+        labels: List of date labels for the chart.
+        category_date: The date when the category first appeared.
+        frequency: The frequency of data points ('daily', 'weekly', 'monthly').
+
+    Returns:
+        int: The index where the category data should start.
+    """
     for index, label in enumerate(labels):
         if compare_dates(label, category_date, frequency):
             return index
@@ -274,6 +321,16 @@ def find_first_data_index(labels, category_date, frequency):
 
 
 def compare_dates(label, category_date, frequency):
+    """Compare a chart label date with a category date based on frequency.
+
+    Args:
+        label: The chart label string to compare.
+        category_date: The category date to compare against.
+        frequency: The frequency of data points.
+
+    Returns:
+        bool: True if label date is >= category date, False otherwise.
+    """
     # Handle None cases
     if not label or not category_date:
         return False
@@ -305,6 +362,15 @@ def compare_dates(label, category_date, frequency):
 
 
 def parse_label_date(label, frequency):
+    """Parse a chart label into a date object based on frequency.
+
+    Args:
+        label: The chart label string to parse.
+        frequency: The frequency of data points ('daily', 'weekly', 'monthly', etc.).
+
+    Returns:
+        date: The parsed date object, or None if parsing fails.
+    """
     if frequency == "D" or frequency == "W":
         return datetime.strptime(label, "%d-%b-%y").date()
     elif frequency == "M":
@@ -318,6 +384,19 @@ def parse_label_date(label, frequency):
 
 
 def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
+    """Create a dataset configuration for a chart.
+
+    Args:
+        label: The label for the dataset.
+        data: List of data points for the dataset.
+        color: The color to use for the dataset.
+        chart_type: The type of chart ('line', 'bar', etc.).
+        axis_id: The Y-axis ID to use for this dataset.
+        stack: The stack group ID (optional).
+
+    Returns:
+        dict: Dataset configuration dictionary.
+    """
     dataset = {
         "label": label,
         "data": data,
@@ -335,6 +414,14 @@ def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
 
 
 def get_color(index):
+    """Get a color from a predefined color palette.
+
+    Args:
+        index: The index of the color to retrieve.
+
+    Returns:
+        str: RGBA color string.
+    """
     colors = [
         "rgba(54, 162, 235, 0.7)",
         "rgba(255, 206, 86, 0.7)",

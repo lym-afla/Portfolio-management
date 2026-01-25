@@ -652,7 +652,8 @@ class TestErrorHandlingWorkflows:
 
     def test_invalid_transaction_recovery(self):
         """Test recovery from invalid transaction attempts."""
-        # Create valid transaction (validation is not enforced at model level in current implementation)
+        # Create valid transaction
+        # (validation is not enforced at model level in current implementation)
         valid_transaction = Transactions.objects.create(
             investor=self.user,
             account=self.account,

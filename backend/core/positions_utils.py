@@ -1,3 +1,9 @@
+"""Utility functions for calculating and managing position data.
+
+This module provides functions to retrieve open and closed positions,
+calculate position metrics, and format position data for display.
+"""
+
 import logging
 from collections import defaultdict
 from datetime import date, datetime

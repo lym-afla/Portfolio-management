@@ -1,3 +1,9 @@
+"""Utility functions for integrating with Tinkoff Invest API.
+
+This module provides functions to map Tinkoff operations to transactions,
+manage API tokens, and handle Tinkoff-specific data formats.
+"""
+
 import logging
 from datetime import datetime
 from decimal import Decimal

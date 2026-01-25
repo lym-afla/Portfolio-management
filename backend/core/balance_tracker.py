@@ -65,7 +65,7 @@ class BalanceTracker:
             self._update_fx_transaction(transaction)
 
     def _update_regular_transaction(self, transaction) -> None:
-        """Update balances for a regular transaction"""
+        """Update balances for a regular transaction."""
         currency = transaction.currency
 
         # Ensure currency exists in balance tracker
@@ -82,7 +82,7 @@ class BalanceTracker:
         self._store_transaction_balances(transaction.id)
 
     def _update_fx_transaction(self, fx_transaction) -> None:
-        """Update balances for an FX transaction using centralized method"""
+        """Update balances for an FX transaction using centralized method."""
         from_currency = fx_transaction.from_currency
         to_currency = fx_transaction.to_currency
         commission_currency = fx_transaction.commission_currency
@@ -106,7 +106,7 @@ class BalanceTracker:
         self._store_transaction_balances(fx_transaction.id)
 
     def _store_transaction_balances(self, transaction_id: int) -> None:
-        """Store formatted balances for a transaction"""
+        """Store formatted balances for a transaction."""
         formatted_balances = {}
         for currency in self.currencies:
             formatted_balances[currency] = currency_format(

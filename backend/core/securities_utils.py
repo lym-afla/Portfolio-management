@@ -1,3 +1,9 @@
+"""Utility functions for managing securities/assets data.
+
+This module provides functions to retrieve, filter, and format
+securities data for display in tables and API responses.
+"""
+
 import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -17,6 +23,16 @@ logger = logging.getLogger(__name__)
 
 
 def get_securities_table_api(request):
+    """Retrieve and format securities table data for API response.
+
+    Args:
+        request: The HTTP request object containing user context and parameters.
+
+    Returns:
+        dict: Dictionary containing formatted securities data, totals, and
+            pagination information with keys: securities, totals, total_items,
+            current_page, total_pages.
+    """
     data = request.data
     page = int(data.get("page"))
     items_per_page = int(data.get("itemsPerPage"))
@@ -105,6 +121,15 @@ def _get_securities_data(user, securities, effective_current_date):
 
 
 def get_security_detail(request, security_id):
+    """Retrieve detailed information for a specific security.
+
+    Args:
+        request: The HTTP request object.
+        security_id: The ID of the security to retrieve details for.
+
+    Returns:
+        dict: Dictionary containing detailed security information.
+    """
     user = request.user
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(
@@ -747,5 +772,14 @@ def calculate_bond_ytm(
 
 
 def get_security_transactions(request, security_id):
+    """Retrieve transactions for a specific security.
+
+    Args:
+        request: The HTTP request object.
+        security_id: The ID of the security.
+
+    Returns:
+        dict: Dictionary containing transaction data for the security.
+    """
     # Implement logic to fetch and return recent transactions data
     pass

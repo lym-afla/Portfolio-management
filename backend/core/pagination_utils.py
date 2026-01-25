@@ -1,3 +1,9 @@
+"""Utility functions for paginating table data.
+
+This module provides functions to handle pagination of data tables,
+calculating page numbers and slicing data appropriately.
+"""
+
 from typing import Any, Dict, List, Tuple
 
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator

@@ -1,3 +1,9 @@
+"""Broker API integration utilities for importing transactions from external brokers.
+
+This module provides abstract base classes and implementations for interacting
+with various broker APIs to fetch transactions and account data.
+"""
+
 import asyncio
 import logging
 from abc import ABC, abstractmethod
@@ -24,31 +30,39 @@ logger = logging.getLogger(__name__)
 
 
 class BrokerAPIException(Exception):
-    """Base exception for broker API errors"""
+    """Base exception for broker API errors."""
 
     pass
 
 
 class TinkoffAPIException(BrokerAPIException):
-    """Tinkoff-specific API exceptions"""
+    """Tinkoff-specific API exceptions."""
 
     pass
 
 
 class BrokerAPI(ABC):
-    """Base class for broker API implementations"""
+    """Abstract base class for broker API implementations.
+
+    This class defines the interface that all broker API implementations must follow,
+    providing methods for connecting, disconnecting, and fetching transactions.
+    """
 
     def __init__(self):
+        """Initialize the broker API client.
+
+        Sets up a logger instance for the specific API implementation class.
+        """
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
     async def connect(self) -> bool:
-        """Establish connection to broker API"""
+        """Establish connection to broker API."""
         pass
 
     @abstractmethod
     async def disconnect(self) -> None:
-        """Close connection to broker API"""
+        """Close connection to broker API."""
         pass
 
     @abstractmethod
@@ -59,7 +73,7 @@ class BrokerAPI(ABC):
         date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
-        Fetch transactions from broker API
+        Fetch transactions from broker API.
 
         Args:
             account: Accounts model instance containing broker account details
@@ -85,9 +99,18 @@ class BrokerAPI(ABC):
 
 
 class TinkoffAPI(BrokerAPI):
-    """Tinkoff broker API implementation"""
+    """Tinkoff broker API implementation.
+
+    This class provides methods to interact with the Tinkoff Invest API,
+    including authentication, transaction fetching, and error handling with
+    automatic retries and backoff.
+    """
 
     def __init__(self):
+        """Initialize the Tinkoff API client.
+
+        Sets up the client, token, and retry configuration parameters.
+        """
         super().__init__()
         self.client = None
         self.token = None
@@ -99,7 +122,7 @@ class TinkoffAPI(BrokerAPI):
 
     async def _retry_operation(self, operation_func, *args, **kwargs):
         """
-        Retry wrapper for API operations
+        Retry wrapper for API operations.
 
         Args:
             operation_func: Function to retry
@@ -157,7 +180,7 @@ class TinkoffAPI(BrokerAPI):
 
     async def connect(self, user) -> bool:
         """
-        Connect to Tinkoff API using user's token
+        Connect to Tinkoff API using user's token.
 
         Args:
             user: CustomUser instance
@@ -186,7 +209,7 @@ class TinkoffAPI(BrokerAPI):
             raise TinkoffAPIException(f"Tinkoff API connection failed: {str(e)}")
 
     async def disconnect(self) -> None:
-        """Close connection to Tinkoff API"""
+        """Close connection to Tinkoff API."""
         self.logger.debug("Disconnecting from Tinkoff API")
         try:
             # Just clean up references
@@ -202,7 +225,7 @@ class TinkoffAPI(BrokerAPI):
         date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
-        Fetch transactions from Tinkoff API using cursor-based pagination
+        Fetch transactions from Tinkoff API using cursor-based pagination.
 
         Args:
             account: Accounts model instance containing broker account details
@@ -338,7 +361,12 @@ class TinkoffAPI(BrokerAPI):
             )
 
     async def validate_connection(self) -> bool:
-        """Validate API connection"""
+        """Validate the API connection by attempting to fetch user info.
+
+        Returns:
+            bool: True if connection is valid and authentication succeeds,
+                False otherwise.
+        """
         try:
             if not self.token:
                 return False
@@ -355,9 +383,20 @@ class TinkoffAPI(BrokerAPI):
 
 
 class InteractiveBrokersAPI(BrokerAPI):
-    """Interactive Brokers API implementation"""
+    """Interactive Brokers API implementation (placeholder).
+
+    This class is a stub for future Interactive Brokers API integration.
+    """
 
     async def connect(self) -> bool:
+        """Establish connection to Interactive Brokers API.
+
+        Returns:
+            bool: True if connection successful.
+
+        Raises:
+            BrokerAPIException: If connection fails.
+        """
         self.logger.debug("Connecting to Interactive Brokers API")
         try:
             # TODO: Implement IB API connection
@@ -367,6 +406,11 @@ class InteractiveBrokersAPI(BrokerAPI):
             raise BrokerAPIException(f"IB API connection failed: {str(e)}")
 
     async def disconnect(self) -> None:
+        """Close connection to Interactive Brokers API.
+
+        Raises:
+            BrokerAPIException: If disconnection fails.
+        """
         self.logger.debug("Disconnecting from Interactive Brokers API")
         try:
             # TODO: Implement IB API disconnect
@@ -380,6 +424,19 @@ class InteractiveBrokersAPI(BrokerAPI):
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
     ) -> AsyncGenerator[Dict, None]:
+        """Fetch transactions from Interactive Brokers API.
+
+        Args:
+            account: Accounts model instance.
+            date_from: Start date in YYYY-MM-DD format (optional).
+            date_to: End date in YYYY-MM-DD format (optional).
+
+        Yields:
+            Dict: Transaction data dictionaries.
+
+        Raises:
+            BrokerAPIException: If transaction fetching fails.
+        """
         self.logger.debug(f"Fetching IB transactions for account {account.id}")
         try:
             # TODO: Implement IB transaction fetching
@@ -393,7 +450,7 @@ class InteractiveBrokersAPI(BrokerAPI):
 
 async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
     """
-    Factory function to get appropriate broker API handler
+    Get appropriate broker API handler.
 
     Args:
         broker: Brokers model instance
