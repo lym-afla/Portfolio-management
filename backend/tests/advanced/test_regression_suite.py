@@ -15,12 +15,12 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import FX, Accounts, Assets, Transactions
+from common.models import FX, Accounts, Transactions
 from tests.fixtures.factories.asset_factory import AssetFactory
 
 
 def create_test_transaction(investor, account, security, **kwargs):
-    """Helper to create a transaction with all required fields."""
+    """Help to create a transaction with all required fields."""
     defaults = {
         "type": "Buy",
         "quantity": Decimal("100"),
@@ -92,7 +92,7 @@ class TestCalculationRegression:
         asset.investors.add(user)
 
         # Create complex transaction sequence
-        tx1 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -101,7 +101,7 @@ class TestCalculationRegression:
             price=Decimal("50.00"),
             date=date(2023, 1, 1),
         )
-        tx2 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -110,7 +110,7 @@ class TestCalculationRegression:
             price=Decimal("55.00"),
             date=date(2023, 2, 1),
         )
-        tx3 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -119,7 +119,7 @@ class TestCalculationRegression:
             price=Decimal("60.00"),
             date=date(2023, 3, 1),
         )
-        tx4 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -154,7 +154,7 @@ class TestCalculationRegression:
         asset.investors.add(user)
 
         # Create transactions with very small price differences
-        tx1 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -163,7 +163,7 @@ class TestCalculationRegression:
             price=Decimal("100.123456789"),
             date=date(2023, 1, 1),
         )
-        tx2 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -195,7 +195,7 @@ class TestEdgeCaseRegression:
         asset.investors.add(user)
 
         # Create transaction with zero quantity (dividend)
-        zero_tx = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -217,7 +217,7 @@ class TestEdgeCaseRegression:
         asset.investors.add(user)
 
         # Create short position (sell without prior buy)
-        short_tx = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -237,7 +237,7 @@ class TestEdgeCaseRegression:
         asset.investors.add(user)
 
         # Create transaction with very large numbers
-        large_tx = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -257,7 +257,7 @@ class TestEdgeCaseRegression:
         asset.investors.add(user)
 
         # Create transaction with very small numbers
-        small_tx = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -277,7 +277,7 @@ class TestEdgeCaseRegression:
         asset.investors.add(user)
 
         # Create transactions with different currency precisions
-        tx1 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,
@@ -286,7 +286,7 @@ class TestEdgeCaseRegression:
             price=Decimal("123.456"),
             currency="JPY",
         )
-        tx2 = create_test_transaction(
+        _ = create_test_transaction(
             investor=user,
             account=account,
             security=asset,

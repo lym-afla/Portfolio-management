@@ -351,6 +351,27 @@ def fx_rates_usd_eur(user):
         fx.investors.add(user)
         rates.append(fx)
 
+    # Ensure we have the specific dates needed by tests
+    test_dates = [
+        date(2023, 1, 15),  # Multi-date test
+        date(2023, 3, 15),  # Multi-date test
+        date(2023, 6, 15),  # Most frequently used date
+        date(2023, 6, 16),  # Interpolation test
+        date(2023, 6, 17),  # Weekend test
+        date(2023, 9, 15),  # Multi-date test
+        date(2023, 12, 15),  # Multi-date test
+    ]
+
+    for test_date in test_dates:
+        # Check if date already exists from the loop
+        if not any(r.date == test_date for r in rates):
+            test_rate = Decimal("1.25") + (
+                Decimal("0.01") * test_dates.index(test_date)
+            )
+            test_fx = FX.objects.create(date=test_date, USDEUR=test_rate)
+            test_fx.investors.add(user)
+            rates.append(test_fx)
+
     return rates
 
 
@@ -422,6 +443,14 @@ def price_history(asset):
         )
         prices.append(price)
 
+    # Add price data for June 15, 2023 to ensure test compatibility
+    # This date is used in multiple tests and might not be covered by monthly data
+    june_15_date = date(2023, 6, 15)
+    if not any(price.date == june_15_date for price in prices):
+        june_price = base_price + Decimal("0.50")  # Price increased by $0.50 by June
+        Prices.objects.create(date=june_15_date, security=asset, price=june_price)
+        prices.append(Prices.objects.get(date=june_15_date, security=asset))
+
     return prices
 
 
@@ -429,9 +458,10 @@ def price_history(asset):
 def price_history_multi_asset(asset, asset_eur, asset_gbp):
     """Create price histories for multiple assets with reduced data for performance."""
     price_data = {}
+    base_date = date(2023, 1, 1)
+    june_15_date = date(2023, 6, 15)
 
     # USD asset prices
-    base_date = date(2023, 1, 1)
     prices_usd = []
     for i in range(12):  # Reduced from 365 to 12 for performance
         current_date = base_date + timedelta(days=i * 30)  # Monthly data
@@ -440,6 +470,13 @@ def price_history_multi_asset(asset, asset_eur, asset_gbp):
             Prices.objects.create(date=current_date, security=asset, price=price)
         )
     price_data["USD"] = prices_usd
+
+    # Add price data for June 15, 2023 to USD asset
+    june_price_usd = (
+        Decimal("50.00") + (Decimal("0.2") * 5) + Decimal("0.5")
+    )  # Price increased by June
+    Prices.objects.create(date=june_15_date, security=asset, price=june_price_usd)
+    price_data["USD"].append(Prices.objects.get(date=june_15_date, security=asset))
 
     # EUR asset prices
     prices_eur = []
@@ -453,6 +490,13 @@ def price_history_multi_asset(asset, asset_eur, asset_gbp):
         )
     price_data["EUR"] = prices_eur
 
+    # Add price data for June 15, 2023 to EUR asset
+    june_price_eur = (
+        Decimal("40.00") + (Decimal("0.15") * 5) + Decimal("0.3")
+    )  # Price increased by June
+    Prices.objects.create(date=june_15_date, security=asset_eur, price=june_price_eur)
+    price_data["EUR"].append(Prices.objects.get(date=june_15_date, security=asset_eur))
+
     # GBP asset prices
     prices_gbp = []
     for i in range(12):
@@ -464,6 +508,13 @@ def price_history_multi_asset(asset, asset_eur, asset_gbp):
             Prices.objects.create(date=current_date, security=asset_gbp, price=price)
         )
     price_data["GBP"] = prices_gbp
+
+    # Add price data for June 15, 2023 to GBP asset
+    june_price_gbp = (
+        Decimal("35.00") + (Decimal("0.18") * 5) + Decimal("0.4")
+    )  # Price increased by June
+    Prices.objects.create(date=june_15_date, security=asset_gbp, price=june_price_gbp)
+    price_data["GBP"].append(Prices.objects.get(date=june_15_date, security=asset_gbp))
 
     return price_data
 

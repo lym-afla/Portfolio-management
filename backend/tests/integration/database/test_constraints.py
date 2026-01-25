@@ -49,7 +49,7 @@ class TestAssetModelConstraints:
         # Create second asset with same ISIN for same user (allowed - no DB constraint)
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                asset2 = Assets.objects.create(
+                _ = Assets.objects.create(
                     type="Stock",
                     ISIN="US1234567890",  # Same ISIN
                     name="Second Asset",

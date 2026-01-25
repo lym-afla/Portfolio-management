@@ -39,7 +39,9 @@
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/advanced/ -v --tb=short --no-cov)",
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/advanced/test_regression_suite.py::TestAPIRegression::test_regression_fx_endpoint_pagination tests/advanced/test_regression_suite.py::TestAPIRegression::test_regression_transaction_endpoint_validation -v --no-cov)",
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/unit/models/test_assets_model.py::TestAssetsModel::test_realized_gain_loss_short_position -v --no-cov)",
-      "Bash(\"venv\\Scripts\\python.exe\" -c \"import daphne; print(''daphne installed'')\")"
+      "Bash(\"venv\\Scripts\\python.exe\" -c \"import daphne; print(''daphne installed'')\")",
+      "Bash(./venv/Scripts/python.exe -m pytest:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

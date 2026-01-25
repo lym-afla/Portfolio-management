@@ -23,7 +23,7 @@ from tests.fixtures.factories.asset_factory import AssetFactory
 
 
 def create_test_transaction(investor, account, security, **kwargs):
-    """Helper to create a transaction with all required fields."""
+    """Help to create a transaction with all required fields."""
     defaults = {
         "type": "Buy",
         "quantity": Decimal("100"),
@@ -601,7 +601,7 @@ class TestFXRatePerformance:
         # First lookup (cache miss)
         start_time = time.time()
         rate1 = FX.get_rate("USD", "EUR", test_date)
-        first_lookup_time = time.time() - start_time
+        _ = time.time() - start_time
 
         # Second lookup (cache hit)
         start_time = time.time()

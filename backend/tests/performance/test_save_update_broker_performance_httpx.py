@@ -343,7 +343,7 @@ async def test_get_last_exit_date_for_brokers():
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )
-    _ = await sync_to_async(Accounts.objects.create)(
+    account = await sync_to_async(Accounts.objects.create)(
         broker=broker,
         name="Test Account",
         native_id="TEST001",
@@ -411,7 +411,7 @@ async def test_calculate_performance():
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )
-    _ = await sync_to_async(Accounts.objects.create)(
+    account = await sync_to_async(Accounts.objects.create)(
         broker=broker,
         name="Test Account",
         native_id="TEST001",

@@ -667,7 +667,13 @@ class Assets(models.Model):
         return exit_dates
 
     def calculate_buy_in_price(
-        self, date_as_of, investor, currency=None, account_ids=None, start_date=None
+        self,
+        date_as_of,
+        investor,
+        currency=None,
+        account_ids=None,
+        start_date=None,
+        exclude_transaction_id=None,
     ):
         """
         Calculate average buy-in price for an asset.
@@ -681,6 +687,7 @@ class Assets(models.Model):
             currency (str): Currency in which to calculate the buy-in price.
             account_ids (list): List of broker account IDs to filter transactions by.
             start_date (datetime.date): Start date for the calculation.
+            exclude_transaction_id (int, optional): Transaction ID to exclude from calculation.
 
         Returns:
             float: Calculated buy-in price. Returns None if an error occurs.
@@ -688,14 +695,18 @@ class Assets(models.Model):
         logger.debug(f"Calculating buy-in price for {self.name} as of {date_as_of}")
         logger.debug(
             f"Parameters: currency={currency}, account_ids={account_ids}, "
-            f"start_date={start_date}"
+            f"start_date={start_date}, exclude_transaction_id={exclude_transaction_id}"
         )
 
         is_long_position = None
 
         transactions = self.transactions.filter(
             quantity__isnull=False, investor=investor, date__lte=date_as_of
-        ).order_by("date")
+        ).order_by("date", "id")
+
+        # Exclude the specified transaction if provided
+        if exclude_transaction_id is not None:
+            transactions = transactions.exclude(id=exclude_transaction_id)
 
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
@@ -768,7 +779,14 @@ class Assets(models.Model):
         logger.debug(f"Number of transactions after filtering: {len(transactions)}")
 
         # Determine position direction based on current position
-        current_position = self.position(date_as_of, investor, account_ids)
+        # When exclude_transaction_id is provided, we need to calculate position
+        # using only the filtered transactions (excluding the specified transaction)
+        if exclude_transaction_id is not None:
+            # Calculate position using only filtered transactions
+            current_position = sum((t.quantity or Decimal(0)) for t in transactions)
+        else:
+            # Use the existing position method for performance
+            current_position = self.position(date_as_of, investor, account_ids)
 
         # Determine if it's a long or short position:
         # - If current_position > 0: currently long → use average buy price
@@ -1035,22 +1053,79 @@ class Assets(models.Model):
                     continue
 
                 is_position_reducing = (
-                    (position > 0 and transaction.type == TRANSACTION_TYPE_SELL)
-                    or (position < 0 and transaction.type == TRANSACTION_TYPE_BUY)
-                    or (position == 0)  # This handles same-day open and close
-                )
+                    position > 0 and transaction.type == TRANSACTION_TYPE_SELL
+                ) or (position < 0 and transaction.type == TRANSACTION_TYPE_BUY)
+
+                # Determine the quantity that is actually closing the position
+                # vs opening a new position in the opposite direction
+                if position > 0 and transaction.type == TRANSACTION_TYPE_SELL:
+                    # Closing long position: the portion that closes it is min(abs(transaction.quantity), position)
+                    closing_quantity = -min(abs(transaction.quantity), position)
+                elif position < 0 and transaction.type == TRANSACTION_TYPE_BUY:
+                    # Closing short position: the portion that closes it is min(transaction.quantity, abs(position))
+                    closing_quantity = min(transaction.quantity, abs(position))
+                else:
+                    closing_quantity = transaction.quantity
 
                 if is_position_reducing:
-                    buy_in_price_target_currency = self.calculate_buy_in_price(
-                        transaction.date, investor, currency, account_ids, start
-                    )
-                    buy_in_price_lcl_currency = self.calculate_buy_in_price(
-                        transaction.date,
-                        investor,
-                        transaction.currency,
-                        account_ids,
-                        start,
-                    )
+                    # For position-reducing transactions, we need to calculate the buy-in price
+                    # for the portion that closes the existing position.
+                    #
+                    # For closing long positions (position > 0, SELL):
+                    #   - Use the avg buy price of the long position being closed
+                    #   - closing_quantity is the amount that closes the long position
+                    #   - The remaining transaction quantity opens a short position (no gain/loss)
+                    #
+                    # For closing short positions (position < 0, BUY):
+                    #   - Use the avg sell price that created the short position
+                    #   - closing_quantity is the amount that closes the short position
+                    #   - The remaining transaction quantity opens a long position (no gain/loss)
+                    #
+                    # We use position (before current transaction) to determine the buy-in price:
+                    # - If position > 0 (closing long): calculate avg buy price up to this point
+                    # - If position < 0 (closing short): calculate avg sell price (short position logic)
+                    #
+                    # Importantly: we calculate buy-in price using the running position, which
+                    # represents the quantity of shares that are actually being closed.
+
+                    if position > 0:
+                        # Closing long position: calculate avg buy price of these shares
+                        # Use transaction.date and exclude current transaction to include same-day earlier transactions
+                        buy_in_price_target_currency = self.calculate_buy_in_price(
+                            transaction.date,
+                            investor,
+                            currency,
+                            account_ids,
+                            start,
+                            exclude_transaction_id=transaction.id,
+                        )
+                        buy_in_price_lcl_currency = self.calculate_buy_in_price(
+                            transaction.date,
+                            investor,
+                            transaction.currency,
+                            account_ids,
+                            start,
+                            exclude_transaction_id=transaction.id,
+                        )
+                    else:
+                        # Closing short position: use the avg sell price that created the short
+                        # Use transaction.date and exclude current transaction to include same-day earlier transactions
+                        buy_in_price_target_currency = self.calculate_buy_in_price(
+                            transaction.date,
+                            investor,
+                            currency,
+                            account_ids,
+                            start,
+                            exclude_transaction_id=transaction.id,
+                        )
+                        buy_in_price_lcl_currency = self.calculate_buy_in_price(
+                            transaction.date,
+                            investor,
+                            transaction.currency,
+                            account_ids,
+                            start,
+                            exclude_transaction_id=transaction.id,
+                        )
 
                     logger.debug(
                         "Buy-in price in target currency: "
@@ -1100,9 +1175,11 @@ class Assets(models.Model):
                             )
                         else:
                             # Standard calculation for non-bonds
+                            # Use closing_quantity to only calculate gain/loss on the portion
+                            # that actually closes the position (not the portion that opens a new one)
                             price_appreciation = (
                                 -(transaction.price - buy_in_price_lcl_currency)
-                                * transaction.quantity
+                                * closing_quantity
                                 * fx_rate_exit
                             )
                             gl_target_currency = (
@@ -1110,7 +1187,7 @@ class Assets(models.Model):
                                     transaction.price * fx_rate_exit
                                     - buy_in_price_target_currency
                                 )
-                                * transaction.quantity
+                                * closing_quantity
                             )
 
                         fx_effect = gl_target_currency - price_appreciation
