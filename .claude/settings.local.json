@@ -1,16 +1,1 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(\"venv\\Scripts\\python.exe\":*)",
-      "Bash(python:*)",
-      "Bash(cd:*)",
-      "Bash(source:*)",
-      "Bash(export:*)",
-      "Bash(chmod:*)",
-      "Bash(npm:*)",
-      "Bash(claude mcp list:*)"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}
+{}

@@ -1,0 +1,366 @@
+"""Database forms."""
+
+from django import forms
+
+from common.forms import GroupedSelect
+from common.models import Accounts, Assets, BondMetadata, FXTransaction
+from constants import CURRENCY_CHOICES, DATA_SOURCE_CHOICES
+from core.user_utils import prepare_account_choices
+
+
+class SecurityForm(forms.ModelForm):
+    """Security form."""
+
+    update_link = forms.URLField(
+        required=False, assume_scheme="http"
+    )  # Specify the default scheme
+
+    # Bond metadata fields
+    initial_notional = forms.DecimalField(
+        required=False,
+        max_digits=15,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        label="Initial notional",
+        help_text="Initial par/face value per bond",
+    )
+    nominal_currency = forms.ChoiceField(
+        required=False,
+        choices=[("", "---")] + list(CURRENCY_CHOICES),
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Nominal currency",
+        help_text="Currency in which the nominal/face value is denominated",
+    )
+    issue_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        label="Issue date",
+        help_text="Bond issue date",
+    )
+    maturity_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        label="Maturity date",
+        help_text="Bond maturity date",
+    )
+    coupon_rate = forms.DecimalField(
+        required=False,
+        max_digits=8,
+        decimal_places=4,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        label="Coupon rate",
+        help_text="Annual coupon rate (e.g., 5.25 for 5.25%)",
+    )
+    coupon_frequency = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        label="Coupon frequency",
+        help_text="Coupon payments per year "
+        "(1=annual, 2=semi-annual, 4=quarterly, 12=monthly)",
+    )
+    is_amortizing = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        label="Is amortizing",
+        help_text="Whether this bond has amortizing principal",
+    )
+    bond_type = forms.ChoiceField(
+        required=False,
+        choices=[("", "---")]
+        + [
+            ("FIXED", "Fixed Rate"),
+            ("FLOATING", "Floating Rate"),
+            ("ZERO_COUPON", "Zero Coupon"),
+            ("INFLATION_LINKED", "Inflation Linked"),
+            ("CONVERTIBLE", "Convertible"),
+        ],
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Bond type",
+    )
+    credit_rating = forms.CharField(
+        required=False,
+        max_length=10,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+        label="Credit rating",
+        help_text="Credit rating (e.g., AAA, BB+)",
+    )
+
+    class Meta:
+        """Meta class for security form."""
+
+        model = Assets
+        fields = [
+            "name",
+            "ISIN",
+            "ticker",
+            "type",
+            "currency",
+            "exposure",
+            # Fund fields
+            "fund_fee",
+            # Bond metadata fields (shown only for bonds)
+            "initial_notional",
+            "nominal_currency",
+            "issue_date",
+            "maturity_date",
+            "coupon_rate",
+            "coupon_frequency",
+            "is_amortizing",
+            "bond_type",
+            "credit_rating",
+            # Other fields
+            "restricted",
+            "data_source",
+            "yahoo_symbol",
+            "update_link",
+            "secid",
+            "tbank_instrument_uid",
+            "comment",
+        ]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "ISIN": forms.TextInput(attrs={"class": "form-control"}),
+            "ticker": forms.TextInput(attrs={"class": "form-control"}),
+            "type": forms.Select(attrs={"class": "form-select"}),
+            "currency": forms.Select(attrs={"class": "form-select"}),
+            "exposure": forms.Select(attrs={"class": "form-select"}),
+            "restricted": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "comment": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+            "data_source": forms.Select(attrs={"class": "form-select"}),
+            "yahoo_symbol": forms.TextInput(attrs={"class": "form-control"}),
+            "update_link": forms.URLInput(attrs={"class": "form-control"}),
+            "secid": forms.TextInput(attrs={"class": "form-control"}),
+            "tbank_instrument_uid": forms.TextInput(attrs={"class": "form-control"}),
+            "fund_fee": forms.NumberInput(attrs={"class": "form-control"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        """Initialize security form."""
+        super().__init__(*args, **kwargs)
+        # Set choices dynamically for broker, security, and type fields
+        self.fields["ticker"].required = False
+        self.fields["type"].choices = [
+            (choice[0], choice[0])
+            for choice in Assets._meta.get_field("type").choices
+            if choice[0]
+        ]
+
+        self.fields["data_source"].choices = [("", "None")] + DATA_SOURCE_CHOICES
+        self.fields["yahoo_symbol"].required = False
+        self.fields["update_link"].required = False
+        self.fields["fund_fee"].required = False
+        self.fields["secid"].required = False
+        self.fields["tbank_instrument_uid"].required = False
+        self.fields["update_link"].label = "Update link (Financial Times)"
+        # Load bond metadata if editing an existing bond
+        if self.instance and self.instance.pk and self.instance.type == "Bond":
+            try:
+                bond_meta = self.instance.bondmetadata_metadata
+                self.fields["initial_notional"].initial = bond_meta.initial_notional
+                self.fields["nominal_currency"].initial = bond_meta.nominal_currency
+                self.fields["issue_date"].initial = bond_meta.issue_date
+                self.fields["maturity_date"].initial = bond_meta.maturity_date
+                self.fields["coupon_rate"].initial = bond_meta.coupon_rate
+                self.fields["coupon_frequency"].initial = bond_meta.coupon_frequency
+                self.fields["is_amortizing"].initial = bond_meta.is_amortizing
+                self.fields["bond_type"].initial = bond_meta.bond_type
+                self.fields["credit_rating"].initial = bond_meta.credit_rating
+            except BondMetadata.DoesNotExist:
+                pass
+
+    def clean(self):
+        """Clean security form."""
+        cleaned_data = super().clean()
+        data_source = cleaned_data.get("data_source")
+        yahoo_symbol = cleaned_data.get("yahoo_symbol")
+        update_link = cleaned_data.get("update_link")
+        secid = cleaned_data.get("secid")
+        tbank_instrument_uid = cleaned_data.get("tbank_instrument_uid")
+        asset_type = cleaned_data.get("type")
+
+        if data_source == "YAHOO" and not yahoo_symbol:
+            self.add_error(
+                "yahoo_symbol",
+                "Yahoo symbol is required for Yahoo Finance data source.",
+            )
+        elif data_source == "FT" and not update_link:
+            self.add_error(
+                "update_link",
+                "Update link is required for Financial Times data source.",
+            )
+        elif data_source == "MICEX" and not secid:
+            self.add_error("secid", "Secid is required for MICEX data source.")
+        elif data_source == "TBANK" and not tbank_instrument_uid:
+            self.add_error(
+                "tbank_instrument_uid",
+                "T-Bank instrument UID is required for T-Bank data source.",
+            )
+
+        # Validate bond-specific fields
+        if asset_type == "Bond":
+            if cleaned_data.get("is_amortizing") and not cleaned_data.get(
+                "initial_notional"
+            ):
+                self.add_error(
+                    "initial_notional",
+                    "Initial notional is required for amortizing bonds.",
+                )
+
+        return cleaned_data
+
+    def save_bond_metadata(self, asset):
+        """Save bond metadata if this is a bond."""
+        if asset.type == "Bond":
+            bond_data = {
+                "initial_notional": self.cleaned_data.get("initial_notional"),
+                "nominal_currency": self.cleaned_data.get("nominal_currency"),
+                "issue_date": self.cleaned_data.get("issue_date"),
+                "maturity_date": self.cleaned_data.get("maturity_date"),
+                "coupon_rate": self.cleaned_data.get("coupon_rate"),
+                "coupon_frequency": self.cleaned_data.get("coupon_frequency"),
+                "is_amortizing": self.cleaned_data.get("is_amortizing", False),
+                "bond_type": self.cleaned_data.get("bond_type"),
+                "credit_rating": self.cleaned_data.get("credit_rating"),
+            }
+
+            # Remove None values
+            bond_data = {k: v for k, v in bond_data.items() if v is not None}
+
+            if bond_data:  # Only create/update if there's data
+                BondMetadata.objects.update_or_create(asset=asset, defaults=bond_data)
+
+
+EXTENDED_CURRENCY_CHOICES = CURRENCY_CHOICES + (("All", "All Currencies"),)
+
+
+class AccountPerformanceForm(forms.Form):
+    """Account performance form."""
+
+    selection_account_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    selection_account_id = forms.IntegerField(
+        widget=forms.HiddenInput(), required=False
+    )
+
+    account_selection = forms.ChoiceField(
+        choices=[],
+        widget=GroupedSelect(attrs={"class": "form-select"}),
+        label="Account Selection",
+    )
+
+    currency = forms.ChoiceField(
+        choices=EXTENDED_CURRENCY_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    is_restricted = forms.ChoiceField(
+        choices=(
+            ("All", "All"),
+            ("None", "No flag"),
+            ("True", "Restricted"),
+            ("False", "Not restricted"),
+        ),
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    skip_existing_years = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        label="Skip existing calculated years",
+    )
+
+    def __init__(self, *args, **kwargs):
+        """Initialize account performance form."""
+        investor = kwargs.pop("investor", None)
+        super().__init__(*args, **kwargs)
+
+        if investor is not None:
+            # Get structured account choices
+            choices_data = prepare_account_choices(investor)
+
+            # Convert the structured choices to form choices format
+            account_choices = []
+            for section, items in choices_data["options"]:
+                if section == "__SEPARATOR__":
+                    account_choices.append(("__SEPARATOR__", "__SEPARATOR__"))
+                else:
+                    formatted_items = []
+                    for item_label, item_data in items:
+                        # Create a composite value that can be parsed later
+                        value = f"{item_data['type']}:{item_data.get('id', '')}"
+                        formatted_items.append((value, item_label))
+                    account_choices.append((section, tuple(formatted_items)))
+
+            self.fields["account_selection"].choices = account_choices
+
+    def clean(self):
+        """Clean account performance form."""
+        cleaned_data = super().clean()
+        account_selection = cleaned_data.get("account_selection")
+
+        if account_selection:
+            try:
+                selection_type, selection_id = account_selection.split(":")
+                cleaned_data["selection_type"] = selection_type
+                cleaned_data["selection_id"] = (
+                    int(selection_id) if selection_id else None
+                )
+            except ValueError:
+                raise forms.ValidationError("Invalid account selection format")
+
+        return cleaned_data
+
+    def get_selection_data(self):
+        """Return the cleaned selection type and ID for use in queries."""
+        if self.is_valid():
+            return {
+                "selection_type": self.cleaned_data["selection_type"],
+                "selection_id": self.cleaned_data["selection_id"],
+            }
+        return None
+
+
+class FXTransactionForm(forms.ModelForm):
+    """FX transaction form."""
+
+    class Meta:
+        """Meta class for FX transaction form."""
+
+        model = FXTransaction
+        fields = [
+            "account",
+            "date",
+            "from_currency",
+            "to_currency",
+            "commission_currency",
+            "from_amount",
+            "to_amount",
+            "commission",
+            "comment",
+        ]
+        widgets = {
+            "account": forms.Select(
+                attrs={"class": "form-select", "data-live-search": "true"}
+            ),
+            "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "from_currency": forms.Select(attrs={"class": "form-select"}),
+            "to_currency": forms.Select(attrs={"class": "form-select"}),
+            "from_amount": forms.NumberInput(attrs={"class": "form-control"}),
+            "to_amount": forms.NumberInput(attrs={"class": "form-control"}),
+            # 'exchange_rate': forms.NumberInput(attrs={'class': 'form-control'}),
+            "commission": forms.NumberInput(attrs={"class": "form-control"}),
+            "commission_currency": forms.Select(attrs={"class": "form-select"}),
+            "comment": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        """Initialize FX transaction form."""
+        investor = kwargs.pop("investor", None)
+        super().__init__(*args, **kwargs)
+        # Set choices dynamically for broker, security, and type fields
+        if investor is not None:
+            self.fields["account"].choices = [
+                (account.pk, account.name)
+                for account in Accounts.objects.filter(
+                    broker__investor=investor
+                ).order_by("name")
+            ]

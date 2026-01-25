@@ -170,9 +170,9 @@ def calculate_buy_in_price(self, date, investor, account_ids=None):
 ```python
 def _calculate_cash_flow(self, transaction, investor):
     if transaction.type == 'Buy':
-        return -transaction.get_calculated_cash_flow()  # Outflow
+        return -transaction.total_cash_flow()  # Outflow
     elif transaction.type == 'Sell':
-        return transaction.get_calculated_cash_flow()   # Inflow
+        return transaction.total_cash_flow()   # Inflow
     elif transaction.type == 'Coupon':
         return transaction.cash_flow                    # Inflow
     elif transaction.type in ['Bond redemption', 'Bond maturity']:

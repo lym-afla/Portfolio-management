@@ -1,0 +1,34 @@
+[flake8]
+max-line-length = 88
+extend-ignore = E203, W503, E501, I
+exclude =
+    .git,
+    __pycache__,
+    migrations,
+    venv,
+    env,
+    build,
+    dist,
+    .venv,
+    .eggs,
+    *.egg-info,
+    .pytest_cache,
+    htmlcov
+per-file-ignores =
+    __init__.py:F401
+    settings/*:F403,F405
+    tests/*:F401,F811
+max-complexity = 75
+# Note: During refactoring period (Phase 1-2), consider temporarily increasing to 25
+# After refactoring is complete, return to 20 for better code quality
+#
+# Complexity thresholds:
+# - 15-20: Good (target for all functions)
+# - 21-25: Acceptable during refactoring
+# - 26-30: Needs attention soon
+# - 31+: High priority for refactoring
+#
+# See COMPLEXITY_REFACTORING_GUIDE.md for detailed refactoring strategies
+# Remove problematic import-order-style that conflicts with isort
+# import-order-style = django
+application-import-names = portfolio_management

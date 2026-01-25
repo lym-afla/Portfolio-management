@@ -1,0 +1,310 @@
+{
+  "description": "Sample asset data for testing portfolio management functionality",
+  "version": "1.0",
+  "created": "2023-10-18",
+  "assets": {
+    "us_stocks": [
+      {
+        "isin": "US0378331005",
+        "name": "Apple Inc.",
+        "type": "Stock",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "AAPL",
+        "sector": "Technology",
+        "comment": "Leading technology company"
+      },
+      {
+        "isin": "US5949181045",
+        "name": "Microsoft Corporation",
+        "type": "Stock",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "MSFT",
+        "sector": "Technology",
+        "comment": "Software and cloud services"
+      },
+      {
+        "isin": "US02079K3059",
+        "name": "Alphabet Inc.",
+        "type": "Stock",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "GOOGL",
+        "sector": "Technology",
+        "comment": "Search and advertising"
+      },
+      {
+        "isin": "US9314271084",
+        "name": "Johnson & Johnson",
+        "type": "Stock",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "JNJ",
+        "sector": "Healthcare",
+        "comment": "Pharmaceutical and consumer products"
+      },
+      {
+        "isin": "US88160R1014",
+        "name": "Tesla Inc.",
+        "type": "Stock",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "TSLA",
+        "sector": "Consumer Discretionary",
+        "comment": "Electric vehicles and energy"
+      }
+    ],
+    "european_stocks": [
+      {
+        "isin": "DE0005190003",
+        "name": "BMW AG",
+        "type": "Stock",
+        "currency": "EUR",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "BMW.DE",
+        "sector": "Consumer Discretionary",
+        "comment": "German luxury vehicles"
+      },
+      {
+        "isin": "DE0007100000",
+        "name": "Daimler AG",
+        "type": "Stock",
+        "currency": "EUR",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "DAI.DE",
+        "sector": "Consumer Discretionary",
+        "comment": "German automotive manufacturer"
+      },
+      {
+        "isin": "DE0007664039",
+        "name": "Volkswagen AG",
+        "type": "Stock",
+        "currency": "EUR",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "VOW3.DE",
+        "sector": "Consumer Discretionary",
+        "comment": "German automotive group"
+      },
+      {
+        "isin": "DE0008232125",
+        "name": "Deutsche Telekom AG",
+        "type": "Stock",
+        "currency": "EUR",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "DTE.DE",
+        "sector": "Telecommunications",
+        "comment": "German telecommunications company"
+      },
+      {
+        "isin": "NL0000235190",
+        "name": "ASML Holding NV",
+        "type": "Stock",
+        "currency": "EUR",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "ASML.AS",
+        "sector": "Technology",
+        "comment": "Dutch semiconductor equipment"
+      }
+    ],
+    "uk_stocks": [
+      {
+        "isin": "GB0002374006",
+        "name": "BP plc",
+        "type": "Stock",
+        "currency": "GBP",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "BP.L",
+        "sector": "Energy",
+        "comment": "British oil and gas company"
+      },
+      {
+        "isin": "GB00BH4HKS39",
+        "name": "AstraZeneca plc",
+        "type": "Stock",
+        "currency": "GBP",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "AZN.L",
+        "sector": "Healthcare",
+        "comment": "British pharmaceutical company"
+      },
+      {
+        "isin": "GB000B850118",
+        "name": "Barclays plc",
+        "type": "Stock",
+        "currency": "GBP",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "BARC.L",
+        "sector": "Financial",
+        "comment": "British bank"
+      },
+      {
+        "isin": "GB00B03MLX29",
+        "name": "Royal Dutch Shell plc",
+        "type": "Stock",
+        "currency": "GBP",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "SHEL.L",
+        "sector": "Energy",
+        "comment": "Anglo-Dutch oil and gas company"
+      },
+      {
+        "isin": "GB0007908733",
+        "name": "Unilever plc",
+        "type": "Stock",
+        "currency": "GBP",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "ULVR.L",
+        "sector": "Consumer Staples",
+        "comment": "British consumer goods company"
+      }
+    ],
+    "bonds": [
+      {
+        "isin": "US912828X402",
+        "name": "US Treasury Note 2025",
+        "type": "Bond",
+        "currency": "USD",
+        "exposure": "Fixed Income",
+        "data_source": "YAHOO",
+        "yahoo_symbol": null,
+        "sector": "Government",
+        "comment": "5-year US Treasury note"
+      },
+      {
+        "isin": "US912828M744",
+        "name": "US Treasury Bond 2030",
+        "type": "Bond",
+        "currency": "USD",
+        "exposure": "Fixed Income",
+        "data_source": "YAHOO",
+        "yahoo_symbol": null,
+        "sector": "Government",
+        "comment": "10-year US Treasury bond"
+      },
+      {
+        "isin": "US037833AX72",
+        "name": "Apple Inc. 2028",
+        "type": "Bond",
+        "currency": "USD",
+        "exposure": "Fixed Income",
+        "data_source": "YAHOO",
+        "yahoo_symbol": null,
+        "sector": "Corporate",
+        "comment": "Apple corporate bond"
+      },
+      {
+        "isin": "DE0001102214",
+        "name": "Bund 2028",
+        "type": "Bond",
+        "currency": "EUR",
+        "exposure": "Fixed Income",
+        "data_source": "YAHOO",
+        "yahoo_symbol": null,
+        "sector": "Government",
+        "comment": "German government bond"
+      }
+    ],
+    "etfs": [
+      {
+        "isin": "US4642872000",
+        "name": "iShares Core S&P 500 ETF",
+        "type": "ETF",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "IVV",
+        "sector": "Diversified",
+        "comment": "S&P 500 index ETF"
+      },
+      {
+        "isin": "US4642872425",
+        "name": "iShares Core MSCI EAFE ETF",
+        "type": "ETF",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "IEFA",
+        "sector": "Diversified",
+        "comment": "International developed markets ETF"
+      },
+      {
+        "isin": "US4642872588",
+        "name": "iShares Core MSCI Emerging Markets ETF",
+        "type": "ETF",
+        "currency": "USD",
+        "exposure": "Equity",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "IEMG",
+        "sector": "Diversified",
+        "comment": "Emerging markets ETF"
+      },
+      {
+        "isin": "US4642872646",
+        "name": "iShares Core U.S. Aggregate Bond ETF",
+        "type": "ETF",
+        "currency": "USD",
+        "exposure": "Fixed Income",
+        "data_source": "YAHOO",
+        "yahoo_symbol": "AGG",
+        "sector": "Diversified",
+        "comment": "U.S. investment grade bond ETF"
+      }
+    ],
+    "restricted_assets": [
+      {
+        "isin": "XX1234567890",
+        "name": "Restricted Private Equity",
+        "type": "Stock",
+        "currency": "USD",
+        "exposure": "Private Equity",
+        "data_source": null,
+        "yahoo_symbol": null,
+        "sector": "Alternative",
+        "comment": "Restricted private equity investment",
+        "restricted": true
+      },
+      {
+        "isin": "XX0987654321",
+        "name": "Restricted Hedge Fund",
+        "type": "Fund",
+        "currency": "USD",
+        "exposure": "Hedge Fund",
+        "data_source": null,
+        "yahoo_symbol": null,
+        "sector": "Alternative",
+        "comment": "Restricted hedge fund investment",
+        "restricted": true
+      }
+    ]
+  },
+  "asset_groups": {
+    "technology": ["AAPL", "MSFT", "GOOGL", "ASML.AS"],
+    "healthcare": ["JNJ", "AZN.L"],
+    "energy": ["BP.L", "SHEL.L"],
+    "financial": ["BARC.L"],
+    "consumer": ["TSLA", "BMW.DE", "DAI.DE", "VOW3.DE", "ULVR.L"],
+    "telecommunications": ["DTE.DE"],
+    "government_bonds": ["US912828X402", "US912828M744", "DE0001102214"],
+    "corporate_bonds": ["US037833AX72"],
+    "us_equity_etfs": ["IVV"],
+    "international_etfs": ["IEFA", "IEMG"],
+    "bond_etfs": ["AGG"],
+    "restricted": ["XX1234567890", "XX0987654321"]
+  }
+}

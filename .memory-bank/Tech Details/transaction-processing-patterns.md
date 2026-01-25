@@ -6,13 +6,110 @@ This document captures the unified transaction processing architecture and patte
 
 ---
 
+## Transaction Model Conventions
+
+### Field Usage for Buy/Sell Transactions
+
+**IMPORTANT**: For buy and sell transactions with price and quantity:
+
+1. **cash_flow field**: Should be `None` (not set)
+   - The cash flow is calculated from `price * quantity + commission`
+   - Do NOT duplicate this calculation in the cash_flow field
+
+2. **commission field**: Uses natural sign convention
+   - **Negative value** = expense (most common case)
+   - **Positive value** = rebate/credit
+   - Example: `commission=Decimal("-5.00")` means a $5 expense
+
+3. **Required fields for Buy/Sell**:
+   - `type`: Transaction type ("Buy", "Sell", etc.)
+   - `date`: Transaction date
+   - `quantity`: Number of units (positive for Buy, negative for Sell)
+   - `price`: Price per unit
+   - `commission`: Commission amount with natural sign
+   - `account`: Account reference (not `broker`)
+   - `investor`: User reference
+   - `security`: Asset reference
+
+### Correct Transaction Creation Example
+
+```python
+# BUY transaction
+buy_tx = Transactions.objects.create(
+    investor=user,
+    account=account,  # Note: account, not broker
+    security=asset,
+    currency="USD",
+    type="Buy",
+    date=date(2023, 1, 15),
+    quantity=Decimal("100"),
+    price=Decimal("50.00"),
+    commission=Decimal("-5.00"),  # Negative = expense
+    # cash_flow is NOT set - it's calculated
+)
+
+# SELL transaction
+sell_tx = Transactions.objects.create(
+    investor=user,
+    account=account,
+    security=asset,
+    currency="USD",
+    type="Sell",
+    date=date(2023, 3, 15),
+    quantity=Decimal("-100"),  # Negative for sell
+    price=Decimal("55.00"),
+    commission=Decimal("-5.00"),  # Negative = expense
+    # cash_flow is NOT set - it's calculated
+)
+```
+
+### Special Transaction Types
+
+**Dividend Transactions**:
+- `quantity`: `None`
+- `price`: `None`
+- `cash_flow`: The dividend amount received (positive)
+- `commission`: Usually `None`, or negative if fees apply
+
+**Corporate Actions** (splits, etc.):
+- `cash_flow`: `Decimal("0.00")` (no cash movement)
+- `quantity`: Adjusted share count
+- `price`: Adjusted price after split
+- `commission`: `None`
+
+### Model Relationships
+
+**Assets Model**:
+- Uses `investors` (ManyToManyField) - NOT `investor`
+- Does NOT have a `brokers` field
+- Has `type` field (e.g., "Stock", "Bond") - NOT `instrument_type`
+
+**Transactions/FXTransaction Models**:
+- Use `account` field (ForeignKey to Accounts)
+- Do NOT use `broker` field directly
+- Must have `investor` field (ForeignKey to CustomUser)
+
+**Brokers and Accounts**:
+- Brokers have a ManyToOne relationship with investors
+- Accounts belong to Brokers
+- Transactions reference Accounts (which link to Brokers)
+
+**Assets.position() Method**:
+```python
+# Requires investor parameter
+position = asset.position(date, investor)  # Correct
+position = asset.position(date)  # Wrong - missing investor
+```
+
+---
+
 ## Centralized Transaction Architecture
 
 ### Core Principle: Single Source of Truth
 
 All transaction processing now flows through centralized methods to ensure consistency across the application:
 
-1. **Central Cash Flow Calculation** - `Transactions.get_calculated_cash_flow()`
+1. **Central Cash Flow Calculation** - `Transactions.total_cash_flow()`
 2. **Unified Serializers** - `TransactionSerializer` and `FXTransactionSerializer`
 3. **Balance Tracking** - `BalanceTracker` helper class
 4. **Consistent Formatting** - Single formatting logic for all views
@@ -23,11 +120,11 @@ All transaction processing now flows through centralized methods to ensure consi
 
 ### Location: `common/models.py`
 
-The `get_calculated_cash_flow()` method serves as the single source of truth for all cash flow calculations:
+The `total_cash_flow()` method serves as the single source of truth for all cash flow calculations:
 
 ```python
 class Transactions(models.Model):
-    def get_calculated_cash_flow(self, target_currency=None):
+    def total_cash_flow(self, target_currency=None):
         """
         Calculate the cash flow for this transaction with consistent logic.
 
@@ -156,7 +253,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_cash_flow(self, obj):
         """Use centralized cash flow calculation"""
-        cash_flow = obj.get_calculated_cash_flow()
+        cash_flow = obj.total_cash_flow()
         return currency_format(cash_flow, obj.currency, absolute_value=True)
 
     def get_value(self, obj):
@@ -263,7 +360,7 @@ class BalanceTracker:
 
         if transaction.__class__.__name__ == 'Transactions':
             # Regular transaction
-            cash_flow = transaction.get_calculated_cash_flow()
+            cash_flow = transaction.total_cash_flow()
             currency = transaction.currency
 
             # Update balance
@@ -410,7 +507,7 @@ def balance(self, date, currency=None):
 
     for transaction in self.get_transactions_up_to(date):
         # Use centralized cash flow calculation
-        cash_flow = transaction.get_calculated_cash_flow(target_currency=currency)
+        cash_flow = transaction.total_cash_flow(target_currency=currency)
         total_balance += cash_flow
 
     return total_balance
@@ -431,7 +528,7 @@ def _calculate_cash_flow(transaction, investor):
 # After: Centralized calculation
 def _calculate_cash_flow(transaction, investor):
     # Use centralized method with sign adjustment for IRR
-    cash_flow = transaction.get_calculated_cash_flow()
+    cash_flow = transaction.total_cash_flow()
 
     # Adjust sign for IRR convention (negative = outflow, positive = inflow)
     if transaction.type in ['Buy', 'Cash Out']:
@@ -579,7 +676,7 @@ def calculate_balance_old(transactions):
 def calculate_balance_new(transactions):
     balance = Decimal('0')
     for txn in transactions:
-        balance += txn.get_calculated_cash_flow()
+        balance += txn.total_cash_flow()
     return balance
 ```
 
@@ -619,7 +716,7 @@ def track_balances_old(transactions):
         # Manual balance calculation
         if txn.currency not in balances:
             balances[txn.currency] = Decimal('0')
-        balances[txn.currency] += calculate_cash_flow_old(txn)
+        balances[txn.currency] += txn.total_cash_flow()
     return balances
 
 # New approach
@@ -649,7 +746,7 @@ def test_get_calculated_cash_flow_buy():
     )
 
     expected = -(100 * 150.25 + 9.95)  # -15034.95
-    actual = transaction.get_calculated_cash_flow()
+    actual = transaction.total_cash_flow()
     assert actual == expected
 
 def test_get_calculated_cash_flow_bond():
@@ -666,7 +763,7 @@ def test_get_calculated_cash_flow_bond():
 
     # Price should be converted using get_price()
     expected = -(10 * (98.5 * 1000 / 100) + 50 + 10)  # -(9850 + 50 + 10)
-    actual = transaction.get_calculated_cash_flow()
+    actual = transaction.total_cash_flow()
     assert actual == expected
 ```
 
@@ -757,7 +854,7 @@ def process_transactions_batch(transactions, batch_size=1000):
 @lru_cache(maxsize=1000)
 def get_cached_cash_flow(transaction_id, target_currency=None):
     transaction = Transactions.objects.get(id=transaction_id)
-    return transaction.get_calculated_cash_flow(target_currency)
+    return transaction.total_cash_flow(target_currency)
 
 # Cache balance snapshots
 def cache_balances_for_user(user_id, date):
@@ -783,11 +880,11 @@ def cache_balances_for_user(user_id, date):
 
 ### Issue 2: Balance Calculations Don't Match
 **Problem**: Transaction table balances don't match account balance calculations
-**Solution**: Both should use `get_calculated_cash_flow()` method
+**Solution**: Both should use `total_cash_flow()` method
 
 ### Issue 3: Missing ACI in Some Views
 **Problem**: Accrued interest included in some calculations but not others
-**Solution**: Centralized in `get_calculated_cash_flow()` - automatically included for bonds
+**Solution**: Centralized in `total_cash_flow()` - automatically included for bonds
 
 ### Issue 4: FX Rate Formatting Inconsistency
 **Problem**: Different formats for exchange rates across views

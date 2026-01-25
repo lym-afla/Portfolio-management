@@ -34,9 +34,11 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
   - `bond-amortization-domain.md` — bond amortization business logic and data models.
   - `external-api-patterns.md` — external API integration patterns and best practices.
   - `transaction-processing-patterns.md` — unified transaction processing architecture and DRY implementation.
+  - `development-environment-setup.md` — development environment configuration and tooling setup (black, isort, flake8).
 
 - Tasks/
   - `backlog.md` — initial backlog items derived from the interview.
+  - `complexity-refactoring-task.md` — comprehensive task for reducing C901 complexity errors across the codebase.
   - `roadmap.md` — suggested milestones for short/medium term work.
 
 **Usage guidance:**

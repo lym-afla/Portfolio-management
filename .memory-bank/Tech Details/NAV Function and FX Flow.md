@@ -30,6 +30,7 @@ This file documents the concrete implementation of the NAV calculation and relat
 ## FX handling
 - FX conversion uses `FX.get_rate(from_cur, to_cur, date)` which returns a dict containing `"FX"` factor.
 - When converting prices, the code uses the asset's currency and multiplies price by FX factor (except bonds where FX rate may be handled differently per context).
+- **FX Convention**: For each currency pair `CUR1CUR2` in the database, the value represents the number of `CUR1` units per 1 `CUR2` unit. For example, `RUBUSD = 75` means 75 RUB = 1 USD.
 
 ## Performance & scaling notes
 - Currently using SQLite: acceptable for local dev, not for production scale. Expect query slowdowns for `_portfolio_at_date` and any annotation queries as transaction counts grow.
