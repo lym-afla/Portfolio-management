@@ -69,9 +69,7 @@ def ensure_account_native_ids(user, broker_api):
 
             # Get all user's broker accounts for Tinkoff
             tinkoff_brokers = [
-                broker
-                for broker in user.brokers.all()
-                if broker.tinkoff_tokens.exists()
+                broker for broker in user.brokers.all() if broker.tinkoff_tokens.exists()
             ]
 
             updated_accounts = {}
@@ -120,9 +118,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
         :return: The queryset for the transaction view set
         """
-        logger.info(
-            f"Getting queryset for transaction view set for user {self.request.user.id}"
-        )
+        logger.info(f"Getting queryset for transaction view set for user {self.request.user.id}")
         return Transactions.objects.filter(investor=self.request.user)
 
     def perform_create(self, serializer):
@@ -131,8 +127,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         :param serializer: The serializer object
         """
         logger.info(
-            f"Performing create action for transaction view set for user "
-            f"{self.request.user.id}"
+            f"Performing create action for transaction view set for user " f"{self.request.user.id}"
         )
         serializer.save(investor=self.request.user)
 
@@ -149,9 +144,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             f"transaction {transaction_id}"
         )
         try:
-            return Transactions.objects.get(
-                id=transaction_id, investor=self.request.user
-            )
+            return Transactions.objects.get(id=transaction_id, investor=self.request.user)
         except Transactions.DoesNotExist:
             raise NotFound(f"Transaction with id {transaction_id} not found.")
 
@@ -171,9 +164,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         :param request: The request object
         :return: A response object
         """
-        logger.info(
-            f"Getting form structure for transaction for user {request.user.id}"
-        )
+        logger.info(f"Getting form structure for transaction for user {request.user.id}")
         form_serializer = TransactionFormSerializer()
         return Response(
             {
@@ -240,8 +231,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "type": "number",
                         "required": False,
                         "helper_text": (
-                            "For bonds: enter as percentage of par "
-                            "(e.g., 98.5 for 98.5%)"
+                            "For bonds: enter as percentage of par " "(e.g., 98.5 for 98.5%)"
                         ),
                     },
                     {
@@ -317,9 +307,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             for keyword in keywords:
                 logger.debug(f"Searching for keyword: {keyword}")
                 # Use regex to find potential matches quickly
-                potential_matches = re.finditer(
-                    re.escape(keyword.lower()), lower_content
-                )
+                potential_matches = re.finditer(re.escape(keyword.lower()), lower_content)
 
                 keyword_best_score = 0
                 for match in potential_matches:
@@ -343,9 +331,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 if keyword_best_score < perfect_match_threshold:
                     all_keywords_perfect = False
 
-                logger.debug(
-                    f"Best score for keyword '{keyword}': {keyword_best_score}"
-                )
+                logger.debug(f"Best score for keyword '{keyword}': {keyword_best_score}")
 
             # Calculate the average score for this account
             avg_score = sum(account_scores) / len(account_scores)
@@ -353,13 +339,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
             if all_keywords_perfect:
                 logger.info(
-                    "Perfect match found for all keywords of broker account "
-                    f"{account_name}"
+                    "Perfect match found for all keywords of broker account " f"{account_name}"
                 )
                 try:
-                    account = Accounts.objects.get(
-                        broker__investor=user, name__iexact=account_name
-                    )
+                    account = Accounts.objects.get(broker__investor=user, name__iexact=account_name)
                     logger.info(
                         f"Returning perfectly matched broker account: {account.name} "
                         f"(ID: {account.id})"
@@ -375,21 +358,14 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if avg_score > threshold and avg_score > best_score:
                 best_score = avg_score
                 best_match = account_name
-                logger.debug(
-                    f"New best match: {best_match} with average score {best_score}"
-                )
+                logger.debug(f"New best match: {best_match} with average score {best_score}")
 
         if best_match:
-            logger.info(
-                f"Best match found: {best_match} with average score {best_score}"
-            )
+            logger.info(f"Best match found: {best_match} with average score {best_score}")
             try:
-                account = Accounts.objects.get(
-                    broker__investor=user, name__iexact=best_match
-                )
+                account = Accounts.objects.get(broker__investor=user, name__iexact=best_match)
                 logger.info(
-                    f"Returning best matched broker account: {account.name} "
-                    f"(ID: {account.id})"
+                    f"Returning best matched broker account: {account.name} " f"(ID: {account.id})"
                 )
                 return account
             except Accounts.DoesNotExist:
@@ -411,9 +387,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         :return: A response object
         """
         if "file" not in request.FILES:
-            return Response(
-                {"error": "No file was uploaded."}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "No file was uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         file = request.FILES["file"]
         file_id = str(uuid.uuid4())
@@ -464,9 +438,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_200_OK,
                 )
         except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=["POST"])
     def get_security_position(self, request):
@@ -594,9 +566,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 from_account = Accounts.objects.get(
                     id=from_account_id, broker__investor=request.user
                 )
-                to_account = Accounts.objects.get(
-                    id=to_account_id, broker__investor=request.user
-                )
+                to_account = Accounts.objects.get(id=to_account_id, broker__investor=request.user)
             except Accounts.DoesNotExist:
                 return Response(
                     {"error": "One or both accounts not found"},
@@ -826,7 +796,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
         Returns:
             dict: Result with 'success' boolean and optional 'error' message
         """
-        from decimal import ROUND_HALF_UP, InvalidOperation as DecimalInvalidOperation
+        from decimal import ROUND_HALF_UP
+        from decimal import InvalidOperation as DecimalInvalidOperation
 
         def normalize_decimal_field(value, max_digits, decimal_places):
             """Normalize a Decimal value to fit database constraints."""
@@ -864,9 +835,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
             # Check if this is an asset transfer
             is_asset_transfer = transaction_data.pop("is_asset_transfer", False)
-            needs_price_calculation = transaction_data.pop(
-                "needs_price_calculation", False
-            )
+            needs_price_calculation = transaction_data.pop("needs_price_calculation", False)
 
             if is_fx:
                 # Normalize FX transaction decimal fields
@@ -877,10 +846,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     "commission",
                 ]
                 for field_name in decimal_fields:
-                    if (
-                        field_name in transaction_data
-                        and transaction_data[field_name] is not None
-                    ):
+                    if field_name in transaction_data and transaction_data[field_name] is not None:
                         field = FXTransaction._meta.get_field(field_name)
                         transaction_data[field_name] = normalize_decimal_field(
                             transaction_data[field_name],
@@ -919,9 +885,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 .order_by("-date")
                                 .first()
                             )
-                            transaction_data["price"] = (
-                                price_obj.price if price_obj else Decimal(0)
-                            )
+                            transaction_data["price"] = price_obj.price if price_obj else Decimal(0)
                         except Exception:
                             transaction_data["price"] = Decimal(0)
 
@@ -933,16 +897,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 # Create phantom cash transaction
                 if transaction_data.get("price") and transaction_data.get("quantity"):
-                    transfer_value = abs(
-                        transaction_data["price"] * transaction_data["quantity"]
-                    )
-                    phantom_type = (
-                        "Cash in" if transaction_data["type"] == "Buy" else "Cash out"
-                    )
+                    transfer_value = abs(transaction_data["price"] * transaction_data["quantity"])
+                    phantom_type = "Cash in" if transaction_data["type"] == "Buy" else "Cash out"
                     phantom_cash_flow = (
-                        transfer_value
-                        if transaction_data["type"] == "Buy"
-                        else -transfer_value
+                        transfer_value if transaction_data["type"] == "Buy" else -transfer_value
                     )
 
                     Transactions.objects.create(
@@ -963,8 +921,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     )
 
                 logger.debug(
-                    "Saved asset transfer transaction with ID: "
-                    f"{created_transaction.id}"
+                    "Saved asset transfer transaction with ID: " f"{created_transaction.id}"
                 )
                 return {
                     "success": True,
@@ -984,10 +941,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     "notional_change",
                 ]
                 for field_name in decimal_fields:
-                    if (
-                        field_name in transaction_data
-                        and transaction_data[field_name] is not None
-                    ):
+                    if field_name in transaction_data and transaction_data[field_name] is not None:
                         field = Transactions._meta.get_field(field_name)
                         transaction_data[field_name] = normalize_decimal_field(
                             transaction_data[field_name],
@@ -1019,9 +973,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 exc_info=True,
                             )
 
-                logger.debug(
-                    f"Saved regular transaction with ID: {created_transaction.id}"
-                )
+                logger.debug(f"Saved regular transaction with ID: {created_transaction.id}")
                 return {
                     "success": True,
                     "transaction_id": created_transaction.id,
@@ -1070,14 +1022,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                     if is_fx:
                         # Create FXTransaction - round exchange_rate to match DB precision  # noqa: E501
-                        if (
-                            "exchange_rate" in data
-                            and data["exchange_rate"] is not None
-                        ):
+                        if "exchange_rate" in data and data["exchange_rate"] is not None:
                             # Get decimal_places from the model field dynamically
-                            exchange_rate_field = FXTransaction._meta.get_field(
-                                "exchange_rate"
-                            )
+                            exchange_rate_field = FXTransaction._meta.get_field("exchange_rate")
                             decimal_places = exchange_rate_field.decimal_places
                             data["exchange_rate"] = round(
                                 Decimal(str(data["exchange_rate"])), decimal_places
@@ -1116,18 +1063,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                     )
                                     if price_obj:
                                         data["price"] = price_obj.price
-                                        logger.debug(
-                                            f"Using market price: {price_obj.price}"
-                                        )
+                                        logger.debug(f"Using market price: {price_obj.price}")
                                     else:
-                                        logger.warning(
-                                            "No price found for asset transfer, using 0"
-                                        )
+                                        logger.warning("No price found for asset transfer, using 0")
                                         data["price"] = Decimal(0)
                                 except Exception as e:
-                                    logger.error(
-                                        f"Error getting price for asset transfer: {e}"
-                                    )
+                                    logger.error(f"Error getting price for asset transfer: {e}")
                                     data["price"] = Decimal(0)
 
                         # Ensure cash_flow and commission are None for asset transfers
@@ -1180,12 +1121,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 # Use bulk_create for efficiency
                 if regular_transactions:
-                    created_transactions = Transactions.objects.bulk_create(
-                        regular_transactions
-                    )
+                    created_transactions = Transactions.objects.bulk_create(regular_transactions)
                     logger.debug(
-                        f"Successfully saved {len(regular_transactions)} "
-                        "regular transactions"
+                        f"Successfully saved {len(regular_transactions)} " "regular transactions"
                     )
 
                     # Manually create NotionalHistory for bond redemptions
@@ -1195,11 +1133,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             TRANSACTION_TYPE_BOND_REDEMPTION,
                             TRANSACTION_TYPE_BOND_MATURITY,
                         ]:
-                            if (
-                                txn.security
-                                and txn.notional_change
-                                and txn.notional_change != 0
-                            ):
+                            if txn.security and txn.notional_change and txn.notional_change != 0:
                                 try:
                                     txn._create_notional_history()
                                     logger.debug(
@@ -1216,9 +1150,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                 if fx_transactions:
                     FXTransaction.objects.bulk_create(fx_transactions)
-                    logger.debug(
-                        f"Successfully saved {len(fx_transactions)} FX transactions"
-                    )
+                    logger.debug(f"Successfully saved {len(fx_transactions)} FX transactions")
 
                 if phantom_cash_transactions:
                     Transactions.objects.bulk_create(phantom_cash_transactions)
@@ -1297,10 +1229,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     return
 
                 # For T-Bank API, ensure account native IDs are synchronized
-                if (
-                    broker.name.lower() == "tinkoff"
-                    or "тинькофф" in broker.name.lower()
-                ):
+                if broker.name.lower() == "tinkoff" or "тинькофф" in broker.name.lower():
                     yield {
                         "status": "progress",
                         "message": "Fetching transactions from T-Bank...",
@@ -1355,10 +1284,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "status": "progress",
                         "current": current_index,
                         "total": total_count,
-                        "message": (
-                            f"Processing transaction {current_index} of "
-                            f"{total_count}"
-                        ),
+                        "message": (f"Processing transaction {current_index} of " f"{total_count}"),
                     }
 
                     if trans.get("unrecognized_operation"):
@@ -1421,18 +1347,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                     # Get position at redemption date to calculate per-bond notional  # noqa: E501
                                     try:
                                         # Get position BEFORE this transaction
-                                        position = await database_sync_to_async(
-                                            security.position
-                                        )(trans["date"], user, [account.id])
+                                        position = await database_sync_to_async(security.position)(
+                                            trans["date"], user, [account.id]
+                                        )
 
                                         if position and position != 0:
                                             # Calculate per-bond notional
-                                            notional_per_bond = Decimal(
-                                                total_notional
-                                            ) / abs(Decimal(position))
-                                            transaction_data[
-                                                "notional_change"
-                                            ] = notional_per_bond
+                                            notional_per_bond = Decimal(total_notional) / abs(
+                                                Decimal(position)
+                                            )
+                                            transaction_data["notional_change"] = notional_per_bond
 
                                             logger.debug(
                                                 "Bond redemption: total="
@@ -1460,9 +1384,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 yield {
                                     "status": "security_mapping",
                                     "mapping_data": {
-                                        "security_description": trans[
-                                            "security_description"
-                                        ],
+                                        "security_description": trans["security_description"],
                                         "isin": trans.get("isin"),
                                         "symbol": trans.get("symbol"),
                                     },
@@ -1471,13 +1393,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
                                 continue
 
                             # Check for duplicates for regular transactions
-                            existing_transaction = await transaction_exists(
-                                transaction_data
-                            )
-                            if existing_transaction:
-                                logger.debug(
-                                    "Duplicate regular transaction found, skipping"
-                                )
+                            exists = await transaction_exists(transaction_data)
+                            if exists:
+                                logger.debug("Duplicate regular transaction found, skipping")
                                 yield {
                                     "status": "duplicate_transaction",
                                     "data": transaction_data,
@@ -1507,9 +1425,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         yield {"status": "save_transaction", "data": transaction_data}
 
                     except Exception as e:
-                        logger.error(
-                            f"Error processing transaction: {str(e)}", exc_info=True
-                        )
+                        logger.error(f"Error processing transaction: {str(e)}", exc_info=True)
                         yield {
                             "status": "transaction_error",
                             "message": f"Error processing transaction: {str(e)}",

@@ -1,4 +1,8 @@
-"""Transactions utils."""
+"""Utility functions for retrieving and formatting transaction data.
+
+This module provides functions to retrieve transactions, calculate running
+balances, and format transaction data for display in tables.
+"""
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -17,7 +21,16 @@ from .sorting_utils import sort_entries
 
 
 def get_transactions_table_api(request):
-    """Get transactions table API."""
+    """Retrieve and format transactions table data for API response.
+
+    Args:
+        request: The HTTP request object containing user context and parameters.
+
+    Returns:
+        dict: Dictionary containing formatted transactions data, balances, and
+            pagination information with keys: transactions, balances, total_items,
+            current_page, total_pages.
+    """
     data = request.data
     start_date = (
         datetime.strptime(data.get("dateFrom", None), "%Y-%m-%d").date()
@@ -39,9 +52,7 @@ def get_transactions_table_api(request):
     effective_current_date_str = getattr(
         request, "effective_current_date", date.today().isoformat()
     )
-    effective_current_date = datetime.strptime(
-        effective_current_date_str, "%Y-%m-%d"
-    ).date()
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
     number_of_digits = user.digits
     selected_account_ids = get_selected_account_ids(
@@ -52,18 +63,14 @@ def get_transactions_table_api(request):
     if not end_date:
         end_date = effective_current_date
 
-    transactions = _filter_transactions(
-        user, start_date, end_date, selected_account_ids, search
-    )
+    transactions = _filter_transactions(user, start_date, end_date, selected_account_ids, search)
 
     transactions_data, currencies = _calculate_transactions_table_output(
         user, transactions, selected_account_ids, number_of_digits, start_date
     )
 
     transactions_data = sort_entries(transactions_data, sort_by)
-    paginated_page, pagination_data = paginate_table(
-        transactions_data, page, items_per_page
-    )
+    paginated_page, pagination_data = paginate_table(transactions_data, page, items_per_page)
     # Convert Page object to list for JSON serialization
     paginated_transactions = list(paginated_page)
 
@@ -102,9 +109,7 @@ def _filter_transactions(user, start_date, end_date, selected_account_ids, searc
             Q(from_currency__icontains=search) | Q(to_currency__icontains=search)
         )
 
-    return sorted(
-        chain(transactions_query, fx_transactions_query), key=attrgetter("date")
-    )
+    return sorted(chain(transactions_query, fx_transactions_query), key=attrgetter("date"))
 
 
 def _calculate_transactions_table_output(
@@ -120,9 +125,7 @@ def _calculate_transactions_table_output(
     """
     # Get all currencies used in the accounts
     currencies = set()
-    for account in Accounts.objects.filter(
-        broker__investor=user, id__in=selected_account_ids
-    ):
+    for account in Accounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
         currencies.update(account.get_currencies())
 
     # Initialize balance tracker
@@ -182,5 +185,5 @@ def _calculate_transactions_table_output(
 #     ...
 #
 # def _process_fx_transaction(transaction, balance, number_of_digits):
-#     ."""OLD: Process an FX transaction and update balances."""
+#     """OLD: Process an FX transaction and update balances."""
 #     ...

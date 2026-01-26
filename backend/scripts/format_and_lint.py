@@ -11,21 +11,10 @@ from pathlib import Path
 
 
 def run_command(command, description):
-    """
-    Run a shell command and print its output.
-
-    Args:
-        command: The command to run.
-        description: The description of the command.
-
-    Returns:
-        True if the command completed successfully, False otherwise.
-    """
+    """Run a shell command and print its output."""
     print(f"\n\033[1;34m=== Running {description} ===\033[0m")
     try:
-        result = subprocess.run(
-            command, shell=True, check=True, text=True, capture_output=True
-        )
+        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
         if result.stdout:
             print(result.stdout)
         print(f"\033[1;32m✓ {description} completed successfully\033[0m")
@@ -38,7 +27,11 @@ def run_command(command, description):
 
 
 def main():
-    """Format and lint the project."""
+    """Run formatting and linting commands.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
     # Ensure we're in the project root directory
     if not Path("manage.py").exists():
         print("Error: This script should be run from the project root directory")

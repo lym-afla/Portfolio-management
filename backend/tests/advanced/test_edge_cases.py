@@ -11,7 +11,7 @@ Purpose: Validate system robustness under edge cases and error conditions
 
 from datetime import date, timedelta
 from decimal import Decimal, DecimalException, getcontext
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.db import DatabaseError, IntegrityError
@@ -21,7 +21,6 @@ from rest_framework.test import APIClient
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
 from core.portfolio_utils import NAV_at_date
 from tests.fixtures.factories.asset_factory import AssetFactory, StockFactory
-from tests.fixtures.factories.fx_factory import FXRateFactory
 from tests.fixtures.factories.transaction_factory import (
     BuyTransactionFactory,
     SellTransactionFactory,
@@ -41,9 +40,7 @@ def create_transaction_dependencies():
 
 
 # Helper function to create transactions with explicit parameters
-def create_simple_transaction(
-    security, investor, account, tx_type, quantity, price, date_=None
-):
+def create_simple_transaction(security, investor, account, tx_type, quantity, price, date_=None):
     """Create a transaction with explicit parameters, avoiding factory lazy attributes."""
     if date_ is None:
         date_ = date.today()
@@ -115,9 +112,7 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result = sell_tx.security.calculate_buy_in_price(
-            date.today(), investor=sell_tx.investor
-        )
+        result = sell_tx.security.calculate_buy_in_price(date.today(), investor=sell_tx.investor)
         assert result == Decimal("50.00")  # Should return sell price
 
     def test_buy_in_price_equal_buy_sell_quantities(self):
@@ -145,9 +140,7 @@ class TestCalculationEdgeCases:
             date=date(2024, 1, 2),
         )
 
-        result = buy_tx.security.calculate_buy_in_price(
-            date.today(), investor=buy_tx.investor
-        )
+        result = buy_tx.security.calculate_buy_in_price(date.today(), investor=buy_tx.investor)
         assert result == Decimal("50.00")  # Should return original buy price
 
     def test_buy_in_price_more_sells_than_buys(self):
@@ -175,9 +168,7 @@ class TestCalculationEdgeCases:
             date=date(2024, 1, 2),
         )
 
-        result = buy_tx.security.calculate_buy_in_price(
-            date.today(), investor=buy_tx.investor
-        )
+        result = buy_tx.security.calculate_buy_in_price(date.today(), investor=buy_tx.investor)
         assert result == Decimal("60.00")  # Should return sell price for short position
 
     def test_buy_in_price_very_small_quantities(self):
@@ -185,17 +176,12 @@ class TestCalculationEdgeCases:
         asset = AssetFactory.create()
         user, _broker, account = create_transaction_dependencies()
 
-        tx1 = create_simple_transaction(
-            asset, user, account, "Buy", "0.000001", "1000000.00"
-        )
+        tx1 = create_simple_transaction(asset, user, account, "Buy", "0.000001", "1000000.00")
         create_simple_transaction(asset, user, account, "Buy", "0.000002", "500000.00")
 
-        result = tx1.security.calculate_buy_in_price(
-            date_as_of=date.today(), investor=tx1.investor
-        )
+        result = tx1.security.calculate_buy_in_price(date_as_of=date.today(), investor=tx1.investor)
         expected = (
-            Decimal("0.000001") * Decimal("1000000.00")
-            + Decimal("0.000002") * Decimal("500000.00")
+            Decimal("0.000001") * Decimal("1000000.00") + Decimal("0.000002") * Decimal("500000.00")
         ) / Decimal("0.000003")
         assert abs(result - expected) < Decimal("0.01")
 
@@ -224,9 +210,7 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result = tx1.security.calculate_buy_in_price(
-            date_as_of=date.today(), investor=tx1.investor
-        )
+        result = tx1.security.calculate_buy_in_price(date_as_of=date.today(), investor=tx1.investor)
         expected = Decimal("0.015")
         assert result == expected
 
@@ -256,9 +240,7 @@ class TestCalculationEdgeCases:
         asset = AssetFactory.create()
         user, _broker, account = create_transaction_dependencies()
 
-        transaction = create_simple_transaction(
-            asset, user, account, "Buy", 100, "0.00"
-        )
+        transaction = create_simple_transaction(asset, user, account, "Buy", 100, "0.00")
 
         result = transaction.security.calculate_buy_in_price(
             date_as_of=date.today(), investor=transaction.investor
@@ -287,36 +269,26 @@ class TestCalculationEdgeCases:
             "51.12345678901234567890",
         )
 
-        result = tx1.security.calculate_buy_in_price(
-            date_as_of=date.today(), investor=tx1.investor
-        )
+        result = tx1.security.calculate_buy_in_price(date_as_of=date.today(), investor=tx1.investor)
 
         # Calculate expected value with high precision
         total_cost = Decimal("100.12345678901234567890") * Decimal(
             "50.98765432109876543210"
         ) + Decimal("200.23456789012345678901") * Decimal("51.12345678901234567890")
-        total_quantity = Decimal("100.12345678901234567890") + Decimal(
-            "200.23456789012345678901"
-        )
+        total_quantity = Decimal("100.12345678901234567890") + Decimal("200.23456789012345678901")
         expected = total_cost / total_quantity
 
         assert abs(result - expected) < Decimal("0.000001")
 
     def test_nav_calculation_empty_portfolio(self):
         """Test NAV calculation for empty portfolio."""
-        result = NAV_at_date(
-            user_id=1, account_ids=(1,), date=date.today(), target_currency="USD"
-        )
+        result = NAV_at_date(user_id=1, account_ids=(1,), date=date.today(), target_currency="USD")
         assert result["Total NAV"] == Decimal("0")
 
     def test_nav_calculation_only_cash(self):
         """Test NAV calculation for portfolio with only cash."""
-        result = NAV_at_date(
-            user_id=1, account_ids=(1,), date=date.today(), target_currency="USD"
-        )
-        assert result["Total NAV"] == Decimal(
-            "0"
-        )  # No transactions means no cash balance
+        result = NAV_at_date(user_id=1, account_ids=(1,), date=date.today(), target_currency="USD")
+        assert result["Total NAV"] == Decimal("0")  # No transactions means no cash balance
 
     def test_nav_calculation_negative_positions(self):
         """Test NAV calculation with negative positions (short selling)."""
@@ -520,7 +492,8 @@ class TestFXEdgeCases:
             username=f"testuser_large_{id(object())}", password="12345"
         )
         test_date = date.today()
-        # Create FX rate with very large value (within field constraints: max_digits=8, decimal_places=6)
+        # Create FX rate with very large value
+        # (within field constraints: max_digits=8, decimal_places=6)
         # So max value is 99.999999
         fx = FX.objects.create(date=test_date, USDEUR=Decimal("99.999999"))
         fx.investors.add(user)
@@ -696,9 +669,7 @@ class TestAPIEdgeCases:
         self.broker = Brokers.objects.create(
             investor=self.user, name="Edge Test Broker", country="US"
         )
-        self.account = Accounts.objects.create(
-            broker=self.broker, name="Edge Test Account"
-        )
+        self.account = Accounts.objects.create(broker=self.broker, name="Edge Test Account")
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -713,9 +684,7 @@ class TestAPIEdgeCases:
     def test_api_malformed_json(self):
         """Test API with malformed JSON."""
         url = "/transactions/api/"
-        response = self.client.post(
-            url, '{"invalid": json}', content_type="application/json"
-        )
+        response = self.client.post(url, '{"invalid": json}', content_type="application/json")
 
         # Should reject malformed JSON
         assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -1011,9 +980,7 @@ class TestFinancialCalculationBoundaries:
         # Create transactions with no decimal places
         asset = AssetFactory.create()
         user, _broker, account = create_transaction_dependencies()
-        transaction = create_simple_transaction(
-            asset, user, account, "Buy", "1000000", "1"
-        )
+        transaction = create_simple_transaction(asset, user, account, "Buy", "1000000", "1")
 
         result = transaction.security.calculate_buy_in_price(
             date_as_of=date.today(), investor=transaction.investor
@@ -1028,9 +995,7 @@ class TestFinancialCalculationBoundaries:
 
         asset = AssetFactory.create()
         user, _broker, account = create_transaction_dependencies()
-        transaction = create_simple_transaction(
-            asset, user, account, "Buy", "1", str(large_price)
-        )
+        transaction = create_simple_transaction(asset, user, account, "Buy", "1", str(large_price))
 
         result = transaction.security.calculate_buy_in_price(
             date_as_of=date.today(), investor=transaction.investor
@@ -1225,9 +1190,7 @@ class TestSystemRobustness:
 
         # Most requests should succeed
         if len(all_responses) > 0:
-            success_count = sum(
-                1 for code in all_responses if code == status.HTTP_200_OK
-            )
+            success_count = sum(1 for code in all_responses if code == status.HTTP_200_OK)
             total_requests = len(all_responses)
             success_rate = success_count / total_requests
             # Lower threshold for SQLite (some endpoints may not exist)
@@ -1305,9 +1268,7 @@ class TestSystemRobustness:
         ), f"Expected {transaction_count} transactions, got {db_transaction_count}"
 
         # Verify calculations work correctly with all transactions
-        buy_in_price = asset.calculate_buy_in_price(
-            date_as_of=date.today(), investor=user
-        )
+        buy_in_price = asset.calculate_buy_in_price(date_as_of=date.today(), investor=user)
         assert isinstance(buy_in_price, Decimal)
         assert buy_in_price > 0
 

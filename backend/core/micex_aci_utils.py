@@ -1,5 +1,4 @@
-"""
-Utility functions for fetching Accrued Coupon Interest (ACI) data from MICEX API.
+"""Utility functions for fetching Accrued Coupon Interest (ACI) data from MICEX API.
 
 Used as fallback when T-Bank API doesn't have coupon amounts for floating-rate bonds.
 """
@@ -37,8 +36,7 @@ def fetch_aci_from_micex(secid: str, target_date: date) -> Optional[Dict]:
         return None
 
     try:
-        # MICEX API provides historical data,
-        # so we fetch a small range around the target date
+        # MICEX API provides historical data, so we fetch a small range around the target date
         from_date = target_date - timedelta(days=7)
         to_date = target_date
 
@@ -69,9 +67,7 @@ def fetch_aci_from_micex(secid: str, target_date: date) -> Optional[Dict]:
         rows = data["history"]["data"]
 
         if not rows:
-            logger.warning(
-                f"No data rows in MICEX response for {secid} on {target_date}"
-            )
+            logger.warning(f"No data rows in MICEX response for {secid} on {target_date}")
             return None
 
         # Find column indices
@@ -103,9 +99,7 @@ def fetch_aci_from_micex(secid: str, target_date: date) -> Optional[Dict]:
                     break
 
         if not matching_row:
-            logger.warning(
-                f"No suitable data row found for {secid} on or before {target_date}"
-            )
+            logger.warning(f"No suitable data row found for {secid} on or before {target_date}")
             return None
 
         aci_value = matching_row[accint_idx]
@@ -120,9 +114,7 @@ def fetch_aci_from_micex(secid: str, target_date: date) -> Optional[Dict]:
         try:
             aci_amount = Decimal(str(aci_value))
         except (ValueError, TypeError) as e:
-            logger.error(
-                f"Failed to convert ACI value to Decimal: {aci_value}, error: {e}"
-            )
+            logger.error(f"Failed to convert ACI value to Decimal: {aci_value}, error: {e}")
             return None
 
         # Convert currency code if needed (MICEX uses 'SUR' for RUB)
@@ -144,7 +136,5 @@ def fetch_aci_from_micex(secid: str, target_date: date) -> Optional[Dict]:
         logger.error(f"MICEX API request failed for {secid}: {e}")
         return None
     except Exception as e:
-        logger.error(
-            f"Unexpected error fetching ACI from MICEX for {secid}: {e}", exc_info=True
-        )
+        logger.error(f"Unexpected error fetching ACI from MICEX for {secid}: {e}", exc_info=True)
         return None

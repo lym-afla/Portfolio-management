@@ -37,9 +37,7 @@ def get_dashboard_summary_api(request):
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
     )
-    effective_current_date = datetime.strptime(
-        effective_current_date_str, "%Y-%m-%d"
-    ).date()
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -72,9 +70,9 @@ def get_dashboard_summary_api(request):
     )
 
     for transaction in transactions:
-        fx_rate = FX.get_rate(
-            transaction["currency"], currency_target, transaction["date"], user
-        )["FX"]
+        fx_rate = FX.get_rate(transaction["currency"], currency_target, transaction["date"], user)[
+            "FX"
+        ]
         if transaction["type"] == "Cash in":
             summary["Invested"] += Decimal(transaction["total"]) * Decimal(fx_rate)
         else:
@@ -85,9 +83,9 @@ def get_dashboard_summary_api(request):
         if summary["Invested"] == 0:
             summary["total_return"] = None
         else:
-            summary["total_return"] = (
-                summary["Current NAV"] - summary["Cash-out"]
-            ) / summary["Invested"] - 1
+            summary["total_return"] = (summary["Current NAV"] - summary["Cash-out"]) / summary[
+                "Invested"
+            ] - 1
     except (ZeroDivisionError, decimal.InvalidOperation):
         summary["total_return"] = None
 
@@ -112,9 +110,7 @@ def get_dashboard_breakdown_api(request):
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
     )
-    effective_current_date = datetime.strptime(
-        effective_current_date_str, "%Y-%m-%d"
-    ).date()
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
     currency_target = user.default_currency
     number_of_digits = user.digits
@@ -167,9 +163,7 @@ def get_dashboard_summary_over_time_api(request):
         effective_current_date_str = getattr(
             request, "effective_current_date", datetime.now().date().isoformat()
         )
-        effective_current_date = datetime.strptime(
-            effective_current_date_str, "%Y-%m-%d"
-        ).date()
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
 
         currency_target = user.default_currency
         selected_account_ids = get_selected_account_ids(
@@ -255,9 +249,7 @@ def get_dashboard_summary_over_time_api(request):
         for line_name, line_data in lines.items():
             if line_name != "TSR":
                 line_data["data"]["All-time"] = sum(
-                    value
-                    for year, value in line_data["data"].items()
-                    if year != "All-time"
+                    value for year, value in line_data["data"].items() if year != "All-time"
                 )
 
         lines["TSR"]["data"]["All-time"] = format_percentage(
@@ -270,9 +262,7 @@ def get_dashboard_summary_over_time_api(request):
             digits=1,
         )
         lines["BoP NAV"]["data"]["All-time"] = Decimal(0)
-        lines["EoP NAV"]["data"]["All-time"] = lines["EoP NAV"]["data"].get(
-            "YTD", Decimal(0)
-        )
+        lines["EoP NAV"]["data"]["All-time"] = lines["EoP NAV"]["data"].get("YTD", Decimal(0))
 
         # Format the data
         format_funcs = {
@@ -306,9 +296,7 @@ def get_dashboard_summary_over_time_api(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     except KeyError:
-        return Response(
-            {"error": "Invalid session data"}, status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({"error": "Invalid session data"}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response(
             {"error": f"An unexpected error occurred: {str(e)}"},
@@ -347,11 +335,7 @@ def api_nav_chart_data(request):
             effective_current_date_str = getattr(
                 request, "effective_current_date", datetime.now().date().isoformat()
             )
-            to_date = (
-                datetime.strptime(effective_current_date_str, "%Y-%m-%d")
-                .date()
-                .isoformat()
-            )
+            to_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date().isoformat()
 
         # from_date can be None, it will be handled in get_nav_chart_data
         chart_data = get_nav_chart_data(
@@ -367,6 +351,4 @@ def api_nav_chart_data(request):
 
     except Exception as e:
         logger.error(f"Error generating NAV chart data: {e}")
-        return Response(
-            {"labels": [], "datasets": [], "currency": currency + "k", "empty": True}
-        )
+        return Response({"labels": [], "datasets": [], "currency": currency + "k", "empty": True})

@@ -274,9 +274,7 @@ def account(broker):
 @pytest.fixture
 def stock(user):
     """Create a stock asset."""
-    asset = Assets.objects.create(
-        name="Apple Inc.", ticker="AAPL", type="Stock", currency="USD"
-    )
+    asset = Assets.objects.create(name="Apple Inc.", ticker="AAPL", type="Stock", currency="USD")
     asset.investors.add(user)
     return asset
 

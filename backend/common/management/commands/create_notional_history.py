@@ -1,13 +1,9 @@
 """
-Retroactively create NotionalHistory entries for existing bond redemptions.
-
-Management command to retroactively create NotionalHistory entries
-for existing bond redemptions.
+Management command to retroactively create NotionalHistory entries for existing bond redemptions.
 
 This command is needed because:
 1. bulk_create bypasses the save() method
-2. Transactions imported before NotionalHistory was implemented
-    don't have history entries
+2. Transactions imported before NotionalHistory was implemented don't have history entries
 3. Users need to populate history for existing data after adding BondMetadata
 
 Usage:
@@ -26,12 +22,23 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    """Create NotionalHistory entries for existing bond redemption transactions."""
+    """
+    Django management command to create NotionalHistory entries.
+
+    This command retroactively creates NotionalHistory entries for existing
+    bond redemption transactions that were imported before the NotionalHistory
+    feature was implemented.
+    """
 
     help = "Create NotionalHistory entries for existing bond redemption transactions"
 
     def add_arguments(self, parser):
-        """Add arguments to the command."""
+        """
+        Add command line arguments to the parser.
+
+        Args:
+            parser: ArgumentParser to add arguments to.
+        """
         parser.add_argument(
             "--security-id",
             type=int,
@@ -44,14 +51,18 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        """Handle the command."""
+        """
+        Execute the command.
+
+        Args:
+            *args: Additional positional arguments.
+            **options: Additional keyword arguments from command line.
+        """
         security_id = options.get("security_id")
         dry_run = options.get("dry_run")
 
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING("DRY RUN MODE - No changes will be made")
-            )
+            self.stdout.write(self.style.WARNING("DRY RUN MODE - No changes will be made"))
 
         # Build query for bond redemption transactions
         query = Transactions.objects.filter(
@@ -64,15 +75,11 @@ class Command(BaseCommand):
         transactions = query.order_by("security", "date")
 
         if not transactions.exists():
-            self.stdout.write(
-                self.style.WARNING("No bond redemption transactions found")
-            )
+            self.stdout.write(self.style.WARNING("No bond redemption transactions found"))
             return
 
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Found {transactions.count()} bond redemption transactions"
-            )
+            self.style.SUCCESS(f"Found {transactions.count()} bond redemption transactions")
         )
 
         # Group transactions by security
@@ -84,18 +91,14 @@ class Command(BaseCommand):
         for txn in transactions:
             if not txn.security:
                 self.stdout.write(
-                    self.style.WARNING(
-                        f"Transaction {txn.id} has no security, skipping"
-                    )
+                    self.style.WARNING(f"Transaction {txn.id} has no security, skipping")
                 )
                 total_skipped += 1
                 continue
 
             if not txn.notional_change or txn.notional_change == 0:
                 self.stdout.write(
-                    self.style.WARNING(
-                        f"Transaction {txn.id} has no notional_change, skipping"
-                    )
+                    self.style.WARNING(f"Transaction {txn.id} has no notional_change, skipping")
                 )
                 total_skipped += 1
                 continue
@@ -126,8 +129,7 @@ class Command(BaseCommand):
             if txn.security.id not in securities_processed:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"\nProcessing security: {txn.security.name} "
-                        f"(ID: {txn.security.id})"
+                        f"\nProcessing security: {txn.security.name} (ID: {txn.security.id})"
                     )
                 )
                 securities_processed.add(txn.security.id)
@@ -143,8 +145,7 @@ class Command(BaseCommand):
                         )
                 else:
                     self.stdout.write(
-                        f"  [DRY RUN] Would create NotionalHistory for transaction "
-                        f"{txn.id} "
+                        f"  [DRY RUN] Would create NotionalHistory for transaction {txn.id} "
                         f"({txn.date}): notional_change={txn.notional_change}"
                     )
                     total_created += 1
@@ -152,8 +153,7 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"  ✗ Error creating NotionalHistory for transaction "
-                        f"{txn.id}: {e}"
+                        f"  ✗ Error creating NotionalHistory for transaction {txn.id}: {e}"
                     )
                 )
                 total_errors += 1
@@ -172,7 +172,5 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(
-                    "\nDRY RUN MODE - Run without --dry-run to apply changes"
-                )
+                self.style.WARNING("\nDRY RUN MODE - Run without --dry-run to apply changes")
             )

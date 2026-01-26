@@ -71,9 +71,7 @@ class SummaryViewSet(viewsets.ViewSet):
             "effective_current_date",
             datetime.now(timezone.utc).date().isoformat(),
         )
-        effective_current_date = datetime.strptime(
-            effective_current_date_str, "%Y-%m-%d"
-        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d")
         currency_target = user.default_currency
         number_of_digits = user.digits
 
@@ -90,9 +88,7 @@ class SummaryViewSet(viewsets.ViewSet):
     def get_date_range(self, timespan, effective_current_date):
         """Get date range for portfolio breakdown."""
         if timespan == "ytd":
-            start_date = datetime(
-                effective_current_date.year, 1, 1, tzinfo=timezone.utc
-            )
+            start_date = datetime(effective_current_date.year, 1, 1, tzinfo=timezone.utc)
             end_date = effective_current_date
         elif timespan == "all_time":
             start_date = None
@@ -106,9 +102,7 @@ class SummaryViewSet(viewsets.ViewSet):
         self, user, start_date, end_date, currency_target, number_of_digits
     ):
         """Get exposure table data."""
-        account_ids = Accounts.objects.filter(broker__investor=user).values_list(
-            "id", flat=True
-        )
+        account_ids = Accounts.objects.filter(broker__investor=user).values_list("id", flat=True)
         assets = Assets.objects.filter(investors=user)
 
         # Initialize dictionaries to store the data for each category
@@ -196,9 +190,7 @@ class SummaryViewSet(viewsets.ViewSet):
             )
             # Use calculate_value_at_date for proper bond notional handling
             market_value = round(
-                asset.calculate_value_at_date(
-                    end_date, user, currency_target, account_ids
-                ),
+                asset.calculate_value_at_date(end_date, user, currency_target, account_ids),
                 2,
             )
 
@@ -223,9 +215,7 @@ class SummaryViewSet(viewsets.ViewSet):
                 data[cat][asset_category]["unrealized"] += unrealized
                 data[cat][asset_category]["market_value"] += market_value
                 data[cat][asset_category]["realized"] += realized
-                data[cat][asset_category][
-                    "capital_distribution"
-                ] += capital_distribution
+                data[cat][asset_category]["capital_distribution"] += capital_distribution
                 data[cat][asset_category]["commission"] += commission
 
                 totals[cat]["cost"] += cost
@@ -259,9 +249,7 @@ class SummaryViewSet(viewsets.ViewSet):
                 fx_rate = get_fx_rate(
                     transaction["currency"], currency_target, transaction["date"], user
                 )
-                commission_to_add = Decimal(
-                    round(transaction["commission"] * fx_rate, 2)
-                )
+                commission_to_add = Decimal(round(transaction["commission"] * fx_rate, 2))
                 for cat in ["Consolidated", category]:
                     data[cat]["Cash"]["commission"] += commission_to_add
                     totals[cat]["commission"] += commission_to_add
@@ -287,11 +275,7 @@ class SummaryViewSet(viewsets.ViewSet):
             )
             for line in context[f"{category.lower()}_context"]:
                 line["portfolio_percent"] = format_percentage(
-                    (
-                        line["market_value"] / total_market_value
-                        if total_market_value
-                        else 0
-                    ),
+                    (line["market_value"] / total_market_value if total_market_value else 0),
                     digits=1,
                 )
                 line["market_value"] = currency_format(
@@ -312,19 +296,13 @@ class SummaryViewSet(viewsets.ViewSet):
         if asset.exposure == "Equity":
             return "Equity - RU" if asset.currency == "RUB" else "Equity - Int'l"
         elif asset.exposure == "FI":
-            return (
-                "Fixed income - RU"
-                if asset.currency == "RUB"
-                else "Fixed income - Int'l"
-            )
+            return "Fixed income - RU" if asset.currency == "RUB" else "Fixed income - Int'l"
         elif asset.exposure == "Options":
             return "Options"
         else:
             return "Other"
 
-    def prepare_line_data(
-        self, asset_category, values, currency_target, number_of_digits
-    ):
+    def prepare_line_data(self, asset_category, values, currency_target, number_of_digits):
         """Prepare line data."""
         if asset_category == "Cash":
             return {
@@ -342,17 +320,13 @@ class SummaryViewSet(viewsets.ViewSet):
                     values["commission"], currency_target, number_of_digits
                 ),
                 "commission_percent": "",
-                "total": currency_format(
-                    values["commission"], currency_target, number_of_digits
-                ),
+                "total": currency_format(values["commission"], currency_target, number_of_digits),
                 "total_percent": "",
             }
         else:
             return {
                 "name": asset_category,
-                "cost": currency_format(
-                    values["cost"], currency_target, number_of_digits
-                ),
+                "cost": currency_format(values["cost"], currency_target, number_of_digits),
                 "unrealized": currency_format(
                     values["unrealized"], currency_target, number_of_digits
                 ),
@@ -362,9 +336,7 @@ class SummaryViewSet(viewsets.ViewSet):
                 ),
                 "market_value": values["market_value"],
                 "portfolio_percent": 0,  # Will be calculated after summing up all market values  # noqa: E501
-                "realized": currency_format(
-                    values["realized"], currency_target, number_of_digits
-                ),
+                "realized": currency_format(values["realized"], currency_target, number_of_digits),
                 "realized_percent": format_percentage(
                     (values["realized"] / values["cost"]) if values["cost"] else 0,
                     digits=1,
@@ -373,11 +345,7 @@ class SummaryViewSet(viewsets.ViewSet):
                     values["capital_distribution"], currency_target, number_of_digits
                 ),
                 "capital_distribution_percent": format_percentage(
-                    (
-                        values["capital_distribution"] / values["cost"]
-                        if values["cost"]
-                        else 0
-                    ),
+                    (values["capital_distribution"] / values["cost"] if values["cost"] else 0),
                     digits=1,
                 ),
                 "commission": currency_format(
@@ -416,9 +384,7 @@ class SummaryViewSet(viewsets.ViewSet):
         return {
             "name": "TOTAL",
             "cost": currency_format(totals["cost"], currency_target, number_of_digits),
-            "unrealized": currency_format(
-                totals["unrealized"], currency_target, number_of_digits
-            ),
+            "unrealized": currency_format(totals["unrealized"], currency_target, number_of_digits),
             "unrealized_percent": format_percentage(
                 totals["unrealized"] / totals["cost"] if totals["cost"] else 0,
                 digits=1,  # noqa: E501
@@ -427,9 +393,7 @@ class SummaryViewSet(viewsets.ViewSet):
                 totals["market_value"], currency_target, number_of_digits
             ),
             "portfolio_percent": "",
-            "realized": currency_format(
-                totals["realized"], currency_target, number_of_digits
-            ),
+            "realized": currency_format(totals["realized"], currency_target, number_of_digits),
             "realized_percent": format_percentage(
                 totals["realized"] / totals["cost"] if totals["cost"] else 0,
                 digits=1,  # noqa: E501
@@ -438,16 +402,10 @@ class SummaryViewSet(viewsets.ViewSet):
                 totals["capital_distribution"], currency_target, number_of_digits
             ),
             "capital_distribution_percent": format_percentage(
-                (
-                    totals["capital_distribution"] / totals["cost"]
-                    if totals["cost"]
-                    else 0
-                ),
+                (totals["capital_distribution"] / totals["cost"] if totals["cost"] else 0),
                 digits=1,
             ),
-            "commission": currency_format(
-                totals["commission"], currency_target, number_of_digits
-            ),
+            "commission": currency_format(totals["commission"], currency_target, number_of_digits),
             "commission_percent": format_percentage(
                 totals["commission"] / totals["cost"] if totals["cost"] else 0,
                 digits=1,  # noqa: E501

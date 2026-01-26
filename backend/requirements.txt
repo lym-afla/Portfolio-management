@@ -4,6 +4,8 @@
 #
 #    pip-compile --output-file=requirements.txt requirements.in
 #
+--extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple
+
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.15
@@ -25,11 +27,12 @@ beautifulsoup4==4.13.5
     #   -r requirements.in
     #   yfinance
 cachetools==5.5.2
-    # via tinkoff-investments
+    # via t-tech-investments
 certifi==2025.8.3
     # via
     #   curl-cffi
     #   requests
+    #   sentry-sdk
 cffi==1.17.1
     # via
     #   cryptography
@@ -51,7 +54,7 @@ cryptography==45.0.7
 curl-cffi==0.13.0
     # via yfinance
 deprecation==2.1.0
-    # via tinkoff-investments
+    # via t-tech-investments
 django==5.2.6
     # via
     #   -r requirements.in
@@ -83,7 +86,7 @@ frozenlist==1.7.0
 fuzzywuzzy==0.18.0
     # via -r requirements.in
 grpcio==1.76.0
-    # via tinkoff-investments
+    # via t-tech-investments
 h11==0.16.0
     # via uvicorn
 idna==3.10
@@ -105,7 +108,7 @@ numpy==2.3.2
     #   -r requirements.in
     #   pandas
     #   yfinance
-packaging==25.0
+packaging==26.0
     # via deprecation
 pandas==2.3.2
     # via
@@ -121,7 +124,7 @@ propcache==0.3.2
     #   yarl
 protobuf==4.25.8
     # via
-    #   tinkoff-investments
+    #   t-tech-investments
     #   yfinance
 pycparser==2.22
     # via cffi
@@ -132,7 +135,7 @@ pyopenssl==25.1.0
 python-dateutil==2.9.0.post0
     # via
     #   pandas
-    #   tinkoff-investments
+    #   t-tech-investments
 python-levenshtein==0.27.1
     # via -r requirements.in
 pytz==2025.2
@@ -145,6 +148,8 @@ rapidfuzz==3.14.0
     # via levenshtein
 requests==2.32.5
     # via yfinance
+sentry-sdk==2.50.0
+    # via t-tech-investments
 simplejson==3.20.1
     # via -r requirements.in
 six==1.17.0
@@ -157,11 +162,7 @@ sqlparse==0.5.3
     #   django-debug-toolbar
 structlog==25.4.0
     # via -r requirements.in
-tinkoff==0.1.1
-    # via
-    #   -r requirements.in
-    #   tinkoff-investments
-tinkoff-investments==0.2.0b116
+t-tech-investments==0.3.3
     # via -r requirements.in
 typing-extensions==4.15.0
     # via
@@ -174,7 +175,9 @@ tzdata==2025.2
     #   django
     #   pandas
 urllib3==2.5.0
-    # via requests
+    # via
+    #   requests
+    #   sentry-sdk
 uvicorn==0.35.0
     # via -r requirements.in
 websockets==15.0.1

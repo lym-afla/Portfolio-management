@@ -1,4 +1,9 @@
-"""Date utils."""
+"""
+Utility functions for date manipulation and range calculations.
+
+This module provides functions to calculate date ranges, handle timespans,
+and perform various date-related operations for portfolio analysis.
+"""
 
 import logging
 from datetime import date, datetime, timedelta
@@ -15,8 +20,7 @@ def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
     """
     Get the date range based on the given timespan and end date.
 
-    :param timespan: A string representing the timespan
-        ('YTD', 'All-time', or a year as string)
+    :param timespan: A string representing the timespan ('YTD', 'All-time', or a year as string)
     :param to_date: The end date of the range
     :return: A tuple containing the start date (or None for 'All-time') and the end date
     :raises ValueError: If an invalid timespan is provided
@@ -31,18 +35,24 @@ def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
             return date(year, 1, 1), date(year, 12, 31)
         except ValueError:
             logger.error(
-                f"Invalid timespan: {timespan}. "
-                f"Expected {YTD}, {ALL_TIME}, or a valid year."
+                f"Invalid timespan: {timespan}. Expected {YTD}, {ALL_TIME}, or a valid year."
             )
             return date(to_date.year, 1, 1), to_date
 
 
 def get_start_date(end_date, period):
-    """Get start date."""
+    """
+    Calculate the start date based on an end date and time period.
+
+    Args:
+        end_date: The end date (string in YYYY-MM-DD format or date object).
+        period: The time period to subtract (e.g., '1M' for 1 month, '1Y' for 1 year).
+
+    Returns:
+        date: The calculated start date.
+    """
     end_date = (
-        datetime.strptime(end_date, "%Y-%m-%d").date()
-        if isinstance(end_date, str)
-        else end_date
+        datetime.strptime(end_date, "%Y-%m-%d").date() if isinstance(end_date, str) else end_date
     )
     if period == "7d":
         return end_date - timedelta(days=7)

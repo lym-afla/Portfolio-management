@@ -1,4 +1,9 @@
-"""Accounts utils."""
+"""
+Utility functions for managing and displaying account information.
+
+This module provides functions to retrieve, filter, and format account data
+for display in tables, including calculations for NAV, IRR, and cash balances.
+"""
 
 from datetime import datetime
 
@@ -14,7 +19,16 @@ from .sorting_utils import sort_entries
 
 
 def get_accounts_table_api(request):
-    """Get accounts table API."""
+    """Retrieve and format accounts table data for API response.
+
+    Args:
+        request: The HTTP request object containing user context and parameters.
+
+    Returns:
+        dict: A dictionary containing formatted accounts data, totals, and pagination
+            information with keys: accounts, totals, total_items, current_page,
+            total_pages.
+    """
     data = request.data
 
     page = int(data.get("page"))
@@ -26,27 +40,17 @@ def get_accounts_table_api(request):
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
     )
-    effective_current_date = datetime.strptime(
-        effective_current_date_str, "%Y-%m-%d"
-    ).date()
+    effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date()
     currency_target = user.default_currency
     number_of_digits = user.digits
 
     accounts_data = _filter_accounts(user, search)
-    accounts_data = _get_accounts_data(
-        user, accounts_data, effective_current_date, currency_target
-    )
+    accounts_data = _get_accounts_data(user, accounts_data, effective_current_date, currency_target)
     accounts_data = sort_entries(accounts_data, sort_by)
-    paginated_accounts, pagination_data = paginate_table(
-        accounts_data, page, items_per_page
-    )
-    formatted_accounts = format_table_data(
-        paginated_accounts, currency_target, number_of_digits
-    )
+    paginated_accounts, pagination_data = paginate_table(accounts_data, page, items_per_page)
+    formatted_accounts = format_table_data(paginated_accounts, currency_target, number_of_digits)
 
-    totals = _calculate_totals(
-        accounts_data, user, effective_current_date, currency_target
-    )
+    totals = _calculate_totals(accounts_data, user, effective_current_date, currency_target)
     totals = format_table_data(totals, currency_target, number_of_digits)
 
     return {
@@ -92,8 +96,7 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
             .distinct()
         )
 
-        # Now we can directly count the assets
-        # since we've already filtered for non-zero positions
+        # Now we can directly count the assets since we've already filtered for non-zero positions
         securities_count = assets.count()
 
         # Get first investment date efficiently
@@ -109,9 +112,7 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
             "name": account.name,
             "broker_name": account.broker.name,
             "no_of_securities": securities_count,
-            "first_investment": (
-                first_investment["date"] if first_investment else "None"
-            ),
+            "first_investment": first_investment["date"] if first_investment else "None",
             "nav": NAV_at_date(
                 user.id, tuple([account.id]), effective_current_date, currency_target
             )["Total NAV"],

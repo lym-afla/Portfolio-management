@@ -36,18 +36,14 @@ def test_jwt_authentication_with_effective_date():
         )
         print(f"Login response status: {login_response.status_code}")
 
-        assert (
-            login_response.status_code == 200
-        ), f"Login failed: {login_response.content.decode()}"
+        assert login_response.status_code == 200, f"Login failed: {login_response.content.decode()}"
 
         login_data = login_response.json()
         access_token = login_data.get("access")
         refresh_token = login_data.get("refresh")
 
         print(f"Got access token: {access_token[:20] if access_token else 'None'}...")
-        print(
-            f"Got refresh token: {refresh_token[:20] if refresh_token else 'None'}..."
-        )
+        print(f"Got refresh token: {refresh_token[:20] if refresh_token else 'None'}...")
 
         assert access_token is not None, "Access token should be provided"
         assert refresh_token is not None, "Refresh token should be provided"
@@ -83,9 +79,9 @@ def test_jwt_authentication_with_effective_date():
             print(f"Response data: {response_data}")
 
             # The endpoint should return the effective_current_date in the response
-            effective_date = response_data.get(
-                "effective_current_date"
-            ) or response_data.get("table_date")
+            effective_date = response_data.get("effective_current_date") or response_data.get(
+                "table_date"
+            )
             print(f"Effective date from response: {effective_date}")
 
             # Assert that the effective_date was set correctly
@@ -104,9 +100,7 @@ def test_jwt_authentication_with_effective_date():
                 assert response_data.get("new_effective_date") == "2021-04-04"
         else:
             print(f"Update failed: {response2.content.decode()}")
-            raise AssertionError(
-                f"Update settings failed with status {response2.status_code}"
-            )
+            raise AssertionError(f"Update settings failed with status {response2.status_code}")
 
         print("\n=== Test PASSED ===")
 

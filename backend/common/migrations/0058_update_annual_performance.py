@@ -1,5 +1,6 @@
 from django.db import migrations, models
-from constants import ACCOUNT_TYPE_CHOICES, ACCOUNT_TYPE_ALL
+
+from constants import ACCOUNT_TYPE_ALL, ACCOUNT_TYPE_CHOICES
 
 
 class Migration(migrations.Migration):

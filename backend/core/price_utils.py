@@ -1,4 +1,8 @@
-"""Price utils."""
+"""Utility functions for managing security price data.
+
+This module provides functions to retrieve, update, and format
+price data for securities in the portfolio.
+"""
 
 from datetime import date
 
@@ -11,15 +15,7 @@ from core.sorting_utils import sort_entries
 
 
 def get_prices_table_api(request):
-    """
-    Get prices table data for API response.
-
-    Args:
-        request: The HTTP request object
-
-    Returns:
-        dict: The prices table data
-    """
+    """Get prices table data for API response."""
     data = request.data
     start_date = data.get("startDate")
     end_date = data.get("endDate")
@@ -59,12 +55,8 @@ def get_prices_table_api(request):
     ]
 
     sorted_prices = sort_entries(prices_data, sort_by)
-    paginated_prices, pagination_data = paginate_table(
-        sorted_prices, page, items_per_page
-    )
-    formatted_prices = format_table_data(
-        paginated_prices, currency_target, number_of_digits
-    )
+    paginated_prices, pagination_data = paginate_table(sorted_prices, page, items_per_page)
+    formatted_prices = format_table_data(paginated_prices, currency_target, number_of_digits)
 
     return {
         "prices": formatted_prices,
@@ -94,13 +86,8 @@ def _filter_prices(
         selected_account: Selected broker account ID
         selected_securities: List of security IDs to filter by
         search: Search string for security name or type
-
-    Returns:
-        QuerySet: The filtered prices
     """
-    prices_query = Prices.objects.filter(security__investors=user).select_related(
-        "security"
-    )
+    prices_query = Prices.objects.filter(security__investors=user).select_related("security")
 
     if start_date:
         prices_query = prices_query.filter(date__gte=start_date)
@@ -112,8 +99,7 @@ def _filter_prices(
         # Get all securities with non-zero positions in the selected account at end_date
         position_date = end_date if end_date else date.today()
 
-        # Get all securities that have transactions in this account
-        # (more efficient query)
+        # Get all securities that have transactions in this account (more efficient query)
         securities_in_account = Assets.objects.filter(
             transactions__account__id=selected_account,
             transactions__investor=user,
@@ -124,9 +110,7 @@ def _filter_prices(
         securities_with_positions = [
             security.id
             for security in securities_in_account
-            if security.position(
-                date=position_date, investor=user, account_ids=[selected_account]
-            )
+            if security.position(date=position_date, investor=user, account_ids=[selected_account])
             != 0
         ]
 

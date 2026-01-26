@@ -250,9 +250,7 @@ def test_calculate_performance(user, account, caplog):
 def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
     """Test the accounts table API functionality."""
     # Create a second broker and account
-    second_broker = Brokers.objects.create(
-        investor=user, name="Second Test Broker", country="US"
-    )
+    second_broker = Brokers.objects.create(investor=user, name="Second Test Broker", country="US")
     second_account = Accounts.objects.create(
         name="Second Test Account", broker=second_broker, restricted=True
     )
@@ -291,9 +289,7 @@ def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
             user.digits = 2
 
     # Test basic functionality
-    request = MockRequest(
-        user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}}
-    )
+    request = MockRequest(user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}})
 
     response = get_accounts_table_api(request)
 

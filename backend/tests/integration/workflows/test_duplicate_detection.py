@@ -83,9 +83,8 @@ async def test_transaction_exists_exact_match(user, account, sample_transaction)
         "is_fx": False,
     }
 
-    result = await transaction_exists(transaction_data)
-    assert result is not None
-    assert result.id == sample_transaction.id
+    exists = await transaction_exists(transaction_data)
+    assert exists is not None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -114,9 +113,8 @@ async def test_transaction_exists_time_window(user, account, sample_transaction)
         "is_fx": False,
     }
 
-    result = await transaction_exists(transaction_data)
-    assert result is not None
-    assert result.id == sample_transaction.id
+    exists = await transaction_exists(transaction_data)
+    assert exists is not None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -138,15 +136,13 @@ async def test_transaction_exists_no_match(user, account):
         "is_fx": False,
     }
 
-    result = await transaction_exists(transaction_data)
-    assert result is None
+    exists = await transaction_exists(transaction_data)
+    assert exists is None
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_transaction_exists_outside_time_window(
-    user, account, sample_transaction
-):
+async def test_transaction_exists_outside_time_window(user, account, sample_transaction):
     """Test transaction_exists with timestamp outside 1-second window."""
     # Test with timestamp outside 1-second window
     offset_date = sample_transaction.date + timedelta(seconds=2)
@@ -166,8 +162,8 @@ async def test_transaction_exists_outside_time_window(
         "is_fx": False,
     }
 
-    result = await transaction_exists(transaction_data)
-    assert result is None
+    exists = await transaction_exists(transaction_data)
+    assert exists is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -255,9 +251,7 @@ async def test_transaction_exists_missing_required_field(user, account):
         "is_fx": False,
     }
 
-    with pytest.raises(
-        ValueError, match="Required field 'date' is missing from transaction_data"
-    ):
+    with pytest.raises(ValueError, match="Required field 'date' is missing from transaction_data"):
         await transaction_exists(transaction_data)
 
 

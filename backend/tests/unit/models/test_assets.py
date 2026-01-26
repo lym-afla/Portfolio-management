@@ -181,9 +181,7 @@ class TestAssetPositionCalculation:
         position = asset.position(date(2023, 2, 16), investor=user)
         assert position == Decimal("-50")
 
-    def test_position_broker_filtering(
-        self, user, broker, broker_uk, account, account_uk, asset
-    ):
+    def test_position_broker_filtering(self, user, broker, broker_uk, account, account_uk, asset):
         """Test position calculation with broker filtering."""
         # Create transaction with first broker
         Transactions.objects.create(
@@ -594,13 +592,9 @@ class TestAssetPriceMethods:
     def test_price_at_date_latest_before(self, user, broker, account, asset):
         """Test price retrieval getting latest price before date."""
         # Create multiple price records
-        Prices.objects.create(
-            date=date(2023, 5, 15), security=asset, price=Decimal("50.00")
-        )
+        Prices.objects.create(date=date(2023, 5, 15), security=asset, price=Decimal("50.00"))
 
-        Prices.objects.create(
-            date=date(2023, 6, 1), security=asset, price=Decimal("52.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 1), security=asset, price=Decimal("52.00"))
 
         # Request price between records
         request_date = date(2023, 6, 10)
@@ -684,9 +678,7 @@ class TestAssetPriceMethods:
         )
 
         investment_date = asset.investment_date(user)
-        assert (
-            investment_date.date() == first_date
-        )  # Should return earliest transaction
+        assert investment_date.date() == first_date  # Should return earliest transaction
 
     def test_investment_date_no_transactions(self, user, broker, account, asset):
         """Test investment date detection with no transactions."""
@@ -730,9 +722,7 @@ class TestAssetPriceMethods:
         assert investment_date_broker1.date() == date(2023, 1, 15)
 
         # Investment date for second broker
-        investment_date_broker2 = asset.investment_date(
-            user, account_ids=[account_uk.id]
-        )
+        investment_date_broker2 = asset.investment_date(user, account_ids=[account_uk.id])
         assert investment_date_broker2.date() == date(2023, 2, 15)
 
 

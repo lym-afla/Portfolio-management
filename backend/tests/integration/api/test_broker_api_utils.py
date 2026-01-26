@@ -39,12 +39,8 @@ async def tinkoff_api():
 async def test_connect_success(tinkoff_api, mock_user):
     """Test connect with success."""
     with (
-        patch(
-            "core.broker_api_utils.get_user_token", new_callable=AsyncMock
-        ) as mock_get_token,
-        patch(
-            "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
-        ) as mock_verify,
+        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
         patch("core.broker_api_utils.Client") as mock_client_class,
     ):
         mock_get_token.return_value = "test_token"
@@ -62,19 +58,13 @@ async def test_connect_success(tinkoff_api, mock_user):
 async def test_connect_invalid_token(tinkoff_api, mock_user):
     """Test connect with invalid token."""
     with (
-        patch(
-            "core.broker_api_utils.get_user_token", new_callable=AsyncMock
-        ) as mock_get_token,
-        patch(
-            "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
-        ) as mock_verify,
+        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
     ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = False
 
-        with pytest.raises(
-            TinkoffAPIException, match="Invalid or insufficient token access"
-        ):
+        with pytest.raises(TinkoffAPIException, match="Invalid or insufficient token access"):
             await tinkoff_api.connect(mock_user)
 
 
@@ -226,9 +216,7 @@ async def test_get_transactions_with_dates(tinkoff_api, mock_user, mock_account)
         date_to = "2024-01-31"
 
         transactions = []
-        async for transaction in tinkoff_api.get_transactions(
-            mock_account, date_from, date_to
-        ):
+        async for transaction in tinkoff_api.get_transactions(mock_account, date_from, date_to):
             transactions.append(transaction)
 
         assert len(transactions) == 1

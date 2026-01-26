@@ -1,4 +1,9 @@
-"""Import utils."""
+"""
+Utility functions for importing transaction and account data from external sources.
+
+This module provides functions to parse Excel files, validate data, and import
+transactions from various broker formats.
+"""
 
 import asyncio
 import json
@@ -19,8 +24,8 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 from fake_useragent import UserAgent
 from fuzzywuzzy import process
-from tinkoff.invest import Client, InstrumentType
-from tinkoff.invest.utils import quotation_to_decimal
+from t_tech.invest import Client, InstrumentType
+from t_tech.invest.utils import quotation_to_decimal
 
 from common.models import (
     Accounts,
@@ -56,7 +61,15 @@ CustomUser = get_user_model()
 
 @database_sync_to_async
 def get_investor(investor_id):
-    """Get investor by ID asynchronously."""
+    """
+    Retrieve investor/user by ID.
+
+    Args:
+        investor_id: The ID of the investor to retrieve.
+
+    Returns:
+        CustomUser: The user instance.
+    """
     return CustomUser.objects.get(id=investor_id)
 
 
@@ -68,13 +81,32 @@ def get_broker(account):
 
 @database_sync_to_async
 def get_account(account_id: int) -> Accounts:
-    """Get account by ID asynchronously."""
+    """
+    Retrieve an account by ID.
+
+    Args:
+        account_id: The ID of the account to retrieve.
+
+    Returns:
+        Accounts: The account instance.
+
+    Raises:
+        Accounts.DoesNotExist: If account doesn't exist.
+    """
     return Accounts.objects.get(id=account_id)
 
 
 @database_sync_to_async
 def get_security(security_id):
-    """Get security by ID asynchronously."""
+    """
+    Retrieve a security/asset by ID.
+
+    Args:
+        security_id: The ID of the security to retrieve.
+
+    Returns:
+        Assets: The security instance, or None if not found.
+    """
     try:
         return Assets.objects.get(id=security_id)
     except Assets.DoesNotExist:
@@ -84,7 +116,18 @@ def get_security(security_id):
 
 @database_sync_to_async
 def transaction_exists(transaction_data):
-    """Check if a transaction already exists."""
+    """
+    Check if a transaction already exists in the database.
+
+    Args:
+        transaction_data: Dictionary containing transaction field values.
+
+    Returns:
+        bool: True if transaction exists, False otherwise.
+
+    Raises:
+        ValueError: If required fields are missing.
+    """
     query = Q()
     required_fields = ["investor", "account", "date", "currency", "type"]
     optional_fields = [
@@ -96,34 +139,20 @@ def transaction_exists(transaction_data):
         "aci",
     ]
 
-    # Add required fields to the query (except date - handle separately for precision)
+    # Add required fields to the query
     for field in required_fields:
         if field not in transaction_data:
-            raise ValueError(
-                f"Required field '{field}' is missing from transaction_data"
-            )
-        if field == "date":
-            # Use time window for date matching to handle database precision issues
-            from datetime import timedelta
-
-            time_window = timedelta(seconds=1)  # 1 second window
-            target_date = transaction_data[field]
-            start_time = target_date - time_window
-            end_time = target_date + time_window
-            query &= Q(**{f"{field}__range": (start_time, end_time)})
-        else:
-            query &= Q(**{field: transaction_data[field]})
+            raise ValueError(f"Required field '{field}' is missing from transaction_data")
+        query &= Q(**{field: transaction_data[field]})
 
     # Add optional fields to the query if they exist
     for field in optional_fields:
         if field in transaction_data and transaction_data[field] is not None:
             query &= Q(**{field: transaction_data[field]})
 
-    # Return the actual transaction object if found, None otherwise
-    try:
-        return Transactions.objects.get(query)
-    except Transactions.DoesNotExist:
-        return None
+    exists = Transactions.objects.filter(query).exists()
+
+    return exists
 
 
 @database_sync_to_async
@@ -151,39 +180,34 @@ def fx_transaction_exists(transaction_data):
 
     # Round exchange_rate to match database precision
     if "exchange_rate" in data_copy and data_copy["exchange_rate"] is not None:
-        data_copy["exchange_rate"] = round(
-            Decimal(str(data_copy["exchange_rate"])), decimal_places
-        )
+        data_copy["exchange_rate"] = round(Decimal(str(data_copy["exchange_rate"])), decimal_places)
 
-    # Add required fields to the query (except date - handle separately for precision)
+    # Add required fields to the query
     for field in required_fields:
         if field not in data_copy:
-            raise ValueError(
-                f"Required field '{field}' is missing from FX transaction_data"
-            )
-        if field == "date":
-            # Use time window for date matching to handle database precision issues
-            from datetime import timedelta
-
-            time_window = timedelta(seconds=1)  # 1 second window
-            target_date = data_copy[field]
-            start_time = target_date - time_window
-            end_time = target_date + time_window
-            query &= Q(**{f"{field}__range": (start_time, end_time)})
-        else:
-            query &= Q(**{field: data_copy[field]})
+            raise ValueError(f"Required field '{field}' is missing from FX transaction_data")
+        query &= Q(**{field: data_copy[field]})
 
     # Add optional fields to the query if they exist
     for field in optional_fields:
         if field in data_copy and data_copy[field] is not None:
             query &= Q(**{field: data_copy[field]})
 
-    # Return the first matching transaction object if found, None otherwise
-    return FXTransaction.objects.filter(query).first()
+    return FXTransaction.objects.filter(query).exists()
 
 
 def read_excel_file(file_path):
-    """Read Excel file."""
+    """Read an Excel file and extract transaction data.
+
+    Args:
+        file_path: Path to the Excel file to read.
+
+    Returns:
+        DataFrame: Pandas DataFrame containing the transaction data.
+
+    Raises:
+        Exception: If file reading fails.
+    """
     try:
         with default_storage.open(file_path, "rb") as file:
             df = pd.read_excel(
@@ -248,18 +272,12 @@ async def _process_transaction_row(row, investor, account, currency):
             pd.isna(transaction_date.time())
             or transaction_date.time() == pd.Timestamp("00:00:00").time()
         ):
-            transaction_date = transaction_date.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            transaction_date = transaction_date.replace(hour=0, minute=0, second=0, microsecond=0)
         description = row["Description"]
         security_description = row["Stock Description"]
         price = Decimal(str(row["Price"])) if not pd.isna(row["Price"]) else None
-        debit = (
-            Decimal(str(row["Debit"])) if not pd.isna(row["Debit"]) else Decimal("0")
-        )
-        credit = (
-            Decimal(str(row["Credit"])) if not pd.isna(row["Credit"]) else Decimal("0")
-        )
+        debit = Decimal(str(row["Debit"])) if not pd.isna(row["Debit"]) else Decimal("0")
+        credit = Decimal(str(row["Credit"])) if not pd.isna(row["Credit"]) else Decimal("0")
 
         SKIP_DESCRIPTIONS = {"* BALANCE B/F *", "Cash Transfers ISA"}
         COMMISSION_DESCRIPTIONS = {
@@ -355,10 +373,7 @@ async def _process_transaction_row(row, investor, account, currency):
             logger.debug(f"Transaction already exists. Duplicate: {transaction_data}")
             return None, "duplicate"
 
-        if (
-            security is None
-            and transaction_type not in NON_SECURITY_RELATED_TRANSACTION_TYPES
-        ):
+        if security is None and transaction_type not in NON_SECURITY_RELATED_TRANSACTION_TYPES:
             mapping_details = {
                 "security_description": security_description,
                 "best_match": best_match,
@@ -369,9 +384,7 @@ async def _process_transaction_row(row, investor, account, currency):
                 "transaction_details": transaction_data,
             }, "mapping_required"
 
-        logger.debug(
-            f"Transaction processed successfully {transaction_type}, {transaction_data}"
-        )
+        logger.debug(f"Transaction processed successfully {transaction_type}, {transaction_data}")
 
         return transaction_data, "new"
     except ValueError as e:
@@ -386,9 +399,9 @@ async def parse_charles_stanley_transactions(
     file_path, currency, account_id, user_id, confirm_every
 ):
     """
-    Refactored to ONLY yield messages without awaiting confirmations.
-
     Parse Charles Stanley transaction file.
+
+    Refactored to ONLY yield messages without awaiting confirmations.
 
     Args:
         file_path: Path to the transaction file
@@ -429,7 +442,7 @@ async def parse_charles_stanley_transactions(
         logger.error(f"Error getting investor or broker account: {str(e)}")
         yield {
             "error": (
-                f"An unexpected error occurred while getting investor or broker account: "  # noqa: E501
+                f"An unexpected error occurred while getting investor or broker account: "
                 f"{str(e)}"
             )
         }
@@ -471,9 +484,7 @@ async def parse_charles_stanley_transactions(
                         "status": "transaction_confirmation",
                         "data": transaction_data,
                     }
-                    logger.debug(
-                        "Yielded transaction_confirmation for row %d", index + 1
-                    )
+                    logger.debug("Yielded transaction_confirmation for row %d", index + 1)
                 else:
                     yield {
                         "status": "add_transaction",
@@ -499,7 +510,7 @@ async def parse_charles_stanley_transactions(
         except InvalidOperation as e:
             logger.error(f"InvalidOperation in process_transaction_row: {str(e)}")
             yield {
-                "error": f"An invalid operation occurred while processing a transaction: {str(e)}"  # noqa: E501
+                "error": f"An invalid operation occurred while processing a transaction: {str(e)}"
             }
         except Exception as e:
             logger.error(f"Error processing transaction at row {index + 1}: {str(e)}")
@@ -526,7 +537,16 @@ async def parse_charles_stanley_transactions(
 
 
 def generate_dates_for_price_import(start, end, frequency):
-    """Generate dates for price import."""
+    """Generate a list of dates based on frequency for price import.
+
+    Args:
+        start: Start date for the range.
+        end: End date for the range.
+        frequency: The frequency of dates ('daily', 'weekly', 'monthly').
+
+    Returns:
+        list: List of date objects.
+    """
     dates = []
     if frequency == "daily":
         current = start
@@ -559,9 +579,7 @@ def generate_dates_for_price_import(start, end, frequency):
     elif frequency == "quarterly":
         quarter_end_month = 3 * ((start.month - 1) // 3 + 1)
         current = (
-            date(start.year, quarter_end_month, 1)
-            + relativedelta(months=1)
-            - timedelta(days=1)
+            date(start.year, quarter_end_month, 1) + relativedelta(months=1) - timedelta(days=1)
         )
         while current <= end:
             dates.append(current)
@@ -582,7 +600,18 @@ def generate_dates_for_price_import(start, end, frequency):
 
 
 async def import_security_prices_from_ft(security, dates):
-    """Import security prices from FT."""
+    """Import security prices from Financial Times.
+
+    Args:
+        security: The security instance to import prices for.
+        dates: List of dates to fetch prices for.
+
+    Yields:
+        dict: Status updates during the import process.
+
+    Raises:
+        Exception: If HTTP request or parsing fails.
+    """
     url = security.update_link
     user_agent = UserAgent().random
     headers = {"User-Agent": user_agent}
@@ -628,7 +657,7 @@ async def import_security_prices_from_ft(security, dates):
 
                 try:
                     async with session.get(
-                        "https://markets.ft.com/data/equities/ajax/get-historical-prices",  # noqa: E501
+                        "https://markets.ft.com/data/equities/ajax/get-historical-prices",
                         params={
                             "startDate": start_date,
                             "endDate": end_date,
@@ -640,14 +669,10 @@ async def import_security_prices_from_ft(security, dates):
                         r.raise_for_status()
                         data = await r.json()
 
-                    df = pd.read_html(StringIO("<table>" + data["html"] + "</table>"))[
-                        0
-                    ]
+                    df = pd.read_html(StringIO("<table>" + data["html"] + "</table>"))[0]
                     df.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
                     df["Date"] = pd.to_datetime(
-                        df["Date"].apply(
-                            lambda x: x.split(",")[-2][1:] + x.split(",")[-1]
-                        )
+                        df["Date"].apply(lambda x: x.split(",")[-2][1:] + x.split(",")[-1])
                     )
 
                     date_as_timestamp = pd.Timestamp(d)
@@ -657,23 +682,15 @@ async def import_security_prices_from_ft(security, dates):
                         latest_price = df.iloc[0]["Close"]
                         if security.name in MUTUAL_FUNDS_IN_PENCES:
                             latest_price = latest_price / 100
-                        create_price_func = database_sync_to_async(
-                            Prices.objects.create
-                        )
-                        await create_price_func(
-                            security=security, date=d, price=latest_price
-                        )
+                        create_price_func = database_sync_to_async(Prices.objects.create)
+                        await create_price_func(security=security, date=d, price=latest_price)
                         result["status"] = "updated"
                     else:
                         result["status"] = "error"
-                        result[
-                            "message"
-                        ] = f"No data found for {d.strftime('%Y-%m-%d')}"
+                        result["message"] = f"No data found for {d.strftime('%Y-%m-%d')}"
                 except Exception as e:
                     result["status"] = "error"
-                    result[
-                        "message"
-                    ] = f"Error processing data for {security.name}: {str(e)}"
+                    result["message"] = f"Error processing data for {security.name}: {str(e)}"
 
                 yield result
 
@@ -689,8 +706,7 @@ async def import_security_prices_from_yahoo(security, dates):
     """
     Import security prices from Yahoo Finance.
 
-    Note: Modern yfinance uses curl_cffi internally
-        to handle headers and browser mimicking.
+    Note: Modern yfinance uses curl_cffi internally to handle headers and browser mimicking.
     We let yfinance handle the session to avoid conflicts.
     """
     if not security.yahoo_symbol:
@@ -722,15 +738,16 @@ async def import_security_prices_from_yahoo(security, dates):
 
         try:
             # Use run_in_executor to run yfinance operations in a separate thread
-            # Let yfinance handle the session internally
-            # (uses curl_cffi for browser mimicking)
+            # Let yfinance handle the session internally (uses curl_cffi for browser mimicking)
             loop = asyncio.get_event_loop()
             ticker = await loop.run_in_executor(None, yf.Ticker, security.yahoo_symbol)
             # Set auto_adjust to False to get unadjusted close prices
             history = await loop.run_in_executor(
                 None,
-                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history(  # noqa: E501
-                    start=start_date, end=end_date, auto_adjust=False
+                lambda: ticker.history(  # noqa: B023
+                    start=start_date,  # noqa: B023
+                    end=end_date,  # noqa: B023
+                    auto_adjust=False,  # noqa: B023
                 ),
             )
 
@@ -752,7 +769,15 @@ async def import_security_prices_from_yahoo(security, dates):
 
 
 async def import_security_prices_from_micex(security, dates):
-    """Import security prices from MICEX."""
+    """Import security prices from Moscow Exchange (MICEX).
+
+    Args:
+        security: The security instance to import prices for.
+        dates: List of dates to fetch prices for.
+
+    Yields:
+        dict: Status updates during the import process.
+    """
     if not security.secid:
         yield {
             "security_name": security.name,
@@ -780,9 +805,7 @@ async def import_security_prices_from_micex(security, dates):
 
         # Get wide enough interval to fetch data
         target_date = pd.Timestamp(d)
-        end_date = (target_date + pd.Timedelta(days=1)).strftime(
-            "%Y-%m-%d"
-        )  # Include next day
+        end_date = (target_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")  # Include next day
         start_date = (target_date - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
 
         # # Constants for MICEX API
@@ -823,7 +846,7 @@ async def import_security_prices_from_micex(security, dates):
 
         url = (
             f"https://iss.moex.com/iss/history/engines/{selected_engine}/markets/"
-            f"{selected_market}/boards/{selected_board}/securities/{security.secid}.json"  # noqa: E501
+            f"{selected_market}/boards/{selected_board}/securities/{security.secid}.json"
             f"?from={start_date}&till={end_date}"
         )
 
@@ -843,9 +866,7 @@ async def import_security_prices_from_micex(security, dates):
                     data = await response.json()
 
             if "history" in data and data["history"]["data"]:
-                df = pd.DataFrame(
-                    data["history"]["data"], columns=data["history"]["columns"]
-                )
+                df = pd.DataFrame(data["history"]["data"], columns=data["history"]["columns"])
                 # Convert date strings to datetime
                 df["TRADEDATE"] = pd.to_datetime(df["TRADEDATE"])
                 df.set_index("TRADEDATE", inplace=True)
@@ -867,9 +888,7 @@ async def import_security_prices_from_micex(security, dates):
                     if closest_date is not None:
                         price = df.loc[closest_date, "CLOSE"]
                         if pd.notna(price):
-                            create_price_func = database_sync_to_async(
-                                Prices.objects.create
-                            )
+                            create_price_func = database_sync_to_async(Prices.objects.create)
                             await create_price_func(
                                 security=security,
                                 date=d,  # Use original date
@@ -879,8 +898,7 @@ async def import_security_prices_from_micex(security, dates):
                                 {
                                     "status": "updated",
                                     "message": (
-                                        f"Used price from "
-                                        f"{closest_date.strftime('%Y-%m-%d')}"
+                                        f"Used price from {closest_date.strftime('%Y-%m-%d')}"
                                         if closest_date != target_date
                                         else None
                                     ),
@@ -890,16 +908,14 @@ async def import_security_prices_from_micex(security, dates):
                             result.update(
                                 {
                                     "status": "error",
-                                    "message": "No closing price available for the "  # noqa: E501
-                                    "closest date",
+                                    "message": "No closing price available for the closest date",
                                 }
                             )
                     else:
                         result.update(
                             {
                                 "status": "error",
-                                "message": "No suitable trading day found in the "  # noqa: E501
-                                "date range",
+                                "message": "No suitable trading day found in the date range",
                             }
                         )
                 else:
@@ -910,9 +926,7 @@ async def import_security_prices_from_micex(security, dates):
                         }
                     )
             else:
-                result.update(
-                    {"status": "error", "message": "No data available from MOEX"}
-                )
+                result.update({"status": "error", "message": "No data available from MOEX"})
 
             yield result
 
@@ -983,7 +997,7 @@ async def _process_galaxy_transaction(
     user, account, date, currency, transaction_type, cash_flow=None, commission=None
 ):
     """
-    Process a Galaxy transaction asynchronously.
+    Process a Galaxy transaction.
 
     Args:
         user: User object
@@ -1004,24 +1018,14 @@ async def _process_galaxy_transaction(
         "commission": round(Decimal(commission), 2) if commission is not None else None,
     }
 
-    existing_transaction = await transaction_exists(transaction_data)
-    if existing_transaction:
+    exists = await transaction_exists(transaction_data)
+    if exists:
         return "duplicate", transaction_data
     return "new", transaction_data
 
 
-async def parse_galaxy_account_cash_flows(
-    file_path, currency, account, user, confirm_every
-):
-    """
-    Parse Galaxy broker account cash flows with async support and progress tracking.
-
-    Args:
-        file_path: Path to the Galaxy cash flow file
-        currency: Currency of the transactions
-        account: Accounts object
-        user: User object
-    """
+async def parse_galaxy_account_cash_flows(file_path, currency, account, user, confirm_every):
+    """Parse Galaxy broker account cash flows with async support and progress tracking."""
     yield {
         "status": "initialization",
         "message": "Opening and reading Galaxy cash flow file",
@@ -1068,13 +1072,9 @@ async def parse_galaxy_account_cash_flows(
             # Collect all transactions from the row
             if pd.notna(row["Инвестиции"]):
                 transaction_type = (
-                    TRANSACTION_TYPE_CASH_IN
-                    if row["Инвестиции"] > 0
-                    else TRANSACTION_TYPE_CASH_OUT
+                    TRANSACTION_TYPE_CASH_IN if row["Инвестиции"] > 0 else TRANSACTION_TYPE_CASH_OUT
                 )
-                transactions_to_process.append(
-                    ("cash_flow", transaction_type, row["Инвестиции"])
-                )
+                transactions_to_process.append(("cash_flow", transaction_type, row["Инвестиции"]))
 
             if pd.notna(row["Комиссия"]):
                 transactions_to_process.append(
@@ -1082,9 +1082,7 @@ async def parse_galaxy_account_cash_flows(
                 )
 
             if "Tax" in row and pd.notna(row["Tax"]):
-                transactions_to_process.append(
-                    ("cash_flow", TRANSACTION_TYPE_TAX, row["Tax"])
-                )
+                transactions_to_process.append(("cash_flow", TRANSACTION_TYPE_TAX, row["Tax"]))
 
             total_transactions += len(transactions_to_process)
 
@@ -1102,9 +1100,7 @@ async def parse_galaxy_account_cash_flows(
 
                 if status == "duplicate":
                     duplicate_count += 1
-                    logger.debug(
-                        f"Duplicate {trans_type} transaction found for row {index + 1}"
-                    )
+                    logger.debug(f"Duplicate {trans_type} transaction found for row {index + 1}")
                 else:
                     if confirm_every:
                         yield {
@@ -1131,8 +1127,7 @@ async def parse_galaxy_account_cash_flows(
             logger.error(f"Error processing row {index + 1}: {str(e)}")
             import_errors += 1
             yield {
-                "error": f"An unexpected error occurred while processing row "
-                f"{index + 1}: {str(e)}"
+                "error": f"An unexpected error occurred while processing row {index + 1}: {str(e)}"
             }
 
     # Final yield with import summary
@@ -1225,8 +1220,7 @@ async def parse_galaxy_account_security_transactions(
         yield {
             "status": "initialization",
             "total_to_update": total_potential_transactions,
-            "message": f"Starting processing {total_potential_transactions} "
-            f"transactions",
+            "message": f"Starting processing {total_potential_transactions} transactions",
         }
 
         # Now process transactions only for valid columns
@@ -1237,9 +1231,7 @@ async def parse_galaxy_account_security_transactions(
         for i in valid_columns:
             security_name = df.iloc[1, i]
             isin = df.iloc[2, i]
-            logger.debug(
-                f"Processing transactions for security: {security_name} ({isin})"
-            )
+            logger.debug(f"Processing transactions for security: {security_name} ({isin})")
 
             try:
                 security = await database_sync_to_async(Assets.objects.get)(
@@ -1287,17 +1279,13 @@ async def parse_galaxy_account_security_transactions(
 
                     if quantity is None and dividend is None and commission is None:
                         processed += 1
-                        logger.debug(
-                            f"Skipping empty row for security: {security_name}"
-                        )
+                        logger.debug(f"Skipping empty row for security: {security_name}")
                         continue
 
                     transaction_type = None
                     if quantity is not None:
                         transaction_type = (
-                            TRANSACTION_TYPE_BUY
-                            if quantity > 0
-                            else TRANSACTION_TYPE_SELL
+                            TRANSACTION_TYPE_BUY if quantity > 0 else TRANSACTION_TYPE_SELL
                         )
                     elif dividend is not None:
                         transaction_type = TRANSACTION_TYPE_DIVIDEND
@@ -1381,9 +1369,7 @@ async def _process_galaxy_securities(df, user):
                     ISIN=isin,
                     investors=user,
                 )
-                logger.debug(
-                    f"Found existing security with all relationships: {security}"
-                )
+                logger.debug(f"Found existing security with all relationships: {security}")
                 security_columns.append(i)
 
                 # Yield progress update
@@ -1408,9 +1394,7 @@ async def _process_galaxy_securities(df, user):
 
                     await add_relationships(security, user)
                     security_columns.append(i)
-                    logger.debug(
-                        f"Added relationships for existing security: {security_name}"
-                    )
+                    logger.debug(f"Added relationships for existing security: {security_name}")
 
                     # Yield progress update
                     yield {
@@ -1464,8 +1448,7 @@ async def create_security_from_tinkoff(
     Create a new security using T-Bank (Tinkoff) data with type-specific API methods.
 
     Used when security is not found in MICEX (e.g., matured bonds, delisted securities).
-    Fetches comprehensive metadata
-    using bond_by, share_by, etf_by, future_by, or option_by.
+    Fetches comprehensive metadata using bond_by, share_by, etf_by, future_by, or option_by.
 
     Args:
         security_name: Name of the security from Tinkoff
@@ -1481,14 +1464,11 @@ async def create_security_from_tinkoff(
     """
     try:
         logger.info(
-            f"Creating security from T-Bank data: {security_name} ({isin}), "
-            f"UID: {instrument_uid}"
+            f"Creating security from T-Bank data: {security_name} ({isin}), UID: {instrument_uid}"
         )
 
         if not instrument_uid:
-            logger.warning(
-                f"No instrument_uid provided for {security_name}, creating basic asset"
-            )
+            logger.warning(f"No instrument_uid provided for {security_name}, creating basic asset")
             # Fallback to basic creation without metadata
             return await _create_basic_tbank_asset(
                 security_name, isin, ticker, user, instrument_type, None
@@ -1512,19 +1492,14 @@ async def create_security_from_tinkoff(
                     response = client.instruments.etf_by(id_type=3, id=instrument_uid)
                     instrument_data = response.instrument
                 elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
-                    response = client.instruments.future_by(
-                        id_type=3, id=instrument_uid
-                    )
+                    response = client.instruments.future_by(id_type=3, id=instrument_uid)
                     instrument_data = response.instrument
                 elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION:
-                    response = client.instruments.option_by(
-                        id_type=3, id=instrument_uid
-                    )
+                    response = client.instruments.option_by(id_type=3, id=instrument_uid)
                     instrument_data = response.instrument
                 else:
                     logger.warning(
-                        f"Unsupported instrument type for {security_name}: "
-                        f"{instrument_type}"
+                        f"Unsupported instrument type for {security_name}: {instrument_type}"
                     )
                     return await _create_basic_tbank_asset(
                         security_name,
@@ -1572,52 +1547,34 @@ async def create_security_from_tinkoff(
                 exposure=exposure,
                 restricted=False,
                 data_source="TBANK",
-                secid=(
-                    instrument_data.ticker
-                    if hasattr(instrument_data, "ticker")
-                    else None
-                ),
+                secid=instrument_data.ticker if hasattr(instrument_data, "ticker") else None,
                 tbank_instrument_uid=instrument_uid,
             )
             asset.investors.add(user)
 
             # Create type-specific metadata
-            if (
-                instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND
-                and instrument_data
-            ):
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND and instrument_data:
                 bond_data = {}
 
                 # Extract bond-specific fields
-                if (
-                    hasattr(instrument_data, "initial_nominal")
-                    and instrument_data.initial_nominal
-                ):
+                if hasattr(instrument_data, "initial_nominal") and instrument_data.initial_nominal:
                     bond_data["initial_notional"] = quotation_to_decimal(
                         instrument_data.initial_nominal
                     )
                     # Capture the nominal currency from MoneyValue
                     if hasattr(instrument_data.initial_nominal, "currency"):
-                        bond_data[
-                            "nominal_currency"
-                        ] = instrument_data.initial_nominal.currency.upper()
+                        bond_data["nominal_currency"] = (
+                            instrument_data.initial_nominal.currency.upper()
+                        )
 
-                if (
-                    hasattr(instrument_data, "placement_date")
-                    and instrument_data.placement_date
-                ):
+                if hasattr(instrument_data, "placement_date") and instrument_data.placement_date:
                     bond_data["issue_date"] = instrument_data.placement_date.date()
 
-                if (
-                    hasattr(instrument_data, "maturity_date")
-                    and instrument_data.maturity_date
-                ):
+                if hasattr(instrument_data, "maturity_date") and instrument_data.maturity_date:
                     bond_data["maturity_date"] = instrument_data.maturity_date.date()
 
                 if hasattr(instrument_data, "coupon_quantity_per_year"):
-                    bond_data[
-                        "coupon_frequency"
-                    ] = instrument_data.coupon_quantity_per_year
+                    bond_data["coupon_frequency"] = instrument_data.coupon_quantity_per_year
 
                 # Detect bond type from flags
                 if hasattr(instrument_data, "floating_coupon_flag"):
@@ -1636,19 +1593,11 @@ async def create_security_from_tinkoff(
                     BondMetadata.objects.create(asset=asset, **bond_data)
                     logger.info(f"Created BondMetadata from T-Bank for {asset.name}")
 
-            elif (
-                instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES
-                and instrument_data
-            ):
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES and instrument_data:
                 future_data = {}
 
-                if (
-                    hasattr(instrument_data, "expiration_date")
-                    and instrument_data.expiration_date
-                ):
-                    future_data[
-                        "expiration_date"
-                    ] = instrument_data.expiration_date.date()
+                if hasattr(instrument_data, "expiration_date") and instrument_data.expiration_date:
+                    future_data["expiration_date"] = instrument_data.expiration_date.date()
 
                 if hasattr(instrument_data, "basic_asset"):
                     future_data["underlying_asset"] = instrument_data.basic_asset
@@ -1663,33 +1612,18 @@ async def create_security_from_tinkoff(
                     FutureMetadata.objects.create(asset=asset, **future_data)
                     logger.info(f"Created FutureMetadata from T-Bank for {asset.name}")
 
-            elif (
-                instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION
-                and instrument_data
-            ):
+            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION and instrument_data:
                 option_data = {}
 
-                if (
-                    hasattr(instrument_data, "expiration_date")
-                    and instrument_data.expiration_date
-                ):
-                    option_data[
-                        "expiration_date"
-                    ] = instrument_data.expiration_date.date()
+                if hasattr(instrument_data, "expiration_date") and instrument_data.expiration_date:
+                    option_data["expiration_date"] = instrument_data.expiration_date.date()
 
-                if (
-                    hasattr(instrument_data, "strike_price")
-                    and instrument_data.strike_price
-                ):
-                    option_data["strike_price"] = quotation_to_decimal(
-                        instrument_data.strike_price
-                    )
+                if hasattr(instrument_data, "strike_price") and instrument_data.strike_price:
+                    option_data["strike_price"] = quotation_to_decimal(instrument_data.strike_price)
 
                 if hasattr(instrument_data, "direction"):
                     # OptionDirection: CALL=1, PUT=2
-                    option_data["option_type"] = (
-                        "CALL" if instrument_data.direction == 1 else "PUT"
-                    )
+                    option_data["option_type"] = "CALL" if instrument_data.direction == 1 else "PUT"
 
                 if hasattr(instrument_data, "basic_asset"):
                     option_data["underlying_asset"] = instrument_data.basic_asset
@@ -1702,8 +1636,7 @@ async def create_security_from_tinkoff(
 
         asset = await create_asset_with_metadata()
         logger.info(
-            f"Successfully created asset from T-Bank with metadata: "
-            f"{asset.name} ({asset.ISIN})"
+            f"Successfully created asset from T-Bank with metadata: {asset.name} ({asset.ISIN})"
         )
 
         # For bonds, fetch and save redemption history to NotionalHistory
@@ -1714,8 +1647,7 @@ async def create_security_from_tinkoff(
                 )
                 if entries_count > 0:
                     logger.info(
-                        f"Saved {entries_count} bond redemption events for "
-                        f"{asset.name} "
+                        f"Saved {entries_count} bond redemption events for {asset.name} "
                         f"up to {date_to_save if date_to_save else datetime.now()}"
                     )
             except Exception as e:
@@ -1732,10 +1664,7 @@ async def create_security_from_tinkoff(
                     asset, user, force_refresh=False
                 )
                 if success:
-                    logger.info(
-                        f"Successfully fetched and cached coupon schedule for "
-                        f"{asset.name}"
-                    )
+                    logger.info(f"Successfully fetched and cached coupon schedule for {asset.name}")
                 else:
                     logger.warning(f"Could not fetch coupon schedule for {asset.name}")
             except Exception as e:
@@ -1825,9 +1754,7 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
             try:
                 # id_type=2 is for ticker which is ISIN for bonds
                 # TQCB is the standard board for corporate bonds
-                response = client.instruments.bond_by(
-                    id_type=2, id=isin, class_code="TQCB"
-                )
+                response = client.instruments.bond_by(id_type=2, id=isin, class_code="TQCB")
                 bond_instrument = response.instrument
 
                 # Update BondMetadata with T-Bank data
@@ -1855,8 +1782,7 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
                             bond_meta.is_amortizing = bond_instrument.amortization_flag
                             updated = True
                             logger.info(
-                                f"Updated is_amortizing="
-                                f"{bond_instrument.amortization_flag} "
+                                f"Updated is_amortizing={bond_instrument.amortization_flag} "
                                 f"for {asset.name} from T-Bank API"
                             )
 
@@ -1877,10 +1803,7 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
 
                         if updated:
                             bond_meta.save()
-                            logger.info(
-                                f"Enhanced BondMetadata for {asset.name} "
-                                "from T-Bank API"
-                            )
+                            logger.info(f"Enhanced BondMetadata for {asset.name} from T-Bank API")
 
                     except Exception as e:
                         logger.error(
@@ -1902,9 +1825,7 @@ async def _enhance_bond_metadata_from_tbank(asset, isin, user):
                         f"keeping MICEX metadata for {asset.name}"
                     )
                 else:
-                    logger.warning(
-                        f"Error fetching bond from T-Bank for {asset.name}: {e}"
-                    )
+                    logger.warning(f"Error fetching bond from T-Bank for {asset.name}: {e}")
                 return None
 
     except Exception as e:
@@ -1943,9 +1864,7 @@ async def fetch_security_from_micex_targeted(security_identifier, instrument_typ
 
                 # Parse description data (contains main security info)
                 if "description" not in data or not data["description"]["data"]:
-                    logger.warning(
-                        f"No description data for security: {security_identifier}"
-                    )
+                    logger.warning(f"No description data for security: {security_identifier}")
                     return None
 
                 # Convert to dict for easier access
@@ -1962,8 +1881,7 @@ async def fetch_security_from_micex_targeted(security_identifier, instrument_typ
                 secid = security_info.get("SECID", security_identifier)
 
                 logger.info(
-                    f"Fetched security from MICEX: "
-                    f"{security_info.get('NAME', security_identifier)}"
+                    f"Fetched security from MICEX: {security_info.get('NAME', security_identifier)}"
                 )
                 return {
                     "secid": secid,
@@ -2009,9 +1927,7 @@ async def create_security_from_micex(
             identifier = ticker if ticker else isin
 
         # Fetch security data from MICEX
-        security_data = await fetch_security_from_micex_targeted(
-            identifier, instrument_type
-        )
+        security_data = await fetch_security_from_micex_targeted(identifier, instrument_type)
 
         if not security_data:
             logger.warning(f"Security not found in MICEX: {security_name} ({isin})")
@@ -2081,9 +1997,7 @@ async def create_security_from_micex(
                 # Parse numeric fields
                 if data.get("INITIALFACEVALUE"):
                     try:
-                        bond_data["initial_notional"] = Decimal(
-                            str(data["INITIALFACEVALUE"])
-                        )
+                        bond_data["initial_notional"] = Decimal(str(data["INITIALFACEVALUE"]))
                     except (ValueError, TypeError, InvalidOperation):
                         pass
 
@@ -2103,12 +2017,9 @@ async def create_security_from_micex(
                 if data.get("FACEUNIT"):
                     # MICEX uses 'SUR' for RUB in bond face values
                     nominal_curr = data["FACEUNIT"]
-                    bond_data["nominal_currency"] = (
-                        "RUB" if nominal_curr == "SUR" else nominal_curr
-                    )
+                    bond_data["nominal_currency"] = "RUB" if nominal_curr == "SUR" else nominal_curr
 
-                # Determine if bond is amortizing
-                # (check if current face value < initial)
+                # Determine if bond is amortizing (check if current face value < initial)
                 if data.get("FACEVALUE") and data.get("INITIALFACEVALUE"):
                     try:
                         current_face = Decimal(str(data["FACEVALUE"]))
@@ -2187,9 +2098,7 @@ async def create_security_from_micex(
                         pass
 
                 if data.get("OPTIONTYPE"):
-                    option_data["option_type"] = (
-                        "CALL" if data["OPTIONTYPE"] == "C" else "PUT"
-                    )
+                    option_data["option_type"] = "CALL" if data["OPTIONTYPE"] == "C" else "PUT"
 
                 if data.get("ASSETCODE"):
                     option_data["underlying_asset"] = data["ASSETCODE"]
@@ -2206,8 +2115,7 @@ async def create_security_from_micex(
             f"with metadata and user relationships"
         )
 
-        # For bonds, also fetch from T-Bank API to get accurate
-        # amortization and coupon type
+        # For bonds, also fetch from T-Bank API to get accurate amortization and coupon type
         if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
             instrument_uid = await _enhance_bond_metadata_from_tbank(asset, isin, user)
 
@@ -2223,14 +2131,12 @@ async def create_security_from_micex(
                     )
                     if entries_count > 0:
                         logger.info(
-                            f"Saved {entries_count} bond redemption events for "
-                            f"{asset.name} "
+                            f"Saved {entries_count} bond redemption events for {asset.name} "
                             f"up to {date_to_save if date_to_save else datetime.now()}"
                         )
                 except Exception as e:
                     logger.warning(
-                        f"Could not save bond redemption history for {asset.name}: "
-                        f"{e}. "
+                        f"Could not save bond redemption history for {asset.name}: {e}. "
                         f"This is not critical, continuing..."
                     )
 
@@ -2243,13 +2149,10 @@ async def create_security_from_micex(
                     )
                     if success:
                         logger.info(
-                            f"Successfully fetched and cached coupon schedule for "
-                            f"{asset.name}"
+                            f"Successfully fetched and cached coupon schedule for {asset.name}"
                         )
                     else:
-                        logger.warning(
-                            f"Could not fetch coupon schedule for {asset.name}"
-                        )
+                        logger.warning(f"Could not fetch coupon schedule for {asset.name}")
                 except Exception as e:
                     logger.warning(
                         f"Error fetching coupon schedule for {asset.name}: {e}. "
@@ -2275,8 +2178,7 @@ async def match_tinkoff_broker_account(
 
     Returns:
         Tuple of:
-        - matched_pairs: Dict with matched accounts
-            {"tinkoff_account_id": {"tinkoff_account": tinkoff_account, "db_account": db_account}} # noqa: E501
+        - matched_pairs: Dict with matched accounts {"tinkoff_account_id": matched_db_account}
         - unmatched_tinkoff: List of unmatched Tinkoff accounts
         - unmatched_db: List of unmatched database accounts
     """
@@ -2293,7 +2195,7 @@ async def match_tinkoff_broker_account(
 
         try:
             # Get accounts from Tinkoff API using proper context manager pattern
-            from tinkoff.invest import Client
+            from t_tech.invest import Client
 
             token = await get_user_token(user)
 
@@ -2340,9 +2242,7 @@ async def match_tinkoff_broker_account(
                             "source": "database",
                         }
                         # Remove matched DB account from unmatched list
-                        unmatched_db.remove(
-                            db_acc
-                        )  # Remove matched DB account directly
+                        unmatched_db.remove(db_acc)  # Remove matched DB account directly
                         break  # Stop searching after finding the first match
 
                 if matched_db_account:

@@ -1,4 +1,4 @@
-"""Fetch and cache coupon schedules for all bonds in the database."""
+"""Django management command to fetch and cache coupon schedules for all bonds in the database."""
 
 import asyncio
 import logging
@@ -14,12 +14,22 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    """Command to fetch and cache coupon schedules for all bonds in the database."""
+    """
+    Django management command to fetch and cache bond coupon schedules.
+
+    Fetches coupon payment schedules from T-Bank API for all bonds
+    in the database and caches them in BondCouponSchedule models.
+    """
 
     help = "Fetch and cache coupon schedules for all bonds in the database"
 
     def add_arguments(self, parser):
-        """Add arguments to the command."""
+        """
+        Add command line arguments to the parser.
+
+        Args:
+            parser: ArgumentParser to add arguments to.
+        """
         parser.add_argument(
             "--force-refresh",
             action="store_true",
@@ -33,12 +43,17 @@ class Command(BaseCommand):
         parser.add_argument(
             "--bond-id",
             type=int,
-            help="Specific bond asset ID to update (optional, "
-            "otherwise updates all bonds)",
+            help="Specific bond asset ID to update (optional, otherwise updates all bonds)",
         )
 
     def handle(self, *args, **options):
-        """Handle the command."""
+        """
+        Execute the command.
+
+        Args:
+            *args: Additional positional arguments.
+            **options: Additional keyword arguments from command line.
+        """
         force_refresh = options.get("force_refresh", False)
         user_id = options.get("user_id")
         bond_id = options.get("bond_id")
@@ -56,8 +71,7 @@ class Command(BaseCommand):
             if not user:
                 self.stdout.write(
                     self.style.ERROR(
-                        "No superuser found. Please create a superuser or "
-                        "specify --user-id"
+                        "No superuser found. Please create a superuser or specify --user-id"
                     )
                 )
                 return
@@ -70,8 +84,7 @@ class Command(BaseCommand):
             if not bonds.exists():
                 self.stdout.write(
                     self.style.ERROR(
-                        f"Bond with ID {bond_id} not found or "
-                        "has no T-Bank instrument UID"
+                        f"Bond with ID {bond_id} not found or has no T-Bank instrument UID"
                     )
                 )
                 return
@@ -83,9 +96,7 @@ class Command(BaseCommand):
 
         if force_refresh:
             self.stdout.write(
-                self.style.WARNING(
-                    "Force refresh enabled - will update existing schedules"
-                )
+                self.style.WARNING("Force refresh enabled - will update existing schedules")
             )
 
         # Fetch schedules

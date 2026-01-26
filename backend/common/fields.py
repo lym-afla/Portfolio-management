@@ -60,9 +60,7 @@ class TimezoneAwareDateTimeField(models.DateTimeField):
                     parsed = datetime.strptime(value, "%Y-%m-%d").date()
                     # Convert date to datetime at start of day
                     tz = timezone.get_current_timezone()
-                    parsed = timezone.make_aware(
-                        datetime.combine(parsed, datetime.min.time()), tz
-                    )
+                    parsed = timezone.make_aware(datetime.combine(parsed, datetime.min.time()), tz)
 
                 if timezone.is_naive(parsed):
                     tz = timezone.get_current_timezone()
@@ -135,9 +133,7 @@ class TimezoneAwareDateField(models.DateField):
             try:
                 parsed = datetime.strptime(value, "%Y-%m-%d").date()
                 tz = timezone.get_current_timezone()
-                return timezone.make_aware(
-                    datetime.combine(parsed, datetime.min.time()), tz
-                )
+                return timezone.make_aware(datetime.combine(parsed, datetime.min.time()), tz)
             except (ValueError, TypeError):
                 raise ValueError(f"Invalid date string format: {value}")
         else:

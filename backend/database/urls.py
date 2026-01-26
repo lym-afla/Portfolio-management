@@ -21,9 +21,7 @@ router.register(
 urlpatterns = [
     path("api/get-asset-types/", views.api_get_asset_types, name="api_get_asset_types"),
     path("api/get-securities/", views.api_get_securities, name="api_get_securities"),
-    path(
-        "api/get-prices-table/", views.api_get_prices_table, name="api_get_prices_table"
-    ),
+    path("api/get-prices-table/", views.api_get_prices_table, name="api_get_prices_table"),
     path(
         "api/get-securities-for-database/",
         views.api_get_securities_table,

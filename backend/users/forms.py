@@ -135,9 +135,7 @@ class UserSettingsForm(forms.ModelForm):
         """Clean the digits field."""
         digits = self.cleaned_data.get("digits")
         if digits > 6:
-            raise forms.ValidationError(
-                "The value for digits must be less than or equal to 6."
-            )
+            raise forms.ValidationError("The value for digits must be less than or equal to 6.")
         return digits
 
     def clean_custom_accounts(self):

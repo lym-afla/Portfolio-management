@@ -23,9 +23,7 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         model = Transactions
 
     currency = fuzzy.FuzzyChoice(["USD", "EUR", "GBP", "CHF"])
-    type = fuzzy.FuzzyChoice(
-        ["Buy", "Sell", "Dividend", "Interest", "Corporate Action"]
-    )
+    type = fuzzy.FuzzyChoice(["Buy", "Sell", "Dividend", "Interest", "Corporate Action"])
     date = fuzzy.FuzzyDate(date(2020, 1, 1), date.today())
     comment = factory.Faker("text", max_nb_chars=200)
 
@@ -42,9 +40,7 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         security = kwargs.pop("security", None)
 
         if not all([investor, account, security]):
-            raise ValueError(
-                "TransactionFactory requires investor, account, and security"
-            )
+            raise ValueError("TransactionFactory requires investor, account, and security")
 
         return model_class.objects.create(
             investor=investor, account=account, security=security, **kwargs
@@ -81,9 +77,7 @@ class DividendTransactionFactory(TransactionFactory):
 class LargeBuyTransactionFactory(BuyTransactionFactory):
     """Factory for creating large buy transactions."""
 
-    quantity = fuzzy.FuzzyDecimal(
-        1000, 100000, 6
-    )  # Large quantity for institutional trades
+    quantity = fuzzy.FuzzyDecimal(1000, 100000, 6)  # Large quantity for institutional trades
     price = fuzzy.FuzzyDecimal(1, 100, 6)  # Lower price for large quantities
 
 
@@ -130,9 +124,7 @@ def create_buy_sell_sequence(
     return transactions
 
 
-def create_dividend_schedule(
-    investor, account, security, num_dividends=4
-) -> list[Transactions]:
+def create_dividend_schedule(investor, account, security, num_dividends=4) -> list[Transactions]:
     """Create a schedule of dividend payments."""
     transactions = []
     base_date = date(2023, 3, 31)  # Typical dividend start date

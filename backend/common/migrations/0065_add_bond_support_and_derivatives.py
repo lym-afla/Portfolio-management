@@ -5,8 +5,8 @@
 # - Foundation for options and futures
 # - New transaction types for bond redemptions
 
-from django.db import migrations, models
 import django.db.models.deletion
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):

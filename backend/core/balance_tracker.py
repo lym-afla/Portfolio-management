@@ -1,8 +1,7 @@
 """
 BalanceTracker: Helper class for tracking multi-currency balances in transaction lists.
 
-This class provides a unified way to track
-and format balances across different currencies
+This class provides a unified way to track and format balances across different currencies
 as transactions are processed.
 """
 
@@ -14,7 +13,7 @@ from core.formatting_utils import currency_format
 
 class BalanceTracker:
     """
-    Tracks running balances in multiple currencies.
+    Tracks running balances in multiple currencies for transaction processing.
 
     Usage:
         tracker = BalanceTracker(number_of_digits=2)

@@ -139,9 +139,7 @@ class TestRealizedGainLoss:
         # Realized gain: (60 - 51.666...) * 30 = 250
         buy_in_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
         expected_gain = (Decimal("60.00") - buy_in_price) * Decimal("30")
-        assert abs(result["current_position"]["total"] - expected_gain) < Decimal(
-            "0.01"
-        )
+        assert abs(result["current_position"]["total"] - expected_gain) < Decimal("0.01")
 
     def test_realized_gain_multiple_partial_sales(self, user, account, asset):
         """Test realized gain calculation with multiple partial sales."""
@@ -351,9 +349,7 @@ class TestUnrealizedGainLoss:
         )
 
         # Create current price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
@@ -392,9 +388,7 @@ class TestUnrealizedGainLoss:
         )
 
         # Create current price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
@@ -492,9 +486,7 @@ class TestMultiCurrencyGainLoss:
         )
 
         # Create price data
-        Prices.objects.create(
-            date=date(2024, 6, 15), security=asset_eur, price=Decimal("45.00")
-        )
+        Prices.objects.create(date=date(2024, 6, 15), security=asset_eur, price=Decimal("45.00"))
 
         # Calculate realized gain in EUR (local currency)
         result_eur = asset_eur.realized_gain_loss(
@@ -529,9 +521,7 @@ class TestMultiCurrencyGainLoss:
         )
 
         # Create current EUR price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00"))
 
         # Calculate unrealized gain in EUR
         result_eur = asset_eur.unrealized_gain_loss(
@@ -544,9 +534,7 @@ class TestMultiCurrencyGainLoss:
         result_usd = asset_eur.unrealized_gain_loss(
             date(2023, 6, 15), currency="USD", investor=multi_currency_user
         )
-        assert (
-            result_usd["total"] > result_eur["total"]
-        )  # USD conversion should increase value
+        assert result_usd["total"] > result_eur["total"]  # USD conversion should increase value
 
     def test_fx_effect_on_gain_loss(
         self, multi_currency_user, account, asset_eur, fx_rates_multi_currency
@@ -566,9 +554,7 @@ class TestMultiCurrencyGainLoss:
         )
 
         # Create current EUR price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00"))
 
         # Calculate gains in both currencies
         gain_eur = asset_eur.unrealized_gain_loss(
@@ -608,9 +594,7 @@ class TestGainLossEdgeCases:
         )
 
         # Create current price (higher than short price - loss for short)
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
@@ -634,9 +618,7 @@ class TestGainLossEdgeCases:
         )
 
         # Create current price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("1100.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("1100.00"))
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
@@ -660,9 +642,7 @@ class TestGainLossEdgeCases:
         )
 
         # Create current price
-        Prices.objects.create(
-            date=date(2024, 6, 15), security=asset, price=Decimal("125.678901")
-        )
+        Prices.objects.create(date=date(2024, 6, 15), security=asset, price=Decimal("125.678901"))
 
         result = asset.unrealized_gain_loss(date(2024, 6, 15), investor=user)
 
@@ -689,9 +669,7 @@ class TestGainLossEdgeCases:
         )
 
         # Create current price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("60.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
         result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
 
@@ -728,9 +706,7 @@ class TestGainLossEdgeCases:
         )
 
         # Create current price
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("55.00"))
 
         # Calculate for first account only
         result_account1 = asset.unrealized_gain_loss(

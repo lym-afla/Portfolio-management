@@ -1,4 +1,8 @@
-"""Token authentication middleware."""
+"""JWT token authentication middleware for Django Channels.
+
+This module provides authentication middleware for WebSocket and HTTP
+connections using JWT tokens from the request headers or query parameters.
+"""
 
 import logging
 
@@ -16,7 +20,14 @@ User = get_user_model()
 
 @database_sync_to_async
 def get_user(token_key):
-    """Get user from token."""
+    """Get user from JWT token.
+
+    Args:
+        token_key: JWT token string.
+
+    Returns:
+        User object if token is valid, AnonymousUser otherwise.
+    """
     try:
         access_token = AccessToken(token_key)
         user = User.objects.get(id=access_token["user_id"])
@@ -26,19 +37,27 @@ def get_user(token_key):
 
 
 class TokenAuthMiddleware(BaseMiddleware):
-    """Token authentication middleware."""
+    """JWT token authentication middleware for Channels.
+
+    Extracts JWT token from query parameters or Authorization header
+    and authenticates the user for the connection.
+    """
 
     async def __call__(self, scope, receive, send):
-        """Token authentication middleware."""
+        """Process the incoming connection request.
+
+        Args:
+            scope: ASGI scope dictionary.
+            receive: ASGI receive callable.
+            send: ASGI send callable.
+        """
         try:
             token = None
             logger.debug(f"Processing {scope['type']} request")
 
             # First check query parameters for token (works for both HTTP and WebSocket)
             query_string = scope.get("query_string", b"").decode()
-            query_params = dict(
-                param.split("=") for param in query_string.split("&") if param
-            )
+            query_params = dict(param.split("=") for param in query_string.split("&") if param)
             token = query_params.get("token")
             logger.debug(f"Token from query params: {token}")
 
@@ -58,8 +77,7 @@ class TokenAuthMiddleware(BaseMiddleware):
                 logger.debug("Attempting to get user from token")
                 scope["user"] = await get_user(token)
                 logger.debug(
-                    f"User authentication result: "
-                    f"{not isinstance(scope['user'], AnonymousUser)}"
+                    f"User authentication result: {not isinstance(scope['user'], AnonymousUser)}"
                 )
             else:
                 logger.debug("No token found, setting AnonymousUser")

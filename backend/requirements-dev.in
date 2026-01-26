@@ -1,70 +1,16 @@
-# Development dependencies for Portfolio Management System
-
-# Testing Framework
-pytest>=7.4.0
-pytest-django>=4.5.2
-pytest-cov>=4.1.0
-pytest-xdist>=3.3.1
-pytest-mock>=3.11.1
-pytest-benchmark>=4.0.0
-pytest-randomly>=3.15.0
+pytest
 pytest-asyncio
-factory-boy>=3.3.0
-
-# Code Quality
-black>=23.9.1
-isort>=5.12.0
-flake8>=6.1.0
-flake8-docstrings>=1.7.0
-flake8-bugbear>=23.9.16
-ruff>=0.14.0
-mypy>=1.6.1
-pre-commit>=3.4.0
-
-# Security
-bandit>=1.7.5
-safety>=2.3.5
-
-# Coverage
-coverage>=7.3.2
-codecov>=2.1.13
-
-# Documentation
-sphinx>=7.2.6
-sphinx-rtd-theme>=1.3.0
-
-# Performance Profiling
-memory-profiler>=0.61.0
-line-profiler>=4.1.1
-py-spy>=0.3.14
-
-# Load Testing
-locust>=2.17.0
-
-# Monitoring
-prometheus-client>=0.18.0
-
-# Development Tools
-django-debug-toolbar>=4.2.0
-django-extensions>=3.2.3
-ipython>=8.16.1
-jupyter>=1.0.0
-ipykernel
-
-# Database Management
-pgcli>=4.0.1
-
-# API Documentation
-drf-spectacular>=0.26.5
-drf-spectacular-sidecar>=2023.10.1
-
-# Environment Management
-python-dotenv>=1.0.0
-
-# Utilities
-rich>=13.6.0
-typer>=0.9.0
-click>=8.1.7
-
-# Dependency Management
+pytest-django
+factory-boy
 pip-tools
+ipython
+ipykernel
+Sphinx
+black
+mypy
+pre-commit
+isort
+flake8
+flake8-django
+flake8-docstrings
+flake8-bugbear

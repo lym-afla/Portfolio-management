@@ -1,4 +1,9 @@
-"""Database consumers."""
+"""
+Django Channels consumers for real-time database updates.
+
+This module provides AsyncHttpConsumer implementations for handling
+Server-Sent Events (SSE) endpoints for various database operations.
+"""
 
 import json
 import logging
@@ -52,16 +57,29 @@ def get_cors_origin(scope):
 
 
 class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
-    """Update account performance consumer."""
+    """
+    Async consumer for updating account performance via SSE.
+
+    Handles Server-Sent Events for real-time updates during
+    account performance calculations.
+    """
 
     async def send_sse_message(self, data):
-        """Send SSE message."""
-        """Helper function to send SSE messages."""
+        """
+        Send Server-Sent Event message to the client.
+
+        Args:
+            data: Dictionary containing message data to send.
+        """
         message = f"data: {json.dumps(data)}\n\n"
         await self.send_body(message.encode("utf-8"), more_body=True)
 
     async def handle(self, body):
-        """Handle update account performance."""
+        """Handle incoming HTTP request for account performance updates.
+
+        Args:
+            body: Request body content.
+        """
         headers = [
             (
                 b"Access-Control-Allow-Origin",
@@ -98,17 +116,15 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
 
         # Get session_id from query parameters
         query_string = self.scope.get("query_string", b"").decode("utf-8")
-        query_params = dict(
-            param.split("=") for param in query_string.split("&") if param
-        )
+        query_params = dict(param.split("=") for param in query_string.split("&") if param)
         session_id = query_params.get("session_id")
 
         if not session_id:
             await self.send_response(
                 400,
-                json.dumps(
-                    {"status": "error", "message": "Session ID is required"}
-                ).encode("utf-8"),
+                json.dumps({"status": "error", "message": "Session ID is required"}).encode(
+                    "utf-8"
+                ),
                 headers=headers,
             )
             return
@@ -194,9 +210,7 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
                 return
 
             currencies = (
-                [currency]
-                if currency != "All"
-                else [choice[0] for choice in CURRENCY_CHOICES]
+                [currency] if currency != "All" else [choice[0] for choice in CURRENCY_CHOICES]
             )
             total_operations = (
                 len(currencies)
@@ -210,9 +224,7 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
             )
 
             # Send initial progress event
-            await self.send_sse_message(
-                {"status": "initializing", "total": total_operations}
-            )
+            await self.send_sse_message({"status": "initializing", "total": total_operations})
 
             current_operation = 0
 
@@ -239,8 +251,7 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
                                 "is_restricted": str(is_restricted),
                             }
                             logger.info(
-                                f"Sending SSE message: {event} "
-                                f"at: {progress_data['timestamp']}"
+                                f"Sending SSE message: {event} at: {progress_data['timestamp']}"
                             )
                             await self.send_sse_message(event)
                         elif progress_data["status"] == "error":
@@ -263,10 +274,18 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
 
 
 class PriceImportConsumer(AsyncHttpConsumer):
-    """Price import consumer."""
+    """Async consumer for security price imports via SSE.
+
+    Handles Server-Sent Events for real-time updates during
+    security price import operations from various data sources.
+    """
 
     async def handle(self, body):
-        """Handle price import."""
+        """Handle incoming HTTP request for price imports.
+
+        Args:
+            body: Request body content.
+        """
         headers = [
             (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
@@ -326,7 +345,15 @@ class PriceImportConsumer(AsyncHttpConsumer):
             )
 
     async def import_prices(self, data, user):
-        """Import prices."""
+        """Import prices for securities asynchronously.
+
+        Args:
+            data: Dictionary containing import parameters.
+            user: User instance.
+
+        Yields:
+            str: SSE formatted progress messages.
+        """
         try:
             security_ids = data.get("securities", [])
             account_ids = data.get("accounts")
@@ -376,7 +403,18 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
                 @database_sync_to_async
                 def get_securities_from_accounts():
-                    """Get securities from accounts."""
+                    # accounts = Accounts.objects.filter(
+                    #     id__in=account_ids, broker__investor=user
+                    # ).prefetch_related(
+                    #     Prefetch(
+                    #         "securities", queryset=Assets.objects.all(), to_attr="all_securities"
+                    #     )
+                    # )
+                    # securities = []
+                    # for account in accounts:
+                    #     securities.extend(account.all_securities)
+                    # # return list(set(securities))  # Remove duplicates
+
                     base_query = (
                         Assets.objects.filter(
                             investors__id=user.id,
@@ -398,11 +436,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     securities = list(base_query)
 
                     # Return assets with non-zero positions
-                    return [
-                        security
-                        for security in securities
-                        if security.total_quantity != 0
-                    ]
+                    return [security for security in securities if security.total_quantity != 0]
 
                 securities = await get_securities_from_accounts()
                 # Filter securities with positive positions
@@ -440,28 +474,16 @@ class PriceImportConsumer(AsyncHttpConsumer):
                         )
 
                     if security.data_source == "FT" and security.update_link:
-                        price_generator = import_security_prices_from_ft(
-                            security, dates
-                        )
+                        price_generator = import_security_prices_from_ft(security, dates)
                     elif security.data_source == "YAHOO" and security.yahoo_symbol:
-                        price_generator = import_security_prices_from_yahoo(
-                            security, dates
-                        )
+                        price_generator = import_security_prices_from_yahoo(security, dates)
                     elif security.data_source == "MICEX" and security.secid:
-                        price_generator = import_security_prices_from_micex(
-                            security, dates
-                        )
-                    elif (
-                        security.data_source == "TBANK"
-                        and security.tbank_instrument_uid
-                    ):
-                        price_generator = import_security_prices_from_tbank(
-                            security, dates, user
-                        )
+                        price_generator = import_security_prices_from_micex(security, dates)
+                    elif security.data_source == "TBANK" and security.tbank_instrument_uid:
+                        price_generator = import_security_prices_from_tbank(security, dates, user)
                     else:
                         error_message = (
-                            f"No valid data source or update information "
-                            f"for {security.name}"
+                            f"No valid data source or update information for " f"{security.name}"
                         )
                         results.append(
                             {
@@ -523,9 +545,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     )
                     current_operation += len(dates)
                 except Exception as e:
-                    error_message = (
-                        f"Error updating prices for security {security.name}: {str(e)}"
-                    )
+                    error_message = f"Error updating prices for security {security.name}: {str(e)}"
                     results.append(error_message)
                     yield self.format_progress(
                         "error",
@@ -562,7 +582,21 @@ class PriceImportConsumer(AsyncHttpConsumer):
         message=None,
         **kwargs,
     ):
-        """Format progress."""
+        """Format progress data for SSE messages.
+
+        Args:
+            status: Status string.
+            current: Current progress count.
+            total: Total count.
+            security_name: Optional security name.
+            date: Optional date string.
+            result: Optional result string.
+            message: Optional message string.
+            **kwargs: Additional fields to include.
+
+        Returns:
+            str: JSON formatted progress data.
+        """
         progress_data = {
             "status": status,
             "current": current,
@@ -583,10 +617,18 @@ class PriceImportConsumer(AsyncHttpConsumer):
 
 
 class FXImportConsumer(AsyncHttpConsumer):
-    """FX import consumer."""
+    """Async consumer for FX rate imports via SSE.
+
+    Handles Server-Sent Events for real-time updates during
+    foreign exchange rate import operations.
+    """
 
     async def handle(self, body):
-        """Handle FX import."""
+        """Handle incoming HTTP request for FX rate imports.
+
+        Args:
+            body: Request body content.
+        """
         headers = [
             (b"Access-Control-Allow-Origin", get_cors_origin(self.scope)),
             (b"Access-Control-Allow-Methods", b"POST, OPTIONS"),
@@ -635,9 +677,7 @@ class FXImportConsumer(AsyncHttpConsumer):
                     more_body=True,
                 )
                 transaction_dates = await self.get_transaction_dates(user)
-                dates = await self.filter_dates_to_update(
-                    transaction_dates, import_option, user
-                )
+                dates = await self.filter_dates_to_update(transaction_dates, import_option, user)
 
             total_dates = len(dates)
             await self.send_body(
@@ -666,11 +706,25 @@ class FXImportConsumer(AsyncHttpConsumer):
             )
 
     def format_sse_message(self, data):
-        """Format SSE message."""
+        """Format data as SSE message.
+
+        Args:
+            data: Dictionary to format as SSE message.
+
+        Returns:
+            bytes: Encoded SSE message.
+        """
         return f"data: {json.dumps(data)}\n\n".encode("utf-8")
 
     async def generate_dates(self, data):
-        """Generate dates."""
+        """Generate list of dates for FX import.
+
+        Args:
+            data: Dictionary containing date parameters.
+
+        Returns:
+            list: List of date objects.
+        """
         date_type = data.get("date_type")
         if date_type == "single":
             single_date = parse_date(data.get("single_date"))
@@ -686,7 +740,16 @@ class FXImportConsumer(AsyncHttpConsumer):
         return []
 
     async def generate_events(self, user, import_option, dates_to_update):
-        """Generate events."""
+        """Generate SSE events for FX import process.
+
+        Args:
+            user: User instance.
+            import_option: Import option string.
+            dates_to_update: List of dates to process.
+
+        Yields:
+            str: SSE formatted progress messages.
+        """
         import_id = f"fx_import_{user.id}"
         await sync_to_async(cache.set)(import_id, "running", timeout=3600)
 
@@ -723,9 +786,7 @@ class FXImportConsumer(AsyncHttpConsumer):
 
             if await sync_to_async(cache.get)(import_id) == "running":
                 stats = {
-                    "totalImported": missing_filled
-                    + incomplete_updated
-                    + existing_linked,
+                    "totalImported": missing_filled + incomplete_updated + existing_linked,
                     "missingFilled": missing_filled,
                     "incompleteUpdated": incomplete_updated,
                     "existingLinked": existing_linked,
@@ -736,16 +797,30 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def get_transaction_dates(self, user):
-        """Get transaction dates."""
+        """Get list of unique transaction dates for user.
+
+        Args:
+            user: User instance.
+
+        Returns:
+            list: List of date objects.
+        """
         return list(
-            Transactions.objects.filter(investor=user)
-            .values_list("date", flat=True)
-            .distinct()
+            Transactions.objects.filter(investor=user).values_list("date", flat=True).distinct()
         )
 
     @database_sync_to_async
     def filter_dates_to_update(self, transaction_dates, import_option, user):
-        """Filter dates to update."""
+        """Filter dates that need FX rate updates.
+
+        Args:
+            transaction_dates: List of transaction dates.
+            import_option: Import option string.
+            user: User instance.
+
+        Returns:
+            list: Filtered list of dates to update.
+        """
         dates_to_update = []
         for d in transaction_dates:
             fx_instance = FX.objects.filter(date=d).first()
@@ -766,7 +841,15 @@ class FXImportConsumer(AsyncHttpConsumer):
 
     @database_sync_to_async
     def process_fx_rate(self, date, user):
-        """Process FX rate."""
+        """Process FX rate for a specific date.
+
+        Args:
+            date: Date object to process.
+            user: User instance.
+
+        Returns:
+            tuple: (status_message, count_field) tuple.
+        """
         fx_instance = FX.objects.filter(date=date).first()
         if not fx_instance:
             FX.update_fx_rate(date, user)

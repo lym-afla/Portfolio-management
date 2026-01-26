@@ -1,4 +1,8 @@
-"""Database transfer script."""
+"""Database transfer utility for backup and restore operations.
+
+This module provides functionality to transfer the SQLite database
+between the project directory and a backup location in OneDrive.
+"""
 
 import datetime
 import os
@@ -7,21 +11,19 @@ import sys
 
 
 def transfer_db(direction):
-    """
-    Transfer database.
+    """Transfer database file between project and backup location.
 
     Args:
-        direction: The direction of the transfer.
-    Returns:
-        None.
+        direction (str): Either 'export' to copy from project to backup,
+                        or 'import' to copy from backup to project.
+
+    Creates a backup of the existing database before importing.
     """
     project_db = os.path.join(os.getcwd(), "db.sqlite3")
-    local_folder = (
-        r"C:\Users\yl\OneDrive\Personal\Development\Portfolio management database"
-    )
+    local_folder = r"C:\Users\yl\OneDrive\Personal\Web development\Portfolio management database"
     if not os.path.exists(local_folder):
         local_folder = (
-            r"C:\Users\fyl\OneDrive\Personal\Development\Portfolio management database"
+            r"C:\Users\fyl\OneDrive\Personal\Web development\Portfolio " r"management database"
         )
     local_db = os.path.join(local_folder, "db.sqlite3")
 
@@ -29,9 +31,7 @@ def transfer_db(direction):
         source, destination = project_db, local_db
     elif direction == "import":
         # Backup the existing database before importing
-        backup_db = os.path.join(
-            os.path.dirname(project_db), "..", "db.sqlite3 (backup)"
-        )
+        backup_db = os.path.join(os.path.dirname(project_db), "..", "db.sqlite3 (backup)")
         if os.path.exists(project_db):
             shutil.copy2(project_db, backup_db)
             print(

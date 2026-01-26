@@ -134,9 +134,7 @@ class TestFXRateCalculationIntegration:
             date=test_date,
             USDEUR=high_precision_rate,
         )
-        fx_obj.investors.add(
-            fx_rates[0].investors.first()
-        )  # Add investor from existing rates
+        fx_obj.investors.add(fx_rates[0].investors.first())  # Add investor from existing rates
 
         # Verify rate is stored with proper precision
         retrieved_fx = FX.objects.get(date=test_date)

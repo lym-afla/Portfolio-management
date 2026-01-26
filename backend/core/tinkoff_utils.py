@@ -1,14 +1,18 @@
-"""Tinkoff utils."""
+"""Utility functions for integrating with Tinkoff Invest API.
+
+This module provides functions to map Tinkoff operations to transactions,
+manage API tokens, and handle Tinkoff-specific data formats.
+"""
 
 import logging
 from datetime import datetime
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import CandleInterval, Client, InstrumentType, OperationType
-from tinkoff.invest.exceptions import RequestError
-from tinkoff.invest.schemas import EventType, GetBondEventsRequest
-from tinkoff.invest.utils import quotation_to_decimal
+from t_tech.invest import CandleInterval, Client, InstrumentType, OperationType
+from t_tech.invest.exceptions import RequestError
+from t_tech.invest.schemas import EventType, GetBondEventsRequest
+from t_tech.invest.utils import quotation_to_decimal
 
 from common.models import Assets, BondCouponSchedule, Transactions
 from constants import (
@@ -53,7 +57,7 @@ async def get_bond_initial_notional(instrument_uid, user):
         user: CustomUser instance (to get API token)
 
     Returns:
-        Decimal: The initial notional value per bond, or None if not found
+        Decimal: The initial notional value per bond, or None if not found.
     """
     try:
         token = await get_user_token(user)
@@ -64,23 +68,15 @@ async def get_bond_initial_notional(instrument_uid, user):
         with Client(token) as client:
             response = client.instruments.bond_by(id_type=3, id=instrument_uid)
             if response.instrument and response.instrument.initial_nominal:
-                initial_notional = quotation_to_decimal(
-                    response.instrument.initial_nominal
-                )
-                logger.debug(
-                    f"Fetched initial notional for {instrument_uid}: {initial_notional}"
-                )
+                initial_notional = quotation_to_decimal(response.instrument.initial_nominal)
+                logger.debug(f"Fetched initial notional for {instrument_uid}: {initial_notional}")
                 return initial_notional
             else:
-                logger.warning(
-                    f"No initial_nominal found in bond response for {instrument_uid}"
-                )
+                logger.warning(f"No initial_nominal found in bond response for {instrument_uid}")
                 return None
 
     except RequestError as e:
-        logger.error(
-            f"T-Bank API error fetching bond info for {instrument_uid}: {str(e)}"
-        )
+        logger.error(f"T-Bank API error fetching bond info for {instrument_uid}: {str(e)}")
         return None
     except Exception as e:
         logger.error(f"Error fetching initial notional for {instrument_uid}: {str(e)}")
@@ -89,18 +85,16 @@ async def get_bond_initial_notional(instrument_uid, user):
 
 async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional):
     """
-    Calculate the remaining notional value of a bond at a given date.
+    Calculate the remaining notional value of a bond at a given date based on redemption history.
 
-    Uses T-Bank's bond events API to fetch all MTY (maturity/redemption) events.
-    Calculates the remaining notional by subtracting all redemptions
-    that occurred before or on the given date.
+    Uses T-Bank's bond events API to fetch all MTY (maturity/redemption) events and calculates
+    the remaining notional by subtracting all redemptions that occurred before or on the given date.
 
     Bond Event Structure:
     - event.value (Quotation): Percentage of par redeemed (e.g., 12.5% or 0.125)
     - event.pay_one_bond (MoneyValue): Actual cash paid per bond
     - event.event_date: Date of redemption
-    - event.operation_type: 'OA' (partial amortization),
-        'CA' (call option), 'CM' (full maturity).
+    - event.operation_type: 'OA' (partial amortization), 'CA' (call option), 'CM' (full maturity)
 
     Example:
         If a bond with 1000 initial notional had two redemptions:
@@ -126,18 +120,15 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
 
         # Convert date to datetime if needed
         if isinstance(date, datetime):
-            # Strip timezone if present to ensure naive datetime
-            if hasattr(date, "tzinfo") and date.tzinfo is not None:
-                target_date = date.replace(tzinfo=None)
-            else:
-                target_date = date
+            target_date = date
         else:
-            # Use naive datetime for consistency
-            target_date = datetime.combine(date, datetime.min.time())
+            # Use timezone-aware datetime to avoid warnings
+            from django.utils import timezone
+
+            target_date = timezone.make_aware(datetime.combine(date, datetime.min.time()))
 
         logger.debug(
-            f"Fetching bond events for instrument {instrument_uid} "
-            f"up to {target_date.date()}"
+            f"Fetching bond events for instrument {instrument_uid} up to {target_date.date()}"
         )
 
         with Client(token) as client:
@@ -153,8 +144,7 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
 
             if not response.events:
                 logger.debug(
-                    f"No redemption events found for bond {instrument_uid}, "
-                    f"using initial notional"
+                    f"No redemption events found for bond {instrument_uid}, using initial notional"
                 )
                 return initial_notional
 
@@ -175,9 +165,7 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
             # Calculate remaining notional
             remaining_percentage = Decimal(100) - total_redeemed_percentage
 
-            remaining_notional = initial_notional * (
-                remaining_percentage / Decimal(100)
-            )
+            remaining_notional = initial_notional * (remaining_percentage / Decimal(100))
 
             logger.info(
                 f"Bond {instrument_uid} at {target_date.date()}: "
@@ -188,23 +176,17 @@ async def get_bond_notional_at_date(instrument_uid, date, user, initial_notional
             return remaining_notional
 
     except RequestError as e:
-        logger.error(
-            f"T-Bank API error fetching bond events for {instrument_uid}: {str(e)}"
-        )
+        logger.error(f"T-Bank API error fetching bond events for {instrument_uid}: {str(e)}")
         return initial_notional
     except Exception as e:
-        logger.error(
-            f"Error calculating bond notional for {instrument_uid} at {date}: {str(e)}"
-        )
+        logger.error(f"Error calculating bond notional for {instrument_uid} at {date}: {str(e)}")
         import traceback
 
         logger.error(f"Traceback: {traceback.format_exc()}")
         return initial_notional
 
 
-async def fetch_and_cache_bond_coupon_schedule(
-    asset: Assets, user, force_refresh=False
-):
+async def fetch_and_cache_bond_coupon_schedule(asset: Assets, user, force_refresh=False):
     """
     Fetch bond coupon schedule from T-Bank API and cache it in BondCouponSchedule model.
 
@@ -275,28 +257,23 @@ async def fetch_and_cache_bond_coupon_schedule(
             logger.warning(f"No bond metadata for {asset_name}")
             return False
 
-        # Determine date range
-        # (from issue_date or 1 year ago, to maturity or 5 years ahead)
-        from_date = bond_meta.issue_date or (
-            datetime.now().date() - timedelta(days=365)
-        )
-        to_date = bond_meta.maturity_date or (
-            datetime.now().date() + timedelta(days=365 * 5)
-        )
+        # Determine date range (from issue_date or 1 year ago, to maturity or 5 years ahead)
+        from_date = bond_meta.issue_date or (datetime.now().date() - timedelta(days=365))
+        to_date = bond_meta.maturity_date or (datetime.now().date() + timedelta(days=365 * 5))
 
-        logger.info(
-            f"Fetching coupon schedule for {asset_name} from {from_date} to {to_date}"
-        )
+        logger.info(f"Fetching coupon schedule for {asset_name} from {from_date} to {to_date}")
 
         # Get instrument UID (either from earlier check or from freshly saved value)
         if not has_uid:
             has_uid = await database_sync_to_async(lambda: asset.tbank_instrument_uid)()
 
         with Client(token) as client:
+            from django.utils import timezone
+
             response = client.instruments.get_bond_coupons(
                 instrument_id=has_uid,
-                from_=from_date,
-                to=to_date,
+                from_=timezone.make_aware(datetime.combine(from_date, datetime.min.time())),
+                to=timezone.make_aware(datetime.combine(to_date, datetime.max.time())),
             )
 
             if not response.events:
@@ -308,9 +285,7 @@ async def fetch_and_cache_bond_coupon_schedule(
                 deleted_count = await database_sync_to_async(
                     lambda: BondCouponSchedule.objects.filter(asset=asset).delete()[0]
                 )()
-                logger.debug(
-                    f"Deleted {deleted_count} existing coupon schedule entries"
-                )
+                logger.debug(f"Deleted {deleted_count} existing coupon schedule entries")
 
             # Cache the coupon schedule
             coupons_created = 0
@@ -324,28 +299,20 @@ async def fetch_and_cache_bond_coupon_schedule(
                 # Convert coupon type enum to user-friendly string
                 coupon_type_str = None
                 if hasattr(coupon, "coupon_type"):
-                    # Handle both numeric and string coupon types
-                    if isinstance(coupon.coupon_type, str):
-                        coupon_type_str = coupon.coupon_type
-                    else:
-                        coupon_type_mapping = {
-                            0: "Unspecified",
-                            1: "Constant",
-                            2: "Floating",
-                            3: "Discount",
-                            4: "Mortgage",
-                            5: "Fixed",
-                            6: "Variable",
-                            7: "Other",
-                        }
-                        coupon_type_str = coupon_type_mapping.get(
-                            int(coupon.coupon_type), "Unknown"
-                        )
+                    coupon_type_mapping = {
+                        0: "Unspecified",
+                        1: "Constant",
+                        2: "Floating",
+                        3: "Discount",
+                        4: "Mortgage",
+                        5: "Fixed",
+                        6: "Variable",
+                        7: "Other",
+                    }
+                    coupon_type_str = coupon_type_mapping.get(int(coupon.coupon_type), "Unknown")
 
                 # Create or update coupon schedule entry using database_sync_to_async
-                await database_sync_to_async(
-                    BondCouponSchedule.objects.update_or_create
-                )(
+                await database_sync_to_async(BondCouponSchedule.objects.update_or_create)(
                     asset=asset,
                     coupon_number=coupon.coupon_number,
                     defaults={
@@ -359,30 +326,22 @@ async def fetch_and_cache_bond_coupon_schedule(
                 )
                 coupons_created += 1
 
-            logger.info(
-                f"Successfully cached {coupons_created} coupon periods for {asset_name}"
-            )
+            logger.info(f"Successfully cached {coupons_created} coupon periods for {asset_name}")
             return True
 
     except RequestError as e:
-        logger.error(
-            f"T-Bank API error fetching coupon schedule for {asset_name}: {str(e)}"
-        )
+        logger.error(f"T-Bank API error fetching coupon schedule for {asset_name}: {str(e)}")
         return False
     except Exception as e:
-        logger.error(
-            f"Error fetching coupon schedule for {asset_name}: {str(e)}", exc_info=True
-        )
+        logger.error(f"Error fetching coupon schedule for {asset_name}: {str(e)}", exc_info=True)
         return False
 
 
-async def save_bond_redemption_history(
-    security, instrument_uid, user, date_to_save=None
-):
+async def save_bond_redemption_history(security, instrument_uid, user, date_to_save=None):
     """
     Fetch and save all bond redemption history to NotionalHistory model.
 
-    This function fetches all MTY (maturity/redemption) events for a bond from T-Bank API  # noqa: E501
+    This function fetches all MTY (maturity/redemption) events for a bond from T-Bank API
     and creates NotionalHistory entries for each redemption event.
 
     Args:
@@ -403,9 +362,7 @@ async def save_bond_redemption_history(
         # Get bond metadata to get initial notional
         bond_meta = await database_sync_to_async(lambda: security.bond_metadata)()
         if not bond_meta or not bond_meta.initial_notional:
-            logger.warning(
-                f"No bond metadata with initial_notional for {security.name}"
-            )
+            logger.warning(f"No bond metadata with initial_notional for {security.name}")
             return 0
 
         initial_notional = bond_meta.initial_notional
@@ -452,8 +409,7 @@ async def save_bond_redemption_history(
                         "notional_per_unit": notional_per_unit,
                         "change_amount": change_amount,
                         "comment": (
-                            "Auto-imported from T-Bank API "
-                            f"(operation_type: {operation_type})",
+                            f"Auto-imported from T-Bank API (operation_type: {operation_type})",
                         ),
                     },
                 )
@@ -485,20 +441,14 @@ async def save_bond_redemption_history(
                         f"notional={current_notional}, change={change_amount}"
                     )
 
-            logger.info(
-                f"Saved {entries_created} NotionalHistory entries for {security.name}"
-            )
+            logger.info(f"Saved {entries_created} NotionalHistory entries for {security.name}")
             return entries_created
 
     except RequestError as e:
-        logger.error(
-            f"T-Bank API error fetching bond events for {instrument_uid}: {str(e)}"
-        )
+        logger.error(f"T-Bank API error fetching bond events for {instrument_uid}: {str(e)}")
         return 0
     except Exception as e:
-        logger.error(
-            f"Error saving bond redemption history for {security.name}: {str(e)}"
-        )
+        logger.error(f"Error saving bond redemption history for {security.name}: {str(e)}")
         import traceback
 
         logger.error(f"Traceback: {traceback.format_exc()}")
@@ -543,9 +493,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
             logger.error("Invalid or expired Tinkoff API token")
             return []
         elif "50002" in error_message:
-            logger.warning(
-                f"Instrument not found by UID {instrument_uid}, trying fallback methods"
-            )
+            logger.warning(f"Instrument not found by UID {instrument_uid}, trying fallback methods")
 
             # Try fallback with position_uid or name
             if position_uid or name:
@@ -561,9 +509,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                             if len(result.instruments) == 1:
                                 # Single match - use it
                                 found = result.instruments[0]
-                                logger.info(
-                                    f"Found single match: {found.name} ({found.isin})"
-                                )
+                                logger.info(f"Found single match: {found.name} ({found.isin})")
                                 return [
                                     (
                                         found.name,
@@ -573,14 +519,12 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
                                     )
                                 ]
                             else:
-                                # Multiple matches -
-                                # try to find exact match by position_uid
+                                # Multiple matches - try to find exact match by position_uid
                                 if position_uid:
                                     for inst in result.instruments:
                                         if inst.position_uid == position_uid:
                                             logger.info(
-                                                f"Found match by position_uid: "
-                                                f"{inst.name} "
+                                                f"Found match by position_uid: {inst.name} "
                                                 f"({inst.isin})"
                                             )
                                             return [
@@ -594,8 +538,7 @@ async def get_security_by_uid(instrument_uid, user, position_uid=None, name=None
 
                                 # No exact match, return all found
                                 logger.warning(
-                                    f"Multiple instruments found "
-                                    f"({len(result.instruments)})"
+                                    f"Multiple instruments found ({len(result.instruments)})"
                                 )
                                 securities_found = []
                                 for _, inst in enumerate(result.instruments):
@@ -642,9 +585,7 @@ async def _find_or_create_security(
         tuple: (Assets instance, str status)
     """
     # Get security details from Tinkoff
-    securities_found = await get_security_by_uid(
-        instrument_uid, investor, position_uid, name
-    )
+    securities_found = await get_security_by_uid(instrument_uid, investor, position_uid, name)
     if not securities_found or len(securities_found) == 0:
         return None, "Could not get security details from Tinkoff"
 
@@ -663,17 +604,14 @@ async def _find_or_create_security(
     # Try to find security without relationships
     for sec in securities_found:
         try:
-            found_security = await database_sync_to_async(Assets.objects.get)(
-                ISIN=sec[1]
-            )
+            found_security = await database_sync_to_async(Assets.objects.get)(ISIN=sec[1])
             await database_sync_to_async(found_security.investors.add)(investor)
             return found_security, "existing_added_relationships"
         except Assets.DoesNotExist:
             continue
 
     if not found_security and len(securities_found) == 1:
-        # Create new security using MICEX data
-        # import function here to avoid circular imports
+        # Create new security using MICEX data - import function here to avoid circular imports
         from core.import_utils import (
             create_security_from_micex,
             create_security_from_tinkoff,
@@ -684,9 +622,7 @@ async def _find_or_create_security(
         security_name = securities_found[0][0]
         security_isin = securities_found[0][1]
         security_type = securities_found[0][2]
-        security_ticker = (
-            securities_found[0][3] if len(securities_found[0]) > 3 else None
-        )
+        security_ticker = securities_found[0][3] if len(securities_found[0]) > 3 else None
 
         found_security = await create_security_from_micex(
             security_name,
@@ -700,8 +636,7 @@ async def _find_or_create_security(
         if found_security:
             return found_security, "created_new_from_micex"
 
-        # Fallback to T-Bank data if MICEX fails
-        # (e.g., matured bonds, delisted securities)
+        # Fallback to T-Bank data if MICEX fails (e.g., matured bonds, delisted securities)
         logger.warning(
             f"MICEX creation failed for {security_name} ({security_isin}), "
             f"falling back to T-Bank data"
@@ -732,38 +667,31 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        dict: Transaction data ready for creating a Transaction or FXTransaction instance.  # noqa: E501
+        dict: Transaction data ready for creating a Transaction or FXTransaction instance.
     """
     # Initialize base transaction data
-    # Convert timezone-aware dates to naive for database storage
-    operation_date = operation.date
-    if hasattr(operation_date, "tzinfo") and operation_date.tzinfo is not None:
-        # Strip timezone information for naive datetime storage
-        operation_date = operation_date.replace(tzinfo=None)
-
     transaction_data = {
         "investor": investor,
         "account": account,
-        "date": operation_date,  # Keep full datetime from T-Bank API
+        "date": operation.date,  # Keep full datetime from T-Bank API
         "comment": operation.description,
     }
 
     # Check if this is an FX transaction
     is_fx_transaction = (
         operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY
-        and operation.type
-        in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]
+        and operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]
     )
 
     logger.debug(f"==== Processing operation ID: {operation.id} ====")
     logger.debug(f"  Instrument kind: {operation.instrument_kind}")
     logger.debug(
-        f"  Is currency: {operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY}"  # noqa: E501
+        f"  Is currency: {operation.instrument_kind == InstrumentType.INSTRUMENT_TYPE_CURRENCY}"
     )
     logger.debug(f"  Operation type: {operation.type}")
     logger.debug(
         "  Is buy/sell: "
-        f"{operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]}"  # noqa: E501
+        f"{operation.type in [OperationType.OPERATION_TYPE_BUY, OperationType.OPERATION_TYPE_SELL]}"
     )
     logger.debug(f"  >> IS FX TRANSACTION: {is_fx_transaction} <<")
 
@@ -807,12 +735,8 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         if operation.type == OperationType.OPERATION_TYPE_BUY:
             # Buying foreign currency, paying with account currency
             transaction_data["from_currency"] = operation.payment.currency.upper()
-            transaction_data["to_currency"] = (
-                to_currency or "USD"
-            )  # Default to USD if unknown
-            transaction_data["from_amount"] = abs(
-                quotation_to_decimal(operation.payment)
-            )
+            transaction_data["to_currency"] = to_currency or "USD"  # Default to USD if unknown
+            transaction_data["from_amount"] = abs(quotation_to_decimal(operation.payment))
             transaction_data["to_amount"] = Decimal(str(operation.quantity))
         else:  # SELL
             # Selling foreign currency, receiving account currency
@@ -829,12 +753,8 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
         # Handle commission
         if operation.commission and operation.commission.units != 0:
-            transaction_data["commission"] = -1 * abs(
-                quotation_to_decimal(operation.commission)
-            )
-            transaction_data[
-                "commission_currency"
-            ] = operation.commission.currency.upper()
+            transaction_data["commission"] = -1 * abs(quotation_to_decimal(operation.commission))
+            transaction_data["commission_currency"] = operation.commission.currency.upper()
 
         logger.debug(
             f"✓ FX transaction created: {transaction_data['from_currency']} "
@@ -863,7 +783,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_INPUT_SECURITIES: TRANSACTION_TYPE_ASSET_TRANSFER,
         OperationType.OPERATION_TYPE_OUTPUT_SECURITIES: TRANSACTION_TYPE_ASSET_TRANSFER,
         OperationType.OPERATION_TYPE_BOND_REPAYMENT: TRANSACTION_TYPE_BOND_REDEMPTION,
-        OperationType.OPERATION_TYPE_BOND_REPAYMENT_FULL: TRANSACTION_TYPE_BOND_MATURITY,  # noqa: E501
+        OperationType.OPERATION_TYPE_BOND_REPAYMENT_FULL: TRANSACTION_TYPE_BOND_MATURITY,
     }
 
     if operation.type == OperationType.OPERATION_TYPE_BROKER_FEE:
@@ -924,9 +844,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
                     transaction_data["instrument_type"] = operation.instrument_type
                 transaction_data["security"] = None
             else:
-                raise ValueError(
-                    f"Multiple securities found for operation {operation.id}"
-                )
+                raise ValueError(f"Multiple securities found for operation {operation.id}")
 
     # Handle bond redemption operations
     if operation.type in [
@@ -944,8 +862,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
             # For bond redemptions, we need to infer the notional change
             # The payment is typically: number_of_bonds * notional_redeemed_per_bond
-            # Since we don't have the quantity,
-            # we'll store the total cash as notional_change
+            # Since we don't have the quantity, we'll store the total cash as notional_change
             # This will need to be adjusted manually or via bond metadata
             transaction_data["notional_change"] = cash_received
 
@@ -970,8 +887,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
         OperationType.OPERATION_TYPE_OUTPUT_SECURITIES,
     ]:
         # For regular buy/sell, use the operation price
-        # For asset transfers, price might be 0,
-        # will be set later to buy-in/market price
+        # For asset transfers, price might be 0, will be set later to buy-in/market price
         if operation.price:
             actual_price = quotation_to_decimal(operation.price)
 
@@ -986,15 +902,12 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
                     if not initial_notional:
                         # Fallback to bond metadata
-                        bond_meta = await database_sync_to_async(
-                            lambda: security.bond_metadata
-                        )()
+                        bond_meta = await database_sync_to_async(lambda: security.bond_metadata)()
                         if bond_meta and bond_meta.initial_notional:
                             initial_notional = bond_meta.initial_notional
                         else:
                             logger.warning(
-                                f"Could not determine initial notional for bond "
-                                f"{security.name}, "
+                                f"Could not determine initial notional for bond {security.name}, "
                                 f"storing actual price: {actual_price}"
                             )
                             transaction_data["price"] = actual_price
@@ -1009,8 +922,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
                     )
 
                     if notional and notional > 0:
-                        # Convert actual price to percentage:
-                        # (actual_price / notional) * 100
+                        # Convert actual price to percentage: (actual_price / notional) * 100
                         price_percentage = (actual_price / notional) * Decimal(100)
 
                         transaction_data["price"] = price_percentage
@@ -1059,9 +971,7 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
     # Handle commission
     if operation.commission and operation.commission.units != 0:
-        transaction_data["commission"] = -1 * abs(
-            quotation_to_decimal(operation.commission)
-        )
+        transaction_data["commission"] = -1 * abs(quotation_to_decimal(operation.commission))
 
     return transaction_data
 
@@ -1076,35 +986,18 @@ async def create_transaction_from_tinkoff(operation, investor, account):
         account: Accounts instance
 
     Returns:
-        tuple: (Transaction instance or None, str status message)
+        tuple: (Transaction instance or None, str status message).
     """
-    transaction_data = await map_tinkoff_operation_to_transaction(
-        operation, investor, account
-    )
+    transaction_data = await map_tinkoff_operation_to_transaction(operation, investor, account)
 
     if not transaction_data:
         return None, "Unsupported operation type"
 
     # Check if similar transaction already exists
-    # All dates are now naive datetime objects for consistent comparison
-
-    transaction_date = transaction_data["date"]
-
-    # Ensure the transaction date is naive (strip timezone if present)
-    if hasattr(transaction_date, "tzinfo") and transaction_date.tzinfo is not None:
-        transaction_date = transaction_date.replace(tzinfo=None)
-
-    # Check for existing transactions within a reasonable time window (1 minute)
-    # to handle potential timestamp differences
-    from datetime import timedelta
-
-    time_window = timedelta(minutes=1)
-
     existing = await database_sync_to_async(Transactions.objects.filter)(
         investor=investor,
         account=account,
-        date__gte=transaction_date - time_window,
-        date__lte=transaction_date + time_window,
+        date=transaction_data["date"],
         type=transaction_data["type"],
         quantity=transaction_data.get("quantity"),
         price=transaction_data.get("price"),
@@ -1117,9 +1010,7 @@ async def create_transaction_from_tinkoff(operation, investor, account):
 
     # Create new transaction
     try:
-        transaction = await database_sync_to_async(Transactions.objects.create)(
-            **transaction_data
-        )
+        transaction = await database_sync_to_async(Transactions.objects.create)(**transaction_data)
         logger.info(f"Transaction created successfully: {transaction}")
         return transaction, "Transaction created successfully"
     except Exception as e:
@@ -1136,7 +1027,7 @@ async def verify_token_access(user, required_access="read_only"):
         required_access: str, access level required ('read_only' or 'full_access')
 
     Returns:
-        bool: True if token is valid and has required access
+        bool: True if token is valid and has required access.
     """
     try:
         token = await get_user_token(user)
@@ -1191,7 +1082,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
     Returns:
         Decimal: The closing price, or None if not found
     """
-    from datetime import timedelta
+    from datetime import datetime, timedelta, timezone
 
     try:
         token = await get_user_token(user)
@@ -1201,15 +1092,21 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
 
         logger.debug(f"Fetching price for instrument {instrument_uid} on {date}")
 
+        # Convert target date to timezone-aware datetime (UTC)
+        target_dt = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
+
         # Try progressively larger date ranges: 1 day, 7 days, 14 days
         lookback_days = [1, 7, 14]
 
         with Client(token) as client:
+            from django.utils import timezone
+
             for days_back in lookback_days:
-                # Convert naive dates to timezone-aware for API call
-                # Tinkoff API expects timezone-aware datetime objects
-                from_dt = date - timedelta(days=days_back)
-                to_dt = date
+                # Start from 1 day before target, extend backwards based on attempt
+                from_dt = timezone.make_aware(
+                    datetime.combine(date, datetime.min.time())
+                ) - timedelta(days=days_back)
+                to_dt = timezone.make_aware(datetime.combine(date, datetime.max.time()))
 
                 logger.debug(
                     f"Attempt with {days_back} day(s) lookback: "
@@ -1238,11 +1135,8 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
                                 break
 
                             # Track the most recent candle before or on target date
-                            if candle.time <= date:
-                                if (
-                                    selected_candle is None
-                                    or candle.time > selected_candle.time
-                                ):
+                            if candle.time <= target_dt:
+                                if selected_candle is None or candle.time > selected_candle.time:
                                     selected_candle = candle
 
                         # Prefer exact match, fall back to most recent
@@ -1253,14 +1147,13 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
                             logger.info(
                                 f"Fetched price for {instrument_uid} on "
                                 f"{final_candle.time.date()}: {close_price} "
-                                f"(requested: {date}, {'exact' if exact_match else 'closest'})"  # noqa: E501
+                                f"(requested: {date}, {'exact' if exact_match else 'closest'})"
                             )
                             return close_price
 
                     # If we got a response but no suitable candles, try next range
                     logger.debug(
-                        f"No suitable candle in {days_back}-day range, "
-                        f"trying larger range..."
+                        f"No suitable candle in {days_back}-day range, " f"trying larger range..."
                     )
 
                 except RequestError as e:
@@ -1279,14 +1172,10 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
             return None
 
     except RequestError as e:
-        logger.error(
-            f"T-Bank API error fetching price for {instrument_uid} on {date}: {str(e)}"
-        )
+        logger.error(f"T-Bank API error fetching price for {instrument_uid} on {date}: {str(e)}")
         return None
     except Exception as e:
-        logger.error(
-            f"Error fetching price from T-Bank for {instrument_uid} on {date}: {str(e)}"
-        )
+        logger.error(f"Error fetching price from T-Bank for {instrument_uid} on {date}: {str(e)}")
         import traceback
 
         logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1294,16 +1183,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
 
 
 async def get_instrument_uid(asset: Assets, user):
-    """
-    Get instrument UID from T-Bank API.
-
-    Args:
-        asset: Assets instance
-        user: CustomUser instance
-
-    Returns:
-        str: Instrument UID or None if not found
-    """
+    """Get instrument UID from T-Bank API."""
     from channels.db import database_sync_to_async
 
     token = await get_user_token(user)

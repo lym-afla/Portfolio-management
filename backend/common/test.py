@@ -16,14 +16,10 @@ class AssetsBuyInPriceTestCase(TestCase):
     def setUp(self) -> None:
         """Set up the test case."""
         # Create a user
-        self.user = get_user_model().objects.create_user(
-            username="testuser", password="12345"
-        )
+        self.user = get_user_model().objects.create_user(username="testuser", password="12345")
 
         # Create a broker and broker account
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(
             broker=self.broker,
             name="Test Account",
@@ -72,20 +68,12 @@ class AssetsBuyInPriceTestCase(TestCase):
                 quantity=quantity,
                 price=price,
             )
-            Prices.objects.create(
-                date=transaction_date, security=self.asset, price=price
-            )
+            Prices.objects.create(date=transaction_date, security=self.asset, price=price)
 
         # Create FX rates
-        FX.objects.create(date=date(2023, 1, 1), USDEUR=Decimal("1.1")).investors.add(
-            self.user
-        )
-        FX.objects.create(date=date(2023, 3, 1), USDEUR=Decimal("1.15")).investors.add(
-            self.user
-        )
-        FX.objects.create(date=date(2023, 5, 1), USDEUR=Decimal("1.25")).investors.add(
-            self.user
-        )
+        FX.objects.create(date=date(2023, 1, 1), USDEUR=Decimal("1.1")).investors.add(self.user)
+        FX.objects.create(date=date(2023, 3, 1), USDEUR=Decimal("1.15")).investors.add(self.user)
+        FX.objects.create(date=date(2023, 5, 1), USDEUR=Decimal("1.25")).investors.add(self.user)
 
     def test_calculate_buy_in_price_basic_1(self):
         """Test basic functionality."""

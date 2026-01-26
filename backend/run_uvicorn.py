@@ -1,4 +1,8 @@
-"""Run Uvicorn server."""
+"""Uvicorn ASGI server runner for Django development.
+
+This script runs the Django ASGI application using Uvicorn,
+which is needed for WebSocket support via Django Channels.
+"""
 
 import logging.config
 import os

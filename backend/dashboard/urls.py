@@ -22,7 +22,5 @@ urlpatterns = [
         views.get_dashboard_summary_over_time_api,
         name="get_dashboard_summary_over_time_api",
     ),
-    path(
-        "api/get-nav-chart-data/", views.api_nav_chart_data, name="api_nav_chart_data"
-    ),
+    path("api/get-nav-chart-data/", views.api_nav_chart_data, name="api_nav_chart_data"),
 ]

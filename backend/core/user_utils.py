@@ -1,15 +1,37 @@
-"""User utilities."""
+"""Utility functions and constants for user-related operations.
+
+This module provides choice definitions and utility functions for handling
+user settings, account groups, and frequency/timeline options.
+"""
 
 from common.models import Accounts, Brokers
 from users.models import AccountGroup
 
+FREQUENCY_CHOICES = [
+    ("D", "Daily"),
+    ("W", "Weekly"),
+    ("M", "Monthly"),
+    ("Q", "Quarterly"),
+    ("Y", "Yearly"),
+]
+
+TIMELINE_CHOICES = [
+    ("YTD", "Year to Date"),
+    ("3m", "Last 3 months"),
+    ("6m", "Last 6 months"),
+    ("12m", "Last 12 months"),
+    ("3Y", "Last 3 years"),
+    ("5Y", "Last 5 years"),
+    ("All", "All history"),
+    ("Custom", "Custom"),
+]
+
 
 def prepare_account_choices(user):
     """
-    Prepare broker account choices for a user.
+    Get broker account choices for a user.
 
-    Prepare broker account choices for a user, including individual accounts,
-    account groups, and brokers.
+    Includes individual accounts, account groups, and brokers.
 
     Args:
         user: The CustomUser object
@@ -17,7 +39,7 @@ def prepare_account_choices(user):
     Returns:
         Dictionary containing:
         - options: List of tuples with sections and choices, including separators
-        - selected: Dictionary with type and id of current selection
+        - selected: Dictionary with type and id of current selection.
     """
     if user is None:
         return {"options": [], "selected": {"type": "all", "id": None}}
@@ -101,16 +123,13 @@ def get_account_ids_from_choice(user, choice):
 
     Args:
         user: The CustomUser object
-        choice: String representing the selected choice
-            (account ID, group ID, or 'All accounts')
+        choice: String representing the selected choice (account ID, group ID, or 'All accounts')
 
     Returns:
         List of broker account IDs
     """
     if not choice or choice == "All accounts":
-        return list(
-            Accounts.objects.filter(broker__investor=user).values_list("id", flat=True)
-        )
+        return list(Accounts.objects.filter(broker__investor=user).values_list("id", flat=True))
 
     if choice.startswith("group_"):
         group_id = int(choice.replace("group_", ""))
