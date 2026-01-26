@@ -207,65 +207,67 @@ LOGGING = {
         "portfolio_management.auth_middleware": {
             "handlers": ["console"],
             "level": "INFO",
-            "propagate": True,
+            "propagate": False,
         },
         "portfolio_management": {
             "handlers": ["console"],
             "level": "INFO",
-            "propagate": True,
+            "propagate": False,
         },
         "django.auth": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "asgi": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "django.server": {
             "handlers": ["console"],
             "level": "DEBUG",
+            "propagate": False,
         },
         "uvicorn": {
             "handlers": ["console"],
             "level": "ERROR",
+            "propagate": False,
         },
         "transactions": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "channels": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "summary_analysis": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "core": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "common": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "database": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "dashboard": {
             "handlers": ["console"],
             "level": "DEBUG",
-            "propagate": True,
+            "propagate": False,
         },
         "users": {
             "handlers": ["console"],

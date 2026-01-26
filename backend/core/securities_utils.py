@@ -3,12 +3,13 @@
 import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import Optional
 
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from pyxirr import xirr
 
-from common.models import FX, Assets
+from common.models import FX, Assets, Transactions
 from core.portfolio_utils import IRR
 
 from .formatting_utils import format_table_data, format_value
@@ -16,6 +17,263 @@ from .pagination_utils import paginate_table
 from .sorting_utils import sort_entries
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Bond YTM Calculation Helpers
+# =============================================================================
+
+
+def _get_first_buy_transaction(
+    security: Assets, user, account_ids: list = None
+) -> Optional[Transactions]:
+    """Get first buy transaction for a security."""
+    query = security.transactions.filter(
+        type="Buy", investor=user, quantity__isnull=False
+    )
+    if account_ids:
+        query = query.filter(account_id__in=account_ids)
+    return query.order_by("date").first()
+
+
+def _get_acquisition_notional(
+    first_buy: Transactions, bond_meta, user, target_currency: str
+) -> Optional[Decimal]:
+    """Get notional value for acquisition, from transaction or bond metadata."""
+    if first_buy.notional is not None:
+        return Decimal(first_buy.notional)
+
+    # Fallback: get notional from bond metadata at purchase date
+    notional = bond_meta.get_current_notional(
+        first_buy.date,
+        investor=user,
+        currency=target_currency,
+        account_ids=None,
+    )
+    if notional:
+        logger.info(
+            f"Using fallback notional for {bond_meta.asset.name}: {notional} "
+            f"from bond metadata at {first_buy.date}"
+        )
+    return notional
+
+
+def _get_redemption_notional(
+    security: Assets, bond_meta, user, target_currency: str
+) -> Optional[Decimal]:
+    """Get redemption notional from NotionalHistory or fallback to metadata."""
+    try:
+        # Look for redemption entry at or after maturity date
+        redemption_entry = (
+            security.notional_history.filter(
+                date__gte=bond_meta.maturity_date,
+                change_reason__in=["MATURITY", "REDEMPTION"],
+            )
+            .order_by("date")
+            .first()
+        )
+
+        if redemption_entry:
+            return redemption_entry.notional_per_unit
+
+        # Fallback: use current notional at maturity
+        return bond_meta.get_current_notional(
+            bond_meta.maturity_date, user, target_currency
+        )
+    except Exception as e:
+        logger.error(f"Error getting redemption notional: {e}")
+        # Final fallback: use initial notional
+        return bond_meta.initial_notional
+
+
+def _build_bond_cash_flows(
+    security: Assets,
+    bond_meta,
+    first_buy: Transactions,
+    user,
+    notional_cache: dict = None,
+) -> list:
+    """
+    Build cash flow list for bond YTM calculation using XIRR.
+
+    Args:
+        security: The bond asset
+        bond_meta: BondMetadata for the security
+        first_buy: First buy transaction
+        user: The user object
+        notional_cache: Optional dict to cache notional lookups
+
+    Returns:
+        List of (date, amount) tuples for XIRR calculation
+
+    Raises:
+        ValueError: If essential data is missing or FX conversion fails
+    """
+    if notional_cache is None:
+        notional_cache = {}
+
+    cash_flows = []
+    target_currency = security.currency
+
+    # Validate essential transaction fields
+    if first_buy.quantity is None or first_buy.price is None:
+        raise ValueError(
+            f"Missing essential transaction data for {security.name} "
+            f"(quantity={first_buy.quantity}, price={first_buy.price})"
+        )
+
+    first_buy_date = (
+        first_buy.date.date() if hasattr(first_buy.date, "date") else first_buy.date
+    )
+    position_qty = Decimal(first_buy.quantity)
+
+    # Get acquisition notional (use cache if available)
+    cache_key = f"notional_{first_buy.date}"
+    if cache_key in notional_cache:
+        notional = notional_cache[cache_key]
+    else:
+        notional = _get_acquisition_notional(
+            first_buy, bond_meta, user, target_currency
+        )
+        notional_cache[cache_key] = notional
+
+    if notional is None:
+        raise ValueError(f"Unable to determine notional value for {security.name}")
+
+    # Calculate acquisition cash flow (negative - money out)
+    amount = -position_qty * Decimal(first_buy.price) * Decimal(notional) / Decimal(100)
+
+    # Add ACI (negative value = paid, adds to cost)
+    if first_buy.aci is not None:
+        amount += Decimal(first_buy.aci)
+
+    # Add commission (negative value)
+    if first_buy.commission is not None:
+        amount += Decimal(first_buy.commission)
+
+    # FX conversion for acquisition if needed
+    if first_buy.currency != target_currency:
+        fx_rate = FX.get_rate(first_buy.currency, target_currency, first_buy.date)["FX"]
+        if not fx_rate:
+            raise ValueError(
+                f"No FX rate for {security.name} from {first_buy.currency} "
+                f"to {target_currency}"
+            )
+        amount *= Decimal(fx_rate)
+
+    cash_flows.append((first_buy_date, float(amount)))
+
+    # Add coupon cash flows (positive - money in)
+    if position_qty > 0:
+        coupon_schedule = security.coupon_schedule.filter(
+            payment_date__gt=first_buy_date
+        ).order_by("payment_date")
+
+        for coupon in coupon_schedule:
+            coupon_amt = (
+                Decimal(coupon.coupon_amount) if coupon.coupon_amount else Decimal(0)
+            )
+            cf_amount = coupon_amt * position_qty
+
+            # FX conversion for coupon if needed
+            if coupon.coupon_currency != target_currency:
+                fx_rate = FX.get_rate(
+                    coupon.coupon_currency, target_currency, coupon.payment_date
+                )["FX"]
+                if fx_rate:
+                    cf_amount *= Decimal(fx_rate)
+                else:
+                    logger.warning(
+                        f"No FX rate for coupon of {security.name} from "
+                        f"{coupon.coupon_currency} to {target_currency}, skipping"
+                    )
+                    continue
+
+            cash_flows.append((coupon.payment_date, float(cf_amount)))
+
+    # Add redemption cash flow at maturity (positive - money in)
+    if bond_meta.maturity_date and position_qty > 0:
+        redemption_notional = _get_redemption_notional(
+            security, bond_meta, user, target_currency
+        )
+
+        if redemption_notional:
+            redemption_amount = redemption_notional * position_qty
+
+            # FX conversion for redemption if needed
+            nominal_currency = bond_meta.nominal_currency or target_currency
+            if nominal_currency != target_currency:
+                fx_rate = FX.get_rate(
+                    nominal_currency, target_currency, bond_meta.maturity_date
+                )["FX"]
+                if fx_rate:
+                    redemption_amount *= Decimal(fx_rate)
+                else:
+                    logger.warning(
+                        f"No FX rate for redemption of {security.name} from "
+                        f"{nominal_currency} to {target_currency}, skipping redemption"
+                    )
+                    redemption_amount = None
+
+            if redemption_amount is not None:
+                cash_flows.append((bond_meta.maturity_date, float(redemption_amount)))
+
+    return cash_flows
+
+
+def calculate_bond_ytm(
+    user, security: Assets, effective_date: date, account_ids: list = None
+) -> Optional[Decimal]:
+    """
+    Calculate Yield to Maturity (YTM) for a bond using XIRR.
+
+    Args:
+        user: The user object
+        security: The bond asset
+        effective_date: Date for YTM calculation
+        account_ids: Optional list of account IDs to filter transactions
+
+    Returns:
+        YTM as a Decimal (percentage) or None if calculation fails
+    """
+    if not security.is_bond or not security.bond_metadata:
+        return None
+
+    bond_meta = security.bond_metadata
+
+    try:
+        first_buy = _get_first_buy_transaction(security, user, account_ids)
+        if not first_buy:
+            logger.warning(f"No buy transaction found for {security.name}")
+            return None
+
+        # Build cash flows using helper
+        cash_flows = _build_bond_cash_flows(security, bond_meta, first_buy, user)
+
+        # Calculate XIRR
+        if len(cash_flows) > 1:
+            ytm_decimal = xirr(cash_flows)
+            if ytm_decimal is not None:
+                ytm_percentage = Decimal(str(ytm_decimal)) * Decimal(100)
+                logger.debug(f"YTM calculated for {security.name}: {ytm_percentage}%")
+                return ytm_percentage
+
+        logger.warning(
+            f"Insufficient cash flows for YTM calculation of {security.name}"
+        )
+        return None
+
+    except ValueError as e:
+        logger.warning(f"YTM calculation skipped for {security.name}: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Error calculating YTM for {security.name}: {e}")
+        return None
+
+
+# =============================================================================
+# Securities API Functions
+# =============================================================================
 
 
 def get_securities_table_api(request):
@@ -59,15 +317,29 @@ def get_securities_table_api(request):
 
 
 def _filter_securities(user, search):
-    securities = Assets.objects.filter(investors__id=user.id)
+    """Filter securities with optimized query using prefetch_related."""
+    securities = (
+        Assets.objects.filter(investors__id=user.id)
+        .select_related("bond_metadata")
+        .prefetch_related(
+            Prefetch(
+                "transactions",
+                queryset=Transactions.objects.filter(investor=user)
+                .select_related("account")
+                .order_by("date"),
+            ),
+            "prices",
+            "coupon_schedule",
+            "notional_history",
+        )
+    )
+
     if search:
-        # Create Q objects for each field we want to search
         search_query = (
             Q(name__icontains=search)
             | Q(ISIN__icontains=search)
             | Q(currency__icontains=search)
         )
-
         securities = securities.filter(search_query)
 
     return securities
@@ -117,6 +389,10 @@ def get_security_detail(request, security_id):
 
     security = get_object_or_404(Assets, id=security_id, investors__id=user.id)
 
+    # Cache price lookup to avoid duplicate queries
+    current_price_obj = security.price_at_date(effective_current_date)
+    current_price = current_price_obj.price if current_price_obj else None
+
     # Base security data
     security_data = {
         "id": security.id,
@@ -150,12 +426,8 @@ def get_security_detail(request, security_id):
         "buy_in_price": security.calculate_buy_in_price(
             effective_current_date, user, security.currency
         ),
-        # Add current price
-        "current_price": (
-            security.price_at_date(effective_current_date).price
-            if security.price_at_date(effective_current_date)
-            else None
-        ),
+        # Add current price (using cached value)
+        "current_price": current_price,
     }
 
     # Add bond-specific data
@@ -213,9 +485,7 @@ def get_security_detail(request, security_id):
         else:
             total_aci = Decimal(0)
 
-        # Get current price as percentage of notional
-        current_price_obj = security.price_at_date(effective_current_date)
-        current_price = current_price_obj.price if current_price_obj else None
+        # current_price already cached above
 
         # Get current notional per bond
         current_notional = bond_meta.get_current_notional(
@@ -311,234 +581,9 @@ def get_security_detail(request, security_id):
                         f"Failed to fetch redemption history for {security.name}: {e}"
                     )
 
-        # Calculate YTM for bonds using XIRR (fixed at first position opening)
-        ytm = None
-        try:
-            # Get first buy transaction (position opening)
-            first_buy = (
-                security.transactions.filter(
-                    type="Buy", investor=user, quantity__isnull=False
-                )
-                .order_by("date")
-                .first()
-            )
-
-            if first_buy:
-                first_buy_date = (
-                    first_buy.date.date()
-                    if hasattr(first_buy.date, "date")
-                    else first_buy.date
-                )
-
-                # Build cash flow list for XIRR calculation
-                cash_flows = []
-
-                # Add acquisition cash flow at first purchase (negative)
-                # Check for None values before converting to Decimal
-                if first_buy.quantity is not None and first_buy.price is not None:
-                    # Use notional from transaction or fallback to bond metadata
-                    if first_buy.notional is not None:
-                        notional = Decimal(first_buy.notional)
-                    else:
-                        # Fallback: get notional from bond metadata at purchase date
-                        # For YTM calculation, we don't need to filter by account_ids
-                        notional = bond_meta.get_current_notional(
-                            first_buy.date,
-                            investor=user,
-                            currency=security.currency,
-                            account_ids=None,
-                        )
-                        logger.info(
-                            "Using fallback notional for "
-                            f"{security.name}: {notional} "
-                            f"from bond metadata at {first_buy.date}"
-                        )
-
-                    if notional is not None:
-                        amount = (
-                            -Decimal(first_buy.quantity)
-                            * Decimal(first_buy.price)
-                            * Decimal(notional)
-                            / Decimal(100)
-                        )
-
-                        # Add ACI (None is treated as 0)
-                        if first_buy.aci is not None:
-                            amount += Decimal(
-                                first_buy.aci
-                            )  # ACI paid (negative value)
-
-                        # Add commission if not None
-                        if first_buy.commission is not None:
-                            amount += Decimal(first_buy.commission)
-                    else:
-                        # If notional is still None even after fallback,
-                        # skip YTM calculation
-                        logger.warning(
-                            "Skipping YTM calculation for "
-                            f"{security.name}: unable to determine notional value"
-                        )
-                        raise ValueError(
-                            "Unable to determine notional value for YTM calculation"
-                        )
-                else:
-                    # If essential fields are None, skip YTM calculation
-                    logger.warning(
-                        "Skipping YTM calculation for "
-                        f"{security.name}: missing transaction data "
-                        f"(quantity={first_buy.quantity}, price={first_buy.price})"
-                    )
-                    raise ValueError(
-                        "Missing essential transaction data for YTM calculation"
-                    )
-
-                # Convert to bond's currency if needed
-                if first_buy.currency != security.currency:
-                    try:
-                        fx_rate = FX.get_rate(
-                            first_buy.currency, security.currency, first_buy.date
-                        )["FX"]
-                        if fx_rate:
-                            amount *= Decimal(fx_rate)
-                    except Exception as fx_error:
-                        logger.warning(
-                            f"FX conversion failed for {security.name} "
-                            f"from {first_buy.currency} "
-                            f"to {security.currency}: {fx_error}"
-                        )
-                        # Skip YTM calculation if FX conversion fails
-                        raise ValueError(
-                            f"FX conversion failed for YTM calculation: {fx_error}"
-                        )
-
-                cash_flows.append((first_buy_date, float(amount)))
-
-                # Add coupon cash flows (positive) from BondCouponSchedule
-                # Start from first buy date
-                coupon_schedule = security.coupon_schedule.filter(
-                    payment_date__gt=first_buy_date
-                ).order_by("payment_date")
-
-                # Use position from first buy
-                # (assuming no additional buys for simplicity)
-                # For multiple buys, would need weighted average calculation
-                if first_buy.quantity is not None:
-                    position_qty = Decimal(first_buy.quantity)
-                else:
-                    position_qty = Decimal(0)
-
-                if position_qty > 0:
-                    for coupon in coupon_schedule:
-                        # Cash inflow from coupon (positive)
-                        coupon_amount = (
-                            Decimal(coupon.coupon_amount)
-                            if coupon.coupon_amount
-                            else Decimal(0)
-                        )
-                        amount = coupon_amount * position_qty
-
-                        # Convert to bond's currency if needed
-                        if coupon.coupon_currency != security.currency:
-                            try:
-                                fx_rate = FX.get_rate(
-                                    coupon.coupon_currency,
-                                    security.currency,
-                                    coupon.payment_date,
-                                )["FX"]
-                                if fx_rate:
-                                    amount *= Decimal(fx_rate)
-                            except Exception as fx_error:
-                                logger.warning(
-                                    "FX conversion failed for coupon of "
-                                    f"{security.name} from {coupon.coupon_currency} "
-                                    f"to {security.currency}: {fx_error}"
-                                )
-                                # Skip this coupon if FX conversion fails
-                                continue
-
-                        cash_flows.append((coupon.payment_date, float(amount)))
-
-                # Add redemption cash flows at maturity from notional_history
-                if bond_meta.maturity_date and position_qty > 0:
-                    # Get redemption amount from NotionalHistory
-                    # (for all bonds, not amortizing)
-                    try:
-                        # Look for redemption entry at or after maturity date
-                        redemption_entry = (
-                            security.notional_history.filter(
-                                date__gte=bond_meta.maturity_date,
-                                change_reason__in=["MATURITY", "REDEMPTION"],
-                            )
-                            .order_by("date")
-                            .first()
-                        )
-
-                        if redemption_entry:
-                            redemption_notional = redemption_entry.notional_per_unit
-                        else:
-                            # Fallback: use current notional at maturity
-                            redemption_notional = bond_meta.get_current_notional(
-                                bond_meta.maturity_date, user, security.currency
-                            )
-                    except Exception as e:
-                        logger.error(f"Error getting redemption notional: {e}")
-                        # Final fallback: use initial notional
-                        redemption_notional = bond_meta.initial_notional
-
-                    if redemption_notional:
-                        # Cash inflow from redemption (positive)
-                        amount = redemption_notional * position_qty
-
-                        # Convert to bond's currency if needed
-                        nominal_currency = (
-                            bond_meta.nominal_currency or security.currency
-                        )
-                        add_redemption = (
-                            True  # Flag to determine if we should add this cash flow
-                        )
-
-                        if nominal_currency != security.currency:
-                            try:
-                                fx_rate = FX.get_rate(
-                                    nominal_currency,
-                                    security.currency,
-                                    bond_meta.maturity_date,
-                                )["FX"]
-                                if fx_rate:
-                                    amount *= Decimal(fx_rate)
-                                else:
-                                    # Skip redemption if FX rate is None
-                                    logger.warning(
-                                        "No FX rate available for redemption of "
-                                        f"{security.name} from {nominal_currency} "
-                                        f"to {security.currency}"
-                                    )
-                                    add_redemption = False
-                            except Exception as fx_error:
-                                logger.warning(
-                                    "FX conversion failed for redemption of "
-                                    f"{security.name} from {nominal_currency} "
-                                    f"to {security.currency}: {fx_error}"
-                                )
-                                # Skip redemption if FX conversion fails
-                                add_redemption = False
-
-                        if add_redemption:
-                            cash_flows.append((bond_meta.maturity_date, float(amount)))
-
-                # Calculate XIRR (YTM)
-                if cash_flows:
-                    try:
-                        ytm_decimal = xirr(cash_flows)
-                        if ytm_decimal is not None:
-                            # Convert to percentage
-                            ytm = float(ytm_decimal) * 100
-                    except Exception as xirr_error:
-                        logger.warning(
-                            f"XIRR calculation failed for {security.name}: {xirr_error}"
-                        )
-        except Exception as e:
-            logger.warning(f"Error calculating YTM for {security.name}: {e}")
+        # Calculate YTM for bonds using XIRR (uses shared helper function)
+        ytm_decimal = calculate_bond_ytm(user, security, effective_current_date)
+        ytm = float(ytm_decimal) if ytm_decimal is not None else None
 
         bond_data = {
             "current_notional": (
@@ -594,272 +639,6 @@ def get_security_detail(request, security_id):
     )[0]
 
     return formatted_security_data
-
-
-def calculate_bond_ytm(
-    user, security: Assets, effective_date: date, account_ids: list = None
-) -> Decimal:
-    """
-    Calculate Yield to Maturity (YTM) for a bond using XIRR.
-
-    This function uses the same logic as get_security_detail to ensure consistency.
-    It calculates the internal rate of return for bond-specific cash flows including
-    coupon payments and redemption at maturity.
-
-    Args:
-        user: The user object
-        security: The bond asset
-        effective_date: Date for YTM calculation
-        account_ids: Optional list of account IDs to filter transactions
-
-    Returns:
-        YTM as a Decimal (percentage) or None if calculation fails
-    """
-    if not security.is_bond or not security.bond_metadata:
-        return None
-
-    bond_meta = security.bond_metadata
-    logger.info(f"Calculating YTM for bond: {security.name}")
-
-    try:
-        # Get first buy transaction (position opening) - same logic as get_security_detail
-        first_buy_query = security.transactions.filter(
-            type="Buy", investor=user, quantity__isnull=False
-        )
-
-        if account_ids:
-            first_buy_query = first_buy_query.filter(account_id__in=account_ids)
-
-        first_buy = first_buy_query.order_by("date").first()
-
-        if not first_buy:
-            logger.warning(f"No buy transaction found for {security.name}")
-            return None
-
-        first_buy_date = (
-            first_buy.date.date() if hasattr(first_buy.date, "date") else first_buy.date
-        )
-
-        # Build cash flow list for XIRR calculation - same as get_security_detail
-        cash_flows = []
-
-        # Add acquisition cash flow at first purchase (negative)
-        # Check for None values before converting to Decimal
-        if first_buy.quantity is not None and first_buy.price is not None:
-            # Use notional from transaction or fallback to bond metadata
-            if first_buy.notional is not None:
-                notional = Decimal(first_buy.notional)
-            else:
-                # Fallback: get notional from bond metadata at purchase date
-                # For YTM calculation, we don't need to filter by account_ids
-                notional = bond_meta.get_current_notional(
-                    first_buy.date,
-                    investor=user,
-                    currency=security.currency,
-                    account_ids=None,
-                )
-                logger.info(
-                    "Using fallback notional for "
-                    f"{security.name}: {notional} "
-                    f"from bond metadata at {first_buy.date}"
-                )
-
-            if notional is not None:
-                amount = (
-                    -Decimal(first_buy.quantity)
-                    * Decimal(first_buy.price)
-                    * Decimal(notional)
-                    / Decimal(100)
-                )
-
-                # Add ACI (None is treated as 0)
-                if first_buy.aci is not None:
-                    amount += Decimal(first_buy.aci)  # ACI paid (negative value)
-
-                # Add commission if not None
-                if first_buy.commission is not None:
-                    amount += Decimal(first_buy.commission)
-            else:
-                # If notional is still None even after fallback,
-                # skip YTM calculation
-                logger.warning(
-                    "Skipping YTM calculation for "
-                    f"{security.name}: unable to determine notional value"
-                )
-                raise ValueError(
-                    "Unable to determine notional value for YTM calculation"
-                )
-        else:
-            # If essential fields are None, skip YTM calculation
-            logger.warning(
-                "Skipping YTM calculation for "
-                f"{security.name}: missing transaction data "
-                f"(quantity={first_buy.quantity}, price={first_buy.price})"
-            )
-            raise ValueError("Missing essential transaction data for YTM calculation")
-
-        # Convert to bond's currency if needed
-        if first_buy.currency != security.currency:
-            try:
-                fx_rate = FX.get_rate(
-                    first_buy.currency, security.currency, first_buy.date
-                )["FX"]
-                if fx_rate:
-                    amount *= Decimal(fx_rate)
-                else:
-                    # Skip YTM calculation if FX rate is None
-                    logger.warning(
-                        f"No FX rate available for {security.name} from {first_buy.currency} to {security.currency}"
-                    )
-                    raise ValueError("No FX rate available for YTM calculation")
-            except Exception as fx_error:
-                logger.warning(
-                    f"FX conversion failed for {security.name} "
-                    f"from {first_buy.currency} "
-                    f"to {security.currency}: {fx_error}"
-                )
-                # Skip YTM calculation if FX conversion fails
-                raise ValueError(
-                    f"FX conversion failed for YTM calculation: {fx_error}"
-                )
-
-        cash_flows.append((first_buy_date, float(amount)))
-
-        # Add coupon cash flows (positive) from BondCouponSchedule
-        # Start from first buy date
-        coupon_schedule = security.coupon_schedule.filter(
-            payment_date__gt=first_buy_date
-        ).order_by("payment_date")
-
-        # Use position from first buy
-        # (assuming no additional buys for simplicity)
-        # For multiple buys, would need weighted average calculation
-        if first_buy.quantity is not None:
-            position_qty = Decimal(first_buy.quantity)
-        else:
-            position_qty = Decimal(0)
-
-        if position_qty > 0:
-            for coupon in coupon_schedule:
-                # Cash inflow from coupon (positive)
-                coupon_amount = (
-                    Decimal(coupon.coupon_amount)
-                    if coupon.coupon_amount
-                    else Decimal(0)
-                )
-                amount = coupon_amount * position_qty
-
-                # Convert to bond's currency if needed
-                if coupon.coupon_currency != security.currency:
-                    try:
-                        fx_rate = FX.get_rate(
-                            coupon.coupon_currency,
-                            security.currency,
-                            coupon.payment_date,
-                        )["FX"]
-                        if fx_rate:
-                            amount *= Decimal(fx_rate)
-                        else:
-                            # Skip this coupon if FX rate is None
-                            logger.warning(
-                                f"No FX rate for coupon of {security.name} from {coupon.coupon_currency} to {security.currency}"
-                            )
-                            continue
-                    except Exception as fx_error:
-                        logger.warning(
-                            "FX conversion failed for coupon of "
-                            f"{security.name} from {coupon.coupon_currency} "
-                            f"to {security.currency}: {fx_error}"
-                        )
-                        # Skip this coupon if FX conversion fails
-                        continue
-
-                cash_flows.append((coupon.payment_date, float(amount)))
-
-        # Add redemption cash flows at maturity from notional_history
-        if bond_meta.maturity_date and position_qty > 0:
-            # Get redemption amount from NotionalHistory
-            # (for all bonds, not amortizing)
-            try:
-                # Look for redemption entry at or after maturity date
-                redemption_entry = (
-                    security.notional_history.filter(
-                        date__gte=bond_meta.maturity_date,
-                        change_reason__in=["MATURITY", "REDEMPTION"],
-                    )
-                    .order_by("date")
-                    .first()
-                )
-
-                if redemption_entry:
-                    redemption_notional = redemption_entry.notional_per_unit
-                else:
-                    # Fallback: use current notional at maturity
-                    redemption_notional = bond_meta.get_current_notional(
-                        bond_meta.maturity_date, user, security.currency
-                    )
-            except Exception as e:
-                logger.error(f"Error getting redemption notional: {e}")
-                # Final fallback: use initial notional
-                redemption_notional = bond_meta.initial_notional
-
-            if redemption_notional:
-                # Cash inflow from redemption (positive)
-                amount = redemption_notional * position_qty
-
-                # Convert to bond's currency if needed
-                nominal_currency = bond_meta.nominal_currency or security.currency
-                add_redemption = (
-                    True  # Flag to determine if we should add this cash flow
-                )
-
-                if nominal_currency != security.currency:
-                    try:
-                        fx_rate = FX.get_rate(
-                            nominal_currency,
-                            security.currency,
-                            bond_meta.maturity_date,
-                        )["FX"]
-                        if fx_rate:
-                            amount *= Decimal(fx_rate)
-                        else:
-                            # Skip redemption if FX rate is None
-                            logger.warning(
-                                f"No FX rate for redemption of {security.name} from {nominal_currency} to {security.currency}"
-                            )
-                            add_redemption = False
-                    except Exception as fx_error:
-                        logger.warning(
-                            "FX conversion failed for redemption of "
-                            f"{security.name} from {nominal_currency} "
-                            f"to {security.currency}: {fx_error}"
-                        )
-                        # Skip redemption if FX conversion fails
-                        add_redemption = False
-
-                if add_redemption:
-                    cash_flows.append((bond_meta.maturity_date, float(amount)))
-
-        # Calculate XIRR
-        if len(cash_flows) > 1:
-            ytm_decimal = xirr(cash_flows)
-            if ytm_decimal is not None:
-                # Convert to percentage and return as Decimal for consistency
-                ytm_percentage = Decimal(str(ytm_decimal)) * Decimal(100)
-                logger.info(f"YTM calculated for {security.name}: {ytm_percentage}%")
-                return ytm_percentage
-            else:
-                logger.warning(f"XIRR calculation failed for {security.name}")
-                return None
-        else:
-            logger.warning(
-                f"Insufficient cash flows for YTM calculation of {security.name}"
-            )
-            return None
-
-    except Exception as e:
-        logger.warning(f"Error calculating YTM for {security.name}: {e}")
-        return None
 
 
 def get_security_transactions(request, security_id):
