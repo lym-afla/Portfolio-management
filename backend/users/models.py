@@ -9,7 +9,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.forms import ValidationError
-from tinkoff.invest import Client, RequestError
+from t_tech.invest import Client, RequestError
 
 from constants import ACCOUNT_TYPE_CHOICES, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 

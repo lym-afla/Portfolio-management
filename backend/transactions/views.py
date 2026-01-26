@@ -54,7 +54,7 @@ def ensure_account_native_ids(user, broker_api):
     :param broker_api: An instance of the TinkoffAPI class
     :return: A dictionary mapping Tinkoff account IDs to Accounts model instances
     """
-    from tinkoff.invest import Client
+    from t_tech.invest import Client
 
     # Get the token
     try:

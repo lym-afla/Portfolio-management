@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from tinkoff.invest import MoneyValue, OperationType, Quotation
-from tinkoff.invest.exceptions import RequestError
+from t_tech.invest import MoneyValue, OperationType, Quotation
+from t_tech.invest.exceptions import RequestError
 
 from common.models import Assets, Brokers
 from constants import TRANSACTION_TYPE_BUY

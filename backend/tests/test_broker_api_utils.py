@@ -9,7 +9,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from tinkoff.invest import (
+from t_tech.invest import (
     GetOperationsByCursorRequest,
     Operation,
     OperationState,
