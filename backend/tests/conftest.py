@@ -47,7 +47,7 @@ def setup_test_environment():
 
 
 @pytest.fixture
-def user():
+def user(db):
     """Create a test user fixture.
 
     Returns:
