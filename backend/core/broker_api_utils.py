@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Dict, Optional
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import (
+from t_tech.invest import (
     Client,
     GetOperationsByCursorRequest,
     OperationState,

@@ -1,6 +1,6 @@
 """Constants."""
 
-from tinkoff.invest import InstrumentType, OperationType
+from t_tech.invest import InstrumentType, OperationType
 
 CURRENCY_CHOICES = (
     ("USD", "$"),

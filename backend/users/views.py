@@ -15,8 +15,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-from tinkoff.invest import Client
-from tinkoff.invest.exceptions import RequestError
+from t_tech.invest import Client
+from t_tech.invest.exceptions import RequestError
 
 from common.models import Accounts, Brokers
 from constants import (

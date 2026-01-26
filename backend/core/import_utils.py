@@ -19,8 +19,8 @@ from django.core.files.storage import default_storage
 from django.db.models import Q
 from fake_useragent import UserAgent
 from fuzzywuzzy import process
-from tinkoff.invest import Client, InstrumentType
-from tinkoff.invest.utils import quotation_to_decimal
+from t_tech.invest import Client, InstrumentType
+from t_tech.invest.utils import quotation_to_decimal
 
 from common.models import (
     Accounts,
@@ -666,14 +666,14 @@ async def import_security_prices_from_ft(security, dates):
                         result["status"] = "updated"
                     else:
                         result["status"] = "error"
-                        result[
-                            "message"
-                        ] = f"No data found for {d.strftime('%Y-%m-%d')}"
+                        result["message"] = (
+                            f"No data found for {d.strftime('%Y-%m-%d')}"
+                        )
                 except Exception as e:
                     result["status"] = "error"
-                    result[
-                        "message"
-                    ] = f"Error processing data for {security.name}: {str(e)}"
+                    result["message"] = (
+                        f"Error processing data for {security.name}: {str(e)}"
+                    )
 
                 yield result
 
@@ -1598,9 +1598,9 @@ async def create_security_from_tinkoff(
                     )
                     # Capture the nominal currency from MoneyValue
                     if hasattr(instrument_data.initial_nominal, "currency"):
-                        bond_data[
-                            "nominal_currency"
-                        ] = instrument_data.initial_nominal.currency.upper()
+                        bond_data["nominal_currency"] = (
+                            instrument_data.initial_nominal.currency.upper()
+                        )
 
                 if (
                     hasattr(instrument_data, "placement_date")
@@ -1615,9 +1615,9 @@ async def create_security_from_tinkoff(
                     bond_data["maturity_date"] = instrument_data.maturity_date.date()
 
                 if hasattr(instrument_data, "coupon_quantity_per_year"):
-                    bond_data[
-                        "coupon_frequency"
-                    ] = instrument_data.coupon_quantity_per_year
+                    bond_data["coupon_frequency"] = (
+                        instrument_data.coupon_quantity_per_year
+                    )
 
                 # Detect bond type from flags
                 if hasattr(instrument_data, "floating_coupon_flag"):
@@ -1646,9 +1646,9 @@ async def create_security_from_tinkoff(
                     hasattr(instrument_data, "expiration_date")
                     and instrument_data.expiration_date
                 ):
-                    future_data[
-                        "expiration_date"
-                    ] = instrument_data.expiration_date.date()
+                    future_data["expiration_date"] = (
+                        instrument_data.expiration_date.date()
+                    )
 
                 if hasattr(instrument_data, "basic_asset"):
                     future_data["underlying_asset"] = instrument_data.basic_asset
@@ -1673,9 +1673,9 @@ async def create_security_from_tinkoff(
                     hasattr(instrument_data, "expiration_date")
                     and instrument_data.expiration_date
                 ):
-                    option_data[
-                        "expiration_date"
-                    ] = instrument_data.expiration_date.date()
+                    option_data["expiration_date"] = (
+                        instrument_data.expiration_date.date()
+                    )
 
                 if (
                     hasattr(instrument_data, "strike_price")
@@ -2293,7 +2293,7 @@ async def match_tinkoff_broker_account(
 
         try:
             # Get accounts from Tinkoff API using proper context manager pattern
-            from tinkoff.invest import Client
+            from t_tech.invest import Client
 
             token = await get_user_token(user)
 

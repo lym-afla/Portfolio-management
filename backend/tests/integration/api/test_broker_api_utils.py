@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import pytest_asyncio
-from tinkoff.invest import RequestError
+from t_tech.invest import RequestError
 
 from core.broker_api_utils import TinkoffAPI, TinkoffAPIException
 from users.models import CustomUser

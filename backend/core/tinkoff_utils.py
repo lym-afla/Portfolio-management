@@ -5,10 +5,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
-from tinkoff.invest import CandleInterval, Client, InstrumentType, OperationType
-from tinkoff.invest.exceptions import RequestError
-from tinkoff.invest.schemas import EventType, GetBondEventsRequest
-from tinkoff.invest.utils import quotation_to_decimal
+from t_tech.invest import CandleInterval, Client, InstrumentType, OperationType
+from t_tech.invest.exceptions import RequestError
+from t_tech.invest.schemas import EventType, GetBondEventsRequest
+from t_tech.invest.utils import quotation_to_decimal
 
 from common.models import Assets, BondCouponSchedule, Transactions
 from constants import (
@@ -832,9 +832,9 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
             transaction_data["commission"] = -1 * abs(
                 quotation_to_decimal(operation.commission)
             )
-            transaction_data[
-                "commission_currency"
-            ] = operation.commission.currency.upper()
+            transaction_data["commission_currency"] = (
+                operation.commission.currency.upper()
+            )
 
         logger.debug(
             f"✓ FX transaction created: {transaction_data['from_currency']} "
