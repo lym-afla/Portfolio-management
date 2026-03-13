@@ -1,4 +1,5 @@
-"""Utility functions for date manipulation and range calculations.
+"""
+Utility functions for date manipulation and range calculations.
 
 This module provides functions to calculate date ranges, handle timespans,
 and perform various date-related operations for portfolio analysis.
@@ -40,7 +41,8 @@ def get_date_range(timespan: str, to_date: date) -> Tuple[Optional[date], date]:
 
 
 def get_start_date(end_date, period):
-    """Calculate the start date based on an end date and time period.
+    """
+    Calculate the start date based on an end date and time period.
 
     Args:
         end_date: The end date (string in YYYY-MM-DD format or date object).
@@ -50,9 +52,7 @@ def get_start_date(end_date, period):
         date: The calculated start date.
     """
     end_date = (
-        datetime.strptime(end_date, "%Y-%m-%d").date()
-        if isinstance(end_date, str)
-        else end_date
+        datetime.strptime(end_date, "%Y-%m-%d").date() if isinstance(end_date, str) else end_date
     )
     if period == "7d":
         return end_date - timedelta(days=7)

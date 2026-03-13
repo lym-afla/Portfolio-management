@@ -28,9 +28,7 @@ def get_year_options_api(request) -> Response:
 
     # Convert effective_current_date from string to datetime object
     effective_current_date = (
-        datetime.strptime(effective_current_date_str, "%Y-%m-%d").replace(
-            tzinfo=timezone.utc
-        )
+        datetime.strptime(effective_current_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         if effective_current_date_str
         else datetime.now(timezone.utc)
     )
@@ -44,9 +42,7 @@ def get_year_options_api(request) -> Response:
     if first_year:
         first_year = first_year.date.year
 
-    last_exit_date = get_last_exit_date_for_accounts(
-        selected_account_ids, effective_current_date
-    )
+    last_exit_date = get_last_exit_date_for_accounts(selected_account_ids, effective_current_date)
     last_year = (
         last_exit_date.year
         if last_exit_date and last_exit_date.year < effective_current_date.year

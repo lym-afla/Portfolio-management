@@ -55,12 +55,8 @@ def get_prices_table_api(request):
     ]
 
     sorted_prices = sort_entries(prices_data, sort_by)
-    paginated_prices, pagination_data = paginate_table(
-        sorted_prices, page, items_per_page
-    )
-    formatted_prices = format_table_data(
-        paginated_prices, currency_target, number_of_digits
-    )
+    paginated_prices, pagination_data = paginate_table(sorted_prices, page, items_per_page)
+    formatted_prices = format_table_data(paginated_prices, currency_target, number_of_digits)
 
     return {
         "prices": formatted_prices,
@@ -91,9 +87,7 @@ def _filter_prices(
         selected_securities: List of security IDs to filter by
         search: Search string for security name or type
     """
-    prices_query = Prices.objects.filter(security__investors=user).select_related(
-        "security"
-    )
+    prices_query = Prices.objects.filter(security__investors=user).select_related("security")
 
     if start_date:
         prices_query = prices_query.filter(date__gte=start_date)
@@ -116,9 +110,7 @@ def _filter_prices(
         securities_with_positions = [
             security.id
             for security in securities_in_account
-            if security.position(
-                date=position_date, investor=user, account_ids=[selected_account]
-            )
+            if security.position(date=position_date, investor=user, account_ids=[selected_account])
             != 0
         ]
 

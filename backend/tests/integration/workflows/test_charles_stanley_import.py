@@ -25,9 +25,7 @@ pytestmark = pytest.mark.django_db
 def charles_stanley_setup(user, broker, asset):
     """Set up data for Charles Stanley import tests."""
     # Create a Charles Stanley specific broker
-    cs_broker = Brokers.objects.create(
-        name="Charles Stanley Test", investor=user, country="UK"
-    )
+    cs_broker = Brokers.objects.create(name="Charles Stanley Test", investor=user, country="UK")
 
     # Create broker account
     account = Accounts.objects.create(
@@ -171,9 +169,7 @@ async def test_security_mapping(charles_stanley_setup):
     mock_data = {
         "Date": ["01-Jan-2023"],
         "Description": ["Buy"],
-        "Stock Description": [
-            "Unknown Asset"
-        ],  # This should trigger mapping requirement
+        "Stock Description": ["Unknown Asset"],  # This should trigger mapping requirement
         "Price": [100],
         "Debit": [1000],
         "Credit": [0],
@@ -191,18 +187,14 @@ async def test_security_mapping(charles_stanley_setup):
                 mapping_required = True
                 break
 
-    assert (
-        mapping_required
-    ), "Security mapping should be required for unknown securities"
+    assert mapping_required, "Security mapping should be required for unknown securities"
 
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_invalid_excel_file():
     """Test invalid Excel file."""
-    with pytest.raises(
-        ValueError
-    ):  # Change back to ValueError if that's what you expect
+    with pytest.raises(ValueError):  # Change back to ValueError if that's what you expect
         generator = parse_charles_stanley_transactions(
             "invalid.xlsx", "GBP", 1, 1, confirm_every=False
         )

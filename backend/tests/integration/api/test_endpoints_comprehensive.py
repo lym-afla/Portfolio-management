@@ -79,9 +79,7 @@ class TestUserEndpoints(APITestCase):
         url = "/users/api/update_dashboard_settings/"
         data = {"default_currency": "EUR", "digits": 2, "table_date": "2023-06-15"}
 
-        response = self.client.post(
-            url, data=json.dumps(data), content_type="application/json"
-        )
+        response = self.client.post(url, data=json.dumps(data), content_type="application/json")
 
         # Test that we can update dashboard settings with JWT auth
         assert response.status_code == 200
@@ -110,9 +108,7 @@ class TestPortfolioEndpoints(APITestCase):
             email="portfolio@example.com",
             password="testpass123",
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(
             broker=self.broker, name="Test account", restricted=False
         )
@@ -293,9 +289,7 @@ class TestTransactionEndpoints(APITestCase):
         self.user = CustomUser.objects.create_user(
             username="tx_user", email="tx@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(
             broker=self.broker, name="Test Account", native_id="test_acc_123"
         )
@@ -484,9 +478,7 @@ class TestAssetEndpoints(APITestCase):
         self.user = CustomUser.objects.create_user(
             username="asset_user", email="asset@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(
             broker=self.broker, name="Test Account", native_id="asset_acc_123"
         )
@@ -685,9 +677,7 @@ class TestFXEndpoints(APITestCase):
             "comment": "Test FX transaction",
         }
 
-        response = self.client.post(
-            url, data=json.dumps(fx_data), content_type="application/json"
-        )
+        response = self.client.post(url, data=json.dumps(fx_data), content_type="application/json")
 
         # May return 201 or 200 depending on implementation
         assert response.status_code in [200, 201, 405]
@@ -881,9 +871,7 @@ class TestAPIErrorHandling(APITestCase):
         url = "/transactions/api/"
         invalid_json = "{invalid json}"
 
-        response = self.client.post(
-            url, data=invalid_json, content_type="application/json"
-        )
+        response = self.client.post(url, data=invalid_json, content_type="application/json")
 
         # Should return 400 Bad Request for invalid JSON
         assert response.status_code in [400, 500]

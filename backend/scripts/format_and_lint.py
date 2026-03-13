@@ -14,9 +14,7 @@ def run_command(command, description):
     """Run a shell command and print its output."""
     print(f"\n\033[1;34m=== Running {description} ===\033[0m")
     try:
-        result = subprocess.run(
-            command, shell=True, check=True, text=True, capture_output=True
-        )
+        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
         if result.stdout:
             print(result.stdout)
         print(f"\033[1;32m✓ {description} completed successfully\033[0m")

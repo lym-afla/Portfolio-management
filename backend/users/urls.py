@@ -10,18 +10,12 @@ app_name = "users"  # Optional, but useful for namespacing
 
 # Create a separate router for broker groups
 broker_router = DefaultRouter()
-broker_router.register(
-    r"account-groups", views.AccountGroupViewSet, basename="account-groups"
-)
+broker_router.register(r"account-groups", views.AccountGroupViewSet, basename="account-groups")
 
 # Create main router for other viewsets
 router = DefaultRouter()
-router.register(
-    r"tinkoff-tokens", views.TinkoffApiTokenViewSet, basename="tinkoff-token"
-)
-router.register(
-    r"ib-tokens", views.InteractiveBrokersApiTokenViewSet, basename="ib-token"
-)
+router.register(r"tinkoff-tokens", views.TinkoffApiTokenViewSet, basename="tinkoff-token")
+router.register(r"ib-tokens", views.InteractiveBrokersApiTokenViewSet, basename="ib-token")
 router.register(r"", views.UserViewSet, basename="user")
 
 urlpatterns = [

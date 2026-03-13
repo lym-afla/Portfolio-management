@@ -75,7 +75,7 @@ class BalanceTracker:
         self.currencies.add(currency)
 
         # Update balance using the centralized cash flow method
-        cash_flow = transaction.get_calculated_cash_flow()
+        cash_flow = transaction.total_cash_flow()
         self.balances[currency] += cash_flow
 
         # Store formatted balances for this transaction

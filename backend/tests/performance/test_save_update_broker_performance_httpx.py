@@ -28,9 +28,7 @@ User = get_user_model()
 @pytest.fixture
 async def user():
     """Create test user."""
-    return await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    return await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
 
 
 @pytest.fixture
@@ -129,9 +127,7 @@ def get_asgi_application():
 @pytest.mark.asyncio
 async def test_update_broker_performance_unauthorized():
     """Test unauthorized access to SSE endpoint."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )
@@ -147,9 +143,7 @@ async def test_update_broker_performance_unauthorized():
         "effective_current_date": "2023-01-01",
     }
 
-    await sync_to_async(cache.set)(
-        f"account_performance_update_{session_id}", update_data
-    )
+    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
     # Generate JWT token for authentication
     token = await sync_to_async(str)(AccessToken.for_user(user))
@@ -170,9 +164,7 @@ async def test_update_broker_performance_unauthorized():
 @pytest.mark.asyncio
 async def test_update_broker_performance_missing_session():
     """Test missing session ID."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
     # Generate JWT token for authentication
     token = await sync_to_async(str)(AccessToken.for_user(user))
 
@@ -191,9 +183,7 @@ async def test_update_broker_performance_missing_session():
 @pytest.mark.asyncio
 async def test_update_broker_performance_invalid_data():
     """Test broker performance calculation with invalid data."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
 
     # Use DRF's APIClient for validation endpoint
     client = APIClient()
@@ -226,9 +216,7 @@ async def test_update_broker_performance_invalid_data():
 @pytest.mark.asyncio
 async def test_update_broker_performance_no_transactions():
     """Test broker performance calculation with no transactions."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )
@@ -244,9 +232,7 @@ async def test_update_broker_performance_no_transactions():
         "effective_current_date": "2023-01-01",
     }
 
-    await sync_to_async(cache.set)(
-        f"account_performance_update_{session_id}", update_data
-    )
+    await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
     # Generate JWT token for authentication
     token = await sync_to_async(str)(AccessToken.for_user(user))
@@ -271,19 +257,14 @@ async def test_update_broker_performance_no_transactions():
 
         error_events = [event for event in events if event["status"] == "error"]
         assert len(error_events) >= 1
-        assert any(
-            "No transactions found" in event.get("message", "")
-            for event in error_events
-        )
+        assert any("No transactions found" in event.get("message", "") for event in error_events)
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_get_accounts_table_api():
     """Test the accounts table API functionality."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )
@@ -308,16 +289,12 @@ async def test_get_accounts_table_api():
         def __init__(self, user, data):
             self.user = user
             self.data = data
-            self.session = {
-                "effective_current_date": datetime.now().strftime("%Y-%m-%d")
-            }
+            self.session = {"effective_current_date": datetime.now().strftime("%Y-%m-%d")}
             user.default_currency = "USD"
             user.digits = 2
 
     # Test basic functionality
-    request = MockRequest(
-        user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}}
-    )
+    request = MockRequest(user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}})
 
     response = await sync_to_async(get_accounts_table_api)(request)
 
@@ -337,9 +314,7 @@ async def test_get_accounts_table_api():
 @pytest.mark.asyncio
 async def test_get_last_exit_date_for_brokers():
     """Test get last exit date for brokers."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )
@@ -405,9 +380,7 @@ async def test_get_last_exit_date_for_brokers():
 @pytest.mark.asyncio
 async def test_calculate_performance():
     """Test calculate performance."""
-    user = await sync_to_async(User.objects.create_user)(
-        username="testuser", password="testpass"
-    )
+    user = await sync_to_async(User.objects.create_user)(username="testuser", password="testpass")
     broker = await sync_to_async(Brokers.objects.create)(
         investor=user, name="Test Broker", country="US"
     )

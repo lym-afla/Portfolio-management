@@ -9,7 +9,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.forms import ValidationError
-from tinkoff.invest import Client, RequestError
+from t_tech.invest import Client, RequestError
 
 from constants import ACCOUNT_TYPE_CHOICES, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 
@@ -72,9 +72,7 @@ class CustomUser(AbstractUser):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(
-                        selected_account_type="all", selected_account_id__isnull=True
-                    )
+                    models.Q(selected_account_type="all", selected_account_id__isnull=True)
                     | ~models.Q(selected_account_type="all")
                     & models.Q(selected_account_id__isnull=False)
                 ),
@@ -169,9 +167,7 @@ class TinkoffApiToken(BaseApiToken):
         except RequestError as e:
             metadata = e.args[2] if len(e.args) > 2 else None
             error_message = (
-                metadata.message
-                if metadata and hasattr(metadata, "message")
-                else "Invalid token"
+                metadata.message if metadata and hasattr(metadata, "message") else "Invalid token"
             )
             logger.error(f"Token validation failed: {error_message}")
             raise ValidationError(
@@ -179,9 +175,7 @@ class TinkoffApiToken(BaseApiToken):
             )
         except Exception as e:
             logger.error(f"Token validation failed with unexpected error: {str(e)}")
-            raise ValidationError(
-                {"encrypted_token": "Could not validate Tinkoff API token"}
-            )
+            raise ValidationError({"encrypted_token": "Could not validate Tinkoff API token"})
 
     def save(self, *args, **kwargs):
         """Save the tinkoff api token."""
@@ -201,8 +195,7 @@ class TinkoffApiToken(BaseApiToken):
     def __str__(self):
         """Return the string representation of the tinkoff api token."""
         return (
-            f"{self.get_token_type_display()} Token "
-            f"({self.user.username} - {self.broker.name})"
+            f"{self.get_token_type_display()} Token " f"({self.user.username} - {self.broker.name})"
         )
 
 
@@ -229,9 +222,7 @@ class InteractiveBrokersApiToken(BaseApiToken):
 class AccountGroup(models.Model):
     """Account group model."""
 
-    user = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, related_name="account_groups"
-    )
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="account_groups")
     name = models.CharField(max_length=50)
     accounts = models.ManyToManyField("common.Accounts", related_name="groups")
     created_at = models.DateTimeField(auto_now_add=True)

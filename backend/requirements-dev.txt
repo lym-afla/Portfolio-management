@@ -6,18 +6,34 @@
 #
 alabaster==1.0.0
     # via sphinx
+asgiref==3.11.0
+    # via daphne
 astroid==2.15.8
     # via flake8-django
 asttokens==3.0.0
     # via stack-data
+attrs==25.4.0
+    # via
+    #   service-identity
+    #   twisted
+autobahn==25.12.2
+    # via daphne
+automat==25.4.16
+    # via twisted
 babel==2.17.0
     # via sphinx
 black==25.1.0
     # via -r requirements-dev.in
 build==1.3.0
     # via pip-tools
+cbor2==5.8.0
+    # via autobahn
 certifi==2025.8.3
     # via requests
+cffi==2.0.0
+    # via
+    #   autobahn
+    #   cryptography
 cfgv==3.4.0
     # via pre-commit
 charset-normalizer==3.4.3
@@ -35,6 +51,15 @@ colorama==0.4.6
     #   sphinx
 comm==0.2.3
     # via ipykernel
+constantly==23.10.4
+    # via twisted
+cryptography==46.0.3
+    # via
+    #   autobahn
+    #   pyopenssl
+    #   service-identity
+daphne==4.2.1
+    # via -r requirements-dev.in
 debugpy==1.8.16
     # via ipykernel
 decorator==5.2.1
@@ -45,6 +70,10 @@ docutils==0.21.2
     # via sphinx
 executing==2.2.1
     # via stack-data
+factory-boy==3.3.3
+    # via -r requirements-dev.in
+Faker==40.1.2
+    # via factory-boy
 filelock==3.20.0
     # via virtualenv
 flake8==6.1.0
@@ -53,12 +82,25 @@ flake8==6.1.0
     #   flake8-django
 flake8-django==1.4
     # via -r requirements-dev.in
+flake8-docstrings==1.7.0
+    # via -r requirements-dev.in
+flake8-bugbear==24.12.12
+    # via -r requirements-dev.in
+hyperlink==21.0.0
+    # via
+    #   autobahn
+    #   twisted
 identify==2.6.15
     # via pre-commit
 idna==3.10
-    # via requests
+    # via
+    #   hyperlink
+    #   requests
+    #   twisted
 imagesize==1.4.1
     # via sphinx
+incremental==24.11.0
+    # via twisted
 iniconfig==2.1.0
     # via pytest
 ipykernel==6.30.1
@@ -91,6 +133,8 @@ matplotlib-inline==0.1.7
     #   ipython
 mccabe==0.7.0
     # via flake8
+msgpack==1.1.2
+    # via autobahn
 mypy==1.17.1
     # via -r requirements-dev.in
 mypy-extensions==1.1.0
@@ -105,6 +149,7 @@ packaging==25.0
     # via
     #   black
     #   build
+    #   incremental
     #   ipykernel
     #   pytest
     #   sphinx
@@ -131,16 +176,30 @@ psutil==7.0.0
     # via ipykernel
 pure-eval==0.2.3
     # via stack-data
+py-ubjson==0.16.1
+    # via autobahn
+pyasn1==0.6.2
+    # via
+    #   pyasn1-modules
+    #   service-identity
+pyasn1-modules==0.4.2
+    # via service-identity
 pycodestyle==2.11.1
     # via flake8
+pycparser==3.0
+    # via cffi
 pyflakes==3.1.0
     # via flake8
+pydocstyle==6.3.0
+    # via flake8-docstrings
 pygments==2.19.2
     # via
     #   ipython
     #   ipython-pygments-lexers
     #   pytest
     #   sphinx
+pyopenssl==25.3.0
+    # via twisted
 pyproject-hooks==1.2.0
     # via
     #   build
@@ -168,6 +227,8 @@ requests==2.32.5
     # via sphinx
 roman-numerals-py==3.1.0
     # via sphinx
+service-identity==24.2.0
+    # via twisted
 six==1.17.0
     # via python-dateutil
 snowballstemmer==3.0.1
@@ -199,8 +260,17 @@ traitlets==5.14.3
     #   jupyter-client
     #   jupyter-core
     #   matplotlib-inline
+twisted[tls]==25.5.0
+    # via daphne
+txaio==25.12.2
+    # via autobahn
 typing-extensions==4.15.0
-    # via mypy
+    # via
+    #   mypy
+    #   pyopenssl
+    #   twisted
+ujson==5.11.0
+    # via autobahn
 urllib3==2.5.0
     # via requests
 virtualenv==20.35.3
@@ -211,6 +281,8 @@ wheel==0.45.1
     # via pip-tools
 wrapt==1.17.3
     # via astroid
+zope-interface==8.2
+    # via twisted
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

@@ -20,13 +20,10 @@ def transfer_db(direction):
     Creates a backup of the existing database before importing.
     """
     project_db = os.path.join(os.getcwd(), "db.sqlite3")
-    local_folder = (
-        r"C:\Users\yl\OneDrive\Personal\Web development\Portfolio management database"
-    )
+    local_folder = r"C:\Users\yl\OneDrive\Personal\Web development\Portfolio management database"
     if not os.path.exists(local_folder):
         local_folder = (
-            r"C:\Users\fyl\OneDrive\Personal\Web development\Portfolio "
-            r"management database"
+            r"C:\Users\fyl\OneDrive\Personal\Web development\Portfolio " r"management database"
         )
     local_db = os.path.join(local_folder, "db.sqlite3")
 
@@ -34,9 +31,7 @@ def transfer_db(direction):
         source, destination = project_db, local_db
     elif direction == "import":
         # Backup the existing database before importing
-        backup_db = os.path.join(
-            os.path.dirname(project_db), "..", "db.sqlite3 (backup)"
-        )
+        backup_db = os.path.join(os.path.dirname(project_db), "..", "db.sqlite3 (backup)")
         if os.path.exists(project_db):
             shutil.copy2(project_db, backup_db)
             print(

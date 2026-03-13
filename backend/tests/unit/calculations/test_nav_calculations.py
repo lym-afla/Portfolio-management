@@ -23,9 +23,7 @@ from constants import ACCOUNT_TYPE_INDIVIDUAL
 class TestNAVCalculation:
     """Test NAV calculation functionality."""
 
-    def test_simple_portfolio_nav(
-        self, user, broker, asset, sample_transactions, price_history
-    ):
+    def test_simple_portfolio_nav(self, user, broker, asset, sample_transactions, price_history):
         """Test NAV calculation for a simple portfolio."""
         # Calculate position at a specific date
         position = asset.position(date(2023, 6, 15), investor=user)
@@ -41,9 +39,7 @@ class TestNAVCalculation:
         assert market_value > 0
 
         # Expected: 120 shares * price from price_history
-        expected_price = (
-            Prices.objects.filter(security=asset, date=date(2023, 6, 15)).first().price
-        )
+        expected_price = Prices.objects.filter(security=asset, date=date(2023, 6, 15)).first().price
         expected_value = Decimal("120") * expected_price
         assert abs(market_value - expected_value) < Decimal("0.01")
 
@@ -93,12 +89,8 @@ class TestNAVCalculation:
         )
 
         # Create prices for both assets
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
-        )
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=asset2, price=Decimal("32.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("55.00"))
+        Prices.objects.create(date=date(2023, 6, 15), security=asset2, price=Decimal("32.00"))
 
         total_nav = Decimal("0")
         assets = [asset, asset2]
@@ -140,9 +132,7 @@ class TestNAVCalculation:
                     local_value = position * current_price.price
 
                     # Convert to target currency
-                    fx_rate = FX.get_rate(
-                        asset.currency, target_currency, valuation_date
-                    )
+                    fx_rate = FX.get_rate(asset.currency, target_currency, valuation_date)
                     converted_value = local_value * fx_rate["FX"]
 
                     total_nav_usd += converted_value
@@ -150,9 +140,7 @@ class TestNAVCalculation:
         assert total_nav_usd > 0
         assert isinstance(total_nav_usd, Decimal)
 
-    def test_nav_calculation_with_cash_balances(
-        self, user, account, asset, fx_transaction
-    ):
+    def test_nav_calculation_with_cash_balances(self, user, account, asset, fx_transaction):
         """Test NAV calculation including cash balances."""
         # Create transactions in the provided account (not from sample_transactions)
         Transactions.objects.create(
@@ -209,9 +197,7 @@ class TestNAVCalculation:
         total_nav = asset_value + total_cash
         assert total_nav > 0  # Should be positive
 
-    def test_nav_change_over_time(
-        self, user, broker, asset, sample_transactions, price_history
-    ):
+    def test_nav_change_over_time(self, user, broker, asset, sample_transactions, price_history):
         """Test NAV change calculation over different time periods."""
         dates = [date(2023, 3, 15), date(2023, 6, 15), date(2023, 9, 15)]
 
@@ -247,9 +233,7 @@ class TestNAVCalculation:
         # Get current price (create if not exists)
         current_price = asset.price_at_date(valuation_date)
         if not current_price:
-            Prices.objects.create(
-                date=valuation_date, security=asset, price=Decimal("55.00")
-            )
+            Prices.objects.create(date=valuation_date, security=asset, price=Decimal("55.00"))
             current_price = asset.price_at_date(valuation_date)
 
         asset_value = position * current_price.price
@@ -451,21 +435,15 @@ class TestNAVAggregation:
         )
 
         # Create current prices
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=tech_asset, price=Decimal("110.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=tech_asset, price=Decimal("110.00"))
 
         Prices.objects.create(
             date=date(2023, 6, 15), security=finance_asset, price=Decimal("85.00")
         )
 
         # Calculate sector allocations
-        tech_nav = tech_asset.position(date(2023, 6, 15), investor=user) * Decimal(
-            "110.00"
-        )
-        finance_nav = finance_asset.position(
-            date(2023, 6, 15), investor=user
-        ) * Decimal("85.00")
+        tech_nav = tech_asset.position(date(2023, 6, 15), investor=user) * Decimal("110.00")
+        finance_nav = finance_asset.position(date(2023, 6, 15), investor=user) * Decimal("85.00")
         total_nav = tech_nav + finance_nav
 
         tech_allocation = (tech_nav / total_nav) * Decimal("100")
@@ -515,21 +493,17 @@ class TestNAVAggregation:
         )
 
         # Create current prices
-        Prices.objects.create(
-            date=valuation_date, security=asset_eur, price=Decimal("42.00")
-        )
+        Prices.objects.create(date=valuation_date, security=asset_eur, price=Decimal("42.00"))
 
-        Prices.objects.create(
-            date=valuation_date, security=asset_gbp, price=Decimal("37.00")
-        )
+        Prices.objects.create(date=valuation_date, security=asset_gbp, price=Decimal("37.00"))
 
         # Calculate NAV by currency
-        eur_value = asset_eur.position(
-            valuation_date, investor=multi_currency_user
-        ) * Decimal("42.00")
-        gbp_value = asset_gbp.position(
-            valuation_date, investor=multi_currency_user
-        ) * Decimal("37.00")
+        eur_value = asset_eur.position(valuation_date, investor=multi_currency_user) * Decimal(
+            "42.00"
+        )
+        gbp_value = asset_gbp.position(valuation_date, investor=multi_currency_user) * Decimal(
+            "37.00"
+        )
 
         # Convert to USD
         fx_eur_usd = FX.get_rate("EUR", "USD", valuation_date)["FX"]
@@ -553,9 +527,7 @@ class TestNAVAggregation:
 class TestNAVPerformance:
     """Test NAV performance and change calculations."""
 
-    def test_nav_return_calculation(
-        self, user, broker, asset, sample_transactions, price_history
-    ):
+    def test_nav_return_calculation(self, user, broker, asset, sample_transactions, price_history):
         """Test NAV return calculation over time period."""
         start_date = date(2023, 3, 15)
         end_date = date(2023, 6, 15)
@@ -571,16 +543,12 @@ class TestNAVPerformance:
         end_nav = end_position * end_price.price if end_price else Decimal("0")
 
         # Calculate dividends received
-        dividends = asset.get_capital_distribution(
-            end_date, investor=user, start_date=start_date
-        )
+        dividends = asset.get_capital_distribution(end_date, investor=user, start_date=start_date)
 
         # Calculate total return
         total_return = (end_nav + dividends) - start_nav
         return_percentage = (
-            (total_return / start_nav) * Decimal("100")
-            if start_nav > 0
-            else Decimal("0")
+            (total_return / start_nav) * Decimal("100") if start_nav > 0 else Decimal("0")
         )
 
         assert isinstance(total_return, Decimal)
@@ -622,9 +590,7 @@ class TestNAVPerformance:
         )
 
         # Retrieve annual performance
-        perf = AnnualPerformance.objects.get(
-            investor=user, account_id=account.id, year=2023
-        )
+        perf = AnnualPerformance.objects.get(investor=user, account_id=account.id, year=2023)
 
         # Verify calculations
         assert perf.bop_nav == Decimal("0")
@@ -636,12 +602,9 @@ class TestNAVPerformance:
 
         # TSR should be (EOP NAV + cash out - invested - BOP NAV) / invested
         expected_tsr = (
-            (perf.eop_nav + perf.cash_out - perf.invested - perf.bop_nav)
-            / perf.invested
+            (perf.eop_nav + perf.cash_out - perf.invested - perf.bop_nav) / perf.invested
         ) * Decimal("100")
-        assert abs(Decimal(perf.tsr) - expected_tsr) < Decimal(
-            "0.2"
-        )  # Allow wider tolerance
+        assert abs(Decimal(perf.tsr) - expected_tsr) < Decimal("0.2")  # Allow wider tolerance
 
     def test_volatility_adjusted_nav(self, user, account, asset):
         """Test NAV calculations with volatility considerations."""
@@ -667,9 +630,7 @@ class TestNAVPerformance:
             current_price = base_price + (base_price * price_change)
             current_price = max(current_price, Decimal("1.00"))  # Ensure positive price
 
-            Prices.objects.create(
-                date=current_date, security=asset, price=current_price
-            )
+            Prices.objects.create(date=current_date, security=asset, price=current_price)
 
         # Calculate NAV volatility
         nav_values = []
@@ -683,9 +644,7 @@ class TestNAVPerformance:
 
         # Calculate basic volatility metrics
         if len(nav_values) > 1:
-            nav_changes = [
-                nav_values[i] - nav_values[i - 1] for i in range(1, len(nav_values))
-            ]
+            nav_changes = [nav_values[i] - nav_values[i - 1] for i in range(1, len(nav_values))]
             avg_change = sum(nav_changes) / len(nav_changes)
             max_change = max(nav_changes)
             min_change = min(nav_changes)

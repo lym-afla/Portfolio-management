@@ -1,4 +1,5 @@
-"""Utility functions for formatting data for display.
+"""
+Utility functions for formatting data for display.
 
 This module provides functions to format currency, dates, percentages,
 and other data types for display in tables and API responses.
@@ -218,7 +219,8 @@ def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) 
 
 
 def currency_format_dict_values(data, currency, digits):
-    """Recursively format all Decimal values in a dictionary to currency format.
+    """
+    Recursively format all Decimal values in a dictionary to currency format.
 
     Args:
         data: Dictionary containing values to format.

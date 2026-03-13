@@ -57,9 +57,7 @@ class TokenAuthMiddleware(BaseMiddleware):
 
             # First check query parameters for token (works for both HTTP and WebSocket)
             query_string = scope.get("query_string", b"").decode()
-            query_params = dict(
-                param.split("=") for param in query_string.split("&") if param
-            )
+            query_params = dict(param.split("=") for param in query_string.split("&") if param)
             token = query_params.get("token")
             logger.debug(f"Token from query params: {token}")
 

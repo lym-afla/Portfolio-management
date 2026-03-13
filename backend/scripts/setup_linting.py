@@ -14,9 +14,7 @@ def run_command(command, description):
     """Run a shell command and print its output."""
     print(f"\n\033[1;34m=== {description} ===\033[0m")
     try:
-        result = subprocess.run(
-            command, shell=True, check=True, text=True, capture_output=True
-        )
+        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
         if result.stdout:
             print(result.stdout)
         print(f"\033[1;32m✓ {description} completed successfully\033[0m")
@@ -58,9 +56,7 @@ def main():
         print("  - black .                          # Format code with Black")
         print("  - isort .                          # Sort imports")
         print("  - flake8                           # Run linting")
-        print(
-            "\nPre-commit hooks are installed and will run automatically on git commit."
-        )
+        print("\nPre-commit hooks are installed and will run automatically on git commit.")
         return 0
     else:
         print("\n\033[1;31m✗ Setup failed\033[0m")

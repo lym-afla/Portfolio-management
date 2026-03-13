@@ -129,9 +129,7 @@ def get_account_ids_from_choice(user, choice):
         List of broker account IDs
     """
     if not choice or choice == "All accounts":
-        return list(
-            Accounts.objects.filter(broker__investor=user).values_list("id", flat=True)
-        )
+        return list(Accounts.objects.filter(broker__investor=user).values_list("id", flat=True))
 
     if choice.startswith("group_"):
         group_id = int(choice.replace("group_", ""))

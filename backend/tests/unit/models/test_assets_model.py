@@ -259,8 +259,7 @@ class TestAssetsModel:
             print(caplog.text)
 
             assert (
-                result["current_position"]["total"]
-                == expected_gain_loss_current_position
+                result["current_position"]["total"] == expected_gain_loss_current_position
             ), f"For date {test_date}: "
             f"Expected gain/loss to be {expected_gain_loss_current_position}, "
             f" but got {result['current_position']['total']}"
@@ -271,9 +270,7 @@ class TestAssetsModel:
             f"Expected gain/loss to be {expected_gain_loss_all_time}, "
             f"but got {result['all_time']['total']}"
 
-    def test_calculate_buy_in_price(
-        self, user, account, asset, general_transactions, caplog
-    ):
+    def test_calculate_buy_in_price(self, user, account, asset, general_transactions, caplog):
         """Test calculate buy in price."""
         caplog.set_level(logging.DEBUG)
 
@@ -293,9 +290,7 @@ class TestAssetsModel:
 
         for test_date, expected_price in test_dates:
             caplog.clear()
-            buy_in_price = asset.calculate_buy_in_price(
-                test_date, user, account_ids=[account.id]
-            )
+            buy_in_price = asset.calculate_buy_in_price(test_date, user, account_ids=[account.id])
 
             print(f"\nTest for date: {test_date}")
             print("Logs:")
@@ -348,14 +343,10 @@ class TestAssetsModel:
 
         expected_price = Decimal("12.107143")
 
-        assert (
-            result == expected_price
-        ), f"Expected buy-in price to be {expected_price}, "
+        assert result == expected_price, f"Expected buy-in price to be {expected_price}, "
         f"but got {result}"
 
-    def test_calculate_buy_in_price_with_FX(
-        self, user, asset, general_transactions, caplog
-    ):
+    def test_calculate_buy_in_price_with_FX(self, user, asset, general_transactions, caplog):
         """Test calculate buy in price with FX."""
         caplog.set_level(logging.INFO)
 
@@ -403,9 +394,7 @@ class TestAssetsModel:
             price=Decimal("100"),
             currency="USD",
         )
-        Prices.objects.create(
-            security=asset, date=date(2022, 1, 31), price=Decimal("110")
-        )
+        Prices.objects.create(security=asset, date=date(2022, 1, 31), price=Decimal("110"))
         Transactions.objects.create(
             investor=user,
             account=account,
@@ -428,19 +417,13 @@ class TestAssetsModel:
         )
 
         # Test with start date after first transaction
-        result = asset.realized_gain_loss(
-            date(2022, 12, 31), user, start_date=date(2022, 2, 1)
-        )
+        result = asset.realized_gain_loss(date(2022, 12, 31), user, start_date=date(2022, 2, 1))
         assert result["current_position"]["total"] == Decimal(
             "0"
         )  # 0 because current position is 0
-        assert result["all_time"]["total"] == Decimal(
-            "150"
-        )  # (120 - 110) * 5 + (130 - 110) * 5
+        assert result["all_time"]["total"] == Decimal("150")  # (120 - 110) * 5 + (130 - 110) * 5
 
-    def test_realized_gain_loss_for_closed_with_currency_conversion(
-        self, user, account, asset
-    ):
+    def test_realized_gain_loss_for_closed_with_currency_conversion(self, user, account, asset):
         """Test realized gain loss for closed with currency conversion."""
         # Create transactions with account
         Transactions.objects.create(
@@ -472,9 +455,7 @@ class TestAssetsModel:
         expected_gain = (
             Decimal("120") / Decimal("1.2") - Decimal("100") / Decimal("1.1")
         ) * Decimal("10")
-        assert result["all_time"]["total"] == pytest.approx(
-            expected_gain, rel=Decimal("1e-2")
-        )
+        assert result["all_time"]["total"] == pytest.approx(expected_gain, rel=Decimal("1e-2"))
 
     def test_realized_gain_loss_for_opened_with_start_date(self, user, account, asset):
         """Test realized gain loss for opened with start date."""
@@ -510,28 +491,24 @@ class TestAssetsModel:
         FX.objects.create(date=date(2022, 12, 31), RUBUSD=Decimal("62"))
 
         result = asset.realized_gain_loss(date(2022, 12, 31), user, currency="RUB")
-        expected_gain = (
-            Decimal("120") * Decimal("47") - Decimal("100") * Decimal("35")
-        ) * Decimal("5")
+        expected_gain = (Decimal("120") * Decimal("47") - Decimal("100") * Decimal("35")) * Decimal(
+            "5"
+        )
         assert result["current_position"]["total"] == pytest.approx(
             expected_gain, rel=Decimal("1e-2")
         )
-        assert result["all_time"]["total"] == pytest.approx(
-            expected_gain, rel=Decimal("1e-2")
-        )
+        assert result["all_time"]["total"] == pytest.approx(expected_gain, rel=Decimal("1e-2"))
 
         result = asset.realized_gain_loss(
             date(2022, 12, 31), user, currency="RUB", start_date=date(2022, 3, 1)
         )
-        expected_gain = (
-            Decimal("120") * Decimal("47") - Decimal("110") * Decimal("42")
-        ) * Decimal("5")
+        expected_gain = (Decimal("120") * Decimal("47") - Decimal("110") * Decimal("42")) * Decimal(
+            "5"
+        )
         assert result["current_position"]["total"] == pytest.approx(
             expected_gain, rel=Decimal("1e-2")
         )
-        assert result["all_time"]["total"] == pytest.approx(
-            expected_gain, rel=Decimal("1e-2")
-        )
+        assert result["all_time"]["total"] == pytest.approx(expected_gain, rel=Decimal("1e-2"))
 
         result = asset.realized_gain_loss(
             date(2022, 12, 31), user, currency="RUB", start_date=date(2022, 7, 1)
@@ -567,9 +544,7 @@ class TestAssetsModel:
         asset.prices.create(date=date(2022, 12, 31), price=Decimal("130"))
 
         # Test with start date after first transaction
-        result = asset.unrealized_gain_loss(
-            date(2022, 12, 31), user, start_date=date(2022, 2, 1)
-        )
+        result = asset.unrealized_gain_loss(date(2022, 12, 31), user, start_date=date(2022, 2, 1))
         expected_gain = (Decimal("130") - Decimal("110")) * Decimal("5") + (
             Decimal("130") - Decimal("100")
         ) * Decimal("10")
@@ -577,9 +552,7 @@ class TestAssetsModel:
 
         asset.prices.create(date=date(2022, 2, 10), price=Decimal("105"))
 
-        result = asset.unrealized_gain_loss(
-            date(2022, 12, 31), user, start_date=date(2022, 2, 10)
-        )
+        result = asset.unrealized_gain_loss(date(2022, 12, 31), user, start_date=date(2022, 2, 10))
         expected_gain = (Decimal("130") - Decimal("105")) * Decimal("10") + (
             Decimal("130") - Decimal("110")
         ) * Decimal("5")
@@ -587,9 +560,7 @@ class TestAssetsModel:
 
         asset.prices.create(date=date(2022, 3, 15), price=Decimal("115"))
 
-        result = asset.unrealized_gain_loss(
-            date(2022, 12, 31), user, start_date=date(2022, 3, 15)
-        )
+        result = asset.unrealized_gain_loss(date(2022, 12, 31), user, start_date=date(2022, 3, 15))
         expected_gain = (Decimal("130") - Decimal("115")) * Decimal("15")
         assert result["total"] == pytest.approx(expected_gain, rel=Decimal("1e-2"))
 
@@ -669,9 +640,7 @@ class TestAssetsModel:
         assert realized_result["all_time"]["total"] == pytest.approx(
             Decimal(expected_realized), rel=1e-2
         )
-        assert unrealized_result["total"] == pytest.approx(
-            Decimal(expected_unrealized), rel=1e-2
-        )
+        assert unrealized_result["total"] == pytest.approx(Decimal(expected_unrealized), rel=1e-2)
 
 
 @pytest.mark.django_db

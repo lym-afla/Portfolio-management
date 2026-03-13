@@ -298,9 +298,7 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle mixed precision correctly
-        buy_in_price = asset.calculate_buy_in_price(
-            date.today() + timedelta(days=1), investor=user
-        )
+        buy_in_price = asset.calculate_buy_in_price(date.today() + timedelta(days=1), investor=user)
         assert buy_in_price >= 0
         assert isinstance(buy_in_price, Decimal)
 
@@ -438,9 +436,7 @@ class TestAPIRegression:
     These tests ensure API responses remain consistent.
     """
 
-    def test_regression_transaction_endpoint_validation(
-        self, authenticated_client, account
-    ):
+    def test_regression_transaction_endpoint_validation(self, authenticated_client, account):
         """Regression test for transaction endpoint validation."""
         url = "/transactions/api/"
 
@@ -562,9 +558,7 @@ class TestDataIntegrityRegression:
             date.today(), investor=sample_transactions[0].investor
         )
 
-        assert (
-            buy_in_price_1 == buy_in_price_2
-        ), "Inconsistent buy-in price calculations"
+        assert buy_in_price_1 == buy_in_price_2, "Inconsistent buy-in price calculations"
 
 
 # Regression Test Metadata

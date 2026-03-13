@@ -1,4 +1,5 @@
-"""Utility functions for generating chart data and visualizations.
+"""
+Utility functions for generating chart data and visualizations.
 
 This module provides functions to calculate and format data for various charts
 including NAV (Net Asset Value) charts, performance charts, and other visualizations.
@@ -19,10 +20,9 @@ from core.portfolio_utils import IRR, NAV_at_date, get_fx_rate
 logger = logging.getLogger("dashboard")
 
 
-def get_nav_chart_data(
-    user_id, account_ids, frequency, from_date, to_date, currency, breakdown
-):
-    """Calculate NAV chart data for a given user and date range.
+def get_nav_chart_data(user_id, account_ids, frequency, from_date, to_date, currency, breakdown):
+    """
+    Calculate NAV chart data for a given user and date range.
 
     Args:
         user_id: The ID of the user to calculate NAV for.
@@ -37,9 +37,7 @@ def get_nav_chart_data(
         dict: Dictionary containing chart data with dates and NAV values.
     """
     # Ensure dates are date objects first
-    from_date = (
-        date.fromisoformat(from_date) if isinstance(from_date, str) else from_date
-    )
+    from_date = date.fromisoformat(from_date) if isinstance(from_date, str) else from_date
     to_date = date.fromisoformat(to_date) if isinstance(to_date, str) else to_date
 
     # Only get earliest date if from_date is None
@@ -78,9 +76,7 @@ def get_nav_chart_data(
         chart_data["datasets"] = [
             _create_dataset("NAV", [], "rgba(75, 192, 192, 0.7)", "bar", "y"),
             _create_dataset("IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"),
-            _create_dataset(
-                "Rolling IRR (RHS)", [], "rgba(255, 159, 64, 1)", "line", "y1"
-            ),
+            _create_dataset("Rolling IRR (RHS)", [], "rgba(255, 159, 64, 1)", "line", "y1"),
         ]
     elif breakdown == "value_contributions":
         chart_data["datasets"] = [
@@ -100,13 +96,9 @@ def get_nav_chart_data(
                 "y",
                 stack="combined",
             ),
-            _create_dataset(
-                "Return", [], "rgba(255, 159, 64, 0.7)", "bar", "y", stack="combined"
-            ),
+            _create_dataset("Return", [], "rgba(255, 159, 64, 0.7)", "bar", "y", stack="combined"),
             _create_dataset("IRR (RHS)", [], "rgba(75, 192, 192, 1)", "line", "y1"),
-            _create_dataset(
-                "Rolling IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"
-            ),
+            _create_dataset("Rolling IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"),
         ]
     elif breakdown == "value_contributions_cumulative":
         # Fetch all transactions once at the beginning for cumulative calculations
@@ -125,21 +117,15 @@ def get_nav_chart_data(
                 "y",
                 stack="combined",
             ),
-            _create_dataset(
-                "Return", [], "rgba(255, 159, 64, 0.7)", "bar", "y", stack="combined"
-            ),
+            _create_dataset("Return", [], "rgba(255, 159, 64, 0.7)", "bar", "y", stack="combined"),
             _create_dataset("IRR (RHS)", [], "rgba(75, 192, 192, 1)", "line", "y1"),
-            _create_dataset(
-                "Rolling IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"
-            ),
+            _create_dataset("Rolling IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"),
         ]
     else:
         chart_data["datasets"].extend(
             [
                 _create_dataset("IRR (RHS)", [], "rgba(75, 192, 192, 1)", "line", "y1"),
-                _create_dataset(
-                    "Rolling IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"
-                ),
+                _create_dataset("Rolling IRR (RHS)", [], "rgba(153, 102, 255, 1)", "line", "y1"),
             ]
         )
 
@@ -158,9 +144,7 @@ def get_nav_chart_data(
         )
         NAV = NAV_data["Total NAV"] / 1000
 
-        IRR_value = IRR(
-            user_id, d, currency, account_ids=account_ids, cached_nav=NAV * 1000
-        )
+        IRR_value = IRR(user_id, d, currency, account_ids=account_ids, cached_nav=NAV * 1000)
         IRR_rolling = IRR(
             user_id,
             d,
@@ -203,9 +187,7 @@ def get_nav_chart_data(
             )
         else:
             breakdown_data = NAV_data.get(breakdown, {})
-            add_breakdown_data(
-                chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d
-            )
+            add_breakdown_data(chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d)
 
         NAV_previous_date = NAV
         previous_date = d + timedelta(days=1)
@@ -217,6 +199,7 @@ def get_nav_chart_data(
 
 
 def _add_no_breakdown_data(chart_data, NAV, IRR, IRR_rolling):
+    """Add no breakdown data."""
     chart_data["datasets"][0]["data"].append(NAV)
     chart_data["datasets"][1]["data"].append(IRR)
     chart_data["datasets"][2]["data"].append(IRR_rolling)
@@ -234,9 +217,8 @@ def _add_contributions_data(
     previous_date,
     currency,
 ):
-    contributions = _calculate_contributions(
-        user_id, account_ids, d, previous_date, currency
-    )
+    """Add contributions data."""
+    contributions = _calculate_contributions(user_id, account_ids, d, previous_date, currency)
     return_amount = NAV - NAV_previous_date - contributions
 
     chart_data["datasets"][0]["data"].append(NAV_previous_date)
@@ -246,10 +228,9 @@ def _add_contributions_data(
     chart_data["datasets"][4]["data"].append(IRR_rolling)
 
 
-def add_breakdown_data(
-    chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date
-):
-    """Add breakdown data to chart datasets.
+def add_breakdown_data(chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date):
+    """
+    Add breakdown data to chart datasets.
 
     Args:
         chart_data: Dictionary containing chart structure and datasets.
@@ -264,15 +245,11 @@ def add_breakdown_data(
             categories[key] = current_date
             chart_data["datasets"].insert(
                 -2,
-                _create_dataset(
-                    key, [], get_color(len(categories)), "bar", "y", stack="combined"
-                ),
+                _create_dataset(key, [], get_color(len(categories)), "bar", "y", stack="combined"),
             )
 
         dataset_index = next(
-            i
-            for i, dataset in enumerate(chart_data["datasets"])
-            if dataset["label"] == key
+            i for i, dataset in enumerate(chart_data["datasets"]) if dataset["label"] == key
         )
         chart_data["datasets"][dataset_index]["data"].append(value / 1000)
 
@@ -282,7 +259,8 @@ def add_breakdown_data(
 
 
 def fill_missing_historical_data(chart_data, categories, frequency):
-    """Fill missing historical data points for chart datasets.
+    """
+    Fill missing historical data points for chart datasets.
 
     Args:
         chart_data: Dictionary containing chart structure and datasets.
@@ -304,7 +282,8 @@ def fill_missing_historical_data(chart_data, categories, frequency):
 
 
 def find_first_data_index(labels, category_date, frequency):
-    """Find the first data index for a category based on its start date.
+    """
+    Find the first data index for a category based on its start date.
 
     Args:
         labels: List of date labels for the chart.
@@ -321,7 +300,8 @@ def find_first_data_index(labels, category_date, frequency):
 
 
 def compare_dates(label, category_date, frequency):
-    """Compare a chart label date with a category date based on frequency.
+    """
+    Compare a chart label date with a category date based on frequency.
 
     Args:
         label: The chart label string to compare.
@@ -362,7 +342,8 @@ def compare_dates(label, category_date, frequency):
 
 
 def parse_label_date(label, frequency):
-    """Parse a chart label into a date object based on frequency.
+    """
+    Parse a chart label into a date object based on frequency.
 
     Args:
         label: The chart label string to parse.
@@ -384,7 +365,8 @@ def parse_label_date(label, frequency):
 
 
 def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
-    """Create a dataset configuration for a chart.
+    """
+    Create a dataset configuration for a chart.
 
     Args:
         label: The label for the dataset.
@@ -414,7 +396,8 @@ def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
 
 
 def get_color(index):
-    """Get a color from a predefined color palette.
+    """
+    Get a color from a predefined color palette.
 
     Args:
         index: The index of the color to retrieve.
@@ -441,6 +424,7 @@ def _calculate_contributions(
     cumulative=False,
     cached_transactions=None,
 ):
+    """Calculate contributions."""
     if cumulative:
         if cached_transactions is None:
             # If no cache provided, fetch all transactions up to this date
@@ -490,6 +474,7 @@ def _add_cumulative_contributions_data(
     currency,
     cached_transactions=None,
 ):
+    """Add cumulative contributions data."""
     # Calculate cumulative contributions to date
     cumulative_contributions = _calculate_contributions(
         user_id,
@@ -512,12 +497,11 @@ def _add_cumulative_contributions_data(
 
 # Collect chart dates
 def _chart_dates(start_date, end_date, freq):
+    """Create chart dates."""
     # Create matching table for pandas
     frequency = {"D": "D", "W": "W-SAT", "M": "ME", "Q": "QE", "Y": "YE"}
 
-    start_date = (
-        date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
-    )
+    start_date = date.fromisoformat(start_date) if isinstance(start_date, str) else start_date
     end_date = date.fromisoformat(end_date) if isinstance(end_date, str) else end_date
 
     if start_date >= end_date:
@@ -535,9 +519,7 @@ def _chart_dates(start_date, end_date, freq):
         start_date = start_date.replace(month=12, day=31)
 
     # Get list of dates from pandas
-    date_range = pd.date_range(
-        start=start_date, end=end_date, freq=frequency[freq]
-    ).date
+    date_range = pd.date_range(start=start_date, end=end_date, freq=frequency[freq]).date
 
     # Handle case where end_date is before or equal to start_date
     if len(date_range) == 0:
@@ -552,6 +534,7 @@ def _chart_dates(start_date, end_date, freq):
 
 # Create labels according to dates
 def _chart_labels(dates, frequency):
+    """Create chart labels."""
     if frequency in ("D", "W"):
         return [d.strftime("%d-%b-%y") for d in dates]
     if frequency == "M":
@@ -563,6 +546,7 @@ def _chart_labels(dates, frequency):
 
 
 def _get_earliest_date_for_accounts(user_id, account_ids):
+    """Get earliest date for accounts."""
     try:
         earliest_date = Transactions.objects.filter(
             investor__id=user_id, account_id__in=account_ids

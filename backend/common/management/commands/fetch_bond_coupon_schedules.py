@@ -96,9 +96,7 @@ class Command(BaseCommand):
 
         if force_refresh:
             self.stdout.write(
-                self.style.WARNING(
-                    "Force refresh enabled - will update existing schedules"
-                )
+                self.style.WARNING("Force refresh enabled - will update existing schedules")
             )
 
         # Fetch schedules

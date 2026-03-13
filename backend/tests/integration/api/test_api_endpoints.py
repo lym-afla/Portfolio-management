@@ -56,9 +56,7 @@ class TestAPIEndpoints(APITestCase):
         }
 
         # Try without JSON content type first
-        response = self.client.post(
-            "/users/api/update_dashboard_settings/", data=update_data
-        )
+        response = self.client.post("/users/api/update_dashboard_settings/", data=update_data)
         print(f"Response status (form data): {response.status_code}")
         print(f"Response content: {response.content.decode()[:500]}...")
 

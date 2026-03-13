@@ -40,9 +40,7 @@ class TestCompleteTransactionWorkflows:
             email="workflow@example.com",
             password="testpass123",
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(
             broker=self.broker,
             name="Test Account",
@@ -77,9 +75,7 @@ class TestCompleteTransactionWorkflows:
         assert position_after_buy == Decimal("100")
 
         # Step 2: Create price history
-        Prices.objects.create(
-            date=date(2023, 3, 15), security=self.asset, price=Decimal("55.00")
-        )
+        Prices.objects.create(date=date(2023, 3, 15), security=self.asset, price=Decimal("55.00"))
 
         # Step 3: Sell all shares
         sell_tx = Transactions.objects.create(
@@ -105,9 +101,7 @@ class TestCompleteTransactionWorkflows:
         total_proceeds = sell_tx.total_cash_flow()
         net_profit = total_proceeds + total_cost
 
-        expected_profit = (Decimal("55.00") - Decimal("50.00")) * Decimal(
-            "100"
-        ) - Decimal("10.00")
+        expected_profit = (Decimal("55.00") - Decimal("50.00")) * Decimal("100") - Decimal("10.00")
         assert net_profit == expected_profit
 
     def test_partial_sale_workflow(self):
@@ -175,12 +169,8 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Create price history
-        Prices.objects.create(
-            date=date(2023, 3, 14), security=self.asset, price=Decimal("50.00")
-        )
-        Prices.objects.create(
-            date=date(2023, 3, 15), security=self.asset, price=Decimal("50.50")
-        )
+        Prices.objects.create(date=date(2023, 3, 14), security=self.asset, price=Decimal("50.00"))
+        Prices.objects.create(date=date(2023, 3, 15), security=self.asset, price=Decimal("50.50"))
 
         # Dividend payment
         Transactions.objects.create(
@@ -231,9 +221,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Create declining price history
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=self.asset, price=Decimal("70.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=self.asset, price=Decimal("70.00"))
 
         # Sale at loss for tax harvesting
         loss_sale = Transactions.objects.create(
@@ -252,9 +240,7 @@ class TestCompleteTransactionWorkflows:
         wash_sale_date = date(2023, 7, 15)
 
         # Create price after wash sale period
-        Prices.objects.create(
-            date=wash_sale_date, security=self.asset, price=Decimal("72.00")
-        )
+        Prices.objects.create(date=wash_sale_date, security=self.asset, price=Decimal("72.00"))
 
         # Repurchase after wash sale period
         repurchase = Transactions.objects.create(
@@ -271,9 +257,7 @@ class TestCompleteTransactionWorkflows:
 
         # Verify tax loss calculation
         loss_amount = loss_sale.total_cash_flow() + (purchase_high.total_cash_flow())
-        expected_loss = (Decimal("7000")) + (
-            Decimal("-10000") - Decimal("10") * Decimal("2")
-        )
+        expected_loss = (Decimal("7000")) + (Decimal("-10000") - Decimal("10") * Decimal("2"))
         assert loss_amount == expected_loss
 
         # Verify wash sale period compliance
@@ -313,15 +297,11 @@ class TestCompleteTransactionWorkflows:
 
         assert total_shares > 0
         assert total_cost == -Decimal("6000.00")
-        assert average_price > Decimal(
-            "50.00"
-        )  # Should be higher due to increasing prices
+        assert average_price > Decimal("50.00")  # Should be higher due to increasing prices
 
         # Create final price for position valuation
         final_price = Decimal("62.00")
-        Prices.objects.create(
-            date=date(2023, 7, 15), security=self.asset, price=final_price
-        )
+        Prices.objects.create(date=date(2023, 7, 15), security=self.asset, price=final_price)
 
         # Calculate final position value
         final_position = self.asset.position(date(2023, 7, 15), self.user)
@@ -347,9 +327,7 @@ class TestMultiAssetWorkflows:
         self.user = CustomUser.objects.create_user(
             username="multi_user", email="multi@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Multi Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Multi Broker", country="US")
         self.account = Accounts.objects.create(
             broker=self.broker,
             name="Multi Account",
@@ -476,9 +454,7 @@ class TestMultiAssetWorkflows:
         # Set up multi-currency user
         self.client = None  # Not using Django test client here
         user = multi_currency_user
-        broker = Brokers.objects.create(
-            investor=user, name="International Broker", country="UK"
-        )
+        broker = Brokers.objects.create(investor=user, name="International Broker", country="UK")
         account = Accounts.objects.create(
             broker=broker,
             name="International Account",
@@ -541,15 +517,9 @@ class TestMultiAssetWorkflows:
             )
 
         # Create price history in local currencies
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=usd_asset, price=Decimal("55.00")
-        )
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=eur_asset, price=Decimal("42.00")
-        )
-        Prices.objects.create(
-            date=date(2023, 6, 15), security=gbp_asset, price=Decimal("37.00")
-        )
+        Prices.objects.create(date=date(2023, 6, 15), security=usd_asset, price=Decimal("55.00"))
+        Prices.objects.create(date=date(2023, 6, 15), security=eur_asset, price=Decimal("42.00"))
+        Prices.objects.create(date=date(2023, 6, 15), security=gbp_asset, price=Decimal("37.00"))
 
         # Calculate portfolio value in different base currencies
         base_currencies = ["USD", "EUR", "GBP"]
@@ -564,9 +534,7 @@ class TestMultiAssetWorkflows:
                 local_value = position * local_price
 
                 if asset.currency != base_currency:
-                    fx_rate = FX.get_rate(
-                        asset.currency, base_currency, date(2023, 6, 15)
-                    )["FX"]
+                    fx_rate = FX.get_rate(asset.currency, base_currency, date(2023, 6, 15))["FX"]
                     converted_value = local_value * fx_rate
                 else:
                     converted_value = local_value
@@ -646,9 +614,7 @@ class TestErrorHandlingWorkflows:
 
         # Position after oversell attempt
         final_position = self.asset.position(date(2023, 3, 16), self.user)
-        assert final_position == Decimal(
-            "-50"
-        )  # Should allow negative positions (shorting)
+        assert final_position == Decimal("-50")  # Should allow negative positions (shorting)
 
     def test_invalid_transaction_recovery(self):
         """Test recovery from invalid transaction attempts."""
@@ -715,9 +681,7 @@ class TestErrorHandlingWorkflows:
     def test_cross_currency_transaction_validation(self, multi_currency_user):
         """Test validation in cross-currency transactions."""
         user = multi_currency_user
-        broker = Brokers.objects.create(
-            investor=user, name="Cross Currency Broker", country="UK"
-        )
+        broker = Brokers.objects.create(investor=user, name="Cross Currency Broker", country="UK")
         account = Accounts.objects.create(
             broker=broker,
             name="Cross Currency Account",

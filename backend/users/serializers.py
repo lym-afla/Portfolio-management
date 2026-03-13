@@ -32,9 +32,7 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for user registration and profile management."""
 
-    password = serializers.CharField(
-        write_only=True, required=True, validators=[validate_password]
-    )
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
 
     class Meta:
@@ -68,9 +66,7 @@ class UserSerializer(serializers.ModelSerializer):
             ValidationError: If passwords don't match.
         """
         if attrs["password"] != attrs["password2"]:
-            raise serializers.ValidationError(
-                {"password": "Password fields didn't match."}
-            )
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
 
     def create(self, validated_data):
@@ -108,9 +104,7 @@ class UserSettingsSerializer(serializers.ModelSerializer):
     default_currency = serializers.ChoiceField(choices=CURRENCY_CHOICES)
     chart_frequency = serializers.ChoiceField(choices=FREQUENCY_CHOICES)
     chart_timeline = serializers.ChoiceField(choices=TIMELINE_CHOICES)
-    NAV_barchart_default_breakdown = serializers.ChoiceField(
-        choices=NAV_BARCHART_CHOICES
-    )
+    NAV_barchart_default_breakdown = serializers.ChoiceField(choices=NAV_BARCHART_CHOICES)
     selected_account_type = serializers.ChoiceField(choices=ACCOUNT_TYPE_CHOICES)
     selected_account_id = serializers.IntegerField(allow_null=True)
 
@@ -360,9 +354,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             from django.contrib.sessions.models import Session
 
             recent_sessions = (
-                Session.objects.filter(
-                    session_data__contains=f'"_auth_user_id": "{self.user.id}"'
-                )
+                Session.objects.filter(session_data__contains=f'"_auth_user_id": "{self.user.id}"')
                 .order_by("-expire_date")
                 .first()
             )
@@ -390,9 +382,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class AccountGroupSerializer(serializers.ModelSerializer):
     """Serializer for account group management."""
 
-    accounts = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Accounts.objects.all()
-    )
+    accounts = serializers.PrimaryKeyRelatedField(many=True, queryset=Accounts.objects.all())
 
     class Meta:
         """Meta class for AccountGroupSerializer."""

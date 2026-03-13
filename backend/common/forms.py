@@ -49,9 +49,7 @@ class GroupedSelect(forms.Select):
 class DashboardForm(forms.ModelForm):
     """Dashboard form."""
 
-    table_date = forms.DateField(
-        widget=forms.DateInput(attrs={"type": "date"}), label="Date"
-    )
+    table_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="Date")
 
     class Meta:
         """Meta class for the dashboard form."""

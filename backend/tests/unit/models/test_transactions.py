@@ -344,9 +344,7 @@ class TestTransactionCashFlowCalculations:
         commission = Decimal("-5.00")  # Negative for outflow
 
         # Expected: -(100 * 50) - 5 = -5005
-        expected_cash_flow = (
-            -(quantity * price) + commission
-        )  # commission is already negative
+        expected_cash_flow = -(quantity * price) + commission  # commission is already negative
 
         transaction = Transactions.objects.create(
             investor=user,
@@ -370,9 +368,7 @@ class TestTransactionCashFlowCalculations:
         commission = Decimal("-5.00")  # Negative for outflow
 
         # Expected: (100 * 55) - 5 = 5495
-        expected_cash_flow = (
-            abs(quantity) * price
-        ) + commission  # commission is already negative
+        expected_cash_flow = (abs(quantity) * price) + commission  # commission is already negative
 
         transaction = Transactions.objects.create(
             investor=user,
@@ -419,9 +415,7 @@ class TestTransactionCashFlowCalculations:
         price = Decimal("250.00")
         commission = Decimal("-100.00")  # Negative for outflow
 
-        expected_cash_flow = (
-            -(quantity * price) + commission
-        )  # commission is already negative
+        expected_cash_flow = -(quantity * price) + commission  # commission is already negative
 
         transaction = Transactions.objects.create(
             investor=user,
@@ -445,9 +439,7 @@ class TestTransactionCashFlowCalculations:
         price = Decimal("1234.56")
         commission = Decimal("-1.50")  # Negative for outflow
 
-        expected_cash_flow = (
-            -(quantity * price) + commission
-        )  # commission is already negative
+        expected_cash_flow = -(quantity * price) + commission  # commission is already negative
 
         transaction = Transactions.objects.create(
             investor=user,
@@ -589,9 +581,7 @@ class TestTransactionProcessing:
         assert initial_buy.date < dividend.date < reinvestment.date
         # Use calculation method for reinvestment cash flow (may have small rounding difference)
         total_reinvestment = dividend.total_cash_flow() + reinvestment.total_cash_flow()
-        assert abs(total_reinvestment) < Decimal(
-            "1.00"
-        )  # Allow small difference due to commission
+        assert abs(total_reinvestment) < Decimal("1.00")  # Allow small difference due to commission
 
     def test_transaction_sequence_tax_loss_harvesting(self, user, account, asset):
         """Test tax loss harvesting transaction sequence."""
@@ -651,9 +641,7 @@ class TestTransactionProcessing:
         for i in range(6):
             investment_date = date(2023, 1, 15) + timedelta(days=i * 30)
             price = Decimal("50.00") + (i * 2)  # Increasing prices
-            quantity = (
-                investment_amount - Decimal("5.00")
-            ) / price  # Subtract commission
+            quantity = (investment_amount - Decimal("5.00")) / price  # Subtract commission
 
             tx = Transactions.objects.create(
                 investor=user,

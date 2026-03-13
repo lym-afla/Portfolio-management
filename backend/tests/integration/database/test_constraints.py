@@ -239,9 +239,7 @@ class TestBrokerModelConstraints:
         )
 
         # Create brokers with same name for different users (should be allowed)
-        broker1 = Brokers.objects.create(
-            investor=user1, name="Same Name Broker", country="US"
-        )
+        broker1 = Brokers.objects.create(investor=user1, name="Same Name Broker", country="US")
         broker2 = Brokers.objects.create(
             investor=user2, name="Same Name Broker", country="US"  # Same name
         )
@@ -262,9 +260,7 @@ class TestTransactionModelConstraints:
         self.user = CustomUser.objects.create_user(
             username="tx_user", email="tx@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(broker=self.broker, name="Test Account")
         self.asset = Assets.objects.create(
             type="Stock",
@@ -339,8 +335,7 @@ class TestTransactionModelConstraints:
                 security=self.asset,
                 currency="USD",
                 type=invalid_type,  # Invalid type
-                date=date(2023, 1, 15)
-                + timedelta(days=i),  # Different date to avoid conflicts
+                date=date(2023, 1, 15) + timedelta(days=i),  # Different date to avoid conflicts
                 quantity=Decimal("100"),
                 price=Decimal("50.00"),
                 cash_flow=Decimal("-5000.00"),
@@ -380,9 +375,7 @@ class TestTransactionModelConstraints:
             cash_flow=Decimal("-5000.00"),
             commission=Decimal("5.00"),
         )
-        assert future_transaction.date.date() == date(
-            2030, 1, 1
-        )  # Convert datetime to date
+        assert future_transaction.date.date() == date(2030, 1, 1)  # Convert datetime to date
 
         # Test very old date (should be allowed)
         old_transaction = Transactions.objects.create(
@@ -397,9 +390,7 @@ class TestTransactionModelConstraints:
             cash_flow=Decimal("-5000.00"),
             commission=Decimal("5.00"),
         )
-        assert old_transaction.date.date() == date(
-            1900, 1, 1
-        )  # Convert datetime to date
+        assert old_transaction.date.date() == date(1900, 1, 1)  # Convert datetime to date
 
     def test_transaction_quantity_decimal_places(self):
         """Test transaction quantity decimal precision constraints."""
@@ -542,8 +533,7 @@ class TestFXModelConstraints:
         # Create FX records for different users on same date
         fx1 = FX.objects.create(date=test_date, USDEUR=Decimal("1.09"))
         fx2 = FX.objects.create(
-            date=test_date
-            + timedelta(days=1),  # Different date to avoid uniqueness conflict
+            date=test_date + timedelta(days=1),  # Different date to avoid uniqueness conflict
             USDEUR=Decimal("1.10"),  # Different rate
         )
 
@@ -629,9 +619,7 @@ class TestAnnualPerformanceConstraints:
         self.user = CustomUser.objects.create_user(
             username="perf_user", email="perf@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="Test Broker", country="US"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="Test Broker", country="US")
         self.account = Accounts.objects.create(broker=self.broker, name="Test Account")
 
     def test_annual_performance_unique_constraints(self):
@@ -853,12 +841,8 @@ class TestFXTransactionConstraints:
         self.user = CustomUser.objects.create_user(
             username="fx_tx_user", email="fx_tx@example.com", password="testpass123"
         )
-        self.broker = Brokers.objects.create(
-            investor=self.user, name="FX Broker", country="US"
-        )
-        self.account = Accounts.objects.create(
-            broker=self.broker, name="FX Test Account"
-        )
+        self.broker = Brokers.objects.create(investor=self.user, name="FX Broker", country="US")
+        self.account = Accounts.objects.create(broker=self.broker, name="FX Test Account")
 
     def test_fx_transaction_required_relationships(self):
         """Test that FX transaction must have required relationships."""

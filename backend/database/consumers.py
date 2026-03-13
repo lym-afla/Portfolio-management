@@ -116,17 +116,15 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
 
         # Get session_id from query parameters
         query_string = self.scope.get("query_string", b"").decode("utf-8")
-        query_params = dict(
-            param.split("=") for param in query_string.split("&") if param
-        )
+        query_params = dict(param.split("=") for param in query_string.split("&") if param)
         session_id = query_params.get("session_id")
 
         if not session_id:
             await self.send_response(
                 400,
-                json.dumps(
-                    {"status": "error", "message": "Session ID is required"}
-                ).encode("utf-8"),
+                json.dumps({"status": "error", "message": "Session ID is required"}).encode(
+                    "utf-8"
+                ),
                 headers=headers,
             )
             return
@@ -212,9 +210,7 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
                 return
 
             currencies = (
-                [currency]
-                if currency != "All"
-                else [choice[0] for choice in CURRENCY_CHOICES]
+                [currency] if currency != "All" else [choice[0] for choice in CURRENCY_CHOICES]
             )
             total_operations = (
                 len(currencies)
@@ -228,9 +224,7 @@ class UpdateAccountPerformanceConsumer(AsyncHttpConsumer):
             )
 
             # Send initial progress event
-            await self.send_sse_message(
-                {"status": "initializing", "total": total_operations}
-            )
+            await self.send_sse_message({"status": "initializing", "total": total_operations})
 
             current_operation = 0
 
@@ -442,11 +436,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     securities = list(base_query)
 
                     # Return assets with non-zero positions
-                    return [
-                        security
-                        for security in securities
-                        if security.total_quantity != 0
-                    ]
+                    return [security for security in securities if security.total_quantity != 0]
 
                 securities = await get_securities_from_accounts()
                 # Filter securities with positive positions
@@ -484,28 +474,16 @@ class PriceImportConsumer(AsyncHttpConsumer):
                         )
 
                     if security.data_source == "FT" and security.update_link:
-                        price_generator = import_security_prices_from_ft(
-                            security, dates
-                        )
+                        price_generator = import_security_prices_from_ft(security, dates)
                     elif security.data_source == "YAHOO" and security.yahoo_symbol:
-                        price_generator = import_security_prices_from_yahoo(
-                            security, dates
-                        )
+                        price_generator = import_security_prices_from_yahoo(security, dates)
                     elif security.data_source == "MICEX" and security.secid:
-                        price_generator = import_security_prices_from_micex(
-                            security, dates
-                        )
-                    elif (
-                        security.data_source == "TBANK"
-                        and security.tbank_instrument_uid
-                    ):
-                        price_generator = import_security_prices_from_tbank(
-                            security, dates, user
-                        )
+                        price_generator = import_security_prices_from_micex(security, dates)
+                    elif security.data_source == "TBANK" and security.tbank_instrument_uid:
+                        price_generator = import_security_prices_from_tbank(security, dates, user)
                     else:
                         error_message = (
-                            f"No valid data source or update information for "
-                            f"{security.name}"
+                            f"No valid data source or update information for " f"{security.name}"
                         )
                         results.append(
                             {
@@ -567,9 +545,7 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     )
                     current_operation += len(dates)
                 except Exception as e:
-                    error_message = (
-                        f"Error updating prices for security {security.name}: {str(e)}"
-                    )
+                    error_message = f"Error updating prices for security {security.name}: {str(e)}"
                     results.append(error_message)
                     yield self.format_progress(
                         "error",
@@ -701,9 +677,7 @@ class FXImportConsumer(AsyncHttpConsumer):
                     more_body=True,
                 )
                 transaction_dates = await self.get_transaction_dates(user)
-                dates = await self.filter_dates_to_update(
-                    transaction_dates, import_option, user
-                )
+                dates = await self.filter_dates_to_update(transaction_dates, import_option, user)
 
             total_dates = len(dates)
             await self.send_body(
@@ -812,9 +786,7 @@ class FXImportConsumer(AsyncHttpConsumer):
 
             if await sync_to_async(cache.get)(import_id) == "running":
                 stats = {
-                    "totalImported": missing_filled
-                    + incomplete_updated
-                    + existing_linked,
+                    "totalImported": missing_filled + incomplete_updated + existing_linked,
                     "missingFilled": missing_filled,
                     "incompleteUpdated": incomplete_updated,
                     "existingLinked": existing_linked,
@@ -834,9 +806,7 @@ class FXImportConsumer(AsyncHttpConsumer):
             list: List of date objects.
         """
         return list(
-            Transactions.objects.filter(investor=user)
-            .values_list("date", flat=True)
-            .distinct()
+            Transactions.objects.filter(investor=user).values_list("date", flat=True).distinct()
         )
 
     @database_sync_to_async

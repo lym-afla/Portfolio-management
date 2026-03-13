@@ -45,9 +45,7 @@ class TestCalculationPerformance:
     @pytest.fixture
     def setup_investor_account(self, user, broker, asset):
         """Set up investor, account, and asset for performance tests."""
-        account = Accounts.objects.create(
-            broker=broker, name="Performance Test Account"
-        )
+        account = Accounts.objects.create(broker=broker, name="Performance Test Account")
         asset.investors.add(user)
         return {"investor": user, "account": account, "asset": asset}
 
@@ -212,9 +210,7 @@ class TestCalculationPerformance:
                     ), f"Super-linear scaling detected: {scaling_factor:.2f}x"
 
             assert result >= 0
-            assert (
-                calc_time < 2.0
-            ), f"Calculation took {calc_time:.2f}s for {size} assets"
+            assert calc_time < 2.0, f"Calculation took {calc_time:.2f}s for {size} assets"
 
     def test_performance_concurrent_calculations(self, user, broker):
         """Test performance under concurrent calculation load."""
@@ -287,15 +283,11 @@ class TestDatabasePerformance:
 
         # Test transaction query performance
         start_time = time.time()
-        queried_transactions = Transactions.objects.select_related(
-            "security", "account"
-        ).all()
+        queried_transactions = Transactions.objects.select_related("security", "account").all()
         list(queried_transactions)  # Force evaluation
         transaction_query_time = time.time() - start_time
 
-        assert (
-            transaction_query_time < 1.0
-        ), f"Transaction query took {transaction_query_time:.4f}s"
+        assert transaction_query_time < 1.0, f"Transaction query took {transaction_query_time:.4f}s"
 
     def test_database_bulk_operations_performance(self, user, broker):
         """Test performance of bulk database operations."""
@@ -435,13 +427,9 @@ class TestAPIPerformance:
         assert response.status_code == 200
         assert response_time < 1.0, f"Accounts list took {response_time:.4f}s"
 
-    def test_api_list_transactions_performance(
-        self, authenticated_client, user, broker, asset
-    ):
+    def test_api_list_transactions_performance(self, authenticated_client, user, broker, asset):
         """Test transactions list API performance."""
-        account = Accounts.objects.create(
-            broker=broker, name="Transaction Test Account"
-        )
+        account = Accounts.objects.create(broker=broker, name="Transaction Test Account")
         asset.investors.add(user)
 
         # Create multiple transactions
@@ -546,9 +534,7 @@ class TestFXRatePerformance:
         end_time = time.time()
         avg_lookup_time = (end_time - start_time) / 100
 
-        assert (
-            avg_lookup_time < 0.1
-        ), f"Average lookup time {avg_lookup_time:.6f}s too slow"
+        assert avg_lookup_time < 0.1, f"Average lookup time {avg_lookup_time:.6f}s too slow"
 
     def test_fx_rate_cross_currency_performance(self, fx_rates):
         """Test cross-currency FX rate calculation performance."""
@@ -758,9 +744,7 @@ class TestMemoryUsage:
         # Analyze memory trend
         if len(memory_samples) > 1:
             # Calculate memory trend (slope)
-            memory_trend = (memory_samples[-1] - memory_samples[0]) / len(
-                memory_samples
-            )
+            memory_trend = (memory_samples[-1] - memory_samples[0]) / len(memory_samples)
 
             # Memory should not be consistently increasing significantly
             assert (
@@ -793,9 +777,7 @@ class TestStressTesting:
         for _ in range(5):
             for endpoint in endpoints:
                 response = authenticated_client.get(endpoint)
-                results.append(
-                    (endpoint, response.status_code, time.time() - start_time)
-                )
+                results.append((endpoint, response.status_code, time.time() - start_time))
 
         end_time = time.time()
         total_time = end_time - start_time
@@ -873,9 +855,7 @@ class TestStressTesting:
         successful_requests = [code for code in responses if code == 200]
         success_rate = len(successful_requests) / len(responses)
 
-        assert (
-            success_rate > 0.9
-        ), f"Success rate under stress too low: {success_rate:.2%}"
+        assert success_rate > 0.9, f"Success rate under stress too low: {success_rate:.2%}"
         assert total_time < 30, f"Rapid requests took too long: {total_time:.2f}s"
 
 

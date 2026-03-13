@@ -83,9 +83,7 @@ def _calculate_closed_table_output_for_api(
     portfolio_closed_totals = {}
 
     for asset in portfolio:
-        exit_dates = list(
-            asset.exit_dates(end_date, user_id, selected_account_ids, start_date)
-        )
+        exit_dates = list(asset.exit_dates(end_date, user_id, selected_account_ids, start_date))
         entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
 
         for exit_date in exit_dates:
@@ -103,13 +101,9 @@ def _calculate_closed_table_output_for_api(
             }
 
             # Determine entry_date
-            first_entry_date = asset.entry_dates(
-                exit_date, user_id, selected_account_ids
-            )[-1]
+            first_entry_date = asset.entry_dates(exit_date, user_id, selected_account_ids)[-1]
             entry_date = (
-                start_date
-                if start_date and start_date >= first_entry_date
-                else first_entry_date
+                start_date if start_date and start_date >= first_entry_date else first_entry_date
             )
             position["investment_date"] = entry_date
 
@@ -165,9 +159,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                entry_value += (
-                    transaction.get_price() * abs(transaction.quantity) * fx_rate
-                )
+                entry_value += transaction.get_price() * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
             position["entry_value"] = Decimal(entry_value)
@@ -180,9 +172,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                exit_value += (
-                    transaction.get_price() * abs(transaction.quantity) * fx_rate
-                )
+                exit_value += transaction.get_price() * abs(transaction.quantity) * fx_rate
 
             position["exit_value"] = Decimal(exit_value)
 
@@ -231,9 +221,7 @@ def _calculate_closed_table_output_for_api(
                 position["commission"] = Decimal(0)
 
             position["total_return_amount"] = (
-                position["realized_gl"]
-                + position["capital_distribution"]
-                + position["commission"]
+                position["realized_gl"] + position["capital_distribution"] + position["commission"]
             )
             position["total_return_percentage"] = (
                 position["total_return_amount"] / position["entry_value"]
@@ -285,8 +273,7 @@ def _calculate_closed_table_output_for_api(
             )
         if "commission" in categories:
             portfolio_closed_totals["commission_percentage"] = (
-                portfolio_closed_totals["commission"]
-                / portfolio_closed_totals["entry_value"]
+                portfolio_closed_totals["commission"] / portfolio_closed_totals["entry_value"]
             )
         portfolio_closed_totals["total_return_percentage"] = portfolio_closed_totals[
             "total_return_amount"
@@ -319,9 +306,9 @@ def _calculate_open_table_output_for_api(
     :return: A tuple containing a list of open position dictionaries and a dictionary of totals
     """
     start_time = time.time()  # Start timing the overall function
-    portfolio_NAV = NAV_at_date(
-        user_id, tuple(selected_account_ids), end_date, currency_target
-    )["Total NAV"]
+    portfolio_NAV = NAV_at_date(user_id, tuple(selected_account_ids), end_date, currency_target)[
+        "Total NAV"
+    ]
     portfolio_cash = calculate_portfolio_cash(
         user_id, selected_account_ids, end_date, currency_target
     )
@@ -352,17 +339,13 @@ def _calculate_open_table_output_for_api(
             "currency": currency_format(None, asset.currency),
         }
 
-        position["current_position"] = asset.position(
-            end_date, user_id, selected_account_ids
-        )
+        position["current_position"] = asset.position(end_date, user_id, selected_account_ids)
 
         if position["current_position"] == 0:
             print(f"The position is zero for {asset.name}. Skipping this asset.")
             continue
 
-        position_entry_date = asset.entry_dates(
-            end_date, user_id, selected_account_ids
-        )[-1]
+        position_entry_date = asset.entry_dates(end_date, user_id, selected_account_ids)[-1]
         if "investment_date" in categories:
             position["investment_date"] = position_entry_date
 
@@ -406,9 +389,9 @@ def _calculate_open_table_output_for_api(
             )
             position["share_of_portfolio"] = position["current_value"] / portfolio_NAV
 
-            portfolio_open_totals[
-                "all_assets_share_of_portfolio_percentage"
-            ] += position["share_of_portfolio"]
+            portfolio_open_totals["all_assets_share_of_portfolio_percentage"] += position[
+                "share_of_portfolio"
+            ]
 
         if "realized_gl" in categories:
             position["realized_gl"] = asset.realized_gain_loss(
@@ -425,8 +408,7 @@ def _calculate_open_table_output_for_api(
             position["unrealized_gl"] = Decimal(0)
 
         position["price_change_percentage"] = (
-            (position["realized_gl"] + position["unrealized_gl"])
-            / position["entry_value"]
+            (position["realized_gl"] + position["unrealized_gl"]) / position["entry_value"]
             if position["entry_value"] > 0
             else "N/R"
         )
@@ -483,9 +465,7 @@ def _calculate_open_table_output_for_api(
         print(f"Processing asset {asset.name} took {asset_duration:.4f} seconds.")
 
         # Calculating totals
-        for key in ["entry_value", "total_return_amount"] + list(
-            set(totals) & set(categories)
-        ):
+        for key in ["entry_value", "total_return_amount"] + list(set(totals) & set(categories)):
             if not use_default_currency:
                 addition = position[key]
             else:
@@ -530,16 +510,11 @@ def _calculate_open_table_output_for_api(
                 else:
                     addition = Decimal(0)
 
-            portfolio_open_totals[key] = (
-                portfolio_open_totals.get(key, Decimal(0)) + addition
-            )
+            portfolio_open_totals[key] = portfolio_open_totals.get(key, Decimal(0)) + addition
 
         open_positions.append(position)
 
-    if (
-        "entry_value" in portfolio_open_totals
-        and portfolio_open_totals["entry_value"] != 0
-    ):
+    if "entry_value" in portfolio_open_totals and portfolio_open_totals["entry_value"] != 0:
         abs_entry_value = abs(portfolio_open_totals["entry_value"])
         portfolio_open_totals["price_change_percentage"] = (
             portfolio_open_totals.get("realized_gl", Decimal(0))
@@ -578,9 +553,7 @@ def _calculate_open_table_output_for_api(
         portfolio_open_totals["cash_share_of_portfolio"] = "N/A"
         portfolio_open_totals["all_assets_share_of_portfolio_percentage"] = "N/A"
     else:
-        portfolio_open_totals["cash_share_of_portfolio"] = (
-            portfolio_cash / portfolio_NAV
-        )
+        portfolio_open_totals["cash_share_of_portfolio"] = portfolio_cash / portfolio_NAV
 
     total_duration = time.time() - start_time
     print(

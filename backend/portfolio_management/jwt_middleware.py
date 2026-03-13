@@ -144,9 +144,7 @@ class JWTEffectiveDateMiddleware:
             from django.contrib.sessions.models import Session
 
             recent_sessions = (
-                Session.objects.filter(
-                    session_data__contains=f'"_auth_user_id": "{user_id}"'
-                )
+                Session.objects.filter(session_data__contains=f'"_auth_user_id": "{user_id}"')
                 .order_by("-expire_date")
                 .first()
             )

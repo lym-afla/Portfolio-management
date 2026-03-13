@@ -316,9 +316,7 @@ class TestBuyInPriceCalculation:
         )
 
         # Calculate buy-in price in EUR (local currency)
-        buy_in_price_eur = asset_eur.calculate_buy_in_price(
-            date(2023, 1, 16), multi_currency_user
-        )
+        buy_in_price_eur = asset_eur.calculate_buy_in_price(date(2023, 1, 16), multi_currency_user)
         assert buy_in_price_eur == Decimal("40.00")
 
         # Calculate buy-in price in USD (converted)
@@ -344,9 +342,7 @@ class TestBuyInPriceCalculation:
         )
 
         # Create a price entry at start date that's different from purchase price
-        Prices.objects.create(
-            date=date(2023, 1, 1), security=asset, price=Decimal("45.00")
-        )
+        Prices.objects.create(date=date(2023, 1, 1), security=asset, price=Decimal("45.00"))
 
         # Create new transaction
         Transactions.objects.create(
@@ -780,9 +776,7 @@ class TestBuyInPricePerformance:
         start_time = time.time()
         results = []
         for asset in assets:
-            buy_in_price = asset.calculate_buy_in_price(
-                date(2023, 6, 15), investor=user
-            )
+            buy_in_price = asset.calculate_buy_in_price(date(2023, 6, 15), investor=user)
             results.append(buy_in_price)
         end_time = time.time()
 

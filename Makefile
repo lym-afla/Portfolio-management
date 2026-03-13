@@ -14,13 +14,13 @@ help:
 # Format code
 format:
 	@echo "Formatting code..."
-	@cd backend && python -m black --line-length=88 .
-	@cd backend && python -m isort --profile=django --line-length=88 .
+	cd backend && ../backend/venv/Scripts/black.exe --line-length=88 .
+	cd backend && ../backend/venv/Scripts/isort.exe --profile=django --line-length=88 .
 
 # Lint code
 lint:
 	@echo "Running flake8 linting..."
-	@cd backend && python -m flake8 --max-line-length=88 --max-complexity=20 --extend-ignore=E203,W503,E501,I .
+	cd backend && ../backend/venv/Scripts/flake8.exe --max-line-length=88 --max-complexity=20 --extend-ignore=E203,W503,E501,I .
 
 # Run all checks (format, sort, lint)
 check: format lint
@@ -29,7 +29,7 @@ check: format lint
 # Run tests
 test:
 	@echo "Running tests..."
-	@cd backend && python manage.py test
+	cd backend && ../backend/venv/Scripts/python.exe manage.py test
 
 # Clean cache files
 clean:
@@ -42,18 +42,18 @@ clean:
 # Install development dependencies
 install-dev:
 	@echo "Installing development dependencies..."
-	@cd backend && pip install -r requirements.txt
-	@pip install black isort flake8 flake8-docstrings flake8-bugbear pre-commit
+	cd backend && ../backend/venv/Scripts/pip.exe install -r requirements.txt
+	../backend/venv/Scripts/pip.exe install black isort flake8 flake8-docstrings flake8-bugbear pre-commit
 
 # Run pre-commit on all files
 pre-commit:
 	@echo "Running pre-commit on all files..."
-	@pre-commit run --all-files
+	../backend/venv/Scripts/pre-commit.exe run --all-files
 
 # Quick check (only linting, no formatting)
 quick-check:
 	@echo "Running quick linting check..."
-	@cd backend && python -m flake8 --max-line-length=88 --max-complexity=20 --extend-ignore=E203,W503,E501,I .
+	cd backend && ../backend/venv/Scripts/flake8.exe --max-line-length=88 --max-complexity=20 --extend-ignore=E203,W503,E501,I .
 
 # Format specific file
 format-file:
@@ -62,5 +62,5 @@ format-file:
 		exit 1; \
 	fi
 	@echo "Formatting $(FILE)..."
-	@python -m black --line-length=88 "$(FILE)"
-	@python -m isort --profile=django --line-length=88 "$(FILE)"
+	../backend/venv/Scripts/black.exe --line-length=88 "$(FILE)"
+	../backend/venv/Scripts/isort.exe --profile=django --line-length=88 "$(FILE)"
