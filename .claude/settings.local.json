@@ -41,7 +41,15 @@
       "Bash(\"venv\\Scripts\\python.exe\" -m pytest tests/unit/models/test_assets_model.py::TestAssetsModel::test_realized_gain_loss_short_position -v --no-cov)",
       "Bash(\"venv\\Scripts\\python.exe\" -c \"import daphne; print(''daphne installed'')\")",
       "Bash(./venv/Scripts/python.exe -m pytest:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "mcp__context7__query-docs",
+      "Bash(netstat -ano)",
+      "mcp__browsermcp__browser_navigate",
+      "Skill(agent-browser)",
+      "mcp__browsermcp__browser_screenshot",
+      "mcp__browsermcp__browser_get_console_logs",
+      "mcp__browsermcp__browser_wait",
+      "mcp__browsermcp__browser_snapshot"
     ],
     "deny": [],
     "ask": []

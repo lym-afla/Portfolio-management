@@ -93,7 +93,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
         transactions__account__in=[
             acc_id for acc_ids in accounts.values() for acc_id in acc_ids
         ],
-        transactions__date__lte=effective_current_date,
+        transactions__date__date__lte=effective_current_date,
     ).distinct()
 
     logger.info(f"Active assets: {active_assets}")

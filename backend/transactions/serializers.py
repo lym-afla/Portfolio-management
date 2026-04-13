@@ -40,6 +40,8 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             "aci",
             "commission",
             "notional_change",
+            "split_from",
+            "split_to",
             "comment",
         ]
 
@@ -71,29 +73,35 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         commission = data.get("commission")
         security = data.get("security")
 
-        # Add broker account specific validation if needed
-        account = data.get("account")
-        if account and security:
-            if security not in account.assets.all():
-                raise serializers.ValidationError(
-                    {
-                        "security": (
-                            "This security is not associated with the selected "
-                            "broker account."
-                        )
-                    }
-                )
-
         # Rest of the validation remains the same
-        if transaction_type in ["Buy", "Sell", "Dividend"] and not security:
+        if transaction_type in ["Buy", "Sell", "Dividend", "Stock split"] and not security:
             raise serializers.ValidationError(
                 {
                     "security": (
-                        "Security must be selected for Buy, Sell, or Dividend "
-                        "transactions."
+                        "Security must be selected for Buy, Sell, Dividend, "
+                        "or Stock split transactions."
                     )
                 }
             )
+
+        # Stock split validation
+        if transaction_type == "Stock split":
+            split_from = data.get("split_from")
+            split_to = data.get("split_to")
+            if not split_from or not split_to:
+                raise serializers.ValidationError(
+                    {
+                        "split_from": "Split ratio is required for Stock split transactions.",
+                        "split_to": "Split ratio is required for Stock split transactions.",
+                    }
+                )
+            if split_from <= 0 or split_to <= 0:
+                raise serializers.ValidationError(
+                    {
+                        "split_from": "Split values must be positive.",
+                        "split_to": "Split values must be positive.",
+                    }
+                )
 
         if transaction_type in ["Cash in", "Cash out"] and security:
             raise serializers.ValidationError(

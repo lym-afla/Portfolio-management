@@ -134,12 +134,12 @@ def api_get_security_position_history(request, security_id):
         transactions = Transactions.objects.filter(
             security=security,
             investor=request.user,
-            date__lte=effective_current_date,
+            date__date__lte=effective_current_date,
             quantity__isnull=False,
         ).order_by("date")
 
         if start_date:
-            transactions = transactions.filter(date__gt=start_date)
+            transactions = transactions.filter(date__date__gt=start_date)
             current_position = security.position(start_date, request.user)
             position_history = [{"date": start_date, "position": current_position}]
         else:
@@ -186,7 +186,7 @@ def api_get_security_transactions(request, security_id):
         transactions = Transactions.objects.filter(
             security__id=security_id,
             investor=request.user,
-            date__lte=effective_current_date,
+            date__date__lte=effective_current_date,
         ).order_by("date")
 
         if start_date:

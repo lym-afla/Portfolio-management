@@ -28,6 +28,11 @@
         </template>
       </template>
 
+      <!-- Broker commission -->
+      <template v-else-if="transaction.type === 'Broker commission'">
+        {{ transaction.commission || transaction.cash_flow }}
+      </template>
+
       <!-- Close transaction -->
       <template v-else-if="transaction.type === 'Close'">
         {{ transaction.quantity }} of
@@ -44,6 +49,25 @@
           :id="transaction.security?.id"
           :name="transaction.security?.name"
         />
+      </template>
+
+      <!-- Stock Split -->
+      <template v-else-if="isStockSplit">
+        <template v-if="transaction.split_from && transaction.split_to">
+          {{ transaction.split_to }}:{{ transaction.split_from }}
+        </template>
+        <template v-if="transaction.quantity">
+          ({{ transaction.quantity > 0 ? '+' : '' }}{{ transaction.quantity }}
+          shares)
+        </template>
+        for
+        <security-link
+          :id="transaction.security?.id"
+          :name="transaction.security?.name"
+        />
+        <span v-if="transaction.comment" class="text-grey">
+          - {{ transaction.comment }}
+        </span>
       </template>
 
       <!-- Regular transaction (Buy/Sell) -->
@@ -122,6 +146,10 @@ export default {
         props.transaction.type === 'FX'
     )
 
+    const isStockSplit = computed(
+      () => props.transaction.type === 'Stock split'
+    )
+
     const isRegularTransaction = computed(
       () =>
         ![
@@ -130,6 +158,7 @@ export default {
           'Interest income',
           'Bond redemption',
           'Bond maturity',
+          'Stock split',
           'FX',
         ].includes(props.transaction.type) && !isCashTransaction.value
     )
@@ -146,6 +175,7 @@ export default {
     return {
       isBondRedemption,
       isCashTransaction,
+      isStockSplit,
       isDividendOrCoupon,
       isFXTransaction,
       isRegularTransaction,

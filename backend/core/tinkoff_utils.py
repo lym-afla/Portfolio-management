@@ -5,7 +5,7 @@ manage API tokens, and handle Tinkoff-specific data formats.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
@@ -224,7 +224,6 @@ async def fetch_and_cache_bond_coupon_schedule(
     Returns:
         bool: True if schedule was fetched and cached successfully, False otherwise
     """
-    from datetime import timedelta
 
     from channels.db import database_sync_to_async
 
@@ -1100,15 +1099,14 @@ async def create_transaction_from_tinkoff(operation, investor, account):
 
     # Check for existing transactions within a reasonable time window (1 minute)
     # to handle potential timestamp differences
-    from datetime import timedelta
 
     time_window = timedelta(minutes=1)
 
     existing = await database_sync_to_async(Transactions.objects.filter)(
         investor=investor,
         account=account,
-        date__gte=transaction_date - time_window,
-        date__lte=transaction_date + time_window,
+        date__date__gte=transaction_date - time_window,
+        date__date__lte=transaction_date + time_window,
         type=transaction_data["type"],
         quantity=transaction_data.get("quantity"),
         price=transaction_data.get("price"),
@@ -1195,7 +1193,6 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
     Returns:
         Decimal: The closing price, or None if not found
     """
-    from datetime import timedelta
 
     try:
         token = await get_user_token(user)
@@ -1215,9 +1212,16 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
                 from_dt = date - timedelta(days=days_back)
                 to_dt = date
 
+                from_dt = datetime.combine(
+                    from_dt, datetime.min.time(), tzinfo=timezone.utc
+                )
+                to_dt = datetime.combine(
+                    to_dt, datetime.max.time(), tzinfo=timezone.utc
+                )
+
                 logger.debug(
                     f"Attempt with {days_back} day(s) lookback: "
-                    f"from {from_dt.date()} to {to_dt.date()}"
+                    f"from {from_dt} to {to_dt}"
                 )
 
                 try:
@@ -1242,7 +1246,7 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
                                 break
 
                             # Track the most recent candle before or on target date
-                            if candle.time <= date:
+                            if candle.time <= to_dt:
                                 if (
                                     selected_candle is None
                                     or candle.time > selected_candle.time

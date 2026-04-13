@@ -9,55 +9,58 @@
       <v-card-text>
         <v-form @submit.prevent="submitForm">
           <template v-for="field in formFields" :key="field.name">
-            <v-text-field
-              v-if="field.type === 'datepicker'"
-              :model-value="form[field.name]"
-              :label="field.label"
-              type="date"
-              :required="field.required"
-              :error-messages="errors[field.name]"
-              @update:model-value="(value) => setFieldValue(field.name, value)"
-            />
+            <!-- Skip fields that are conditional on transaction type -->
+            <template v-if="shouldShowField(field)">
+              <v-text-field
+                v-if="field.type === 'datepicker'"
+                :model-value="form[field.name]"
+                :label="field.label"
+                type="date"
+                :required="field.required"
+                :error-messages="errors[field.name]"
+                @update:model-value="(value) => setFieldValue(field.name, value)"
+              />
 
-            <v-autocomplete
-              v-else-if="field.type === 'select'"
-              :model-value="form[field.name]"
-              :items="field.choices"
-              item-title="text"
-              item-value="value"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errors[field.name]"
-              clearable
-              @update:model-value="(value) => setFieldValue(field.name, value)"
-            >
-              <template v-slot:selection="{ item }">
-                {{ item.raw ? item.raw.text : '' }}
-              </template>
-            </v-autocomplete>
+              <v-autocomplete
+                v-else-if="field.type === 'select'"
+                :model-value="form[field.name]"
+                :items="field.choices"
+                item-title="text"
+                item-value="value"
+                :label="field.label"
+                :required="field.required"
+                :error-messages="errors[field.name]"
+                clearable
+                @update:model-value="(value) => setFieldValue(field.name, value)"
+              >
+                <template v-slot:selection="{ item }">
+                  {{ item.raw ? item.raw.text : '' }}
+                </template>
+              </v-autocomplete>
 
-            <v-text-field
-              v-else-if="field.type === 'number'"
-              :model-value="form[field.name]"
-              :label="field.label"
-              type="number"
-              step="0.01"
-              :required="field.required"
-              :error-messages="errors[field.name]"
-              :hint="field.helper_text"
-              :persistent-hint="!!field.helper_text"
-              :suffix="field.name === 'price' && isBondSelected ? '%' : ''"
-              @update:model-value="(value) => setFieldValue(field.name, value)"
-            />
+              <v-text-field
+                v-else-if="field.type === 'number'"
+                :model-value="form[field.name]"
+                :label="field.label"
+                type="number"
+                :step="['split_from', 'split_to'].includes(field.name) ? '1' : '0.01'"
+                :required="field.required"
+                :error-messages="errors[field.name]"
+                :hint="field.helper_text"
+                :persistent-hint="!!field.helper_text"
+                :suffix="field.name === 'price' && isBondSelected ? '%' : ''"
+                @update:model-value="(value) => setFieldValue(field.name, value)"
+              />
 
-            <v-textarea
-              v-else-if="field.type === 'textarea'"
-              :model-value="form[field.name]"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errors[field.name]"
-              @update:model-value="(value) => setFieldValue(field.name, value)"
-            />
+              <v-textarea
+                v-else-if="field.type === 'textarea'"
+                :model-value="form[field.name]"
+                :label="field.label"
+                :required="field.required"
+                :error-messages="errors[field.name]"
+                @update:model-value="(value) => setFieldValue(field.name, value)"
+              />
+            </template>
           </template>
         </v-form>
         <v-alert v-if="generalError" type="error" class="mt-4">
@@ -144,12 +147,14 @@ export default {
         case 'quantity':
           numberSchema = numberSchema.test(
             'quantity-validation',
-            'Quantity must be positive for buy transactions and negative for sell transactions',
+            'Quantity must be positive for buy/corporate action and negative for sell transactions',
             function (value) {
               const type = this.parent.type
               if (value === null || value === undefined) return true
               if (type === 'Buy') return value > 0
               if (type === 'Sell') return value < 0
+              // Stock split: positive for split (more shares), negative for reverse split
+              if (type === 'Stock split') return value !== 0
               return true
             }
           )
@@ -186,15 +191,17 @@ export default {
               .mixed()
               .test(
                 'security-validation',
-                'Security must be selected for Buy, Sell, or Dividend transactions',
+                'Security must be selected for Buy, Sell, Dividend, or Stock split transactions',
                 function (value) {
                   const type = this.parent.type
                   // For Cash in/out transactions, security must be empty
                   if (type === 'Cash in' || type === 'Cash out') {
                     return value === null || value === undefined || value === ''
                   }
-                  // For Buy, Sell, or Dividend transactions, security is required
-                  if (['Buy', 'Sell', 'Dividend'].includes(type)) {
+                  // For Buy, Sell, Dividend, or Stock split transactions, security is required
+                  if (
+                    ['Buy', 'Sell', 'Dividend', 'Stock split'].includes(type)
+                  ) {
                     return value !== null && value !== undefined && value !== ''
                   }
                   // For other transaction types (if any), security is optional
@@ -239,6 +246,16 @@ export default {
       )
       return selectedSecurity && selectedSecurity.type === 'Bond'
     })
+
+    // Check if a field should be shown based on the current transaction type
+    const shouldShowField = (field) => {
+      // If field has no show_for_types restriction, always show it
+      if (!field.show_for_types || field.show_for_types.length === 0) {
+        return true
+      }
+      // Otherwise, show only if current type is in the allowed types
+      return field.show_for_types.includes(form.type)
+    }
 
     const fetchFormStructure = async () => {
       try {
@@ -361,6 +378,7 @@ export default {
       isSubmitting,
       isFormValid,
       isBondSelected,
+      shouldShowField,
       closeDialog,
       submitForm,
       clearFieldError,

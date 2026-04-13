@@ -171,7 +171,7 @@
         </v-row>
 
         <v-skeleton-loader v-if="loading.portfolioBreakdown" type="table" />
-        <div v-else class="table-wrapper">
+        <div v-else-if="hasBreakdownData" class="table-wrapper">
           <table class="v-data-table portfolio-breakdown-table">
             <thead>
               <tr>
@@ -297,7 +297,12 @@ export default {
       portfolioBreakdown: true,
     })
     const accountPerformanceData = ref([])
-    const portfolioBreakdownData = ref([])
+    const emptyBreakdownData = () => ({
+      consolidated_context: [],
+      unrestricted_context: [],
+      restricted_context: [],
+    })
+    const portfolioBreakdownData = ref(emptyBreakdownData())
     const years = ref([])
     const currentYear = new Date().getFullYear()
     const selectedYear = ref(currentYear.toString())
@@ -410,16 +415,16 @@ export default {
           accountPerformanceData.value = [
             {
               name: 'public_markets_context',
-              lines: data.public_markets_context.lines,
-              subtotal: data.public_markets_context.subtotal,
+              lines: data.public_markets_context.lines || [],
+              subtotal: data.public_markets_context.subtotal || null,
             },
             {
               name: 'restricted_investments_context',
-              lines: data.restricted_investments_context.lines,
-              subtotal: data.restricted_investments_context.subtotal,
+              lines: data.restricted_investments_context.lines || [],
+              subtotal: data.restricted_investments_context.subtotal || null,
             },
           ]
-          totalData.value = data.total_context.line
+          totalData.value = data.total_context.line || {}
           years.value = data.total_context.years || []
         } else {
           logger.error('Unknown', 'Unexpected data structure:', data)
@@ -447,6 +452,7 @@ export default {
           )
         }
       } catch (error) {
+        portfolioBreakdownData.value = emptyBreakdownData()
         handleApiError(error)
       } finally {
         loading.value.portfolioBreakdown = false
@@ -459,6 +465,15 @@ export default {
     }
 
     const error = ref(null)
+
+    const hasBreakdownData = computed(() => {
+      const d = portfolioBreakdownData.value
+      return (
+        d &&
+        d.consolidated_context &&
+        d.consolidated_context.length > 0
+      )
+    })
 
     const portfolioBreakdownItems = computed(() => {
       if (!portfolioBreakdownData.value) return []
@@ -525,6 +540,7 @@ export default {
       error,
       totalData,
       portfolioBreakdownItems,
+      hasBreakdownData,
     }
   },
 }

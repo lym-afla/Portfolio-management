@@ -114,7 +114,7 @@ def get_nav_chart_data(
             investor__id=user_id,
             account_id__in=account_ids,
             type__in=["Cash in", "Cash out"],
-            date__lte=to_date,
+            date__date__lte=to_date,
         )
         chart_data["datasets"] = [
             _create_dataset(
@@ -451,7 +451,7 @@ def _calculate_contributions(
                 "investor__id": user_id,
                 "account_id__in": account_ids,
                 "type__in": ["Cash in", "Cash out"],
-                "date__lte": d,
+                "date__date__lte": d,
             }
             transactions = Transactions.objects.filter(**filter_conditions)
         else:
@@ -463,10 +463,10 @@ def _calculate_contributions(
             "investor__id": user_id,
             "account_id__in": account_ids,
             "type__in": ["Cash in", "Cash out"],
-            "date__lte": d,
+            "date__date__lte": d,
         }
         if previous_date is not None:
-            filter_conditions["date__gt"] = previous_date
+            filter_conditions["date__date__gt"] = previous_date
         transactions = Transactions.objects.filter(**filter_conditions)
 
     total_contributions = Decimal(0)

@@ -127,8 +127,8 @@ def _calculate_closed_table_output_for_api(
 
             asset_transactions = asset.transactions.filter(
                 investor__id=user_id,
-                date__gte=entry_date,
-                date__lte=exit_date,
+                date__date__gte=entry_date,
+                date__date__lte=exit_date,
                 account_id__in=selected_account_ids,
                 quantity__isnull=False,
             ).order_by("-date")
@@ -389,9 +389,7 @@ def _calculate_open_table_output_for_api(
             position["entry_price"] = asset.calculate_buy_in_price(
                 end_date, user_id, currency_used, selected_account_ids
             )
-        position["entry_value"] = asset.calculate_value_at_date(
-            end_date, user_id, currency_used, selected_account_ids
-        )
+        position["entry_value"] = position["entry_price"] * position["current_position"]
 
         if "current_value" in categories:
             # Use percentage of par for bonds without currency effect

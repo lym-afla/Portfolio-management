@@ -413,14 +413,14 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     base_query = (
                         Assets.objects.filter(
                             investors__id=user.id,
-                            transactions__date__lte=end_date,
+                            transactions__date__date__lte=end_date,
                             transactions__account__id__in=account_ids,
                         )
                         .annotate(
                             total_quantity=Sum(
                                 "transactions__quantity",
                                 filter=Q(
-                                    transactions__date__lte=end_date,
+                                    transactions__date__date__lte=end_date,
                                     transactions__account__id__in=account_ids,
                                 ),
                             )

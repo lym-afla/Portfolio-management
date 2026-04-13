@@ -171,6 +171,22 @@
                   : 'Broker account could not be automatically identified. Please select a broker account below.'
               }}
             </v-alert>
+
+            <v-select
+              v-if="isAnalyzed && accountIdentificationComplete && !isGalaxy"
+              v-model="selectedAccount"
+              :items="accountDisplayItems"
+              item-title="title"
+              item-value="id"
+              label="Select Account"
+              class="mt-2"
+              :error-messages="
+                showValidation && !selectedAccount
+                  ? 'Please select an account'
+                  : ''
+              "
+              required
+            />
           </div>
         </v-expand-transition>
 
@@ -1359,6 +1375,15 @@ export default {
       return !!selectedBroker.value
     })
 
+    const accountDisplayItems = computed(() =>
+      accounts.value.map((a) => ({
+        id: a.id,
+        title: a.broker?.text
+          ? `${a.broker.text} – ${a.name}`
+          : a.name,
+      }))
+    )
+
     // Method selection handlers
     const selectMethod = (method) => {
       if (method === 'api' && !hasConnectedBrokers.value) return
@@ -1674,6 +1699,7 @@ export default {
       dateRange,
       hasConnectedBrokers,
       isApiImportValid,
+      accountDisplayItems,
       selectMethod,
       confirmMethod,
       backToSelection,

@@ -241,7 +241,16 @@ class SummaryViewSet(viewsets.ViewSet):
             category = "Restricted" if account.restricted else "Unrestricted"
             cash_balances = account.balance(end_date).items()
             for currency, balance in cash_balances:
-                fx_rate = get_fx_rate(currency, currency_target, end_date, user)
+                try:
+                    fx_rate = get_fx_rate(currency, currency_target, end_date, user)
+                except ValueError:
+                    logger.warning(
+                        "No FX rate for %s->%s on %s, skipping cash balance",
+                        currency,
+                        currency_target,
+                        end_date,
+                    )
+                    continue
                 balance_to_add = Decimal(round(balance * fx_rate, 2))
                 for cat in ["Consolidated", category]:
                     data[cat]["Cash"]["market_value"] += balance_to_add
@@ -256,9 +265,21 @@ class SummaryViewSet(viewsets.ViewSet):
             ).values("date", "currency", "commission")
 
             for transaction in commission_transactions:
-                fx_rate = get_fx_rate(
-                    transaction["currency"], currency_target, transaction["date"], user
-                )
+                try:
+                    fx_rate = get_fx_rate(
+                        transaction["currency"],
+                        currency_target,
+                        transaction["date"],
+                        user,
+                    )
+                except ValueError:
+                    logger.warning(
+                        "No FX rate for %s->%s on %s, skipping commission",
+                        transaction["currency"],
+                        currency_target,
+                        transaction["date"],
+                    )
+                    continue
                 commission_to_add = Decimal(
                     round(transaction["commission"] * fx_rate, 2)
                 )

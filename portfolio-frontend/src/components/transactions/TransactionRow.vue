@@ -35,7 +35,7 @@
           {{ transaction.cash_flow }}
         </template>
         <template v-else>
-          {{ transaction.value }}
+          {{ transaction.cash_flow }}
         </template>
       </td>
     </template>

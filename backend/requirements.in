@@ -13,8 +13,10 @@ djangorestframework-simplejwt
 fake_useragent
 filelock
 fuzzywuzzy
+lxml
 networkx
 numpy
+openpyxl
 pandas
 pyOpenSSL
 python-Levenshtein

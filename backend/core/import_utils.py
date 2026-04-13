@@ -90,7 +90,7 @@ def get_account(account_id: int) -> Accounts:
     Raises:
         Accounts.DoesNotExist: If account doesn't exist.
     """
-    return Accounts.objects.get(id=account_id)
+    return Accounts.objects.select_related("broker").get(id=account_id)
 
 
 @database_sync_to_async
@@ -1040,6 +1040,22 @@ async def import_security_prices_from_tbank(security, dates, user):
         try:
             price = await get_price_from_tbank(security.tbank_instrument_uid, d, user)
             if price:
+                # T-Bank provides split-adjusted prices. If there have been splits
+                # after this date, we need to reverse the adjustment to store
+                # the actual historical price.
+                cumulative_factor = await database_sync_to_async(
+                    security.get_cumulative_split_factor
+                )(d)
+                if cumulative_factor != Decimal("1"):
+                    # Reverse the adjustment: if factor is 0.5 (2:1 split),
+                    # the actual pre-split price was 2x the T-Bank adjusted price
+                    original_price = price
+                    price = price / cumulative_factor
+                    logger.debug(
+                        f"Reversed split adjustment for {security.name} on {d}: "
+                        f"{original_price} -> {price} (factor: {cumulative_factor})"
+                    )
+
                 create_price_func = database_sync_to_async(Prices.objects.create)
                 await create_price_func(security=security, date=d, price=price)
                 result["status"] = "updated"

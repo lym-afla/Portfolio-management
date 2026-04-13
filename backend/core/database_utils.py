@@ -58,7 +58,7 @@ async def save_or_update_annual_broker_performance(
     # Determine the starting year
     first_transaction = await database_sync_to_async(
         lambda: Transactions.objects.filter(
-            account_id__in=selected_account_ids, date__lte=effective_date
+            account_id__in=selected_account_ids, date__date__lte=effective_date
         )
         .order_by("date")
         .first()
@@ -229,7 +229,7 @@ def get_years_count(user, effective_date, account_group_type, account_group_id):
     )
     first_transaction = (
         Transactions.objects.filter(
-            account_id__in=selected_account_ids, date__lte=effective_date
+            account_id__in=selected_account_ids, date__date__lte=effective_date
         )
         .order_by("date")
         .first()
