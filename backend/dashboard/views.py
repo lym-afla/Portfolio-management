@@ -62,7 +62,7 @@ def get_dashboard_summary_api(request):
         Transactions.objects.filter(
             investor=user,
             account_id__in=selected_account_ids,
-            date__lte=query_effective_current_date,
+            date__date__lte=query_effective_current_date,
             type__in=["Cash in", "Cash out"],
         )
         .values("currency", "type", "cash_flow", "date")

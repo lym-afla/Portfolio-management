@@ -1,11 +1,11 @@
-"""Utility functions for integrating with Tinkoff Invest API.
+"""Utility functions for integrating with TBank Invest API.
 
 This module provides functions to map Tinkoff operations to transactions,
 manage API tokens, and handle Tinkoff-specific data formats.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
@@ -202,7 +202,6 @@ async def fetch_and_cache_bond_coupon_schedule(asset: Assets, user, force_refres
     Returns:
         bool: True if schedule was fetched and cached successfully, False otherwise
     """
-    from datetime import timedelta
 
     from channels.db import database_sync_to_async
 
@@ -753,8 +752,12 @@ async def map_tinkoff_operation_to_transaction(operation, investor, account):
 
         # Handle commission
         if operation.commission and operation.commission.units != 0:
-            transaction_data["commission"] = -1 * abs(quotation_to_decimal(operation.commission))
-            transaction_data["commission_currency"] = operation.commission.currency.upper()
+            transaction_data["commission"] = -1 * abs(
+                quotation_to_decimal(operation.commission)
+            )
+            transaction_data["commission_currency"] = (
+                operation.commission.currency.upper()
+            )
 
         logger.debug(
             f"✓ FX transaction created: {transaction_data['from_currency']} "
@@ -994,10 +997,24 @@ async def create_transaction_from_tinkoff(operation, investor, account):
         return None, "Unsupported operation type"
 
     # Check if similar transaction already exists
+    # All dates are now naive datetime objects for consistent comparison
+
+    transaction_date = transaction_data["date"]
+
+    # Ensure the transaction date is naive (strip timezone if present)
+    if hasattr(transaction_date, "tzinfo") and transaction_date.tzinfo is not None:
+        transaction_date = transaction_date.replace(tzinfo=None)
+
+    # Check for existing transactions within a reasonable time window (1 minute)
+    # to handle potential timestamp differences
+
+    time_window = timedelta(minutes=1)
+
     existing = await database_sync_to_async(Transactions.objects.filter)(
         investor=investor,
         account=account,
-        date=transaction_data["date"],
+        date__date__gte=transaction_date - time_window,
+        date__date__lte=transaction_date + time_window,
         type=transaction_data["type"],
         quantity=transaction_data.get("quantity"),
         price=transaction_data.get("price"),
@@ -1082,7 +1099,6 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
     Returns:
         Decimal: The closing price, or None if not found
     """
-    from datetime import datetime, timedelta, timezone
 
     try:
         token = await get_user_token(user)
@@ -1102,15 +1118,21 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
             from django.utils import timezone
 
             for days_back in lookback_days:
-                # Start from 1 day before target, extend backwards based on attempt
-                from_dt = timezone.make_aware(
-                    datetime.combine(date, datetime.min.time())
-                ) - timedelta(days=days_back)
-                to_dt = timezone.make_aware(datetime.combine(date, datetime.max.time()))
+                # Convert naive dates to timezone-aware for API call
+                # Tinkoff API expects timezone-aware datetime objects
+                from_dt = date - timedelta(days=days_back)
+                to_dt = date
+
+                from_dt = datetime.combine(
+                    from_dt, datetime.min.time(), tzinfo=timezone.utc
+                )
+                to_dt = datetime.combine(
+                    to_dt, datetime.max.time(), tzinfo=timezone.utc
+                )
 
                 logger.debug(
                     f"Attempt with {days_back} day(s) lookback: "
-                    f"from {from_dt.date()} to {to_dt.date()}"
+                    f"from {from_dt} to {to_dt}"
                 )
 
                 try:
@@ -1135,8 +1157,11 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
                                 break
 
                             # Track the most recent candle before or on target date
-                            if candle.time <= target_dt:
-                                if selected_candle is None or candle.time > selected_candle.time:
+                            if candle.time <= to_dt:
+                                if (
+                                    selected_candle is None
+                                    or candle.time > selected_candle.time
+                                ):
                                     selected_candle = candle
 
                         # Prefer exact match, fall back to most recent
@@ -1183,7 +1208,15 @@ async def get_price_from_tbank(instrument_uid: str, date: datetime.date, user):
 
 
 async def get_instrument_uid(asset: Assets, user):
-    """Get instrument UID from T-Bank API."""
+    """Get instrument UID from T-Bank API.
+
+    Args:
+        asset: Assets instance
+        user: CustomUser instance
+
+    Returns:
+        str: Instrument UID or None if not found
+    """
     from channels.db import database_sync_to_async
 
     token = await get_user_token(user)

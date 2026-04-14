@@ -1,5 +1,4 @@
-"""
-Utility functions for importing transaction and account data from external sources.
+"""Utility functions for importing transaction and account data from external sources.
 
 This module provides functions to parse Excel files, validate data, and import
 transactions from various broker formats.
@@ -61,8 +60,7 @@ CustomUser = get_user_model()
 
 @database_sync_to_async
 def get_investor(investor_id):
-    """
-    Retrieve investor/user by ID.
+    """Retrieve investor/user by ID.
 
     Args:
         investor_id: The ID of the investor to retrieve.
@@ -81,8 +79,7 @@ def get_broker(account):
 
 @database_sync_to_async
 def get_account(account_id: int) -> Accounts:
-    """
-    Retrieve an account by ID.
+    """Retrieve an account by ID.
 
     Args:
         account_id: The ID of the account to retrieve.
@@ -93,13 +90,12 @@ def get_account(account_id: int) -> Accounts:
     Raises:
         Accounts.DoesNotExist: If account doesn't exist.
     """
-    return Accounts.objects.get(id=account_id)
+    return Accounts.objects.select_related("broker").get(id=account_id)
 
 
 @database_sync_to_async
 def get_security(security_id):
-    """
-    Retrieve a security/asset by ID.
+    """Retrieve a security/asset by ID.
 
     Args:
         security_id: The ID of the security to retrieve.
@@ -116,8 +112,7 @@ def get_security(security_id):
 
 @database_sync_to_async
 def transaction_exists(transaction_data):
-    """
-    Check if a transaction already exists in the database.
+    """Check if a transaction already exists in the database.
 
     Args:
         transaction_data: Dictionary containing transaction field values.
@@ -398,8 +393,7 @@ async def _process_transaction_row(row, investor, account, currency):
 async def parse_charles_stanley_transactions(
     file_path, currency, account_id, user_id, confirm_every
 ):
-    """
-    Parse Charles Stanley transaction file.
+    """Parse Charles Stanley transaction file.
 
     Refactored to ONLY yield messages without awaiting confirmations.
 
@@ -687,10 +681,14 @@ async def import_security_prices_from_ft(security, dates):
                         result["status"] = "updated"
                     else:
                         result["status"] = "error"
-                        result["message"] = f"No data found for {d.strftime('%Y-%m-%d')}"
+                        result["message"] = (
+                            f"No data found for {d.strftime('%Y-%m-%d')}"
+                        )
                 except Exception as e:
                     result["status"] = "error"
-                    result["message"] = f"Error processing data for {security.name}: {str(e)}"
+                    result["message"] = (
+                        f"Error processing data for {security.name}: {str(e)}"
+                    )
 
                 yield result
 
@@ -744,10 +742,8 @@ async def import_security_prices_from_yahoo(security, dates):
             # Set auto_adjust to False to get unadjusted close prices
             history = await loop.run_in_executor(
                 None,
-                lambda: ticker.history(  # noqa: B023
-                    start=start_date,  # noqa: B023
-                    end=end_date,  # noqa: B023
-                    auto_adjust=False,  # noqa: B023
+                lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history(
+                    start=start_date, end=end_date, auto_adjust=False
                 ),
             )
 
@@ -979,6 +975,22 @@ async def import_security_prices_from_tbank(security, dates, user):
         try:
             price = await get_price_from_tbank(security.tbank_instrument_uid, d, user)
             if price:
+                # T-Bank provides split-adjusted prices. If there have been splits
+                # after this date, we need to reverse the adjustment to store
+                # the actual historical price.
+                cumulative_factor = await database_sync_to_async(
+                    security.get_cumulative_split_factor
+                )(d)
+                if cumulative_factor != Decimal("1"):
+                    # Reverse the adjustment: if factor is 0.5 (2:1 split),
+                    # the actual pre-split price was 2x the T-Bank adjusted price
+                    original_price = price
+                    price = price / cumulative_factor
+                    logger.debug(
+                        f"Reversed split adjustment for {security.name} on {d}: "
+                        f"{original_price} -> {price} (factor: {cumulative_factor})"
+                    )
+
                 create_price_func = database_sync_to_async(Prices.objects.create)
                 await create_price_func(security=security, date=d, price=price)
                 result["status"] = "updated"
@@ -1024,7 +1036,9 @@ async def _process_galaxy_transaction(
     return "new", transaction_data
 
 
-async def parse_galaxy_account_cash_flows(file_path, currency, account, user, confirm_every):
+async def parse_galaxy_account_cash_flows(
+    file_path, currency, account, user, confirm_every
+):
     """Parse Galaxy broker account cash flows with async support and progress tracking."""
     yield {
         "status": "initialization",
@@ -1567,14 +1581,19 @@ async def create_security_from_tinkoff(
                             instrument_data.initial_nominal.currency.upper()
                         )
 
-                if hasattr(instrument_data, "placement_date") and instrument_data.placement_date:
+                if (
+                    hasattr(instrument_data, "placement_date")
+                    and instrument_data.placement_date
+                ):
                     bond_data["issue_date"] = instrument_data.placement_date.date()
 
                 if hasattr(instrument_data, "maturity_date") and instrument_data.maturity_date:
                     bond_data["maturity_date"] = instrument_data.maturity_date.date()
 
                 if hasattr(instrument_data, "coupon_quantity_per_year"):
-                    bond_data["coupon_frequency"] = instrument_data.coupon_quantity_per_year
+                    bond_data["coupon_frequency"] = (
+                        instrument_data.coupon_quantity_per_year
+                    )
 
                 # Detect bond type from flags
                 if hasattr(instrument_data, "floating_coupon_flag"):
@@ -1596,8 +1615,13 @@ async def create_security_from_tinkoff(
             elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES and instrument_data:
                 future_data = {}
 
-                if hasattr(instrument_data, "expiration_date") and instrument_data.expiration_date:
-                    future_data["expiration_date"] = instrument_data.expiration_date.date()
+                if (
+                    hasattr(instrument_data, "expiration_date")
+                    and instrument_data.expiration_date
+                ):
+                    future_data["expiration_date"] = (
+                        instrument_data.expiration_date.date()
+                    )
 
                 if hasattr(instrument_data, "basic_asset"):
                     future_data["underlying_asset"] = instrument_data.basic_asset
@@ -1615,8 +1639,13 @@ async def create_security_from_tinkoff(
             elif instrument_type == InstrumentType.INSTRUMENT_TYPE_OPTION and instrument_data:
                 option_data = {}
 
-                if hasattr(instrument_data, "expiration_date") and instrument_data.expiration_date:
-                    option_data["expiration_date"] = instrument_data.expiration_date.date()
+                if (
+                    hasattr(instrument_data, "expiration_date")
+                    and instrument_data.expiration_date
+                ):
+                    option_data["expiration_date"] = (
+                        instrument_data.expiration_date.date()
+                    )
 
                 if hasattr(instrument_data, "strike_price") and instrument_data.strike_price:
                     option_data["strike_price"] = quotation_to_decimal(instrument_data.strike_price)

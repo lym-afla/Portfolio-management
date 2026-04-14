@@ -1,4 +1,8 @@
-"""Fixed conftest file for pytest - removed broken Asset-Broker relationships."""
+"""Pytest configuration and fixtures for the test suite.
+
+This module provides common fixtures for testing including
+user, broker, asset, and test environment setup.
+"""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -44,7 +48,11 @@ def setup_test_environment():
 
 @pytest.fixture
 def user(db):
-    """Create a basic test user."""
+    """Create a test user fixture.
+
+    Returns:
+        CustomUser: Test user instance.
+    """
     return CustomUser.objects.create_user(
         username="testuser", email="test@example.com", password="testpass123"
     )
@@ -75,7 +83,14 @@ def multi_currency_user(db):
 
 @pytest.fixture
 def broker(user):
-    """Create a basic test broker."""
+    """Create a test broker fixture.
+
+    Args:
+        user: Test user fixture.
+
+    Returns:
+        Brokers: Test broker instance.
+    """
     return Brokers.objects.create(investor=user, name="Test Broker", country="US")
 
 
@@ -134,7 +149,15 @@ def account_us(broker):
 
 @pytest.fixture
 def asset(user):
-    """Create a basic USD stock asset."""
+    """Create a test asset fixture.
+
+    Args:
+        user: Test user fixture.
+        broker: Test broker fixture.
+
+    Returns:
+        Assets: Test asset instance.
+    """
     asset = Assets.objects.create(
         type="Stock",
         ISIN="US1234567890",

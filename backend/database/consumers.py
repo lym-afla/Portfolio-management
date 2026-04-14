@@ -1,5 +1,4 @@
-"""
-Django Channels consumers for real-time database updates.
+"""Django Channels consumers for real-time database updates.
 
 This module provides AsyncHttpConsumer implementations for handling
 Server-Sent Events (SSE) endpoints for various database operations.
@@ -418,14 +417,14 @@ class PriceImportConsumer(AsyncHttpConsumer):
                     base_query = (
                         Assets.objects.filter(
                             investors__id=user.id,
-                            transactions__date__lte=end_date,
+                            transactions__date__date__lte=end_date,
                             transactions__account__id__in=account_ids,
                         )
                         .annotate(
                             total_quantity=Sum(
                                 "transactions__quantity",
                                 filter=Q(
-                                    transactions__date__lte=end_date,
+                                    transactions__date__date__lte=end_date,
                                     transactions__account__id__in=account_ids,
                                 ),
                             )
@@ -483,7 +482,8 @@ class PriceImportConsumer(AsyncHttpConsumer):
                         price_generator = import_security_prices_from_tbank(security, dates, user)
                     else:
                         error_message = (
-                            f"No valid data source or update information for " f"{security.name}"
+                            "No valid data source or update information "
+                            f"for {security.name}"
                         )
                         results.append(
                             {

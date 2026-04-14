@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    """
-    Django management command to fetch and cache bond coupon schedules.
+    """Django management command to fetch and cache bond coupon schedules.
 
     Fetches coupon payment schedules from T-Bank API for all bonds
     in the database and caches them in BondCouponSchedule models.
@@ -24,8 +23,7 @@ class Command(BaseCommand):
     help = "Fetch and cache coupon schedules for all bonds in the database"
 
     def add_arguments(self, parser):
-        """
-        Add command line arguments to the parser.
+        """Add command line arguments to the parser.
 
         Args:
             parser: ArgumentParser to add arguments to.
@@ -47,8 +45,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        """
-        Execute the command.
+        """Execute the command.
 
         Args:
             *args: Additional positional arguments.

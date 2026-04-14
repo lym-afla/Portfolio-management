@@ -38,14 +38,14 @@ def _portfolio_at_date(user_id: int, to_date: date, account_ids: List[int]) -> Q
     return (
         Assets.objects.filter(
             investors__id=user_id,
-            transactions__date__lte=to_date,
+            transactions__date__date__lte=to_date,
             transactions__account_id__in=account_ids,
         )
         .annotate(
             total_quantity=Sum(
                 "transactions__quantity",
                 filter=Q(
-                    transactions__date__lte=to_date,
+                    transactions__date__date__lte=to_date,
                     transactions__account_id__in=account_ids,
                 ),
             )
@@ -279,7 +279,7 @@ def IRR(
     transaction_dates = []
 
     transactions = Transactions.objects.filter(
-        investor__id=user_id, date__lte=date, security_id=asset_id
+        investor__id=user_id, date__date__lte=date, security_id=asset_id
     )
 
     if account_ids is not None:
@@ -320,34 +320,11 @@ def IRR(
         )
         transaction_dates.append(transaction.date)
 
-    # Check if there are any transactions on the same date
-    # Use date range for datetime field compatibility (SQLite friendly)
-    from django.utils import timezone
-
-    if isinstance(date, datetime.datetime):
-        date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-        date_end = date_start + timedelta(days=1)
-    else:
-        # Create timezone-aware datetime for comparison
-        if timezone.is_aware(datetime.datetime.min.time()):
-            date_start = datetime.datetime.combine(date, datetime.datetime.min.time())
-        else:
-            # Create timezone-aware datetime at midnight
-            date_start = timezone.make_aware(
-                datetime.datetime.combine(date, datetime.datetime.min.time())
-            )
-        date_end = date_start + timedelta(days=1)
-
-        # Make timezone-aware if USE_TZ is enabled
-        if timezone.is_naive(date_start):
-            date_start = timezone.make_aware(date_start)
-            date_end = timezone.make_aware(date_end)
-
-    if not transactions.filter(date__gte=date_start, date__lt=date_end).exists():
-        cash_flows.append(portfolio_value)
-        transaction_dates.append(date)
-    else:
-        cash_flows[-1] += portfolio_value
+    # Always add the final portfolio value as a separate terminal cash flow
+    # Note: If there are transactions on this date, XIRR will sum them automatically
+    # (multiple cash flows on the same date are allowed and summed)
+    cash_flows.append(portfolio_value)
+    transaction_dates.append(date)
 
     try:
         irr = Decimal(xirr(transaction_dates, cash_flows)).quantize(
@@ -501,8 +478,8 @@ def calculate_performance(
         transactions = Transactions.objects.filter(
             investor=user,
             account=account,
-            date__gte=start_date,
-            date__lte=end_date,
+            date__date__gte=start_date,
+            date__date__lte=end_date,
         )
 
         if is_restricted is not None:
@@ -533,7 +510,7 @@ def calculate_performance(
                 Prefetch(
                     "transactions",
                     queryset=Transactions.objects.filter(
-                        account=account, date__gte=start_date, date__lte=end_date
+                        account=account, date__date__gte=start_date, date__date__lte=end_date
                     ),
                     to_attr="period_transactions",
                 )
@@ -674,13 +651,13 @@ def get_last_exit_date_for_accounts(
     open_positions = (
         Assets.objects.filter(
             transactions__account_id__in=account_ids,
-            transactions__date__lte=effective_current_date,
+            transactions__date__date__lte=effective_current_date,
         )
         .annotate(
             total_quantity=Sum(
                 "transactions__quantity",
                 filter=Q(
-                    transactions__date__lte=effective_current_date,
+                    transactions__date__date__lte=effective_current_date,
                     transactions__account_id__in=account_ids,
                 ),
             )

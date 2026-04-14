@@ -1,5 +1,7 @@
-"""
-Management command to retroactively create NotionalHistory entries for existing bond redemptions.
+"""Retroactively create NotionalHistory entries for existing bond redemptions.
+
+Management command to retroactively create NotionalHistory entries
+for existing bond redemptions.
 
 This command is needed because:
 1. bulk_create bypasses the save() method
@@ -22,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    """
-    Django management command to create NotionalHistory entries.
+    """Django management command to create NotionalHistory entries.
 
     This command retroactively creates NotionalHistory entries for existing
     bond redemption transactions that were imported before the NotionalHistory
@@ -51,8 +52,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        """
-        Execute the command.
+        """Execute the command.
 
         Args:
             *args: Additional positional arguments.

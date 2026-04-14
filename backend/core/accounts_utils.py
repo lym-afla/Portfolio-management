@@ -81,13 +81,13 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
             Assets.objects.filter(
                 investors__id=user.id,  # Add user filter here
                 transactions__account=account,
-                transactions__date__lte=effective_current_date,
+                transactions__date__date__lte=effective_current_date,
             )
             .annotate(
                 total_quantity=Sum(
                     "transactions__quantity",
                     filter=Q(
-                        transactions__date__lte=effective_current_date,
+                        transactions__date__date__lte=effective_current_date,
                         transactions__account=account,
                     ),
                 )

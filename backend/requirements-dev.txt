@@ -50,9 +50,22 @@ colorama==0.4.6
     #   pytest
     #   sphinx
 comm==0.2.3
-    # via ipykernel
-constantly==23.10.4
-    # via twisted
+    # via
+    #   ipykernel
+    #   ipywidgets
+configargparse==1.7.1
+    # via
+    #   locust
+    #   locust-cloud
+configobj==5.0.9
+    # via
+    #   cli-helpers
+    #   pgcli
+coverage[toml]==7.13.2
+    # via
+    #   -r requirements-dev.in
+    #   codecov
+    #   pytest-cov
 cryptography==46.0.3
     # via
     #   autobahn
@@ -209,7 +222,14 @@ pytest==8.4.2
     #   -r requirements-dev.in
     #   pytest-asyncio
     #   pytest-django
-pytest-asyncio==1.1.0
+    #   pytest-mock
+    #   pytest-randomly
+    #   pytest-xdist
+pytest-asyncio==1.2.0
+    # via -r requirements-dev.in
+pytest-benchmark==5.2.3
+    # via -r requirements-dev.in
+pytest-cov==7.0.0
     # via -r requirements-dev.in
 pytest-django==4.11.1
     # via -r requirements-dev.in

@@ -24,6 +24,7 @@ from constants import (
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
     TRANSACTION_TYPE_CHOICES,
+    TRANSACTION_TYPE_STOCK_SPLIT,
     TRANSACTION_TYPE_COUPON,
     TRANSACTION_TYPE_DIVIDEND,
     TRANSACTION_TYPE_INTEREST_INCOME,
@@ -367,19 +368,21 @@ class Accounts(models.Model):
         """
         balance = {}
 
-        # Use date directly for query (now using naive datetime objects)
-        query_date = date
+        # Filter transactions up to and including the given date
+        # Use date__date__lte to compare only the date portion, ignoring time component
+        # of the DateTimeField
 
         # Process regular transactions using centralized cash flow calculation
-        transactions = self.transactions.filter(date__lte=query_date)
+        transactions = self.transactions.filter(date__date__lte=date)
         for transaction in transactions:
+            print(f"Processing transaction: {transaction}")
             cash_flow = transaction.total_cash_flow()
             balance[transaction.currency] = (
                 balance.get(transaction.currency, Decimal(0)) + cash_flow
             )
 
         # Calculate balance from FX transactions using centralized method
-        fx_transactions = self.fx_transactions.filter(date__lte=query_date)
+        fx_transactions = self.fx_transactions.filter(date__date__lte=date)
         for fx_transaction in fx_transactions:
             # Get all currencies involved in this FX transaction
             involved_currencies = {
@@ -425,7 +428,25 @@ class Assets(models.Model):
     )  # For Yahoo Finance symbol
     fund_fee = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
     secid = models.CharField(max_length=10, null=True, blank=True)  # For MICEX
-    tbank_instrument_uid = models.CharField(max_length=50, blank=True, null=True)  # For T-Bank
+    tbank_instrument_uid = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        """Meta class for the Assets model."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ISIN", "currency"], name="unique_asset_currency_entry"
+            ),
+        ]
+
+    class Meta:
+        """Meta class for the Assets model."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ISIN", "currency"], name="unique_asset_currency_entry"
+            ),
+        ]
 
     # Helper properties for bond handling
     @property
@@ -465,7 +486,7 @@ class Assets(models.Model):
         if quote is None:
             # If no quote is found, take the price from the last transaction
             last_transaction = (
-                self.transactions.filter(date__lte=price_date, quantity__isnull=False)
+                self.transactions.filter(date__date__lte=price_date, quantity__isnull=False)
                 .order_by("-date")
                 .first()
             )
@@ -548,11 +569,84 @@ class Assets(models.Model):
     # Define position at date by summing all movements to date
     def position(self, date, investor, account_ids=None):
         """Get the position of an asset at a given date."""
-        query = self.transactions.filter(date__lte=date, investor=investor)
+        query = self.transactions.filter(date__date__lte=date, investor=investor)
         if account_ids is not None:
             query = query.filter(account_id__in=account_ids)
         total_quantity = query.aggregate(total=models.Sum("quantity"))["total"]
         return round(Decimal(total_quantity), 6) if total_quantity else Decimal(0)
+
+    def get_cumulative_split_factor(self, from_date, to_date=None):
+        """
+        Get the cumulative split adjustment factor between two dates.
+
+        This is used to adjust historical prices. For example, if there was a
+        2:1 split, historical prices should be multiplied by 0.5 to compare
+        with current prices.
+
+        Args:
+            from_date: The historical date (price date)
+            to_date: The reference date (usually today). If None, uses all
+                     splits after from_date.
+
+        Returns:
+            Decimal: The cumulative adjustment factor. Multiply historical
+                     prices by this to get equivalent current prices.
+        """
+        query = self.split_history.filter(date__gt=from_date)
+        if to_date:
+            query = query.filter(date__lte=to_date)
+
+        splits = query.values_list("adjustment_factor", flat=True)
+
+        factor = Decimal("1")
+        for split_factor in splits:
+            factor *= split_factor
+
+        return factor
+
+    def get_split_adjusted_price(self, price, price_date, target_date=None):
+        """
+        Adjust a historical price for splits that occurred after the price date.
+
+        Args:
+            price: The historical price to adjust
+            price_date: The date of the historical price
+            target_date: The date to adjust to (default: None = adjust for all
+                         subsequent splits)
+
+        Returns:
+            Decimal: The split-adjusted price
+        """
+        if price is None:
+            return None
+
+        factor = self.get_cumulative_split_factor(price_date, target_date)
+        return price * factor
+
+    def reverse_split_adjustment(self, adjusted_price, price_date):
+        """
+        Reverse the split adjustment to get the actual historical price.
+
+        T-Bank provides split-adjusted prices. To store actual historical prices,
+        we need to reverse this adjustment.
+
+        Args:
+            adjusted_price: The split-adjusted price (from T-Bank)
+            price_date: The date of the price
+
+        Returns:
+            Decimal: The actual (non-adjusted) historical price
+        """
+        if adjusted_price is None:
+            return None
+
+        factor = self.get_cumulative_split_factor(price_date)
+        if factor == Decimal("0"):
+            return adjusted_price
+
+        # Reverse the adjustment: if factor is 0.5 (2:1 split),
+        # the actual pre-split price was 2x the adjusted price
+        return adjusted_price / factor
 
     def get_accounts_with_positions(self, date, investor):
         """
@@ -593,7 +687,7 @@ class Assets(models.Model):
     def entry_dates(self, date_as_of, investor, account_ids=None, start_date=None):
         """Get a list of dates when the position changes from 0 to non-zero."""
         transactions = self.transactions.filter(
-            date__lte=date_as_of, quantity__isnull=False, investor=investor
+            date__date__lte=date_as_of, quantity__isnull=False, investor=investor
         )
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
@@ -619,7 +713,7 @@ class Assets(models.Model):
     def exit_dates(self, end_date, investor, account_ids=None, start_date=None):
         """Get a list of dates when the position changes from non-zero to 0."""
         transactions = self.transactions.filter(
-            date__lte=end_date, quantity__isnull=False, investor=investor
+            date__date__lte=end_date, quantity__isnull=False, investor=investor
         )
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
@@ -678,7 +772,7 @@ class Assets(models.Model):
         is_long_position = None
 
         transactions = self.transactions.filter(
-            quantity__isnull=False, investor=investor, date__lte=date_as_of
+            quantity__isnull=False, investor=investor, date__date__lte=date_as_of
         ).order_by("date", "id")
 
         # Exclude the specified transaction if provided
@@ -897,8 +991,8 @@ class Assets(models.Model):
             }
 
             transactions = self.transactions.filter(
-                date__gte=start,
-                date__lte=end,
+                date__date__gte=start,
+                date__date__lte=end,
                 quantity__isnull=False,
                 investor=investor,
             ).order_by("date")
@@ -1338,7 +1432,7 @@ class Assets(models.Model):
         # Get dividend and coupon transactions
         query_date = date
         distribution_transactions = self.transactions.filter(
-            type__in=["Dividend", "Coupon"], date__lte=query_date, investor=investor
+            type__in=["Dividend", "Coupon"], date__date__lte=query_date, investor=investor
         )
 
         if account_ids is not None:
@@ -1346,7 +1440,9 @@ class Assets(models.Model):
 
         if start_date is not None:
             query_start_date = start_date
-            distribution_transactions = distribution_transactions.filter(date__gte=query_start_date)
+            distribution_transactions = distribution_transactions.filter(
+                date__date__gte=query_start_date
+            )
 
         # Calculate dividends and coupons
         if distribution_transactions:
@@ -1365,7 +1461,7 @@ class Assets(models.Model):
         if self.is_bond:
             aci_transactions = self.transactions.filter(
                 ((Q(type="Buy") & Q(aci__lt=0)) | (Q(type="Sell") & Q(aci__gt=0))),
-                date__lte=query_date,
+                date__date__lte=query_date,
                 investor=investor,
             )
 
@@ -1390,7 +1486,9 @@ class Assets(models.Model):
                             total_distributions += transaction.aci * Decimal(fx_rate)
 
         # Get tax transactions (typically negative, reducing net distributions)
-        tax_transactions = self.transactions.filter(type="Tax", date__lte=date, investor=investor)
+        tax_transactions = self.transactions.filter(
+            type="Tax", date__date__lte=date, investor=investor
+        )
 
         if account_ids is not None:
             tax_transactions = tax_transactions.filter(account_id__in=account_ids)
@@ -1417,7 +1515,7 @@ class Assets(models.Model):
         total_commission = 0
         query_date = date
         commission_transactions = self.transactions.filter(
-            commission__isnull=False, date__lte=query_date, investor=investor
+            commission__isnull=False, date__date__lte=query_date, investor=investor
         )
 
         if account_ids is not None:
@@ -1425,7 +1523,9 @@ class Assets(models.Model):
 
         if start_date is not None:
             query_start_date = start_date
-            commission_transactions = commission_transactions.filter(date__gte=query_start_date)
+            commission_transactions = commission_transactions.filter(
+                date__date__gte=query_start_date
+            )
 
         if commission_transactions:
             if currency is None:
@@ -1442,8 +1542,8 @@ class Assets(models.Model):
             return Decimal(0)
 
     def __str__(self):
-        """Return the string representation of the Brokers model."""
-        return self.name  # Define how the broker is represented as a string
+        """Return the string representation of the Assets model."""
+        return self.name  # Define how the asset is represented as a string
 
 
 # Table with public asset transactions
@@ -1490,13 +1590,26 @@ class Transactions(models.Model):
         blank=True,
         help_text="Change in notional value (used for bond redemptions)",
     )
+    # For stock splits: ratio of shares before and after split
+    split_from = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of shares before split (e.g., 1 for a 2:1 split)",
+    )
+    split_to = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of shares after split (e.g., 2 for a 2:1 split)",
+    )
     comment = models.TextField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         """
         Save the transaction.
 
-        Override save to automatically create NotionalHistory for bond redemptions.
+        Override save to automatically create:
+        - NotionalHistory for bond redemptions
+        - SplitHistory for corporate actions (stock splits)
         """
         super().save(*args, **kwargs)
 
@@ -1507,6 +1620,11 @@ class Transactions(models.Model):
         ]:
             if self.security and self.notional_change and self.notional_change != 0:
                 self._create_notional_history()
+
+        # Auto-create SplitHistory for stock splits
+        if self.type == TRANSACTION_TYPE_STOCK_SPLIT:
+            if self.security and self.split_from and self.split_to:
+                self._create_split_history()
 
     def _create_notional_history(self):
         """Create NotionalHistory entry for this bond redemption."""
@@ -1613,6 +1731,59 @@ class Transactions(models.Model):
                 exc_info=True,
             )
 
+    def _create_split_history(self):
+        """
+        Create SplitHistory entry for this Stock Split transaction.
+
+        Uses the split_from and split_to fields directly.
+        """
+        try:
+            # Avoid duplicate entries - check if entry already exists for this transaction
+            existing = SplitHistory.objects.filter(transaction=self).first()
+            if existing:
+                # Update existing entry
+                existing.date = self.date
+                existing.split_from = self.split_from
+                existing.split_to = self.split_to
+                existing.comment = self.comment
+                existing.save()
+                logger.info(
+                    f"Updated SplitHistory for {self.security.name}: "
+                    f"{self.split_from}:{self.split_to} on {self.date}"
+                )
+            else:
+                # Create new entry
+                SplitHistory.objects.create(
+                    asset=self.security,
+                    transaction=self,
+                    date=self.date,
+                    split_from=self.split_from,
+                    split_to=self.split_to,
+                    source="TRANSACTION",
+                    comment=self.comment,
+                )
+                logger.info(
+                    f"Created SplitHistory for {self.security.name}: "
+                    f"{self.split_from}:{self.split_to} on {self.date}"
+                )
+
+            # Update asset comment with split info
+            if self.security:
+                split_date = self.date.date() if hasattr(self.date, "date") else self.date
+                split_note = f"Stock split {self.split_to}:{self.split_from} on {split_date}"
+                if self.security.comment:
+                    if split_note not in self.security.comment:
+                        self.security.comment = f"{self.security.comment}\n{split_note}"
+                else:
+                    self.security.comment = split_note
+                self.security.save(update_fields=["comment"])
+
+        except Exception as e:
+            logger.error(
+                f"Error creating SplitHistory for transaction {self.id}: {e}",
+                exc_info=True,
+            )
+
     def get_price(self):
         """
         Get the effective price per unit for this transaction.
@@ -1661,6 +1832,9 @@ class Transactions(models.Model):
         For bond redemptions:
             - Uses the cash_flow field (amount received)
 
+        For corporate actions (stock splits):
+            - Always returns 0 (no cash movement)
+
         Args:
             target_currency: Optional currency code for conversion.
                            If None, returns in transaction's currency.
@@ -1668,6 +1842,10 @@ class Transactions(models.Model):
         Returns:
             Decimal: Net cash flow (can be negative or positive)
         """
+        # Corporate actions have no cash flow
+        if self.type == TRANSACTION_TYPE_STOCK_SPLIT:
+            return Decimal(0)
+
         # Initialize cash flow
         calculated_cash_flow = Decimal(0)
 
@@ -1687,6 +1865,13 @@ class Transactions(models.Model):
         if self.type in cash_flow_types:
             # Use the cash_flow field directly
             calculated_cash_flow = self.cash_flow or Decimal(0)
+
+            # Broker commission: the commission field IS the cash flow
+            if (
+                self.type == TRANSACTION_TYPE_BROKER_COMMISSION
+                and not self.cash_flow
+            ):
+                calculated_cash_flow = self.commission or Decimal(0)
 
         elif self.type in [TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL]:
             # Calculate from quantity and price
@@ -2426,8 +2611,8 @@ class BondMetadata(InstrumentMetadata):
             aci_paid_in_period = self.asset.transactions.filter(
                 type="Buy",
                 aci__lt=0,
-                date__gte=query_coupon_start,
-                date__lte=query_date,
+                date__date__gte=query_coupon_start,
+                date__date__lte=query_date,
                 investor=investor,
             )
 
@@ -2628,3 +2813,78 @@ class FutureMetadata(InstrumentMetadata):
     def __str__(self):
         """Return the string representation of the future metadata."""
         return f"Future Metadata for {self.asset.name}"
+
+
+class SplitHistory(models.Model):
+    """
+    Track stock split history for securities.
+
+    This is used for:
+    1. Adjusting historical prices when importing from T-Bank (which provides split-adjusted prices)
+    2. Correctly calculating positions across splits
+    3. Displaying split information to users
+
+    Can be auto-created from Corporate Action transactions or manually entered.
+    """
+
+    SPLIT_SOURCE_CHOICES = [
+        ("TRANSACTION", "From Corporate Action Transaction"),
+        ("MANUAL", "Manually Entered"),
+        ("IMPORT", "Imported from External Source"),
+    ]
+
+    asset = models.ForeignKey(
+        Assets, on_delete=models.CASCADE, related_name="split_history"
+    )
+    transaction = models.ForeignKey(
+        "Transactions",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="split_history_entries",
+        help_text="Source Corporate Action transaction (if auto-created)",
+    )
+    date = models.DateField(
+        null=False, db_index=True, help_text="Date when the split occurred"
+    )
+    split_from = models.PositiveIntegerField(
+        help_text="Number of shares before split (e.g., 1 for a 2:1 split)"
+    )
+    split_to = models.PositiveIntegerField(
+        help_text="Number of shares after split (e.g., 2 for a 2:1 split)"
+    )
+    adjustment_factor = models.DecimalField(
+        max_digits=15,
+        decimal_places=10,
+        help_text="Price adjustment factor (split_from / split_to). "
+        "Multiply historical prices by this to get post-split equivalent.",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=SPLIT_SOURCE_CHOICES,
+        default="MANUAL",
+        help_text="How this split record was created",
+    )
+    comment = models.TextField(null=True, blank=True)
+
+    class Meta:
+        """Meta class for the SplitHistory model."""
+
+        ordering = ["date"]
+        indexes = [
+            models.Index(fields=["asset", "date"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        """Calculate adjustment_factor before saving."""
+        if self.split_from and self.split_to:
+            self.adjustment_factor = Decimal(str(self.split_from)) / Decimal(
+                str(self.split_to)
+            )
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        """Return the string representation of the split history."""
+        return (
+            f"{self.asset.name}: {self.split_from}:{self.split_to} split on {self.date}"
+        )

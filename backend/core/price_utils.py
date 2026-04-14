@@ -15,7 +15,14 @@ from core.sorting_utils import sort_entries
 
 
 def get_prices_table_api(request):
-    """Get prices table data for API response."""
+    """Get prices table data for API response.
+
+    Args:
+        request: The HTTP request object
+
+    Returns:
+        dict: The prices table data
+    """
     data = request.data
     start_date = data.get("startDate")
     end_date = data.get("endDate")

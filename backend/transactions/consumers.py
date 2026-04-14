@@ -59,6 +59,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         self.transactions_to_create = []
         self.transactions_skipped = 0
         self.duplicate_count = 0
+        self.saved_count = 0
+        self.save_error_count = 0
 
     async def connect(self):
         """Handle WebSocket connection.
@@ -199,28 +201,36 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             elif message_type == "stop_import":
                 self.stop_event.set()
                 logger.debug("Stop event set for import")
-                self.transactions_to_create = []
-                self.transactions_skipped = 0
-                self.duplicate_count = 0
 
-                # Send stop confirmation to frontend
+                # Capture current stats before resetting
+                current_stats = {
+                    "totalTransactions": (
+                        self.saved_count
+                        + self.transactions_skipped
+                        + self.duplicate_count
+                    ),
+                    "importedTransactions": self.saved_count,
+                    "skippedTransactions": self.transactions_skipped,
+                    "duplicateTransactions": self.duplicate_count,
+                    "importErrors": self.save_error_count,
+                }
+
+                # Send stop confirmation to frontend with actual stats
                 await self.send(
                     text_data=json.dumps(
                         {
                             "type": "import_stopped",
                             "data": {
                                 "message": "Import process was stopped by user",
-                                "stats": {
-                                    "totalTransactions": 0,
-                                    "importedTransactions": 0,
-                                    "skippedTransactions": self.transactions_skipped,
-                                    "duplicateTransactions": self.duplicate_count,
-                                    "importErrors": 0,
-                                },
+                                "stats": current_stats,
                             },
                         }
                     )
                 )
+
+                self.transactions_to_create = []
+                self.transactions_skipped = 0
+                self.duplicate_count = 0
 
                 # Close the WebSocket connection
                 await self.close()
@@ -363,7 +373,13 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             )
 
     async def start_file_import(
-        self, file_id, account_id, confirm_every, currency, is_galaxy, galaxy_type
+        self,
+        file_id,
+        account_id,
+        confirm_every,
+        currency,
+        is_galaxy,
+        galaxy_type,
     ):
         """Start the file import process.
 
@@ -863,12 +879,25 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             # Check if transaction already exists
                             exists = await transaction_exists(transaction_to_create)
 
-                            if not exists:
-                                self.transactions_to_create.append(transaction_to_create)
-                                logger.debug(
-                                    "Transaction updated with mapped security and added to "
-                                    f"create list: {transaction_to_create}"
+                            if not existing_transaction:
+                                # Save transaction immediately
+                                save_result = (
+                                    await self.view_set.save_single_transaction(
+                                        transaction_to_create
+                                    )
                                 )
+                                if save_result.get("success"):
+                                    self.saved_count += 1
+                                    logger.debug(
+                                        "Transaction with mapped security saved "
+                                        f"(ID: {save_result.get('transaction_id')})"
+                                    )
+                                else:
+                                    self.save_error_count += 1
+                                    logger.error(
+                                        "Failed to save mapped transaction: "
+                                        f"{save_result.get('error')}"
+                                    )
                             else:
                                 self.duplicate_count += 1
                                 logger.debug(f"Transaction already exists: {transaction_to_create}")
@@ -892,8 +921,23 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         )
                     )
                 elif update.get("status") == "add_transaction":
-                    self.transactions_to_create.append(update.get("data"))
-                    logger.debug(f"Transaction added to create list: {update.get('data')}")
+                    transaction_data = update.get("data")
+                    # Save transaction immediately to database
+                    save_result = await self.view_set.save_single_transaction(
+                        transaction_data
+                    )
+                    if save_result.get("success"):
+                        self.saved_count += 1
+                        logger.debug(
+                            f"Transaction saved "
+                            f"(ID: {save_result.get('transaction_id')})"
+                        )
+                    else:
+                        self.save_error_count += 1
+                        error_msg = save_result.get("error", "Unknown error")
+                        logger.error(
+                            f"Failed to save transaction: {error_msg}"
+                        )
                 elif update.get("status") == "processing_complete":
                     # Backend finished processing - stats are tracked here, not from backend
                     logger.debug("[process_import] Backend processing complete")
@@ -908,9 +952,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
 
             logger.debug("[process_import] Finished processing all updates from import generator")
 
-            # Calculate final stats
-            # For API imports, totalTransactions is the sum of all outcomes
-            # For file imports, it may come from the backend
+            # Calculate final stats using actual saved counts
             if import_results["totalTransactions"] == 0:
                 import_results["totalTransactions"] = (
                     import_results["importedTransactions"]
@@ -919,33 +961,44 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     + import_results["importErrors"]
                 )
 
-            logger.debug(f"Final import results: {import_results}")
+            # Determine if this was an API import (tracked in import_results)
+            # or file import (tracked in self.saved_count)
+            api_import_has_saves = import_results["importedTransactions"] > 0
+            file_import_has_saves = self.saved_count > 0
 
-            # Calculate results to return
-            # For API imports, use import_results; for file imports, use legacy counters
-            if (
-                import_results["importedTransactions"] > 0
-                or import_results["duplicateTransactions"] > 0
-            ):
-                # API import - use tracked results
+            if api_import_has_saves and not file_import_has_saves:
+                # Pure API import - use tracked results
                 results = import_results
             else:
-                # File import - use legacy counters
+                # File import or mixed - use actual saved count
                 results = {
-                    "importedTransactions": len(self.transactions_to_create),
-                    "skippedTransactions": self.transactions_skipped,
-                    "duplicateTransactions": self.duplicate_count,
-                    "importErrors": import_results.get("importErrors", 0),
-                    "totalTransactions": len(self.transactions_to_create)
-                    + self.transactions_skipped
-                    + self.duplicate_count,
+                    "importedTransactions": self.saved_count
+                    + import_results.get("importedTransactions", 0),
+                    "skippedTransactions": self.transactions_skipped
+                    + import_results.get("skippedTransactions", 0),
+                    "duplicateTransactions": self.duplicate_count
+                    + import_results.get("duplicateTransactions", 0),
+                    "importErrors": self.save_error_count
+                    + import_results.get("importErrors", 0),
+                    "totalTransactions": (
+                        self.saved_count
+                        + import_results.get("importedTransactions", 0)
+                        + self.transactions_skipped
+                        + import_results.get("skippedTransactions", 0)
+                        + self.duplicate_count
+                        + import_results.get("duplicateTransactions", 0)
+                        + self.save_error_count
+                        + import_results.get("importErrors", 0)
+                    ),
                 }
+
+            logger.debug(f"Final import results: {results}")
 
             await self.send(
                 text_data=json.dumps(
                     {
                         "type": "import_complete",
-                        "data": import_results,
+                        "data": results,
                         "message": "Import process completed",
                     }
                 )
@@ -960,13 +1013,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
-            # Use legacy counters for StopAsyncIteration
             results = {
-                "importedTransactions": len(self.transactions_to_create),
+                "importedTransactions": self.saved_count,
                 "skippedTransactions": self.transactions_skipped,
                 "duplicateTransactions": self.duplicate_count,
-                "importErrors": 0,
-                "totalTransactions": len(self.transactions_to_create)
+                "importErrors": self.save_error_count,
+                "totalTransactions": self.saved_count
                 + self.transactions_skipped
                 + self.duplicate_count,
             }
@@ -980,13 +1032,12 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
-            # Use legacy counters for CancelledError
             results = {
-                "importedTransactions": len(self.transactions_to_create),
+                "importedTransactions": self.saved_count,
                 "skippedTransactions": self.transactions_skipped,
                 "duplicateTransactions": self.duplicate_count,
-                "importErrors": 0,
-                "totalTransactions": len(self.transactions_to_create)
+                "importErrors": self.save_error_count,
+                "totalTransactions": self.saved_count
                 + self.transactions_skipped
                 + self.duplicate_count,
             }
@@ -999,25 +1050,30 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             logger.error(f"Full traceback: {traceback.format_exc()}")
 
             # Log current state
-            logger.error(f"transactions_to_create count: {len(self.transactions_to_create)}")
-            if self.transactions_to_create:
-                logger.error(f"transactions_to_create: {self.transactions_to_create}")
+            logger.error(
+                f"saved_count: {self.saved_count}, "
+                f"save_error_count: {self.save_error_count}"
+            )
 
             await self.send(
                 text_data=json.dumps(
                     {
                         "type": "import_error",
-                        "data": {"error": f"An error occurred during import processing: {str(e)}"},
+                        "data": {
+                            "error": (
+                                "An error occurred during import processing: "
+                                f"{str(e)}"
+                            )
+                        },
                     }
                 )
             )
-            # Use legacy counters for Exception
             results = {
-                "importedTransactions": len(self.transactions_to_create),
+                "importedTransactions": self.saved_count,
                 "skippedTransactions": self.transactions_skipped,
                 "duplicateTransactions": self.duplicate_count,
-                "importErrors": 1,
-                "totalTransactions": len(self.transactions_to_create)
+                "importErrors": self.save_error_count + 1,
+                "totalTransactions": self.saved_count
                 + self.transactions_skipped
                 + self.duplicate_count,
             }
@@ -1037,6 +1093,8 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             self.transactions_to_create = []
             self.transactions_skipped = 0
             self.duplicate_count = 0
+            self.saved_count = 0
+            self.save_error_count = 0
 
         return results
 
@@ -1071,8 +1129,22 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             logger.debug(f"Received confirmation: {confirmation}")
 
             if confirmation:
-                self.transactions_to_create.append(transaction_data)
-                logger.debug(f"Transaction confirmed and added to create list: {transaction_data}")
+                # Save transaction immediately to database
+                save_result = await self.view_set.save_single_transaction(
+                    transaction_data
+                )
+                if save_result.get("success"):
+                    self.saved_count += 1
+                    logger.debug(
+                        "Transaction confirmed and saved "
+                        f"(ID: {save_result.get('transaction_id')})"
+                    )
+                else:
+                    self.save_error_count += 1
+                    error_msg = save_result.get("error", "Unknown error")
+                    logger.error(
+                        f"Failed to save confirmed transaction: {error_msg}"
+                    )
             else:
                 self.transactions_skipped += 1
                 logger.debug("Transaction skipped based on user confirmation")

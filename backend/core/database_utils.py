@@ -1,5 +1,4 @@
-"""
-Utility functions for database operations and performance calculations.
+"""Utility functions for database operations and performance calculations.
 
 This module provides asynchronous functions for saving and updating
 performance data in the database, including annual broker performance metrics.
@@ -31,8 +30,7 @@ async def save_or_update_annual_broker_performance(
     is_restricted=None,
     skip_existing_years=False,
 ):
-    """
-    Save or update annual performance metrics for brokers.
+    """Save or update annual performance metrics for brokers.
 
     Args:
         user: The user instance.
@@ -59,7 +57,7 @@ async def save_or_update_annual_broker_performance(
     # Determine the starting year
     first_transaction = await database_sync_to_async(
         lambda: Transactions.objects.filter(
-            account_id__in=selected_account_ids, date__lte=effective_date
+            account_id__in=selected_account_ids, date__date__lte=effective_date
         )
         .order_by("date")
         .first()
@@ -160,8 +158,7 @@ async def save_annual_performance(
     is_restricted,
     performance_data,
 ):
-    """
-    Save annual performance data to the database.
+    """Save annual performance data to the database.
 
     Args:
         user: The user instance.
@@ -211,8 +208,7 @@ async def save_annual_performance(
 
 
 def get_years_count(user, effective_date, account_group_type, account_group_id):
-    """
-    Calculate the number of years with transaction data.
+    """Calculate the number of years with transaction data.
 
     Args:
         user: The user instance.
@@ -229,7 +225,9 @@ def get_years_count(user, effective_date, account_group_type, account_group_id):
         account_group_id,
     )
     first_transaction = (
-        Transactions.objects.filter(account_id__in=selected_account_ids, date__lte=effective_date)
+        Transactions.objects.filter(
+            account_id__in=selected_account_ids, date__date__lte=effective_date
+        )
         .order_by("date")
         .first()
     )

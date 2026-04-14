@@ -20,9 +20,10 @@ from core.portfolio_utils import IRR, NAV_at_date, get_fx_rate
 logger = logging.getLogger("dashboard")
 
 
-def get_nav_chart_data(user_id, account_ids, frequency, from_date, to_date, currency, breakdown):
-    """
-    Calculate NAV chart data for a given user and date range.
+def get_nav_chart_data(
+    user_id, account_ids, frequency, from_date, to_date, currency, breakdown
+):
+    """Calculate NAV chart data for a given user and date range.
 
     Args:
         user_id: The ID of the user to calculate NAV for.
@@ -106,7 +107,7 @@ def get_nav_chart_data(user_id, account_ids, frequency, from_date, to_date, curr
             investor__id=user_id,
             account_id__in=account_ids,
             type__in=["Cash in", "Cash out"],
-            date__lte=to_date,
+            date__date__lte=to_date,
         )
         chart_data["datasets"] = [
             _create_dataset(
@@ -228,9 +229,10 @@ def _add_contributions_data(
     chart_data["datasets"][4]["data"].append(IRR_rolling)
 
 
-def add_breakdown_data(chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date):
-    """
-    Add breakdown data to chart datasets.
+def add_breakdown_data(
+    chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date
+):
+    """Add breakdown data to chart datasets.
 
     Args:
         chart_data: Dictionary containing chart structure and datasets.
@@ -259,8 +261,7 @@ def add_breakdown_data(chart_data, IRR, IRR_rolling, breakdown_data, categories,
 
 
 def fill_missing_historical_data(chart_data, categories, frequency):
-    """
-    Fill missing historical data points for chart datasets.
+    """Fill missing historical data points for chart datasets.
 
     Args:
         chart_data: Dictionary containing chart structure and datasets.
@@ -282,8 +283,7 @@ def fill_missing_historical_data(chart_data, categories, frequency):
 
 
 def find_first_data_index(labels, category_date, frequency):
-    """
-    Find the first data index for a category based on its start date.
+    """Find the first data index for a category based on its start date.
 
     Args:
         labels: List of date labels for the chart.
@@ -300,8 +300,7 @@ def find_first_data_index(labels, category_date, frequency):
 
 
 def compare_dates(label, category_date, frequency):
-    """
-    Compare a chart label date with a category date based on frequency.
+    """Compare a chart label date with a category date based on frequency.
 
     Args:
         label: The chart label string to compare.
@@ -342,8 +341,7 @@ def compare_dates(label, category_date, frequency):
 
 
 def parse_label_date(label, frequency):
-    """
-    Parse a chart label into a date object based on frequency.
+    """Parse a chart label into a date object based on frequency.
 
     Args:
         label: The chart label string to parse.
@@ -365,8 +363,7 @@ def parse_label_date(label, frequency):
 
 
 def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
-    """
-    Create a dataset configuration for a chart.
+    """Create a dataset configuration for a chart.
 
     Args:
         label: The label for the dataset.
@@ -396,8 +393,7 @@ def _create_dataset(label, data, color, chart_type, axis_id, stack=None):
 
 
 def get_color(index):
-    """
-    Get a color from a predefined color palette.
+    """Get a color from a predefined color palette.
 
     Args:
         index: The index of the color to retrieve.
@@ -432,7 +428,7 @@ def _calculate_contributions(
                 "investor__id": user_id,
                 "account_id__in": account_ids,
                 "type__in": ["Cash in", "Cash out"],
-                "date__lte": d,
+                "date__date__lte": d,
             }
             transactions = Transactions.objects.filter(**filter_conditions)
         else:
@@ -444,10 +440,10 @@ def _calculate_contributions(
             "investor__id": user_id,
             "account_id__in": account_ids,
             "type__in": ["Cash in", "Cash out"],
-            "date__lte": d,
+            "date__date__lte": d,
         }
         if previous_date is not None:
-            filter_conditions["date__gt"] = previous_date
+            filter_conditions["date__date__gt"] = previous_date
         transactions = Transactions.objects.filter(**filter_conditions)
 
     total_contributions = Decimal(0)

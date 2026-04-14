@@ -89,15 +89,15 @@ def _filter_transactions(user, start_date, end_date, selected_account_ids, searc
     """Filter transactions based on user criteria."""
     transactions_query = Transactions.objects.filter(
         investor=user,
-        date__gte=start_date if start_date else date.min,
-        date__lte=end_date,
+        date__date__gte=start_date if start_date else date.min,
+        date__date__lte=end_date,
         account_id__in=selected_account_ids,
     ).select_related("account", "security")
 
     fx_transactions_query = FXTransaction.objects.filter(
         investor=user,
-        date__gte=start_date if start_date else date.min,
-        date__lte=end_date,
+        date__date__gte=start_date if start_date else date.min,
+        date__date__lte=end_date,
         account_id__in=selected_account_ids,
     ).select_related("account")
 

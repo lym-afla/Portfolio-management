@@ -260,6 +260,22 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "required": False,
                     },
                     {
+                        "name": "split_from",
+                        "label": "Split From",
+                        "type": "number",
+                        "required": False,
+                        "helper_text": "Shares before split (e.g., 1 for a 2:1 split)",
+                        "show_for_types": ["Stock split"],
+                    },
+                    {
+                        "name": "split_to",
+                        "label": "Split To",
+                        "type": "number",
+                        "required": False,
+                        "helper_text": "Shares after split (e.g., 2 for a 2:1 split)",
+                        "show_for_types": ["Stock split"],
+                    },
+                    {
                         "name": "comment",
                         "label": "Comment",
                         "type": "textarea",
@@ -341,19 +357,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 logger.info(
                     "Perfect match found for all keywords of broker account " f"{account_name}"
                 )
-                try:
-                    account = Accounts.objects.get(broker__investor=user, name__iexact=account_name)
+                account = self._find_account_by_name(user, account_name)
+                if account:
                     logger.info(
-                        f"Returning perfectly matched broker account: {account.name} "
+                        f"Returning perfectly matched account: {account.name} "
                         f"(ID: {account.id})"
                     )
                     return account
-                except Accounts.DoesNotExist:
-                    logger.warning(
-                        f"Perfect match found for {account_name}, "
-                        "but no corresponding Accounts object exists for this user"
-                    )
-                    return None
+                logger.warning(
+                    f"Perfect match found for {account_name}, "
+                    "but no corresponding Accounts object exists for this user"
+                )
+                return None
 
             if avg_score > threshold and avg_score > best_score:
                 best_score = avg_score
@@ -361,21 +376,68 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 logger.debug(f"New best match: {best_match} with average score {best_score}")
 
         if best_match:
-            logger.info(f"Best match found: {best_match} with average score {best_score}")
-            try:
-                account = Accounts.objects.get(broker__investor=user, name__iexact=best_match)
+            logger.info(
+                f"Best match found: {best_match} with average score {best_score}"
+            )
+            account = self._find_account_by_name(user, best_match)
+            if account:
                 logger.info(
-                    f"Returning best matched broker account: {account.name} " f"(ID: {account.id})"
+                    f"Returning best matched account: {account.name} "
+                    f"(ID: {account.id})"
                 )
                 return account
-            except Accounts.DoesNotExist:
-                logger.warning(
-                    f"Best match {best_match} found, "
-                    "but no corresponding Broker object exists for this user"
-                )
-                return None
+            logger.warning(
+                f"Best match {best_match} found, "
+                "but no corresponding Account object exists for this user"
+            )
+            return None
 
         logger.info("No broker account match found")
+        return None
+
+    def _find_account_by_name(self, user, account_name):
+        """Find an account for a user by name, trying exact then fuzzy match.
+
+        Args:
+            user: The user instance.
+            account_name: The account name to search for.
+
+        Returns:
+            Accounts instance or None.
+        """
+        # Try exact case-insensitive match first
+        try:
+            return Accounts.objects.get(
+                broker__investor=user, name__iexact=account_name
+            )
+        except Accounts.DoesNotExist:
+            pass
+
+        # Fuzzy match: score each account and pick the best one
+        accounts = Accounts.objects.filter(broker__investor=user)
+        best_account = None
+        best_score = 0
+
+        for account in accounts:
+            score = fuzz.partial_ratio(
+                account.name.lower(), account_name.lower()
+            )
+            logger.debug(
+                f"Account name match: '{account.name}' vs '{account_name}' "
+                f"= {score}"
+            )
+            # Prefer longer (more specific) names when scores tie
+            if score > best_score or (
+                score == best_score
+                and best_account
+                and len(account.name) > len(best_account.name)
+            ):
+                best_score = score
+                best_account = account
+
+        if best_account and best_score >= 70:
+            return best_account
+
         return None
 
     @action(detail=False, methods=["POST"])
@@ -830,6 +892,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 return Decimal("0")
 
         try:
+            # Convert pandas Timestamp to Python datetime for SQLite compat
+            date_val = transaction_data.get("date")
+            if date_val is not None and hasattr(date_val, "to_pydatetime"):
+                transaction_data["date"] = date_val.to_pydatetime()
+
             # Check if this is an FX transaction
             is_fx = transaction_data.pop("is_fx", False)
 
@@ -1011,6 +1078,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 phantom_cash_transactions = []
 
                 for data in transactions_to_create:
+                    # Convert pandas Timestamp to Python datetime for SQLite compat
+                    date_val = data.get("date")
+                    if date_val is not None and hasattr(date_val, "to_pydatetime"):
+                        data["date"] = date_val.to_pydatetime()
+
                     logger.debug(f"Creating transaction with data: {data}")
 
                     # Check if this is an FX transaction
@@ -1353,10 +1425,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
                                         if position and position != 0:
                                             # Calculate per-bond notional
-                                            notional_per_bond = Decimal(total_notional) / abs(
-                                                Decimal(position)
+                                            notional_per_bond = Decimal(
+                                                total_notional
+                                            ) / abs(Decimal(position))
+                                            transaction_data["notional_change"] = (
+                                                notional_per_bond
                                             )
-                                            transaction_data["notional_change"] = notional_per_bond
 
                                             logger.debug(
                                                 "Bond redemption: total="

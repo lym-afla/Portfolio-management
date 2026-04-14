@@ -22,77 +22,34 @@ User = get_user_model()
 
 
 @pytest.fixture
-def user():
-    """Create test user."""
-    return User.objects.create_user(username="testuser", password="testpass")
+def performance_user(db):
+    """Create a dedicated user for performance tests to avoid fixture pollution."""
+    user = User.objects.create_user(
+        username="performance_test_user", password="testpass123"
+    )
+    # Set required attributes for formatting
+    user.default_currency = "USD"
+    user.digits = 2
+    user.save()
+    return user
 
 
 @pytest.fixture
-def broker(user):
-    """Create test broker."""
-    return Brokers.objects.create(investor=user, name="Test Broker", country="US")
+def performance_broker(performance_user):
+    """Create a dedicated broker for performance tests."""
+    return Brokers.objects.create(
+        investor=performance_user, name="Performance Test Broker", country="US"
+    )
 
 
 @pytest.fixture
-def account(broker):
-    """Create test broker account."""
+def performance_account(performance_broker):
+    """Create a dedicated account for performance tests."""
     return Accounts.objects.create(
-        broker=broker,
-        name="Test Account",
-        native_id="TEST001",
+        broker=performance_broker,
+        name="Performance Test Account",
         restricted=False,
         is_active=True,
-    )
-
-
-@pytest.fixture
-def transactions(user, account):
-    """Create test transactions."""
-    asset = Assets.objects.create(
-        type="Stock",
-        ISIN="US0378331005",
-        name="Generic Security",
-        currency="USD",
-        exposure="Equity",
-        restricted=False,
-    )
-    asset.investors.add(user)
-
-    Transactions.objects.create(
-        investor=user,
-        account=account,
-        date=date(2022, 1, 1),
-        type=TRANSACTION_TYPE_CASH_IN,
-        cash_flow=Decimal("1500"),
-        currency="USD",
-    )
-    Transactions.objects.create(
-        investor=user,
-        account=account,
-        date=date(2022, 1, 2),
-        type=TRANSACTION_TYPE_BUY,
-        quantity=Decimal("10"),
-        price=Decimal("100"),
-        currency="USD",
-        security=asset,
-    )
-    Transactions.objects.create(
-        investor=user,
-        account=account,
-        date=date(2022, 8, 31),
-        type=TRANSACTION_TYPE_SELL,
-        quantity=Decimal("-10"),
-        price=Decimal("120"),
-        currency="USD",
-        security=asset,
-    )
-    Transactions.objects.create(
-        investor=user,
-        account=account,
-        date=date(2022, 9, 1),
-        type=TRANSACTION_TYPE_CASH_OUT,
-        cash_flow=Decimal("-1200"),
-        currency="USD",
     )
 
 
@@ -111,6 +68,24 @@ def fx_rates(user):
     fx.RUBUSD = Decimal("65")
     fx.PLNUSD = Decimal("4")
     fx.save()
+    return fx
+
+
+@pytest.fixture
+def performance_fx_rates(performance_user):
+    """Create FX rates for the performance test user."""
+    from common.models import FX
+
+    start_date = date(2010, 1, 1)
+    fx = FX.objects.create(date=start_date)
+    fx.investors.add(performance_user)
+    fx.USDEUR = Decimal("1.15")
+    fx.USDGBP = Decimal("1.25")
+    fx.CHFGBP = Decimal("1.14")
+    fx.RUBUSD = Decimal("65")
+    fx.PLNUSD = Decimal("4")
+    fx.save()
+    return fx
 
 
 @pytest.mark.django_db
@@ -247,16 +222,74 @@ def test_calculate_performance(user, account, caplog):
 
 
 @pytest.mark.django_db
-def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
+def test_get_accounts_table_api(performance_user, performance_broker, performance_account, performance_fx_rates):
     """Test the accounts table API functionality."""
+    # Clear LRU caches to prevent state pollution from previous tests
+    from core.portfolio_utils import get_fx_rate, NAV_at_date
+    get_fx_rate.cache_clear()
+    NAV_at_date.cache_clear()
+
+    # Create transactions for first account with proper cash flows for IRR
+    asset1 = Assets.objects.create(
+        type="Stock",
+        ISIN="US0378331005",
+        name="Generic Security",
+        currency="USD",
+        exposure="Equity",
+        restricted=False,
+    )
+    asset1.investors.add(performance_user)
+
+    Transactions.objects.create(
+        investor=performance_user,
+        account=performance_account,
+        date=date(2022, 1, 1),
+        type=TRANSACTION_TYPE_CASH_IN,
+        cash_flow=Decimal("1500"),
+        currency="USD",
+    )
+    Transactions.objects.create(
+        investor=performance_user,
+        account=performance_account,
+        date=date(2022, 1, 2),
+        type=TRANSACTION_TYPE_BUY,
+        quantity=Decimal("10"),
+        price=Decimal("100"),
+        currency="USD",
+        security=asset1,
+    )
+    Transactions.objects.create(
+        investor=performance_user,
+        account=performance_account,
+        date=date(2022, 8, 31),
+        type=TRANSACTION_TYPE_SELL,
+        quantity=Decimal("-10"),
+        price=Decimal("120"),
+        currency="USD",
+        security=asset1,
+    )
+    Transactions.objects.create(
+        investor=performance_user,
+        account=performance_account,
+        date=date(2022, 9, 1),
+        type=TRANSACTION_TYPE_CASH_OUT,
+        cash_flow=Decimal("-1200"),
+        currency="USD",
+    )
+
     # Create a second broker and account
-    second_broker = Brokers.objects.create(investor=user, name="Second Test Broker", country="US")
+    second_broker = Brokers.objects.create(
+        investor=performance_user, name="Second Test Broker", country="US"
+    )
     second_account = Accounts.objects.create(
-        name="Second Test Account", broker=second_broker, restricted=True
+        broker=second_broker,
+        name="Second Test Account",
+        restricted=False,
+        is_active=True,
     )
 
     # Create asset for second account (using USD to avoid FX conversion issues)
-    asset = Assets.objects.create(
+    asset2 = Assets.objects.create(
         type="Stock",
         ISIN="US1234567891",
         name="Second Test Stock",
@@ -264,14 +297,22 @@ def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
         exposure="Equity",
         restricted=False,
     )
-    asset.investors.add(user)
+    asset2.investors.add(performance_user)
 
-    # Create additional transaction for second account
+    # Create transactions for second account with proper cash flows for IRR
     current_date = datetime.now().date()
     Transactions.objects.create(
-        investor=user,
+        investor=performance_user,
         account=second_account,
-        security=asset,
+        date=current_date - timedelta(days=60),
+        type=TRANSACTION_TYPE_CASH_IN,
+        cash_flow=Decimal("1000"),
+        currency="USD",
+    )
+    Transactions.objects.create(
+        investor=performance_user,
+        account=second_account,
+        security=asset2,
         date=current_date - timedelta(days=30),
         type=TRANSACTION_TYPE_BUY,
         quantity=50,
@@ -281,15 +322,17 @@ def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
 
     # Create mock request with user default settings
     class MockRequest:
-        def __init__(self, user, data):
+        def __init__(self, user, data, effective_date):
             self.user = user
             self.data = data
-            self.session = {"effective_current_date": current_date.strftime("%Y-%m-%d")}
-            user.default_currency = "USD"
-            user.digits = 2
+            self.session = {"effective_current_date": effective_date}
 
     # Test basic functionality
-    request = MockRequest(user, {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}})
+    request = MockRequest(
+        performance_user,
+        {"page": 1, "itemsPerPage": 10, "search": "", "sortBy": {}},
+        current_date.strftime("%Y-%m-%d")
+    )
 
     response = get_accounts_table_api(request)
 
@@ -305,10 +348,17 @@ def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
     assert len(accounts) >= 1  # Should have at least one test account
 
     # Verify first account data
-    first_account = next(acc for acc in accounts if acc["id"] == account.id)
-    assert first_account["name"] == account.name
-    assert first_account["broker_name"] == broker.name
+    first_account = next(acc for acc in accounts if acc["id"] == performance_account.id)
+    assert first_account["name"] == performance_account.name
+    assert first_account["broker_name"] == performance_broker.name
     assert isinstance(first_account["nav"], str)
+    # Debug: print the actual nav value if it doesn't match expected format
+    if not any([
+        first_account["nav"].startswith("$"),
+        first_account["nav"].startswith("($"),
+    ]):
+        print(f"DEBUG: Unexpected nav value: {repr(first_account['nav'])}, type: {type(first_account['nav'])}")
+        print(f"DEBUG: All accounts: {accounts}")
     assert any(
         [
             first_account["nav"].startswith("$"),  # Positive value

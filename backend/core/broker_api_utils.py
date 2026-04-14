@@ -126,8 +126,7 @@ class TinkoffAPI(BrokerAPI):
         self.RETRY_BACKOFF_FACTOR = 2  # exponential backoff multiplier
 
     async def _retry_operation(self, operation_func, *args, **kwargs):
-        """
-        Retry wrapper for API operations.
+        """Retry wrapper for API operations.
 
         Args:
             operation_func: Function to retry

@@ -453,7 +453,9 @@ class TransactionSerializer(serializers.ModelSerializer):
         Returns:
             str: Formatted commission string or None.
         """
-        return format_value(obj.commission, "commission", obj.currency, self.get_digits())
+        return format_value(
+            obj.commission, "commission", obj.currency, self.get_digits()
+        )
 
     def get_aci(self, obj):
         """Format accrued interest for display.
@@ -514,7 +516,9 @@ class TransactionSerializer(serializers.ModelSerializer):
         Returns:
             str: Formatted notional change string or None.
         """
-        return format_value(obj.notional_change, "notional_change", obj.currency, self.get_digits())
+        return format_value(
+            obj.notional_change, "notional_change", obj.currency, self.get_digits()
+        )
 
     def get_notional(self, obj):
         """Format notional for display.
