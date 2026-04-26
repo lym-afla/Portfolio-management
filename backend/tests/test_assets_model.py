@@ -381,8 +381,7 @@ class TestAssetsModel:
 
         assert (
             result == expected_price
-        ), f"Expected current position gain/loss to be {expected_price}, "
-        f"but got {result['current_position']}"
+        ), f"Expected buy-in price to be {expected_price}, but got {result}"
 
     def test_calculate_buy_in_price_with_FX(self, user, asset, caplog, general_transactions):
         """Test buy-in price calculation with FX conversion."""

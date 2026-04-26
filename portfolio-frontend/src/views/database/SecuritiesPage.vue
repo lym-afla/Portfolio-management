@@ -4,10 +4,11 @@
       <v-card-text>
         <v-row align="center" justify="space-between">
           <v-col cols="auto">
-            <v-btn color="primary" @click="addSecurity">
+            <v-btn color="primary" class="mr-2" @click="addSecurity">
               <v-icon left>mdi-plus</v-icon>
               Add Security
             </v-btn>
+            <MergerDialog @created="onMergerCreated" />
           </v-col>
         </v-row>
       </v-card-text>
@@ -117,6 +118,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
+import MergerDialog from '@/components/dialogs/MergerDialog.vue'
 import {
   getSecuritiesForDatabase,
   deleteSecurity,
@@ -130,6 +132,7 @@ export default {
   name: 'SecuritiesPage',
   components: {
     SecurityFormDialog,
+    MergerDialog,
   },
   setup() {
     const store = useStore()
@@ -269,6 +272,11 @@ export default {
       fetchSecurities()
     }
 
+    const onMergerCreated = (mergerResult) => {
+      logger.log('Unknown', 'Merger created:', mergerResult)
+      fetchSecurities()
+    }
+
     const handleSecurityUpdated = (updatedSecurity) => {
       logger.log('Unknown', 'updatedSecurity:', updatedSecurity)
       fetchSecurities()
@@ -331,6 +339,7 @@ export default {
       addSecurity,
       editSecurity,
       handleSecurityAdded,
+      onMergerCreated,
       handleSecurityUpdated,
       processDeleteSecurity,
       headerAlignments,

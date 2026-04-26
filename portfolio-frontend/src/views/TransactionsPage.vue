@@ -22,6 +22,7 @@
         >
           Add FX Transaction
         </v-btn>
+        <MergerDialog @created="onMergerCreated" />
         <v-btn
           color="secondary"
           prepend-icon="mdi-upload"
@@ -218,6 +219,7 @@ import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vu
 import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
 import AssetTransferDialog from '@/components/dialogs/AssetTransferDialog.vue'
+import MergerDialog from '@/components/dialogs/MergerDialog.vue'
 import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import logger from '@/utils/logger'
 
@@ -229,6 +231,7 @@ export default {
     FXTransactionFormDialog,
     TransactionImportDialog,
     AssetTransferDialog,
+    MergerDialog,
     TransactionRow,
   },
   emits: ['update-page-title'],
@@ -474,6 +477,11 @@ export default {
       await fetchTransactions()
     }
 
+    const onMergerCreated = (mergerResult) => {
+      logger.log('Unknown', '[TransactionsPage] Merger created:', mergerResult)
+      fetchTransactions()
+    }
+
     onMounted(async () => {
       emit('update-page-title', 'Transactions')
       if (!effectiveCurrentDate.value) {
@@ -525,6 +533,7 @@ export default {
       handleImportCompleted,
       openTransferDialog,
       handleTransferCompleted,
+      onMergerCreated,
     }
   },
 }

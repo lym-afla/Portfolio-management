@@ -3,6 +3,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from django import forms
 from django.core.cache import cache
@@ -18,7 +19,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
+from common.models import MergerRecord
 from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
+from constants import (
+    TRANSACTION_TYPE_MERGER_IN,
+    TRANSACTION_TYPE_MERGER_OUT,
+)
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
@@ -27,6 +33,7 @@ from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
 from core.securities_utils import get_securities_table_api, get_security_detail
 from core.sorting_utils import sort_entries
+from core.user_utils import format_account_display
 
 from .forms import SecurityForm
 from .serializers import (
@@ -65,16 +72,18 @@ def api_get_securities(request):
 
     if account_id:
         account = get_object_or_404(Accounts, id=account_id, broker__investor=user)
-        securities = securities.filter(transactions__account=account).distinct()
+        securities = securities.filter(transactions__account=account)
 
-    securities = securities.order_by(Lower("name")).values("id", "name", "type")
+    securities = securities.order_by(Lower("name")).values("id", "name", "type").distinct()
     return Response(list(securities))
 
 
 @api_view(["GET"])
 def api_get_security_detail(request, security_id):
     """Get security detail."""
-    return Response(get_security_detail(request, security_id))
+    account_id = request.GET.get("account_id")
+    account_id = int(account_id) if account_id else None
+    return Response(get_security_detail(request, security_id, account_id=account_id))
 
 
 @api_view(["GET"])
@@ -117,6 +126,8 @@ def api_get_security_position_history(request, security_id):
     try:
         security = Assets.objects.get(id=security_id, investors=request.user)
         period = request.GET.get("period", "1Y")
+        account_id = request.GET.get("account_id")
+        account_ids = [int(account_id)] if account_id else None
         # Use JWT middleware instead of session
         effective_current_date_str = getattr(
             request,
@@ -134,9 +145,12 @@ def api_get_security_position_history(request, security_id):
             quantity__isnull=False,
         ).order_by("date")
 
+        if account_ids:
+            transactions = transactions.filter(account_id__in=account_ids)
+
         if start_date:
             transactions = transactions.filter(date__date__gt=start_date)
-            current_position = security.position(start_date, request.user)
+            current_position = security.position(start_date, request.user, account_ids=account_ids)
             position_history = [{"date": start_date, "position": current_position}]
         else:
             current_position = 0
@@ -175,12 +189,16 @@ def api_get_security_transactions(request, security_id):
         effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d")
         period = request.GET.get("period", "1Y")
         start_date = get_start_date(effective_current_date, period)
+        account_id = request.GET.get("account_id")
 
         transactions = Transactions.objects.filter(
             security__id=security_id,
             investor=request.user,
             date__date__lte=effective_current_date,
         ).order_by("date")
+
+        if account_id:
+            transactions = transactions.filter(account_id=int(account_id))
 
         if start_date:
             transactions = transactions.filter(date__gt=start_date)
@@ -440,7 +458,7 @@ def api_delete_price(request, price_id):
 @permission_classes([IsAuthenticated])
 def api_get_price_details(request, price_id):
     """Get price details."""
-    price = get_object_or_404(Prices, id=price_id, security__investor=request.user)
+    price = get_object_or_404(Prices, id=price_id, security__investors=request.user)
     """Get price details."""
     return Response(
         {
@@ -482,7 +500,7 @@ class PriceImportView(APIView):
         """Get price import."""
         user = request.user
         securities = Assets.objects.filter(investors=user)
-        accounts = Accounts.objects.filter(broker__investor=user)
+        accounts = Accounts.objects.filter(broker__investor=user).select_related("broker")
 
         serializer = PriceImportSerializer()
         frequency_choices = dict(serializer.fields["frequency"].choices)
@@ -490,12 +508,183 @@ class PriceImportView(APIView):
         return Response(
             {
                 "securities": [{"id": s.id, "name": s.name} for s in securities],
-                "accounts": [{"id": a.id, "name": a.name} for a in accounts],
+                "accounts": [{"id": a.id, "name": format_account_display(a)} for a in accounts],
                 "frequency_choices": [
                     {"value": k, "text": v} for k, v in frequency_choices.items()
                 ],
             }
         )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_create_merger(request):
+    """Create a merger/reorganization between two securities.
+
+    A merger is a corporate action applied to the security itself, so it is
+    executed against every account where the investor currently holds the old
+    security. One MergerRecord is created for the event, and per-account
+    MERGER_OUT (and, if applicable, MERGER_IN) transactions are created.
+
+    Request body:
+        old_security_id (int): ID of the old security being merged out.
+        new_security_id (int, optional): ID of the new security. Omit for all-cash mergers.
+        merger_date (str): Date of the merger (YYYY-MM-DD).
+        conversion_ratio (str, optional): New shares per old share. Required for all-stock/hybrid.
+        cash_per_share (str, optional): Cash per old share. Required for all-cash/hybrid.
+    """
+    user = request.user
+    old_security_id = request.data.get("old_security_id")
+    new_security_id = request.data.get("new_security_id")
+    merger_date_str = request.data.get("merger_date")
+    conversion_ratio = request.data.get("conversion_ratio")
+    cash_per_share = request.data.get("cash_per_share", "0")
+
+    if not old_security_id or not merger_date_str:
+        return Response(
+            {"error": "old_security_id and merger_date are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        merger_date = datetime.strptime(merger_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return Response(
+            {"error": "Invalid merger_date format. Use YYYY-MM-DD."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    old_security = get_object_or_404(Assets, id=old_security_id, investors=user)
+
+    new_security = None
+    if new_security_id:
+        new_security = get_object_or_404(Assets, id=new_security_id, investors=user)
+        if not conversion_ratio:
+            return Response(
+                {"error": "conversion_ratio is required when new_security_id is provided"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    try:
+        conversion_ratio_dec = Decimal(conversion_ratio) if conversion_ratio else None
+    except Exception:
+        return Response(
+            {"error": "Invalid conversion_ratio"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        cash_per_share_dec = Decimal(cash_per_share) if cash_per_share else Decimal("0")
+    except Exception:
+        return Response(
+            {"error": "Invalid cash_per_share"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Find every account of this investor that has a positive position in the
+    # old security as of the merger date.
+    candidate_account_ids = (
+        Transactions.objects.filter(investor=user, security=old_security, date__date__lte=merger_date)
+        .values_list("account_id", flat=True)
+        .distinct()
+    )
+    accounts_with_positions = []
+    for acc in Accounts.objects.filter(id__in=list(candidate_account_ids), broker__investor=user):
+        pos = old_security.position(merger_date, user, account_ids=[acc.id])
+        if pos and pos > 0:
+            accounts_with_positions.append((acc, pos))
+
+    if not accounts_with_positions:
+        return Response(
+            {"error": f"Old security has no positive position in any account as of {merger_date}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    is_all_stock = new_security is not None and cash_per_share_dec == 0
+
+    merger_record = MergerRecord.objects.create(
+        investor=user,
+        old_security=old_security,
+        new_security=new_security,
+        merger_date=merger_date,
+        conversion_ratio=conversion_ratio_dec,
+        cash_per_share=cash_per_share_dec,
+    )
+
+    if new_security:
+        new_security.investors.add(user)
+
+    per_account = []
+    for account, old_position in accounts_with_positions:
+        old_cost_per_share = old_security.calculate_buy_in_price(
+            merger_date, user, old_security.currency, account_ids=[account.id]
+        )
+        if old_cost_per_share is None:
+            old_cost_per_share = Decimal("0")
+
+        total_old_cost = old_position * old_cost_per_share
+        merger_out_cash_flow = (
+            cash_per_share_dec * old_position if not is_all_stock else Decimal("0")
+        )
+
+        merger_out = Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=old_security,
+            currency=old_security.currency,
+            type=TRANSACTION_TYPE_MERGER_OUT,
+            date=datetime.combine(merger_date, datetime.min.time()),
+            quantity=-old_position,
+            price=old_cost_per_share,
+            cash_flow=merger_out_cash_flow if merger_out_cash_flow else None,
+            merger=merger_record,
+        )
+
+        entry = {
+            "account_id": account.id,
+            "account_name": account.name,
+            "old_position": str(old_position),
+            "old_cost_per_share": str(old_cost_per_share),
+            "merger_out_id": merger_out.id,
+        }
+
+        if new_security:
+            new_quantity = old_position * conversion_ratio_dec
+            carryover_cost = total_old_cost
+            new_cost_per_share = (
+                carryover_cost / new_quantity if new_quantity else Decimal("0")
+            )
+            merger_in = Transactions.objects.create(
+                investor=user,
+                account=account,
+                security=new_security,
+                currency=new_security.currency,
+                type=TRANSACTION_TYPE_MERGER_IN,
+                date=datetime.combine(merger_date, datetime.min.time()),
+                quantity=new_quantity,
+                price=new_cost_per_share,
+                cash_flow=None,
+                merger=merger_record,
+            )
+            entry["merger_in_id"] = merger_in.id
+            entry["new_quantity"] = str(new_quantity)
+            entry["new_cost_per_share"] = str(new_cost_per_share)
+
+        per_account.append(entry)
+
+    result = {
+        "merger": {
+            "id": merger_record.id,
+            "old_security": {"id": old_security.id, "name": old_security.name},
+            "new_security": (
+                {"id": new_security.id, "name": new_security.name} if new_security else None
+            ),
+            "merger_date": merger_date.isoformat(),
+            "conversion_ratio": str(conversion_ratio_dec) if conversion_ratio_dec else None,
+            "cash_per_share": str(cash_per_share_dec),
+        },
+        "accounts": per_account,
+    }
+
+    return Response(result, status=status.HTTP_201_CREATED)
 
 
 class AccountViewSet(viewsets.ModelViewSet):

@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from common.models import Accounts, Assets, FXTransaction, Transactions
 from constants import CURRENCY_CHOICES, TRANSACTION_TYPE_CHOICES
+from core.user_utils import format_account_display
 
 
 class TransactionFormSerializer(serializers.ModelSerializer):
@@ -154,6 +155,7 @@ class TransactionFormSerializer(serializers.ModelSerializer):
         representation["account"] = {
             "id": instance.account.id,
             "name": instance.account.name,
+            "display_name": format_account_display(instance.account),
         }
         if instance.security:
             representation["security"] = {
@@ -183,8 +185,10 @@ class TransactionFormSerializer(serializers.ModelSerializer):
             list: List of account choice dictionaries.
         """
         return [
-            {"value": str(account.pk), "text": account.name}
-            for account in Accounts.objects.filter(broker__investor=investor).order_by("name")
+            {"value": str(account.pk), "text": format_account_display(account)}
+            for account in Accounts.objects.filter(broker__investor=investor)
+            .select_related("broker")
+            .order_by("broker__name", "name")
         ]
 
     def get_security_choices(self, investor):
@@ -313,8 +317,10 @@ class FXTransactionFormSerializer(serializers.ModelSerializer):
             list: List of account choice dictionaries.
         """
         return [
-            {"value": str(account.pk), "text": account.name}
-            for account in Accounts.objects.filter(broker__investor=investor).order_by("name")
+            {"value": str(account.pk), "text": format_account_display(account)}
+            for account in Accounts.objects.filter(broker__investor=investor)
+            .select_related("broker")
+            .order_by("broker__name", "name")
         ]
 
     def get_currency_choices(self):

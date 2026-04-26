@@ -105,7 +105,6 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
     return dict_3
 
 
-@lru_cache(maxsize=None)
 def NAV_at_date(
     user_id: int,
     account_ids: Tuple[int],
@@ -281,6 +280,13 @@ def IRR(
     transactions = Transactions.objects.filter(
         investor__id=user_id, date__date__lte=date, security_id=asset_id
     )
+
+    # For portfolio-level IRR (no specific asset), only external cash flows
+    # matter. Internal items (broker commission, tax, interest income) are
+    # already reflected in the terminal NAV / cash-out amounts; including
+    # them would double-count.
+    if asset_id is None:
+        transactions = transactions.filter(type__in=["Cash in", "Cash out"])
 
     if account_ids is not None:
         transactions = transactions.filter(account_id__in=account_ids)
@@ -677,4 +683,10 @@ def get_last_exit_date_for_accounts(
         .first()
     )
 
-    return latest_transaction_date or effective_current_date
+    if latest_transaction_date is not None:
+        # Convert datetime to date if needed (Transactions.date is DateTimeField)
+        if hasattr(latest_transaction_date, "date"):
+            latest_transaction_date = latest_transaction_date.date()
+        return latest_transaction_date
+
+    return effective_current_date

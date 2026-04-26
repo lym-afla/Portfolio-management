@@ -339,7 +339,7 @@ class CouponScheduleFetchTests(TestCase):
         mock_coupon.pay_one_bond = Mock()
         mock_coupon.pay_one_bond.units = 21
         mock_coupon.pay_one_bond.nano = 250000000
-        mock_coupon.pay_one_bond.currency = Mock(return_value="RUB")
+        mock_coupon.pay_one_bond.currency = "RUB"
         mock_coupon.coupon_type = "FIXED"
 
         mock_response = Mock()
@@ -417,7 +417,7 @@ class CouponScheduleFetchTests(TestCase):
         mock_coupon.pay_one_bond = Mock()
         mock_coupon.pay_one_bond.units = 21
         mock_coupon.pay_one_bond.nano = 250000000
-        mock_coupon.pay_one_bond.currency = Mock(return_value="RUB")
+        mock_coupon.pay_one_bond.currency = "RUB"
         mock_coupon.coupon_type = "FIXED"
 
         mock_response = Mock()

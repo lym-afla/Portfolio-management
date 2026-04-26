@@ -381,12 +381,13 @@ def _get_securities_data(user, securities, effective_current_date):
     return securities_data
 
 
-def get_security_detail(request, security_id):
+def get_security_detail(request, security_id, account_id=None):
     """Retrieve detailed information for a specific security.
 
     Args:
         request: The HTTP request object.
         security_id: The ID of the security to retrieve details for.
+        account_id: Optional account ID to filter calculations by.
 
     Returns:
         dict: Dictionary containing detailed security information.
@@ -401,6 +402,9 @@ def get_security_detail(request, security_id):
 
     security = get_object_or_404(Assets, id=security_id, investors__id=user.id)
 
+    # Resolve account_ids filter
+    account_ids = [account_id] if account_id else None
+
     # Cache price lookup to avoid duplicate queries
     current_price_obj = security.price_at_date(effective_current_date)
     current_price = current_price_obj.price if current_price_obj else None
@@ -411,16 +415,28 @@ def get_security_detail(request, security_id):
         "instrument_type": security.type,
         "ISIN": security.ISIN,
         "name": security.name,
-        "first_investment": security.investment_date(user) or "None",
+        "first_investment": security.investment_date(user, account_ids=account_ids) or "None",
         "currency": security.currency,
-        "open_position": security.position(effective_current_date, user),
+        "open_position": security.position(effective_current_date, user, account_ids=account_ids),
         "current_value": security.calculate_value_at_date(
-            effective_current_date, user, security.currency
+            effective_current_date, user, security.currency, account_ids=account_ids
         ),
-        "realized": security.realized_gain_loss(effective_current_date, user)["all_time"]["total"],
-        "unrealized": security.unrealized_gain_loss(effective_current_date, user)["total"],
-        "capital_distribution": security.get_capital_distribution(effective_current_date, user),
-        "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
+        "realized": security.realized_gain_loss(
+            effective_current_date, user, account_ids=account_ids
+        )["all_time"]["total"],
+        "unrealized": security.unrealized_gain_loss(
+            effective_current_date, user, account_ids=account_ids
+        )["total"],
+        "capital_distribution": security.get_capital_distribution(
+            effective_current_date, user, account_ids=account_ids
+        ),
+        "irr": IRR(
+            user.id,
+            effective_current_date,
+            security.currency,
+            asset_id=security.id,
+            account_ids=account_ids,
+        ),
         "data_source": security.data_source,
         "update_link": security.update_link,
         "yahoo_symbol": security.yahoo_symbol,
@@ -428,7 +444,7 @@ def get_security_detail(request, security_id):
         # Note: current_aci moved to bond_data below
         # Add buy-in price
         "buy_in_price": security.calculate_buy_in_price(
-            effective_current_date, user, security.currency
+            effective_current_date, user, security.currency, account_ids=account_ids
         ),
         # Add current price (using cached value)
         "current_price": current_price,
@@ -446,7 +462,9 @@ def get_security_detail(request, security_id):
         # Calculate total ACI for position using the already-fetched aci_data
         # This avoids calling get_current_aci() twice and duplicating MICEX API calls
         if aci_data:
-            position_qty = security.position(effective_current_date, user)
+            position_qty = security.position(
+                effective_current_date, user, account_ids=account_ids
+            )
             total_aci = (
                 aci_data["aci_amount"] * Decimal(position_qty) if position_qty else Decimal(0)
             )
@@ -464,6 +482,9 @@ def get_security_detail(request, security_id):
                     date__date__lte=query_date,
                     investor=user,
                 )
+
+                if account_ids:
+                    aci_paid_in_period = aci_paid_in_period.filter(account_id__in=account_ids)
 
                 if aci_paid_in_period.exists():
                     aci_paid_total = Decimal(0)

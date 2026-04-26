@@ -328,6 +328,9 @@ class TransactionSerializer(serializers.ModelSerializer):
     # Optional balance tracking
     balances = serializers.SerializerMethodField()
 
+    # Merger info
+    merger_info = serializers.SerializerMethodField()
+
     class Meta:
         """Meta class for TransactionSerializer."""
 
@@ -350,6 +353,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             "notional_change",
             "notional",
             "balances",
+            "merger_info",
         ]
 
     def get_digits(self):
@@ -505,7 +509,15 @@ class TransactionSerializer(serializers.ModelSerializer):
         Returns:
             dict: Account information or None.
         """
-        return {"id": obj.account.id, "name": obj.account.name} if obj.account else None
+        return (
+            {
+                "id": obj.account.id,
+                "name": obj.account.name,
+                "broker_name": obj.account.broker.name,
+            }
+            if obj.account
+            else None
+        )
 
     def get_notional_change(self, obj):
         """Format notional change for display.
@@ -538,6 +550,23 @@ class TransactionSerializer(serializers.ModelSerializer):
 
         balance_tracker = self.context.get("balance_tracker", {})
         return balance_tracker.get(obj.id, {})
+
+    def get_merger_info(self, obj):
+        """Return merger details if this transaction is part of a merger."""
+        if not obj.merger_id:
+            return None
+        merger = obj.merger
+        return {
+            "merger_id": merger.id,
+            "old_security": {"id": merger.old_security_id, "name": merger.old_security.name},
+            "new_security": (
+                {"id": merger.new_security_id, "name": merger.new_security.name}
+                if merger.new_security
+                else None
+            ),
+            "conversion_ratio": str(merger.conversion_ratio) if merger.conversion_ratio else None,
+            "cash_per_share": str(merger.cash_per_share),
+        }
 
 
 class FXTransactionSerializer(serializers.ModelSerializer):
@@ -697,7 +726,15 @@ class FXTransactionSerializer(serializers.ModelSerializer):
         Returns:
             dict: Account information or None.
         """
-        return {"id": obj.account.id, "name": obj.account.name} if obj.account else None
+        return (
+            {
+                "id": obj.account.id,
+                "name": obj.account.name,
+                "broker_name": obj.account.broker.name,
+            }
+            if obj.account
+            else None
+        )
 
     def get_balances(self, obj):
         """Return balances if balance tracking is enabled in context.

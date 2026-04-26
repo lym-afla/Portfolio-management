@@ -120,9 +120,12 @@ export default {
               typeof form.value[key] === 'object' &&
               form.value[key] !== null
             ) {
-              form.value[key] = String(form.value[key].id) // For correct form pre-fill convert dict to id string
+              form.value[key] = String(form.value[key].id)
             }
           })
+          if (form.value.date) {
+            form.value.date = form.value.date.split('T')[0]
+          }
           logger.log('Unknown', 'form', form.value)
         } else {
           initializeForm()

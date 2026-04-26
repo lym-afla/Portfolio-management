@@ -1,8 +1,10 @@
 """Common models."""
 
 import logging
+import time
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
-from decimal import Decimal, DecimalException
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 
 import networkx as nx
 import requests
@@ -274,21 +276,35 @@ class FX(models.Model):
             existing_rate = getattr(fx_instance, f"{source}{target}", None)
 
             if existing_rate is None:
-                # Get the FX rate for the yahoo finance
+                # RUB pairs use the Central Bank of Russia; all others use Yahoo.
+                use_cbr = "RUB" in (source, target)
+                fetcher = update_FX_from_CBR if use_cbr else update_FX_from_Yahoo
+                source_name = "CBR" if use_cbr else "Yahoo Finance"
                 try:
-                    rate_data = update_FX_from_Yahoo(source, target, date)
-
+                    rate_data = fetcher(source, target, date)
                     if rate_data is not None:
-                        # Update the fx_instance with the new rate from yahoo finance
                         setattr(fx_instance, f"{source}{target}", rate_data["exchange_rate"])
+                except CBRRateLimitError as exc:
+                    logger.error(
+                        "%s%s for %s NOT updated: CBR is rate-limiting us (%s). "
+                        "The stored value was left untouched - please retry later.",
+                        source,
+                        target,
+                        date,
+                        exc,
+                    )
+                    continue
                 except Exception:
-                    print(
-                        f"{source}{target} for {date} is NOT updated. "
-                        "Yahoo Finance is not responding correctly"
+                    logger.warning(
+                        "%s%s for %s was NOT updated (%s source failed)",
+                        source,
+                        target,
+                        date,
+                        source_name,
                     )
                     continue
 
-        # Save the fx_instance once after updating all currency pairs from yahoo finance
+        # Save the fx_instance once after updating all currency pairs.
         fx_instance.save()
 
     @classmethod
@@ -375,7 +391,7 @@ class Accounts(models.Model):
         # Process regular transactions using centralized cash flow calculation
         transactions = self.transactions.filter(date__date__lte=date)
         for transaction in transactions:
-            print(f"Processing transaction: {transaction}")
+            # print(f"Processing transaction: {transaction}")
             cash_flow = transaction.total_cash_flow()
             balance[transaction.currency] = (
                 balance.get(transaction.currency, Decimal(0)) + cash_flow
@@ -1602,6 +1618,14 @@ class Transactions(models.Model):
         help_text="Number of shares after split (e.g., 2 for a 2:1 split)",
     )
     comment = models.TextField(null=True, blank=True)
+    merger = models.ForeignKey(
+        "MergerRecord",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        help_text="Linked merger record (for Merger in/out transactions)",
+    )
 
     def save(self, *args, **kwargs):
         """
@@ -2028,6 +2052,229 @@ def update_FX_from_Yahoo(base_currency, target_currency, date, max_attempts=5):
     # If no data is found after max_attempts,
     # return None or an appropriate error message
     logger.error(f"Failed to fetch {currency_pair} after {max_attempts} attempts for date {date}")
+    return None
+
+
+# Central Bank of Russia official daily rates SOAP endpoint.
+CBR_SOAP_URL = "http://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx"
+CBR_SOAP_TIMEOUT = 30
+CBR_SOAP_HEADERS = {
+    "Content-Type": "application/soap+xml; charset=utf-8",
+    "SOAPAction": "http://web.cbr.ru/GetCursOnDate",
+}
+CBR_XML_NAMESPACES = {"diffgr": "urn:schemas-microsoft-com:xml-diffgram-v1"}
+# Rate-limit handling: exponential backoff per query_date (does not consume walk-back attempts).
+# Default of 3 retries keeps worst-case interactive block to 2+4+8 = 14s.
+# Bulk jobs (e.g. backfill) pass a larger value via the ``rate_limit_retries`` arg.
+CBR_RATE_LIMIT_RETRIES = 3
+CBR_RATE_LIMIT_BASE_SLEEP = 2.0
+
+
+class CBRRateLimitError(Exception):
+    """Raised when CBR returns HTTP 429 and rate-limit retries are exhausted."""
+
+
+def update_FX_from_CBR(
+    base_currency, target_currency, for_date, max_attempts=5, rate_limit_retries=None
+):
+    """Fetch FX rate from the Central Bank of Russia daily rates SOAP API.
+
+    Used for any pair that includes RUB. CBR's ``GetCursOnDate`` returns, for each
+    foreign currency, ``Vcurs / Vnom`` in rubles per ``Vnom`` units of that
+    currency. For a pair named ``{source}{target}`` we store the rate in the same
+    "RUB per foreign currency" semantic already used by the Yahoo Finance path
+    (e.g. ``RUBUSD`` stores ~90 RUB / USD).
+
+    Args:
+        base_currency: Source currency code (e.g. 'RUB').
+        target_currency: Target currency code (e.g. 'USD').
+        for_date: Date for which to fetch the rate.
+        max_attempts: Maximum number of dates to walk back when CBR has no
+            rate for the requested date (weekends, Russian holidays).
+
+    Returns:
+        dict with ``exchange_rate`` (Decimal, 6 dp), ``actual_date`` (the
+        CBR-published date used), and ``requested_date``; or ``None`` if no
+        rate can be obtained after ``max_attempts``.
+    """
+    if for_date is None:
+        logger.error("update_FX_from_CBR called with for_date=None")
+        return None
+
+    base = (base_currency or "").upper().strip()
+    target = (target_currency or "").upper().strip()
+    # CBR only has foreign-currency-vs-RUB quotes; pick the non-RUB side.
+    foreign = target if base == "RUB" else base
+    if foreign == "RUB" or not foreign:
+        logger.error(
+            "update_FX_from_CBR called with unsupported pair base=%s target=%s",
+            base_currency,
+            target_currency,
+        )
+        return None
+
+    for attempt in range(max_attempts):
+        query_date = for_date - timedelta(days=attempt)
+        soap_body = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<soap12:Envelope '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+            'xmlns:xsd="http://www.w3.org/2001/XMLSchema" '
+            'xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">'
+            "<soap12:Body>"
+            '<GetCursOnDate xmlns="http://web.cbr.ru/">'
+            f"<On_date>{query_date.strftime('%Y-%m-%d')}</On_date>"
+            "</GetCursOnDate>"
+            "</soap12:Body>"
+            "</soap12:Envelope>"
+        )
+
+        response = None
+        retries = (
+            rate_limit_retries if rate_limit_retries is not None else CBR_RATE_LIMIT_RETRIES
+        )
+        for rl_retry in range(retries):
+            try:
+                response = requests.post(
+                    CBR_SOAP_URL,
+                    data=soap_body,
+                    headers=CBR_SOAP_HEADERS,
+                    timeout=CBR_SOAP_TIMEOUT,
+                )
+            except requests.RequestException as exc:
+                logger.warning(
+                    "CBR request failed for %s on %s (attempt %d/%d): %s",
+                    foreign,
+                    query_date,
+                    attempt + 1,
+                    max_attempts,
+                    exc,
+                )
+                response = None
+                break
+
+            if response.status_code != 429:
+                break
+
+            sleep_for = CBR_RATE_LIMIT_BASE_SLEEP * (2 ** rl_retry)
+            logger.warning(
+                "CBR rate-limited (HTTP 429) for %s on %s; sleeping %.1fs "
+                "(rate-limit retry %d/%d)",
+                foreign,
+                query_date,
+                sleep_for,
+                rl_retry + 1,
+                retries,
+            )
+            time.sleep(sleep_for)
+        else:
+            raise CBRRateLimitError(
+                f"CBR rate limit persists for {foreign} on {query_date} "
+                f"after {retries} retries"
+            )
+
+        if response is None:
+            continue
+
+        if response.status_code == 429:
+            # Safety net: shouldn't reach here because the for/else raises.
+            raise CBRRateLimitError(
+                f"CBR rate limit for {foreign} on {query_date}"
+            )
+
+        if response.status_code != 200:
+            logger.warning(
+                "CBR returned HTTP %d for %s on %s (attempt %d/%d)",
+                response.status_code,
+                foreign,
+                query_date,
+                attempt + 1,
+                max_attempts,
+            )
+            continue
+
+        try:
+            root = ET.fromstring(response.text)
+        except ET.ParseError as exc:
+            logger.warning(
+                "CBR XML parse error for %s on %s (attempt %d/%d): %s",
+                foreign,
+                query_date,
+                attempt + 1,
+                max_attempts,
+                exc,
+            )
+            continue
+
+        rate = _extract_cbr_rate(root, foreign, query_date)
+        if rate is not None:
+            logger.info(
+                "CBR %s rate for %s (requested %s): %s",
+                foreign,
+                query_date,
+                for_date,
+                rate,
+            )
+            return {
+                "exchange_rate": rate,
+                "actual_date": query_date,
+                "requested_date": for_date,
+            }
+
+        logger.info(
+            "CBR has no %s rate for %s, backing off (attempt %d/%d)",
+            foreign,
+            query_date,
+            attempt + 1,
+            max_attempts,
+        )
+
+    logger.error(
+        "Failed to fetch CBR %s rate for %s after %d attempts",
+        foreign,
+        for_date,
+        max_attempts,
+    )
+    return None
+
+
+def _extract_cbr_rate(root, currency_code, query_date):
+    """Parse a CBR GetCursOnDate response and return ``Vcurs / Vnom`` as Decimal.
+
+    Returns ``None`` when the requested ``currency_code`` is absent from the
+    payload or any numeric field fails to parse.
+    """
+    path = ".//diffgr:diffgram/ValuteData/ValuteCursOnDate"
+    for valute in root.findall(path, CBR_XML_NAMESPACES):
+        code_node = valute.find("VchCode")
+        if code_node is None or not code_node.text:
+            continue
+        if code_node.text.strip().upper() != currency_code:
+            continue
+        vcurs_node = valute.find("Vcurs")
+        vnom_node = valute.find("Vnom")
+        if vcurs_node is None or not vcurs_node.text:
+            return None
+        try:
+            vcurs = Decimal(vcurs_node.text.strip().replace(",", "."))
+            if vnom_node is not None and vnom_node.text:
+                vnom = Decimal(vnom_node.text.strip().replace(",", "."))
+            else:
+                vnom = Decimal("1")
+            if vnom == 0:
+                logger.warning(
+                    "CBR returned Vnom=0 for %s on %s", currency_code, query_date
+                )
+                return None
+            return (vcurs / vnom).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        except DecimalException as exc:
+            logger.warning(
+                "CBR rate parse error for %s on %s: %s",
+                currency_code,
+                query_date,
+                exc,
+            )
+            return None
     return None
 
 
@@ -2888,3 +3135,51 @@ class SplitHistory(models.Model):
         return (
             f"{self.asset.name}: {self.split_from}:{self.split_to} split on {self.date}"
         )
+
+
+class MergerRecord(models.Model):
+    """Track a merger/reorganization between two securities.
+
+    Supports three types:
+    - All-stock: old shares converted to new shares at a ratio (no cash)
+    - All-cash: old shares liquidated for cash per share (no new security)
+    - Hybrid: combination of stock conversion and cash payment
+    """
+
+    investor = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="merger_records"
+    )
+    old_security = models.ForeignKey(
+        Assets, on_delete=models.CASCADE, related_name="mergers_out"
+    )
+    new_security = models.ForeignKey(
+        Assets,
+        on_delete=models.CASCADE,
+        related_name="mergers_in",
+        null=True,
+        blank=True,
+        help_text="New security (null for all-cash mergers)",
+    )
+    merger_date = models.DateField(help_text="Date when the merger took effect")
+    conversion_ratio = models.DecimalField(
+        max_digits=18,
+        decimal_places=9,
+        null=True,
+        blank=True,
+        help_text="New shares per old share (e.g. 0.75 means 1 old → 0.75 new)",
+    )
+    cash_per_share = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        default=Decimal("0"),
+        help_text="Cash received per old share (for all-cash or hybrid)",
+    )
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-merger_date"]
+
+    def __str__(self):
+        new_name = self.new_security.name if self.new_security else "Cash"
+        return f"{self.old_security.name} → {new_name} on {self.merger_date}"

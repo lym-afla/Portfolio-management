@@ -59,7 +59,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="annualperformance",
             constraint=models.CheckConstraint(
-                check=models.Q(
+                condition=models.Q(
                     models.Q(("account_id__isnull", True), ("account_type", "all")),
                     models.Q(
                         models.Q(("account_type", "all"), _negated=True),

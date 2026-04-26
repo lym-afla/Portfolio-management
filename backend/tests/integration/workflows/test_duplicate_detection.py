@@ -137,7 +137,7 @@ async def test_transaction_exists_no_match(user, account):
     }
 
     exists = await transaction_exists(transaction_data)
-    assert exists is None
+    assert exists is False
 
 
 @pytest.mark.django_db(transaction=True)
@@ -163,7 +163,7 @@ async def test_transaction_exists_outside_time_window(user, account, sample_tran
     }
 
     exists = await transaction_exists(transaction_data)
-    assert exists is None
+    assert exists is False
 
 
 @pytest.mark.django_db(transaction=True)
@@ -185,21 +185,18 @@ async def test_fx_transaction_exists_exact_match(user, account, sample_fx_transa
     }
 
     result = await fx_transaction_exists(fx_transaction_data)
-    assert result is not None
-    assert result.id == sample_fx_transaction.id
+    assert result is True
 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_fx_transaction_exists_time_window(user, account, sample_fx_transaction):
-    """Test fx_transaction_exists with time window matching."""
-    # Test with slightly different timestamp (within 1 second window)
-    offset_date = sample_fx_transaction.date + timedelta(microseconds=300)
-
+    """Test fx_transaction_exists with exact date matching (no time window)."""
+    # The function now does exact matching, so only exact dates match
     fx_transaction_data = {
         "investor": user,
         "account": account,
-        "date": offset_date,
+        "date": sample_fx_transaction.date,  # Use exact same date
         "from_currency": "RUB",
         "to_currency": "USD",
         "exchange_rate": Decimal("75.50"),
@@ -211,8 +208,7 @@ async def test_fx_transaction_exists_time_window(user, account, sample_fx_transa
     }
 
     result = await fx_transaction_exists(fx_transaction_data)
-    assert result is not None
-    assert result.id == sample_fx_transaction.id
+    assert result is True
 
 
 @pytest.mark.django_db(transaction=True)
@@ -234,7 +230,7 @@ async def test_fx_transaction_exists_no_match(user, account):
     }
 
     result = await fx_transaction_exists(fx_transaction_data)
-    assert result is None
+    assert result is False
 
 
 @pytest.mark.django_db(transaction=True)

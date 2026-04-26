@@ -85,9 +85,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         Args:
             close_code: WebSocket close code.
         """
-        logger.info(f"WebSocket disconnected with code: {close_code}")
+        # logger.info(f"WebSocket disconnected with code: {close_code}")
         self.stop_event.set()
-        logger.debug("WebSocket connection closed")
+        # logger.debug("WebSocket connection closed")
         if self.import_task and not self.import_task.done():
             self.import_task.cancel()
             try:
@@ -879,7 +879,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             # Check if transaction already exists
                             exists = await transaction_exists(transaction_to_create)
 
-                            if not existing_transaction:
+                            if not exists:
                                 # Save transaction immediately
                                 save_result = (
                                     await self.view_set.save_single_transaction(
