@@ -57,6 +57,45 @@ class TestRealizedGainLoss:
         assert result["current_position"]["total"] == Decimal("0")  # closed position
         assert result["all_time"]["total"] == expected_profit
 
+    def test_realized_gain_same_day_sale_ignores_later_buy_in_basis(
+        self, user, account, asset
+    ):
+        """Exact disposal datetime excludes later same-day buys from entry basis."""
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Buy",
+            date=datetime(2023, 1, 15, 10, 0, 0),
+            quantity=Decimal("1"),
+            price=Decimal("100.00"),
+        )
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Sell",
+            date=datetime(2023, 1, 15, 11, 0, 0),
+            quantity=Decimal("-1"),
+            price=Decimal("200.00"),
+        )
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=asset,
+            currency="USD",
+            type="Buy",
+            date=datetime(2023, 1, 15, 12, 0, 0),
+            quantity=Decimal("1"),
+            price=Decimal("1000.00"),
+        )
+
+        result = asset.realized_gain_loss(date(2023, 1, 16), investor=user)
+
+        assert result["all_time"]["total"] == Decimal("100.00")
+
     def test_realized_gain_simple_loss(self, user, account, asset):
         """Test realized gain calculation for simple loss sale."""
         # Create purchase

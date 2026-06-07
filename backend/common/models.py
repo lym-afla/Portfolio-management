@@ -15,6 +15,7 @@ from django.db.models import F, Q, Sum
 from constants import (
     ACCOUNT_TYPE_ALL,
     ACCOUNT_TYPE_CHOICES,
+    ASSET_TYPE_CRYPTO,
     ASSET_TYPE_CHOICES,
     CURRENCY_CHOICES,
     DATA_SOURCE_CHOICES,
@@ -28,6 +29,11 @@ from constants import (
     TRANSACTION_TYPE_CHOICES,
     TRANSACTION_TYPE_STOCK_SPLIT,
     TRANSACTION_TYPE_COUPON,
+    TRANSACTION_TYPE_CRYPTO_REWARD,
+    TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+    TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
     TRANSACTION_TYPE_DIVIDEND,
     TRANSACTION_TYPE_INTEREST_INCOME,
     TRANSACTION_TYPE_SELL,
@@ -393,6 +399,14 @@ class Accounts(models.Model):
         for transaction in transactions:
             # print(f"Processing transaction: {transaction}")
             cash_flow = transaction.total_cash_flow()
+            if cash_flow == 0 and transaction.type in [
+                TRANSACTION_TYPE_CRYPTO_REWARD,
+                TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+                TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+                TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+                TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+            ]:
+                continue
             balance[transaction.currency] = (
                 balance.get(transaction.currency, Decimal(0)) + cash_flow
             )
@@ -702,13 +716,15 @@ class Assets(models.Model):
 
     def entry_dates(self, date_as_of, investor, account_ids=None, start_date=None):
         """Get a list of dates when the position changes from 0 to non-zero."""
-        transactions = self.transactions.filter(
-            date__date__lte=date_as_of, quantity__isnull=False, investor=investor
-        )
+        transactions = self.transactions.filter(quantity__isnull=False, investor=investor)
+        if isinstance(date_as_of, datetime):
+            transactions = transactions.filter(date__lte=date_as_of)
+        else:
+            transactions = transactions.filter(date__date__lte=date_as_of)
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
 
-        transactions = transactions.order_by("date")
+        transactions = transactions.order_by("date", "id")
 
         entry_dates = []
         position = 0
@@ -728,20 +744,37 @@ class Assets(models.Model):
 
     def exit_dates(self, end_date, investor, account_ids=None, start_date=None):
         """Get a list of dates when the position changes from non-zero to 0."""
-        transactions = self.transactions.filter(
-            date__date__lte=end_date, quantity__isnull=False, investor=investor
-        )
+        transactions = self.transactions.filter(quantity__isnull=False, investor=investor)
+        if isinstance(end_date, datetime):
+            transactions = transactions.filter(date__lte=end_date)
+        else:
+            transactions = transactions.filter(date__date__lte=end_date)
         if account_ids is not None:
             transactions = transactions.filter(account_id__in=account_ids)
         if start_date is not None:
             query_start_date = start_date
-            transactions = transactions.filter(date__gte=query_start_date)
+            if isinstance(query_start_date, datetime):
+                transactions = transactions.filter(date__gte=query_start_date)
+            else:
+                transactions = transactions.filter(date__date__gte=query_start_date)
 
-        transactions = transactions.order_by("date")
+        transactions = transactions.order_by("date", "id")
 
         exit_dates = []
         if start_date is not None:
-            position = self.position(start_date, investor, account_ids)
+            opening_position_query = self.transactions.filter(
+                quantity__isnull=False,
+                investor=investor,
+            )
+            if isinstance(start_date, datetime):
+                opening_position_query = opening_position_query.filter(date__lt=start_date)
+            else:
+                opening_position_query = opening_position_query.filter(date__date__lt=start_date)
+            if account_ids is not None:
+                opening_position_query = opening_position_query.filter(account_id__in=account_ids)
+            position = (
+                opening_position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
+            )
         else:
             position = 0
 
@@ -787,9 +820,12 @@ class Assets(models.Model):
 
         is_long_position = None
 
-        transactions = self.transactions.filter(
-            quantity__isnull=False, investor=investor, date__date__lte=date_as_of
-        ).order_by("date", "id")
+        transactions = self.transactions.filter(quantity__isnull=False, investor=investor)
+        if isinstance(date_as_of, datetime):
+            transactions = transactions.filter(date__lte=date_as_of)
+        else:
+            transactions = transactions.filter(date__date__lte=date_as_of)
+        transactions = transactions.order_by("date", "id")
 
         # Exclude the specified transaction if provided
         if exclude_transaction_id is not None:
@@ -851,9 +887,19 @@ class Assets(models.Model):
         filtered_transactions = []
         for t in transactions:
             if t.date >= entry_date:
+                if getattr(t, "type", None) in [
+                    TRANSACTION_TYPE_CRYPTO_REWARD,
+                    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+                    TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+                ]:
+                    continue
                 filtered_transactions.append(t)
         transactions = filtered_transactions
         logger.debug(f"Number of transactions after filtering: {len(transactions)}")
+
+        if not transactions:
+            logger.debug("Buy-in price: No paid entry transactions found")
+            return None
 
         # Determine position direction based on current position
         # When exclude_transaction_id is provided, we need to calculate position
@@ -980,6 +1026,280 @@ class Assets(models.Model):
         logger.debug(f"Final buy-in price: {final_price}")
         return final_price
 
+    def get_economic_basis(
+        self,
+        date_as_of,
+        investor,
+        currency=None,
+        account_ids=None,
+        start_date=None,
+        exclude_transaction_id=None,
+        rounded=True,
+    ):
+        """Return paid basis plus reward event value for current crypto lots."""
+        target_currency = currency or self.currency
+
+        def transaction_fx_rate(transaction, target):
+            if target is not None and transaction.currency != target:
+                return FX.get_rate(transaction.currency, target, transaction.date)["FX"]
+            return Decimal(1)
+
+        def provider_matches(provider):
+            if provider:
+                return Q(import_provider=provider)
+            return Q(import_provider__isnull=True) | Q(import_provider="")
+
+        def filter_until(query, cutoff_date):
+            if isinstance(cutoff_date, datetime):
+                return query.filter(date__lte=cutoff_date)
+            return query.filter(date__date__lte=cutoff_date)
+
+        def transfer_group_key(transaction):
+            if not transaction.import_group_id:
+                return None
+            return (transaction.import_provider or "", transaction.import_group_id)
+
+        def transfer_source_key(transaction):
+            return (transaction.account_id, transaction.import_account_id or "")
+
+        def add_group_carry(carried_basis_by_group, group_key, source_key, basis, quantity):
+            if not group_key or quantity <= 0:
+                return
+            group_carry = carried_basis_by_group.setdefault(
+                group_key,
+                {
+                    "basis": Decimal(0),
+                    "quantity": Decimal(0),
+                    "source_keys": set(),
+                },
+            )
+            group_carry["basis"] += basis
+            group_carry["quantity"] += quantity
+            group_carry["source_keys"].add(source_key)
+
+        def allocate_group_carry(carried_basis_by_group, group_key, quantity):
+            group_carry = carried_basis_by_group.get(group_key)
+            requested_quantity = abs(quantity or Decimal(0))
+            if (
+                not group_carry
+                or requested_quantity <= 0
+                or group_carry["quantity"] <= 0
+                or len(group_carry["source_keys"]) != 1
+            ):
+                return Decimal(0)
+
+            allocated_quantity = min(requested_quantity, group_carry["quantity"])
+            allocated_basis = group_carry["basis"] * allocated_quantity / group_carry["quantity"]
+            group_carry["basis"] -= allocated_basis
+            group_carry["quantity"] -= allocated_quantity
+            if group_carry["quantity"] <= 0:
+                carried_basis_by_group.pop(group_key, None)
+            return allocated_basis
+
+        def transactions_until(cutoff_date, selected_account_ids=None):
+            query = filter_until(
+                self.transactions.filter(
+                    quantity__isnull=False,
+                    investor=investor,
+                ),
+                cutoff_date,
+            )
+            if selected_account_ids is not None:
+                query = query.filter(account_id__in=selected_account_ids)
+            if exclude_transaction_id is not None:
+                query = query.exclude(id=exclude_transaction_id)
+            return query.order_by("date", "id")
+
+        def transactions_before(transaction):
+            query = self.transactions.filter(
+                (
+                    Q(date__lt=transaction.date)
+                    | (Q(date=transaction.date) & Q(id__lt=transaction.id))
+                ),
+                quantity__isnull=False,
+                investor=investor,
+                account_id=transaction.account_id,
+                security=self,
+            )
+            return query.order_by("date", "id")
+
+        def replay(
+            transactions,
+            target,
+            allow_group_lookup=True,
+            visited_transfer_ids=None,
+            return_state=False,
+        ):
+            basis = Decimal(0)
+            position = Decimal(0)
+            average_basis = Decimal(0)
+            carried_basis_by_group = {}
+            visited_transfer_ids = visited_transfer_ids or frozenset()
+
+            for transaction in transactions:
+                quantity = transaction.quantity or Decimal(0)
+                fx_rate = transaction_fx_rate(transaction, target)
+
+                if transaction.is_paid_entry_transaction():
+                    if transaction.price is not None:
+                        basis += quantity * transaction.price * fx_rate
+                    position += quantity
+                elif transaction.is_reward_transaction():
+                    basis += transaction.reward_value() * fx_rate
+                    position += quantity
+                elif transaction.is_disposal_transaction():
+                    disposed_quantity = min(abs(quantity), position) if position > 0 else Decimal(0)
+                    basis -= average_basis * disposed_quantity
+                    position += quantity
+                    if position <= 0:
+                        basis = Decimal(0)
+                        average_basis = Decimal(0)
+                        continue
+                elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT:
+                    transferred_quantity = (
+                        min(abs(quantity), position) if position > 0 else Decimal(0)
+                    )
+                    transferred_basis = average_basis * transferred_quantity
+                    basis -= transferred_basis
+                    group_key = transfer_group_key(transaction)
+                    add_group_carry(
+                        carried_basis_by_group,
+                        group_key,
+                        transfer_source_key(transaction),
+                        transferred_basis,
+                        transferred_quantity,
+                    )
+                    position += quantity
+                    if position <= 0:
+                        basis = Decimal(0)
+                        average_basis = Decimal(0)
+                        continue
+                elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN:
+                    group_key = transfer_group_key(transaction)
+                    if group_key:
+                        carried_basis = allocate_group_carry(
+                            carried_basis_by_group,
+                            group_key,
+                            quantity,
+                        )
+                        basis += carried_basis
+                        if (
+                            allow_group_lookup
+                            and carried_basis == 0
+                        ):
+                            basis += lookup_group_transfer_basis(
+                                transaction,
+                                target,
+                                visited_transfer_ids,
+                            )
+                    position += quantity
+
+                average_basis = basis / position if position else Decimal(0)
+
+            if return_state:
+                return basis, position
+            return basis
+
+        def lookup_group_transfer_basis(transaction, target, visited_transfer_ids=None):
+            if not transaction.import_group_id:
+                return Decimal(0)
+            visited_transfer_ids = visited_transfer_ids or frozenset()
+
+            transfer_out_query = self.transactions.filter(
+                investor=investor,
+                security=self,
+                import_group_id=transaction.import_group_id,
+                type=TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+                quantity__lt=0,
+            ).filter(
+                provider_matches(transaction.import_provider),
+                Q(date__lt=transaction.date)
+                | (Q(date=transaction.date) & Q(id__lt=transaction.id)),
+            )
+
+            transfer_outs = list(
+                transfer_out_query.exclude(id=transaction.id).order_by("date", "id")
+            )
+            if not transfer_outs:
+                return Decimal(0)
+            if len({transfer_source_key(transfer_out) for transfer_out in transfer_outs}) != 1:
+                return Decimal(0)
+
+            total_transferred_basis = Decimal(0)
+            total_transferred_quantity = Decimal(0)
+            visited_ids = visited_transfer_ids | frozenset(
+                transfer_out.id for transfer_out in transfer_outs
+            )
+            for transfer_out in transfer_outs:
+                if transfer_out.id in visited_transfer_ids:
+                    return Decimal(0)
+
+                source_basis, source_position = replay(
+                    transactions_before(transfer_out),
+                    target,
+                    allow_group_lookup=True,
+                    visited_transfer_ids=visited_ids,
+                    return_state=True,
+                )
+                if source_position <= 0:
+                    continue
+
+                transferred_quantity = min(
+                    abs(transfer_out.quantity or Decimal(0)),
+                    source_position,
+                )
+                if transferred_quantity <= 0:
+                    continue
+
+                total_transferred_quantity += transferred_quantity
+                total_transferred_basis += (
+                    source_basis / source_position
+                ) * transferred_quantity
+
+            if total_transferred_quantity <= 0:
+                return Decimal(0)
+
+            first_transfer_out = transfer_outs[0]
+            prior_transfer_in_quantity = (
+                self.transactions.filter(
+                    (
+                        Q(date__gt=first_transfer_out.date)
+                        | (
+                            Q(date=first_transfer_out.date)
+                            & Q(id__gt=first_transfer_out.id)
+                        )
+                    ),
+                    (
+                        Q(date__lt=transaction.date)
+                        | (Q(date=transaction.date) & Q(id__lt=transaction.id))
+                    ),
+                    investor=investor,
+                    security=self,
+                    import_group_id=transaction.import_group_id,
+                    type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+                    quantity__gt=0,
+                )
+                .filter(provider_matches(transaction.import_provider))
+                .aggregate(total=Sum("quantity"))["total"]
+                or Decimal(0)
+            )
+            remaining_quantity = total_transferred_quantity - min(
+                prior_transfer_in_quantity,
+                total_transferred_quantity,
+            )
+            allocated_quantity = min(
+                abs(transaction.quantity or Decimal(0)),
+                max(remaining_quantity, Decimal(0)),
+            )
+            return (
+                total_transferred_basis / total_transferred_quantity
+            ) * allocated_quantity
+
+        basis = replay(transactions_until(date_as_of, account_ids), target_currency)
+        if not rounded:
+            return basis
+        return basis.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
     def realized_gain_loss(
         self, date_as_of, investor, currency=None, account_ids=None, start_date=None
     ):
@@ -1006,16 +1326,30 @@ class Assets(models.Model):
                 "total": Decimal(0),
             }
 
-            transactions = self.transactions.filter(
-                date__date__gte=start,
-                date__date__lte=end,
-                quantity__isnull=False,
-                investor=investor,
-            ).order_by("date")
+            transactions = self.transactions.filter(quantity__isnull=False, investor=investor)
+            if isinstance(start, datetime):
+                transactions = transactions.filter(date__gte=start)
+            else:
+                transactions = transactions.filter(date__date__gte=start)
+            if isinstance(end, datetime):
+                transactions = transactions.filter(date__lte=end)
+            else:
+                transactions = transactions.filter(date__date__lte=end)
+            transactions = transactions.order_by("date", "id")
             if account_ids is not None:
                 transactions = transactions.filter(account_id__in=account_ids)
 
-            position = self.position(start - timedelta(days=1), investor, account_ids)
+            position_query = self.transactions.filter(
+                quantity__isnull=False,
+                investor=investor,
+            )
+            if isinstance(start, datetime):
+                position_query = position_query.filter(date__lt=start)
+            else:
+                position_query = position_query.filter(date__date__lt=start)
+            if account_ids is not None:
+                position_query = position_query.filter(account_id__in=account_ids)
+            position = position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
             logger.debug(f"Starting position at {start}: {position}")
 
             for transaction in transactions:
@@ -1109,16 +1443,21 @@ class Assets(models.Model):
                     logger.debug(f"Position after redemption: {position}")
                     continue
 
-                is_position_reducing = (
-                    position > 0 and transaction.type == TRANSACTION_TYPE_SELL
-                ) or (position < 0 and transaction.type == TRANSACTION_TYPE_BUY)
+                if transaction.is_neutral_transfer_transaction():
+                    position += transaction.quantity
+                    logger.debug(f"Position after neutral transfer: {position}")
+                    continue
+
+                is_position_reducing = (position > 0 and transaction.is_disposal_transaction()) or (
+                    position < 0 and transaction.is_paid_entry_transaction()
+                )
 
                 # Determine the quantity that is actually closing the position
                 # vs opening a new position in the opposite direction
-                if position > 0 and transaction.type == TRANSACTION_TYPE_SELL:
+                if position > 0 and transaction.is_disposal_transaction():
                     # Closing long: portion that closes is min(abs(tx.quantity), position)
                     closing_quantity = -min(abs(transaction.quantity), position)
-                elif position < 0 and transaction.type == TRANSACTION_TYPE_BUY:
+                elif position < 0 and transaction.is_paid_entry_transaction():
                     # Closing short: portion that closes is min(tx.quantity, abs(position))
                     closing_quantity = min(transaction.quantity, abs(position))
                 else:
@@ -1145,7 +1484,40 @@ class Assets(models.Model):
                     # Importantly: we calculate buy-in price using the running position, which
                     # represents the quantity of shares that are actually being closed.
 
-                    if position > 0:
+                    if (
+                        self.type == ASSET_TYPE_CRYPTO
+                        and position > 0
+                        and transaction.type == TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+                    ):
+                        economic_basis_target_currency = self.get_economic_basis(
+                            transaction.date,
+                            investor,
+                            currency,
+                            account_ids,
+                            start,
+                            exclude_transaction_id=transaction.id,
+                            rounded=False,
+                        )
+                        economic_basis_lcl_currency = self.get_economic_basis(
+                            transaction.date,
+                            investor,
+                            transaction.currency,
+                            account_ids,
+                            start,
+                            exclude_transaction_id=transaction.id,
+                            rounded=False,
+                        )
+                        buy_in_price_target_currency = (
+                            economic_basis_target_currency / position
+                            if position
+                            else None
+                        )
+                        buy_in_price_lcl_currency = (
+                            economic_basis_lcl_currency / position
+                            if position
+                            else None
+                        )
+                    elif position > 0:
                         # Closing long position: calculate avg buy price of these shares
                         # Use transaction.date and exclude current transaction to include
                         # same-day earlier transactions
@@ -1368,7 +1740,22 @@ class Assets(models.Model):
         price_appreciation = 0
         fx_effect = 0
 
-        current_position = self.position(date_as_of, investor, account_ids)
+        if self.type == ASSET_TYPE_CRYPTO:
+            current_position_query = self.transactions.filter(
+                quantity__isnull=False,
+                investor=investor,
+            )
+            if isinstance(date_as_of, datetime):
+                current_position_query = current_position_query.filter(date__lte=date_as_of)
+            else:
+                current_position_query = current_position_query.filter(date__date__lte=date_as_of)
+            if account_ids is not None:
+                current_position_query = current_position_query.filter(account_id__in=account_ids)
+            current_position = (
+                current_position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
+            )
+        else:
+            current_position = self.position(date_as_of, investor, account_ids)
 
         current_price_in_lcl_cur = (
             self.price_at_date(date_as_of, currency=None).price
@@ -1391,7 +1778,31 @@ class Assets(models.Model):
 
         fx_rate_eop = FX.get_rate(self.currency, currency, date_as_of)["FX"] if currency else 1
 
-        if buy_in_price_in_lcl_cur is not None and buy_in_price_in_target_cur is not None:
+        if self.type == ASSET_TYPE_CRYPTO:
+            economic_basis_lcl_cur = self.get_economic_basis(
+                date_as_of,
+                investor,
+                self.currency,
+                account_ids=account_ids,
+                start_date=start_date,
+                rounded=False,
+            )
+            economic_basis_target_cur = self.get_economic_basis(
+                date_as_of,
+                investor,
+                currency or self.currency,
+                account_ids=account_ids,
+                start_date=start_date,
+                rounded=False,
+            )
+            current_value_lcl_cur = current_price_in_lcl_cur * current_position
+            current_value_target_cur = current_price_in_target_cur * current_position
+            price_appreciation = (
+                current_value_lcl_cur - economic_basis_lcl_cur
+            ) * fx_rate_eop
+            unrealized_gain_loss = current_value_target_cur - economic_basis_target_cur
+            fx_effect = unrealized_gain_loss - price_appreciation
+        elif buy_in_price_in_lcl_cur is not None and buy_in_price_in_target_cur is not None:
             # For bonds: unrealized G/L = notional_at_date * (price_at_date% - buy_in_price%) * position / 100 # noqa: E501
             # For others: unrealized G/L = (current_price - buy_in_price) * position
             if self.is_bond:
@@ -1471,6 +1882,28 @@ class Assets(models.Model):
                     fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
                     if fx_rate:
                         total_distributions += transaction.cash_flow * fx_rate
+
+        reward_transactions = self.transactions.filter(
+            type=TRANSACTION_TYPE_CRYPTO_REWARD,
+            date__date__lte=query_date,
+            investor=investor,
+        )
+
+        if account_ids is not None:
+            reward_transactions = reward_transactions.filter(account_id__in=account_ids)
+
+        if start_date is not None:
+            reward_transactions = reward_transactions.filter(date__date__gte=start_date)
+
+        for transaction in reward_transactions:
+            reward_value = transaction.reward_value()
+            if currency is not None and transaction.currency != currency:
+                fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
+                if fx_rate:
+                    reward_value *= fx_rate
+                else:
+                    continue
+            total_distributions += reward_value
 
         # For bonds: subtract ACI paid at acquisition
         # (negative ACI from Buy transactions)
@@ -1812,6 +2245,35 @@ class Transactions(models.Model):
                 f"Error creating SplitHistory for transaction {self.id}: {e}",
                 exc_info=True,
             )
+
+    def is_position_increase(self):
+        """Return True when the transaction increases asset quantity."""
+        return self.quantity is not None and self.quantity > 0
+
+    def is_paid_entry_transaction(self):
+        """Return True when this transaction should affect paid entry price."""
+        return self.type in [TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CRYPTO_TRADE_IN]
+
+    def is_reward_transaction(self):
+        """Return True when this transaction is crypto income."""
+        return self.type == TRANSACTION_TYPE_CRYPTO_REWARD
+
+    def is_disposal_transaction(self):
+        """Return True when this transaction should realize gain/loss."""
+        return self.type in [TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_CRYPTO_TRADE_OUT]
+
+    def is_neutral_transfer_transaction(self):
+        """Return True when quantity movement is principal transfer only."""
+        return self.type in [
+            TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+            TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+        ]
+
+    def reward_value(self):
+        """Return event-date reward value without creating account cash."""
+        if not self.is_reward_transaction() or self.quantity is None or self.price is None:
+            return Decimal("0")
+        return abs(self.quantity) * self.price
 
     def get_price(self):
         """

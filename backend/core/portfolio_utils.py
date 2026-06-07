@@ -17,6 +17,7 @@ from django.db.models import Prefetch, Q, QuerySet, Sum
 from pyxirr import xirr
 
 from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
+from constants import TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT
 from core.formatting_utils import format_percentage
 from users.models import AccountGroup, CustomUser
 
@@ -349,6 +350,19 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     Uses the centralized total_cash_flow() method and applies
     sign convention for IRR (negative = outflow, positive = inflow).
     """
+    if transaction.is_reward_transaction() or transaction.is_neutral_transfer_transaction():
+        return Decimal(0)
+
+    if transaction.type in [
+        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    ]:
+        if transaction.quantity is not None and transaction.price is not None:
+            # IRR treats crypto trades as asset cash flows: buys are negative,
+            # sells are positive, while account cash balances stay unchanged.
+            return -transaction.quantity * transaction.price
+        return Decimal(0)
+
     # Get the cash flow using the centralized method
     cash_flow = transaction.total_cash_flow()
 
