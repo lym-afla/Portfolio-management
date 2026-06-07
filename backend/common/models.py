@@ -1626,6 +1626,11 @@ class Transactions(models.Model):
         related_name="transactions",
         help_text="Linked merger record (for Merger in/out transactions)",
     )
+    import_provider = models.CharField(max_length=20, null=True, blank=True, db_index=True)
+    import_account_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    import_event_id = models.CharField(max_length=150, null=True, blank=True, db_index=True)
+    import_group_id = models.CharField(max_length=150, null=True, blank=True, db_index=True)
+    import_event_type = models.CharField(max_length=50, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         """
@@ -1927,6 +1932,36 @@ class Transactions(models.Model):
     def __str__(self):
         """Return the string representation of the Transactions model."""
         return f"{self.type} || {self.date}"
+
+    class Meta:
+        """Meta class for the Transactions model."""
+
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(import_event_id__isnull=True)
+                    | models.Q(import_event_id="")
+                    | (
+                        models.Q(import_provider__isnull=False)
+                        & ~models.Q(import_provider="")
+                        & models.Q(import_account_id__isnull=False)
+                        & ~models.Q(import_account_id="")
+                    )
+                ),
+                name="transaction_import_event_requires_provider_account",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "investor",
+                    "account",
+                    "import_provider",
+                    "import_account_id",
+                    "import_event_id",
+                ],
+                condition=models.Q(import_event_id__isnull=False) & ~models.Q(import_event_id=""),
+                name="unique_transaction_provider_event",
+            ),
+        ]
 
 
 class Prices(models.Model):
@@ -2346,6 +2381,11 @@ class FXTransaction(models.Model):
         max_length=3, choices=CURRENCY_CHOICES, null=True, blank=True
     )
     comment = models.TextField(null=True, blank=True)
+    import_provider = models.CharField(max_length=20, null=True, blank=True, db_index=True)
+    import_account_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    import_event_id = models.CharField(max_length=150, null=True, blank=True, db_index=True)
+    import_group_id = models.CharField(max_length=150, null=True, blank=True, db_index=True)
+    import_event_type = models.CharField(max_length=50, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         """Save the FX transaction."""
@@ -2395,6 +2435,36 @@ class FXTransaction(models.Model):
     def __str__(self):
         """Return the string representation of the FX transaction."""
         return f"FX: {self.from_currency} to {self.to_currency} on {self.date}"
+
+    class Meta:
+        """Meta class for the FX transaction model."""
+
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(import_event_id__isnull=True)
+                    | models.Q(import_event_id="")
+                    | (
+                        models.Q(import_provider__isnull=False)
+                        & ~models.Q(import_provider="")
+                        & models.Q(import_account_id__isnull=False)
+                        & ~models.Q(import_account_id="")
+                    )
+                ),
+                name="fx_transaction_import_event_requires_provider_account",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "investor",
+                    "account",
+                    "import_provider",
+                    "import_account_id",
+                    "import_event_id",
+                ],
+                condition=models.Q(import_event_id__isnull=False) & ~models.Q(import_event_id=""),
+                name="unique_fx_transaction_provider_event",
+            ),
+        ]
 
 
 # Extensible metadata for different instrument types
