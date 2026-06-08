@@ -1,0 +1,278 @@
+import base64
+import hashlib
+import hmac
+
+import pytest
+
+from core.crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, payload=None, json_error=None, text=""):
+        self.status_code = status_code
+        self.payload = payload
+        self.json_error = json_error
+        self.text = text
+
+    def json(self):
+        if self.json_error:
+            raise self.json_error
+        return self.payload
+
+
+def test_bybit_signature_uses_timestamp_key_window_and_query():
+    client = BybitClient(api_key="key", api_secret="secret", testnet=True)
+    headers = client._signed_headers(timestamp="1700000000000", payload="accountType=UNIFIED")
+    expected = hmac.new(
+        b"secret",
+        b"1700000000000key5000accountType=UNIFIED",
+        hashlib.sha256,
+    ).hexdigest()
+
+    assert headers["X-BAPI-API-KEY"] == "key"
+    assert headers["X-BAPI-TIMESTAMP"] == "1700000000000"
+    assert headers["X-BAPI-RECV-WINDOW"] == "5000"
+    assert headers["X-BAPI-SIGN"] == expected
+
+
+def test_okx_signature_uses_iso_timestamp_method_path_and_body():
+    client = OKXClient(
+        api_key="key", api_secret="secret", passphrase="pass", simulated_trading=True
+    )
+    timestamp = "2026-01-01T00:00:00.000Z"
+    headers = client._signed_headers(timestamp, "GET", "/api/v5/account/balance?ccy=BTC", "")
+    expected = base64.b64encode(
+        hmac.new(
+            b"secret",
+            b"2026-01-01T00:00:00.000ZGET/api/v5/account/balance?ccy=BTC",
+            hashlib.sha256,
+        ).digest()
+    ).decode()
+
+    assert headers["OK-ACCESS-KEY"] == "key"
+    assert headers["OK-ACCESS-PASSPHRASE"] == "pass"
+    assert headers["OK-ACCESS-SIGN"] == expected
+    assert headers["Content-Type"] == "application/json"
+    assert headers["x-simulated-trading"] == "1"
+
+
+def test_bybit_base_url_switches_between_testnet_and_production():
+    assert BybitClient(api_key="key", api_secret="secret", testnet=True).base_url == (
+        "https://api-testnet.bybit.com"
+    )
+    assert BybitClient(api_key="key", api_secret="secret", testnet=False).base_url == (
+        "https://api.bybit.com"
+    )
+
+
+def test_bybit_get_private_signs_encoded_query(monkeypatch):
+    client = BybitClient(api_key="key", api_secret="secret")
+    monkeypatch.setattr(client, "_timestamp_ms", lambda: "1700000000000")
+    captured = {}
+
+    def fake_get(url, headers, timeout):
+        captured.update({"url": url, "headers": headers, "timeout": timeout})
+        return FakeResponse(payload={"retCode": 0, "result": {"ok": True}})
+
+    monkeypatch.setattr("core.crypto_exchange_clients.requests.get", fake_get)
+
+    data = client.get_private("/v5/execution/list", {"symbol": "BTC USDT", "category": "spot"})
+
+    expected_query = "category=spot&symbol=BTC+USDT"
+    expected_signature = hmac.new(
+        b"secret",
+        f"1700000000000key5000{expected_query}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    assert data == {"retCode": 0, "result": {"ok": True}}
+    assert captured["url"] == "https://api.bybit.com/v5/execution/list?category=spot&symbol=BTC+USDT"
+    assert captured["headers"]["X-BAPI-SIGN"] == expected_signature
+    assert captured["timeout"] == 30
+
+
+def test_okx_get_private_signs_encoded_request_path(monkeypatch):
+    client = OKXClient(api_key="key", api_secret="secret", passphrase="pass")
+    monkeypatch.setattr(client, "_timestamp_iso", lambda: "2026-01-01T00:00:00.000Z")
+    captured = {}
+
+    def fake_get(url, headers, timeout):
+        captured.update({"url": url, "headers": headers, "timeout": timeout})
+        return FakeResponse(payload={"code": "0", "data": [{"ok": True}]})
+
+    monkeypatch.setattr("core.crypto_exchange_clients.requests.get", fake_get)
+
+    data = client.get_private(
+        "/api/v5/trade/fills-history", {"instId": "BTC USDT", "instType": "SPOT"}
+    )
+
+    request_path = "/api/v5/trade/fills-history?instId=BTC+USDT&instType=SPOT"
+    expected_signature = base64.b64encode(
+        hmac.new(
+            b"secret",
+            f"2026-01-01T00:00:00.000ZGET{request_path}".encode(),
+            hashlib.sha256,
+        ).digest()
+    ).decode()
+    assert data == {"code": "0", "data": [{"ok": True}]}
+    assert captured["url"] == f"https://www.okx.com{request_path}"
+    assert captured["headers"]["OK-ACCESS-SIGN"] == expected_signature
+    assert captured["timeout"] == 30
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (
+            FakeResponse(status_code=400, payload={"retCode": 10001, "retMsg": "bad request"}),
+            "HTTP 400",
+        ),
+        (FakeResponse(status_code=502, json_error=ValueError("html"), text="<html>bad</html>"), "HTTP 502"),
+        (FakeResponse(payload={"retCode": 10003, "retMsg": "invalid key"}), "invalid key"),
+        (FakeResponse(payload={"result": {}}), "Malformed Bybit response"),
+        (FakeResponse(payload=None, json_error=ValueError("bad json")), "Invalid JSON"),
+    ],
+)
+def test_bybit_get_private_raises_api_error(monkeypatch, response, expected):
+    client = BybitClient(api_key="key", api_secret="secret")
+    monkeypatch.setattr(
+        "core.crypto_exchange_clients.requests.get", lambda *args, **kwargs: response
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match=expected):
+        client.get_private("/v5/execution/list", {"category": "spot"})
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (
+            FakeResponse(status_code=401, payload={"code": "50113", "msg": "Invalid signature"}),
+            "HTTP 401",
+        ),
+        (FakeResponse(status_code=403, json_error=ValueError("html"), text="<html>denied</html>"), "HTTP 403"),
+        (FakeResponse(payload={"code": "51000", "msg": "Parameter error"}), "Parameter error"),
+        (FakeResponse(payload={"data": []}), "Malformed OKX response"),
+    ],
+)
+def test_okx_get_private_raises_api_error(monkeypatch, response, expected):
+    client = OKXClient(api_key="key", api_secret="secret", passphrase="pass")
+    monkeypatch.setattr(
+        "core.crypto_exchange_clients.requests.get", lambda *args, **kwargs: response
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match=expected):
+        client.get_private("/api/v5/trade/fills-history", {"instType": "SPOT"})
+
+
+def test_bybit_transaction_log_paginates_next_page_cursor(monkeypatch):
+    client = BybitClient(api_key="key", api_secret="secret")
+    calls = []
+    pages = [
+        {"retCode": 0, "result": {"list": [{"id": "one"}], "nextPageCursor": "cursor-1"}},
+        {"retCode": 0, "result": {"list": [{"id": "two"}], "nextPageCursor": ""}},
+    ]
+
+    def fake_get_private(path, params):
+        calls.append((path, params))
+        return pages.pop(0)
+
+    monkeypatch.setattr(client, "get_private", fake_get_private)
+
+    assert list(client.iter_transaction_log({"accountType": "UNIFIED"})) == [
+        {"id": "one"},
+        {"id": "two"},
+    ]
+    assert calls == [
+        ("/v5/account/transaction-log", {"accountType": "UNIFIED", "limit": 50}),
+        (
+            "/v5/account/transaction-log",
+            {"accountType": "UNIFIED", "limit": 50, "cursor": "cursor-1"},
+        ),
+    ]
+
+
+def test_bybit_executions_paginates_next_page_cursor(monkeypatch):
+    client = BybitClient(api_key="key", api_secret="secret")
+    calls = []
+    pages = [
+        {"retCode": 0, "result": {"list": [{"execId": "one"}], "nextPageCursor": "cursor-1"}},
+        {"retCode": 0, "result": {"list": [{"execId": "two"}], "nextPageCursor": None}},
+    ]
+
+    def fake_get_private(path, params):
+        calls.append((path, params))
+        return pages.pop(0)
+
+    monkeypatch.setattr(client, "get_private", fake_get_private)
+
+    assert list(client.iter_executions({"category": "spot"})) == [
+        {"execId": "one"},
+        {"execId": "two"},
+    ]
+    assert calls == [
+        ("/v5/execution/list", {"category": "spot", "limit": 100}),
+        ("/v5/execution/list", {"category": "spot", "limit": 100, "cursor": "cursor-1"}),
+    ]
+
+
+def test_okx_fills_history_paginates_after_cursor(monkeypatch):
+    client = OKXClient(api_key="key", api_secret="secret", passphrase="pass")
+    calls = []
+    pages = [
+        {"code": "0", "data": [{"billId": "bill-1", "tradeId": "trade-1"}]},
+        {"code": "0", "data": [{"billId": "bill-2", "tradeId": "trade-2"}]},
+        {"code": "0", "data": []},
+    ]
+
+    def fake_get_private(path, params):
+        calls.append((path, params))
+        return pages.pop(0)
+
+    monkeypatch.setattr(client, "get_private", fake_get_private)
+
+    assert list(client.iter_fills_history({"instType": "SPOT"})) == [
+        {"billId": "bill-1", "tradeId": "trade-1"},
+        {"billId": "bill-2", "tradeId": "trade-2"},
+    ]
+    assert calls == [
+        ("/api/v5/trade/fills-history", {"instType": "SPOT"}),
+        ("/api/v5/trade/fills-history", {"instType": "SPOT", "after": "bill-1"}),
+        ("/api/v5/trade/fills-history", {"instType": "SPOT", "after": "bill-2"}),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("iterator_name", "page", "expected"),
+    [
+        ("iter_transaction_log", {"retCode": 0, "result": {}}, "Malformed Bybit transaction log"),
+        ("iter_executions", {"retCode": 0, "result": {}}, "Malformed Bybit execution"),
+    ],
+)
+def test_bybit_paginators_reject_malformed_success_payloads(
+    monkeypatch, iterator_name, page, expected
+):
+    client = BybitClient(api_key="key", api_secret="secret")
+    monkeypatch.setattr(client, "get_private", lambda path, params: page)
+
+    with pytest.raises(CryptoExchangeAPIError, match=expected):
+        list(getattr(client, iterator_name)({}))
+
+
+def test_okx_fills_history_requires_bill_id_cursor(monkeypatch):
+    client = OKXClient(api_key="key", api_secret="secret", passphrase="pass")
+    monkeypatch.setattr(
+        client,
+        "get_private",
+        lambda path, params: {"code": "0", "data": [{"tradeId": "trade-1"}]},
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match="Missing OKX billId cursor"):
+        list(client.iter_fills_history({}))
+
+
+def test_okx_fills_history_rejects_missing_data(monkeypatch):
+    client = OKXClient(api_key="key", api_secret="secret", passphrase="pass")
+    monkeypatch.setattr(client, "get_private", lambda path, params: {"code": "0"})
+
+    with pytest.raises(CryptoExchangeAPIError, match="Malformed OKX fills response"):
+        list(client.iter_fills_history({}))
