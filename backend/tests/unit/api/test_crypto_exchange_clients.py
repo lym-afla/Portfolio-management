@@ -1,10 +1,16 @@
 import base64
 import hashlib
 import hmac
+from decimal import Decimal
 
 import pytest
+from asgiref.sync import async_to_sync
 
+from common.models import Accounts, Brokers
+from core.broker_api_utils import BybitAPI, OKXAPI, get_broker_api
+from core.crypto_exchange_import import CryptoExchangeEvent
 from core.crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
+from users.models import BybitApiToken, OKXApiToken
 
 
 class FakeResponse:
@@ -276,3 +282,130 @@ def test_okx_fills_history_rejects_missing_data(monkeypatch):
 
     with pytest.raises(CryptoExchangeAPIError, match="Malformed OKX fills response"):
         list(client.iter_fills_history({}))
+
+
+async def _collect_transactions(api, account):
+    return [event async for event in api.get_transactions(account)]
+
+
+@pytest.mark.django_db
+def test_get_broker_api_returns_bybit_and_okx_when_active_tokens_exist(user):
+    bybit_broker = Brokers.objects.create(investor=user, name="Bybit", country="Crypto")
+    bybit_token = BybitApiToken.objects.create(
+        user=user,
+        broker=bybit_broker,
+        api_key="bybit-key",
+        testnet=True,
+        is_active=True,
+    )
+    bybit_token.set_api_secret("bybit-secret", user)
+
+    okx_broker = Brokers.objects.create(investor=user, name="OKX", country="Crypto")
+    okx_token = OKXApiToken.objects.create(
+        user=user,
+        broker=okx_broker,
+        api_key="okx-key",
+        simulated_trading=True,
+        is_active=True,
+    )
+    okx_token.set_credentials("okx-secret", "okx-pass", user)
+
+    assert isinstance(async_to_sync(get_broker_api)(bybit_broker), BybitAPI)
+    assert isinstance(async_to_sync(get_broker_api)(okx_broker), OKXAPI)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_bybit_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, user):
+    broker = Brokers.objects.create(investor=user, name="Bybit", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")
+    token = BybitApiToken.objects.create(
+        user=user,
+        broker=broker,
+        api_key="bybit-key",
+        testnet=True,
+        is_active=True,
+    )
+    token.set_api_secret("bybit-secret", user)
+    captured = {}
+
+    class FakeBybitClient:
+        def __init__(self, api_key, api_secret, testnet):
+            captured["credentials"] = (api_key, api_secret, testnet)
+
+        def iter_executions(self, params):
+            captured["params"] = params
+            yield {
+                "execId": "exec-1",
+                "orderId": "order-1",
+                "symbol": "BTCUSDT",
+                "side": "Buy",
+                "execQty": "0.1",
+                "execPrice": "60000",
+                "execFee": "3",
+                "feeCurrency": "USDT",
+                "execTime": "1767225600000",
+            }
+
+    monkeypatch.setattr("core.broker_api_utils.BybitClient", FakeBybitClient)
+
+    api = BybitAPI()
+    async_to_sync(api.connect)(user)
+    events = async_to_sync(_collect_transactions)(api, account)
+
+    assert captured["credentials"] == ("bybit-key", "bybit-secret", True)
+    assert captured["params"] == {"category": "spot"}
+    assert len(events) == 1
+    assert isinstance(events[0], CryptoExchangeEvent)
+    assert events[0].provider == "bybit"
+    assert events[0].legs[0]["quantity"] == Decimal("0.1")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, user):
+    broker = Brokers.objects.create(investor=user, name="OKX", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Trading", native_id="okx-main")
+    token = OKXApiToken.objects.create(
+        user=user,
+        broker=broker,
+        api_key="okx-key",
+        simulated_trading=True,
+        is_active=True,
+    )
+    token.set_credentials("okx-secret", "okx-pass", user)
+    captured = {}
+
+    class FakeOKXClient:
+        def __init__(self, api_key, api_secret, passphrase, simulated_trading):
+            captured["credentials"] = (
+                api_key,
+                api_secret,
+                passphrase,
+                simulated_trading,
+            )
+
+        def iter_fills_history(self, params):
+            captured["params"] = params
+            yield {
+                "tradeId": "trade-1",
+                "ordId": "order-1",
+                "instId": "BTC-USDT",
+                "side": "sell",
+                "fillSz": "0.2",
+                "fillPx": "70000",
+                "fee": "-0.0001",
+                "feeCcy": "BTC",
+                "fillTime": "1767225600000",
+            }
+
+    monkeypatch.setattr("core.broker_api_utils.OKXClient", FakeOKXClient)
+
+    api = OKXAPI()
+    async_to_sync(api.connect)(user)
+    events = async_to_sync(_collect_transactions)(api, account)
+
+    assert captured["credentials"] == ("okx-key", "okx-secret", "okx-pass", True)
+    assert captured["params"] == {"instType": "SPOT"}
+    assert len(events) == 1
+    assert isinstance(events[0], CryptoExchangeEvent)
+    assert events[0].provider == "okx"
+    assert events[0].legs[0]["quantity"] == Decimal("-0.2001")

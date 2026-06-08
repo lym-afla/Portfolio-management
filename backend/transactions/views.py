@@ -28,7 +28,8 @@ from constants import (
     TRANSACTION_TYPE_BOND_MATURITY,
     TRANSACTION_TYPE_BOND_REDEMPTION,
 )
-from core.broker_api_utils import TinkoffAPIException, get_broker_api
+from core.broker_api_utils import BrokerAPIException, TinkoffAPIException, get_broker_api
+from core.crypto_exchange_import import CryptoExchangeEvent, persist_crypto_exchange_event
 from core.import_utils import (
     fx_transaction_exists,
     get_account,
@@ -1322,7 +1323,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         }
                         return
 
-            except TinkoffAPIException as e:
+            except (TinkoffAPIException, BrokerAPIException) as e:
                 yield {
                     "status": "critical_error",
                     "message": f"Broker API connection error: {str(e)}",
@@ -1358,6 +1359,25 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         "total": total_count,
                         "message": (f"Processing transaction {current_index} of " f"{total_count}"),
                     }
+
+                    if isinstance(trans, CryptoExchangeEvent):
+                        # Crypto exchange events produce multiple canonical legs and handle
+                        # idempotency internally, so they persist immediately regardless of
+                        # confirm_every.
+                        created = await database_sync_to_async(persist_crypto_exchange_event)(
+                            trans,
+                            user,
+                            account,
+                        )
+                        yield {
+                            "status": "transaction_saved",
+                            "message": f"Saved {len(created)} crypto transaction legs",
+                            "transaction": {
+                                "import_group_id": trans.group_id,
+                                "count": len(created),
+                            },
+                        }
+                        continue
 
                     if trans.get("unrecognized_operation"):
                         yield {
@@ -1506,7 +1526,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             "error_detail": str(e),
                         }
 
-            except TinkoffAPIException as e:
+            except (TinkoffAPIException, BrokerAPIException) as e:
                 yield {
                     "status": "critical_error",
                     "message": f"Error fetching transactions: {str(e)}",

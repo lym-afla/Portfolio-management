@@ -1,12 +1,21 @@
 """Normalize crypto exchange payloads into portfolio import events."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from hashlib import blake2s
 from typing import Any, Dict, List, Optional, Tuple
+
+from common.models import Assets, OptionMetadata, Transactions
+from constants import (
+    ASSET_TYPE_CRYPTO,
+    TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+    TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+)
 
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
+STABLECOINS = {"USDT", "USDC", "USD"}
 
 MONTH_NUMBERS = {
     "JAN": 1,
@@ -34,6 +43,165 @@ class CryptoExchangeEvent:
     raw_type: str
     legs: List[Dict[str, Any]]
     fee: Optional[Dict[str, Any]] = None
+
+
+def resolve_crypto_asset(symbol, user):
+    normalized_symbol = str(symbol).upper()
+    asset, _ = Assets.objects.get_or_create(
+        ISIN=_crypto_asset_identifier(normalized_symbol),
+        currency="USD",
+        defaults={
+            "type": ASSET_TYPE_CRYPTO,
+            "name": normalized_symbol,
+            "ticker": normalized_symbol[:10],
+            "exposure": "FX" if normalized_symbol in STABLECOINS else "Commodity",
+        },
+    )
+    asset.investors.add(user)
+    return asset
+
+
+def resolve_crypto_option_asset(parsed_option, user):
+    underlying = resolve_crypto_asset(parsed_option["underlying"], user)
+    settlement_asset = parsed_option.get("settlement_asset") or "USD"
+    asset_currency = (
+        settlement_asset
+        if settlement_asset in {"USD", "EUR", "GBP", "RUB", "CHF", "CNY"}
+        else "USD"
+    )
+    option_symbol = (
+        f"{parsed_option['underlying']}-"
+        f"{parsed_option['expiration_date'].strftime('%d%b%y').upper()}-"
+        f"{parsed_option['strike_price']}-{parsed_option['option_type'][0]}"
+    )
+    asset, _ = Assets.objects.get_or_create(
+        ISIN=_crypto_asset_identifier(f"OPT:{option_symbol}"),
+        currency=asset_currency,
+        defaults={
+            "type": "Option",
+            "name": option_symbol,
+            "ticker": option_symbol[:10],
+            "exposure": "Derivatives",
+        },
+    )
+    asset.investors.add(user)
+    OptionMetadata.objects.get_or_create(
+        asset=asset,
+        defaults={
+            "underlying_asset": underlying,
+            "strike_price": parsed_option["strike_price"],
+            "expiration_date": parsed_option["expiration_date"],
+            "option_type": parsed_option["option_type"],
+            "contract_size": Decimal("1"),
+        },
+    )
+    return asset
+
+
+def _crypto_asset_identifier(symbol):
+    readable_identifier = f"CRYPTO:{symbol}"
+    if len(readable_identifier) <= Assets._meta.get_field("ISIN").max_length:
+        return readable_identifier
+    digest = blake2s(symbol.encode(), digest_size=5).hexdigest().upper()
+    return f"CR{digest}"
+
+
+def _event_datetime(event):
+    return datetime.fromtimestamp(event.timestamp_ms / 1000, tz=timezone.utc).replace(
+        tzinfo=None
+    )
+
+
+def _account_import_id(account):
+    return account.native_id or str(account.id)
+
+
+def _leg_quantity(leg):
+    quantity = leg.get("quantity", Decimal("0"))
+    return quantity if isinstance(quantity, Decimal) else Decimal(str(quantity))
+
+
+def _leg_price(leg):
+    price = leg.get("price")
+    if price is None:
+        return None
+
+    price = price if isinstance(price, Decimal) else Decimal(str(price))
+    asset_symbol = str(leg.get("asset", "")).upper()
+    price_asset = leg.get("price_asset")
+    normalized_price_asset = str(price_asset).upper() if price_asset else None
+
+    if normalized_price_asset in (None, *STABLECOINS):
+        return price
+    if asset_symbol in STABLECOINS and price == Decimal("1"):
+        return price
+    return None
+
+
+def _event_comment(event, leg):
+    parts = [
+        f"provider={event.provider}",
+        f"raw_type={event.raw_type}",
+        f"group_id={event.group_id}",
+        f"role={leg.get('role')}",
+        f"price_asset={leg.get('price_asset')}",
+    ]
+    if event.fee:
+        parts.extend(
+            [
+                f"fee_asset={event.fee.get('asset')}",
+                f"fee_quantity={event.fee.get('quantity')}",
+                f"fee_is_rebate={event.fee.get('is_rebate')}",
+            ]
+        )
+    return "; ".join(parts)
+
+
+def persist_crypto_exchange_event(event, user, account):
+    created = []
+    event_time = _event_datetime(event)
+    import_account_id = _account_import_id(account)
+
+    for index, leg in enumerate(event.legs):
+        quantity = _leg_quantity(leg)
+        if quantity == 0:
+            continue
+
+        event_id = f"{event.provider_event_id}:{index}"
+        if Transactions.objects.filter(
+            investor=user,
+            account=account,
+            import_provider=event.provider,
+            import_account_id=import_account_id,
+            import_event_id=event_id,
+        ).exists():
+            continue
+
+        asset = resolve_crypto_asset(leg["asset"], user)
+        tx_type = (
+            TRANSACTION_TYPE_CRYPTO_TRADE_IN
+            if quantity > 0
+            else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+        )
+        created.append(
+            Transactions.objects.create(
+                investor=user,
+                account=account,
+                security=asset,
+                currency="USD",
+                type=tx_type,
+                date=event_time,
+                quantity=quantity,
+                price=_leg_price(leg),
+                comment=_event_comment(event, leg),
+                import_provider=event.provider,
+                import_account_id=import_account_id,
+                import_event_id=event_id,
+                import_group_id=event.group_id,
+                import_event_type=event.category,
+            )
+        )
+    return created
 
 
 def _split_symbol(symbol: str) -> Tuple[str, str]:
