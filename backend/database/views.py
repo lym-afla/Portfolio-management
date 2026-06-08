@@ -999,7 +999,11 @@ class BrokerViewSet(viewsets.ModelViewSet):
 
         # Add filter for brokers with active tokens if requested
         if self.request.query_params.get("with_active_tokens"):
-            queryset = queryset.filter(Q(tinkoff_tokens__is_active=True)).distinct()
+            queryset = queryset.filter(
+                Q(tinkoff_tokens__is_active=True)
+                | Q(bybit_tokens__is_active=True)
+                | Q(okx_tokens__is_active=True)
+            ).distinct()
 
         return queryset.order_by("name")
 

@@ -29,13 +29,21 @@ from constants import (
     TINKOFF_ACCOUNT_TYPES,
 )
 from core.user_utils import prepare_account_choices
-from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
+from users.models import (
+    AccountGroup,
+    BybitApiToken,
+    InteractiveBrokersApiToken,
+    OKXApiToken,
+    TinkoffApiToken,
+)
 from users.serializers import (
     AccountGroupSerializer,
+    BybitApiTokenSerializer,
     CustomTokenObtainPairSerializer,
     DashboardSettingsChoicesSerializer,
     DashboardSettingsSerializer,
     InteractiveBrokersApiTokenSerializer,
+    OKXApiTokenSerializer,
     TinkoffApiTokenSerializer,
     UserProfileSerializer,
     UserSerializer,
@@ -359,11 +367,15 @@ class UserViewSet(viewsets.ModelViewSet):
         """Get all broker tokens for the user."""
         tinkoff_tokens = TinkoffApiToken.objects.filter(user=request.user)
         ib_tokens = InteractiveBrokersApiToken.objects.filter(user=request.user)
+        bybit_tokens = BybitApiToken.objects.filter(user=request.user)
+        okx_tokens = OKXApiToken.objects.filter(user=request.user)
 
         return Response(
             {
                 "tinkoff_tokens": TinkoffApiTokenSerializer(tinkoff_tokens, many=True).data,
                 "ib_tokens": InteractiveBrokersApiTokenSerializer(ib_tokens, many=True).data,
+                "bybit_tokens": BybitApiTokenSerializer(bybit_tokens, many=True).data,
+                "okx_tokens": OKXApiTokenSerializer(okx_tokens, many=True).data,
             }
         )
 
@@ -377,6 +389,10 @@ class UserViewSet(viewsets.ModelViewSet):
             token = get_object_or_404(TinkoffApiToken, id=token_id, user=request.user)
         elif token_type == "ib":
             token = get_object_or_404(InteractiveBrokersApiToken, id=token_id, user=request.user)
+        elif token_type == "bybit":
+            token = get_object_or_404(BybitApiToken, id=token_id, user=request.user)
+        elif token_type == "okx":
+            token = get_object_or_404(OKXApiToken, id=token_id, user=request.user)
         else:
             return Response({"error": "Invalid token type"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -650,6 +666,56 @@ class InteractiveBrokersApiTokenViewSet(BaseApiTokenViewSet):
 
     queryset = InteractiveBrokersApiToken.objects.all()
     serializer_class = InteractiveBrokersApiTokenSerializer
+
+
+class CryptoExchangeApiTokenViewSet(BaseApiTokenViewSet):
+    """Base viewset for crypto exchange API tokens."""
+
+    def perform_create(self, serializer):
+        """Create token using provider-specific serializer encryption."""
+        serializer.save()
+
+    def perform_update(self, serializer):
+        """Update token using provider-specific serializer validation."""
+        serializer.save()
+
+    @action(detail=False, methods=["POST"])
+    def verify_token(self, request):
+        """Report that live crypto exchange verification is not implemented yet."""
+        return Response(
+            {
+                "valid": False,
+                "error": "Crypto exchange token verification is not implemented yet",
+            },
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
+
+    @action(detail=True, methods=["POST"])
+    def test_connection(self, request, pk=None):
+        """Avoid marking crypto tokens active without real exchange verification."""
+        token_instance = self.get_object()
+        return Response(
+            {
+                "valid": False,
+                "error": "Crypto exchange token verification is not implemented yet",
+                "token": self.get_serializer(token_instance).data,
+            },
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
+
+
+class BybitApiTokenViewSet(CryptoExchangeApiTokenViewSet):
+    """Viewset for Bybit API tokens."""
+
+    queryset = BybitApiToken.objects.all()
+    serializer_class = BybitApiTokenSerializer
+
+
+class OKXApiTokenViewSet(CryptoExchangeApiTokenViewSet):
+    """Viewset for OKX API tokens."""
+
+    queryset = OKXApiToken.objects.all()
+    serializer_class = OKXApiTokenSerializer
 
 
 class AccountGroupViewSet(viewsets.ModelViewSet):
