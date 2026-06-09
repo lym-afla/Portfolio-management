@@ -235,7 +235,7 @@ pytest-django==4.11.1
     # via -r requirements-dev.in
 python-dateutil==2.9.0.post0
     # via jupyter-client
-pywin32==311
+pywin32==311 ; sys_platform == "win32"
     # via jupyter-core
 pyyaml==6.0.3
     # via pre-commit
