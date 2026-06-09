@@ -25,6 +25,7 @@ Create:
 - `backend/tests/unit/api/test_crypto_exchange_clients.py`: signing, URL, pagination unit tests.
 - `backend/tests/unit/imports/test_crypto_exchange_import.py`: event normalization and mapping tests.
 - `backend/tests/unit/calculations/test_crypto_rewards.py`: reward/capital-distribution/cost-basis regression tests.
+- `backend/tests/integration/workflows/test_crypto_exchange_persistence.py`: multi-leg persistence, idempotency, and crypto-crypto valuation tests.
 - `backend/tests/integration/api/test_crypto_token_api.py`: token API and broker filtering tests.
 - `backend/common/migrations/0089_crypto_exchange_import_metadata.py`: crypto choices and transaction import metadata.
 - `backend/users/migrations/0021_bybit_okx_api_tokens.py`: encrypted Bybit/OKX credential models.
@@ -1360,11 +1361,11 @@ git commit -m "feat: normalize crypto exchange events" -m "- What changed: Added
 - Modify: `backend/core/crypto_exchange_import.py`
 - Modify: `backend/core/import_utils.py`
 - Modify: `backend/transactions/views.py`
-- Test: `backend/tests/integration/workflows/test_crypto_exchange_import.py`
+- Test: `backend/tests/integration/workflows/test_crypto_exchange_persistence.py`
 
 - [ ] **Step 1: Write failing import persistence test**
 
-Create `backend/tests/integration/workflows/test_crypto_exchange_import.py`:
+Create `backend/tests/integration/workflows/test_crypto_exchange_persistence.py`:
 
 ```python
 from datetime import datetime
@@ -1435,7 +1436,7 @@ Run:
 
 ```powershell
 Set-Location backend
-poetry run pytest tests/integration/workflows/test_crypto_exchange_import.py -q
+poetry run pytest tests/integration/workflows/test_crypto_exchange_persistence.py -q
 ```
 
 Expected: FAIL because `persist_crypto_exchange_event` does not exist.
@@ -1587,7 +1588,7 @@ Run:
 
 ```powershell
 Set-Location backend
-poetry run pytest tests/integration/workflows/test_crypto_exchange_import.py -q
+poetry run pytest tests/integration/workflows/test_crypto_exchange_persistence.py -q
 ```
 
 Expected: PASS.
@@ -1595,13 +1596,183 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add backend/core/broker_api_utils.py backend/core/crypto_exchange_import.py backend/core/import_utils.py backend/transactions/views.py backend/tests/integration/workflows/test_crypto_exchange_import.py
+git add backend/core/broker_api_utils.py backend/core/crypto_exchange_import.py backend/core/import_utils.py backend/transactions/views.py backend/tests/integration/workflows/test_crypto_exchange_persistence.py
 git commit -m "feat: persist crypto exchange import events" -m "- What changed: Added crypto exchange event persistence and broker adapters." -m "- Why: Bybit and OKX normalized events must become canonical asset transactions." -m "- Numerical impact / example: BTC/USDT fill creates linked BTC and USDT position legs." -m "- Tests added: Multi-leg persistence and idempotent provider-event import." -m "- Reviewer(s): needs approval"
 ```
 
 ---
 
-### Task 7: Frontend Credential UX
+### Task 7: Crypto-Crypto Quote Asset Fiat Valuation
+
+**Files:**
+
+- Modify: `backend/core/crypto_exchange_import.py`
+- Test: `backend/tests/integration/workflows/test_crypto_exchange_persistence.py`
+
+**Why this is separate:** Task 6 must remain conservative: it should reject crypto-crypto pairs instead of storing quote-denominated prices in fiat-valued transaction fields. This task adds the explicit valuation bridge required to safely import pairs like `ETH/BTC`.
+
+- [ ] **Step 1: Write failing crypto-crypto valuation tests**
+
+Append tests to `backend/tests/integration/workflows/test_crypto_exchange_persistence.py`:
+
+```python
+from datetime import date
+
+from common.models import Prices
+
+
+@pytest.mark.django_db
+def test_crypto_crypto_pair_uses_quote_asset_fiat_price(user, crypto_account):
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+    Prices.objects.create(security=btc, date=date(2026, 1, 1), price=Decimal("60000"))
+
+    event = _crypto_event(
+        provider_event_id="exec-ethbtc",
+        group_id="order-ethbtc",
+        legs=[
+            {
+                "asset": "ETH",
+                "quantity": Decimal("1.5"),
+                "price": Decimal("0.05"),
+                "price_asset": "BTC",
+                "role": "base",
+            },
+            {
+                "asset": "BTC",
+                "quantity": Decimal("-0.075"),
+                "price": Decimal("1"),
+                "price_asset": "BTC",
+                "role": "quote",
+            },
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    eth_tx = Transactions.objects.get(security__ticker="ETH")
+    btc_tx = Transactions.objects.get(security=btc)
+    assert len(created) == 2
+    assert eth_tx.price == Decimal("3000.000000000")
+    assert btc_tx.price == Decimal("60000.000000000")
+    assert btc_tx.quantity == Decimal("-0.075000000")
+
+
+@pytest.mark.django_db
+def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="exec-missing-price",
+        group_id="order-missing-price",
+        legs=[
+            {
+                "asset": "ETH",
+                "quantity": Decimal("1.5"),
+                "price": Decimal("0.05"),
+                "price_asset": "BTC",
+                "role": "base",
+            },
+            {
+                "asset": "BTC",
+                "quantity": Decimal("-0.075"),
+                "price": Decimal("1"),
+                "price_asset": "BTC",
+                "role": "quote",
+            },
+        ],
+        fee=None,
+    )
+
+    with pytest.raises(ValueError, match="Missing fiat price for quote asset BTC"):
+        persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert Transactions.objects.filter(import_group_id="order-missing-price").count() == 0
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run:
+
+```powershell
+Set-Location backend
+poetry run pytest tests/integration/workflows/test_crypto_exchange_persistence.py::test_crypto_crypto_pair_uses_quote_asset_fiat_price tests/integration/workflows/test_crypto_exchange_persistence.py::test_crypto_crypto_pair_requires_quote_asset_fiat_price -q --no-cov
+```
+
+Expected: FAIL because the current implementation rejects all non-stable quote asset prices.
+
+- [ ] **Step 3: Add quote asset fiat price resolver**
+
+In `backend/core/crypto_exchange_import.py`, add a helper that:
+
+- treats missing `price_asset`, `USD`, `USDT`, and `USDC` as fiat-equivalent for now
+- resolves non-stable quote assets with `resolve_crypto_asset`
+- looks up the latest `Prices` row with `date <= event date`
+- returns that fiat price as a `Decimal`
+- raises `ValueError(f"Missing fiat price for quote asset {quote_asset} on or before {event_date}")` when no usable price exists
+
+Do not create a `Prices` row inside the importer. The importer should consume existing price history only.
+
+- [ ] **Step 4: Derive fiat leg prices before persistence**
+
+Before opening the persistence transaction, validate and derive every persisted leg price:
+
+- Base leg where `price_asset` is stablecoin: use the existing normalized price.
+- Base leg where `price_asset` is non-stable crypto: use `leg.price * quote_asset_fiat_price`.
+- Quote leg where `asset == price_asset`: use `quote_asset_fiat_price`.
+- Stablecoin quote legs keep price `1`.
+- Fee metadata remains metadata only; do not create a fee-only row.
+
+If any leg cannot be converted to a fiat price, reject the whole event before writing any rows.
+
+- [ ] **Step 5: Preserve current safeguards**
+
+Keep these behaviors from Task 6:
+
+- provider-event idempotency
+- atomic all-or-no partial persistence
+- DecimalField normalization
+- no persisted `role="fee"` rows
+- clear error surfaced through `import_transactions_from_api`
+
+- [ ] **Step 6: Run focused persistence tests**
+
+Run:
+
+```powershell
+Set-Location backend
+poetry run pytest tests/integration/workflows/test_crypto_exchange_persistence.py -q --no-cov
+```
+
+Expected: PASS.
+
+- [ ] **Step 7: Run import normalizer tests**
+
+Run:
+
+```powershell
+Set-Location backend
+poetry run pytest tests/unit/imports/test_crypto_exchange_import.py -q --no-cov
+```
+
+Expected: PASS. This confirms the event normalizer still emits provider-native quote prices; fiat derivation belongs to persistence.
+
+- [ ] **Step 8: Commit**
+
+```powershell
+git add backend/core/crypto_exchange_import.py backend/tests/integration/workflows/test_crypto_exchange_persistence.py
+git commit -m "feat: value crypto quote pairs in fiat" -m "- What changed: Added quote-asset fiat valuation for crypto-crypto exchange pairs." -m "- Why: ETH/BTC-style fills need USD-denominated transaction prices for NAV, basis, and gain/loss." -m "- Numerical impact / example: 1.5 ETH at 0.05 BTC with BTC/USD 60000 persists ETH at 3000 USD and BTC at 60000 USD." -m "- Tests added: Crypto-crypto pair valuation and missing quote price rejection." -m "- Reviewer(s): needs approval"
+```
+
+---
+
+### Task 8: Frontend Credential UX
 
 **Files:**
 
@@ -1753,7 +1924,7 @@ git commit -m "feat: add crypto exchange token UX" -m "- What changed: Added Byb
 
 ---
 
-### Task 8: Security Page Rewards And Transaction Descriptions
+### Task 9: Security Page Rewards And Transaction Descriptions
 
 **Files:**
 
@@ -1925,7 +2096,7 @@ git commit -m "feat: show crypto rewards on security pages" -m "- What changed: 
 
 ---
 
-### Task 9: Final Verification And PR Preparation
+### Task 10: Final Verification And PR Preparation
 
 **Files:**
 
@@ -1937,7 +2108,7 @@ Run:
 
 ```powershell
 Set-Location backend
-poetry run pytest tests/unit/api/test_crypto_exchange_clients.py tests/unit/imports/test_crypto_exchange_import.py tests/unit/calculations/test_crypto_rewards.py tests/integration/api/test_crypto_token_api.py tests/integration/workflows/test_crypto_exchange_import.py -q
+poetry run pytest tests/unit/api/test_crypto_exchange_clients.py tests/unit/imports/test_crypto_exchange_import.py tests/unit/calculations/test_crypto_rewards.py tests/integration/api/test_crypto_token_api.py tests/integration/workflows/test_crypto_exchange_persistence.py -q
 ```
 
 Expected: PASS.
@@ -1997,7 +2168,7 @@ Expected: includes protected files `backend/common/models.py`, migrations, and c
 
 - [ ] **Step 7: Create final commit if verification notes changed**
 
-Only run this when the plan checklist or docs changed after Task 8:
+Only run this when the plan checklist or docs changed after Task 9:
 
 ```powershell
 git add docs/superpowers/plans/2026-06-07-crypto-exchange-brokers.md
@@ -2017,6 +2188,7 @@ Adds asset-led crypto exchange import support for Bybit and OKX:
 - Bybit/OKX encrypted credential APIs
 - signed REST clients
 - normalized spot trade imports
+- crypto-crypto pair fiat valuation through quote asset price history
 - crypto reward capital distribution behavior
 - Security page native/fiat reward visibility
 
@@ -2044,9 +2216,17 @@ Trade fixture:
 - USDT asset position decreases by 6003
 - linked rows share provider group id
 
+Crypto-crypto valuation fixture:
+- Buy 1.5 ETH for 0.075 BTC
+- trade price is 0.05 BTC per ETH
+- existing BTC/USD price is 60000
+- ETH leg persists at 3000 USD
+- BTC leg persists at 60000 USD
+- if BTC/USD price is missing, the event is rejected before any rows are written
+
 ## Verification
 
-- `poetry run pytest tests/unit/api/test_crypto_exchange_clients.py tests/unit/imports/test_crypto_exchange_import.py tests/unit/calculations/test_crypto_rewards.py tests/integration/api/test_crypto_token_api.py tests/integration/workflows/test_crypto_exchange_import.py -q`
+- `poetry run pytest tests/unit/api/test_crypto_exchange_clients.py tests/unit/imports/test_crypto_exchange_import.py tests/unit/calculations/test_crypto_rewards.py tests/integration/api/test_crypto_token_api.py tests/integration/workflows/test_crypto_exchange_persistence.py -q`
 - `poetry run pytest tests/unit/calculations/test_buy_in_price.py tests/unit/calculations/test_gain_loss.py tests/unit/calculations/test_nav_calculations.py tests/unit/calculations/test_bond_aci.py -q`
 - `poetry run python manage.py makemigrations --check --dry-run`
 - `npm test -- BrokerTokenManager.crypto.spec.js --runInBand`
