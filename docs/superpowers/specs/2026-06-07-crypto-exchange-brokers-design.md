@@ -153,6 +153,23 @@ Example: buy `0.1 BTC` for `6000 USDT` with `3 USDT` fee.
 - The event group records that both rows came from the same fill.
 - Fiat reporting comes from price data at the relevant date, not from treating USDT as fiat cash.
 
+Crypto-crypto pairs such as `ETH/BTC` need an explicit fiat valuation step before persistence. The transaction `price` field is consumed by downstream NAV, realized gain/loss, and basis calculations as a fiat-denominated price. Therefore an exchange price such as `1 ETH = 0.05 BTC` must not be stored directly as `price=0.05`, because that would be interpreted as `0.05 USD`.
+
+The approved approach is conservative quote-asset valuation:
+
+- Resolve the quote asset as a crypto `Assets` row.
+- Look up the quote asset fiat price at the trade timestamp, for example BTC/USD.
+- Derive the base leg fiat price from `base/quote * quote/USD`.
+- Persist the quote leg at the same quote asset fiat price.
+- If the quote asset fiat price is missing for the trade date, reject the event with a clear import error that names the missing quote asset/date instead of persisting unsafe rows.
+
+Example: buy `1.5 ETH` for `0.075 BTC` when BTC/USD is `60000`.
+
+- ETH leg uses derived fiat price `0.05 * 60000 = 3000 USD`.
+- BTC leg uses fiat price `60000 USD`.
+- Both legs remain canonical asset transactions linked by provider group id.
+- No `FXTransaction` is created, and no BTC-denominated price is stored in a USD-valued field.
+
 ## Rewards And Cost Basis
 
 Rewards should behave like scrip-dividend-style income.
@@ -238,6 +255,8 @@ Use Decimal for expected values. Add tests for:
 - Brokers with active Bybit/OKX tokens appearing in Direct Import.
 - Duplicate detection using provider event ids.
 - `BTC/USDT` spot trade import as linked asset movements.
+- `ETH/BTC` spot trade import using existing BTC/USD price to derive fiat leg prices.
+- Missing quote asset fiat price rejection for crypto-crypto pairs.
 - Stablecoins as `Asset(type="Crypto")`, not cash.
 - Crypto reward import increasing native position.
 - Crypto reward fiat value appearing in capital distribution.
@@ -272,6 +291,7 @@ Run focused backend tests first, then broader backend pytest if feasible. Run fr
 
 4. Import mapping:
    - spot pair trades
+   - crypto-crypto quote-asset fiat valuation
    - rewards/earn/funding
    - deposits, withdrawals, transfers
    - fees
@@ -291,5 +311,6 @@ Run focused backend tests first, then broader backend pytest if feasible. Run fr
 
 - Provider event ids and import grouping are required. Exact field names can be chosen during implementation, but duplicate detection must be provider-id based for exchange imports.
 - `Crypto reward` must have no fiat cash-flow side effect. Reward value is derived from event-date quantity and price.
+- Crypto-crypto pairs must not persist quote-denominated prices into fiat-valued transaction fields. Use existing quote asset fiat prices, or reject the event when the needed price is missing.
 - Crypto principal transfers are neutral by default.
 - Add fixtures for both Bybit and OKX in the first implementation plan, with Bybit implemented first only if sequencing is needed.

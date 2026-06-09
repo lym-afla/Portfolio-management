@@ -1,8 +1,9 @@
+from datetime import date
 from decimal import Decimal
 
 import pytest
 
-from common.models import Accounts, Assets, Brokers, Transactions
+from common.models import Accounts, Assets, Brokers, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
@@ -83,7 +84,18 @@ def test_persist_crypto_trade_event_creates_linked_asset_legs(user, crypto_accou
 
 
 @pytest.mark.django_db
-def test_non_usd_quote_pair_is_rejected_without_partial_persistence(user, crypto_account):
+def test_crypto_crypto_pair_uses_quote_asset_fiat_price(user, crypto_account):
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+    Prices.objects.create(security=btc, date=date(2026, 1, 1), price=Decimal("60000"))
+
     event = _crypto_event(
         provider_event_id="exec-ethbtc",
         group_id="order-ethbtc",
@@ -106,10 +118,47 @@ def test_non_usd_quote_pair_is_rejected_without_partial_persistence(user, crypto
         fee=None,
     )
 
-    with pytest.raises(ValueError, match="without fiat-denominated price"):
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    eth_tx = Transactions.objects.get(security__ticker="ETH")
+    btc_tx = Transactions.objects.get(security=btc)
+    assert len(created) == 2
+    assert eth_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
+    assert eth_tx.quantity == Decimal("1.500000000")
+    assert eth_tx.price == Decimal("3000.000000000")
+    assert btc_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+    assert btc_tx.quantity == Decimal("-0.075000000")
+    assert btc_tx.price == Decimal("60000.000000000")
+
+
+@pytest.mark.django_db
+def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="exec-missing-price",
+        group_id="order-missing-price",
+        legs=[
+            {
+                "asset": "ETH",
+                "quantity": Decimal("1.5"),
+                "price": Decimal("0.05"),
+                "price_asset": "BTC",
+                "role": "base",
+            },
+            {
+                "asset": "BTC",
+                "quantity": Decimal("-0.075"),
+                "price": Decimal("1"),
+                "price_asset": "BTC",
+                "role": "quote",
+            },
+        ],
+        fee=None,
+    )
+
+    with pytest.raises(ValueError, match="Missing fiat price for quote asset BTC"):
         persist_crypto_exchange_event(event, user, crypto_account)
 
-    assert Transactions.objects.filter(import_group_id="order-ethbtc").count() == 0
+    assert Transactions.objects.filter(import_group_id="order-missing-price").count() == 0
 
 
 @pytest.mark.django_db

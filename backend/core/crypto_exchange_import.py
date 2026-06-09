@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from django.db import IntegrityError, transaction
 
-from common.models import Assets, OptionMetadata, Transactions
+from common.models import Assets, OptionMetadata, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
@@ -123,12 +123,35 @@ def _leg_quantity(leg):
     return quantity if isinstance(quantity, Decimal) else Decimal(str(quantity))
 
 
-def _leg_price(leg):
+def _leg_raw_price(leg):
     price = leg.get("price")
     if price is None:
         return None
 
-    price = price if isinstance(price, Decimal) else Decimal(str(price))
+    return price if isinstance(price, Decimal) else Decimal(str(price))
+
+
+def _quote_asset_fiat_price(price_asset, user, event_date):
+    quote_asset_symbol = str(price_asset).upper()
+    quote_asset = resolve_crypto_asset(quote_asset_symbol, user)
+    quote = (
+        Prices.objects.filter(security=quote_asset, date__lte=event_date.date())
+        .order_by("-date")
+        .first()
+    )
+    if quote is None:
+        raise ValueError(
+            f"Missing fiat price for quote asset {quote_asset_symbol} "
+            f"on or before {event_date.date()}"
+        )
+    return Decimal(quote.price)
+
+
+def _leg_fiat_price(leg, user, event_date):
+    price = _leg_raw_price(leg)
+    if price is None:
+        return None
+
     asset_symbol = str(leg.get("asset", "")).upper()
     price_asset = leg.get("price_asset")
     normalized_price_asset = str(price_asset).upper() if price_asset else None
@@ -137,7 +160,15 @@ def _leg_price(leg):
         return price
     if asset_symbol in STABLECOINS and price == Decimal("1"):
         return price
-    return None
+
+    quote_asset_price = _quote_asset_fiat_price(
+        normalized_price_asset,
+        user,
+        event_date,
+    )
+    if asset_symbol == normalized_price_asset and price == Decimal("1"):
+        return quote_asset_price
+    return price * quote_asset_price
 
 
 def _normalize_model_decimal(model, field_name, value):
@@ -190,7 +221,7 @@ def persist_crypto_exchange_event(event, user, account):
         if quantity == 0:
             continue
 
-        price = _leg_price(leg)
+        price = _leg_fiat_price(leg, user, event_time)
         if price is None:
             raise ValueError(
                 "Cannot persist crypto exchange event without fiat-denominated "
