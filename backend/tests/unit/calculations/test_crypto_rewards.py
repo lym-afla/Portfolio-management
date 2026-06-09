@@ -6,15 +6,15 @@ from decimal import Decimal
 import pytest
 
 from common.models import Accounts, Assets, Brokers, Prices, Transactions
-from core.portfolio_utils import _calculate_cash_flow
 from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CRYPTO_REWARD,
-    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
+from core.portfolio_utils import IRR, _calculate_cash_flow
 
 
 @pytest.fixture
@@ -95,9 +95,7 @@ def test_crypto_reward_does_not_distort_paid_entry_price(user, crypto_account, b
 
 
 @pytest.mark.django_db
-def test_crypto_transfer_out_reduces_economic_basis_for_remaining_lots(
-    user, crypto_account, btc
-):
+def test_crypto_transfer_out_reduces_economic_basis_for_remaining_lots(user, crypto_account, btc):
     """Transfer out removes proportional basis from current crypto lots."""
     Transactions.objects.create(
         investor=user,
@@ -136,9 +134,7 @@ def test_crypto_transfer_out_reduces_economic_basis_for_remaining_lots(
 
 
 @pytest.mark.django_db
-def test_rewarded_crypto_lot_unrealized_gain_uses_economic_basis(
-    user, crypto_account, btc
-):
+def test_rewarded_crypto_lot_unrealized_gain_uses_economic_basis(user, crypto_account, btc):
     """Reward value is distribution, not zero-cost unrealized appreciation."""
     Transactions.objects.create(
         investor=user,
@@ -179,9 +175,7 @@ def test_rewarded_crypto_lot_unrealized_gain_uses_economic_basis(
 
 
 @pytest.mark.django_db
-def test_crypto_unrealized_gain_uses_unrounded_current_position(
-    user, crypto_account, btc
-):
+def test_crypto_unrealized_gain_uses_unrounded_current_position(user, crypto_account, btc):
     """Unrealized G/L preserves sub-1e-6 crypto current quantity."""
     Transactions.objects.create(
         investor=user,
@@ -206,9 +200,7 @@ def test_crypto_unrealized_gain_uses_unrounded_current_position(
 
 
 @pytest.mark.django_db
-def test_rewarded_crypto_lot_realized_gain_uses_economic_basis(
-    user, crypto_account, btc
-):
+def test_rewarded_crypto_lot_realized_gain_uses_economic_basis(user, crypto_account, btc):
     """Full rewarded crypto disposal realizes proceeds over economic basis."""
     Transactions.objects.create(
         investor=user,
@@ -241,9 +233,7 @@ def test_rewarded_crypto_lot_realized_gain_uses_economic_basis(
         price=Decimal("200.000000000"),
     )
 
-    realized = btc.realized_gain_loss(
-        datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
-    )
+    realized = btc.realized_gain_loss(datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("100.00")
     assert btc.get_capital_distribution(
         datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
@@ -251,9 +241,7 @@ def test_rewarded_crypto_lot_realized_gain_uses_economic_basis(
 
 
 @pytest.mark.django_db
-def test_crypto_realized_gain_uses_basis_only_up_to_disposal_time(
-    user, crypto_account, btc
-):
+def test_crypto_realized_gain_uses_basis_only_up_to_disposal_time(user, crypto_account, btc):
     """Same-day later crypto rows do not affect basis before an earlier sale."""
     Transactions.objects.create(
         investor=user,
@@ -286,9 +274,7 @@ def test_crypto_realized_gain_uses_basis_only_up_to_disposal_time(
         price=Decimal("1000.000000000"),
     )
 
-    realized = btc.realized_gain_loss(
-        datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id]
-    )
+    realized = btc.realized_gain_loss(datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("50.00")
 
 
@@ -336,16 +322,12 @@ def test_crypto_realized_gain_separates_same_day_round_trips(user, crypto_accoun
         price=Decimal("1100.000000000"),
     )
 
-    realized = btc.realized_gain_loss(
-        datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id]
-    )
+    realized = btc.realized_gain_loss(datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("200.00")
 
 
 @pytest.mark.django_db
-def test_crypto_unrealized_gain_with_start_date_uses_opening_basis(
-    user, crypto_account, btc
-):
+def test_crypto_unrealized_gain_with_start_date_uses_opening_basis(user, crypto_account, btc):
     """Period unrealized G/L keeps basis from lots opened before start_date."""
     Transactions.objects.create(
         investor=user,
@@ -384,9 +366,7 @@ def test_crypto_unrealized_gain_with_start_date_uses_opening_basis(
 
 
 @pytest.mark.django_db
-def test_crypto_realized_gain_with_start_date_uses_opening_basis(
-    user, crypto_account, btc
-):
+def test_crypto_realized_gain_with_start_date_uses_opening_basis(user, crypto_account, btc):
     """Period realized G/L keeps basis from lots opened before start_date."""
     Transactions.objects.create(
         investor=user,
@@ -503,9 +483,7 @@ def test_crypto_realized_gain_with_start_date_uses_unrounded_opening_position(
 
 
 @pytest.mark.django_db
-def test_crypto_realized_gain_uses_unrounded_economic_basis(
-    user, crypto_account, btc
-):
+def test_crypto_realized_gain_uses_unrounded_economic_basis(user, crypto_account, btc):
     """Internal basis precision avoids losing a cent in realized G/L."""
     Transactions.objects.create(
         investor=user,
@@ -528,9 +506,7 @@ def test_crypto_realized_gain_uses_unrounded_economic_basis(
         price=Decimal("100.021000000"),
     )
 
-    realized = btc.realized_gain_loss(
-        datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
-    )
+    realized = btc.realized_gain_loss(datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id])
     assert btc.get_economic_basis(
         datetime(2026, 1, 1).date(), user, "USD", [crypto_account.id]
     ) == Decimal("100.02")
@@ -727,9 +703,7 @@ def test_grouped_transfer_preserves_sub_micro_crypto_basis(user, crypto_account,
 
 
 @pytest.mark.django_db
-def test_grouped_transfer_basis_ignores_other_asset_transactions(
-    user, crypto_account, btc
-):
+def test_grouped_transfer_basis_ignores_other_asset_transactions(user, crypto_account, btc):
     """Internal transfer basis lookup is scoped to the transferred security."""
     eth = Assets.objects.create(
         type=ASSET_TYPE_CRYPTO,
@@ -796,9 +770,7 @@ def test_grouped_transfer_basis_ignores_other_asset_transactions(
 
 
 @pytest.mark.django_db
-def test_grouped_transfer_basis_does_not_cross_import_provider(
-    user, crypto_account, btc
-):
+def test_grouped_transfer_basis_does_not_cross_import_provider(user, crypto_account, btc):
     """Grouped transfer basis is not carried across provider collisions."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
@@ -851,9 +823,7 @@ def test_grouped_transfer_basis_does_not_cross_import_provider(
 
 
 @pytest.mark.django_db
-def test_grouped_transfer_basis_requires_unambiguous_source_account(
-    user, crypto_account, btc
-):
+def test_grouped_transfer_basis_requires_unambiguous_source_account(user, crypto_account, btc):
     """Ambiguous same-provider/group/account flows do not steal first source basis."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
@@ -954,9 +924,7 @@ def test_grouped_transfer_basis_requires_unambiguous_source_account(
 
 
 @pytest.mark.django_db
-def test_split_grouped_transfer_allocates_basis_proportionally(
-    user, crypto_account, btc
-):
+def test_split_grouped_transfer_allocates_basis_proportionally(user, crypto_account, btc):
     """Split transfer-ins share one source transfer-out basis by quantity."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
@@ -1033,9 +1001,7 @@ def test_split_grouped_transfer_allocates_basis_proportionally(
 
 
 @pytest.mark.django_db
-def test_split_grouped_transfer_outs_from_same_source_allocate_basis(
-    user, crypto_account, btc
-):
+def test_split_grouped_transfer_outs_from_same_source_allocate_basis(user, crypto_account, btc):
     """Multiple same-source transfer-outs can fund later grouped transfer-ins."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
@@ -1137,9 +1103,7 @@ def test_split_grouped_transfer_outs_from_same_source_allocate_basis(
 
 
 @pytest.mark.django_db
-def test_grouped_transfer_basis_does_not_use_future_transfer_out(
-    user, crypto_account, btc
-):
+def test_grouped_transfer_basis_does_not_use_future_transfer_out(user, crypto_account, btc):
     """Grouped transfer-in does not receive basis from a later transfer-out."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
@@ -1192,9 +1156,7 @@ def test_grouped_transfer_basis_does_not_use_future_transfer_out(
 
 
 @pytest.mark.django_db
-def test_blank_provider_transfer_in_does_not_match_provider_transfer_out(
-    user, crypto_account, btc
-):
+def test_blank_provider_transfer_in_does_not_match_provider_transfer_out(user, crypto_account, btc):
     """Blank-provider transfer-in only matches blank-provider transfer-out."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
@@ -1273,6 +1235,146 @@ def test_crypto_trade_cash_flow_for_irr_without_account_cash(user, crypto_accoun
     assert _calculate_cash_flow(trade_in) == Decimal("-100.000000000000000000")
     assert _calculate_cash_flow(trade_out) == Decimal("60.000000000000000000")
     assert crypto_account.balance(datetime(2026, 1, 3).date()) == {}
+
+
+@pytest.mark.django_db
+def test_external_crypto_transfer_cash_flow_for_irr_without_account_cash(user, crypto_account, btc):
+    """External crypto transfers are IRR flows but not account cash."""
+    transfer_in = Transactions.objects.create(
+        investor=user,
+        account=crypto_account,
+        security=btc,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+        date=datetime(2026, 1, 1, 12, 0),
+        quantity=Decimal("0.250000000"),
+        price=Decimal("40000.000000000"),
+    )
+    transfer_out = Transactions.objects.create(
+        investor=user,
+        account=crypto_account,
+        security=btc,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+        date=datetime(2026, 1, 2, 12, 0),
+        quantity=Decimal("-0.100000000"),
+        price=Decimal("45000.000000000"),
+    )
+
+    assert _calculate_cash_flow(transfer_in) == Decimal("-10000.000000000000000000")
+    assert _calculate_cash_flow(transfer_out) == Decimal("4500.000000000000000000")
+    assert crypto_account.balance(datetime(2026, 1, 3).date()) == {}
+
+
+@pytest.mark.django_db
+def test_portfolio_irr_includes_external_crypto_transfer_flow(
+    monkeypatch, user, crypto_account, btc
+):
+    """Portfolio IRR treats unpaired crypto transfer-in as an external contribution."""
+    Transactions.objects.create(
+        investor=user,
+        account=crypto_account,
+        security=btc,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+        date=datetime(2026, 1, 1, 12, 0),
+        quantity=Decimal("0.250000000"),
+        price=Decimal("40000.000000000"),
+    )
+    captured = {}
+
+    def capture_xirr(dates, cash_flows):
+        captured["dates"] = dates
+        captured["cash_flows"] = cash_flows
+        return Decimal("0.10")
+
+    monkeypatch.setattr("core.portfolio_utils.xirr", capture_xirr)
+
+    result = IRR(
+        user.id,
+        datetime(2026, 1, 2).date(),
+        "USD",
+        account_ids=[crypto_account.id],
+        cached_nav=Decimal("11000.00"),
+    )
+
+    assert result == Decimal("0.1000")
+    assert captured["cash_flows"] == [
+        Decimal("-10000.00"),
+        Decimal("11000.00"),
+    ]
+
+
+@pytest.mark.django_db
+def test_internal_crypto_transfer_is_account_flow_but_portfolio_neutral(
+    monkeypatch, user, crypto_account, btc
+):
+    """Paired internal transfers cancel for combined scope and flow for each account."""
+    destination = Accounts.objects.create(
+        broker=crypto_account.broker,
+        name="Funding",
+        native_id="bybit-funding",
+    )
+    transfer_group = "internal-transfer-for-irr"
+    Transactions.objects.create(
+        investor=user,
+        account=crypto_account,
+        security=btc,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+        date=datetime(2026, 1, 1, 12, 0),
+        quantity=Decimal("-0.400000000"),
+        price=Decimal("25000.000000000"),
+        import_group_id=transfer_group,
+    )
+    Transactions.objects.create(
+        investor=user,
+        account=destination,
+        security=btc,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+        date=datetime(2026, 1, 1, 12, 1),
+        quantity=Decimal("0.400000000"),
+        price=Decimal("25000.000000000"),
+        import_group_id=transfer_group,
+    )
+    captured = []
+
+    def capture_xirr(dates, cash_flows):
+        captured.append(cash_flows)
+        return Decimal("0.10")
+
+    monkeypatch.setattr("core.portfolio_utils.xirr", capture_xirr)
+
+    IRR(
+        user.id,
+        datetime(2026, 1, 2).date(),
+        "USD",
+        account_ids=[crypto_account.id, destination.id],
+        cached_nav=Decimal("0.00"),
+    )
+    IRR(
+        user.id,
+        datetime(2026, 1, 2).date(),
+        "USD",
+        account_ids=[crypto_account.id],
+        cached_nav=Decimal("0.00"),
+    )
+    IRR(
+        user.id,
+        datetime(2026, 1, 2).date(),
+        "USD",
+        account_ids=[destination.id],
+        cached_nav=Decimal("0.00"),
+    )
+
+    assert captured[0] == [
+        Decimal("10000.00"),
+        Decimal("-10000.00"),
+        Decimal("0.00"),
+    ]
+    assert captured[1] == [Decimal("10000.00"), Decimal("0.00")]
+    assert captured[2] == [Decimal("-10000.00"), Decimal("0.00")]
 
 
 @pytest.mark.django_db
