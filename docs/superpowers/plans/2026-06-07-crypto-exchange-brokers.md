@@ -2106,7 +2106,7 @@ git commit -m "feat: show crypto rewards on security pages" -m "- What changed: 
 
 - Modify: `docs/superpowers/plans/2026-06-07-crypto-exchange-brokers.md` only if execution notes need checked-off updates.
 
-- [ ] **Step 1: Run backend focused tests**
+- [x] **Step 1: Run backend focused tests**
 
 Run:
 
@@ -2117,7 +2117,9 @@ poetry run pytest tests/unit/api/test_crypto_exchange_clients.py tests/unit/impo
 
 Expected: PASS.
 
-- [ ] **Step 2: Run protected calculation regression tests**
+Execution note 2026-06-09: PASS with `.\\venv\\Scripts\\python.exe`; 97 tests passed.
+
+- [x] **Step 2: Run protected calculation regression tests**
 
 Run:
 
@@ -2128,7 +2130,9 @@ poetry run pytest tests/unit/calculations/test_buy_in_price.py tests/unit/calcul
 
 Expected: PASS.
 
-- [ ] **Step 3: Run migration check**
+Execution note 2026-06-09: PASS with `.\\venv\\Scripts\\python.exe`; 68 tests passed.
+
+- [x] **Step 3: Run migration check**
 
 Run:
 
@@ -2139,7 +2143,9 @@ poetry run python manage.py makemigrations --check --dry-run
 
 Expected: `No changes detected`.
 
-- [ ] **Step 4: Run frontend token manager test**
+Execution note 2026-06-09: PASS; `No changes detected`.
+
+- [x] **Step 4: Run frontend token manager test**
 
 Run:
 
@@ -2150,7 +2156,9 @@ npm test -- BrokerTokenManager.crypto.spec.js --runInBand
 
 Expected: PASS.
 
-- [ ] **Step 5: Run whitespace check**
+Execution note 2026-06-09: PASS with `npm run test:unit -- BrokerTokenManager.spec.js`; 12 tests passed.
+
+- [x] **Step 5: Run whitespace check**
 
 Run:
 
@@ -2160,7 +2168,9 @@ git diff --check
 
 Expected: no output and exit code 0.
 
-- [ ] **Step 6: Inspect protected file list for PR description**
+Execution note 2026-06-09: PASS; no whitespace errors.
+
+- [x] **Step 6: Inspect protected file list for PR description**
 
 Run:
 
@@ -2170,7 +2180,9 @@ git diff --name-only origin/fix/general-fixes...HEAD
 
 Expected: includes protected files `backend/common/models.py`, migrations, and calculation-adjacent modules. Use this list in PR description.
 
-- [ ] **Step 7: Create final commit if verification notes changed**
+Execution note 2026-06-09: Final verification branch was created after PR #8 merged, so `git diff --name-only origin/main...HEAD` returned no code diff. Protected files had already been documented in PR #7 and PR #8.
+
+- [x] **Step 7: Create final commit if verification notes changed**
 
 Only run this when the plan checklist or docs changed after Task 9:
 
@@ -2179,7 +2191,9 @@ git add docs/superpowers/plans/2026-06-07-crypto-exchange-brokers.md
 git commit -m "docs: update crypto exchange implementation plan" -m "- What changed: Updated implementation plan execution notes." -m "- Why: Keep PR review trail aligned with completed work." -m "- Numerical impact / example: Documentation-only change." -m "- Tests added: Not applicable." -m "- Reviewer(s): needs approval"
 ```
 
-- [ ] **Step 8: Prepare PR summary**
+- [x] **Step 8: Prepare PR summary**
+
+Execution note 2026-06-09: Final PR summary was split across the merged implementation PRs #7 and #8. This final verification update is documentation-only.
 
 Use this PR summary structure:
 
