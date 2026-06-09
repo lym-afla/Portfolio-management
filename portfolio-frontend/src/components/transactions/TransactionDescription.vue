@@ -12,7 +12,7 @@
     </template>
 
     <template v-else>
-      <template v-if="transaction.type">
+      <template v-if="transaction.type && !isCryptoEvent">
         {{ transaction.type }}{{ ' ' }}
       </template>
 
@@ -68,6 +68,20 @@
         <span v-if="transaction.comment" class="text-grey">
           - {{ transaction.comment }}
         </span>
+      </template>
+
+      <!-- Crypto events -->
+      <template v-else-if="transaction.type === 'Crypto reward'">
+        Crypto reward of {{ transaction.quantity }}
+        {{ transaction.security?.ticker || transaction.security?.name }}
+      </template>
+
+      <template v-else-if="isCryptoEvent">
+        {{ transaction.type }} {{ transaction.quantity }}
+        {{ transaction.security?.ticker || transaction.security?.name }}
+        <template v-if="transaction.price && transaction.price !== '–'">
+          @{{ transaction.price }}
+        </template>
       </template>
 
       <!-- Regular transaction (Buy/Sell) -->
@@ -150,6 +164,17 @@ export default {
       () => props.transaction.type === 'Stock split'
     )
 
+    const isCryptoEvent = computed(() =>
+      [
+        'Crypto reward',
+        'Crypto transfer in',
+        'Crypto transfer out',
+        'Crypto trade in',
+        'Crypto trade out',
+        'Option settlement',
+      ].includes(props.transaction.type)
+    )
+
     const isRegularTransaction = computed(
       () =>
         ![
@@ -160,7 +185,9 @@ export default {
           'Bond maturity',
           'Stock split',
           'FX',
-        ].includes(props.transaction.type) && !isCashTransaction.value
+        ].includes(props.transaction.type) &&
+        !isCashTransaction.value &&
+        !isCryptoEvent.value
     )
 
     const formatExchangeRate = (rate) => {
@@ -178,6 +205,7 @@ export default {
       isStockSplit,
       isDividendOrCoupon,
       isFXTransaction,
+      isCryptoEvent,
       isRegularTransaction,
       formatExchangeRate,
     }
