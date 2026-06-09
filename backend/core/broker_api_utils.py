@@ -8,7 +8,7 @@ with various broker APIs to fetch transactions and account data.
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import AsyncGenerator, Dict, Optional
 
 from channels.db import database_sync_to_async
@@ -22,7 +22,7 @@ from t_tech.invest import (
 from common.models import Accounts, Brokers
 from users.models import BybitApiToken, OKXApiToken
 
-from .crypto_exchange_clients import BybitClient, OKXClient
+from .crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
 from .crypto_exchange_import import (
     normalize_bybit_spot_execution,
     normalize_okx_spot_fill,
@@ -34,6 +34,33 @@ from .tinkoff_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_import_boundary(value, *, end_of_day=False):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time.max if end_of_day else time.min)
+    else:
+        parsed_date = datetime.strptime(str(value), "%Y-%m-%d").date()
+        parsed = datetime.combine(parsed_date, time.max if end_of_day else time.min)
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
+def _crypto_exchange_date_params(date_from, date_to, *, start_key, end_key):
+    params = {}
+    start_ms = _parse_import_boundary(date_from)
+    end_ms = _parse_import_boundary(date_to, end_of_day=True)
+    if start_ms is not None:
+        params[start_key] = start_ms
+    if end_ms is not None:
+        params[end_key] = end_ms
+    return params
 
 
 class BrokerAPIException(Exception):
@@ -493,8 +520,20 @@ class BybitAPI(BrokerAPI):
             api_secret=token.get_api_secret(self.user),
             testnet=token.testnet,
         )
-        for payload in client.iter_executions({"category": "spot"}):
-            yield normalize_bybit_spot_execution(payload)
+        params = {
+            "category": "spot",
+            **_crypto_exchange_date_params(
+                date_from,
+                date_to,
+                start_key="startTime",
+                end_key="endTime",
+            ),
+        }
+        try:
+            for payload in client.iter_executions(params):
+                yield normalize_bybit_spot_execution(payload)
+        except CryptoExchangeAPIError as exc:
+            raise BrokerAPIException(f"Failed to fetch Bybit transactions: {exc}") from exc
 
 
 class OKXAPI(BrokerAPI):
@@ -540,8 +579,20 @@ class OKXAPI(BrokerAPI):
             passphrase=token.get_passphrase(self.user),
             simulated_trading=token.simulated_trading,
         )
-        for payload in client.iter_fills_history({"instType": "SPOT"}):
-            yield normalize_okx_spot_fill(payload)
+        params = {
+            "instType": "SPOT",
+            **_crypto_exchange_date_params(
+                date_from,
+                date_to,
+                start_key="begin",
+                end_key="end",
+            ),
+        }
+        try:
+            for payload in client.iter_fills_history(params):
+                yield normalize_okx_spot_fill(payload)
+        except CryptoExchangeAPIError as exc:
+            raise BrokerAPIException(f"Failed to fetch OKX transactions: {exc}") from exc
 
 
 async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:

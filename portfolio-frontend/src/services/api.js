@@ -1353,6 +1353,32 @@ export const saveIBToken = async (tokenData) => {
   }
 }
 
+export const saveBybitToken = async (tokenData) => {
+  try {
+    const response = await axiosInstance.post(
+      '/users/api/bybit-tokens/',
+      tokenData
+    )
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error saving Bybit token:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const saveOKXToken = async (tokenData) => {
+  try {
+    const response = await axiosInstance.post(
+      '/users/api/okx-tokens/',
+      tokenData
+    )
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error saving OKX token:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 export const testIBConnection = async (tokenId) => {
   try {
     const response = await axiosInstance.post(
@@ -1386,6 +1412,12 @@ export const deleteToken = async (broker, tokenId) => {
       break
     case 'ib':
       brokerEndpoint = 'ib-tokens'
+      break
+    case 'bybit':
+      brokerEndpoint = 'bybit-tokens'
+      break
+    case 'okx':
+      brokerEndpoint = 'okx-tokens'
       break
     default:
       throw new Error(`Unsupported broker type: ${broker}`)

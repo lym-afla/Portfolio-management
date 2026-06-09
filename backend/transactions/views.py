@@ -1364,11 +1364,28 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         # Crypto exchange events produce multiple canonical legs and handle
                         # idempotency internally, so they persist immediately regardless of
                         # confirm_every.
-                        created = await database_sync_to_async(persist_crypto_exchange_event)(
-                            trans,
-                            user,
-                            account,
-                        )
+                        try:
+                            created = await database_sync_to_async(
+                                persist_crypto_exchange_event
+                            )(
+                                trans,
+                                user,
+                                account,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error processing crypto exchange event: {str(e)}",
+                                exc_info=True,
+                            )
+                            yield {
+                                "status": "transaction_error",
+                                "message": (
+                                    "Error processing crypto exchange event: "
+                                    f"{str(e)}"
+                                ),
+                                "error_detail": str(e),
+                            }
+                            continue
                         yield {
                             "status": "transaction_saved",
                             "message": f"Saved {len(created)} crypto transaction legs",

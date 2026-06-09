@@ -83,9 +83,7 @@ def test_persist_crypto_trade_event_creates_linked_asset_legs(user, crypto_accou
 
 
 @pytest.mark.django_db
-def test_non_usd_quote_pair_does_not_store_btc_denominated_price_as_usd(
-    user, crypto_account
-):
+def test_non_usd_quote_pair_is_rejected_without_partial_persistence(user, crypto_account):
     event = _crypto_event(
         provider_event_id="exec-ethbtc",
         group_id="order-ethbtc",
@@ -108,12 +106,10 @@ def test_non_usd_quote_pair_does_not_store_btc_denominated_price_as_usd(
         fee=None,
     )
 
-    persist_crypto_exchange_event(event, user, crypto_account)
+    with pytest.raises(ValueError, match="without fiat-denominated price"):
+        persist_crypto_exchange_event(event, user, crypto_account)
 
-    eth_tx = Transactions.objects.get(security__ticker="ETH")
-    assert eth_tx.price is None
-    assert "price_asset=BTC" in eth_tx.comment
-    assert "role=base" in eth_tx.comment
+    assert Transactions.objects.filter(import_group_id="order-ethbtc").count() == 0
 
 
 @pytest.mark.django_db
@@ -153,3 +149,69 @@ def test_fee_info_appears_in_comments_without_extra_rows(user, crypto_account):
     assert all("fee_asset=USDT" in comment for comment in comments)
     assert all("fee_quantity=-3" in comment for comment in comments)
     assert all("fee_is_rebate=False" in comment for comment in comments)
+
+
+@pytest.mark.django_db
+def test_fee_role_leg_is_not_persisted_as_position_change(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="exec-third-fee",
+        group_id="order-third-fee",
+        legs=[
+            {
+                "asset": "ETH",
+                "quantity": Decimal("2"),
+                "price": Decimal("3000"),
+                "price_asset": "USDT",
+                "role": "base",
+            },
+            {
+                "asset": "USDT",
+                "quantity": Decimal("-6000"),
+                "price": Decimal("1"),
+                "price_asset": "USDT",
+                "role": "quote",
+            },
+            {
+                "asset": "BNB",
+                "quantity": Decimal("-1"),
+                "price": Decimal("0"),
+                "price_asset": "BNB",
+                "role": "fee",
+            },
+        ],
+        fee={"asset": "BNB", "quantity": Decimal("-1"), "is_rebate": False},
+    )
+
+    persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert Transactions.objects.filter(import_group_id="order-third-fee").count() == 2
+    assert not Assets.objects.filter(name="BNB").exists()
+    comments = list(
+        Transactions.objects.filter(import_group_id="order-third-fee").values_list(
+            "comment", flat=True
+        )
+    )
+    assert all("fee_asset=BNB" in comment for comment in comments)
+
+
+@pytest.mark.django_db
+def test_crypto_persistence_normalizes_model_decimal_fields(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="exec-precision",
+        group_id="order-precision",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("0.1234567894"),
+                "price": Decimal("60000.1234567894"),
+                "price_asset": "USDT",
+                "role": "base",
+            }
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert created[0].quantity == Decimal("0.123456789")
+    assert created[0].price == Decimal("60000.123456789")

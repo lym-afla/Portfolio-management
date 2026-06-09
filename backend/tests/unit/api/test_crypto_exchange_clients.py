@@ -284,8 +284,15 @@ def test_okx_fills_history_rejects_missing_data(monkeypatch):
         list(client.iter_fills_history({}))
 
 
-async def _collect_transactions(api, account):
-    return [event async for event in api.get_transactions(account)]
+async def _collect_transactions(api, account, date_from=None, date_to=None):
+    return [
+        event
+        async for event in api.get_transactions(
+            account,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    ]
 
 
 @pytest.mark.django_db
@@ -350,10 +357,19 @@ def test_bybit_api_get_transactions_uses_active_token_and_normalizer(monkeypatch
 
     api = BybitAPI()
     async_to_sync(api.connect)(user)
-    events = async_to_sync(_collect_transactions)(api, account)
+    events = async_to_sync(_collect_transactions)(
+        api,
+        account,
+        date_from="2026-01-01",
+        date_to="2026-01-02",
+    )
 
     assert captured["credentials"] == ("bybit-key", "bybit-secret", True)
-    assert captured["params"] == {"category": "spot"}
+    assert captured["params"] == {
+        "category": "spot",
+        "startTime": 1767225600000,
+        "endTime": 1767398399999,
+    }
     assert len(events) == 1
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "bybit"
@@ -401,10 +417,19 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
 
     api = OKXAPI()
     async_to_sync(api.connect)(user)
-    events = async_to_sync(_collect_transactions)(api, account)
+    events = async_to_sync(_collect_transactions)(
+        api,
+        account,
+        date_from="2026-01-01",
+        date_to="2026-01-02",
+    )
 
     assert captured["credentials"] == ("okx-key", "okx-secret", "okx-pass", True)
-    assert captured["params"] == {"instType": "SPOT"}
+    assert captured["params"] == {
+        "instType": "SPOT",
+        "begin": 1767225600000,
+        "end": 1767398399999,
+    }
     assert len(events) == 1
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "okx"

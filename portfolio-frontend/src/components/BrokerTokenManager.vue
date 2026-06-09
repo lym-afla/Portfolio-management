@@ -221,6 +221,178 @@
             </v-alert>
           </v-expansion-panel-text>
         </v-expansion-panel>
+
+        <!-- Bybit Tokens -->
+        <v-expansion-panel>
+          <v-expansion-panel-title>
+            <v-icon start>mdi-bitcoin</v-icon>
+            Bybit tokens ({{ filteredBybitTokens.length }})
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <v-list v-if="filteredBybitTokens.length">
+              <v-list-item v-for="token in filteredBybitTokens" :key="token.id">
+                <template v-slot:prepend>
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-icon
+                        v-bind="props"
+                        :color="token.is_active ? 'success' : 'error'"
+                        :icon="
+                          token.is_active
+                            ? 'mdi-check-circle'
+                            : 'mdi-close-circle'
+                        "
+                        class="mr-2"
+                      />
+                    </template>
+                    {{ token.is_active ? 'Stored token' : 'Inactive token' }}
+                  </v-tooltip>
+                </template>
+
+                <v-list-item-title>
+                  API key: {{ token.api_key }}
+                </v-list-item-title>
+
+                <v-list-item-subtitle>
+                  Created on {{ formatDate(token.created_at) }}
+                  <v-chip
+                    v-if="token.testnet"
+                    color="warning"
+                    size="small"
+                    class="ml-2"
+                  >
+                    Testnet
+                  </v-chip>
+                  <v-chip
+                    v-if="!token.is_active"
+                    color="error"
+                    size="small"
+                    class="ml-2"
+                  >
+                    Inactive
+                  </v-chip>
+                </v-list-item-subtitle>
+
+                <template v-slot:append>
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-key-remove"
+                        variant="text"
+                        color="error"
+                        @click="revokeToken('bybit', token.id)"
+                      />
+                    </template>
+                    Deactivate token
+                  </v-tooltip>
+
+                  <v-tooltip v-if="!token.is_active" location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-delete"
+                        variant="text"
+                        color="error"
+                        @click="confirmDeleteToken('bybit', token.id)"
+                      />
+                    </template>
+                    Delete token permanently
+                  </v-tooltip>
+                </template>
+              </v-list-item>
+            </v-list>
+            <v-alert v-else type="info" variant="tonal" class="mt-2">
+              No tokens found
+            </v-alert>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+
+        <!-- OKX Tokens -->
+        <v-expansion-panel>
+          <v-expansion-panel-title>
+            <v-icon start>mdi-bitcoin</v-icon>
+            OKX tokens ({{ filteredOKXTokens.length }})
+          </v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <v-list v-if="filteredOKXTokens.length">
+              <v-list-item v-for="token in filteredOKXTokens" :key="token.id">
+                <template v-slot:prepend>
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-icon
+                        v-bind="props"
+                        :color="token.is_active ? 'success' : 'error'"
+                        :icon="
+                          token.is_active
+                            ? 'mdi-check-circle'
+                            : 'mdi-close-circle'
+                        "
+                        class="mr-2"
+                      />
+                    </template>
+                    {{ token.is_active ? 'Stored token' : 'Inactive token' }}
+                  </v-tooltip>
+                </template>
+
+                <v-list-item-title>
+                  API key: {{ token.api_key }}
+                </v-list-item-title>
+
+                <v-list-item-subtitle>
+                  Created on {{ formatDate(token.created_at) }}
+                  <v-chip
+                    v-if="token.simulated_trading"
+                    color="warning"
+                    size="small"
+                    class="ml-2"
+                  >
+                    Simulated Trading
+                  </v-chip>
+                  <v-chip
+                    v-if="!token.is_active"
+                    color="error"
+                    size="small"
+                    class="ml-2"
+                  >
+                    Inactive
+                  </v-chip>
+                </v-list-item-subtitle>
+
+                <template v-slot:append>
+                  <v-tooltip location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-key-remove"
+                        variant="text"
+                        color="error"
+                        @click="revokeToken('okx', token.id)"
+                      />
+                    </template>
+                    Deactivate token
+                  </v-tooltip>
+
+                  <v-tooltip v-if="!token.is_active" location="top">
+                    <template v-slot:activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        icon="mdi-delete"
+                        variant="text"
+                        color="error"
+                        @click="confirmDeleteToken('okx', token.id)"
+                      />
+                    </template>
+                    Delete token permanently
+                  </v-tooltip>
+                </template>
+              </v-list-item>
+            </v-list>
+            <v-alert v-else type="info" variant="tonal" class="mt-2">
+              No tokens found
+            </v-alert>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
       </v-expansion-panels>
     </v-card-text>
 
@@ -241,6 +413,7 @@
             />
 
             <v-text-field
+              v-if="selectedBrokerType === 'tinkoff' || selectedBrokerType === 'ib'"
               v-model="newToken.token"
               label="API Token"
               type="password"
@@ -248,7 +421,56 @@
               :rules="[(v) => !!v || 'Token is required']"
             />
 
-            <template v-if="newToken.broker === 'ib'">
+            <template v-if="selectedBrokerType === 'bybit' || selectedBrokerType === 'okx'">
+              <v-text-field
+                v-model="newToken.api_key"
+                label="API Key"
+                required
+                :rules="[(v) => !!v || 'API key is required']"
+              />
+              <v-text-field
+                v-model="newToken.api_secret"
+                label="API Secret"
+                type="password"
+                required
+                :rules="[(v) => !!v || 'API secret is required']"
+              />
+            </template>
+
+            <template v-if="selectedBrokerType === 'bybit'">
+              <v-switch
+                v-model="newToken.testnet"
+                label="Bybit Testnet"
+                color="warning"
+                :true-value="true"
+                :false-value="false"
+                :true-icon="'mdi-check'"
+                :false-icon="'mdi-close'"
+                hide-details
+              />
+            </template>
+
+            <template v-if="selectedBrokerType === 'okx'">
+              <v-text-field
+                v-model="newToken.passphrase"
+                label="Passphrase"
+                type="password"
+                required
+                :rules="[(v) => !!v || 'Passphrase is required']"
+              />
+              <v-switch
+                v-model="newToken.simulated_trading"
+                label="OKX Simulated Trading"
+                color="warning"
+                :true-value="true"
+                :false-value="false"
+                :true-icon="'mdi-check'"
+                :false-icon="'mdi-close'"
+                hide-details
+              />
+            </template>
+
+            <template v-if="selectedBrokerType === 'ib'">
               <v-text-field
                 v-model="newToken.account_id"
                 label="Account ID"
@@ -267,7 +489,7 @@
               />
             </template>
 
-            <template v-if="newToken.broker === 'tinkoff'">
+            <template v-if="selectedBrokerType === 'tinkoff'">
               <v-select
                 v-model="newToken.token_type"
                 :items="tokenTypeOptions"
@@ -365,6 +587,8 @@
               value="ib"
               color="primary"
             />
+            <v-radio label="Bybit API" value="bybit" color="primary" />
+            <v-radio label="OKX API" value="okx" color="primary" />
           </v-radio-group>
         </v-card-text>
         <v-card-actions>
@@ -382,6 +606,8 @@ import {
   getBrokerTokens,
   saveTinkoffToken,
   saveIBToken,
+  saveBybitToken,
+  saveOKXToken,
   testTinkoffConnection,
   testIBConnection,
   revokeToken,
@@ -405,17 +631,26 @@ export default {
       isTestingConnection: {},
       tinkoffTokens: [],
       ibTokens: [],
+      bybitTokens: [],
+      okxTokens: [],
       newToken: {
         broker: null,
         token: '',
+        api_key: '',
+        api_secret: '',
+        passphrase: '',
         token_type: 'read_only',
         sandbox_mode: false,
         account_id: '',
         paper_trading: false,
+        testnet: false,
+        simulated_trading: false,
       },
       brokerOptions: [
         { title: 'Tinkoff', value: 'tinkoff' },
         { title: 'Interactive Brokers', value: 'ib' },
+        { title: 'Bybit', value: 'bybit' },
+        { title: 'OKX', value: 'okx' },
       ],
       tokenTypeOptions: [
         { title: 'Read Only', value: 'read_only' },
@@ -446,6 +681,18 @@ export default {
 
     filteredIBTokens() {
       return this.ibTokens.filter((token) =>
+        this.showInactiveTokens ? true : token.is_active
+      )
+    },
+
+    filteredBybitTokens() {
+      return this.bybitTokens.filter((token) =>
+        this.showInactiveTokens ? true : token.is_active
+      )
+    },
+
+    filteredOKXTokens() {
+      return this.okxTokens.filter((token) =>
         this.showInactiveTokens ? true : token.is_active
       )
     },
@@ -490,6 +737,8 @@ export default {
         if (response) {
           this.tinkoffTokens = response.tinkoff_tokens || []
           this.ibTokens = response.ib_tokens || []
+          this.bybitTokens = response.bybit_tokens || []
+          this.okxTokens = response.okx_tokens || []
         }
       } catch (error) {
         logger.error('Unknown', 'Error in fetchTokens:', error)
@@ -516,6 +765,8 @@ export default {
         } else if (broker === 'ib') {
           await testIBConnection(tokenId)
           this.$emit('success', 'Connection test successful')
+        } else {
+          this.$emit('info', 'Connection testing is not implemented for this broker yet')
         }
       } catch (error) {
         this.handleError(error)
@@ -573,14 +824,7 @@ export default {
 
           this.showAddTokenDialog = false
           this.$refs.form.reset()
-          this.newToken = {
-            broker: '',
-            token: '',
-            token_type: 'read_only',
-            sandbox_mode: false,
-            account_id: '',
-            paper_trading: false,
-          }
+          this.resetNewToken()
 
           await this.fetchTokens()
         } else if (this.selectedBrokerType === 'ib') {
@@ -590,6 +834,36 @@ export default {
             account_id: this.newToken.account_id,
             paper_trading: this.newToken.paper_trading,
           })
+          this.$emit('success', 'Token saved successfully')
+          this.showAddTokenDialog = false
+          this.$refs.form.reset()
+          this.resetNewToken()
+          await this.fetchTokens()
+        } else if (this.selectedBrokerType === 'bybit') {
+          await saveBybitToken({
+            broker: broker.id,
+            api_key: this.newToken.api_key,
+            api_secret: this.newToken.api_secret,
+            testnet: this.newToken.testnet,
+          })
+          this.$emit('success', 'Bybit token saved successfully')
+          this.showAddTokenDialog = false
+          this.$refs.form.reset()
+          this.resetNewToken()
+          await this.fetchTokens()
+        } else if (this.selectedBrokerType === 'okx') {
+          await saveOKXToken({
+            broker: broker.id,
+            api_key: this.newToken.api_key,
+            api_secret: this.newToken.api_secret,
+            passphrase: this.newToken.passphrase,
+            simulated_trading: this.newToken.simulated_trading,
+          })
+          this.$emit('success', 'OKX token saved successfully')
+          this.showAddTokenDialog = false
+          this.$refs.form.reset()
+          this.resetNewToken()
+          await this.fetchTokens()
         }
       } catch (error) {
         this.handleError(error)
@@ -631,6 +905,23 @@ export default {
         this.newToken.token_type = 'read_only'
         this.newToken.sandbox_mode = false
       }
+    },
+
+    resetNewToken() {
+      this.newToken = {
+        broker: null,
+        token: '',
+        api_key: '',
+        api_secret: '',
+        passphrase: '',
+        token_type: 'read_only',
+        sandbox_mode: false,
+        account_id: '',
+        paper_trading: false,
+        testnet: false,
+        simulated_trading: false,
+      }
+      this.selectedBrokerType = null
     },
 
     confirmDeleteToken(broker, tokenId) {
@@ -675,6 +966,11 @@ export default {
       this.newToken.sandbox_mode = false
       this.newToken.account_id = ''
       this.newToken.paper_trading = false
+      this.newToken.api_key = ''
+      this.newToken.api_secret = ''
+      this.newToken.passphrase = ''
+      this.newToken.testnet = false
+      this.newToken.simulated_trading = false
 
       // Automatically determine type if name contains known broker
       if (brokerName.includes('tinkoff')) {
@@ -682,6 +978,12 @@ export default {
         this.newToken.broker = brokerId
       } else if (brokerName.includes('interactive brokers')) {
         this.selectedBrokerType = 'ib'
+        this.newToken.broker = brokerId
+      } else if (brokerName.includes('bybit')) {
+        this.selectedBrokerType = 'bybit'
+        this.newToken.broker = brokerId
+      } else if (brokerName.includes('okx')) {
+        this.selectedBrokerType = 'okx'
         this.newToken.broker = brokerId
       } else {
         // Show dialog for user to specify broker type
@@ -710,9 +1012,13 @@ export default {
       if (this.selectedBrokerType === 'tinkoff') {
         this.newToken.token_type = 'read_only'
         this.newToken.sandbox_mode = false
-      } else {
+      } else if (this.selectedBrokerType === 'ib') {
         this.newToken.account_id = ''
         this.newToken.paper_trading = false
+      } else if (this.selectedBrokerType === 'bybit') {
+        this.newToken.testnet = false
+      } else if (this.selectedBrokerType === 'okx') {
+        this.newToken.simulated_trading = false
       }
 
       this.showBrokerTypeDialog = false

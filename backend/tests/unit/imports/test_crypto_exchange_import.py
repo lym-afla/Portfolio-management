@@ -40,6 +40,7 @@ def test_normalize_bybit_spot_execution_buy_btc_usdt_with_quote_fee():
         "BTC": Decimal("0.1"),
         "USDT": Decimal("-6003"),
     }
+    assert event.legs[0]["price"] == Decimal("60030")
     assert event.fee == {
         "asset": "USDT",
         "quantity": Decimal("-3"),
@@ -71,6 +72,7 @@ def test_normalize_bybit_spot_execution_sell_with_base_fee():
         "BTC": Decimal("-0.2502"),
         "USDT": Decimal("15250.00"),
     }
+    assert event.legs[0]["price"] == Decimal("15250.00") / Decimal("0.2502")
     assert event.fee["asset"] == "BTC"
     assert event.fee["quantity"] == Decimal("-0.0002")
 
@@ -95,7 +97,7 @@ def test_normalize_bybit_spot_execution_treats_negative_fee_as_cost():
     }
 
 
-def test_normalize_bybit_spot_execution_adds_third_asset_fee_leg():
+def test_normalize_bybit_spot_execution_keeps_third_asset_fee_in_metadata_only():
     event = normalize_bybit_spot_execution(
         {
             "execId": "exec-3",
@@ -113,9 +115,8 @@ def test_normalize_bybit_spot_execution_adds_third_asset_fee_leg():
     assert _leg_quantities(event) == {
         "ETH": Decimal("2"),
         "USDT": Decimal("-6000"),
-        "BNB": Decimal("-1"),
     }
-    assert event.legs[2]["role"] == "fee"
+    assert len(event.legs) == 2
     assert event.fee["asset"] == "BNB"
     assert event.fee["quantity"] == Decimal("-1")
 
@@ -184,6 +185,7 @@ def test_normalize_okx_spot_fill_sell_btc_usdt_with_negative_base_fee():
         "BTC": Decimal("-0.2001"),
         "USDT": Decimal("14000.0"),
     }
+    assert event.legs[0]["price"] == Decimal("14000.0") / Decimal("0.2001")
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("-0.0001"),
@@ -211,6 +213,7 @@ def test_normalize_okx_spot_fill_buy_with_quote_fee():
         "BTC": Decimal("0.5"),
         "USDT": Decimal("-35005.0"),
     }
+    assert event.legs[0]["price"] == Decimal("70010")
     assert event.fee["asset"] == "USDT"
     assert event.fee["quantity"] == Decimal("-5")
 
@@ -234,6 +237,7 @@ def test_normalize_okx_spot_fill_positive_fee_is_rebate():
         "BTC": Decimal("-0.1999"),
         "USDT": Decimal("14000.0"),
     }
+    assert event.legs[0]["price"] == Decimal("14000.0") / Decimal("0.1999")
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("0.0001"),

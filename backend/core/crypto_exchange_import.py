@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from hashlib import blake2s
 from typing import Any, Dict, List, Optional, Tuple
+
+from django.db import IntegrityError, transaction
 
 from common.models import Assets, OptionMetadata, Transactions
 from constants import (
@@ -138,6 +140,23 @@ def _leg_price(leg):
     return None
 
 
+def _normalize_model_decimal(model, field_name, value):
+    if value is None:
+        return None
+
+    field = model._meta.get_field(field_name)
+    decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    abs_value = abs(decimal_value)
+    int_digits = 1 if abs_value == 0 else len(str(int(abs_value)))
+    max_decimal_places = min(field.decimal_places, field.max_digits - int_digits)
+    if max_decimal_places < 0:
+        raise ValueError(
+            f"{field_name}={decimal_value} exceeds max_digits={field.max_digits}"
+        )
+    quantizer = Decimal("0.1") ** max_decimal_places
+    return decimal_value.quantize(quantizer, rounding=ROUND_HALF_UP)
+
+
 def _event_comment(event, leg):
     parts = [
         f"provider={event.provider}",
@@ -161,46 +180,68 @@ def persist_crypto_exchange_event(event, user, account):
     created = []
     event_time = _event_datetime(event)
     import_account_id = _account_import_id(account)
+    leg_records = []
 
     for index, leg in enumerate(event.legs):
+        if leg.get("role") == "fee":
+            continue
+
         quantity = _leg_quantity(leg)
         if quantity == 0:
             continue
 
-        event_id = f"{event.provider_event_id}:{index}"
-        if Transactions.objects.filter(
-            investor=user,
-            account=account,
-            import_provider=event.provider,
-            import_account_id=import_account_id,
-            import_event_id=event_id,
-        ).exists():
-            continue
+        price = _leg_price(leg)
+        if price is None:
+            raise ValueError(
+                "Cannot persist crypto exchange event without fiat-denominated "
+                f"price for {leg.get('asset')} leg priced in {leg.get('price_asset')}"
+            )
+        leg_records.append((index, leg, quantity, price))
 
-        asset = resolve_crypto_asset(leg["asset"], user)
-        tx_type = (
-            TRANSACTION_TYPE_CRYPTO_TRADE_IN
-            if quantity > 0
-            else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
-        )
-        created.append(
-            Transactions.objects.create(
+    with transaction.atomic():
+        for index, leg, quantity, price in leg_records:
+            event_id = f"{event.provider_event_id}:{index}"
+            if Transactions.objects.filter(
                 investor=user,
                 account=account,
-                security=asset,
-                currency="USD",
-                type=tx_type,
-                date=event_time,
-                quantity=quantity,
-                price=_leg_price(leg),
-                comment=_event_comment(event, leg),
                 import_provider=event.provider,
                 import_account_id=import_account_id,
                 import_event_id=event_id,
-                import_group_id=event.group_id,
-                import_event_type=event.category,
+            ).exists():
+                continue
+
+            asset = resolve_crypto_asset(leg["asset"], user)
+            tx_type = (
+                TRANSACTION_TYPE_CRYPTO_TRADE_IN
+                if quantity > 0
+                else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
             )
-        )
+            try:
+                with transaction.atomic():
+                    created.append(
+                        Transactions.objects.create(
+                            investor=user,
+                            account=account,
+                            security=asset,
+                            currency="USD",
+                            type=tx_type,
+                            date=event_time,
+                            quantity=_normalize_model_decimal(
+                                Transactions, "quantity", quantity
+                            ),
+                            price=_normalize_model_decimal(
+                                Transactions, "price", price
+                            ),
+                            comment=_event_comment(event, leg),
+                            import_provider=event.provider,
+                            import_account_id=import_account_id,
+                            import_event_id=event_id,
+                            import_group_id=event.group_id,
+                            import_event_type=event.category,
+                        )
+                    )
+            except IntegrityError:
+                continue
     return created
 
 
@@ -225,34 +266,40 @@ def _spot_legs(
     base_fee_delta = fee_delta if fee_asset == base else Decimal("0")
 
     if side.lower() == "buy":
+        base_quantity = qty + base_fee_delta
+        quote_quantity = -value + quote_fee_delta
+        base_price = abs(quote_quantity / base_quantity) if base_quantity else price
         legs = [
             {
                 "asset": base,
-                "quantity": qty + base_fee_delta,
-                "price": price,
+                "quantity": base_quantity,
+                "price": base_price,
                 "price_asset": quote,
                 "role": "base",
             },
             {
                 "asset": quote,
-                "quantity": -value + quote_fee_delta,
+                "quantity": quote_quantity,
                 "price": Decimal("1"),
                 "price_asset": quote,
                 "role": "quote",
             },
         ]
     elif side.lower() == "sell":
+        base_quantity = -qty + base_fee_delta
+        quote_quantity = value + quote_fee_delta
+        base_price = abs(quote_quantity / base_quantity) if base_quantity else price
         legs = [
             {
                 "asset": base,
-                "quantity": -qty + base_fee_delta,
-                "price": price,
+                "quantity": base_quantity,
+                "price": base_price,
                 "price_asset": quote,
                 "role": "base",
             },
             {
                 "asset": quote,
-                "quantity": value + quote_fee_delta,
+                "quantity": quote_quantity,
                 "price": Decimal("1"),
                 "price_asset": quote,
                 "role": "quote",
@@ -260,17 +307,6 @@ def _spot_legs(
         ]
     else:
         raise ValueError(f"Unsupported spot side: {side}")
-
-    if fee_delta and fee_asset not in {base, quote}:
-        legs.append(
-            {
-                "asset": fee_asset,
-                "quantity": fee_delta,
-                "price": Decimal("0"),
-                "price_asset": fee_asset,
-                "role": "fee",
-            }
-        )
 
     return legs
 
