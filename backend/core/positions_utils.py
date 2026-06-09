@@ -45,7 +45,7 @@ def get_positions_table_api(request: HttpRequest, is_closed: bool) -> Dict[str, 
         if data.get("dateTo")
         else None
     )
-    page = int(data.get("page"))
+    page = int(data.get("page", 1))
     items_per_page = int(data.get("itemsPerPage", 25))
     search = data.get("search", "")
     sort_by = data.get("sortBy", {})
@@ -196,14 +196,22 @@ def _filter_assets(
     # Get all assets that match our base criteria
     assets = list(base_query)
 
+    # DB SUM can produce floating-point artifacts (e.g. -7e-15 instead of 0),
+    # so treat near-zero as zero. Threshold derived from the quantity field's
+    # decimal_places so it stays in sync if DB precision changes.
+    qty_decimal_places = Assets.transactions.rel.related_model._meta.get_field("quantity").decimal_places
+    zero_threshold = Decimal(10) ** -qty_decimal_places
+
     if is_closed:
-        # Return assets that have at least one exit date and zero current position
         return [
             asset
             for asset in assets
             if len(asset.exit_dates(end_date, user, selected_account_ids)) > 0
-            and asset.total_quantity == 0
+            and abs(asset.total_quantity or 0) < zero_threshold
         ]
     else:
-        # Return assets with non-zero positions
-        return [asset for asset in assets if asset.total_quantity != 0]
+        return [
+            asset
+            for asset in assets
+            if abs(asset.total_quantity or 0) >= zero_threshold
+        ]

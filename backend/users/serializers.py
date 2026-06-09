@@ -24,7 +24,13 @@ from constants import (
     NAV_BARCHART_CHOICES,
 )
 from core.user_utils import FREQUENCY_CHOICES, TIMELINE_CHOICES
-from users.models import AccountGroup, InteractiveBrokersApiToken, TinkoffApiToken
+from users.models import (
+    AccountGroup,
+    BybitApiToken,
+    InteractiveBrokersApiToken,
+    OKXApiToken,
+    TinkoffApiToken,
+)
 
 User = get_user_model()
 
@@ -320,6 +326,114 @@ class TinkoffApiTokenSerializer(BaseApiTokenSerializer):
         if not value.investor == self.context["request"].user:
             raise serializers.ValidationError("Invalid broker selection")
         return value
+
+
+class BybitApiTokenSerializer(serializers.ModelSerializer):
+    """Serializer for Bybit API credential management."""
+
+    api_secret = serializers.CharField(write_only=True)
+    broker = serializers.PrimaryKeyRelatedField(queryset=Brokers.objects.all())
+    is_active = serializers.BooleanField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        """Meta class for BybitApiTokenSerializer."""
+
+        model = BybitApiToken
+        fields = [
+            "id",
+            "broker",
+            "api_key",
+            "api_secret",
+            "testnet",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "is_active", "created_at", "updated_at"]
+
+    def validate_broker(self, value):
+        """Validate that the broker belongs to the requesting user."""
+        if value.investor != self.context["request"].user:
+            raise serializers.ValidationError("Invalid broker selection")
+        return value
+
+    def create(self, validated_data):
+        """Create a Bybit token with encrypted API secret."""
+        user = self.context["request"].user
+        api_secret = validated_data.pop("api_secret")
+        token = BybitApiToken(user=user, is_active=True, **validated_data)
+        token.set_api_secret(api_secret, user)
+        return token
+
+    def update(self, instance, validated_data):
+        """Update a Bybit token and encrypt a replaced API secret."""
+        user = self.context["request"].user
+        api_secret = validated_data.pop("api_secret", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if api_secret is not None:
+            instance.set_api_secret(api_secret, user)
+        return instance
+
+
+class OKXApiTokenSerializer(serializers.ModelSerializer):
+    """Serializer for OKX API credential management."""
+
+    api_secret = serializers.CharField(write_only=True)
+    passphrase = serializers.CharField(write_only=True)
+    broker = serializers.PrimaryKeyRelatedField(queryset=Brokers.objects.all())
+    is_active = serializers.BooleanField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        """Meta class for OKXApiTokenSerializer."""
+
+        model = OKXApiToken
+        fields = [
+            "id",
+            "broker",
+            "api_key",
+            "api_secret",
+            "passphrase",
+            "simulated_trading",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "is_active", "created_at", "updated_at"]
+
+    def validate_broker(self, value):
+        """Validate that the broker belongs to the requesting user."""
+        if value.investor != self.context["request"].user:
+            raise serializers.ValidationError("Invalid broker selection")
+        return value
+
+    def create(self, validated_data):
+        """Create an OKX token with encrypted API secret and passphrase."""
+        user = self.context["request"].user
+        api_secret = validated_data.pop("api_secret")
+        passphrase = validated_data.pop("passphrase")
+        token = OKXApiToken(user=user, is_active=True, **validated_data)
+        token.set_credentials(api_secret, passphrase, user)
+        return token
+
+    def update(self, instance, validated_data):
+        """Update an OKX token and encrypt replaced credentials."""
+        user = self.context["request"].user
+        api_secret = validated_data.pop("api_secret", None)
+        passphrase = validated_data.pop("passphrase", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if api_secret is not None:
+            instance.set_token(api_secret, user)
+        if passphrase is not None:
+            instance.set_passphrase(passphrase, user)
+        return instance
 
 
 class InteractiveBrokersApiTokenSerializer(BaseApiTokenSerializer):

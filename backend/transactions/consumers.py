@@ -85,9 +85,9 @@ class TransactionConsumer(AsyncWebsocketConsumer):
         Args:
             close_code: WebSocket close code.
         """
-        logger.info(f"WebSocket disconnected with code: {close_code}")
+        # logger.info(f"WebSocket disconnected with code: {close_code}")
         self.stop_event.set()
-        logger.debug("WebSocket connection closed")
+        # logger.debug("WebSocket connection closed")
         if self.import_task and not self.import_task.done():
             self.import_task.cancel()
             try:
@@ -673,6 +673,38 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                     )
                     continue
 
+                # Handle transactions already persisted by the import generator.
+                if update.get("status") == "transaction_saved":
+                    transaction_info = update.get("transaction") or {}
+                    saved_count = transaction_info.get("count", 1)
+                    if saved_count:
+                        import_results["importedTransactions"] += saved_count
+                    else:
+                        import_results["duplicateTransactions"] += 1
+
+                    await self.send(
+                        text_data=json.dumps(
+                            {
+                                "type": "import_update",
+                                "data": {
+                                    "status": "transaction_saved",
+                                    "current": import_results["importedTransactions"],
+                                    "total": total_to_process,
+                                    "message": update.get(
+                                        "message",
+                                        (
+                                            "Saved transaction "
+                                            f"{import_results['importedTransactions']} "
+                                            f"of {total_to_process}"
+                                        ),
+                                    ),
+                                    "transaction": transaction_info,
+                                },
+                            }
+                        )
+                    )
+                    continue
+
                 # Handle save transaction
                 if update.get("status") == "save_transaction":
                     transaction_data = update.get("data")
@@ -879,7 +911,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             # Check if transaction already exists
                             exists = await transaction_exists(transaction_to_create)
 
-                            if not existing_transaction:
+                            if not exists:
                                 # Save transaction immediately
                                 save_result = (
                                     await self.view_set.save_single_transaction(

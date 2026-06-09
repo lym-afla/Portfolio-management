@@ -1,5 +1,39 @@
 <template>
   <v-container fluid class="pa-0">
+    <!-- Account filter -->
+    <v-row class="mb-4">
+      <v-col cols="12" sm="6" md="4">
+        <v-select
+          v-model="selectedAccount"
+          :items="accountOptions"
+          item-title="title"
+          item-value="value"
+          label="Broker Account"
+          density="comfortable"
+          hide-details
+          clearable
+          outlined
+        >
+          <template v-slot:item="{ props, item }">
+            <v-list-item
+              v-if="item.raw.type === 'option'"
+              v-bind="props"
+              :title="null"
+            >
+              {{ item.raw.title }}
+            </v-list-item>
+            <v-divider v-else-if="item.raw.type === 'divider'" class="my-2" />
+            <v-list-subheader
+              v-else-if="item.raw.type === 'header'"
+              class="custom-subheader"
+            >
+              {{ item.raw.title }}
+            </v-list-subheader>
+          </template>
+        </v-select>
+      </v-col>
+    </v-row>
+
     <template v-if="loading">
       <v-skeleton-loader v-for="i in 3" :key="i" type="card" class="mb-6" />
     </template>
@@ -339,6 +373,7 @@
                     :show-balances="false"
                     :show-cash-flow="false"
                     :show-single-cash-flow="true"
+                    :show-broker-account="true"
                     :show-actions="false"
                   />
                 </template>
@@ -401,7 +436,9 @@ import {
   getSecurityPriceHistory,
   getSecurityPositionHistory,
   getSecurityTransactions,
+  getAccountChoices,
 } from '@/services/api'
+import { formatAccountChoices } from '@/utils/accountUtils'
 import LineChart from '@/components/charts/LineChart.vue'
 import TimelineSelector from '@/components/TimelineSelector.vue'
 import { getChartOptions } from '@/config/chartConfig'
@@ -464,6 +501,15 @@ export default {
     const loadingTransactions = ref(true)
     const totalTransactions = ref(0)
 
+    // Account filtering
+    const selectedAccount = ref(null)
+    const accountOptions = ref([])
+
+    const selectedAccountId = computed(() => {
+      if (!selectedAccount.value || selectedAccount.value.type === 'all') return null
+      return selectedAccount.value.id
+    })
+
     const effectiveCurrentDate = computed(
       () => store.state.effectiveCurrentDate
     )
@@ -479,6 +525,7 @@ export default {
 
     const transactionHeaders = [
       { title: 'Date', key: 'date', align: 'start' },
+      { title: 'Account', key: 'broker_account', align: 'start' },
       { title: 'Description', key: 'description', align: 'start' },
       { title: 'Type', key: 'type', align: 'center' },
       { title: 'Cash Flow', key: 'cash_flow', align: 'center' },
@@ -564,7 +611,7 @@ export default {
         loadingPositionChart.value = true
 
         if (!security.value) {
-          const securityResponse = await getSecurityDetail(securityId)
+          const securityResponse = await getSecurityDetail(securityId, selectedAccountId.value)
           security.value = securityResponse
           emit('update-page-title', security.value.name)
         }
@@ -584,7 +631,7 @@ export default {
         const [priceHistoryResponse, positionHistoryResponse] =
           await Promise.all([
             getSecurityPriceHistory(securityId, selectedPeriod.value),
-            getSecurityPositionHistory(securityId, selectedPeriod.value),
+            getSecurityPositionHistory(securityId, selectedPeriod.value, selectedAccountId.value),
           ])
 
         priceHistory.value = priceHistoryResponse || []
@@ -614,7 +661,8 @@ export default {
             page: transactionOptions.value.page,
             itemsPerPage: transactionOptions.value.itemsPerPage,
           },
-          selectedPeriod.value
+          selectedPeriod.value,
+          selectedAccountId.value
         )
         transactions.value = response.transactions
         totalTransactions.value = response.total_items
@@ -631,6 +679,16 @@ export default {
       fetchTransactions()
     })
 
+    watch(selectedAccount, async () => {
+      // Reset and refetch all data for the new account
+      loading.value = true
+      security.value = null
+      await fetchSecurityData()
+      transactionOptions.value.page = 1
+      await fetchTransactions()
+      loading.value = false
+    })
+
     watch(
       transactionOptions,
       () => {
@@ -640,6 +698,14 @@ export default {
     )
 
     onMounted(async () => {
+      // Fetch account options for the filter
+      try {
+        const data = await getAccountChoices()
+        accountOptions.value = formatAccountChoices(data.options)
+      } catch (error) {
+        logger.error('SecurityDetailPage', 'Error fetching account choices:', error)
+      }
+
       logger.log('SecurityDetailPage', '[DEBUG] onMounted - Starting...')
       logger.log(
         'SecurityDetailPage',
@@ -870,7 +936,20 @@ export default {
       updateChartPeriod,
       effectiveCurrentDate,
       getTransactionDescription,
+      selectedAccount,
+      accountOptions,
     }
   },
 }
 </script>
+
+<style scoped>
+.custom-subheader {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #000000;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background-color: #f5f5f5;
+}
+</style>

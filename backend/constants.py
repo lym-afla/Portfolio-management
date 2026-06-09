@@ -57,6 +57,18 @@ TRANSACTION_TYPE_ASSET_TRANSFER = "Asset transfer"
 TRANSACTION_TYPE_BOND_REDEMPTION = "Bond redemption"  # Partial or full bond repayment
 TRANSACTION_TYPE_BOND_MATURITY = "Bond maturity"  # Full bond maturity
 TRANSACTION_TYPE_STOCK_SPLIT = "Stock split"  # Stock splits, reverse splits
+TRANSACTION_TYPE_MERGER_OUT = "Merger out"  # Shares leaving old security in a merger
+TRANSACTION_TYPE_MERGER_IN = "Merger in"  # Shares arriving in new security from a merger
+TRANSACTION_TYPE_CRYPTO_REWARD = "Crypto reward"
+TRANSACTION_TYPE_CRYPTO_TRANSFER_IN = "Crypto transfer in"
+TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT = "Crypto transfer out"
+TRANSACTION_TYPE_CRYPTO_TRADE_IN = "Crypto trade in"
+TRANSACTION_TYPE_CRYPTO_TRADE_OUT = "Crypto trade out"
+TRANSACTION_TYPE_OPTION_SETTLEMENT = "Option settlement"
+
+BROKER_PROVIDER_BYBIT = "bybit"
+BROKER_PROVIDER_OKX = "okx"
+BROKER_PROVIDER_TBANK = "tbank"
 
 TRANSACTION_TYPE_CHOICES = (
     (TRANSACTION_TYPE_CASH_IN, "Cash in"),
@@ -72,6 +84,14 @@ TRANSACTION_TYPE_CHOICES = (
     (TRANSACTION_TYPE_BOND_REDEMPTION, "Bond redemption"),
     (TRANSACTION_TYPE_BOND_MATURITY, "Bond maturity"),
     (TRANSACTION_TYPE_STOCK_SPLIT, "Stock split"),
+    (TRANSACTION_TYPE_MERGER_OUT, "Merger out"),
+    (TRANSACTION_TYPE_MERGER_IN, "Merger in"),
+    (TRANSACTION_TYPE_CRYPTO_REWARD, "Crypto reward"),
+    (TRANSACTION_TYPE_CRYPTO_TRANSFER_IN, "Crypto transfer in"),
+    (TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT, "Crypto transfer out"),
+    (TRANSACTION_TYPE_CRYPTO_TRADE_IN, "Crypto trade in"),
+    (TRANSACTION_TYPE_CRYPTO_TRADE_OUT, "Crypto trade out"),
+    (TRANSACTION_TYPE_OPTION_SETTLEMENT, "Option settlement"),
 )
 
 NAV_BARCHART_CHOICES = (
@@ -82,6 +102,8 @@ NAV_BARCHART_CHOICES = (
     ("No breakdown", "No breakdown"),
 )
 
+ASSET_TYPE_CRYPTO = "Crypto"
+
 ASSET_TYPE_CHOICES = (
     ("Stock", "Stock"),
     ("Bond", "Bond"),
@@ -89,6 +111,7 @@ ASSET_TYPE_CHOICES = (
     ("Mutual fund", "Mutual fund"),
     ("Option", "Option"),
     ("Future", "Future"),
+    (ASSET_TYPE_CRYPTO, "Crypto"),
 )
 
 EXPOSURE_CHOICES = (
@@ -129,6 +152,7 @@ MUTUAL_FUNDS_IN_PENCES = [
     "Legal & General Global Technology Index",
     "Fidelity Index Emerging Markets",
     "Rathbone Ethical Bond",
+    "Rathbone Ethical Bond Fund S",
     "iShares Physical Platinum ETC",
     "VT Garraway Absolute Equity",
     "ES River & Mercantile Global Recovery",
@@ -142,6 +166,8 @@ MUTUAL_FUNDS_IN_PENCES = [
     "iShares Pacific ex Japan Equity",
     "Fidelity Multi Asset Allocator",
     "Ninety One UK Smaller Companies",
+    "Ninety One UK Special Situations I Acc",
+    "Legal & General Sterling Corporate Bond",
 ]
 
 # Broker identifiers for transaction import

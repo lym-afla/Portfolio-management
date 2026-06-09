@@ -8,7 +8,7 @@ with various broker APIs to fetch transactions and account data.
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import AsyncGenerator, Dict, Optional
 
 from channels.db import database_sync_to_async
@@ -20,7 +20,13 @@ from t_tech.invest import (
 )
 
 from common.models import Accounts, Brokers
+from users.models import BybitApiToken, OKXApiToken
 
+from .crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
+from .crypto_exchange_import import (
+    normalize_bybit_spot_execution,
+    normalize_okx_spot_fill,
+)
 from .tinkoff_utils import (
     get_user_token,
     map_tinkoff_operation_to_transaction,
@@ -28,6 +34,33 @@ from .tinkoff_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_import_boundary(value, *, end_of_day=False):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time.max if end_of_day else time.min)
+    else:
+        parsed_date = datetime.strptime(str(value), "%Y-%m-%d").date()
+        parsed = datetime.combine(parsed_date, time.max if end_of_day else time.min)
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
+def _crypto_exchange_date_params(date_from, date_to, *, start_key, end_key):
+    params = {}
+    start_ms = _parse_import_boundary(date_from)
+    end_ms = _parse_import_boundary(date_to, end_of_day=True)
+    if start_ms is not None:
+        params[start_key] = start_ms
+    if end_ms is not None:
+        params[end_key] = end_ms
+    return params
 
 
 class BrokerAPIException(Exception):
@@ -445,6 +478,123 @@ class InteractiveBrokersAPI(BrokerAPI):
             raise BrokerAPIException(f"Failed to fetch IB transactions: {str(e)}")
 
 
+class BybitAPI(BrokerAPI):
+    """Bybit BrokerAPI adapter returning normalized crypto exchange events."""
+
+    def __init__(self):
+        super().__init__()
+        self.user = None
+
+    async def connect(self, user) -> bool:
+        self.user = user
+        has_token = await database_sync_to_async(
+            lambda: BybitApiToken.objects.filter(user=user, is_active=True).exists()
+        )()
+        if not has_token:
+            raise BrokerAPIException("No active Bybit token configured")
+        return True
+
+    async def disconnect(self) -> None:
+        self.user = None
+
+    async def get_transactions(
+        self,
+        account: Accounts,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ):
+        if not self.user:
+            raise BrokerAPIException("Not connected to Bybit API")
+
+        token = await database_sync_to_async(
+            lambda: account.broker.bybit_tokens.filter(
+                user=self.user,
+                is_active=True,
+            ).first()
+        )()
+        if not token:
+            raise BrokerAPIException("No active Bybit token for selected broker")
+
+        client = BybitClient(
+            api_key=token.api_key,
+            api_secret=token.get_api_secret(self.user),
+            testnet=token.testnet,
+        )
+        params = {
+            "category": "spot",
+            **_crypto_exchange_date_params(
+                date_from,
+                date_to,
+                start_key="startTime",
+                end_key="endTime",
+            ),
+        }
+        try:
+            for payload in client.iter_executions(params):
+                yield normalize_bybit_spot_execution(payload)
+        except CryptoExchangeAPIError as exc:
+            raise BrokerAPIException(f"Failed to fetch Bybit transactions: {exc}") from exc
+
+
+class OKXAPI(BrokerAPI):
+    """OKX BrokerAPI adapter returning normalized crypto exchange events."""
+
+    def __init__(self):
+        super().__init__()
+        self.user = None
+
+    async def connect(self, user) -> bool:
+        self.user = user
+        has_token = await database_sync_to_async(
+            lambda: OKXApiToken.objects.filter(user=user, is_active=True).exists()
+        )()
+        if not has_token:
+            raise BrokerAPIException("No active OKX token configured")
+        return True
+
+    async def disconnect(self) -> None:
+        self.user = None
+
+    async def get_transactions(
+        self,
+        account: Accounts,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ):
+        if not self.user:
+            raise BrokerAPIException("Not connected to OKX API")
+
+        token = await database_sync_to_async(
+            lambda: account.broker.okx_tokens.filter(
+                user=self.user,
+                is_active=True,
+            ).first()
+        )()
+        if not token:
+            raise BrokerAPIException("No active OKX token for selected broker")
+
+        client = OKXClient(
+            api_key=token.api_key,
+            api_secret=token.get_api_secret(self.user),
+            passphrase=token.get_passphrase(self.user),
+            simulated_trading=token.simulated_trading,
+        )
+        params = {
+            "instType": "SPOT",
+            **_crypto_exchange_date_params(
+                date_from,
+                date_to,
+                start_key="begin",
+                end_key="end",
+            ),
+        }
+        try:
+            for payload in client.iter_fills_history(params):
+                yield normalize_okx_spot_fill(payload)
+        except CryptoExchangeAPIError as exc:
+            raise BrokerAPIException(f"Failed to fetch OKX transactions: {exc}") from exc
+
+
 async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
     """
     Get appropriate broker API handler.
@@ -458,9 +608,19 @@ async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
     try:
         # Check for Tinkoff tokens
         has_tinkoff_token = await database_sync_to_async(broker.tinkoff_tokens.exists)()
+        has_bybit_token = await database_sync_to_async(
+            lambda: broker.bybit_tokens.filter(is_active=True).exists()
+        )()
+        has_okx_token = await database_sync_to_async(
+            lambda: broker.okx_tokens.filter(is_active=True).exists()
+        )()
 
         if has_tinkoff_token:
             return TinkoffAPI()
+        elif has_bybit_token:
+            return BybitAPI()
+        elif has_okx_token:
+            return OKXAPI()
         elif broker.name == "Interactive Brokers":
             # Add similar check for IB when implemented
             return InteractiveBrokersAPI()

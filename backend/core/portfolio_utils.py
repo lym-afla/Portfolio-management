@@ -17,6 +17,7 @@ from django.db.models import Prefetch, Q, QuerySet, Sum
 from pyxirr import xirr
 
 from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
+from constants import TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT
 from core.formatting_utils import format_percentage
 from users.models import AccountGroup, CustomUser
 
@@ -105,7 +106,6 @@ def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
     return dict_3
 
 
-@lru_cache(maxsize=None)
 def NAV_at_date(
     user_id: int,
     account_ids: Tuple[int],
@@ -282,6 +282,13 @@ def IRR(
         investor__id=user_id, date__date__lte=date, security_id=asset_id
     )
 
+    # For portfolio-level IRR (no specific asset), only external cash flows
+    # matter. Internal items (broker commission, tax, interest income) are
+    # already reflected in the terminal NAV / cash-out amounts; including
+    # them would double-count.
+    if asset_id is None:
+        transactions = transactions.filter(type__in=["Cash in", "Cash out"])
+
     if account_ids is not None:
         transactions = transactions.filter(account_id__in=account_ids)
 
@@ -343,6 +350,19 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     Uses the centralized total_cash_flow() method and applies
     sign convention for IRR (negative = outflow, positive = inflow).
     """
+    if transaction.is_reward_transaction() or transaction.is_neutral_transfer_transaction():
+        return Decimal(0)
+
+    if transaction.type in [
+        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    ]:
+        if transaction.quantity is not None and transaction.price is not None:
+            # IRR treats crypto trades as asset cash flows: buys are negative,
+            # sells are positive, while account cash balances stay unchanged.
+            return -transaction.quantity * transaction.price
+        return Decimal(0)
+
     # Get the cash flow using the centralized method
     cash_flow = transaction.total_cash_flow()
 
@@ -677,4 +697,10 @@ def get_last_exit_date_for_accounts(
         .first()
     )
 
-    return latest_transaction_date or effective_current_date
+    if latest_transaction_date is not None:
+        # Convert datetime to date if needed (Transactions.date is DateTimeField)
+        if hasattr(latest_transaction_date, "date"):
+            latest_transaction_date = latest_transaction_date.date()
+        return latest_transaction_date
+
+    return effective_current_date

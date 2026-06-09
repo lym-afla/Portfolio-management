@@ -433,7 +433,7 @@ def _calculate_contributions(
             transactions = Transactions.objects.filter(**filter_conditions)
         else:
             # Use cached transactions and filter by date
-            transactions = [t for t in cached_transactions if t.date <= d]
+            transactions = [t for t in cached_transactions if t.date.date() <= d]
     else:
         # Original period-specific logic
         filter_conditions = {

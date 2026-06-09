@@ -1,12 +1,21 @@
 import { mount } from '@vue/test-utils'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
-import { saveTinkoffToken, saveIBToken, getAvailableBrokers, getBrokerTokens } from '@/services/api'
+import {
+  saveTinkoffToken,
+  saveIBToken,
+  saveBybitToken,
+  saveOKXToken,
+  getAvailableBrokers,
+  getBrokerTokens
+} from '@/services/api'
 import { generateVuetifyStubs } from '../test-utils'
 
 // Mock API calls
 jest.mock('@/services/api', () => ({
   saveTinkoffToken: jest.fn(),
   saveIBToken: jest.fn(),
+  saveBybitToken: jest.fn(),
+  saveOKXToken: jest.fn(),
   getAvailableBrokers: jest.fn(),
   getBrokerTokens: jest.fn()
 }))
@@ -38,10 +47,17 @@ describe('BrokerTokenManager', () => {
     getAvailableBrokers.mockResolvedValue([
       { id: 1, name: 'Tinkoff Broker' },
       { id: 2, name: 'Interactive Brokers Main' },
-      { id: 3, name: 'Custom Broker' }
+      { id: 3, name: 'Custom Broker' },
+      { id: 4, name: 'Bybit Unified' },
+      { id: 5, name: 'OKX Trading' }
     ])
 
-    getBrokerTokens.mockResolvedValue([])
+    getBrokerTokens.mockResolvedValue({
+      tinkoff_tokens: [],
+      ib_tokens: [],
+      bybit_tokens: [],
+      okx_tokens: []
+    })
 
     // Create a div to mount the component
     const div = document.createElement('div')
@@ -89,6 +105,18 @@ describe('BrokerTokenManager', () => {
   it('automatically detects IB broker type', async () => {
     await wrapper.vm.handleBrokerSelection(2)
     expect(wrapper.vm.selectedBrokerType).toBe('ib')
+    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+  })
+
+  it('automatically detects Bybit broker type', async () => {
+    await wrapper.vm.handleBrokerSelection(4)
+    expect(wrapper.vm.selectedBrokerType).toBe('bybit')
+    expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
+  })
+
+  it('automatically detects OKX broker type', async () => {
+    await wrapper.vm.handleBrokerSelection(5)
+    expect(wrapper.vm.selectedBrokerType).toBe('okx')
     expect(wrapper.vm.showBrokerTypeDialog).toBe(false)
   })
 
@@ -161,6 +189,46 @@ describe('BrokerTokenManager', () => {
       token: 'test-token',
       account_id: 'U123456',
       paper_trading: false
+    })
+  })
+
+  it('saves Bybit token correctly', async () => {
+    wrapper.vm.newToken = {
+      broker: 4,
+      api_key: 'bybit-key',
+      api_secret: 'bybit-secret',
+      testnet: true
+    }
+    wrapper.vm.selectedBrokerType = 'bybit'
+
+    await wrapper.vm.saveToken()
+
+    expect(saveBybitToken).toHaveBeenCalledWith({
+      broker: 4,
+      api_key: 'bybit-key',
+      api_secret: 'bybit-secret',
+      testnet: true
+    })
+  })
+
+  it('saves OKX token correctly', async () => {
+    wrapper.vm.newToken = {
+      broker: 5,
+      api_key: 'okx-key',
+      api_secret: 'okx-secret',
+      passphrase: 'okx-passphrase',
+      simulated_trading: true
+    }
+    wrapper.vm.selectedBrokerType = 'okx'
+
+    await wrapper.vm.saveToken()
+
+    expect(saveOKXToken).toHaveBeenCalledWith({
+      broker: 5,
+      api_key: 'okx-key',
+      api_secret: 'okx-secret',
+      passphrase: 'okx-passphrase',
+      simulated_trading: true
     })
   })
 

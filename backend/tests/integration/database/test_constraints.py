@@ -9,7 +9,7 @@ This module tests:
 - Data integrity validation
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -24,6 +24,11 @@ from common.models import (
     Brokers,
     FXTransaction,
     Transactions,
+)
+from constants import (
+    ASSET_TYPE_CRYPTO,
+    TRANSACTION_TYPE_CRYPTO_REWARD,
+    TRANSACTION_TYPE_CRYPTO_TRADE_IN,
 )
 from users.models import CustomUser
 
@@ -947,3 +952,282 @@ class TestFXTransactionConstraints:
         assert fx_transaction.to_amount == Decimal("1135.804459")
         assert fx_transaction.exchange_rate == Decimal("0.920000")
         assert fx_transaction.commission == Decimal("5.123456")
+
+
+@pytest.mark.django_db
+def test_crypto_asset_type_and_provider_metadata_are_persisted(user):
+    broker = Brokers.objects.create(investor=user, name="Bybit", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+        data_source="",
+    )
+    btc.investors.add(user)
+
+    tx = Transactions.objects.create(
+        investor=user,
+        account=account,
+        security=btc,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_REWARD,
+        date=datetime(2026, 1, 1, 12, 0),
+        quantity=Decimal("0.010000000"),
+        price=Decimal("50000.000000000"),
+        import_provider="bybit",
+        import_account_id="bybit-main",
+        import_event_id="reward-1",
+        import_group_id="reward-1",
+        import_event_type="reward",
+    )
+    tx.refresh_from_db()
+
+    assert tx.security.type == ASSET_TYPE_CRYPTO
+    assert tx.import_provider == "bybit"
+    assert tx.import_event_id == "reward-1"
+    assert tx.import_group_id == "reward-1"
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_REWARD
+
+
+@pytest.mark.django_db
+def test_provider_event_id_is_unique_per_provider_account_and_transaction_model(user):
+    broker = Brokers.objects.create(investor=user, name="OKX", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Trading", native_id="okx-main")
+    usdt = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:USDT",
+        name="Tether USD",
+        ticker="USDT",
+        currency="USD",
+        exposure="FX",
+    )
+    usdt.investors.add(user)
+
+    Transactions.objects.create(
+        investor=user,
+        account=account,
+        security=usdt,
+        currency="USD",
+        type=TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+        date=datetime(2026, 1, 1, 12, 0),
+        quantity=Decimal("100.000000000"),
+        price=Decimal("1.000000000"),
+        import_provider="okx",
+        import_account_id="okx-main",
+        import_event_id="fill-1:in",
+        import_group_id="fill-1",
+        import_event_type="trade",
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Transactions.objects.create(
+                investor=user,
+                account=account,
+                security=usdt,
+                currency="USD",
+                type=TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+                date=datetime(2026, 1, 1, 12, 0),
+                quantity=Decimal("100.000000000"),
+                price=Decimal("1.000000000"),
+                import_provider="okx",
+                import_account_id="okx-main",
+                import_event_id="fill-1:in",
+                import_group_id="fill-1",
+                import_event_type="trade",
+            )
+
+
+@pytest.mark.django_db
+def test_fx_transaction_provider_metadata_persists_and_event_id_is_unique(user):
+    broker = Brokers.objects.create(investor=user, name="OKX FX", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Funding", native_id="okx-funding")
+
+    fx_tx = FXTransaction.objects.create(
+        investor=user,
+        account=account,
+        date=datetime(2026, 1, 1, 12, 0),
+        from_currency="USD",
+        to_currency="EUR",
+        from_amount=Decimal("1000.000000000"),
+        to_amount=Decimal("920.000000000"),
+        exchange_rate=Decimal("0.920000000"),
+        import_provider="okx",
+        import_account_id="okx-funding",
+        import_event_id="convert-1",
+        import_group_id="convert-1",
+        import_event_type="convert",
+    )
+    fx_tx.refresh_from_db()
+
+    assert fx_tx.import_provider == "okx"
+    assert fx_tx.import_account_id == "okx-funding"
+    assert fx_tx.import_event_id == "convert-1"
+    assert fx_tx.import_group_id == "convert-1"
+    assert fx_tx.import_event_type == "convert"
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            FXTransaction.objects.create(
+                investor=user,
+                account=account,
+                date=datetime(2026, 1, 1, 12, 0),
+                from_currency="USD",
+                to_currency="EUR",
+                from_amount=Decimal("1000.000000000"),
+                to_amount=Decimal("920.000000000"),
+                exchange_rate=Decimal("0.920000000"),
+                import_provider="okx",
+                import_account_id="okx-funding",
+                import_event_id="convert-1",
+                import_group_id="convert-1",
+                import_event_type="convert",
+            )
+
+
+@pytest.mark.django_db
+def test_transaction_import_event_requires_provider_and_account(user):
+    broker = Brokers.objects.create(investor=user, name="Bybit Imports", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC:REQUIRES-METADATA",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Transactions.objects.create(
+                investor=user,
+                account=account,
+                security=btc,
+                currency="USD",
+                type=TRANSACTION_TYPE_CRYPTO_REWARD,
+                date=datetime(2026, 1, 1, 12, 0),
+                quantity=Decimal("0.010000000"),
+                price=Decimal("50000.000000000"),
+                import_event_id="reward-without-provider-account",
+            )
+
+
+@pytest.mark.django_db
+def test_transaction_import_event_rejects_blank_provider_account_but_allows_blank_event(
+    user,
+):
+    broker = Brokers.objects.create(investor=user, name="Bybit Blank Imports", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-blank")
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC:BLANK-METADATA",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+
+    for import_event_id, import_provider, import_account_id in [
+        ("blank-provider", "", "bybit-blank"),
+        ("blank-account", "bybit", ""),
+    ]:
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                Transactions.objects.create(
+                    investor=user,
+                    account=account,
+                    security=btc,
+                    currency="USD",
+                    type=TRANSACTION_TYPE_CRYPTO_REWARD,
+                    date=datetime(2026, 1, 1, 12, 0),
+                    quantity=Decimal("0.010000000"),
+                    price=Decimal("50000.000000000"),
+                    import_provider=import_provider,
+                    import_account_id=import_account_id,
+                    import_event_id=import_event_id,
+                )
+
+    for _ in range(2):
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            security=btc,
+            currency="USD",
+            type=TRANSACTION_TYPE_CRYPTO_REWARD,
+            date=datetime(2026, 1, 1, 12, 0),
+            quantity=Decimal("0.010000000"),
+            price=Decimal("50000.000000000"),
+            import_provider="",
+            import_account_id="",
+            import_event_id="",
+        )
+
+
+@pytest.mark.django_db
+def test_fx_transaction_import_event_requires_provider_and_account(user):
+    broker = Brokers.objects.create(investor=user, name="Bybit FX", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            FXTransaction.objects.create(
+                investor=user,
+                account=account,
+                date=datetime(2026, 1, 1, 12, 0),
+                from_currency="USD",
+                to_currency="EUR",
+                from_amount=Decimal("1000.000000000"),
+                to_amount=Decimal("920.000000000"),
+                exchange_rate=Decimal("0.920000000"),
+                import_event_id="convert-without-provider-account",
+            )
+
+
+@pytest.mark.django_db
+def test_fx_transaction_import_event_rejects_blank_provider_account_but_allows_blank_event(
+    user,
+):
+    broker = Brokers.objects.create(investor=user, name="Bybit Blank FX", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-blank-fx")
+
+    for import_event_id, import_provider, import_account_id in [
+        ("blank-provider", "", "bybit-blank-fx"),
+        ("blank-account", "bybit", ""),
+    ]:
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                FXTransaction.objects.create(
+                    investor=user,
+                    account=account,
+                    date=datetime(2026, 1, 1, 12, 0),
+                    from_currency="USD",
+                    to_currency="EUR",
+                    from_amount=Decimal("1000.000000000"),
+                    to_amount=Decimal("920.000000000"),
+                    exchange_rate=Decimal("0.920000000"),
+                    import_provider=import_provider,
+                    import_account_id=import_account_id,
+                    import_event_id=import_event_id,
+                )
+
+    for _ in range(2):
+        FXTransaction.objects.create(
+            investor=user,
+            account=account,
+            date=datetime(2026, 1, 1, 12, 0),
+            from_currency="USD",
+            to_currency="EUR",
+            from_amount=Decimal("1000.000000000"),
+            to_amount=Decimal("920.000000000"),
+            exchange_rate=Decimal("0.920000000"),
+            import_provider="",
+            import_account_id="",
+            import_event_id="",
+        )

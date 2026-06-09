@@ -109,11 +109,9 @@ def transactions(user, account):
 @pytest.fixture
 def fx_rates(user):
     """Create test FX rates."""
-    # Create FX rates for the test period
-    start_date = date(2010, 1, 1)
-    # end_date = date(2023, 1, 1)
-    # current_date = start_date
-    # while current_date <= end_date:
+    # Create FX rates covering both historical transaction dates (2022)
+    # and the current date used in tests.
+    start_date = date(2022, 1, 1)
     fx = FX.objects.create(date=start_date)
     fx.investors.add(user)
     fx.USDEUR = Decimal("1.15")
@@ -121,7 +119,20 @@ def fx_rates(user):
     fx.CHFGBP = Decimal("0.85")
     fx.RUBUSD = Decimal("65")
     fx.PLNUSD = Decimal("4")
+    fx.CNYUSD = Decimal("7")
     fx.save()
+
+    # Also create a recent FX rate for tests using current_date
+    current_date = datetime.now().date()
+    fx_recent = FX.objects.create(date=current_date)
+    fx_recent.investors.add(user)
+    fx_recent.USDEUR = Decimal("1.15")
+    fx_recent.USDGBP = Decimal("1.25")
+    fx_recent.CHFGBP = Decimal("0.85")
+    fx_recent.RUBUSD = Decimal("65")
+    fx_recent.PLNUSD = Decimal("4")
+    fx_recent.CNYUSD = Decimal("7")
+    fx_recent.save()
     # current_date += timedelta(days=1)
 
 

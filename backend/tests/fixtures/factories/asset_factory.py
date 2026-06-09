@@ -21,6 +21,7 @@ class AssetFactory(factory.django.DjangoModelFactory):
         """Meta class for AssetFactory."""
 
         model = Assets
+        skip_postgeneration_save = True
 
     type = fuzzy.FuzzyChoice(["Stock", "Bond", "ETF", "Fund"])
     ISIN = factory.Faker("bothify", text="??##########")  # 12-character ISIN

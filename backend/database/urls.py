@@ -85,5 +85,6 @@ urlpatterns = [
         name="api_get_security_transactions",
     ),
     path("api/price-import/", PriceImportView.as_view(), name="price_import"),
+    path("api/create-merger/", views.api_create_merger, name="api_create_merger"),
     path("api/", include(router.urls)),
 ]

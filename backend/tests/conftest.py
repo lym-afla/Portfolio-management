@@ -10,7 +10,6 @@ from decimal import Decimal
 import factory
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import override_settings
 from rest_framework.test import APIClient
 
 from common.models import (
@@ -31,16 +30,10 @@ def pytest_configure():
 
     Set a single Faker locale to avoid provider locale probing and DEBUG logs.
     """
+    import logging
+
     factory.Faker._DEFAULT_LOCALE = "en_GB"
-
-
-@pytest.fixture(autouse=True)
-def setup_test_environment():
-    """Set up test environment with consistent encryption key and decimal context."""
-    # Use the same SECRET_KEY for all tests to ensure consistent encryption
-    test_settings = {"SECRET_KEY": "test-secret-key-for-consistent-encryption"}
-    with override_settings(**test_settings):
-        yield
+    logging.getLogger("faker.factory").setLevel(logging.WARNING)
 
 
 # ========== USER FIXTURES ==========

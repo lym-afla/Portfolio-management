@@ -33,9 +33,9 @@ class BondACICalculationTests(TestCase):
         """Set up test bond with metadata and coupon schedule."""
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
-        # Create FX rates (RUBUSD = 1/75 = 0.0133, 1/80 = 0.0125)
-        FX.objects.create(date=date(2024, 1, 1), RUBUSD=Decimal("0.0133"))
-        FX.objects.create(date=date(2024, 6, 1), RUBUSD=Decimal("0.0125"))
+        # Create FX rates (RUBUSD = RUB per 1 USD: 75, 80)
+        FX.objects.create(date=date(2024, 1, 1), RUBUSD=Decimal("75"))
+        FX.objects.create(date=date(2024, 6, 1), RUBUSD=Decimal("80"))
 
         # Create a bond
         self.bond = Assets.objects.create(
@@ -124,12 +124,13 @@ class BondACICalculationTests(TestCase):
         self.assertIsNotNone(aci_data)
         self.assertEqual(aci_data["currency"], "USD")
 
-        # ACI should be converted using FX rate (RUBUSD = 0.0125 at 2024-6-1)
+        # ACI should be converted using FX rate.
+        # FX.get_rate("RUB", "USD") returns 1/RUBUSD = 1/80 = 0.0125
         # First calculate RUB ACI, then convert
         days_accrued = (test_date - date(2024, 4, 15)).days
         total_days = (date(2024, 7, 15) - date(2024, 4, 15)).days
         aci_rub = Decimal("21.25") * Decimal(days_accrued) / Decimal(total_days)
-        expected_aci_usd = aci_rub * Decimal("0.0125")
+        expected_aci_usd = aci_rub / Decimal("80")
 
         self.assertEqual(aci_data["aci_amount"], round(expected_aci_usd, 2))
 
@@ -171,8 +172,8 @@ class CapitalDistributionTests(TestCase):
         """Set up test data with bond transactions including ACI."""
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
-        # Create FX rates
-        FX.objects.create(date=date(2024, 1, 1), RUBUSD=Decimal("0.0133"))
+        # Create FX rates (RUBUSD = RUB per 1 USD: 75)
+        FX.objects.create(date=date(2024, 1, 1), RUBUSD=Decimal("75"))
 
         # Create a bond
         self.bond = Assets.objects.create(
@@ -200,8 +201,6 @@ class CapitalDistributionTests(TestCase):
         self.account = Accounts.objects.create(
             broker=broker,
             name="Test Account",
-            investor=self.user,
-            currency="RUB",
         )
 
     def test_capital_distribution_excludes_negative_aci(self):
@@ -252,10 +251,10 @@ class CapitalDistributionTests(TestCase):
         # Should include:
         # - Coupon: 250.00
         # - Positive ACI (from sell): 30.00
-        # Should NOT include:
-        # - Negative ACI (from buy): -50.00
+        # - Negative ACI (from buy): -50.00 (netted against positive ACI)
+        # Total: 250 + 30 - 50 = 230
 
-        expected = Decimal("250.00") + Decimal("30.00")
+        expected = Decimal("250.00") + Decimal("30.00") - Decimal("50.00")
         self.assertEqual(capital_dist, expected)
 
     def test_capital_distribution_with_currency_conversion(self):
@@ -292,8 +291,8 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Total RUB: 250 + 45 = 295
-        # Convert to USD at rate RUBUSD = 0.0133
-        expected_usd = (Decimal("250.00") + Decimal("45.00")) * Decimal("0.0133")
+        # FX.get_rate("RUB", "USD") returns 1/RUBUSD = 1/75
+        expected_usd = (Decimal("250.00") + Decimal("45.00")) / Decimal("75")
         self.assertEqual(capital_dist_usd, round(expected_usd, 2))
 
 
@@ -335,7 +334,7 @@ class CouponScheduleFetchTests(TestCase):
         mock_coupon.coupon_start_date = datetime(2024, 1, 1)
         mock_coupon.coupon_end_date = datetime(2024, 4, 1)
         mock_coupon.coupon_date = datetime(2024, 4, 1)
-        mock_coupon.pay_one_bond = Mock(units=21, nano=250000000)
+        mock_coupon.pay_one_bond = Mock(units=21, nano=250000000, currency="RUB")
         mock_coupon.coupon_type = "FIXED"
 
         mock_response = Mock()
@@ -410,7 +409,7 @@ class CouponScheduleFetchTests(TestCase):
         mock_coupon.coupon_start_date = datetime(2024, 4, 1)
         mock_coupon.coupon_end_date = datetime(2024, 7, 1)
         mock_coupon.coupon_date = datetime(2024, 7, 1)
-        mock_coupon.pay_one_bond = Mock(units=21, nano=250000000)
+        mock_coupon.pay_one_bond = Mock(units=21, nano=250000000, currency="RUB")
         mock_coupon.coupon_type = "FIXED"
 
         mock_response = Mock()

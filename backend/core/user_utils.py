@@ -27,6 +27,14 @@ TIMELINE_CHOICES = [
 ]
 
 
+def format_account_display(account):
+    """Format an account for display as 'Broker – Account'.
+
+    Single source of truth for account display format throughout the app.
+    """
+    return f"{account.broker.name} \u2013 {account.name}"
+
+
 def prepare_account_choices(user):
     """
     Get broker account choices for a user.
@@ -64,7 +72,7 @@ def prepare_account_choices(user):
                 {
                     "type": "account",
                     "id": account.id,
-                    "display_name": f"{account.broker.name} – {account.name}",
+                    "display_name": format_account_display(account),
                 },
             )
             for account in accounts

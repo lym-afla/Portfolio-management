@@ -16,6 +16,8 @@ broker_router.register(r"account-groups", views.AccountGroupViewSet, basename="a
 router = DefaultRouter()
 router.register(r"tinkoff-tokens", views.TinkoffApiTokenViewSet, basename="tinkoff-token")
 router.register(r"ib-tokens", views.InteractiveBrokersApiTokenViewSet, basename="ib-token")
+router.register(r"bybit-tokens", views.BybitApiTokenViewSet, basename="bybit-token")
+router.register(r"okx-tokens", views.OKXApiTokenViewSet, basename="okx-token")
 router.register(r"", views.UserViewSet, basename="user")
 
 urlpatterns = [

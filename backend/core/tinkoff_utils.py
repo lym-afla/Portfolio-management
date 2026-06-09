@@ -308,7 +308,15 @@ async def fetch_and_cache_bond_coupon_schedule(asset: Assets, user, force_refres
                         6: "Variable",
                         7: "Other",
                     }
-                    coupon_type_str = coupon_type_mapping.get(int(coupon.coupon_type), "Unknown")
+                    raw_type = coupon.coupon_type
+                    try:
+                        type_key = int(raw_type)
+                    except (ValueError, TypeError):
+                        # SDK may return enum strings like 'FIXED' — map directly
+                        type_key = str(raw_type).upper()
+                        coupon_type_str = type_key.title() if type_key else "Unknown"
+                    if coupon_type_str is None:
+                        coupon_type_str = coupon_type_mapping.get(type_key, "Unknown")
 
                 # Create or update coupon schedule entry using database_sync_to_async
                 await database_sync_to_async(BondCouponSchedule.objects.update_or_create)(

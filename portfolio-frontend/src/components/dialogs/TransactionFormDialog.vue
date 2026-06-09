@@ -261,6 +261,16 @@ export default {
       try {
         const response = await getTransactionFormStructure()
         formFields.value = response.fields
+        // For new transactions, filter out "Merger in" and "Merger out"
+        // from the type choices — they are technical/internal types
+        if (!isEdit.value) {
+          const typeField = formFields.value.find(f => f.name === 'type')
+          if (typeField && typeField.choices) {
+            typeField.choices = typeField.choices.filter(
+              choice => choice.value !== 'Merger in' && choice.value !== 'Merger out'
+            )
+          }
+        }
         initializeForm()
       } catch (error) {
         logger.error('Unknown', 'Error fetching form structure:', error)
@@ -324,6 +334,9 @@ export default {
       if (props.editItem && formFields.value.length > 0) {
         const formattedValues = { ...props.editItem }
         formFields.value.forEach((field) => {
+          if (field.type === 'datepicker' && formattedValues[field.name]) {
+            formattedValues[field.name] = formattedValues[field.name].split('T')[0]
+          }
           if (field.type === 'select' && formattedValues[field.name]) {
             if (typeof formattedValues[field.name] === 'object') {
               formattedValues[field.name] = String(

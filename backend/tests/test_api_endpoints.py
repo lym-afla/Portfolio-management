@@ -5,6 +5,7 @@ import os
 import sys
 
 import django
+import pytest
 from django.test import Client
 
 from users.models import CustomUser
@@ -19,6 +20,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")
 django.setup()
 
 
+@pytest.mark.django_db
 def test_dashboard_settings_endpoint():
     """Test the dashboard settings endpoint directly."""
     print("=== Testing Dashboard Settings Endpoint ===")
@@ -77,6 +79,7 @@ def test_dashboard_settings_endpoint():
     # user.delete()
 
 
+@pytest.mark.django_db
 def test_transactions_endpoint():
     """Test the transactions endpoint directly."""
     print("\n=== Testing Transactions Endpoint ===")

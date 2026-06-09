@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="annualperformance",
             constraint=models.CheckConstraint(
-                check=models.Q(
+                condition=models.Q(
                     ("broker__isnull", False),
                     ("broker_group__isnull", False),
                     _connector="OR",
@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="annualperformance",
             constraint=models.CheckConstraint(
-                check=models.Q(
+                condition=models.Q(
                     ("broker__isnull", False),
                     ("broker_group__isnull", False),
                     _negated=True,

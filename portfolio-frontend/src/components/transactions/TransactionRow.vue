@@ -2,6 +2,14 @@
   <tr>
     <td v-if="showActions" />
     <td>{{ transaction.date }}</td>
+    
+    <!-- Broker - Account column -->
+    <template v-if="showBrokerAccount">
+      <td class="text-start">
+        {{ brokerAccountLabel }}
+      </td>
+    </template>
+
     <td class="text-start">
       <transaction-description :transaction="transaction" />
     </td>
@@ -99,7 +107,20 @@ export default {
       type: Boolean,
       default: false,
     },
+    showBrokerAccount: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['edit', 'delete'],
+  computed: {
+    brokerAccountLabel() {
+      if (!this.transaction.account) return ''
+      const parts = []
+      if (this.transaction.account.broker_name) parts.push(this.transaction.account.broker_name)
+      if (this.transaction.account.name) parts.push(this.transaction.account.name)
+      return parts.join(' — ')
+    },
+  },
 }
 </script>

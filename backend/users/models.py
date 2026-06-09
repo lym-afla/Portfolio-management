@@ -199,6 +199,146 @@ class TinkoffApiToken(BaseApiToken):
         )
 
 
+class BybitApiToken(BaseApiToken):
+    """Bybit-specific API credentials."""
+
+    broker = models.ForeignKey(
+        "common.Brokers", on_delete=models.CASCADE, related_name="bybit_tokens"
+    )
+    api_key = models.CharField(max_length=120)
+    testnet = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=False)
+
+    class Meta:
+        """Meta class for the bybit api token model."""
+
+        verbose_name = "Bybit API Token"
+        verbose_name_plural = "Bybit API Tokens"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "broker", "testnet"],
+                condition=models.Q(is_active=True),
+                name="unique_active_bybit_token",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        """Save the bybit api token."""
+        if self.is_active:
+            BybitApiToken.objects.filter(
+                user=self.user,
+                broker=self.broker,
+                testnet=self.testnet,
+                is_active=True,
+            ).exclude(pk=self.pk).update(is_active=False)
+        elif not self.pk:
+            self.is_active = True
+            BybitApiToken.objects.filter(
+                user=self.user,
+                broker=self.broker,
+                testnet=self.testnet,
+                is_active=True,
+            ).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def set_api_secret(self, api_secret, user):
+        """Encrypt and save the Bybit API secret."""
+        self.set_token(api_secret, user)
+
+    def get_api_secret(self, user):
+        """Decrypt the Bybit API secret."""
+        return self.get_token(user)
+
+    def __str__(self):
+        """Return the string representation of the bybit api token."""
+        return f"Bybit token ({self.user.username} - {self.broker.name})"
+
+
+class OKXApiToken(BaseApiToken):
+    """OKX-specific API credentials."""
+
+    broker = models.ForeignKey(
+        "common.Brokers", on_delete=models.CASCADE, related_name="okx_tokens"
+    )
+    api_key = models.CharField(max_length=120)
+    encrypted_passphrase = models.BinaryField()
+    simulated_trading = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=False)
+
+    class Meta:
+        """Meta class for the okx api token model."""
+
+        verbose_name = "OKX API Token"
+        verbose_name_plural = "OKX API Tokens"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "broker", "simulated_trading"],
+                condition=models.Q(is_active=True),
+                name="unique_active_okx_token",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        """Save the OKX api token."""
+        if self.is_active:
+            OKXApiToken.objects.filter(
+                user=self.user,
+                broker=self.broker,
+                simulated_trading=self.simulated_trading,
+                is_active=True,
+            ).exclude(pk=self.pk).update(is_active=False)
+        elif not self.pk:
+            self.is_active = True
+            OKXApiToken.objects.filter(
+                user=self.user,
+                broker=self.broker,
+                simulated_trading=self.simulated_trading,
+                is_active=True,
+            ).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def set_credentials(self, api_secret, passphrase, user):
+        """Encrypt and save the OKX API secret and passphrase."""
+        try:
+            key = get_encryption_key(user)
+            f = Fernet(key)
+            self.encrypted_token = f.encrypt(api_secret.encode())
+            self.encrypted_passphrase = f.encrypt(passphrase.encode())
+            self.save()
+        except Exception as e:
+            logger.error(f"Error encrypting OKX credentials for user {user.id}: {str(e)}")
+            raise
+
+    def get_api_secret(self, user):
+        """Decrypt the OKX API secret."""
+        return self.get_token(user)
+
+    def set_passphrase(self, passphrase, user):
+        """Encrypt and save the OKX passphrase."""
+        try:
+            key = get_encryption_key(user)
+            f = Fernet(key)
+            self.encrypted_passphrase = f.encrypt(passphrase.encode())
+            self.save()
+        except Exception as e:
+            logger.error(f"Error encrypting OKX passphrase for user {user.id}: {str(e)}")
+            raise
+
+    def get_passphrase(self, user):
+        """Decrypt the OKX passphrase."""
+        try:
+            key = get_encryption_key(user)
+            f = Fernet(key)
+            return f.decrypt(self.encrypted_passphrase).decode()
+        except Exception as e:
+            logger.error(f"Error decrypting OKX passphrase for user {user.id}: {str(e)}")
+            raise
+
+    def __str__(self):
+        """Return the string representation of the okx api token."""
+        return f"OKX token ({self.user.username} - {self.broker.name})"
+
+
 class InteractiveBrokersApiToken(BaseApiToken):
     """Interactive Brokers-specific API token model."""
 

@@ -415,10 +415,13 @@ export const createSecurity = async (securityData) => {
   }
 }
 
-export const getSecurityDetail = async (securityId) => {
+export const getSecurityDetail = async (securityId, accountId = null) => {
   try {
+    const params = {}
+    if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
-      `/database/api/securities/${securityId}/`
+      `/database/api/securities/${securityId}/`,
+      { params }
     )
     return response.data
   } catch (error) {
@@ -443,13 +446,13 @@ export const getSecurityPriceHistory = async (securityId, period) => {
   }
 }
 
-export const getSecurityPositionHistory = async (securityId, period) => {
+export const getSecurityPositionHistory = async (securityId, period, accountId = null) => {
   try {
+    const params = { period }
+    if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/position-history/`,
-      {
-        params: { period },
-      }
+      { params }
     )
     logger.log('Unknown', '[api.js] Security position history:', response.data)
     return response.data
@@ -459,18 +462,18 @@ export const getSecurityPositionHistory = async (securityId, period) => {
   }
 }
 
-export const getSecurityTransactions = async (securityId, options, period) => {
+export const getSecurityTransactions = async (securityId, options, period, accountId = null) => {
   try {
     const { page, itemsPerPage } = options
+    const params = {
+      page,
+      itemsPerPage,
+      period,
+    }
+    if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/transactions/`,
-      {
-        params: {
-          page,
-          itemsPerPage,
-          period,
-        },
-      }
+      { params }
     )
     logger.log('Unknown', '[api.js] Security transactions:', response.data)
     return response.data
@@ -737,6 +740,30 @@ export const getPriceImportFormStructure = async () => {
     const response = await axiosInstance.get('/database/api/price-import/')
     return response.data
   } catch (error) {
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const createMerger = async ({
+  oldSecurityId,
+  newSecurityId,
+  mergerDate,
+  conversionRatio,
+  cashPerShare,
+}) => {
+  try {
+    const data = {
+      old_security_id: oldSecurityId,
+      merger_date: mergerDate,
+    }
+    if (newSecurityId) data.new_security_id = newSecurityId
+    if (conversionRatio) data.conversion_ratio = conversionRatio
+    if (cashPerShare) data.cash_per_share = cashPerShare
+
+    const response = await axiosInstance.post('/database/api/create-merger/', data)
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error creating merger:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1326,6 +1353,32 @@ export const saveIBToken = async (tokenData) => {
   }
 }
 
+export const saveBybitToken = async (tokenData) => {
+  try {
+    const response = await axiosInstance.post(
+      '/users/api/bybit-tokens/',
+      tokenData
+    )
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error saving Bybit token:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
+export const saveOKXToken = async (tokenData) => {
+  try {
+    const response = await axiosInstance.post(
+      '/users/api/okx-tokens/',
+      tokenData
+    )
+    return response.data
+  } catch (error) {
+    logger.error('Unknown', 'Error saving OKX token:', error)
+    throw error.response ? error.response.data : error.message
+  }
+}
+
 export const testIBConnection = async (tokenId) => {
   try {
     const response = await axiosInstance.post(
@@ -1359,6 +1412,12 @@ export const deleteToken = async (broker, tokenId) => {
       break
     case 'ib':
       brokerEndpoint = 'ib-tokens'
+      break
+    case 'bybit':
+      brokerEndpoint = 'bybit-tokens'
+      break
+    case 'okx':
+      brokerEndpoint = 'okx-tokens'
       break
     default:
       throw new Error(`Unsupported broker type: ${broker}`)

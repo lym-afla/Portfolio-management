@@ -519,11 +519,7 @@ export default {
       }
     }
 
-    const handlePriceUpdated = (updatedPrice) => {
-      const index = priceData.value.findIndex((p) => p.id === updatedPrice.id)
-      if (index !== -1) {
-        priceData.value[index] = updatedPrice
-      }
+    const handlePriceUpdated = () => {
       fetchPriceData()
     }
 

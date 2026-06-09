@@ -18,6 +18,7 @@ from common.models import (
     BondCouponSchedule,
     BondMetadata,
     Brokers,
+    FX,
     Transactions,
 )
 from core.securities_utils import calculate_bond_ytm
@@ -143,6 +144,9 @@ class YTMCalculationTestCase(TestCase):
 
     def test_ytm_calculation_with_different_currencies(self):
         """Test YTM calculation with currency conversion."""
+        # Create FX rates for RUB-USD conversion
+        FX.objects.create(date=datetime.date(2022, 1, 1), RUBUSD=Decimal("75"))
+
         # Create a bond in RUB
         rub_bond = Assets.objects.create(
             ISIN="RUBTEST123456",
@@ -319,7 +323,9 @@ class YTMCalculationTestCase(TestCase):
 
         # Both methods should give similar results
         if ytm_new is not None and ytm_old is not None:
-            difference = abs(float(ytm_new) - float(ytm_old))
+            # ytm_old may be a formatted string like '1.51%' — strip % suffix
+            ytm_old_val = float(str(ytm_old).rstrip("%")) if isinstance(ytm_old, str) else float(ytm_old)
+            difference = abs(float(ytm_new) - ytm_old_val)
             self.assertLess(
                 difference,
                 0.01,
