@@ -1714,10 +1714,14 @@ In `backend/core/crypto_exchange_import.py`, add a helper that:
 - treats missing `price_asset`, `USD`, `USDT`, and `USDC` as fiat-equivalent for now
 - resolves non-stable quote assets with `resolve_crypto_asset`
 - looks up the latest `Prices` row with `date <= event date`
+- for BTC quote assets, attempts to import a missing BTC/USD close from Yahoo
+  Finance using `BTC-USD` and stores it as a `Prices` row for `CRYPTO:BTC`
 - returns that fiat price as a `Decimal`
-- raises `ValueError(f"Missing fiat price for quote asset {quote_asset} on or before {event_date}")` when no usable price exists
+- raises `ValueError(f"Could not import fiat price for quote asset {quote_asset} on or before {event_date}")` when no usable price can be found or imported
 
-Do not create a `Prices` row inside the importer. The importer should consume existing price history only.
+Do not add BTC or stablecoins as new `FX` model fields. Crypto/USD rates are
+asset prices, so the importer should persist them through `Prices`, not through
+`FX`.
 
 - [ ] **Step 4: Derive fiat leg prices before persistence**
 

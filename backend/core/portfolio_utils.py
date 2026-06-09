@@ -17,7 +17,12 @@ from django.db.models import Prefetch, Q, QuerySet, Sum
 from pyxirr import xirr
 
 from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
-from constants import TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+from constants import (
+    TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+    TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+)
 from core.formatting_utils import format_percentage
 from users.models import AccountGroup, CustomUser
 
@@ -278,16 +283,23 @@ def IRR(
     cash_flows = []
     transaction_dates = []
 
-    transactions = Transactions.objects.filter(
-        investor__id=user_id, date__date__lte=date, security_id=asset_id
-    )
+    transactions = Transactions.objects.filter(investor__id=user_id, date__date__lte=date)
+    if asset_id is not None:
+        transactions = transactions.filter(security_id=asset_id)
 
     # For portfolio-level IRR (no specific asset), only external cash flows
     # matter. Internal items (broker commission, tax, interest income) are
     # already reflected in the terminal NAV / cash-out amounts; including
     # them would double-count.
     if asset_id is None:
-        transactions = transactions.filter(type__in=["Cash in", "Cash out"])
+        transactions = transactions.filter(
+            type__in=[
+                "Cash in",
+                "Cash out",
+                TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+                TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+            ]
+        )
 
     if account_ids is not None:
         transactions = transactions.filter(account_id__in=account_ids)
@@ -350,12 +362,14 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     Uses the centralized total_cash_flow() method and applies
     sign convention for IRR (negative = outflow, positive = inflow).
     """
-    if transaction.is_reward_transaction() or transaction.is_neutral_transfer_transaction():
+    if transaction.is_reward_transaction():
         return Decimal(0)
 
     if transaction.type in [
         TRANSACTION_TYPE_CRYPTO_TRADE_IN,
         TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+        TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+        TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
     ]:
         if transaction.quantity is not None and transaction.price is not None:
             # IRR treats crypto trades as asset cash flows: buys are negative,

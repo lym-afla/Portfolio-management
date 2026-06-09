@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 
@@ -8,8 +9,12 @@ from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
 )
-from core.crypto_exchange_import import CryptoExchangeEvent, persist_crypto_exchange_event
+from core.crypto_exchange_import import (
+    CryptoExchangeEvent,
+    persist_crypto_exchange_event,
+)
 
 
 def _crypto_event(**overrides):
@@ -155,16 +160,130 @@ def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account
         fee=None,
     )
 
-    with pytest.raises(ValueError, match="Missing fiat price for quote asset BTC"):
-        persist_crypto_exchange_event(event, user, crypto_account)
+    with patch(
+        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        return_value=None,
+        create=True,
+    ):
+        with pytest.raises(ValueError, match="Could not import fiat price for quote asset BTC"):
+            persist_crypto_exchange_event(event, user, crypto_account)
 
     assert Transactions.objects.filter(import_group_id="order-missing-price").count() == 0
 
 
 @pytest.mark.django_db
-def test_resolved_crypto_asset_identifier_fits_model_field_for_long_symbols(
-    user, crypto_account
-):
+def test_crypto_crypto_pair_imports_missing_btc_usd_price_from_yahoo(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="exec-auto-btc-price",
+        group_id="order-auto-btc-price",
+        legs=[
+            {
+                "asset": "ETH",
+                "quantity": Decimal("1.5"),
+                "price": Decimal("0.05"),
+                "price_asset": "BTC",
+                "role": "base",
+            },
+            {
+                "asset": "BTC",
+                "quantity": Decimal("-0.075"),
+                "price": Decimal("1"),
+                "price_asset": "BTC",
+                "role": "quote",
+            },
+        ],
+        fee=None,
+    )
+
+    with patch(
+        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        return_value=Decimal("61000.123456789"),
+        create=True,
+    ) as fetch_price:
+        created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    btc = Assets.objects.get(ISIN="CRYPTO:BTC", currency="USD")
+    eth_tx = Transactions.objects.get(security__ticker="ETH")
+    btc_tx = Transactions.objects.get(security=btc)
+    btc_price = Prices.objects.get(security=btc, date=date(2026, 1, 1))
+
+    assert len(created) == 2
+    fetch_price.assert_called_once_with("BTC", date(2026, 1, 1))
+    assert btc_price.price == Decimal("61000.123457")
+    assert eth_tx.price == Decimal("3050.006172850")
+    assert btc_tx.price == Decimal("61000.123457000")
+
+
+@pytest.mark.django_db
+def test_auto_imported_btc_price_rolls_back_when_event_validation_fails(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="exec-auto-btc-price-bad-leg",
+        group_id="order-auto-btc-price-bad-leg",
+        legs=[
+            {
+                "asset": "ETH",
+                "quantity": Decimal("1.5"),
+                "price": Decimal("0.05"),
+                "price_asset": "BTC",
+                "role": "base",
+            },
+            {
+                "asset": "SOL",
+                "quantity": Decimal("2"),
+                "price": None,
+                "price_asset": "USDT",
+                "role": "base",
+            },
+        ],
+        fee=None,
+    )
+
+    with patch(
+        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        return_value=Decimal("61000.123456789"),
+        create=True,
+    ):
+        with pytest.raises(ValueError, match="without fiat-denominated price"):
+            persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert not Assets.objects.filter(ISIN="CRYPTO:BTC", currency="USD").exists()
+    assert not Prices.objects.filter(date=date(2026, 1, 1)).exists()
+    assert Transactions.objects.filter(import_group_id="order-auto-btc-price-bad-leg").count() == 0
+
+
+@pytest.mark.django_db
+def test_stablecoin_transfer_import_creates_crypto_asset_without_cash_balance(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="transfer-usdt-in",
+        group_id="transfer-usdt-in",
+        category="transfer",
+        raw_type="deposit",
+        legs=[
+            {
+                "asset": "USDT",
+                "quantity": Decimal("250.123456789"),
+                "price": Decimal("1"),
+                "price_asset": "USDT",
+                "role": "transfer",
+            }
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    usdt = Assets.objects.get(ISIN="CRYPTO:USDT", currency="USD")
+    tx = created[0]
+    assert tx.security == usdt
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+    assert tx.quantity == Decimal("250.123456789")
+    assert tx.price == Decimal("1.000000000")
+    assert tx.total_cash_flow() == Decimal("0")
+    assert crypto_account.balance(date(2026, 1, 1)) == {}
+
+
+@pytest.mark.django_db
+def test_resolved_crypto_asset_identifier_fits_model_field_for_long_symbols(user, crypto_account):
     event = _crypto_event(
         provider_event_id="exec-long",
         group_id="order-long",
