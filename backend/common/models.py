@@ -469,15 +469,6 @@ class Assets(models.Model):
             ),
         ]
 
-    class Meta:
-        """Meta class for the Assets model."""
-
-        constraints = [
-            models.UniqueConstraint(
-                fields=["ISIN", "currency"], name="unique_asset_currency_entry"
-            ),
-        ]
-
     # Helper properties for bond handling
     @property
     def is_bond(self):

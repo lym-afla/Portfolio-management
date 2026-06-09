@@ -19,6 +19,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from common.models import Accounts, Assets, Brokers, FXTransaction, Prices, Transactions
+from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from users.models import CustomUser
 
 
@@ -520,6 +521,35 @@ class TestAssetEndpoints(APITestCase):
             200,
             404,
         ]  # Either found or not found, but not auth error
+
+    def test_crypto_asset_detail_includes_reward_totals(self):
+        """Crypto detail exposes reward totals in native units and fiat value."""
+        crypto = Assets.objects.create(
+            type=ASSET_TYPE_CRYPTO,
+            ISIN="CRYPTO:BTC",
+            name="Bitcoin",
+            ticker="BTC",
+            currency="USD",
+            exposure="Commodity",
+        )
+        crypto.investors.add(self.user)
+        Transactions.objects.create(
+            investor=self.user,
+            account=self.account,
+            security=crypto,
+            currency="USD",
+            type=TRANSACTION_TYPE_CRYPTO_REWARD,
+            date=datetime(2026, 1, 1, 12, 0),
+            quantity=Decimal("0.010000000"),
+            price=Decimal("50000.000000000"),
+        )
+
+        response = self.client.get(f"/database/api/securities/{crypto.id}/")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["crypto_reward_native_quantity"] == "0.010000000"
+        assert data["crypto_reward_fiat_value"] == "500.00"
 
     def test_asset_search_endpoint(self):
         """Test asset search functionality."""

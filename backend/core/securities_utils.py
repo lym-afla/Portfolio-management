@@ -6,7 +6,7 @@ securities data for display in tables and API responses.
 
 import logging
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from django.db.models import Prefetch, Q
@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404
 from pyxirr import xirr
 
 from common.models import FX, Assets, Transactions
+from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from core.portfolio_utils import IRR
 
 from .formatting_utils import format_table_data, format_value
@@ -32,9 +33,7 @@ def _get_first_buy_transaction(
     security: Assets, user, account_ids: list = None
 ) -> Optional[Transactions]:
     """Get first buy transaction for a security."""
-    query = security.transactions.filter(
-        type="Buy", investor=user, quantity__isnull=False
-    )
+    query = security.transactions.filter(type="Buy", investor=user, quantity__isnull=False)
     if account_ids:
         query = query.filter(account_id__in=account_ids)
     return query.order_by("date").first()
@@ -81,9 +80,7 @@ def _get_redemption_notional(
             return redemption_entry.notional_per_unit
 
         # Fallback: use current notional at maturity
-        return bond_meta.get_current_notional(
-            bond_meta.maturity_date, user, target_currency
-        )
+        return bond_meta.get_current_notional(bond_meta.maturity_date, user, target_currency)
     except Exception as e:
         logger.error(f"Error getting redemption notional: {e}")
         # Final fallback: use initial notional
@@ -126,9 +123,7 @@ def _build_bond_cash_flows(
             f"(quantity={first_buy.quantity}, price={first_buy.price})"
         )
 
-    first_buy_date = (
-        first_buy.date.date() if hasattr(first_buy.date, "date") else first_buy.date
-    )
+    first_buy_date = first_buy.date.date() if hasattr(first_buy.date, "date") else first_buy.date
     position_qty = Decimal(first_buy.quantity)
 
     # Get acquisition notional (use cache if available)
@@ -136,9 +131,7 @@ def _build_bond_cash_flows(
     if cache_key in notional_cache:
         notional = notional_cache[cache_key]
     else:
-        notional = _get_acquisition_notional(
-            first_buy, bond_meta, user, target_currency
-        )
+        notional = _get_acquisition_notional(first_buy, bond_meta, user, target_currency)
         notional_cache[cache_key] = notional
 
     if notional is None:
@@ -160,8 +153,7 @@ def _build_bond_cash_flows(
         fx_rate = FX.get_rate(first_buy.currency, target_currency, first_buy.date)["FX"]
         if not fx_rate:
             raise ValueError(
-                f"No FX rate for {security.name} from {first_buy.currency} "
-                f"to {target_currency}"
+                f"No FX rate for {security.name} from {first_buy.currency} " f"to {target_currency}"
             )
         amount *= Decimal(fx_rate)
 
@@ -169,21 +161,19 @@ def _build_bond_cash_flows(
 
     # Add coupon cash flows (positive - money in)
     if position_qty > 0:
-        coupon_schedule = security.coupon_schedule.filter(
-            payment_date__gt=first_buy_date
-        ).order_by("payment_date")
+        coupon_schedule = security.coupon_schedule.filter(payment_date__gt=first_buy_date).order_by(
+            "payment_date"
+        )
 
         for coupon in coupon_schedule:
-            coupon_amt = (
-                Decimal(coupon.coupon_amount) if coupon.coupon_amount else Decimal(0)
-            )
+            coupon_amt = Decimal(coupon.coupon_amount) if coupon.coupon_amount else Decimal(0)
             cf_amount = coupon_amt * position_qty
 
             # FX conversion for coupon if needed
             if coupon.coupon_currency != target_currency:
-                fx_rate = FX.get_rate(
-                    coupon.coupon_currency, target_currency, coupon.payment_date
-                )["FX"]
+                fx_rate = FX.get_rate(coupon.coupon_currency, target_currency, coupon.payment_date)[
+                    "FX"
+                ]
                 if fx_rate:
                     cf_amount *= Decimal(fx_rate)
                 else:
@@ -197,9 +187,7 @@ def _build_bond_cash_flows(
 
     # Add redemption cash flow at maturity (positive - money in)
     if bond_meta.maturity_date and position_qty > 0:
-        redemption_notional = _get_redemption_notional(
-            security, bond_meta, user, target_currency
-        )
+        redemption_notional = _get_redemption_notional(security, bond_meta, user, target_currency)
 
         if redemption_notional:
             redemption_amount = redemption_notional * position_qty
@@ -207,9 +195,9 @@ def _build_bond_cash_flows(
             # FX conversion for redemption if needed
             nominal_currency = bond_meta.nominal_currency or target_currency
             if nominal_currency != target_currency:
-                fx_rate = FX.get_rate(
-                    nominal_currency, target_currency, bond_meta.maturity_date
-                )["FX"]
+                fx_rate = FX.get_rate(nominal_currency, target_currency, bond_meta.maturity_date)[
+                    "FX"
+                ]
                 if fx_rate:
                     redemption_amount *= Decimal(fx_rate)
                 else:
@@ -262,9 +250,7 @@ def calculate_bond_ytm(
                 logger.debug(f"YTM calculated for {security.name}: {ytm_percentage}%")
                 return ytm_percentage
 
-        logger.warning(
-            f"Insufficient cash flows for YTM calculation of {security.name}"
-        )
+        logger.warning(f"Insufficient cash flows for YTM calculation of {security.name}")
         return None
 
     except ValueError as e:
@@ -278,6 +264,38 @@ def calculate_bond_ytm(
 # =============================================================================
 # Securities API Functions
 # =============================================================================
+
+
+def get_crypto_reward_totals(
+    security: Assets,
+    user,
+    effective_date: date,
+    account_ids: list = None,
+    currency: str = "USD",
+) -> tuple[Decimal, Decimal]:
+    """Return crypto reward totals in native units and selected fiat currency."""
+    reward_transactions = security.transactions.filter(
+        type=TRANSACTION_TYPE_CRYPTO_REWARD,
+        investor=user,
+        date__date__lte=effective_date,
+    )
+    if account_ids:
+        reward_transactions = reward_transactions.filter(account_id__in=account_ids)
+
+    native_quantity = Decimal("0")
+    fiat_value = Decimal("0")
+
+    for transaction in reward_transactions:
+        native_quantity += transaction.quantity or Decimal("0")
+        reward_value = transaction.reward_value()
+        if transaction.currency != currency:
+            fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
+            if not fx_rate:
+                continue
+            reward_value *= Decimal(fx_rate)
+        fiat_value += reward_value
+
+    return native_quantity, fiat_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def get_securities_table_api(request):
@@ -332,8 +350,7 @@ def _filter_securities(user, search):
             "bondmetadata_metadata",
             "optionmetadata_metadata",
             "futuremetadata_metadata",
-        )
-        .prefetch_related(
+        ).prefetch_related(
             Prefetch(
                 "transactions",
                 queryset=Transactions.objects.filter(investor=user)
@@ -462,9 +479,7 @@ def get_security_detail(request, security_id, account_id=None):
         # Calculate total ACI for position using the already-fetched aci_data
         # This avoids calling get_current_aci() twice and duplicating MICEX API calls
         if aci_data:
-            position_qty = security.position(
-                effective_current_date, user, account_ids=account_ids
-            )
+            position_qty = security.position(effective_current_date, user, account_ids=account_ids)
             total_aci = (
                 aci_data["aci_amount"] * Decimal(position_qty) if position_qty else Decimal(0)
             )
@@ -636,6 +651,19 @@ def get_security_detail(request, security_id, account_id=None):
     formatted_security_data = format_table_data(
         [security_data], security.currency, number_of_digits
     )[0]
+
+    if security.type == ASSET_TYPE_CRYPTO:
+        reward_quantity, reward_value = get_crypto_reward_totals(
+            security,
+            user,
+            effective_current_date,
+            account_ids=account_ids,
+            currency=getattr(user, "default_currency", security.currency),
+        )
+        formatted_security_data["crypto_reward_native_quantity"] = str(
+            reward_quantity.quantize(Decimal("0.000000001"), rounding=ROUND_HALF_UP)
+        )
+        formatted_security_data["crypto_reward_fiat_value"] = str(reward_value)
 
     return formatted_security_data
 

@@ -163,6 +163,28 @@
         </v-col>
       </v-row>
 
+      <v-row v-if="security.instrument_type === 'Crypto'">
+        <v-col cols="12">
+          <v-card>
+            <v-card-title>Crypto Rewards</v-card-title>
+            <v-card-text>
+              <v-table density="compact">
+                <tbody>
+                  <tr>
+                    <td>Native rewards</td>
+                    <td>{{ security.crypto_reward_native_quantity }}</td>
+                  </tr>
+                  <tr>
+                    <td>Fiat reward value</td>
+                    <td>{{ security.crypto_reward_fiat_value }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
       <!-- Bond-specific Information -->
       <v-row v-if="security.instrument_type === 'Bond' && security.bond_data">
         <v-col cols="12">
@@ -506,7 +528,8 @@ export default {
     const accountOptions = ref([])
 
     const selectedAccountId = computed(() => {
-      if (!selectedAccount.value || selectedAccount.value.type === 'all') return null
+      if (!selectedAccount.value || selectedAccount.value.type === 'all')
+        return null
       return selectedAccount.value.id
     })
 
@@ -611,7 +634,10 @@ export default {
         loadingPositionChart.value = true
 
         if (!security.value) {
-          const securityResponse = await getSecurityDetail(securityId, selectedAccountId.value)
+          const securityResponse = await getSecurityDetail(
+            securityId,
+            selectedAccountId.value
+          )
           security.value = securityResponse
           emit('update-page-title', security.value.name)
         }
@@ -631,7 +657,11 @@ export default {
         const [priceHistoryResponse, positionHistoryResponse] =
           await Promise.all([
             getSecurityPriceHistory(securityId, selectedPeriod.value),
-            getSecurityPositionHistory(securityId, selectedPeriod.value, selectedAccountId.value),
+            getSecurityPositionHistory(
+              securityId,
+              selectedPeriod.value,
+              selectedAccountId.value
+            ),
           ])
 
         priceHistory.value = priceHistoryResponse || []
@@ -703,7 +733,11 @@ export default {
         const data = await getAccountChoices()
         accountOptions.value = formatAccountChoices(data.options)
       } catch (error) {
-        logger.error('SecurityDetailPage', 'Error fetching account choices:', error)
+        logger.error(
+          'SecurityDetailPage',
+          'Error fetching account choices:',
+          error
+        )
       }
 
       logger.log('SecurityDetailPage', '[DEBUG] onMounted - Starting...')
