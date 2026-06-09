@@ -1,23 +1,29 @@
 """Normalize crypto exchange payloads into portfolio import events."""
 
+import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from hashlib import blake2s
 from typing import Any, Dict, List, Optional, Tuple
 
+import yfinance as yf
 from django.db import IntegrityError, transaction
 
 from common.models import Assets, OptionMetadata, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
+    TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+    TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
-
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 STABLECOINS = {"USDT", "USDC", "USD"}
+YAHOO_USD_PRICE_SYMBOLS = {"BTC": "BTC-USD"}
+logger = logging.getLogger(__name__)
 
 MONTH_NUMBERS = {
     "JAN": 1,
@@ -109,9 +115,7 @@ def _crypto_asset_identifier(symbol):
 
 
 def _event_datetime(event):
-    return datetime.fromtimestamp(event.timestamp_ms / 1000, tz=timezone.utc).replace(
-        tzinfo=None
-    )
+    return datetime.fromtimestamp(event.timestamp_ms / 1000, tz=timezone.utc).replace(tzinfo=None)
 
 
 def _account_import_id(account):
@@ -140,11 +144,54 @@ def _quote_asset_fiat_price(price_asset, user, event_date):
         .first()
     )
     if quote is None:
-        raise ValueError(
-            f"Missing fiat price for quote asset {quote_asset_symbol} "
-            f"on or before {event_date.date()}"
+        imported_price = fetch_crypto_usd_price_from_yahoo(quote_asset_symbol, event_date.date())
+        if imported_price is None:
+            raise ValueError(
+                f"Could not import fiat price for quote asset {quote_asset_symbol} "
+                f"on or before {event_date.date()}"
+            )
+        quote, _ = Prices.objects.update_or_create(
+            security=quote_asset,
+            date=event_date.date(),
+            defaults={
+                "price": _normalize_model_decimal(Prices, "price", imported_price),
+            },
         )
     return Decimal(quote.price)
+
+
+def fetch_crypto_usd_price_from_yahoo(symbol, price_date):
+    """Fetch a USD crypto close price from Yahoo Finance for import-time valuation."""
+    yahoo_symbol = YAHOO_USD_PRICE_SYMBOLS.get(str(symbol).upper())
+    if yahoo_symbol is None:
+        return None
+
+    start_date = price_date - timedelta(days=6)
+    end_date = price_date + timedelta(days=1)
+    try:
+        history = yf.Ticker(yahoo_symbol).history(
+            start=start_date.strftime("%Y-%m-%d"),
+            end=end_date.strftime("%Y-%m-%d"),
+            auto_adjust=False,
+        )
+    except Exception as exc:
+        logger.warning("Could not fetch %s price from Yahoo: %s", yahoo_symbol, exc)
+        return None
+
+    if history.empty or history["Close"].isnull().all():
+        logger.warning("Yahoo returned no close price data for %s", yahoo_symbol)
+        return None
+    requested_date_rows = history[history.index.date == price_date]
+    close_values = requested_date_rows["Close"].dropna()
+    if close_values.empty:
+        logger.warning(
+            "Yahoo returned no close price for %s on %s",
+            yahoo_symbol,
+            price_date,
+        )
+        return None
+    close = close_values.iloc[-1]
+    return Decimal(str(close))
 
 
 def _leg_fiat_price(leg, user, event_date):
@@ -181,9 +228,7 @@ def _normalize_model_decimal(model, field_name, value):
     int_digits = 1 if abs_value == 0 else len(str(int(abs_value)))
     max_decimal_places = min(field.decimal_places, field.max_digits - int_digits)
     if max_decimal_places < 0:
-        raise ValueError(
-            f"{field_name}={decimal_value} exceeds max_digits={field.max_digits}"
-        )
+        raise ValueError(f"{field_name}={decimal_value} exceeds max_digits={field.max_digits}")
     quantizer = Decimal("0.1") ** max_decimal_places
     return decimal_value.quantize(quantizer, rounding=ROUND_HALF_UP)
 
@@ -207,29 +252,47 @@ def _event_comment(event, leg):
     return "; ".join(parts)
 
 
+def _transaction_type_for_event(event, quantity):
+    category = (event.category or "").lower()
+    raw_type = (event.raw_type or "").lower()
+    if category == "reward":
+        return TRANSACTION_TYPE_CRYPTO_REWARD
+    if category in {"transfer", "deposit", "withdrawal"} or raw_type in {
+        "deposit",
+        "withdrawal",
+        "transfer",
+    }:
+        return (
+            TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+            if quantity > 0
+            else TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT
+        )
+    return TRANSACTION_TYPE_CRYPTO_TRADE_IN if quantity > 0 else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+
+
 def persist_crypto_exchange_event(event, user, account):
     created = []
     event_time = _event_datetime(event)
     import_account_id = _account_import_id(account)
     leg_records = []
 
-    for index, leg in enumerate(event.legs):
-        if leg.get("role") == "fee":
-            continue
-
-        quantity = _leg_quantity(leg)
-        if quantity == 0:
-            continue
-
-        price = _leg_fiat_price(leg, user, event_time)
-        if price is None:
-            raise ValueError(
-                "Cannot persist crypto exchange event without fiat-denominated "
-                f"price for {leg.get('asset')} leg priced in {leg.get('price_asset')}"
-            )
-        leg_records.append((index, leg, quantity, price))
-
     with transaction.atomic():
+        for index, leg in enumerate(event.legs):
+            if leg.get("role") == "fee":
+                continue
+
+            quantity = _leg_quantity(leg)
+            if quantity == 0:
+                continue
+
+            price = _leg_fiat_price(leg, user, event_time)
+            if price is None:
+                raise ValueError(
+                    "Cannot persist crypto exchange event without fiat-denominated "
+                    f"price for {leg.get('asset')} leg priced in {leg.get('price_asset')}"
+                )
+            leg_records.append((index, leg, quantity, price))
+
         for index, leg, quantity, price in leg_records:
             event_id = f"{event.provider_event_id}:{index}"
             if Transactions.objects.filter(
@@ -242,11 +305,7 @@ def persist_crypto_exchange_event(event, user, account):
                 continue
 
             asset = resolve_crypto_asset(leg["asset"], user)
-            tx_type = (
-                TRANSACTION_TYPE_CRYPTO_TRADE_IN
-                if quantity > 0
-                else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
-            )
+            tx_type = _transaction_type_for_event(event, quantity)
             try:
                 with transaction.atomic():
                     created.append(
@@ -257,12 +316,8 @@ def persist_crypto_exchange_event(event, user, account):
                             currency="USD",
                             type=tx_type,
                             date=event_time,
-                            quantity=_normalize_model_decimal(
-                                Transactions, "quantity", quantity
-                            ),
-                            price=_normalize_model_decimal(
-                                Transactions, "price", price
-                            ),
+                            quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
+                            price=_normalize_model_decimal(Transactions, "price", price),
                             comment=_event_comment(event, leg),
                             import_provider=event.provider,
                             import_account_id=import_account_id,

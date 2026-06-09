@@ -159,9 +159,13 @@ The approved approach is conservative quote-asset valuation:
 
 - Resolve the quote asset as a crypto `Assets` row.
 - Look up the quote asset fiat price at the trade timestamp, for example BTC/USD.
+- Store crypto/USD quote rates as `Prices` rows for the crypto asset, not as new `FX`
+  model fields. BTC/USD is imported from Yahoo Finance as `BTC-USD` when needed.
 - Derive the base leg fiat price from `base/quote * quote/USD`.
 - Persist the quote leg at the same quote asset fiat price.
-- If the quote asset fiat price is missing for the trade date, reject the event with a clear import error that names the missing quote asset/date instead of persisting unsafe rows.
+- If the quote asset fiat price is missing for the trade date, try the supported
+  automatic Yahoo import first. Reject the event only when the price still cannot
+  be imported, with a clear error that names the missing quote asset/date.
 
 Example: buy `1.5 ETH` for `0.075 BTC` when BTC/USD is `60000`.
 

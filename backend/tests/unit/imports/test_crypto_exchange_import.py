@@ -1,9 +1,13 @@
+from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 from core.crypto_exchange_import import (
     CryptoExchangeEvent,
+    fetch_crypto_usd_price_from_yahoo,
     normalize_bybit_spot_execution,
     normalize_okx_spot_fill,
     parse_option_symbol,
@@ -289,3 +293,45 @@ def test_parse_settlement_suffixed_option_symbol():
 def test_parse_option_symbol_rejects_malformed_symbols(symbol):
     with pytest.raises(ValueError):
         parse_option_symbol(symbol)
+
+
+def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
+    history = pd.DataFrame(
+        {"Close": [60000.0, 61000.123456]},
+        index=pd.to_datetime(["2025-12-31", "2026-01-01"]),
+    )
+
+    with patch("core.crypto_exchange_import.yf.Ticker") as ticker_class:
+        ticker_class.return_value.history.return_value = history
+
+        price = fetch_crypto_usd_price_from_yahoo("BTC", date(2026, 1, 1))
+
+    ticker_class.assert_called_once_with("BTC-USD")
+    ticker_class.return_value.history.assert_called_once_with(
+        start="2025-12-26",
+        end="2026-01-02",
+        auto_adjust=False,
+    )
+    assert price == Decimal("61000.123456")
+
+
+def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
+    history = pd.DataFrame(
+        {"Close": [60000.0]},
+        index=pd.to_datetime(["2025-12-31"]),
+    )
+
+    with patch("core.crypto_exchange_import.yf.Ticker") as ticker_class:
+        ticker_class.return_value.history.return_value = history
+
+        price = fetch_crypto_usd_price_from_yahoo("BTC", date(2026, 1, 1))
+
+    assert price is None
+
+
+def test_fetch_crypto_usd_price_from_yahoo_returns_none_for_unsupported_symbol():
+    with patch("core.crypto_exchange_import.yf.Ticker") as ticker_class:
+        price = fetch_crypto_usd_price_from_yahoo("ETH", date(2026, 1, 1))
+
+    ticker_class.assert_not_called()
+    assert price is None
