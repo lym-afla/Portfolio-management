@@ -1,5 +1,6 @@
 """Normalize crypto exchange payloads into portfolio import events."""
 
+import heapq
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -51,6 +52,33 @@ class CryptoExchangeEvent:
     raw_type: str
     legs: List[Dict[str, Any]]
     fee: Optional[Dict[str, Any]] = None
+
+
+def _merge_sorted_events(*iterables):
+    """K-way merge of CryptoExchangeEvent streams by timestamp_ms (stable).
+
+    Ties are broken by source-stream order (earlier positional arg first),
+    then by original position within that stream.
+    """
+    counters = [0] * len(iterables)
+    heap = []
+    for stream_idx, it in enumerate(iterables):
+        try:
+            event = next(it)
+            heapq.heappush(heap, (event.timestamp_ms, stream_idx, counters[stream_idx], event))
+            counters[stream_idx] += 1
+        except StopIteration:
+            pass
+
+    while heap:
+        _, stream_idx, _, event = heapq.heappop(heap)
+        yield event
+        try:
+            nxt = next(iterables[stream_idx])
+            heapq.heappush(heap, (nxt.timestamp_ms, stream_idx, counters[stream_idx], nxt))
+            counters[stream_idx] += 1
+        except StopIteration:
+            pass
 
 
 def resolve_crypto_asset(symbol, user):

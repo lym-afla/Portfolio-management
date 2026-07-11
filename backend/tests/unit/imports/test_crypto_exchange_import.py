@@ -358,3 +358,54 @@ def test_single_leg_accepts_option_instrument():
 
     assert legs[0]["instrument"] == "option"
     assert legs[0]["role"] == "base"
+
+
+from core.crypto_exchange_import import _merge_sorted_events
+
+
+def _event(ts, eid):
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=eid,
+        group_id=eid,
+        timestamp_ms=ts,
+        category="trade",
+        raw_type="x",
+        legs=[],
+    )
+
+
+def test_merge_sorted_events_interleaves_by_timestamp():
+    a = [_event(100, "a1"), _event(300, "a3")]
+    b = [_event(200, "b2"), _event(400, "b4")]
+
+    result = [e.provider_event_id for e in _merge_sorted_events(iter(a), iter(b))]
+
+    assert result == ["a1", "b2", "a3", "b4"]
+
+
+def test_merge_sorted_events_preserves_stable_order_on_ties():
+    a = [_event(100, "a1")]
+    b = [_event(100, "b1")]
+
+    result = [e.provider_event_id for e in _merge_sorted_events(iter(a), iter(b))]
+
+    assert result == ["a1", "b1"]
+
+
+def test_merge_sorted_events_handles_empty_streams():
+    result = list(_merge_sorted_events(iter([]), iter([]), iter([_event(100, "x")])))
+
+    assert [e.provider_event_id for e in result] == ["x"]
+
+
+def test_merge_sorted_events_handles_all_empty():
+    assert list(_merge_sorted_events(iter([]), iter([]))) == []
+
+
+def test_merge_sorted_events_single_stream():
+    a = [_event(100, "a1"), _event(200, "a2")]
+
+    result = [e.provider_event_id for e in _merge_sorted_events(iter(a))]
+
+    assert result == ["a1", "a2"]
