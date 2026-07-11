@@ -133,6 +133,32 @@ class BybitClient:
             if not cursor:
                 break
 
+    def iter_deposits(self, params=None):
+        params = params or {}
+        data = self.get_private("/v5/asset/deposit/query-record", params)
+        rows = data.get("result", {}).get("rows")
+        if rows is None:
+            raise CryptoExchangeAPIError(f"Malformed Bybit deposit response: {data}")
+        for row in rows:
+            yield row
+
+    def iter_withdrawals(self, params=None):
+        params = params or {}
+        data = self.get_private("/v5/asset/withdraw/query-record", params)
+        rows = data.get("result", {}).get("rows")
+        if rows is None:
+            raise CryptoExchangeAPIError(f"Malformed Bybit withdrawal response: {data}")
+        for row in rows:
+            yield row
+
+    def iter_option_executions(self, params=None):
+        params = {**(params or {}), "category": "option"}
+        yield from self.iter_executions(params)
+
+    def iter_option_settlements(self, params=None):
+        params = {**(params or {}), "type": "Settlement"}
+        yield from self.iter_transaction_log(params)
+
 
 @dataclass
 class OKXClient:
@@ -230,3 +256,34 @@ class OKXClient:
             after = rows[-1].get("billId")
             if not after:
                 raise CryptoExchangeAPIError(f"Missing OKX billId cursor in fills response: {rows[-1]}")
+
+    def iter_asset_deposits_withdrawals(self, params=None):
+        params = params or {}
+        data = self.get_private("/api/v5/asset/deposit-withdraw", params)
+        rows = data.get("data")
+        if rows is None:
+            raise CryptoExchangeAPIError(f"Malformed OKX deposit-withdraw response: {data}")
+        for row in rows:
+            yield row
+
+    def iter_earn_lending_history(self, params=None):
+        params = params or {}
+        data = self.get_private("/api/v5/finance/savings/lending-history", params)
+        rows = data.get("data")
+        if rows is None:
+            raise CryptoExchangeAPIError(f"Malformed OKX lending response: {data}")
+        for row in rows:
+            yield row
+
+    def iter_option_fills(self, params=None):
+        params = {**(params or {}), "instType": "OPTION"}
+        yield from self.iter_fills_history(params)
+
+    def iter_option_settlements(self, params=None):
+        params = params or {}
+        data = self.get_private("/api/v5/account/options-settlement-history", params)
+        rows = data.get("data")
+        if rows is None:
+            raise CryptoExchangeAPIError(f"Malformed OKX options-settlement response: {data}")
+        for row in rows:
+            yield row

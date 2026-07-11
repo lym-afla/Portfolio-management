@@ -434,3 +434,50 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "okx"
     assert events[0].legs[0]["quantity"] == Decimal("-0.2001")
+
+
+def test_bybit_iter_deposits_paginates_and_yields_rows(monkeypatch):
+    client = BybitClient(api_key="k", api_secret="s")
+    pages = [
+        {"retCode": 0, "retMsg": "OK", "result": {"rows": [{"coin": "USDT", "txID": "d1"}], "nextPageCursor": ""}},
+    ]
+    calls = {"n": 0}
+
+    def fake_get(path, params=None):
+        idx = calls["n"]
+        calls["n"] += 1
+        return pages[idx]
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_deposits({"limit": 50}))
+
+    assert [r["txID"] for r in rows] == ["d1"]
+
+
+def test_bybit_iter_option_executions_passes_option_category(monkeypatch):
+    client = BybitClient(api_key="k", api_secret="s")
+    captured = {}
+
+    def fake_get(path, params=None):
+        captured["path"] = path
+        captured["params"] = params
+        return {"retCode": 0, "retMsg": "OK", "result": {"list": [], "nextPageCursor": ""}}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    list(client.iter_option_executions({"limit": 5}))
+
+    assert captured["path"] == "/v5/execution/list"
+    assert captured["params"]["category"] == "option"
+
+
+def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "billId": "b1", "type": "deposit"}]}
+
+    def fake_get(path, params=None):
+        return page
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_asset_deposits_withdrawals({}))
+
+    assert rows[0]["billId"] == "b1"
