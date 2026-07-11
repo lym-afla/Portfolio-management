@@ -1,7 +1,13 @@
 import base64
 import hashlib
 import hmac
+import os
 from decimal import Decimal
+
+# The unified-stream tests below are ``async def`` and set up ORM fixtures
+# directly (per the task brief). Allow synchronous ORM calls from async code
+# during the test session so those setup queries don't need sync_to_async wrappers.
+os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "1")
 
 import pytest
 from asgiref.sync import async_to_sync
@@ -353,6 +359,21 @@ def test_bybit_api_get_transactions_uses_active_token_and_normalizer(monkeypatch
                 "execTime": "1767225600000",
             }
 
+        def iter_option_executions(self, params):
+            yield from []
+
+        def iter_deposits(self, params):
+            yield from []
+
+        def iter_withdrawals(self, params):
+            yield from []
+
+        def iter_transaction_log(self, params):
+            yield from []
+
+        def iter_option_settlements(self, params):
+            yield from []
+
     monkeypatch.setattr("core.broker_api_utils.BybitClient", FakeBybitClient)
 
     api = BybitAPI()
@@ -412,6 +433,18 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
                 "feeCcy": "BTC",
                 "fillTime": "1767225600000",
             }
+
+        def iter_option_fills(self, params):
+            yield from []
+
+        def iter_asset_deposits_withdrawals(self, params):
+            yield from []
+
+        def iter_earn_lending_history(self, params):
+            yield from []
+
+        def iter_option_settlements(self, params):
+            yield from []
 
     monkeypatch.setattr("core.broker_api_utils.OKXClient", FakeOKXClient)
 
@@ -481,3 +514,53 @@ def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
     rows = list(client.iter_asset_deposits_withdrawals({}))
 
     assert rows[0]["billId"] == "b1"
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_bybit_api_get_transactions_merges_streams_and_tracks_failures(
+    user, monkeypatch
+):
+    from common.models import Accounts, Brokers
+    from users.models import BybitApiToken
+
+    broker = Brokers.objects.create(investor=user, name="Bybit", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")
+    token = BybitApiToken.objects.create(
+        user=user, broker=broker, api_key="k", is_active=True, testnet=False
+    )
+    token.set_api_secret("s", user)
+    token.save()
+
+    # Monkeypatch BybitClient iterators at the class level.
+    from core.crypto_exchange_clients import BybitClient
+
+    def fake_iter_executions(self, params):
+        return iter([{
+            "execId": "e1", "symbol": "BTCUSDT", "side": "Buy",
+            "execQty": "0.1", "execPrice": "60000", "execTime": "300",
+        }])
+
+    def fake_iter_deposits(self, params):
+        raise CryptoExchangeAPIError("Bybit HTTP 403: forbidden")
+
+    def fake_iter_empty(self, params):
+        return iter([])
+
+    monkeypatch.setattr(BybitClient, "iter_executions", fake_iter_executions)
+    monkeypatch.setattr(BybitClient, "iter_deposits", fake_iter_deposits)
+    monkeypatch.setattr(BybitClient, "iter_withdrawals", fake_iter_empty)
+    monkeypatch.setattr(BybitClient, "iter_option_executions", fake_iter_empty)
+    monkeypatch.setattr(BybitClient, "iter_transaction_log", fake_iter_empty)
+    monkeypatch.setattr(BybitClient, "iter_option_settlements", fake_iter_empty)
+
+    api = BybitAPI()
+    await api.connect(user)
+    events = []
+    async for event in api.get_transactions(account):
+        events.append(event)
+
+    # The trade event from iter_executions still yielded despite deposit failure.
+    assert len(events) == 1
+    assert events[0].provider_event_id == "e1"
+    # The deposit endpoint failure was recorded, not raised.
+    assert any("403" in msg for _, msg in api.partial_failures)
