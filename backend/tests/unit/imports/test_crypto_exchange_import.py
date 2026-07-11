@@ -522,3 +522,72 @@ def test_normalize_okx_withdrawal_direction_prefixed_id():
     assert event.category == "withdrawal"
     assert event.provider_event_id == "withdrawal:okx-wd-1"
     assert event.legs[0]["quantity"] == Decimal("-0.1")
+
+
+from core.crypto_exchange_import import (
+    normalize_bybit_reward,
+    normalize_okx_reward,
+)
+
+
+def test_normalize_bybit_reward_btc():
+    event = normalize_bybit_reward(
+        {
+            "symbol": "BTC",
+            "change": "0.001",
+            "transactionTime": "1700000004000",
+            "type": "Earn",
+            "id": "earn-1",
+        }
+    )
+
+    assert event.category == "reward"
+    assert event.raw_type == "earn"
+    assert event.provider_event_id == "earn-1"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("0.001")
+    assert event.legs[0]["instrument"] == "coin"
+
+
+def test_normalize_bybit_reward_skips_internal_transfer():
+    event = normalize_bybit_reward(
+        {
+            "symbol": "USDT",
+            "change": "100",
+            "transactionTime": "1700000005000",
+            "type": "InternalTransfer",
+            "id": "tr-1",
+        }
+    )
+
+    assert event is None
+
+
+def test_normalize_okx_reward_stablecoin():
+    event = normalize_okx_reward(
+        {
+            "ccy": "USDT",
+            "amt": "5.5",
+            "billId": "okx-earn-1",
+            "ts": "1700000006000",
+            "subType": "24",
+        }
+    )
+
+    assert event.category == "reward"
+    assert event.provider_event_id == "okx-earn-1"
+    assert event.legs[0]["quantity"] == Decimal("5.5")
+
+
+def test_normalize_okx_reward_skips_internal_transfer():
+    event = normalize_okx_reward(
+        {
+            "ccy": "USDT",
+            "amt": "100",
+            "billId": "okx-tr-1",
+            "ts": "1700000007000",
+            "subType": "1",
+        }
+    )
+
+    assert event is None

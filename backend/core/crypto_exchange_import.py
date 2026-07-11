@@ -23,6 +23,8 @@ from constants import (
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 STABLECOINS = {"USDT", "USDC", "USD"}
+SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES = {"InternalTransfer", "Transfer"}
+SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES = {"1", "128", "129"}
 OPTION_SETTLEMENT_COINS = {"USD", "USDT", "USDC"}
 YAHOO_USD_PRICE_SYMBOLS = {"BTC": "BTC-USD"}
 logger = logging.getLogger(__name__)
@@ -533,6 +535,39 @@ def normalize_okx_deposit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeE
         category=direction,
         raw_type=direction,
         legs=_single_leg(ccy, signed_amount, ccy),
+    )
+
+
+def normalize_bybit_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEvent]:
+    tx_type = payload.get("type", "")
+    if tx_type in SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES:
+        return None
+    symbol = payload["symbol"].upper()
+    amount = Decimal(payload["change"])
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["id"],
+        group_id=payload["id"],
+        timestamp_ms=int(payload["transactionTime"]),
+        category="reward",
+        raw_type="earn",
+        legs=_single_leg(symbol, amount, symbol),
+    )
+
+
+def normalize_okx_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEvent]:
+    if payload.get("subType") in SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES:
+        return None
+    ccy = payload["ccy"].upper()
+    amount = Decimal(payload["amt"])
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=payload["billId"],
+        group_id=payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category="reward",
+        raw_type="earn",
+        legs=_single_leg(ccy, amount, ccy),
     )
 
 
