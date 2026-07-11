@@ -44,13 +44,11 @@
 The following are protected and must not be auto-edited without explicit human sign-off:
 
 - `**/models.py` (files containing `Assets`, `Transactions`, `FX`, `AnnualPerformance`, `BondMetadata`, `NotionalHistory`)
-- `backend/**/calculations*.py`
-- `backend/**/performance*.py`
-- `backend/**/services/performance/**`
-- `backend/**/services/fx/**`
-- `backend/**/services/bonds/**`
+- `backend/core/portfolio_utils.py`, `backend/core/securities_utils.py`, `backend/core/import_utils.py`, `backend/core/transactions_utils.py`, `backend/core/price_utils.py` (financial/import logic currently living outside `models.py`)
 - Any file that contains functions/classes: `NAV_at_date`, `calculate_buy_in_price`, `realized_gain_loss`, `unrealized_gain_loss`, `calculate_value_at_date`, `_portfolio_at_date`, `price_at_date`, `FX.get_rate`
 - Migration files touching numeric precision, field types, or canonical tables: `backend/**/migrations/**`
+
+> **Note on aspirational globs:** Previous versions of this policy listed `services/**`, `calculations*.py`, and `performance*.py` globs. These were *aspirational* — they describe a target structure planned for the Phase 1 service-layer extraction (see `docs/superpowers/specs/2026-07-11-architecture-review-design.md`). These paths do not exist yet. Until Phase 1 lands, the real financial logic lives in `backend/common/models.py` (covered by the `**/models.py` glob) and `backend/core/*_utils.py` (covered by the explicit `core/` globs added above).
 
 **Rationale:** These files implement financial invariants and historical logic; changes must be reproducible and tested.
 

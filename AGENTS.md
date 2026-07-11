@@ -15,10 +15,11 @@ Full rules: `.memory-bank/Rules for AI Coding Agent.md`. Key rules summarized be
 
 ### Protected code — requires human approval (PR with `needs-approval` label)
 - `**/models.py` (Assets, Transactions, FX, AnnualPerformance, BondMetadata, NotionalHistory)
-- `backend/**/calculations*.py`, `backend/**/performance*.py`
-- `backend/**/services/performance/**`, `backend/**/services/fx/**`, `backend/**/services/bonds/**`
+- `backend/core/portfolio_utils.py`, `backend/core/securities_utils.py`, `backend/core/import_utils.py`, `backend/core/transactions_utils.py`, `backend/core/price_utils.py` (financial/import logic currently living outside `models.py`)
 - Functions: `NAV_at_date`, `calculate_buy_in_price`, `realized_gain_loss`, `unrealized_gain_loss`, `calculate_value_at_date`, `_portfolio_at_date`, `price_at_date`, `FX.get_rate`
 - `backend/**/migrations/**`
+
+> **Note on aspirational globs:** Previous versions of this policy listed `services/**`, `calculations*.py`, and `performance*.py` globs. These were *aspirational* — they described a target structure planned for the Phase 1 service-layer extraction (see `docs/superpowers/specs/2026-07-11-architecture-review-design.md`). These paths do not exist yet. Until Phase 1 lands, the real financial logic lives in `backend/common/models.py` (covered by the `**/models.py` glob) and `backend/core/*_utils.py` (covered by the explicit `core/` globs added above).
 
 ### Numeric safety
 - Always use `Decimal` for money/price math — never `float`.
