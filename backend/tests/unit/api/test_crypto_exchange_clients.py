@@ -1,13 +1,7 @@
 import base64
 import hashlib
 import hmac
-import os
 from decimal import Decimal
-
-# The unified-stream tests below are ``async def`` and set up ORM fixtures
-# directly (per the task brief). Allow synchronous ORM calls from async code
-# during the test session so those setup queries don't need sync_to_async wrappers.
-os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "1")
 
 import pytest
 from asgiref.sync import async_to_sync
@@ -472,19 +466,23 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
 def test_bybit_iter_deposits_paginates_and_yields_rows(monkeypatch):
     client = BybitClient(api_key="k", api_secret="s")
     pages = [
-        {"retCode": 0, "retMsg": "OK", "result": {"rows": [{"coin": "USDT", "txID": "d1"}], "nextPageCursor": ""}},
+        {"retCode": 0, "retMsg": "OK", "result": {"rows": [{"coin": "USDT", "txID": "d1"}], "nextPageCursor": "cursor-1"}},
+        {"retCode": 0, "retMsg": "OK", "result": {"rows": [{"coin": "USDT", "txID": "d2"}], "nextPageCursor": ""}},
     ]
-    calls = {"n": 0}
+    calls = []
 
     def fake_get(path, params=None):
-        idx = calls["n"]
-        calls["n"] += 1
-        return pages[idx]
+        calls.append((path, dict(params)))
+        return pages.pop(0)
 
     monkeypatch.setattr(client, "get_private", fake_get)
     rows = list(client.iter_deposits({"limit": 50}))
 
-    assert [r["txID"] for r in rows] == ["d1"]
+    assert [r["txID"] for r in rows] == ["d1", "d2"]
+    assert calls == [
+        ("/v5/asset/deposit/query-record", {"limit": 50}),
+        ("/v5/asset/deposit/query-record", {"limit": 50, "cursor": "cursor-1"}),
+    ]
 
 
 def test_bybit_iter_option_executions_passes_option_category(monkeypatch):
@@ -506,14 +504,18 @@ def test_bybit_iter_option_executions_passes_option_category(monkeypatch):
 def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
     client = OKXClient(api_key="k", api_secret="s", passphrase="p")
     page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "billId": "b1", "type": "deposit"}]}
+    calls = {"n": 0}
 
     def fake_get(path, params=None):
-        return page
+        calls["n"] += 1
+        # First call returns one row; subsequent calls return an empty page to
+        # terminate the pagination loop (end of history reached).
+        return page if calls["n"] == 1 else {"code": "0", "msg": "", "data": []}
 
     monkeypatch.setattr(client, "get_private", fake_get)
     rows = list(client.iter_asset_deposits_withdrawals({}))
 
-    assert rows[0]["billId"] == "b1"
+    assert [r["billId"] for r in rows] == ["b1"]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -522,6 +524,12 @@ async def test_bybit_api_get_transactions_merges_streams_and_tracks_failures(
 ):
     from common.models import Accounts, Brokers
     from users.models import BybitApiToken
+
+    # This test is ``async def`` and sets up ORM fixtures directly. Allow
+    # synchronous ORM calls from async code for the duration of this test only,
+    # so setup queries don't need sync_to_async wrappers (scoped to avoid
+    # leaking process-wide via a module-level env var).
+    monkeypatch.setenv("DJANGO_ALLOW_ASYNC_UNSAFE", "1")
 
     broker = Brokers.objects.create(investor=user, name="Bybit", country="Crypto")
     account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")

@@ -368,13 +368,20 @@ def persist_crypto_exchange_event(event, user, account):
     return created
 
 
-def _single_leg(asset, quantity, price_asset, role="base", instrument="coin"):
-    """Build a one-element legs list for deposits, withdrawals, rewards, and options."""
+def _single_leg(asset, quantity, price_asset, role="base", instrument="coin", price=Decimal("1")):
+    """Build a one-element legs list for deposits, withdrawals, rewards, and options.
+
+    ``price`` defaults to ``Decimal("1")`` so single-leg coin events resolve to a
+    fiat price through ``_leg_fiat_price``: stablecoin legs short-circuit to 1, and
+    crypto-denominated legs (BTC/ETH) hit the ``price == Decimal("1")`` branch and
+    resolve via ``_quote_asset_fiat_price``. Callers that need a different price
+    (option settlements) override it explicitly.
+    """
     return [
         {
             "asset": asset,
             "quantity": quantity,
-            "price": None,
+            "price": price,
             "price_asset": price_asset,
             "role": role,
             "instrument": instrument,

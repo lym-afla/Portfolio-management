@@ -379,7 +379,7 @@ def test_single_leg_builds_one_element_list_with_defaults():
     leg = legs[0]
     assert leg["asset"] == "BTC"
     assert leg["quantity"] == Decimal("0.001")
-    assert leg["price"] is None
+    assert leg["price"] == Decimal("1")
     assert leg["price_asset"] == "BTC"
     assert leg["role"] == "base"
     assert leg["instrument"] == "coin"

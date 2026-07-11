@@ -497,3 +497,27 @@ def test_persist_coin_leg_still_uses_crypto_resolver(user, crypto_account):
     created = persist_crypto_exchange_event(_crypto_event(), user, crypto_account)
 
     assert all(c.security.type == ASSET_TYPE_CRYPTO for c in created)
+
+
+@pytest.mark.django_db
+def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
+    # Regression: a real normalizer output must round-trip through persistence
+    # without crashing. Closes the seam between normalization and persistence so
+    # a None-price default in _single_leg can never silently break deposits.
+    from core.crypto_exchange_import import normalize_bybit_deposit
+
+    event = normalize_bybit_deposit(
+        {
+            "coin": "USDT",
+            "amount": "500",
+            "txID": "dep-seam-1",
+            "successAt": "1700000000000",
+            "status": "SUCCESS",
+        }
+    )
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert len(created) == 1
+    assert created[0].type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+    assert created[0].quantity == Decimal("500")
+    assert created[0].price == Decimal("1")

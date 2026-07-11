@@ -134,22 +134,44 @@ class BybitClient:
                 break
 
     def iter_deposits(self, params=None):
+        cursor = ""
         params = params or {}
-        data = self.get_private("/v5/asset/deposit/query-record", params)
-        rows = data.get("result", {}).get("rows")
-        if rows is None:
-            raise CryptoExchangeAPIError(f"Malformed Bybit deposit response: {data}")
-        for row in rows:
-            yield row
+        while True:
+            page_params = dict(params)
+            if cursor:
+                page_params["cursor"] = cursor
+
+            data = self.get_private("/v5/asset/deposit/query-record", page_params)
+            result = data.get("result", {})
+            rows = result.get("rows")
+            if rows is None:
+                raise CryptoExchangeAPIError(f"Malformed Bybit deposit response: {data}")
+            for row in rows:
+                yield row
+
+            cursor = result.get("nextPageCursor")
+            if not cursor:
+                break
 
     def iter_withdrawals(self, params=None):
+        cursor = ""
         params = params or {}
-        data = self.get_private("/v5/asset/withdraw/query-record", params)
-        rows = data.get("result", {}).get("rows")
-        if rows is None:
-            raise CryptoExchangeAPIError(f"Malformed Bybit withdrawal response: {data}")
-        for row in rows:
-            yield row
+        while True:
+            page_params = dict(params)
+            if cursor:
+                page_params["cursor"] = cursor
+
+            data = self.get_private("/v5/asset/withdraw/query-record", page_params)
+            result = data.get("result", {})
+            rows = result.get("rows")
+            if rows is None:
+                raise CryptoExchangeAPIError(f"Malformed Bybit withdrawal response: {data}")
+            for row in rows:
+                yield row
+
+            cursor = result.get("nextPageCursor")
+            if not cursor:
+                break
 
     def iter_option_executions(self, params=None):
         params = {**(params or {}), "category": "option"}
@@ -258,32 +280,74 @@ class OKXClient:
                 raise CryptoExchangeAPIError(f"Missing OKX billId cursor in fills response: {rows[-1]}")
 
     def iter_asset_deposits_withdrawals(self, params=None):
+        after = None
         params = params or {}
-        data = self.get_private("/api/v5/asset/deposit-withdraw", params)
-        rows = data.get("data")
-        if rows is None:
-            raise CryptoExchangeAPIError(f"Malformed OKX deposit-withdraw response: {data}")
-        for row in rows:
-            yield row
+        while True:
+            page_params = dict(params)
+            if after:
+                page_params["after"] = after
+
+            data = self.get_private("/api/v5/asset/deposit-withdraw", page_params)
+            rows = data.get("data")
+            if rows is None:
+                raise CryptoExchangeAPIError(f"Malformed OKX deposit-withdraw response: {data}")
+            for row in rows:
+                yield row
+
+            if not rows:
+                break
+            after = rows[-1].get("billId")
+            if not after:
+                raise CryptoExchangeAPIError(
+                    f"Missing OKX billId cursor in deposit-withdraw response: {rows[-1]}"
+                )
 
     def iter_earn_lending_history(self, params=None):
+        after = None
         params = params or {}
-        data = self.get_private("/api/v5/finance/savings/lending-history", params)
-        rows = data.get("data")
-        if rows is None:
-            raise CryptoExchangeAPIError(f"Malformed OKX lending response: {data}")
-        for row in rows:
-            yield row
+        while True:
+            page_params = dict(params)
+            if after:
+                page_params["after"] = after
+
+            data = self.get_private("/api/v5/finance/savings/lending-history", page_params)
+            rows = data.get("data")
+            if rows is None:
+                raise CryptoExchangeAPIError(f"Malformed OKX lending response: {data}")
+            for row in rows:
+                yield row
+
+            if not rows:
+                break
+            after = rows[-1].get("billId")
+            if not after:
+                raise CryptoExchangeAPIError(
+                    f"Missing OKX billId cursor in lending response: {rows[-1]}"
+                )
 
     def iter_option_fills(self, params=None):
         params = {**(params or {}), "instType": "OPTION"}
         yield from self.iter_fills_history(params)
 
     def iter_option_settlements(self, params=None):
+        after = None
         params = params or {}
-        data = self.get_private("/api/v5/account/options-settlement-history", params)
-        rows = data.get("data")
-        if rows is None:
-            raise CryptoExchangeAPIError(f"Malformed OKX options-settlement response: {data}")
-        for row in rows:
-            yield row
+        while True:
+            page_params = dict(params)
+            if after:
+                page_params["after"] = after
+
+            data = self.get_private("/api/v5/account/options-settlement-history", page_params)
+            rows = data.get("data")
+            if rows is None:
+                raise CryptoExchangeAPIError(f"Malformed OKX options-settlement response: {data}")
+            for row in rows:
+                yield row
+
+            if not rows:
+                break
+            after = rows[-1].get("billId")
+            if not after:
+                raise CryptoExchangeAPIError(
+                    f"Missing OKX billId cursor in options-settlement response: {rows[-1]}"
+                )
