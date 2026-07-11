@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from django import forms
 from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.functions import Lower
@@ -35,7 +34,6 @@ from core.securities_utils import get_securities_table_api, get_security_detail
 from core.sorting_utils import sort_entries
 from core.user_utils import format_account_display
 
-from .forms import SecurityForm
 from .serializers import (
     AccountPerformanceSerializer,
     AccountSerializer,
@@ -44,6 +42,7 @@ from .serializers import (
     FXSerializer,
     PriceImportSerializer,
     PriceSerializer,
+    SecuritySerializer,
     TransactionSerializer,
 )
 
@@ -245,24 +244,29 @@ def api_get_securities_table(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_security_form_structure(request):
-    """Get security form structure."""
-    form = SecurityForm()
+    """Get security form structure, generated from SecuritySerializer fields."""
+    serializer = SecuritySerializer()
     structure = {"fields": []}
 
-    for field_name, field in form.fields.items():
+    for field_name, field in serializer.fields.items():
         field_data = {
             "name": field_name,
-            "label": field.label,
-            "type": field.widget.__class__.__name__.lower(),
+            "label": field.label or field_name,
+            "type": field.__class__.__name__.lower().replace("field", ""),
             "required": field.required,
             "choices": None,
             "initial": field.initial,
-            "help_text": field.help_text,
+            "help_text": getattr(field, "help_text", ""),
         }
 
         if hasattr(field, "choices"):
+            choices_iter = (
+                field.choices.items()
+                if hasattr(field.choices, "items")
+                else field.choices
+            )
             field_data["choices"] = [
-                {"value": choice[0], "text": choice[1]} for choice in field.choices
+                {"value": value, "text": text} for value, text in choices_iter
             ]
 
         if field_name == "type":
@@ -277,18 +281,6 @@ def api_security_form_structure(request):
                 {"value": choice[0], "text": choice[1]} for choice in DATA_SOURCE_CHOICES
             ]
 
-        # Handle specific widget types
-        if isinstance(field.widget, forms.CheckboxInput):
-            field_data["type"] = "checkbox"
-        elif isinstance(field.widget, forms.Textarea):
-            field_data["type"] = "textarea"
-        elif isinstance(field.widget, forms.URLInput):
-            field_data["type"] = "url"
-        elif isinstance(field.widget, forms.DateInput):
-            field_data["type"] = "dateinput"
-        elif isinstance(field.widget, forms.NumberInput):
-            field_data["type"] = "numberinput"
-
         structure["fields"].append(field_data)
 
     return Response(structure)
@@ -297,19 +289,10 @@ def api_security_form_structure(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_create_security(request):
-    """Create security."""
-    form = SecurityForm(request.data)
-    if form.is_valid():
-        security = form.save(commit=False)
-        # First save the security to get an ID
-        security.save()
-
-        # Now add the many-to-many relationships
-        security.investors.add(request.user)
-
-        # Save bond metadata if this is a bond
-        form.save_bond_metadata(security)
-
+    """Create security via SecuritySerializer."""
+    serializer = SecuritySerializer(data=request.data)
+    if serializer.is_valid():
+        security = serializer.save(user=request.user)
         return Response(
             {
                 "success": True,
@@ -319,7 +302,9 @@ def api_create_security(request):
             },
             status=status.HTTP_201_CREATED,
         )
-    return Response({"success": False, "errors": form.errors}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(
+        {"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+    )
 
 
 @api_view(["GET"])
@@ -377,22 +362,12 @@ def api_get_security_details_for_editing(request, security_id):
 @api_view(["PUT"])
 @permission_classes([IsAuthenticated])
 def api_update_security(request, security_id):
-    """Update security."""
-    try:
-        security = Assets.objects.get(id=security_id, investors=request.user)
-    except Assets.DoesNotExist:
-        return Response({"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    # Use form for validation and updating
-    form = SecurityForm(request.data, instance=security)
-    if form.is_valid():
-        security = form.save()
-
-        # Save bond metadata if this is a bond
-        form.save_bond_metadata(security)
-
+    """Update security via SecuritySerializer."""
+    security = get_object_or_404(Assets, id=security_id, investors=request.user)
+    serializer = SecuritySerializer(security, data=request.data, partial=True)
+    if serializer.is_valid():
+        security = serializer.save(user=request.user)
         logger.debug(f"Security updated. {security}")
-
         return Response(
             {
                 "success": True,
@@ -401,11 +376,9 @@ def api_update_security(request, security_id):
                 "name": security.name,
             }
         )
-    else:
-        return Response(
-            {"success": False, "errors": form.errors},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    return Response(
+        {"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+    )
 
 
 @api_view(["DELETE"])
