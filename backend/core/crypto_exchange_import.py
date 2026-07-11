@@ -19,6 +19,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
@@ -288,6 +289,8 @@ def _transaction_type_for_event(event, quantity):
     raw_type = (event.raw_type or "").lower()
     if category == "reward":
         return TRANSACTION_TYPE_CRYPTO_REWARD
+    if category == "settlement":
+        return TRANSACTION_TYPE_OPTION_SETTLEMENT
     if category in {"transfer", "deposit", "withdrawal"} or raw_type in {
         "deposit",
         "withdrawal",
@@ -335,7 +338,10 @@ def persist_crypto_exchange_event(event, user, account):
             ).exists():
                 continue
 
-            asset = resolve_crypto_asset(leg["asset"], user)
+            if leg.get("instrument") == "option":
+                asset = resolve_crypto_option_asset(parse_option_symbol(leg["asset"]), user)
+            else:
+                asset = resolve_crypto_asset(leg["asset"], user)
             tx_type = _transaction_type_for_event(event, quantity)
             try:
                 with transaction.atomic():
