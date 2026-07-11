@@ -10,7 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
-import base64
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -349,6 +348,3 @@ TEMP_FILE_DIR = os.path.join(BASE_DIR, "temp_files")
 os.makedirs(TEMP_FILE_DIR, exist_ok=True)
 
 # FORMS_URLFIELD_ASSUME_HTTPS = True
-
-# Generate a secure server-side encryption key
-SERVER_ENCRYPTION_KEY = base64.urlsafe_b64encode(os.urandom(32))
