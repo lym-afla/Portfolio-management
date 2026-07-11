@@ -571,6 +571,102 @@ def normalize_okx_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEven
     )
 
 
+def normalize_bybit_option_execution(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    symbol = payload["symbol"]
+    qty = Decimal(payload["execQty"])
+    price = Decimal(payload["execPrice"])
+    fee_currency = payload.get("feeCurrency") or "USD"
+    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["execId"],
+        group_id=payload.get("orderId") or payload["execId"],
+        timestamp_ms=int(payload["execTime"]),
+        category="trade",
+        raw_type="option_execution",
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": signed_qty,
+                "price": price,
+                "price_asset": fee_currency,
+                "role": "base",
+                "instrument": "option",
+            }
+        ],
+        fee={
+            "asset": fee_currency,
+            "quantity": -abs(Decimal(payload.get("execFee") or "0")),
+            "is_rebate": False,
+        },
+    )
+
+
+def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    symbol = payload["instId"]
+    qty = Decimal(payload["fillSz"])
+    price = Decimal(payload["fillPx"])
+    fee_ccy = payload.get("feeCcy") or "USD"
+    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=payload["tradeId"],
+        group_id=payload.get("ordId") or payload["tradeId"],
+        timestamp_ms=int(payload["fillTime"]),
+        category="trade",
+        raw_type="option_fill",
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": signed_qty,
+                "price": price,
+                "price_asset": fee_ccy,
+                "role": "base",
+                "instrument": "option",
+            }
+        ],
+        fee={
+            "asset": fee_ccy,
+            "quantity": Decimal(payload.get("fee") or "0"),
+            "is_rebate": False,
+        },
+    )
+
+
+def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    symbol = payload["symbol"].upper()
+    amount = Decimal(payload["change"])
+    settlement_price = Decimal(payload["newWalletBalance"])
+    legs = _single_leg(symbol, amount, symbol)
+    legs[0]["price"] = settlement_price
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["id"],
+        group_id=payload.get("orderLinkId") or payload["id"],
+        timestamp_ms=int(payload["transactionTime"]),
+        category="settlement",
+        raw_type="option_delivery",
+        legs=legs,
+    )
+
+
+def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    ccy = payload["settlCcy"].upper()
+    amount = Decimal(payload["settlAmt"])
+    settlement_price = Decimal(payload["settlPx"])
+    legs = _single_leg(ccy, amount, ccy)
+    legs[0]["price"] = settlement_price
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=payload["billId"],
+        group_id=payload.get("ordId") or payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category="settlement",
+        raw_type="option_delivery",
+        legs=legs,
+    )
+
+
 def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     parts = symbol.split("-")
     if len(parts) not in (4, 5):

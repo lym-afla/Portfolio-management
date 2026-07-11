@@ -591,3 +591,105 @@ def test_normalize_okx_reward_skips_internal_transfer():
     )
 
     assert event is None
+
+
+from core.crypto_exchange_import import (
+    normalize_bybit_option_execution,
+    normalize_bybit_option_settlement,
+    normalize_okx_option_fill,
+    normalize_okx_option_settlement,
+)
+
+
+def test_normalize_bybit_option_execution_buy_call():
+    event = normalize_bybit_option_execution(
+        {
+            "symbol": "BTC-27JUN26-100000-C",
+            "execId": "opt-ex-1",
+            "orderId": "opt-order-1",
+            "side": "Buy",
+            "execQty": "2",
+            "execPrice": "500",
+            "execFee": "1",
+            "feeCurrency": "USDT",
+            "execTime": "1700000008000",
+        }
+    )
+
+    assert event.category == "trade"
+    assert event.raw_type == "option_execution"
+    assert event.provider_event_id == "opt-ex-1"
+    assert event.group_id == "opt-order-1"
+    assert len(event.legs) == 1
+    assert event.legs[0]["instrument"] == "option"
+    assert event.legs[0]["asset"] == "BTC-27JUN26-100000-C"
+    assert event.legs[0]["quantity"] == Decimal("2")
+    assert event.legs[0]["price"] == Decimal("500")
+    assert event.legs[0]["price_asset"] == "USDT"
+
+
+def test_normalize_okx_option_fill_sell_put():
+    event = normalize_okx_option_fill(
+        {
+            "instId": "BTC-USD-240315-50000-P",
+            "tradeId": "okx-opt-1",
+            "ordId": "okx-opt-order-1",
+            "side": "sell",
+            "fillSz": "1.5",
+            "fillPx": "1200",
+            "fee": "-1.8",
+            "feeCcy": "USDT",
+            "fillTime": "1700000009000",
+        }
+    )
+
+    assert event.category == "trade"
+    assert event.raw_type == "option_fill"
+    assert event.legs[0]["instrument"] == "option"
+    assert event.legs[0]["asset"] == "BTC-USD-240315-50000-P"
+    assert event.legs[0]["quantity"] == Decimal("-1.5")
+    assert event.legs[0]["price"] == Decimal("1200")
+
+
+def test_normalize_bybit_option_settlement_exercised():
+    event = normalize_bybit_option_settlement(
+        {
+            "symbol": "BTC",
+            "change": "0.5",
+            "transactionTime": "1700000010000",
+            "type": "Settlement",
+            "id": "settle-1",
+            "orderLinkId": "opt-order-1",
+            "newWalletBalance": "65000",
+        }
+    )
+
+    assert event.category == "settlement"
+    assert event.raw_type == "option_delivery"
+    assert event.group_id == "opt-order-1"
+    assert event.provider_event_id == "settle-1"
+    assert event.legs[0]["instrument"] == "coin"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("0.5")
+    assert event.legs[0]["price"] == Decimal("65000")
+
+
+def test_normalize_okx_option_settlement():
+    event = normalize_okx_option_settlement(
+        {
+            "instId": "BTC-USD-240315-50000-C",
+            "settlCcy": "BTC",
+            "settlAmt": "0.3",
+            "settlPx": "65000",
+            "ts": "1700000011000",
+            "billId": "okx-settle-1",
+            "ordId": "okx-opt-order-1",
+        }
+    )
+
+    assert event.category == "settlement"
+    assert event.provider_event_id == "okx-settle-1"
+    assert event.group_id == "okx-opt-order-1"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("0.3")
+    assert event.legs[0]["price"] == Decimal("65000")
