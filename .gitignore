@@ -78,7 +78,10 @@ Thumbs.db
 AW-portolio-management/
 X1-portfolio-management/
 .venv/
-backend/venv
+venv/
+
+# Local scratch artifacts (ad-hoc notebooks, generated lint reports)
+backend/scratch/
 
 backend/dashboard/__pycache__/
 backend/dashboard/migrations/__pycache__/
