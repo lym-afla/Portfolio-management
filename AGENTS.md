@@ -15,10 +15,11 @@ Full rules: `.memory-bank/Rules for AI Coding Agent.md`. Key rules summarized be
 
 ### Protected code — requires human approval (PR with `needs-approval` label)
 - `**/models.py` (Assets, Transactions, FX, AnnualPerformance, BondMetadata, NotionalHistory)
-- `backend/**/calculations*.py`, `backend/**/performance*.py`
-- `backend/**/services/performance/**`, `backend/**/services/fx/**`, `backend/**/services/bonds/**`
+- `backend/core/portfolio_utils.py`, `backend/core/securities_utils.py`, `backend/core/import_utils.py`, `backend/core/transactions_utils.py`, `backend/core/price_utils.py` (financial/import logic currently living outside `models.py`)
 - Functions: `NAV_at_date`, `calculate_buy_in_price`, `realized_gain_loss`, `unrealized_gain_loss`, `calculate_value_at_date`, `_portfolio_at_date`, `price_at_date`, `FX.get_rate`
 - `backend/**/migrations/**`
+
+> **Note on aspirational globs:** Previous versions of this policy listed `services/**`, `calculations*.py`, and `performance*.py` globs. These were *aspirational* — they described a target structure planned for the Phase 1 service-layer extraction (see `docs/superpowers/specs/2026-07-11-architecture-review-design.md`). These paths do not exist yet. Until Phase 1 lands, the real financial logic lives in `backend/common/models.py` (covered by the `**/models.py` glob) and `backend/core/*_utils.py` (covered by the explicit `core/` globs added above).
 
 ### Numeric safety
 - Always use `Decimal` for money/price math — never `float`.
@@ -26,13 +27,13 @@ Full rules: `.memory-bank/Rules for AI Coding Agent.md`. Key rules summarized be
 - Rounding: `ROUND_HALF_UP`. Persisted aggregates: 2 dp. UI: per `CustomUser.digits` or default 2.
 
 ### Virtual environment
-- Use virtual environments to isolate project dependencies on the backend. Don't install packages globally.
-- Use existing virtual environment saved in '/backend/venv' when running the backend code
-- Use poetry to manage dependencies and virtual environment. Run `poetry install` to set up the environment and install dependencies.
-- Use `poetry add <package>` to add new dependencies, which will automatically update `pyproject.toml` and `poetry.lock`.
-- Use requirements.init to generate `requirements.txt` from `poetry.lock` for any tools that require it (e.g. CI, deployment scripts).
-- Use requirements.dev.init to generate `requirements-dev.txt` from `poetry.lock` for development dependencies.
-- Keep requirements files up to date by running the init scripts after any changes to dependencies.
+- Dependencies are managed with **uv project mode**: `backend/pyproject.toml` declares all dependencies; `backend/uv.lock` is the committed lockfile. There are no `requirements*.txt` files.
+- All commands run from `backend/`.
+- Install everything (creates `backend/.venv` with runtime + dev deps): `uv sync`
+- Run any command inside the project env: `uv run <cmd>` (e.g. `uv run python manage.py runserver`, `uv run python -m pytest`). You don't need to activate the venv manually.
+- Add a runtime dependency: edit `[project.dependencies]` in `backend/pyproject.toml`, then `uv lock` to update the lockfile.
+- Add a dev-only dependency: edit `[dependency-groups.dev]`, then `uv lock`.
+- Commit both `pyproject.toml` and `uv.lock` after any dependency change. CI installs with `uv sync --frozen` (never modifies the lockfile).
 
 ### Auto-commit vs PR
 - **May auto-commit** (if tests pass): formatting, import sorting, comments, type hints, small bug-fixes with unit tests in non-protected areas.

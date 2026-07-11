@@ -1,3 +1,87 @@
+[project]
+name = "portfolio-management"
+version = "0.1.0"
+description = "Portfolio Management System — Django + DRF backend"
+readme = "../README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiohttp",
+    "asgiref",
+    "babel",
+    "beautifulsoup4",
+    "channels",
+    "chardet",
+    "cryptography",
+    "django",
+    "django-cors-headers",
+    "django-debug-toolbar",
+    "djangorestframework",
+    "djangorestframework-simplejwt",
+    "fake-useragent",
+    "filelock",
+    "fuzzywuzzy",
+    "lxml",
+    "networkx",
+    "numpy",
+    "openpyxl",
+    "pandas",
+    "pyopenssl",
+    "python-levenshtein",
+    "pyxirr",
+    "simplejson",
+    "structlog",
+    "t-tech-investments",
+    "uvicorn",
+    "yfinance",
+    "zstandard",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.7.5",
+    "black>=23.9.1",
+    "codecov>=2.1.13",
+    "coverage>=7.3.2",
+    "django-debug-toolbar>=4.2.0",
+    "django-extensions>=3.2.3",
+    "factory-boy>=3.3.0",
+    "flake8>=6.1.0",
+    "flake8-bugbear>=23.9.16",
+    "flake8-django",
+    "flake8-docstrings>=1.7.0",
+    "httpx>=0.28.0",
+    "ipykernel",
+    "ipython>=8.16.1",
+    "isort>=5.12.0",
+    "jupyter>=1.0.0",
+    "line-profiler>=4.1.1",
+    "locust>=2.17.0",
+    "memory-profiler>=0.61.0",
+    "mypy>=1.6.1",
+    "pre-commit>=3.4.0",
+    "prometheus-client>=0.18.0",
+    "py-spy>=0.3.14",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark",
+    "pytest-cov",
+    "pytest-django",
+    "pytest-mock",
+    "pytest-randomly",
+    "pytest-xdist",
+    "ruff>=0.14.0",
+    "safety>=2.3.5",
+    "sphinx>=7.2.6",
+    "sphinx-rtd-theme>=1.3.0",
+]
+
+[[tool.uv.index]]
+name = "tbank"
+url = "https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple"
+
+[tool.uv.sources]
+t-tech-investments = { index = "tbank" }
+
 [tool.black]
 line-length = 100
 target-version = ['py310']

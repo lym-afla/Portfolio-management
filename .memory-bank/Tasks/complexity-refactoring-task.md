@@ -132,7 +132,7 @@ Reduce C901 complexity errors across the codebase to improve code maintainabilit
   hooks:
     - id: flake8
       args:
-        - --max-line-length=88
+        - --max-line-length=100
         - --extend-ignore=E203,W503,E501,I
         - --max-complexity=20  # Will be enforced by pre-commit
 ```

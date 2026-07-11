@@ -12,6 +12,7 @@ from common.models import (
     FX,
     Accounts,
     Assets,
+    BondMetadata,
     Brokers,
     FXTransaction,
     Prices,
@@ -23,6 +24,7 @@ from constants import (
     ACCOUNT_TYPE_GROUP,
     ACCOUNT_TYPE_INDIVIDUAL,
     CURRENCY_CHOICES,
+    DATA_SOURCE_CHOICES,
 )
 from core.formatting_utils import format_bond_price, format_value
 from core.user_utils import prepare_account_choices
@@ -786,3 +788,175 @@ class PriceSerializer(serializers.ModelSerializer):
             self.fields["security"].queryset = Assets.objects.filter(
                 investors__id=self.investor.id
             ).order_by("name")
+
+
+class SecuritySerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating Assets (securities).
+
+    Handles bond metadata upsert and links the requesting user as an investor.
+    Replaces the former SecurityForm (Django ModelForm).
+    """
+
+    # Bond metadata fields (not on the Assets model itself)
+    initial_notional = serializers.DecimalField(
+        max_digits=15, decimal_places=2, required=False, allow_null=True
+    )
+    nominal_currency = serializers.ChoiceField(
+        choices=CURRENCY_CHOICES, required=False, allow_null=True, allow_blank=True
+    )
+    issue_date = serializers.DateField(required=False, allow_null=True)
+    maturity_date = serializers.DateField(required=False, allow_null=True)
+    coupon_rate = serializers.DecimalField(
+        max_digits=8, decimal_places=4, required=False, allow_null=True
+    )
+    coupon_frequency = serializers.IntegerField(required=False, allow_null=True)
+    is_amortizing = serializers.BooleanField(required=False)
+    bond_type = serializers.ChoiceField(
+        choices=[
+            ("FIXED", "Fixed Rate"),
+            ("FLOATING", "Floating Rate"),
+            ("ZERO_COUPON", "Zero Coupon"),
+            ("INFLATION_LINKED", "Inflation Linked"),
+            ("CONVERTIBLE", "Convertible"),
+        ],
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+    credit_rating = serializers.CharField(
+        max_length=10, required=False, allow_null=True, allow_blank=True
+    )
+
+    class Meta:
+        """Meta class for SecuritySerializer."""
+
+        model = Assets
+        fields = [
+            "name",
+            "ISIN",
+            "ticker",
+            "type",
+            "currency",
+            "exposure",
+            "fund_fee",
+            "initial_notional",
+            "nominal_currency",
+            "issue_date",
+            "maturity_date",
+            "coupon_rate",
+            "coupon_frequency",
+            "is_amortizing",
+            "bond_type",
+            "credit_rating",
+            "restricted",
+            "data_source",
+            "yahoo_symbol",
+            "update_link",
+            "secid",
+            "tbank_instrument_uid",
+            "comment",
+        ]
+
+    def validate(self, attrs):
+        """Replicate SecurityForm.clean() data-source + bond validation."""
+        data_source = attrs.get("data_source")
+        yahoo_symbol = attrs.get("yahoo_symbol")
+        update_link = attrs.get("update_link")
+        secid = attrs.get("secid")
+        tbank_instrument_uid = attrs.get("tbank_instrument_uid")
+        asset_type = attrs.get("type") or (self.instance.type if self.instance else None)
+
+        if data_source == "YAHOO" and not yahoo_symbol:
+            raise serializers.ValidationError(
+                {"yahoo_symbol": "Yahoo symbol is required for Yahoo Finance data source."}
+            )
+        elif data_source == "FT" and not update_link:
+            raise serializers.ValidationError(
+                {"update_link": "Update link is required for Financial Times data source."}
+            )
+        elif data_source == "MICEX" and not secid:
+            raise serializers.ValidationError({"secid": "Secid is required for MICEX data source."})
+        elif data_source == "TBANK" and not tbank_instrument_uid:
+            raise serializers.ValidationError(
+                {
+                    "tbank_instrument_uid": "T-Bank instrument UID is required for T-Bank data source."
+                }
+            )
+
+        if asset_type == "Bond":
+            if attrs.get("is_amortizing") and not attrs.get("initial_notional"):
+                raise serializers.ValidationError(
+                    {"initial_notional": "Initial notional is required for amortizing bonds."}
+                )
+
+        return attrs
+
+    def _save_bond_metadata(self, asset):
+        """Upsert BondMetadata for a bond asset. No-op for non-bonds."""
+        if asset.type != "Bond":
+            return
+        bond_data = {}
+        for field in (
+            "initial_notional",
+            "nominal_currency",
+            "issue_date",
+            "maturity_date",
+            "coupon_rate",
+            "coupon_frequency",
+            "is_amortizing",
+            "bond_type",
+            "credit_rating",
+        ):
+            value = self.validated_data.get(field)
+            if value is not None:
+                bond_data[field] = value
+        if bond_data:
+            BondMetadata.objects.update_or_create(asset=asset, defaults=bond_data)
+
+    def create(self, validated_data):
+        """Create the Asset and link the requesting user as an investor.
+
+        The `user` kwarg is passed by the view via serializer.save(user=request.user).
+        """
+        user = validated_data.pop("user", None)
+        # Remove bond fields from validated_data before constructing the Asset
+        bond_fields = (
+            "initial_notional",
+            "nominal_currency",
+            "issue_date",
+            "maturity_date",
+            "coupon_rate",
+            "coupon_frequency",
+            "is_amortizing",
+            "bond_type",
+            "credit_rating",
+        )
+        asset_fields = {k: v for k, v in validated_data.items() if k not in bond_fields}
+        asset = Assets.objects.create(**asset_fields)
+        if user is not None:
+            asset.investors.add(user)
+        self._save_bond_metadata(asset)
+        return asset
+
+    def update(self, instance, validated_data):
+        """Update the Asset fields and upsert bond metadata."""
+        user = validated_data.pop("user", None)
+        bond_fields = (
+            "initial_notional",
+            "nominal_currency",
+            "issue_date",
+            "maturity_date",
+            "coupon_rate",
+            "coupon_frequency",
+            "is_amortizing",
+            "bond_type",
+            "credit_rating",
+        )
+        for field, value in validated_data.items():
+            if field not in bond_fields:
+                setattr(instance, field, value)
+        instance.save()
+        if user is not None and not instance.investors.filter(pk=user.pk).exists():
+            instance.investors.add(user)
+        self._save_bond_metadata(instance)
+        return instance

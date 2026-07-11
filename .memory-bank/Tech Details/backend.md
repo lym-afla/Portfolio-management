@@ -19,7 +19,13 @@ Tech details/backend.md
 - Import parsers per broker and file type
 
 ## Data store
-- Models: `CustomUser`, `Brokers`, `Accounts`, `Assets`, `Transactions`, `Prices`, `FX`, `AnnualPerformance`, `BondMetadata`, `NotionalHistory`, `BondCouponSchedule`
+- Models: `CustomUser`, `Brokers`, `Accounts`, `Assets`, `Transactions`, `Prices`, `FX`, `FXTransaction`, `AnnualPerformance`, `BondMetadata`, `NotionalHistory`, `BondCouponSchedule`, `InstrumentMetadata`, `OptionMetadata`, `FutureMetadata`, `SplitHistory`, `MergerRecord`, `AccountGroup`
+  - `InstrumentMetadata` — metadata for non-bond instruments
+  - `OptionMetadata` — option-specific metadata (strike, expiry, etc.)
+  - `FutureMetadata` — futures contract metadata
+  - `SplitHistory` — historical stock split records for price/quantity adjustment
+  - `MergerRecord` — corporate merger/spinoff records for cost-basis tracking
+  - `AccountGroup` — user-defined grouping of accounts for aggregate views
 - Derived caches: `AnnualPerformance` — aggregated yearly performance stored in DB
 
 ## Notes

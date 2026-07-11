@@ -6,7 +6,7 @@ Steerings/dev_conventions.md
 
 **Purpose:** Short, developer-facing conventions to follow when working on the project.
 
-- **Language & frameworks:** Python (Django), JavaScript (Vue 3 + Vite).
+- **Language & frameworks:** Python (Django), JavaScript (Vue 3, vue-cli/webpack; Vite + TypeScript migration planned).
 - **Formatting & linting:**
   - Backend: `black`, `isort`, `flake8`.
   - Frontend: `prettier`, `eslint`.

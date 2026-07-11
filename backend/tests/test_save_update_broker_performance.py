@@ -2,6 +2,10 @@
 
 This module contains integration tests for the annual broker
 performance calculation system including SSE endpoint testing.
+
+The SSE tests use httpx with an ASGI transport to test the streaming
+endpoints without requiring daphne (which the channels.testing
+HttpCommunicator depends on).
 """
 
 import json
@@ -9,10 +13,10 @@ import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+import httpx
 import pytest
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
-from channels.testing import HttpCommunicator
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework.test import APIClient
@@ -136,6 +140,45 @@ def fx_rates(user):
     # current_date += timedelta(days=1)
 
 
+def get_sse_asgi_app():
+    """Get the ASGI application for SSE testing.
+
+    Returns the full ASGI stack so that JWT auth middleware and routing
+    are exercised exactly as in production.
+    """
+    from portfolio_management.asgi import application
+
+    return application
+
+
+async def _stream_sse(user, session_id):
+    """Connect to the SSE endpoint via httpx and return (status, events).
+
+    Authenticates as ``user`` through the normal JWT middleware path,
+    mimicking how the frontend consumes the endpoint.
+    """
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    token = await sync_to_async(str)(AccessToken.for_user(user))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=get_sse_asgi_app()),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            f"/database/api/update-account-performance/sse/"
+            f"?session_id={session_id}&token={token}"
+        )
+
+    events = []
+    if response.status_code == 200 and response.text:
+        events = [
+            json.loads(line.replace("data: ", ""))
+            for line in response.text.strip().split("\n\n")
+            if line.startswith("data: ")
+        ]
+    return response, events
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_unauthorized(user, broker, account):
@@ -153,17 +196,10 @@ async def test_update_broker_performance_unauthorized(user, broker, account):
 
     await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "GET",
-        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
-    )
-    communicator.scope["user"] = user
+    response, events = await _stream_sse(user, session_id)
 
-    response = await communicator.get_response()
-
-    assert response["status"] == 403
-    response_data = json.loads(response["body"].decode("utf-8"))
+    assert response.status_code == 403
+    response_data = response.json()
     assert response_data["status"] == "error"
     assert response_data["message"] == "Unauthorized access to session"
 
@@ -172,18 +208,19 @@ async def test_update_broker_performance_unauthorized(user, broker, account):
 @pytest.mark.asyncio
 async def test_update_broker_performance_missing_session(user, broker, account):
     """Test missing session ID."""
-    """Test missing session ID."""
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "GET",
-        "/database/api/update-broker-performance/sse/",  # No session_id
-    )
-    communicator.scope["user"] = user
+    from rest_framework_simplejwt.tokens import AccessToken
 
-    response = await communicator.get_response()
+    token = await sync_to_async(str)(AccessToken.for_user(user))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=get_sse_asgi_app()),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            f"/database/api/update-account-performance/sse/?token={token}"  # No session_id
+        )
 
-    assert response["status"] == 400
-    response_data = json.loads(response["body"].decode("utf-8"))
+    assert response.status_code == 400
+    response_data = response.json()
     assert response_data["status"] == "error"
     assert response_data["message"] == "Session ID is required"
 
@@ -191,7 +228,6 @@ async def test_update_broker_performance_missing_session(user, broker, account):
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_update_broker_performance_invalid_data(user):
-    """Test broker performance calculation with invalid data."""
     """Test broker performance calculation with invalid data."""
     # Use DRF's APIClient instead of Django's client
     client = APIClient()
@@ -241,8 +277,6 @@ async def test_update_broker_performance_invalid_data(user):
 @pytest.mark.asyncio
 async def test_update_broker_performance_no_transactions(user, broker):
     """Test broker performance calculation with no transactions."""
-    """Test broker performance calculation with no transactions."""
-    session_id = "test_session_invalid"
     session_id = "test_session_invalid"
     update_data = {
         "user_id": user.id,
@@ -256,24 +290,9 @@ async def test_update_broker_performance_no_transactions(user, broker):
 
     await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "GET",
-        f"/database/api/update-account-performance/sse/?session_id={session_id}",
-    )
+    response, events = await _stream_sse(user, session_id)
 
-    communicator.scope["user"] = user
-    response = await communicator.get_response()
-
-    assert response["status"] == 200
-
-    # Parse SSE messages
-    response_body = response["body"].decode("utf-8")
-    events = [
-        json.loads(line.replace("data: ", ""))
-        for line in response_body.strip().split("\n\n")
-        if line.startswith("data: ")
-    ]
+    assert response.status_code == 200
 
     error_events = [event for event in events if event["status"] == "error"]
     assert len(error_events) == 1
@@ -285,7 +304,6 @@ async def test_update_broker_performance_no_transactions(user, broker):
 async def test_update_broker_performance_streaming(
     user, broker, account, transactions, fx_rates, capsys
 ):
-    """Test broker performance streaming with all currencies and restrictions."""
     """Test broker performance streaming with all currencies and restrictions."""
     print("Starting test_update_broker_performance_streaming")
 
@@ -303,22 +321,9 @@ async def test_update_broker_performance_streaming(
 
     await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "GET",
-        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
-    )
+    response, events = await _stream_sse(user, session_id)
 
-    communicator.scope["user"] = user
-    response = await communicator.get_response()
-
-    assert response["status"] == 200
-
-    events = [
-        json.loads(msg.decode("utf-8").replace("data: ", ""))
-        for msg in response["body"].split(b"\n\n")
-        if msg.startswith(b"data: ")
-    ]
+    assert response.status_code == 200
 
     progress_events = [event for event in events if event["status"] == "progress"]
     complete_events = [event for event in events if event["status"] == "complete"]
@@ -473,7 +478,6 @@ def test_calculate_performance(user, account, caplog):
 @pytest.mark.asyncio
 async def test_update_broker_performance_skip_existing(user, broker, account, caplog):
     """Test broker performance calculation with skip_existing_years=True."""
-    """Test broker performance calculation with skip_existing_years=True."""
     print("\nStarting test_update_broker_performance_skip_existing")
     caplog.set_level(logging.INFO)
 
@@ -580,22 +584,9 @@ async def test_update_broker_performance_skip_existing(user, broker, account, ca
 
     await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "GET",
-        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
-    )
+    response, events = await _stream_sse(user, session_id)
 
-    communicator.scope["user"] = user
-    response = await communicator.get_response()
-
-    assert response["status"] == 200
-
-    events = [
-        json.loads(msg.decode("utf-8").replace("data: ", ""))
-        for msg in response["body"].split(b"\n\n")
-        if msg.startswith(b"data: ")
-    ]
+    assert response.status_code == 200
 
     progress_events = [event for event in events if event["status"] == "progress"]
     complete_events = [event for event in events if event["status"] == "complete"]
@@ -666,7 +657,6 @@ async def test_update_broker_performance_skip_existing(user, broker, account, ca
 @pytest.mark.asyncio
 async def test_update_broker_performance_initial(user, broker, account, transactions, caplog):
     """Test initial broker performance calculation."""
-    """Test initial broker performance calculation."""
     caplog.set_level(logging.INFO)
 
     # Create a unique session ID for this test
@@ -693,30 +683,15 @@ async def test_update_broker_performance_initial(user, broker, account, transact
 
     await sync_to_async(cache.set)(f"account_performance_update_{session_id}", update_data)
 
-    # Create communicator with session_id in query params
-    communicator = HttpCommunicator(
-        UpdateAccountPerformanceConsumer.as_asgi(),
-        "GET",  # Changed to GET since we're using query params
-        f"/database/api/update-broker-performance/sse/?session_id={session_id}",
-    )
-    communicator.scope["user"] = user
-
-    response = await communicator.get_response()
+    response, events = await _stream_sse(user, session_id)
 
     # Verify the response
-    assert response["status"] == 200
-
-    # Parse SSE messages from response body
-    messages = [
-        json.loads(msg.decode("utf-8").replace("data: ", ""))
-        for msg in response["body"].split(b"\n\n")
-        if msg.startswith(b"data: ")
-    ]
+    assert response.status_code == 200
 
     # Verify the messages
-    assert any(msg["status"] == "initializing" for msg in messages)
-    assert any(msg["status"] == "progress" for msg in messages)
-    assert any(msg["status"] == "complete" for msg in messages)
+    assert any(event["status"] == "initializing" for event in events)
+    assert any(event["status"] == "progress" for event in events)
+    assert any(event["status"] == "complete" for event in events)
 
     # Get performance record
     # Verify performance records
@@ -758,7 +733,6 @@ async def test_update_broker_performance_initial(user, broker, account, transact
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_get_accounts_table_api(user, broker, account, transactions, fx_rates):
-    """Test the accounts table API functionality."""
     """Test the accounts table API functionality."""
     # Use existing broker and account, create only one additional set
     second_broker = await database_sync_to_async(Brokers.objects.create)(
