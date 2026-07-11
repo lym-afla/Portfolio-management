@@ -24,7 +24,17 @@ from users.models import BybitApiToken, OKXApiToken
 
 from .crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
 from .crypto_exchange_import import (
+    _merge_sorted_events,
+    normalize_bybit_deposit,
+    normalize_bybit_reward,
+    normalize_bybit_option_execution,
+    normalize_bybit_option_settlement,
     normalize_bybit_spot_execution,
+    normalize_bybit_withdrawal,
+    normalize_okx_deposit_withdrawal,
+    normalize_okx_option_fill,
+    normalize_okx_option_settlement,
+    normalize_okx_reward,
     normalize_okx_spot_fill,
 )
 from .tinkoff_utils import (
@@ -484,6 +494,7 @@ class BybitAPI(BrokerAPI):
     def __init__(self):
         super().__init__()
         self.user = None
+        self.partial_failures = []
 
     async def connect(self, user) -> bool:
         self.user = user
@@ -520,20 +531,31 @@ class BybitAPI(BrokerAPI):
             api_secret=token.get_api_secret(self.user),
             testnet=token.testnet,
         )
-        params = {
-            "category": "spot",
-            **_crypto_exchange_date_params(
-                date_from,
-                date_to,
-                start_key="startTime",
-                end_key="endTime",
-            ),
-        }
-        try:
-            for payload in client.iter_executions(params):
-                yield normalize_bybit_spot_execution(payload)
-        except CryptoExchangeAPIError as exc:
-            raise BrokerAPIException(f"Failed to fetch Bybit transactions: {exc}") from exc
+        date_params = _crypto_exchange_date_params(
+            date_from, date_to, start_key="startTime", end_key="endTime"
+        )
+
+        def _safe(endpoint_name, normalizer, iter_factory):
+            def _gen():
+                try:
+                    for payload in iter_factory():
+                        event = normalizer(payload)
+                        if event is not None:
+                            yield event
+                except CryptoExchangeAPIError as exc:
+                    self.partial_failures.append((endpoint_name, str(exc)))
+            return _gen()
+
+        streams = [
+            _safe("executions", normalize_bybit_spot_execution, lambda: client.iter_executions({"category": "spot", **date_params})),
+            _safe("option_executions", normalize_bybit_option_execution, lambda: client.iter_option_executions(date_params)),
+            _safe("deposits", normalize_bybit_deposit, lambda: client.iter_deposits(date_params)),
+            _safe("withdrawals", normalize_bybit_withdrawal, lambda: client.iter_withdrawals(date_params)),
+            _safe("earn", normalize_bybit_reward, lambda: client.iter_transaction_log({"type": "Earn", **date_params})),
+            _safe("option_settlements", normalize_bybit_option_settlement, lambda: client.iter_option_settlements(date_params)),
+        ]
+        for event in _merge_sorted_events(*streams):
+            yield event
 
 
 class OKXAPI(BrokerAPI):
@@ -542,6 +564,7 @@ class OKXAPI(BrokerAPI):
     def __init__(self):
         super().__init__()
         self.user = None
+        self.partial_failures = []
 
     async def connect(self, user) -> bool:
         self.user = user
@@ -579,20 +602,30 @@ class OKXAPI(BrokerAPI):
             passphrase=token.get_passphrase(self.user),
             simulated_trading=token.simulated_trading,
         )
-        params = {
-            "instType": "SPOT",
-            **_crypto_exchange_date_params(
-                date_from,
-                date_to,
-                start_key="begin",
-                end_key="end",
-            ),
-        }
-        try:
-            for payload in client.iter_fills_history(params):
-                yield normalize_okx_spot_fill(payload)
-        except CryptoExchangeAPIError as exc:
-            raise BrokerAPIException(f"Failed to fetch OKX transactions: {exc}") from exc
+        date_params = _crypto_exchange_date_params(
+            date_from, date_to, start_key="begin", end_key="end"
+        )
+
+        def _safe(endpoint_name, normalizer, iter_factory):
+            def _gen():
+                try:
+                    for payload in iter_factory():
+                        event = normalizer(payload)
+                        if event is not None:
+                            yield event
+                except CryptoExchangeAPIError as exc:
+                    self.partial_failures.append((endpoint_name, str(exc)))
+            return _gen()
+
+        streams = [
+            _safe("spot_fills", normalize_okx_spot_fill, lambda: client.iter_fills_history({"instType": "SPOT", **date_params})),
+            _safe("option_fills", normalize_okx_option_fill, lambda: client.iter_option_fills(date_params)),
+            _safe("deposits_withdrawals", normalize_okx_deposit_withdrawal, lambda: client.iter_asset_deposits_withdrawals(date_params)),
+            _safe("earn", normalize_okx_reward, lambda: client.iter_earn_lending_history(date_params)),
+            _safe("option_settlements", normalize_okx_option_settlement, lambda: client.iter_option_settlements(date_params)),
+        ]
+        for event in _merge_sorted_events(*streams):
+            yield event
 
 
 async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:

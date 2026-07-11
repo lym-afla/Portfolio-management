@@ -1,5 +1,6 @@
 """Normalize crypto exchange payloads into portfolio import events."""
 
+import heapq
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -18,10 +19,14 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 STABLECOINS = {"USDT", "USDC", "USD"}
+SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES = {"InternalTransfer", "Transfer"}
+SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES = {"1", "128", "129"}
+OPTION_SETTLEMENT_COINS = {"USD", "USDT", "USDC"}
 YAHOO_USD_PRICE_SYMBOLS = {"BTC": "BTC-USD"}
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,33 @@ class CryptoExchangeEvent:
     raw_type: str
     legs: List[Dict[str, Any]]
     fee: Optional[Dict[str, Any]] = None
+
+
+def _merge_sorted_events(*iterables):
+    """K-way merge of CryptoExchangeEvent streams by timestamp_ms (stable).
+
+    Ties are broken by source-stream order (earlier positional arg first),
+    then by original position within that stream.
+    """
+    counters = [0] * len(iterables)
+    heap = []
+    for stream_idx, it in enumerate(iterables):
+        try:
+            event = next(it)
+            heapq.heappush(heap, (event.timestamp_ms, stream_idx, counters[stream_idx], event))
+            counters[stream_idx] += 1
+        except StopIteration:
+            pass
+
+    while heap:
+        _, stream_idx, _, event = heapq.heappop(heap)
+        yield event
+        try:
+            nxt = next(iterables[stream_idx])
+            heapq.heappush(heap, (nxt.timestamp_ms, stream_idx, counters[stream_idx], nxt))
+            counters[stream_idx] += 1
+        except StopIteration:
+            pass
 
 
 def resolve_crypto_asset(symbol, user):
@@ -257,6 +289,8 @@ def _transaction_type_for_event(event, quantity):
     raw_type = (event.raw_type or "").lower()
     if category == "reward":
         return TRANSACTION_TYPE_CRYPTO_REWARD
+    if category == "settlement":
+        return TRANSACTION_TYPE_OPTION_SETTLEMENT
     if category in {"transfer", "deposit", "withdrawal"} or raw_type in {
         "deposit",
         "withdrawal",
@@ -304,7 +338,10 @@ def persist_crypto_exchange_event(event, user, account):
             ).exists():
                 continue
 
-            asset = resolve_crypto_asset(leg["asset"], user)
+            if leg.get("instrument") == "option":
+                asset = resolve_crypto_option_asset(parse_option_symbol(leg["asset"]), user)
+            else:
+                asset = resolve_crypto_asset(leg["asset"], user)
             tx_type = _transaction_type_for_event(event, quantity)
             try:
                 with transaction.atomic():
@@ -329,6 +366,27 @@ def persist_crypto_exchange_event(event, user, account):
             except IntegrityError:
                 continue
     return created
+
+
+def _single_leg(asset, quantity, price_asset, role="base", instrument="coin", price=Decimal("1")):
+    """Build a one-element legs list for deposits, withdrawals, rewards, and options.
+
+    ``price`` defaults to ``Decimal("1")`` so single-leg coin events resolve to a
+    fiat price through ``_leg_fiat_price``: stablecoin legs short-circuit to 1, and
+    crypto-denominated legs (BTC/ETH) hit the ``price == Decimal("1")`` branch and
+    resolve via ``_quote_asset_fiat_price``. Callers that need a different price
+    (option settlements) override it explicitly.
+    """
+    return [
+        {
+            "asset": asset,
+            "quantity": quantity,
+            "price": price,
+            "price_asset": price_asset,
+            "role": role,
+            "instrument": instrument,
+        }
+    ]
 
 
 def _split_symbol(symbol: str) -> Tuple[str, str]:
@@ -447,11 +505,193 @@ def normalize_okx_spot_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
     )
 
 
+def normalize_bybit_deposit(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    coin = payload["coin"].upper()
+    amount = Decimal(payload["amount"])
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["txID"],
+        group_id=payload["txID"],
+        timestamp_ms=int(payload["successAt"]),
+        category="deposit",
+        raw_type="deposit",
+        legs=_single_leg(coin, amount, coin),
+    )
+
+
+def normalize_bybit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    coin = payload["coin"].upper()
+    amount = -abs(Decimal(payload["amount"]))
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["id"],
+        group_id=payload["id"],
+        timestamp_ms=int(payload["createdAt"]),
+        category="withdrawal",
+        raw_type="withdrawal",
+        legs=_single_leg(coin, amount, coin),
+    )
+
+
+def normalize_okx_deposit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    ccy = payload["ccy"].upper()
+    amount = Decimal(payload["amt"])
+    direction = payload["type"].lower()
+    if direction not in {"deposit", "withdrawal"}:
+        raise ValueError(f"Unknown OKX asset movement type: {payload['type']}")
+    signed_amount = amount if direction == "deposit" else -abs(amount)
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=f"{direction}:{payload['billId']}",
+        group_id=payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category=direction,
+        raw_type=direction,
+        legs=_single_leg(ccy, signed_amount, ccy),
+    )
+
+
+def normalize_bybit_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEvent]:
+    tx_type = payload.get("type", "")
+    if tx_type in SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES:
+        return None
+    symbol = payload["symbol"].upper()
+    amount = Decimal(payload["change"])
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["id"],
+        group_id=payload["id"],
+        timestamp_ms=int(payload["transactionTime"]),
+        category="reward",
+        raw_type="earn",
+        legs=_single_leg(symbol, amount, symbol),
+    )
+
+
+def normalize_okx_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEvent]:
+    if payload.get("subType") in SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES:
+        return None
+    ccy = payload["ccy"].upper()
+    amount = Decimal(payload["amt"])
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=payload["billId"],
+        group_id=payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category="reward",
+        raw_type="earn",
+        legs=_single_leg(ccy, amount, ccy),
+    )
+
+
+def normalize_bybit_option_execution(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    symbol = payload["symbol"]
+    qty = Decimal(payload["execQty"])
+    price = Decimal(payload["execPrice"])
+    fee_currency = payload.get("feeCurrency") or "USD"
+    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["execId"],
+        group_id=payload.get("orderId") or payload["execId"],
+        timestamp_ms=int(payload["execTime"]),
+        category="trade",
+        raw_type="option_execution",
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": signed_qty,
+                "price": price,
+                "price_asset": fee_currency,
+                "role": "base",
+                "instrument": "option",
+            }
+        ],
+        fee={
+            "asset": fee_currency,
+            "quantity": -abs(Decimal(payload.get("execFee") or "0")),
+            "is_rebate": False,
+        },
+    )
+
+
+def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    symbol = payload["instId"]
+    qty = Decimal(payload["fillSz"])
+    price = Decimal(payload["fillPx"])
+    fee_ccy = payload.get("feeCcy") or "USD"
+    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=payload["tradeId"],
+        group_id=payload.get("ordId") or payload["tradeId"],
+        timestamp_ms=int(payload["fillTime"]),
+        category="trade",
+        raw_type="option_fill",
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": signed_qty,
+                "price": price,
+                "price_asset": fee_ccy,
+                "role": "base",
+                "instrument": "option",
+            }
+        ],
+        fee={
+            "asset": fee_ccy,
+            "quantity": Decimal(payload.get("fee") or "0"),
+            "is_rebate": False,
+        },
+    )
+
+
+def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    symbol = payload["symbol"].upper()
+    amount = Decimal(payload["change"])
+    settlement_price = Decimal(payload["newWalletBalance"])
+    legs = _single_leg(symbol, amount, symbol)
+    legs[0]["price"] = settlement_price
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["id"],
+        group_id=payload.get("orderLinkId") or payload["id"],
+        timestamp_ms=int(payload["transactionTime"]),
+        category="settlement",
+        raw_type="option_delivery",
+        legs=legs,
+    )
+
+
+def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    ccy = payload["settlCcy"].upper()
+    amount = Decimal(payload["settlAmt"])
+    settlement_price = Decimal(payload["settlPx"])
+    legs = _single_leg(ccy, amount, ccy)
+    legs[0]["price"] = settlement_price
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=payload["billId"],
+        group_id=payload.get("ordId") or payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category="settlement",
+        raw_type="option_delivery",
+        legs=legs,
+    )
+
+
 def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     parts = symbol.split("-")
     if len(parts) not in (4, 5):
         raise ValueError(f"Malformed option symbol: {symbol}")
 
+    segment_two = parts[1].upper()
+    if segment_two in OPTION_SETTLEMENT_COINS:
+        return _parse_okx_option_symbol(parts, symbol)
+    return _parse_bybit_option_symbol(parts, symbol)
+
+
+def _parse_bybit_option_symbol(parts, symbol):
     underlying, expiry_token, strike, option_side = parts[:4]
     settlement_asset = parts[4] if len(parts) == 5 else None
     if not underlying:
@@ -469,10 +709,7 @@ def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     except (KeyError, ValueError) as exc:
         raise ValueError(f"Malformed option expiration: {expiry_token}") from exc
 
-    option_type_by_side = {
-        "C": "CALL",
-        "P": "PUT",
-    }
+    option_type_by_side = {"C": "CALL", "P": "PUT"}
     try:
         option_type = option_type_by_side[option_side.upper()]
     except KeyError as exc:
@@ -494,3 +731,42 @@ def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     if settlement_asset:
         parsed["settlement_asset"] = settlement_asset
     return parsed
+
+
+def _parse_okx_option_symbol(parts, symbol):
+    underlying, settlement_asset, expiry_token, strike, option_side = parts[:5]
+    if len(parts) != 5:
+        raise ValueError(f"OKX option symbol requires settlement segment: {symbol}")
+    if not underlying or not settlement_asset:
+        raise ValueError(f"Malformed option symbol: {symbol}")
+    if len(expiry_token) != 6:
+        raise ValueError(f"Malformed OKX option expiration: {expiry_token}")
+
+    try:
+        year = 2000 + int(expiry_token[:2])
+        month = int(expiry_token[2:4])
+        day = int(expiry_token[4:6])
+        expiration_date = date(year, month, day)
+    except ValueError as exc:
+        raise ValueError(f"Malformed OKX option expiration: {expiry_token}") from exc
+
+    option_type_by_side = {"C": "CALL", "P": "PUT"}
+    try:
+        option_type = option_type_by_side[option_side.upper()]
+    except KeyError as exc:
+        raise ValueError(f"Unknown option side: {option_side}") from exc
+
+    try:
+        strike_price = Decimal(strike)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"Malformed option strike: {strike}") from exc
+    if not strike_price.is_finite():
+        raise ValueError(f"Malformed option strike: {strike}")
+
+    return {
+        "underlying": underlying,
+        "expiration_date": expiration_date,
+        "strike_price": strike_price,
+        "option_type": option_type,
+        "settlement_asset": settlement_asset.upper(),
+    }

@@ -353,6 +353,21 @@ def test_bybit_api_get_transactions_uses_active_token_and_normalizer(monkeypatch
                 "execTime": "1767225600000",
             }
 
+        def iter_option_executions(self, params):
+            yield from []
+
+        def iter_deposits(self, params):
+            yield from []
+
+        def iter_withdrawals(self, params):
+            yield from []
+
+        def iter_transaction_log(self, params):
+            yield from []
+
+        def iter_option_settlements(self, params):
+            yield from []
+
     monkeypatch.setattr("core.broker_api_utils.BybitClient", FakeBybitClient)
 
     api = BybitAPI()
@@ -413,6 +428,18 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
                 "fillTime": "1767225600000",
             }
 
+        def iter_option_fills(self, params):
+            yield from []
+
+        def iter_asset_deposits_withdrawals(self, params):
+            yield from []
+
+        def iter_earn_lending_history(self, params):
+            yield from []
+
+        def iter_option_settlements(self, params):
+            yield from []
+
     monkeypatch.setattr("core.broker_api_utils.OKXClient", FakeOKXClient)
 
     api = OKXAPI()
@@ -434,3 +461,114 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "okx"
     assert events[0].legs[0]["quantity"] == Decimal("-0.2001")
+
+
+def test_bybit_iter_deposits_paginates_and_yields_rows(monkeypatch):
+    client = BybitClient(api_key="k", api_secret="s")
+    pages = [
+        {"retCode": 0, "retMsg": "OK", "result": {"rows": [{"coin": "USDT", "txID": "d1"}], "nextPageCursor": "cursor-1"}},
+        {"retCode": 0, "retMsg": "OK", "result": {"rows": [{"coin": "USDT", "txID": "d2"}], "nextPageCursor": ""}},
+    ]
+    calls = []
+
+    def fake_get(path, params=None):
+        calls.append((path, dict(params)))
+        return pages.pop(0)
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_deposits({"limit": 50}))
+
+    assert [r["txID"] for r in rows] == ["d1", "d2"]
+    assert calls == [
+        ("/v5/asset/deposit/query-record", {"limit": 50}),
+        ("/v5/asset/deposit/query-record", {"limit": 50, "cursor": "cursor-1"}),
+    ]
+
+
+def test_bybit_iter_option_executions_passes_option_category(monkeypatch):
+    client = BybitClient(api_key="k", api_secret="s")
+    captured = {}
+
+    def fake_get(path, params=None):
+        captured["path"] = path
+        captured["params"] = params
+        return {"retCode": 0, "retMsg": "OK", "result": {"list": [], "nextPageCursor": ""}}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    list(client.iter_option_executions({"limit": 5}))
+
+    assert captured["path"] == "/v5/execution/list"
+    assert captured["params"]["category"] == "option"
+
+
+def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "billId": "b1", "type": "deposit"}]}
+    calls = {"n": 0}
+
+    def fake_get(path, params=None):
+        calls["n"] += 1
+        # First call returns one row; subsequent calls return an empty page to
+        # terminate the pagination loop (end of history reached).
+        return page if calls["n"] == 1 else {"code": "0", "msg": "", "data": []}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_asset_deposits_withdrawals({}))
+
+    assert [r["billId"] for r in rows] == ["b1"]
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_bybit_api_get_transactions_merges_streams_and_tracks_failures(
+    user, monkeypatch
+):
+    from common.models import Accounts, Brokers
+    from users.models import BybitApiToken
+
+    # This test is ``async def`` and sets up ORM fixtures directly. Allow
+    # synchronous ORM calls from async code for the duration of this test only,
+    # so setup queries don't need sync_to_async wrappers (scoped to avoid
+    # leaking process-wide via a module-level env var).
+    monkeypatch.setenv("DJANGO_ALLOW_ASYNC_UNSAFE", "1")
+
+    broker = Brokers.objects.create(investor=user, name="Bybit", country="Crypto")
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="bybit-main")
+    token = BybitApiToken.objects.create(
+        user=user, broker=broker, api_key="k", is_active=True, testnet=False
+    )
+    token.set_api_secret("s", user)
+    token.save()
+
+    # Monkeypatch BybitClient iterators at the class level.
+    from core.crypto_exchange_clients import BybitClient
+
+    def fake_iter_executions(self, params):
+        return iter([{
+            "execId": "e1", "symbol": "BTCUSDT", "side": "Buy",
+            "execQty": "0.1", "execPrice": "60000", "execTime": "300",
+        }])
+
+    def fake_iter_deposits(self, params):
+        raise CryptoExchangeAPIError("Bybit HTTP 403: forbidden")
+
+    def fake_iter_empty(self, params):
+        return iter([])
+
+    monkeypatch.setattr(BybitClient, "iter_executions", fake_iter_executions)
+    monkeypatch.setattr(BybitClient, "iter_deposits", fake_iter_deposits)
+    monkeypatch.setattr(BybitClient, "iter_withdrawals", fake_iter_empty)
+    monkeypatch.setattr(BybitClient, "iter_option_executions", fake_iter_empty)
+    monkeypatch.setattr(BybitClient, "iter_transaction_log", fake_iter_empty)
+    monkeypatch.setattr(BybitClient, "iter_option_settlements", fake_iter_empty)
+
+    api = BybitAPI()
+    await api.connect(user)
+    events = []
+    async for event in api.get_transactions(account):
+        events.append(event)
+
+    # The trade event from iter_executions still yielded despite deposit failure.
+    assert len(events) == 1
+    assert events[0].provider_event_id == "e1"
+    # The deposit endpoint failure was recorded, not raised.
+    assert any("403" in msg for _, msg in api.partial_failures)

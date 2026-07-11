@@ -4,12 +4,13 @@ from unittest.mock import patch
 
 import pytest
 
-from common.models import Accounts, Assets, Brokers, Prices, Transactions
+from common.models import Accounts, Assets, Brokers, OptionMetadata, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 from core.crypto_exchange_import import (
     CryptoExchangeEvent,
@@ -383,3 +384,140 @@ def test_crypto_persistence_normalizes_model_decimal_fields(user, crypto_account
 
     assert created[0].quantity == Decimal("0.123456789")
     assert created[0].price == Decimal("60000.123456789")
+
+
+def _deposit_event(**overrides):
+    data = {
+        "provider": "bybit",
+        "provider_event_id": "dep-1",
+        "group_id": "dep-1",
+        "timestamp_ms": 1700000000000,
+        "category": "deposit",
+        "raw_type": "deposit",
+        "legs": [
+            {
+                "asset": "USDT",
+                "quantity": Decimal("500"),
+                "price": Decimal("1"),
+                "price_asset": "USDT",
+                "role": "base",
+                "instrument": "coin",
+            }
+        ],
+        "fee": None,
+    }
+    data.update(overrides)
+    return CryptoExchangeEvent(**data)
+
+
+@pytest.mark.django_db
+def test_persist_deposit_creates_transfer_in_row(user, crypto_account):
+    created = persist_crypto_exchange_event(_deposit_event(), user, crypto_account)
+
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+    assert tx.quantity == Decimal("500")
+    assert persist_crypto_exchange_event(_deposit_event(), user, crypto_account) == []
+
+
+def _option_premium_event(**overrides):
+    data = {
+        "provider": "bybit",
+        "provider_event_id": "opt-ex-1",
+        "group_id": "opt-order-1",
+        "timestamp_ms": 1700000008000,
+        "category": "trade",
+        "raw_type": "option_execution",
+        "legs": [
+            {
+                "asset": "BTC-27JUN26-100000-C",
+                "quantity": Decimal("2"),
+                "price": Decimal("500"),
+                "price_asset": "USDT",
+                "role": "base",
+                "instrument": "option",
+            }
+        ],
+        "fee": {"asset": "USDT", "quantity": Decimal("-1"), "is_rebate": False},
+    }
+    data.update(overrides)
+    return CryptoExchangeEvent(**data)
+
+
+@pytest.mark.django_db
+def test_persist_option_premium_creates_option_asset_with_metadata(user, crypto_account):
+    created = persist_crypto_exchange_event(_option_premium_event(), user, crypto_account)
+
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
+    assert tx.security.type == "Option"
+    meta = OptionMetadata.objects.get(asset=tx.security)
+    assert meta.strike_price == Decimal("100000")
+    assert meta.option_type == "CALL"
+    assert meta.expiration_date.isoformat() == "2026-06-27"
+
+
+def _option_settlement_event(**overrides):
+    data = {
+        "provider": "bybit",
+        "provider_event_id": "settle-1",
+        "group_id": "opt-order-1",
+        "timestamp_ms": 1700000010000,
+        "category": "settlement",
+        "raw_type": "option_delivery",
+        "legs": [
+            {
+                "asset": "BTC",
+                "quantity": Decimal("0.5"),
+                "price": Decimal("65000"),
+                "price_asset": "BTC",
+                "role": "base",
+                "instrument": "coin",
+            }
+        ],
+        "fee": None,
+    }
+    data.update(overrides)
+    return CryptoExchangeEvent(**data)
+
+
+@pytest.mark.django_db
+def test_persist_option_settlement_uses_option_settlement_type(user, crypto_account):
+    created = persist_crypto_exchange_event(_option_settlement_event(), user, crypto_account)
+
+    assert len(created) == 1
+    assert created[0].type == TRANSACTION_TYPE_OPTION_SETTLEMENT
+
+
+@pytest.mark.django_db
+def test_persist_coin_leg_still_uses_crypto_resolver(user, crypto_account):
+    # Regression: existing spot-trade path must still resolve as Crypto asset.
+    created = persist_crypto_exchange_event(_crypto_event(), user, crypto_account)
+
+    assert all(c.security.type == ASSET_TYPE_CRYPTO for c in created)
+
+
+@pytest.mark.django_db
+def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
+    # Regression: a real normalizer output must round-trip through persistence
+    # without crashing. Closes the seam between normalization and persistence so
+    # a None-price default in _single_leg can never silently break deposits.
+    from core.crypto_exchange_import import normalize_bybit_deposit
+
+    event = normalize_bybit_deposit(
+        {
+            "coin": "USDT",
+            "amount": "500",
+            "txID": "dep-seam-1",
+            "successAt": "1700000000000",
+            "status": "SUCCESS",
+        }
+    )
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert len(created) == 1
+    assert created[0].type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+    assert created[0].quantity == Decimal("500")
+    assert created[0].price == Decimal("1")

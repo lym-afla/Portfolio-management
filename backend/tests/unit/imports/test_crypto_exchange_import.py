@@ -295,6 +295,38 @@ def test_parse_option_symbol_rejects_malformed_symbols(symbol):
         parse_option_symbol(symbol)
 
 
+def test_parse_okx_option_symbol_call():
+    parsed = parse_option_symbol("BTC-USD-240315-50000-C")
+
+    assert parsed["underlying"] == "BTC"
+    assert parsed["expiration_date"].isoformat() == "2024-03-15"
+    assert parsed["strike_price"] == Decimal("50000")
+    assert parsed["option_type"] == "CALL"
+    assert parsed["settlement_asset"] == "USD"
+
+
+def test_parse_okx_option_symbol_put_usdt_settlement():
+    parsed = parse_option_symbol("BTC-USDT-240315-50000-P")
+
+    assert parsed["expiration_date"].isoformat() == "2024-03-15"
+    assert parsed["option_type"] == "PUT"
+    assert parsed["settlement_asset"] == "USDT"
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "BTC-USD-2413-50000-C",      # too-short date
+        "BTC-USD-240315-50000",      # missing side
+        "BTC-USD-240315-notnum-C",   # bad strike
+        "BTC-ETH-240315-50000-C",    # segment 2 not a date or known coin
+    ],
+)
+def test_parse_okx_option_symbol_rejects_malformed(symbol):
+    with pytest.raises(ValueError):
+        parse_option_symbol(symbol)
+
+
 def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
     history = pd.DataFrame(
         {"Close": [60000.0, 61000.123456]},
@@ -335,3 +367,329 @@ def test_fetch_crypto_usd_price_from_yahoo_returns_none_for_unsupported_symbol()
 
     ticker_class.assert_not_called()
     assert price is None
+
+
+from core.crypto_exchange_import import _single_leg
+
+
+def test_single_leg_builds_one_element_list_with_defaults():
+    legs = _single_leg("BTC", Decimal("0.001"), "BTC")
+
+    assert len(legs) == 1
+    leg = legs[0]
+    assert leg["asset"] == "BTC"
+    assert leg["quantity"] == Decimal("0.001")
+    assert leg["price"] == Decimal("1")
+    assert leg["price_asset"] == "BTC"
+    assert leg["role"] == "base"
+    assert leg["instrument"] == "coin"
+
+
+def test_single_leg_accepts_option_instrument():
+    legs = _single_leg("BTC-27DEC24-75000-C", Decimal("2"), "USDT", role="base", instrument="option")
+
+    assert legs[0]["instrument"] == "option"
+    assert legs[0]["role"] == "base"
+
+
+from core.crypto_exchange_import import _merge_sorted_events
+
+
+def _event(ts, eid):
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=eid,
+        group_id=eid,
+        timestamp_ms=ts,
+        category="trade",
+        raw_type="x",
+        legs=[],
+    )
+
+
+def test_merge_sorted_events_interleaves_by_timestamp():
+    a = [_event(100, "a1"), _event(300, "a3")]
+    b = [_event(200, "b2"), _event(400, "b4")]
+
+    result = [e.provider_event_id for e in _merge_sorted_events(iter(a), iter(b))]
+
+    assert result == ["a1", "b2", "a3", "b4"]
+
+
+def test_merge_sorted_events_preserves_stable_order_on_ties():
+    a = [_event(100, "a1")]
+    b = [_event(100, "b1")]
+
+    result = [e.provider_event_id for e in _merge_sorted_events(iter(a), iter(b))]
+
+    assert result == ["a1", "b1"]
+
+
+def test_merge_sorted_events_handles_empty_streams():
+    result = list(_merge_sorted_events(iter([]), iter([]), iter([_event(100, "x")])))
+
+    assert [e.provider_event_id for e in result] == ["x"]
+
+
+def test_merge_sorted_events_handles_all_empty():
+    assert list(_merge_sorted_events(iter([]), iter([]))) == []
+
+
+def test_merge_sorted_events_single_stream():
+    a = [_event(100, "a1"), _event(200, "a2")]
+
+    result = [e.provider_event_id for e in _merge_sorted_events(iter(a))]
+
+    assert result == ["a1", "a2"]
+
+
+from core.crypto_exchange_import import (
+    normalize_bybit_deposit,
+    normalize_bybit_withdrawal,
+    normalize_okx_deposit_withdrawal,
+)
+
+
+def test_normalize_bybit_deposit_stablecoin():
+    event = normalize_bybit_deposit(
+        {
+            "coin": "USDT",
+            "amount": "500",
+            "txID": "dep-tx-1",
+            "successAt": "1700000000000",
+            "status": "SUCCESS",
+        }
+    )
+
+    assert event.provider == "bybit"
+    assert event.provider_event_id == "dep-tx-1"
+    assert event.category == "deposit"
+    assert event.raw_type == "deposit"
+    assert event.timestamp_ms == 1700000000000
+    assert event.fee is None
+    assert len(event.legs) == 1
+    assert event.legs[0]["asset"] == "USDT"
+    assert event.legs[0]["quantity"] == Decimal("500")
+    assert event.legs[0]["instrument"] == "coin"
+
+
+def test_normalize_bybit_withdrawal_btc():
+    event = normalize_bybit_withdrawal(
+        {
+            "coin": "BTC",
+            "amount": "0.05",
+            "id": "wd-1",
+            "createdAt": "1700000001000",
+            "status": "success",
+        }
+    )
+
+    assert event.category == "withdrawal"
+    assert event.provider_event_id == "wd-1"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("-0.05")
+    assert event.legs[0]["instrument"] == "coin"
+
+
+def test_normalize_okx_deposit():
+    event = normalize_okx_deposit_withdrawal(
+        {
+            "ccy": "USDT",
+            "amt": "200",
+            "billId": "okx-dep-1",
+            "ts": "1700000002000",
+            "type": "deposit",
+        }
+    )
+
+    assert event.provider == "okx"
+    assert event.category == "deposit"
+    assert event.provider_event_id == "deposit:okx-dep-1"
+    assert event.legs[0]["quantity"] == Decimal("200")
+
+
+def test_normalize_okx_withdrawal_direction_prefixed_id():
+    event = normalize_okx_deposit_withdrawal(
+        {
+            "ccy": "BTC",
+            "amt": "0.1",
+            "billId": "okx-wd-1",
+            "ts": "1700000003000",
+            "type": "withdrawal",
+        }
+    )
+
+    assert event.category == "withdrawal"
+    assert event.provider_event_id == "withdrawal:okx-wd-1"
+    assert event.legs[0]["quantity"] == Decimal("-0.1")
+
+
+from core.crypto_exchange_import import (
+    normalize_bybit_reward,
+    normalize_okx_reward,
+)
+
+
+def test_normalize_bybit_reward_btc():
+    event = normalize_bybit_reward(
+        {
+            "symbol": "BTC",
+            "change": "0.001",
+            "transactionTime": "1700000004000",
+            "type": "Earn",
+            "id": "earn-1",
+        }
+    )
+
+    assert event.category == "reward"
+    assert event.raw_type == "earn"
+    assert event.provider_event_id == "earn-1"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("0.001")
+    assert event.legs[0]["instrument"] == "coin"
+
+
+def test_normalize_bybit_reward_skips_internal_transfer():
+    event = normalize_bybit_reward(
+        {
+            "symbol": "USDT",
+            "change": "100",
+            "transactionTime": "1700000005000",
+            "type": "InternalTransfer",
+            "id": "tr-1",
+        }
+    )
+
+    assert event is None
+
+
+def test_normalize_okx_reward_stablecoin():
+    event = normalize_okx_reward(
+        {
+            "ccy": "USDT",
+            "amt": "5.5",
+            "billId": "okx-earn-1",
+            "ts": "1700000006000",
+            "subType": "24",
+        }
+    )
+
+    assert event.category == "reward"
+    assert event.provider_event_id == "okx-earn-1"
+    assert event.legs[0]["quantity"] == Decimal("5.5")
+
+
+def test_normalize_okx_reward_skips_internal_transfer():
+    event = normalize_okx_reward(
+        {
+            "ccy": "USDT",
+            "amt": "100",
+            "billId": "okx-tr-1",
+            "ts": "1700000007000",
+            "subType": "1",
+        }
+    )
+
+    assert event is None
+
+
+from core.crypto_exchange_import import (
+    normalize_bybit_option_execution,
+    normalize_bybit_option_settlement,
+    normalize_okx_option_fill,
+    normalize_okx_option_settlement,
+)
+
+
+def test_normalize_bybit_option_execution_buy_call():
+    event = normalize_bybit_option_execution(
+        {
+            "symbol": "BTC-27JUN26-100000-C",
+            "execId": "opt-ex-1",
+            "orderId": "opt-order-1",
+            "side": "Buy",
+            "execQty": "2",
+            "execPrice": "500",
+            "execFee": "1",
+            "feeCurrency": "USDT",
+            "execTime": "1700000008000",
+        }
+    )
+
+    assert event.category == "trade"
+    assert event.raw_type == "option_execution"
+    assert event.provider_event_id == "opt-ex-1"
+    assert event.group_id == "opt-order-1"
+    assert len(event.legs) == 1
+    assert event.legs[0]["instrument"] == "option"
+    assert event.legs[0]["asset"] == "BTC-27JUN26-100000-C"
+    assert event.legs[0]["quantity"] == Decimal("2")
+    assert event.legs[0]["price"] == Decimal("500")
+    assert event.legs[0]["price_asset"] == "USDT"
+
+
+def test_normalize_okx_option_fill_sell_put():
+    event = normalize_okx_option_fill(
+        {
+            "instId": "BTC-USD-240315-50000-P",
+            "tradeId": "okx-opt-1",
+            "ordId": "okx-opt-order-1",
+            "side": "sell",
+            "fillSz": "1.5",
+            "fillPx": "1200",
+            "fee": "-1.8",
+            "feeCcy": "USDT",
+            "fillTime": "1700000009000",
+        }
+    )
+
+    assert event.category == "trade"
+    assert event.raw_type == "option_fill"
+    assert event.legs[0]["instrument"] == "option"
+    assert event.legs[0]["asset"] == "BTC-USD-240315-50000-P"
+    assert event.legs[0]["quantity"] == Decimal("-1.5")
+    assert event.legs[0]["price"] == Decimal("1200")
+
+
+def test_normalize_bybit_option_settlement_exercised():
+    event = normalize_bybit_option_settlement(
+        {
+            "symbol": "BTC",
+            "change": "0.5",
+            "transactionTime": "1700000010000",
+            "type": "Settlement",
+            "id": "settle-1",
+            "orderLinkId": "opt-order-1",
+            "newWalletBalance": "65000",
+        }
+    )
+
+    assert event.category == "settlement"
+    assert event.raw_type == "option_delivery"
+    assert event.group_id == "opt-order-1"
+    assert event.provider_event_id == "settle-1"
+    assert event.legs[0]["instrument"] == "coin"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("0.5")
+    assert event.legs[0]["price"] == Decimal("65000")
+
+
+def test_normalize_okx_option_settlement():
+    event = normalize_okx_option_settlement(
+        {
+            "instId": "BTC-USD-240315-50000-C",
+            "settlCcy": "BTC",
+            "settlAmt": "0.3",
+            "settlPx": "65000",
+            "ts": "1700000011000",
+            "billId": "okx-settle-1",
+            "ordId": "okx-opt-order-1",
+        }
+    )
+
+    assert event.category == "settlement"
+    assert event.provider_event_id == "okx-settle-1"
+    assert event.group_id == "okx-opt-order-1"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("0.3")
+    assert event.legs[0]["price"] == Decimal("65000")
