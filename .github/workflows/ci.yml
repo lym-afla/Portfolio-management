@@ -82,3 +82,64 @@ jobs:
 
       - name: Run token manager tests
         run: npm run test:unit -- BrokerTokenManager.spec.js
+
+  doc-drift-check:
+    name: Doc drift guards
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Assert frontend/ directory exists (not portfolio-frontend/)
+        run: |
+          if [ ! -d frontend ]; then
+            echo "ERROR: frontend/ directory missing. Was it renamed back to portfolio-frontend/?"
+            exit 1
+          fi
+          if [ -d portfolio-frontend ]; then
+            echo "ERROR: portfolio-frontend/ exists — should be renamed to frontend/."
+            exit 1
+          fi
+
+      - name: Assert socket.io-client is not a dependency
+        run: |
+          if grep -q '"socket.io-client"' frontend/package.json; then
+            echo "ERROR: socket.io-client found in frontend/package.json — it was removed (unused; app uses native WebSocket)."
+            exit 1
+          fi
+
+      - name: Assert INSTALLED_APPS project apps are present
+        run: |
+          APPS=$(grep -A30 "^INSTALLED_APPS" backend/portfolio_management/settings.py \
+            | grep -oP '^\s+\K[a-z_]+' \
+            | sort -u)
+          echo "INSTALLED_APPS project apps: $APPS"
+          for app in common users transactions database dashboard open_positions closed_positions summary_analysis; do
+            if ! echo "$APPS" | grep -qx "$app"; then
+              echo "ERROR: expected project app '$app' not found in INSTALLED_APPS."
+              exit 1
+            fi
+          done
+
+      - name: Assert SERVER_ENCRYPTION_KEY is not in settings
+        run: |
+          if grep -q "SERVER_ENCRYPTION_KEY" backend/portfolio_management/settings.py; then
+            echo "ERROR: SERVER_ENCRYPTION_KEY found in settings — it was removed (dead config, regenerated per-restart, never read)."
+            exit 1
+          fi
+
+      - name: Assert uv.lock is committed
+        run: |
+          if [ ! -f backend/uv.lock ]; then
+            echo "ERROR: backend/uv.lock missing — uv project mode requires a committed lockfile."
+            exit 1
+          fi
+
+      - name: Assert no requirements*.txt files exist
+        run: |
+          if ls backend/requirements*.txt 1> /dev/null 2>&1; then
+            echo "ERROR: backend/requirements*.txt files exist — project migrated to uv project mode (pyproject.toml + uv.lock)."
+            ls backend/requirements*.txt
+            exit 1
+          fi
