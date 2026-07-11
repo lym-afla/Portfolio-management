@@ -39,11 +39,9 @@ This application allows users to manage and analyze their investment portfolio. 
 2. Set up the backend:
    ```bash
    cd Portfolio-management/backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-   pip install -r requirements.txt
-   python manage.py migrate
-   python manage.py runserver
+   uv sync
+   uv run python manage.py migrate
+   uv run python manage.py runserver
    ```
 
 3. Set up the frontend:
@@ -260,7 +258,7 @@ Portfolio-management/
 ├── .gitignore
 ├── .cursorrules
 ├── README.md
-├── requirements.txt
+├── pyproject.toml
 
 ## Features
 
@@ -302,7 +300,7 @@ For detailed explanation on how things work, check out the [Configuration Refere
 
 ## Environment Setup
 
-The frontend application uses Vue CLI for development and build tooling. Environment variables are managed through `.env` files in the `portfolio-frontend` directory.
+The frontend application uses Vue CLI for development and build tooling. Environment variables are managed through `.env` files in the `frontend` directory.
 
 ### Environment Files
 
@@ -330,7 +328,7 @@ console.log(apiUrl) // http://localhost:8000
 
 1. Navigate to the frontend directory:
    ```bash
-   cd portfolio-frontend
+   cd frontend
    ```
 
 2. Copy the example environment file:
@@ -362,7 +360,7 @@ console.log(apiUrl) // http://localhost:8000
 The environment files should be placed in the root of your frontend directory:
 
 ```
-portfolio-frontend/
+frontend/
 ├── .env.development    # Development environment variables
 ├── .env.production    # Production environment variables (do not commit)
 ├── .env.example       # Example environment file (committed)

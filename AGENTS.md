@@ -26,13 +26,13 @@ Full rules: `.memory-bank/Rules for AI Coding Agent.md`. Key rules summarized be
 - Rounding: `ROUND_HALF_UP`. Persisted aggregates: 2 dp. UI: per `CustomUser.digits` or default 2.
 
 ### Virtual environment
-- Use virtual environments to isolate project dependencies on the backend. Don't install packages globally.
-- Use existing virtual environment saved in '/backend/venv' when running the backend code
-- Use poetry to manage dependencies and virtual environment. Run `poetry install` to set up the environment and install dependencies.
-- Use `poetry add <package>` to add new dependencies, which will automatically update `pyproject.toml` and `poetry.lock`.
-- Use requirements.init to generate `requirements.txt` from `poetry.lock` for any tools that require it (e.g. CI, deployment scripts).
-- Use requirements.dev.init to generate `requirements-dev.txt` from `poetry.lock` for development dependencies.
-- Keep requirements files up to date by running the init scripts after any changes to dependencies.
+- Dependencies are managed with **uv project mode**: `backend/pyproject.toml` declares all dependencies; `backend/uv.lock` is the committed lockfile. There are no `requirements*.txt` files.
+- All commands run from `backend/`.
+- Install everything (creates `backend/.venv` with runtime + dev deps): `uv sync`
+- Run any command inside the project env: `uv run <cmd>` (e.g. `uv run python manage.py runserver`, `uv run python -m pytest`). You don't need to activate the venv manually.
+- Add a runtime dependency: edit `[project.dependencies]` in `backend/pyproject.toml`, then `uv lock` to update the lockfile.
+- Add a dev-only dependency: edit `[dependency-groups.dev]`, then `uv lock`.
+- Commit both `pyproject.toml` and `uv.lock` after any dependency change. CI installs with `uv sync --frozen` (never modifies the lockfile).
 
 ### Auto-commit vs PR
 - **May auto-commit** (if tests pass): formatting, import sorting, comments, type hints, small bug-fixes with unit tests in non-protected areas.

@@ -71,13 +71,13 @@ tests/
 
 ```bash
 # Install dependencies
-pip install -r backend/requirements-dev.txt
+cd backend && uv sync
 
 # Run all tests
-pytest
+uv run python -m pytest
 
 # Run with coverage
-pytest --cov=backend --cov-report=html
+uv run python -m pytest --cov=backend --cov-report=html
 
 # Run specific test categories
 pytest -m unit                    # Unit tests only

@@ -9,18 +9,18 @@ Ensure your local development environment produces the same formatting and linti
 ## 🛠️ Tools Configuration
 
 ### Black (Code Formatter)
-- **Line Length:** 88 characters
+- **Line Length:** 100 characters
 - **Target Version:** Python 3.9+
 - **Config File:** `pyproject.toml` and `.pre-commit-config.yaml`
 
 ### isort (Import Sorter)
 - **Profile:** Django
-- **Line Length:** 88 characters
+- **Line Length:** 100 characters
 - **Multi-line Output:** 3
 - **Config Files:** `pyproject.toml`, `backend/setup.cfg`, and `.pre-commit-config.yaml`
 
 ### Flake8 (Linter)
-- **Max Line Length:** 88 characters
+- **Max Line Length:** 100 characters
 - **Ignored Errors:** E203, W503, E501, I
 - **Max Complexity:** 20
 - **Config Files:** `.flake8` and `backend/setup.cfg`
@@ -110,13 +110,13 @@ make test
 ```bash
 # Black formatting
 cd backend
-python -m black --line-length=88 .
+python -m black --line-length=100 .
 
 # isort import sorting
-python -m isort --profile=django --line-length=88 .
+python -m isort --profile=django --line-length=100 .
 
 # Flake8 linting
-python -m flake8 --max-line-length=88 --extend-ignore=E203,W503,E501,I .
+python -m flake8 --max-line-length=100 --extend-ignore=E203,W503,E501,I .
 ```
 
 ## 🔧 VS Code Integration
@@ -143,39 +143,39 @@ The project includes VS Code settings in `.vscode/settings.json` that automatica
   hooks:
     - id: black
       language_version: python3
-      args: [--line-length=88]
+      args: [--line-length=100]
 
 - repo: https://github.com/pycqa/isort
   rev: 5.12.0
   hooks:
     - id: isort
-      args: [--profile=django, --line-length=88]
+      args: [--profile=django, --line-length=100]
 
 - repo: https://github.com/pycqa/flake8
   rev: 6.1.0
   hooks:
     - id: flake8
       args:
-        - --max-line-length=88
+        - --max-line-length=100
         - --extend-ignore=E203,W503,E501,I
 ```
 
 ### Project Configuration (`pyproject.toml`)
 ```toml
 [tool.black]
-line-length = 88
+line-length = 100
 target-version = ['py39', 'py310', 'py311']
 
 [tool.isort]
 profile = "django"
-line_length = 88
+line_length = 100
 multi_line_output = 3
 ```
 
 ### Flake8 Configuration (`.flake8`)
 ```ini
 [flake8]
-max-line-length = 88
+max-line-length = 100
 extend-ignore = E203, W503, E501, I
 max-complexity = 20
 ```
