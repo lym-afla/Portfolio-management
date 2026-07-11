@@ -335,3 +335,26 @@ def test_fetch_crypto_usd_price_from_yahoo_returns_none_for_unsupported_symbol()
 
     ticker_class.assert_not_called()
     assert price is None
+
+
+from core.crypto_exchange_import import _single_leg
+
+
+def test_single_leg_builds_one_element_list_with_defaults():
+    legs = _single_leg("BTC", Decimal("0.001"), "BTC")
+
+    assert len(legs) == 1
+    leg = legs[0]
+    assert leg["asset"] == "BTC"
+    assert leg["quantity"] == Decimal("0.001")
+    assert leg["price"] is None
+    assert leg["price_asset"] == "BTC"
+    assert leg["role"] == "base"
+    assert leg["instrument"] == "coin"
+
+
+def test_single_leg_accepts_option_instrument():
+    legs = _single_leg("BTC-27DEC24-75000-C", Decimal("2"), "USDT", role="base", instrument="option")
+
+    assert legs[0]["instrument"] == "option"
+    assert legs[0]["role"] == "base"

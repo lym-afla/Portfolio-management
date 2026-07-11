@@ -331,6 +331,20 @@ def persist_crypto_exchange_event(event, user, account):
     return created
 
 
+def _single_leg(asset, quantity, price_asset, role="base", instrument="coin"):
+    """Build a one-element legs list for deposits, withdrawals, rewards, and options."""
+    return [
+        {
+            "asset": asset,
+            "quantity": quantity,
+            "price": None,
+            "price_asset": price_asset,
+            "role": role,
+            "instrument": instrument,
+        }
+    ]
+
+
 def _split_symbol(symbol: str) -> Tuple[str, str]:
     for quote in SUPPORTED_QUOTE_SUFFIXES:
         if symbol.endswith(quote) and symbol != quote:
