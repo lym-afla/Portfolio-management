@@ -295,6 +295,38 @@ def test_parse_option_symbol_rejects_malformed_symbols(symbol):
         parse_option_symbol(symbol)
 
 
+def test_parse_okx_option_symbol_call():
+    parsed = parse_option_symbol("BTC-USD-240315-50000-C")
+
+    assert parsed["underlying"] == "BTC"
+    assert parsed["expiration_date"].isoformat() == "2024-03-15"
+    assert parsed["strike_price"] == Decimal("50000")
+    assert parsed["option_type"] == "CALL"
+    assert parsed["settlement_asset"] == "USD"
+
+
+def test_parse_okx_option_symbol_put_usdt_settlement():
+    parsed = parse_option_symbol("BTC-USDT-240315-50000-P")
+
+    assert parsed["expiration_date"].isoformat() == "2024-03-15"
+    assert parsed["option_type"] == "PUT"
+    assert parsed["settlement_asset"] == "USDT"
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "BTC-USD-2413-50000-C",      # too-short date
+        "BTC-USD-240315-50000",      # missing side
+        "BTC-USD-240315-notnum-C",   # bad strike
+        "BTC-ETH-240315-50000-C",    # segment 2 not a date or known coin
+    ],
+)
+def test_parse_okx_option_symbol_rejects_malformed(symbol):
+    with pytest.raises(ValueError):
+        parse_option_symbol(symbol)
+
+
 def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
     history = pd.DataFrame(
         {"Close": [60000.0, 61000.123456]},

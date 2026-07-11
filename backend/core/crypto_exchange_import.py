@@ -23,6 +23,7 @@ from constants import (
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 STABLECOINS = {"USDT", "USDC", "USD"}
+OPTION_SETTLEMENT_COINS = {"USD", "USDT", "USDC"}
 YAHOO_USD_PRICE_SYMBOLS = {"BTC": "BTC-USD"}
 logger = logging.getLogger(__name__)
 
@@ -494,6 +495,13 @@ def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     if len(parts) not in (4, 5):
         raise ValueError(f"Malformed option symbol: {symbol}")
 
+    segment_two = parts[1].upper()
+    if segment_two in OPTION_SETTLEMENT_COINS:
+        return _parse_okx_option_symbol(parts, symbol)
+    return _parse_bybit_option_symbol(parts, symbol)
+
+
+def _parse_bybit_option_symbol(parts, symbol):
     underlying, expiry_token, strike, option_side = parts[:4]
     settlement_asset = parts[4] if len(parts) == 5 else None
     if not underlying:
@@ -511,10 +519,7 @@ def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     except (KeyError, ValueError) as exc:
         raise ValueError(f"Malformed option expiration: {expiry_token}") from exc
 
-    option_type_by_side = {
-        "C": "CALL",
-        "P": "PUT",
-    }
+    option_type_by_side = {"C": "CALL", "P": "PUT"}
     try:
         option_type = option_type_by_side[option_side.upper()]
     except KeyError as exc:
@@ -536,3 +541,42 @@ def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     if settlement_asset:
         parsed["settlement_asset"] = settlement_asset
     return parsed
+
+
+def _parse_okx_option_symbol(parts, symbol):
+    underlying, settlement_asset, expiry_token, strike, option_side = parts[:5]
+    if len(parts) != 5:
+        raise ValueError(f"OKX option symbol requires settlement segment: {symbol}")
+    if not underlying or not settlement_asset:
+        raise ValueError(f"Malformed option symbol: {symbol}")
+    if len(expiry_token) != 6:
+        raise ValueError(f"Malformed OKX option expiration: {expiry_token}")
+
+    try:
+        year = 2000 + int(expiry_token[:2])
+        month = int(expiry_token[2:4])
+        day = int(expiry_token[4:6])
+        expiration_date = date(year, month, day)
+    except ValueError as exc:
+        raise ValueError(f"Malformed OKX option expiration: {expiry_token}") from exc
+
+    option_type_by_side = {"C": "CALL", "P": "PUT"}
+    try:
+        option_type = option_type_by_side[option_side.upper()]
+    except KeyError as exc:
+        raise ValueError(f"Unknown option side: {option_side}") from exc
+
+    try:
+        strike_price = Decimal(strike)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"Malformed option strike: {strike}") from exc
+    if not strike_price.is_finite():
+        raise ValueError(f"Malformed option strike: {strike}")
+
+    return {
+        "underlying": underlying,
+        "expiration_date": expiration_date,
+        "strike_price": strike_price,
+        "option_type": option_type,
+        "settlement_asset": settlement_asset.upper(),
+    }
