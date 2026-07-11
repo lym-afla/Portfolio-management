@@ -244,15 +244,34 @@ def api_get_securities_table(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def api_security_form_structure(request):
-    """Get security form structure, generated from SecuritySerializer fields."""
+    """Get security form structure, generated from SecuritySerializer fields.
+
+    The ``type`` strings map to the widget-style names the frontend
+    (SecurityFormDialog.vue) switches on: ``textinput``, ``numberinput``,
+    ``dateinput``, ``checkbox``, ``select``, ``textarea``, ``url``.
+    """
+    # DRF field class -> widget-style name expected by the frontend
+    field_type_map = {
+        "CharField": "textinput",
+        "DecimalField": "numberinput",
+        "IntegerField": "numberinput",
+        "FloatField": "numberinput",
+        "BooleanField": "checkbox",
+        "ChoiceField": "select",
+        "MultipleChoiceField": "selectmultiple",
+        "DateField": "dateinput",
+        "DateTimeField": "dateinput",
+        "URLField": "url",
+    }
     serializer = SecuritySerializer()
     structure = {"fields": []}
 
     for field_name, field in serializer.fields.items():
+        drf_class_name = field.__class__.__name__
         field_data = {
             "name": field_name,
             "label": field.label or field_name,
-            "type": field.__class__.__name__.lower().replace("field", ""),
+            "type": field_type_map.get(drf_class_name, "textinput"),
             "required": field.required,
             "choices": None,
             "initial": field.initial,

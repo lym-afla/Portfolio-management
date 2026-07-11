@@ -149,3 +149,43 @@ def test_api_create_security_endpoint(user):
     assert response.data["success"] is True
     created = Assets.objects.get(name="Endpoint Test")
     assert created.investors.filter(pk=user.pk).exists()
+
+
+@pytest.mark.django_db
+def test_api_security_form_structure_returns_frontend_type_names(user):
+    """The form-structure endpoint must return widget-style type names the
+    frontend's SecurityFormDialog.vue switches on (textinput, numberinput,
+    checkbox, select, dateinput, url, etc.) — not raw DRF class names.
+    """
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.get("/database/api/security-form-structure/")
+
+    assert response.status_code == 200, response.content
+    fields = {f["name"]: f for f in response.data["fields"]}
+
+    # Spot-check: every field type must be one the frontend recognizes
+    valid_frontend_types = {
+        "textinput",
+        "numberinput",
+        "dateinput",
+        "checkbox",
+        "select",
+        "selectmultiple",
+        "textarea",
+        "url",
+    }
+    for name, field in fields.items():
+        assert field["type"] in valid_frontend_types, (
+            f"Field '{name}' has type '{field['type']}' which the frontend "
+            f"SecurityFormDialog.vue does not handle"
+        )
+
+    # Specific mappings that matter for form rendering
+    assert fields["name"]["type"] == "textinput"
+    assert fields["initial_notional"]["type"] == "numberinput"
+    assert fields["restricted"]["type"] == "checkbox"
+    assert fields["currency"]["type"] == "select"
+    assert fields["issue_date"]["type"] == "dateinput"
+    assert fields["update_link"]["type"] == "url"
