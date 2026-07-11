@@ -441,3 +441,84 @@ def test_merge_sorted_events_single_stream():
     result = [e.provider_event_id for e in _merge_sorted_events(iter(a))]
 
     assert result == ["a1", "a2"]
+
+
+from core.crypto_exchange_import import (
+    normalize_bybit_deposit,
+    normalize_bybit_withdrawal,
+    normalize_okx_deposit_withdrawal,
+)
+
+
+def test_normalize_bybit_deposit_stablecoin():
+    event = normalize_bybit_deposit(
+        {
+            "coin": "USDT",
+            "amount": "500",
+            "txID": "dep-tx-1",
+            "successAt": "1700000000000",
+            "status": "SUCCESS",
+        }
+    )
+
+    assert event.provider == "bybit"
+    assert event.provider_event_id == "dep-tx-1"
+    assert event.category == "deposit"
+    assert event.raw_type == "deposit"
+    assert event.timestamp_ms == 1700000000000
+    assert event.fee is None
+    assert len(event.legs) == 1
+    assert event.legs[0]["asset"] == "USDT"
+    assert event.legs[0]["quantity"] == Decimal("500")
+    assert event.legs[0]["instrument"] == "coin"
+
+
+def test_normalize_bybit_withdrawal_btc():
+    event = normalize_bybit_withdrawal(
+        {
+            "coin": "BTC",
+            "amount": "0.05",
+            "id": "wd-1",
+            "createdAt": "1700000001000",
+            "status": "success",
+        }
+    )
+
+    assert event.category == "withdrawal"
+    assert event.provider_event_id == "wd-1"
+    assert event.legs[0]["asset"] == "BTC"
+    assert event.legs[0]["quantity"] == Decimal("-0.05")
+    assert event.legs[0]["instrument"] == "coin"
+
+
+def test_normalize_okx_deposit():
+    event = normalize_okx_deposit_withdrawal(
+        {
+            "ccy": "USDT",
+            "amt": "200",
+            "billId": "okx-dep-1",
+            "ts": "1700000002000",
+            "type": "deposit",
+        }
+    )
+
+    assert event.provider == "okx"
+    assert event.category == "deposit"
+    assert event.provider_event_id == "deposit:okx-dep-1"
+    assert event.legs[0]["quantity"] == Decimal("200")
+
+
+def test_normalize_okx_withdrawal_direction_prefixed_id():
+    event = normalize_okx_deposit_withdrawal(
+        {
+            "ccy": "BTC",
+            "amt": "0.1",
+            "billId": "okx-wd-1",
+            "ts": "1700000003000",
+            "type": "withdrawal",
+        }
+    )
+
+    assert event.category == "withdrawal"
+    assert event.provider_event_id == "withdrawal:okx-wd-1"
+    assert event.legs[0]["quantity"] == Decimal("-0.1")

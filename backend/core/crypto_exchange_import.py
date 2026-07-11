@@ -490,6 +490,52 @@ def normalize_okx_spot_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
     )
 
 
+def normalize_bybit_deposit(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    coin = payload["coin"].upper()
+    amount = Decimal(payload["amount"])
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["txID"],
+        group_id=payload["txID"],
+        timestamp_ms=int(payload["successAt"]),
+        category="deposit",
+        raw_type="deposit",
+        legs=_single_leg(coin, amount, coin),
+    )
+
+
+def normalize_bybit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    coin = payload["coin"].upper()
+    amount = -abs(Decimal(payload["amount"]))
+    return CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id=payload["id"],
+        group_id=payload["id"],
+        timestamp_ms=int(payload["createdAt"]),
+        category="withdrawal",
+        raw_type="withdrawal",
+        legs=_single_leg(coin, amount, coin),
+    )
+
+
+def normalize_okx_deposit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    ccy = payload["ccy"].upper()
+    amount = Decimal(payload["amt"])
+    direction = payload["type"].lower()
+    if direction not in {"deposit", "withdrawal"}:
+        raise ValueError(f"Unknown OKX asset movement type: {payload['type']}")
+    signed_amount = amount if direction == "deposit" else -abs(amount)
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=f"{direction}:{payload['billId']}",
+        group_id=payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category=direction,
+        raw_type=direction,
+        legs=_single_leg(ccy, signed_amount, ccy),
+    )
+
+
 def parse_option_symbol(symbol: str) -> Dict[str, Any]:
     parts = symbol.split("-")
     if len(parts) not in (4, 5):
