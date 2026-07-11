@@ -5,9 +5,9 @@ This document provides comprehensive guidance for setting up a development envir
 ## 🎯 Overview
 
 The development environment uses three main tools:
-- **Black** - Code formatter (88 character line length)
-- **isort** - Import sorter (Django profile, 88 character line length)
-- **Flake8** - Linter (max line length 88, ignore E203,W503,E501,I)
+- **Black** - Code formatter (100 character line length)
+- **isort** - Import sorter (Django profile, 100 character line length)
+- **Flake8** - Linter (max line length 100, ignore E203,W503,E501,I)
 
 ## ⚙️ Configuration Files
 
@@ -18,39 +18,39 @@ The development environment uses three main tools:
   hooks:
     - id: black
       language_version: python3
-      args: [--line-length=88]
+      args: [--line-length=100]
 
 - repo: https://github.com/pycqa/isort
   rev: 5.12.0
   hooks:
     - id: isort
-      args: [--profile=django, --line-length=88]
+      args: [--profile=django, --line-length=100]
 
 - repo: https://github.com/pycqa/flake8
   rev: 6.1.0
   hooks:
     - id: flake8
       args:
-        - --max-line-length=88
+        - --max-line-length=100
         - --extend-ignore=E203,W503,E501,I
 ```
 
 ### 2. Project Configuration (`pyproject.toml`)
 ```toml
 [tool.black]
-line-length = 88
+line-length = 100
 target-version = ['py39', 'py310', 'py311']
 
 [tool.isort]
 profile = "django"
-line_length = 88
+line_length = 100
 multi_line_output = 3
 ```
 
 ### 3. Flake8 Configuration (`.flake8`)
 ```ini
 [flake8]
-max-line-length = 88
+max-line-length = 100
 extend-ignore = E203, W503, E501, I
 max-complexity = 20
 ```
@@ -74,13 +74,13 @@ make format
 ### Individual Tools
 ```bash
 # Black formatting
-cd backend && python -m black --line-length=88 .
+cd backend && python -m black --line-length=100 .
 
 # isort import sorting
-cd backend && python -m isort --profile=django --line-length=88 .
+cd backend && python -m isort --profile=django --line-length=100 .
 
 # Flake8 linting
-cd backend && python -m flake8 --max-line-length=88 --extend-ignore=E203,W503,E501,I .
+cd backend && python -m flake8 --max-line-length=100 --extend-ignore=E203,W503,E501,I .
 ```
 
 ## 🔧 VS Code Integration
@@ -123,9 +123,9 @@ Required extensions:
 ## 📋 Installation
 
 ```bash
-# Install development dependencies
+# Install all dependencies (runtime + dev) via uv
 cd backend
-./venv/Scripts/pip install black isort flake8 flake8-docstrings flake8-bugbear
+uv sync
 
 # Or use Makefile
 make install-dev

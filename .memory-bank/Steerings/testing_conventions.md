@@ -94,7 +94,7 @@ pytest tests/advanced/ -m "regression"
 - **SARIF Reports**: Security findings uploaded to GitHub Security tab
 
 **Code Quality Enforcement:**
-- **Black**: Code formatting (88 character line length)
+- **Black**: Code formatting (100 character line length)
 - **isort**: Import sorting with Django profile
 - **flake8**: Linting with extended ignore patterns
 - **mypy**: Type checking with ignore-missing-imports
