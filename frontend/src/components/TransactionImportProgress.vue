@@ -187,36 +187,32 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { format } from 'date-fns'
 
-export default {
-  name: 'TransactionConfirmationSection',
-  props: {
-    showConfirmation: {
-      type: Boolean,
-      default: false,
-    },
-    currentTransaction: {
-      type: Object,
-      default: () => ({}),
-    },
-    securityMappingRequired: {
-      type: Boolean,
-      default: false,
-    },
+defineProps({
+  showConfirmation: {
+    type: Boolean,
+    default: false,
   },
-  emits: ['confirm', 'skip'],
-  methods: {
-    formatDate(date) {
-      return format(new Date(date), 'dd MMM yyyy')
-    },
-    // formatNumber(number) {
-    //   return new Intl.NumberFormat().format(number);
-    // },
-    // formatCurrency(amount) {
-    //   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-    // }
+  currentTransaction: {
+    type: Object,
+    default: () => ({}),
   },
+  securityMappingRequired: {
+    type: Boolean,
+    default: false,
+  },
+})
+defineEmits(['confirm', 'skip'])
+
+function formatDate(date) {
+  return format(new Date(date), 'dd MMM yyyy')
 }
+// formatNumber(number) {
+//   return new Intl.NumberFormat().format(number);
+// },
+// formatCurrency(amount) {
+//   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+// }
 </script>

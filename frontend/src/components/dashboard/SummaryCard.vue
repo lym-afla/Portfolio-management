@@ -26,61 +26,51 @@
   </v-card>
 </template>
 
-<script>
+<script setup>
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 
-export default {
-  name: 'SummaryCard',
-  props: {
-    summary: {
-      type: Object,
-      required: true,
-    },
-    currency: {
-      type: String,
-      default: 'USD',
-    },
+const props = defineProps({
+  summary: {
+    type: Object,
+    required: true,
   },
-  setup(props) {
-    const authStore = useAuthStore()
-    const appStore = useAppStore()
-
-    const formatKey = (key) => {
-      return key
-        .replace('_', ' ')
-        .replace(/^./, (str) => str.toUpperCase())
-        .replace('Irr', 'IRR')
-    }
-
-    const formatAccountSelection = computed(() => {
-      console.log(
-        '[SummaryCard]',
-        appStore.accountSelection,
-        appStore.selectedCurrency,
-        authStore.user
-      )
-      const selection = appStore.accountSelection
-      if (selection.type === 'all') {
-        return 'All Accounts'
-      } else if (selection.type === 'broker') {
-        return `All accounts for broker`
-      } else if (selection.type === 'group') {
-        return `Account group`
-      } else if (selection.type === 'account') {
-        return `Individual account`
-      }
-      return ''
-    })
-
-    return {
-      props,
-      formatKey,
-      formatAccountSelection,
-    }
+  currency: {
+    type: String,
+    default: 'USD',
   },
+})
+
+const authStore = useAuthStore()
+const appStore = useAppStore()
+
+function formatKey(key) {
+  return key
+    .replace('_', ' ')
+    .replace(/^./, (str) => str.toUpperCase())
+    .replace('Irr', 'IRR')
 }
+
+const formatAccountSelection = computed(() => {
+  console.log(
+    '[SummaryCard]',
+    appStore.accountSelection,
+    appStore.selectedCurrency,
+    authStore.user
+  )
+  const selection = appStore.accountSelection
+  if (selection.type === 'all') {
+    return 'All Accounts'
+  } else if (selection.type === 'broker') {
+    return `All accounts for broker`
+  } else if (selection.type === 'group') {
+    return `Account group`
+  } else if (selection.type === 'account') {
+    return `Individual account`
+  }
+  return ''
+})
 </script>
 
 <style scoped>

@@ -16,39 +16,30 @@
   </v-btn-toggle>
 </template>
 
-<script>
+<script setup>
 import { computed } from 'vue'
 
-export default {
-  name: 'TimelineSelector',
-  props: {
-    modelValue: {
-      type: String,
-      required: true,
-    },
-    effectiveCurrentDate: {
-      type: String,
-      required: true,
-    },
+const props = defineProps({
+  modelValue: {
+    type: String,
+    required: true,
   },
-  emits: ['update:modelValue'],
-  setup(props) {
-    const currentDate = computed(() => new Date(props.effectiveCurrentDate))
-
-    const showYTD = computed(() => {
-      const currentYear = currentDate.value.getFullYear()
-      const startOfYear = new Date(currentYear, 0, 1)
-      return currentDate.value > startOfYear
-    })
-
-    // const ytdValue = computed(() => {
-    //   return `YTD-${currentDate.value.getFullYear()}`
-    // })
-
-    return {
-      showYTD,
-      // ytdValue
-    }
+  effectiveCurrentDate: {
+    type: String,
+    required: true,
   },
-}
+})
+defineEmits(['update:modelValue'])
+
+const currentDate = computed(() => new Date(props.effectiveCurrentDate))
+
+const showYTD = computed(() => {
+  const currentYear = currentDate.value.getFullYear()
+  const startOfYear = new Date(currentYear, 0, 1)
+  return currentDate.value > startOfYear
+})
+
+// const ytdValue = computed(() => {
+//   return `YTD-${currentDate.value.getFullYear()}`
+// })
 </script>

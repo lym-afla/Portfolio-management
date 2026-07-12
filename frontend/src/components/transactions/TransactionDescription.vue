@@ -117,98 +117,78 @@
   </span>
 </template>
 
-<script>
+<script setup>
 import { computed } from 'vue'
 import SecurityLink from './SecurityLink.vue'
 import CommissionDisplay from './CommissionDisplay.vue'
 import AciDisplay from './AciDisplay.vue'
 
-export default {
-  name: 'TransactionDescription',
-  components: {
-    SecurityLink,
-    CommissionDisplay,
-    AciDisplay,
+const props = defineProps({
+  transaction: {
+    type: Object,
+    required: true,
   },
-  props: {
-    transaction: {
-      type: Object,
-      required: true,
-    },
-  },
-  setup(props) {
-    const isBondRedemption = computed(() =>
-      ['Bond redemption', 'Bond maturity'].includes(props.transaction.type)
-    )
+})
 
-    const isCashTransaction = computed(
-      () =>
-        props.transaction.type?.includes('Cash') ||
-        props.transaction.type === 'Dividend' ||
-        props.transaction.type === 'Coupon'
-    )
+const isBondRedemption = computed(() =>
+  ['Bond redemption', 'Bond maturity'].includes(props.transaction.type)
+)
 
-    const isDividendOrCoupon = computed(
-      () =>
-        props.transaction.type === 'Dividend' ||
-        props.transaction.type === 'Coupon'
-    )
+const isCashTransaction = computed(
+  () =>
+    props.transaction.type?.includes('Cash') ||
+    props.transaction.type === 'Dividend' ||
+    props.transaction.type === 'Coupon'
+)
 
-    const isFXTransaction = computed(
-      () =>
-        props.transaction.transaction_type === 'fx' ||
-        props.transaction.type === 'FX'
-    )
+const isDividendOrCoupon = computed(
+  () =>
+    props.transaction.type === 'Dividend' ||
+    props.transaction.type === 'Coupon'
+)
 
-    const isStockSplit = computed(
-      () => props.transaction.type === 'Stock split'
-    )
+const isFXTransaction = computed(
+  () =>
+    props.transaction.transaction_type === 'fx' ||
+    props.transaction.type === 'FX'
+)
 
-    const isCryptoEvent = computed(() =>
-      [
-        'Crypto reward',
-        'Crypto transfer in',
-        'Crypto transfer out',
-        'Crypto trade in',
-        'Crypto trade out',
-        'Option settlement',
-      ].includes(props.transaction.type)
-    )
+const isStockSplit = computed(
+  () => props.transaction.type === 'Stock split'
+)
 
-    const isRegularTransaction = computed(
-      () =>
-        ![
-          'Broker commission',
-          'Tax',
-          'Interest income',
-          'Bond redemption',
-          'Bond maturity',
-          'Stock split',
-          'FX',
-        ].includes(props.transaction.type) &&
-        !isCashTransaction.value &&
-        !isCryptoEvent.value
-    )
+const isCryptoEvent = computed(() =>
+  [
+    'Crypto reward',
+    'Crypto transfer in',
+    'Crypto transfer out',
+    'Crypto trade in',
+    'Crypto trade out',
+    'Option settlement',
+  ].includes(props.transaction.type)
+)
 
-    const formatExchangeRate = (rate) => {
-      if (!rate) return ''
-      const rateNum = parseFloat(rate)
-      if (rateNum < 1 && rateNum > 0) {
-        return `${(1 / rateNum).toFixed(4)}`
-      }
-      return rateNum.toFixed(4)
-    }
+const isRegularTransaction = computed(
+  () =>
+    ![
+      'Broker commission',
+      'Tax',
+      'Interest income',
+      'Bond redemption',
+      'Bond maturity',
+      'Stock split',
+      'FX',
+    ].includes(props.transaction.type) &&
+    !isCashTransaction.value &&
+    !isCryptoEvent.value
+)
 
-    return {
-      isBondRedemption,
-      isCashTransaction,
-      isStockSplit,
-      isDividendOrCoupon,
-      isFXTransaction,
-      isCryptoEvent,
-      isRegularTransaction,
-      formatExchangeRate,
-    }
-  },
+function formatExchangeRate(rate) {
+  if (!rate) return ''
+  const rateNum = parseFloat(rate)
+  if (rateNum < 1 && rateNum > 0) {
+    return `${(1 / rateNum).toFixed(4)}`
+  }
+  return rateNum.toFixed(4)
 }
 </script>

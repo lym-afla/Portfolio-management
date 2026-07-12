@@ -236,7 +236,6 @@ describe('BrokerTokenManager', () => {
   it('handles API errors gracefully', async () => {
     // Setup error scenario
     saveTinkoffToken.mockRejectedValue(new Error('API Error'))
-    const errorSpy = vi.spyOn(wrapper.vm, 'handleError')
 
     // Setup token data
     wrapper.vm.newToken = {
@@ -250,8 +249,8 @@ describe('BrokerTokenManager', () => {
     // Trigger save
     await wrapper.vm.saveToken()
 
-    // Verify error handling
-    expect(errorSpy).toHaveBeenCalled()
+    // Verify error handling: the component emits an 'error' event and resets isSaving
+    expect(wrapper.emitted('error')).toBeTruthy()
     expect(wrapper.vm.isSaving).toBe(false)
   })
 })
