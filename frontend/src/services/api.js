@@ -604,7 +604,7 @@ export const updateAccountPerformance = async (formData) => {
 
     // Create EventSource with both session ID and token
     const source = new EventSource(
-      `${process.env.VUE_APP_API_URL}/database/api/update-account-performance/sse/?session_id=${sessionId}&token=${token}`,
+      `${import.meta.env.VITE_API_URL}/database/api/update-account-performance/sse/?session_id=${sessionId}&token=${token}`,
       {
         withCredentials: false,
       }

@@ -37,9 +37,9 @@ const vuetify = createVuetify({
 logger.log('App', 'Application starting...')
 
 // Set debug based on environment
-if (process.env.NODE_ENV !== 'production') {
+if (import.meta.env.DEV) {
   logger.setDebugEnabled(true)
-  logger.info('App', `Running in ${process.env.NODE_ENV} mode`)
+  logger.info('App', `Running in ${import.meta.env.MODE} mode`)
 } else {
   logger.setDebugEnabled(false)
   // This won't show in production unless debug is manually enabled
@@ -53,7 +53,7 @@ app.use(store)
 app.use(router)
 
 // Make debugging tools available globally for debugging in development
-if (process.env.NODE_ENV !== 'production') {
+if (import.meta.env.DEV) {
   window.$logger = logger
   window.$authDebug = authDebug
   import('./utils/axiosDebug').then((module) => {

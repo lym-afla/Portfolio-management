@@ -22,7 +22,7 @@ import BrokersPage from '../views/database/BrokersPage.vue'
 
 // Development-only debug components
 const AuthDebugPanel =
-  process.env.NODE_ENV !== 'production'
+  import.meta.env.DEV
     ? () => import('../components/AuthDebugPanel.vue')
     : null
 
@@ -133,7 +133,7 @@ const routes = [
     meta: { requiresAuth: true, paddingTop: '70px' },
   },
   // Development-only debug route
-  ...(process.env.NODE_ENV !== 'production' && AuthDebugPanel
+  ...(import.meta.env.DEV && AuthDebugPanel
     ? [
         {
           path: '/debug-auth',
@@ -150,7 +150,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 
