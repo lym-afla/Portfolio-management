@@ -23,6 +23,7 @@ from services.realized import (
     realized_gain_loss,
     unrealized_gain_loss,
 )
+from services.capital import get_capital_distribution
 
 
 @pytest.fixture
@@ -64,8 +65,8 @@ def test_crypto_reward_increases_position_and_capital_distribution(user, crypto_
     assert get_position(btc, datetime(2026, 1, 11).date(), user, [crypto_account.id]) == Decimal(
         "0.010000000"
     )
-    assert btc.get_capital_distribution(
-        datetime(2026, 1, 11).date(), user, "USD", [crypto_account.id]
+    assert get_capital_distribution(
+        btc, datetime(2026, 1, 11).date(), user, "USD", [crypto_account.id]
     ) == Decimal("500.00")
     assert crypto_account.balance(datetime(2026, 1, 11).date()) == {}
 
@@ -173,8 +174,8 @@ def test_rewarded_crypto_lot_unrealized_gain_uses_economic_basis(user, crypto_ac
     assert calculate_buy_in_price(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("100.000000")
-    assert btc.get_capital_distribution(
-        datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
+    assert get_capital_distribution(
+        btc, datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("20.00")
     unrealized = unrealized_gain_loss(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
@@ -243,8 +244,8 @@ def test_rewarded_crypto_lot_realized_gain_uses_economic_basis(user, crypto_acco
 
     realized = realized_gain_loss(btc, datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("100.00")
-    assert btc.get_capital_distribution(
-        datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
+    assert get_capital_distribution(
+        btc, datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
     ) == Decimal("20.00")
 
 

@@ -15,6 +15,7 @@ from common.models import Assets, Transactions
 from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from core.portfolio_utils import IRR
 from services.bonds import calculate_bond_ytm, get_current_aci, get_current_notional
+from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date, price_at_date
 from services.positions import investment_date, position
@@ -160,7 +161,9 @@ def _get_securities_data(user, securities, effective_current_date):
                 "total"
             ],
             "unrealized": unrealized_gain_loss(security, effective_current_date, user)["total"],
-            "capital_distribution": security.get_capital_distribution(effective_current_date, user),
+            "capital_distribution": get_capital_distribution(
+                security, effective_current_date, user
+            ),
             "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
         }
 
@@ -216,8 +219,8 @@ def get_security_detail(request, security_id, account_id=None):
         "unrealized": unrealized_gain_loss(
             security, effective_current_date, user, account_ids=account_ids
         )["total"],
-        "capital_distribution": security.get_capital_distribution(
-            effective_current_date, user, account_ids=account_ids
+        "capital_distribution": get_capital_distribution(
+            security, effective_current_date, user, account_ids=account_ids
         ),
         "irr": IRR(
             user.id,

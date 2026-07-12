@@ -13,6 +13,7 @@ from common.models import Accounts, Assets, Transactions
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from core.portfolio_utils import get_fx_rate
 from core.summary_utils import accounts_summary_data
+from services.capital import get_capital_distribution, get_commission
 from services.pricing import calculate_value_at_date, price_at_date
 from services.positions import position
 from services.realized import (
@@ -207,11 +208,11 @@ class SummaryViewSet(viewsets.ViewSet):
             realized = realized_gain_loss(
                 asset, end_date, user, currency_target, account_ids, start_date
             )["all_time"]["total"]
-            capital_distribution = asset.get_capital_distribution(
-                end_date, user, currency_target, account_ids, start_date
+            capital_distribution = get_capital_distribution(
+                asset, end_date, user, currency_target, account_ids, start_date
             )
-            commission = asset.get_commission(
-                end_date, user, currency_target, account_ids, start_date
+            commission = get_commission(
+                asset, end_date, user, currency_target, account_ids, start_date
             )
 
             for cat in [

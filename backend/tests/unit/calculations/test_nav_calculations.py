@@ -16,6 +16,7 @@ import pytest
 
 from common.models import FX, Accounts, AnnualPerformance, Assets, Prices, Transactions
 from constants import ACCOUNT_TYPE_INDIVIDUAL
+from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate
 from services.positions import position as get_position
 from services.pricing import price_at_date
@@ -242,7 +243,7 @@ class TestNAVCalculation:
         asset_value = position * current_price.price
 
         # Calculate total dividends received
-        dividends = asset.get_capital_distribution(valuation_date, investor=user)
+        dividends = get_capital_distribution(asset, valuation_date, investor=user)
         assert dividends > 0  # Should have dividend from sample_transactions
 
         # Total return includes both asset value and dividends
@@ -546,7 +547,9 @@ class TestNAVPerformance:
         end_nav = end_position * end_price.price if end_price else Decimal("0")
 
         # Calculate dividends received
-        dividends = asset.get_capital_distribution(end_date, investor=user, start_date=start_date)
+        dividends = get_capital_distribution(
+            asset, end_date, investor=user, start_date=start_date
+        )
 
         # Calculate total return
         total_return = (end_nav + dividends) - start_nav

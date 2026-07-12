@@ -24,6 +24,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
 from core.formatting_utils import format_percentage
+from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 from services.positions import position
@@ -587,7 +588,8 @@ def calculate_performance(
             performance_data["price_change"] += asset_unrealized_gl["price_appreciation"]
             logger.debug(f"Unrealized GL for {asset.name}: {asset_unrealized_gl}")
             alternative_fx_check += asset_unrealized_gl["fx_effect"]
-            performance_data["capital_distribution"] += asset.get_capital_distribution(
+            performance_data["capital_distribution"] += get_capital_distribution(
+                asset,
                 end_date,
                 user,
                 currency_target,

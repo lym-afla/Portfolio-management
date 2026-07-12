@@ -3,7 +3,7 @@ Tests for Bond ACI (Accrued Interest) calculation and capital distribution.
 
 Tests cover:
 1. BondMetadata.get_current_aci() - calculating current accrued interest
-2. Assets.get_capital_distribution() - excluding negative ACI (paid when buying)
+2. services.capital.get_capital_distribution() - excluding negative ACI (paid when buying)
 3. fetch_and_cache_bond_coupon_schedule() - T-Bank API integration
 """
 
@@ -23,6 +23,7 @@ from constants import (
 )
 from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
 from services.bonds import get_current_aci
+from services.capital import get_capital_distribution
 
 User = get_user_model()
 
@@ -169,7 +170,7 @@ class BondACICalculationTests(TestCase):
 
 
 class CapitalDistributionTests(TestCase):
-    """Test Assets.get_capital_distribution() with ACI handling."""
+    """Test services.capital.get_capital_distribution() with ACI handling."""
 
     def setUp(self):
         """Set up test data with bond transactions including ACI."""
@@ -247,7 +248,8 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Calculate capital distribution
-        capital_dist = self.bond.get_capital_distribution(
+        capital_dist = get_capital_distribution(
+            self.bond,
             date=date(2024, 6, 1),
             investor=self.user,
         )
@@ -287,7 +289,8 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Calculate in USD
-        capital_dist_usd = self.bond.get_capital_distribution(
+        capital_dist_usd = get_capital_distribution(
+            self.bond,
             date=date(2024, 6, 1),
             investor=self.user,
             currency="USD",

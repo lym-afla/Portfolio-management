@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.formatting_utils import currency_format
 from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
+from services.capital import get_capital_distribution, get_commission
 from services.pricing import calculate_value_at_date, price_at_date
 from services.positions import (
     entry_dates as _positions_entry_dates,
@@ -212,9 +213,10 @@ def _calculate_closed_table_output_for_api(
             # Calculate capital distribution including dividends after exit_date
             # but before next_entry_date
             if "capital_distribution" in categories:
-                position["capital_distribution"] = asset.get_capital_distribution(
-                    exit_date, user_id, currency_used, selected_account_ids, entry_date
-                ) + asset.get_capital_distribution(
+                position["capital_distribution"] = get_capital_distribution(
+                    asset, exit_date, user_id, currency_used, selected_account_ids, entry_date
+                ) + get_capital_distribution(
+                    asset,
                     next_entry_date,
                     user_id,
                     currency_used,
@@ -230,8 +232,8 @@ def _calculate_closed_table_output_for_api(
                 position["capital_distribution"] = Decimal(0)
 
             if "commission" in categories:
-                position["commission"] = asset.get_commission(
-                    exit_date, user_id, currency_used, selected_account_ids, entry_date
+                position["commission"] = get_commission(
+                    asset, exit_date, user_id, currency_used, selected_account_ids, entry_date
                 )
                 position["commission_percentage"] = (
                     position["commission"] / position["entry_value"]
@@ -438,8 +440,8 @@ def _calculate_open_table_output_for_api(
         )
 
         if "capital_distribution" in categories:
-            position["capital_distribution"] = asset.get_capital_distribution(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["capital_distribution"] = get_capital_distribution(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )
             position["capital_distribution_percentage"] = (
                 position["capital_distribution"] / position["entry_value"]
@@ -450,8 +452,8 @@ def _calculate_open_table_output_for_api(
             position["capital_distribution"] = Decimal(0)
 
         if "commission" in categories:
-            position["commission"] = asset.get_commission(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["commission"] = get_commission(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )
             position["commission_percentage"] = (
                 position["commission"] / position["entry_value"]
@@ -518,7 +520,8 @@ def _calculate_open_table_output_for_api(
                         asset_start_date,
                     )["total"]
                 elif key == "capital_distribution":
-                    addition = asset.get_capital_distribution(
+                    addition = get_capital_distribution(
+                        asset,
                         end_date,
                         user_id,
                         currency_target,
@@ -526,7 +529,8 @@ def _calculate_open_table_output_for_api(
                         asset_start_date,
                     )
                 elif key == "commission":
-                    addition = asset.get_commission(
+                    addition = get_commission(
+                        asset,
                         end_date,
                         user_id,
                         currency_target,
