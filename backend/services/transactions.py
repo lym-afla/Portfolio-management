@@ -613,7 +613,7 @@ def _resolve_asset_transfer_price(data):
 
     buy_in_price = calculate_buy_in_price(
         security,
-        date=transfer_date,
+        transfer_date,
         investor=investor,
         account_ids=[account.id],
     )
