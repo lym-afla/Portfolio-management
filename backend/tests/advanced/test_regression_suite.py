@@ -16,6 +16,7 @@ from decimal import Decimal
 import pytest
 
 from common.models import FX, Accounts, Transactions
+from services.fx import get_rate as fx_get_rate
 from tests.fixtures.factories.asset_factory import AssetFactory
 
 
@@ -140,7 +141,7 @@ class TestCalculationRegression:
         """Regression test for cross-currency FX conversion."""
         # Test USD to EUR conversion using dates from fixture (2023-01-01 to 2023-01-10)
         test_date = date(2023, 1, 5)
-        result = FX.get_rate("USD", "EUR", test_date)
+        result = fx_get_rate("USD", "EUR", test_date)
 
         # Should return a valid result
         assert result is not None
@@ -417,7 +418,7 @@ class TestPerformanceRegression:
 
         for i in range(100):  # Reduced from 1000
             pair = currency_pairs[i % len(currency_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         end_time = time.time()
@@ -542,10 +543,10 @@ class TestDataIntegrityRegression:
         test_date = date(2023, 1, 5)
 
         # Test that FX rates can be retrieved
-        usd_to_eur_result = FX.get_rate("USD", "EUR", test_date)
+        usd_to_eur_result = fx_get_rate("USD", "EUR", test_date)
         assert usd_to_eur_result is not None
 
-        eur_to_usd_result = FX.get_rate("EUR", "USD", test_date)
+        eur_to_usd_result = fx_get_rate("EUR", "USD", test_date)
         assert eur_to_usd_result is not None
 
     def test_regression_financial_calculation_consistency(self, sample_transactions):

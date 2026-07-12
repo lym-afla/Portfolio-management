@@ -16,6 +16,7 @@ import pytest
 
 from common.models import FX, Accounts, AnnualPerformance, Assets, Prices, Transactions
 from constants import ACCOUNT_TYPE_INDIVIDUAL
+from services.fx import get_rate as fx_get_rate
 
 
 @pytest.mark.nav
@@ -132,7 +133,7 @@ class TestNAVCalculation:
                     local_value = position * current_price.price
 
                     # Convert to target currency
-                    fx_rate = FX.get_rate(asset.currency, target_currency, valuation_date)
+                    fx_rate = fx_get_rate(asset.currency, target_currency, valuation_date)
                     converted_value = local_value * fx_rate["FX"]
 
                     total_nav_usd += converted_value
@@ -506,8 +507,8 @@ class TestNAVAggregation:
         )
 
         # Convert to USD
-        fx_eur_usd = FX.get_rate("EUR", "USD", valuation_date)["FX"]
-        fx_gbp_usd = FX.get_rate("GBP", "USD", valuation_date)["FX"]
+        fx_eur_usd = fx_get_rate("EUR", "USD", valuation_date)["FX"]
+        fx_gbp_usd = fx_get_rate("GBP", "USD", valuation_date)["FX"]
 
         eur_value_usd = eur_value * fx_eur_usd
         gbp_value_usd = gbp_value * fx_gbp_usd

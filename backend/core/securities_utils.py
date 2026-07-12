@@ -13,9 +13,10 @@ from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from pyxirr import xirr
 
-from common.models import FX, Assets, Transactions
+from common.models import Assets, Transactions
 from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from core.portfolio_utils import IRR
+from services.fx import get_rate as fx_get_rate
 
 from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
@@ -150,7 +151,7 @@ def _build_bond_cash_flows(
 
     # FX conversion for acquisition if needed
     if first_buy.currency != target_currency:
-        fx_rate = FX.get_rate(first_buy.currency, target_currency, first_buy.date)["FX"]
+        fx_rate = fx_get_rate(first_buy.currency, target_currency, first_buy.date)["FX"]
         if not fx_rate:
             raise ValueError(
                 f"No FX rate for {security.name} from {first_buy.currency} " f"to {target_currency}"
@@ -171,7 +172,7 @@ def _build_bond_cash_flows(
 
             # FX conversion for coupon if needed
             if coupon.coupon_currency != target_currency:
-                fx_rate = FX.get_rate(coupon.coupon_currency, target_currency, coupon.payment_date)[
+                fx_rate = fx_get_rate(coupon.coupon_currency, target_currency, coupon.payment_date)[
                     "FX"
                 ]
                 if fx_rate:
@@ -195,7 +196,7 @@ def _build_bond_cash_flows(
             # FX conversion for redemption if needed
             nominal_currency = bond_meta.nominal_currency or target_currency
             if nominal_currency != target_currency:
-                fx_rate = FX.get_rate(nominal_currency, target_currency, bond_meta.maturity_date)[
+                fx_rate = fx_get_rate(nominal_currency, target_currency, bond_meta.maturity_date)[
                     "FX"
                 ]
                 if fx_rate:
@@ -289,7 +290,7 @@ def get_crypto_reward_totals(
         native_quantity += transaction.quantity or Decimal("0")
         reward_value = transaction.reward_value()
         if transaction.currency != currency:
-            fx_rate = FX.get_rate(transaction.currency, currency, transaction.date)["FX"]
+            fx_rate = fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
             if not fx_rate:
                 continue
             reward_value *= Decimal(fx_rate)
@@ -506,7 +507,7 @@ def get_security_detail(request, security_id, account_id=None):
                     for txn in aci_paid_in_period:
                         # Convert date to ensure proper comparison
                         txn_date = txn.date.date() if isinstance(txn.date, datetime) else txn.date
-                        fx_rate = FX.get_rate(txn.currency, security.currency, txn_date)["FX"]
+                        fx_rate = fx_get_rate(txn.currency, security.currency, txn_date)["FX"]
                         if fx_rate:
                             aci_paid_total += txn.aci * Decimal(fx_rate)
 

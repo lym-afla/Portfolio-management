@@ -15,8 +15,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from common import models as common_models
-from common.models import FX, CBRRateLimitError, update_FX_from_CBR
+from common.models import FX
+from services import fx as fx_service
+from services.fx import (
+    CBRRateLimitError,
+    update_FX_from_CBR,
+    update_fx_rate as fx_update_fx_rate,
+    get_rate as fx_get_rate,
+)
 
 
 # --- XML fixtures ----------------------------------------------------------
@@ -111,7 +117,7 @@ class TestUpdateFXFromCBR:
 
     def test_success_returns_decimal_rate(self):
         """A normal USD response should parse into a Decimal rate."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             mock_post.return_value = _mock_response(CBR_XML_WITH_USD)
             result = update_FX_from_CBR("RUB", "USD", date(2024, 6, 3))
 
@@ -124,7 +130,7 @@ class TestUpdateFXFromCBR:
 
     def test_looks_up_foreign_side_regardless_of_arg_order(self):
         """Passing ``('USD', 'RUB')`` should still fetch the USD rate."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             mock_post.return_value = _mock_response(CBR_XML_WITH_USD)
             result = update_FX_from_CBR("USD", "RUB", date(2024, 6, 3))
 
@@ -133,7 +139,7 @@ class TestUpdateFXFromCBR:
 
     def test_vnom_greater_than_one_applies_division(self):
         """``Vnom=100`` (e.g. JPY) must divide to get per-unit rate."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             mock_post.return_value = _mock_response(CBR_XML_WITH_JPY_VNOM_100)
             result = update_FX_from_CBR("RUB", "JPY", date(2024, 6, 3))
 
@@ -143,7 +149,7 @@ class TestUpdateFXFromCBR:
 
     def test_http_error_returns_none_after_retries(self):
         """HTTP 500 on every attempt should exhaust retries and return None."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             mock_post.return_value = _mock_response("", status_code=500)
             result = update_FX_from_CBR("RUB", "USD", date(2024, 6, 3), max_attempts=3)
 
@@ -152,7 +158,7 @@ class TestUpdateFXFromCBR:
 
     def test_missing_currency_returns_none_after_retries(self):
         """If the target currency is not in the payload, retries exhaust to None."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             mock_post.return_value = _mock_response(CBR_XML_EMPTY)
             result = update_FX_from_CBR("RUB", "USD", date(2024, 6, 3), max_attempts=2)
 
@@ -167,7 +173,7 @@ class TestUpdateFXFromCBR:
             _mock_response(CBR_XML_WITH_USD),
         ]
 
-        with patch.object(common_models.requests, "post", side_effect=responses) as mock_post:
+        with patch.object(fx_service.requests, "post", side_effect=responses) as mock_post:
             result = update_FX_from_CBR("RUB", "USD", requested, max_attempts=3)
 
         assert result is not None
@@ -178,7 +184,7 @@ class TestUpdateFXFromCBR:
     def test_network_error_returns_none(self):
         """A raised ``requests`` exception on every attempt should return None."""
         with patch.object(
-            common_models.requests,
+            fx_service.requests,
             "post",
             side_effect=requests.ConnectionError("offline"),
         ) as mock_post:
@@ -189,7 +195,7 @@ class TestUpdateFXFromCBR:
 
     def test_invalid_xml_returns_none(self):
         """Malformed response body should be handled gracefully."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             mock_post.return_value = _mock_response("not xml <<<")
             result = update_FX_from_CBR("RUB", "USD", date(2024, 6, 3), max_attempts=2)
 
@@ -204,8 +210,8 @@ class TestUpdateFXFromCBR:
             _mock_response(CBR_XML_WITH_USD),
         ]
         with patch.object(
-            common_models.requests, "post", side_effect=responses
-        ) as mock_post, patch.object(common_models.time, "sleep") as mock_sleep:
+            fx_service.requests, "post", side_effect=responses
+        ) as mock_post, patch.object(fx_service.time, "sleep") as mock_sleep:
             result = update_FX_from_CBR("RUB", "USD", date(2024, 6, 3))
 
         assert result is not None
@@ -220,15 +226,15 @@ class TestUpdateFXFromCBR:
     def test_rate_limit_exhausted_raises(self):
         """If CBR keeps returning 429, function must raise CBRRateLimitError (not clear data)."""
         with patch.object(
-            common_models.requests, "post",
+            fx_service.requests, "post",
             return_value=_mock_response("", status_code=429),
-        ), patch.object(common_models.time, "sleep"):
+        ), patch.object(fx_service.time, "sleep"):
             with pytest.raises(CBRRateLimitError):
                 update_FX_from_CBR("RUB", "USD", date(2024, 6, 3))
 
     def test_rub_on_both_sides_returns_none_without_http(self):
         """RUB→RUB is nonsensical for CBR; should short-circuit with no request."""
-        with patch.object(common_models.requests, "post") as mock_post:
+        with patch.object(fx_service.requests, "post") as mock_post:
             result = update_FX_from_CBR("RUB", "RUB", date(2024, 6, 3))
 
         assert result is None
@@ -256,10 +262,10 @@ class TestFXUpdateRouting:
             "requested_date": date(2024, 6, 3),
         }
 
-        with patch.object(common_models, "update_FX_from_CBR", return_value=fake_cbr) as cbr, patch.object(
-            common_models, "update_FX_from_Yahoo", return_value=fake_yahoo
+        with patch.object(fx_service, "update_FX_from_CBR", return_value=fake_cbr) as cbr, patch.object(
+            fx_service, "update_FX_from_Yahoo", return_value=fake_yahoo
         ) as yahoo:
-            FX.update_fx_rate(date(2024, 6, 3), user)
+            fx_update_fx_rate(date(2024, 6, 3), user)
 
         rub_calls = [c for c in cbr.call_args_list if "RUB" in (c.args[0], c.args[1])]
         yahoo_rub_calls = [c for c in yahoo.call_args_list if "RUB" in (c.args[0], c.args[1])]
@@ -283,10 +289,10 @@ class TestFXUpdateRouting:
             "requested_date": date(2024, 6, 3),
         }
 
-        with patch.object(common_models, "update_FX_from_CBR", return_value=fake_cbr) as cbr, patch.object(
-            common_models, "update_FX_from_Yahoo", return_value=fake_yahoo
+        with patch.object(fx_service, "update_FX_from_CBR", return_value=fake_cbr) as cbr, patch.object(
+            fx_service, "update_FX_from_Yahoo", return_value=fake_yahoo
         ) as yahoo:
-            FX.update_fx_rate(date(2024, 6, 3), user)
+            fx_update_fx_rate(date(2024, 6, 3), user)
 
         # All CBR calls should only involve RUB pairs.
         for call in cbr.call_args_list:
@@ -315,7 +321,7 @@ class TestRUBUSDGetRateRegression:
         fx = FX.objects.create(date=date(2024, 6, 3), RUBUSD=Decimal("90.5000"))
         fx.investors.add(user)
 
-        result = FX.get_rate("RUB", "USD", date(2024, 6, 3), investor=user)
+        result = fx_get_rate("RUB", "USD", date(2024, 6, 3), investor=user)
 
         # FX.get_rate returns "multiply source by this to get target", so 1 RUB in USD.
         assert isinstance(result["FX"], Decimal)

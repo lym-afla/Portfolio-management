@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from common.models import FX, Prices, Transactions
+from services.fx import get_rate as fx_get_rate
 
 
 @pytest.mark.nav
@@ -605,7 +606,7 @@ class TestMultiCurrencyGainLoss:
 
         # FX effect should be the difference
         fx_effect = gain_usd["total"] - (
-            gain_eur["total"] * FX.get_rate("EUR", "USD", date(2023, 6, 15))["FX"]
+            gain_eur["total"] * fx_get_rate("EUR", "USD", date(2023, 6, 15))["FX"]
         )
 
         # FX effect should be minimal due to similar conversion rates

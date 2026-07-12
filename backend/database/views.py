@@ -20,6 +20,7 @@ from rest_framework.views import APIView
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
 from common.models import MergerRecord
 from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
+from services.fx import get_rate as fx_get_rate
 from constants import (
     TRANSACTION_TYPE_MERGER_IN,
     TRANSACTION_TYPE_MERGER_OUT,
@@ -826,7 +827,7 @@ class FXViewSet(viewsets.ModelViewSet):
             date = serializer.validated_data["date"]
 
             try:
-                rate = FX.get_rate(source, target, date, self.request.user)
+                rate = fx_get_rate(source, target, date, self.request.user)
                 return Response(rate)
             except ValueError as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

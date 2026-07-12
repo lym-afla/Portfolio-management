@@ -23,6 +23,7 @@ from common.models import (
     Transactions,
 )
 from core.portfolio_utils import NAV_at_date
+from services.fx import get_rate as fx_get_rate
 
 
 # ===========================================================================
@@ -187,7 +188,7 @@ class TestCalculateValueAtDate:
         )
 
         # Value in USD: 100 * 40 * FX(EUR->USD on 2023-01-02)
-        expected_fx = FX.get_rate("EUR", "USD", date(2023, 1, 2))["FX"]
+        expected_fx = fx_get_rate("EUR", "USD", date(2023, 1, 2))["FX"]
         expected = Decimal("100") * Decimal("40.00") * expected_fx
 
         value = asset_eur.calculate_value_at_date(
@@ -356,10 +357,10 @@ class TestNAVAtDate:
 
         # Asset values converted to USD: 100*40*1.1 + 100*30*1.22 = 8060
         eur_value_usd = (
-            Decimal("100") * Decimal("40.00") * FX.get_rate("EUR", "USD", valuation_date)["FX"]
+            Decimal("100") * Decimal("40.00") * fx_get_rate("EUR", "USD", valuation_date)["FX"]
         )
         gbp_value_usd = (
-            Decimal("100") * Decimal("30.00") * FX.get_rate("GBP", "USD", valuation_date)["FX"]
+            Decimal("100") * Decimal("30.00") * fx_get_rate("GBP", "USD", valuation_date)["FX"]
         )
 
         assert result["asset_type"]["Stock"] == eur_value_usd + gbp_value_usd
@@ -411,7 +412,7 @@ class TestNAVAtDate:
         )
 
         # Asset: 100 * 50 * FX(EUR->USD); Cash: -(100 * 40) * FX(EUR->USD)
-        fx = FX.get_rate("EUR", "USD", valuation_date)["FX"]
+        fx = fx_get_rate("EUR", "USD", valuation_date)["FX"]
         asset_value = Decimal("100") * Decimal("50.00") * fx
         cash = Decimal("-100") * Decimal("40.00") * fx
         expected = asset_value + cash

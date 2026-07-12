@@ -20,6 +20,7 @@ from rest_framework.test import APIClient
 
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
 from core.portfolio_utils import NAV_at_date
+from services.fx import get_rate as fx_get_rate
 from tests.fixtures.factories.asset_factory import AssetFactory, StockFactory
 from tests.fixtures.factories.transaction_factory import (
     BuyTransactionFactory,
@@ -416,30 +417,30 @@ class TestFXEdgeCases:
         """Test FX rate for same currency pair."""
         with patch("common.models.FX.objects.get") as mock_get:
             mock_get.side_effect = FX.DoesNotExist
-            rate = FX.get_rate("USD", "USD", date.today())["FX"]
+            rate = fx_get_rate("USD", "USD", date.today())["FX"]
             assert rate == Decimal("1.0")
 
     def test_fx_rate_invalid_currency(self):
         """Test FX rate with invalid currency codes."""
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("INVALID", "USD", date.today())
+            fx_get_rate("INVALID", "USD", date.today())
 
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "INVALID", date.today())
+            fx_get_rate("USD", "INVALID", date.today())
 
     def test_fx_rate_future_date(self):
         """Test FX rate for future date."""
         future_date = date.today() + timedelta(days=30)
         # Should raise error for future dates outside allowed range
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", future_date)
+            fx_get_rate("USD", "EUR", future_date)
 
     def test_fx_rate_very_old_date(self):
         """Test FX rate for very old date."""
         old_date = date(2000, 1, 1)
         # Should raise error for dates too far in the past
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", old_date)
+            fx_get_rate("USD", "EUR", old_date)
 
     def test_fx_rate_zero_rate(self):
         """Test FX rate with zero value."""
@@ -452,7 +453,7 @@ class TestFXEdgeCases:
         fx.investors.add(user)
         # Note: Zero rate will cause division by zero in get_rate, so it should raise ValueError
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", test_date, investor=user)["FX"]
+            fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
 
     def test_fx_rate_negative_rate(self):
         """Test FX rate with negative value (error case)."""
@@ -466,7 +467,7 @@ class TestFXEdgeCases:
         # Negative rate will cause issues in calculation (division by negative in final inversion)
         # The system may allow it through but it's an edge case - test that it handles it
         try:
-            rate = FX.get_rate("USD", "EUR", test_date, investor=user)["FX"]
+            rate = fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
             # If it doesn't raise, the rate should be negative (which is unrealistic but testable)
             assert rate < 0
         except (ValueError, ZeroDivisionError, DecimalException):
@@ -482,7 +483,7 @@ class TestFXEdgeCases:
         # Create FX rate with very small value directly (bypass factory to avoid faker issues)
         fx = FX.objects.create(date=test_date, USDEUR=Decimal("0.000001"))
         fx.investors.add(user)
-        rate = FX.get_rate("USD", "EUR", test_date, investor=user)["FX"]
+        rate = fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
         # The rate will be inverted (1/0.000001 = 1000000) due to how get_rate works
         assert rate > Decimal("100000")
 
@@ -497,7 +498,7 @@ class TestFXEdgeCases:
         # So max value is 99.999999
         fx = FX.objects.create(date=test_date, USDEUR=Decimal("99.999999"))
         fx.investors.add(user)
-        rate = FX.get_rate("USD", "EUR", test_date, investor=user)["FX"]
+        rate = fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
         # The rate will be inverted (1/99.999999 ≈ 0.01) due to how get_rate works
         assert rate < Decimal("0.02")
 
@@ -516,11 +517,11 @@ class TestFXEdgeCases:
         original_amount = Decimal("1000.00")
 
         # USD to EUR
-        usd_to_eur = FX.get_rate("USD", "EUR", test_date, investor=user)["FX"]
+        usd_to_eur = fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
         eur_amount = original_amount * usd_to_eur
 
         # EUR back to USD (system should calculate inverse automatically)
-        eur_to_usd = FX.get_rate("EUR", "USD", test_date, investor=user)["FX"]
+        eur_to_usd = fx_get_rate("EUR", "USD", test_date, investor=user)["FX"]
         final_usd = eur_amount * eur_to_usd
 
         # Should be very close to original
@@ -532,13 +533,13 @@ class TestFXEdgeCases:
         """Test cross-currency conversion when no direct path exists."""
         # Should raise error for invalid currency
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "XYZ", date.today())
+            fx_get_rate("USD", "XYZ", date.today())
 
     def test_fx_rate_cache_edge_cases(self):
         """Test FX rate caching edge cases."""
         # Without FX data, should raise error
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", date.today())
+            fx_get_rate("USD", "EUR", date.today())
 
 
 @pytest.mark.edge_case
@@ -1216,11 +1217,13 @@ class TestSystemRobustness:
     def test_graceful_degradation(self):
         """Test graceful degradation when components fail."""
         # Test behavior when FX rates are unavailable
-        with patch("common.models.FX.get_rate") as mock_fx:
+        with patch("services.fx.get_rate") as mock_fx:
             mock_fx.return_value = {"FX": None}
 
             # Calculations should handle missing FX rates gracefully
-            rate_data = FX.get_rate("USD", "EUR", date.today())
+            import services.fx as _fx_service
+
+            rate_data = _fx_service.get_rate("USD", "EUR", date.today())
             assert rate_data is not None
             assert rate_data["FX"] is None
 

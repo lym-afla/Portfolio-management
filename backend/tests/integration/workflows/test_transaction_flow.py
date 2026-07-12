@@ -24,6 +24,7 @@ from common.models import (
     Transactions,
 )
 from users.models import CustomUser
+from services.fx import get_rate as fx_get_rate
 
 
 @pytest.mark.integration
@@ -534,7 +535,7 @@ class TestMultiAssetWorkflows:
                 local_value = position * local_price
 
                 if asset.currency != base_currency:
-                    fx_rate = FX.get_rate(asset.currency, base_currency, date(2023, 6, 15))["FX"]
+                    fx_rate = fx_get_rate(asset.currency, base_currency, date(2023, 6, 15))["FX"]
                     converted_value = local_value * fx_rate
                 else:
                     converted_value = local_value

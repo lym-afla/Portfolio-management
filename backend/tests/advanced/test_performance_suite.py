@@ -19,6 +19,7 @@ import pytest
 from django.db import transaction
 
 from common.models import FX, Accounts, Assets, Transactions
+from services.fx import get_rate as fx_get_rate
 from tests.fixtures.factories.asset_factory import AssetFactory
 
 
@@ -528,7 +529,7 @@ class TestFXRatePerformance:
 
         for i in range(100):  # Reduced iterations
             pair = currency_pairs[i % len(currency_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         end_time = time.time()
@@ -546,7 +547,7 @@ class TestFXRatePerformance:
 
         for i in range(50):  # Reduced iterations
             pair = cross_pairs[i % len(cross_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         end_time = time.time()
@@ -568,7 +569,7 @@ class TestFXRatePerformance:
         results = []
         for _ in range(30):  # Reduced iterations
             for pair in currency_pairs:
-                result = FX.get_rate(pair[0], pair[1], test_date)
+                result = fx_get_rate(pair[0], pair[1], test_date)
                 results.append(result)
 
         end_time = time.time()
@@ -586,12 +587,12 @@ class TestFXRatePerformance:
 
         # First lookup (cache miss)
         start_time = time.time()
-        rate1 = FX.get_rate("USD", "EUR", test_date)
+        rate1 = fx_get_rate("USD", "EUR", test_date)
         _ = time.time() - start_time
 
         # Second lookup (cache hit)
         start_time = time.time()
-        rate2 = FX.get_rate("USD", "EUR", test_date)
+        rate2 = fx_get_rate("USD", "EUR", test_date)
         second_lookup_time = time.time() - start_time
 
         assert rate1 is not None
@@ -605,7 +606,7 @@ class TestFXRatePerformance:
         start_time = time.time()
 
         for _ in range(100):  # Reduced iterations
-            result = FX.get_rate("USD", "EUR", test_date)
+            result = fx_get_rate("USD", "EUR", test_date)
             assert result is not None
 
         end_time = time.time()
@@ -692,7 +693,7 @@ class TestMemoryUsage:
 
         for i in range(500):  # Reduced from 10000
             pair = currency_pairs[i % len(currency_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         final_memory = process.memory_info().rss

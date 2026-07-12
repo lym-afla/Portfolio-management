@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from django.db.models import Prefetch, Q, QuerySet, Sum
 from pyxirr import xirr
 
-from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
+from common.models import Accounts, AnnualPerformance, Assets, Brokers, Transactions
 from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -24,6 +24,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
 from core.formatting_utils import format_percentage
+from services.fx import get_rate as fx_get_rate
 from users.models import AccountGroup, CustomUser
 
 logger = logging.getLogger("dashboard")
@@ -90,7 +91,7 @@ def get_fx_rate(
     Returns:
         Decimal: The FX rate.
     """
-    return FX.get_rate(currency, target_currency, date, user)["FX"]
+    return fx_get_rate(currency, target_currency, date, user)["FX"]
 
 
 def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:

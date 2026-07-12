@@ -19,6 +19,7 @@ from django.utils.formats import date_format
 
 from common.models import FX, Assets, Transactions
 from constants import CURRENCY_CHOICES
+from services.fx import update_fx_rate as fx_update_fx_rate
 from core.database_utils import (
     get_years_count,
     save_or_update_annual_broker_performance,
@@ -852,7 +853,7 @@ class FXImportConsumer(AsyncHttpConsumer):
         """
         fx_instance = FX.objects.filter(date=date).first()
         if not fx_instance:
-            FX.update_fx_rate(date, user)
+            fx_update_fx_rate(date, user)
             return "Added", "missing_filled"
         elif user not in fx_instance.investors.all():
             fx_instance.investors.add(user)
@@ -861,7 +862,7 @@ class FXImportConsumer(AsyncHttpConsumer):
             getattr(fx_instance, field) is None
             for field in ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"]
         ):
-            FX.update_fx_rate(date, user)
+            fx_update_fx_rate(date, user)
             return "Updated", "incomplete_updated"
         else:
             return "Skipped", "skipped"
