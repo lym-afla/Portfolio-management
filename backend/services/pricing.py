@@ -24,6 +24,9 @@ Circular-import notes:
 - ``services.fx`` imports ``common.models.FX`` at its top level, but it does
   not import this module, so importing ``get_rate`` here at the top level is
   safe.
+- ``services.positions`` does not import this module or ``common.models`` at
+  its top level (the asset is passed in by callers), so importing
+  ``position`` here at the top level is safe.
 - ``common.models`` imports this module lazily (deferred, inside method
   bodies) because importing it at module top level would also pull in
   ``services.fx``, which needs ``common.models.FX``.
@@ -33,6 +36,7 @@ import logging
 from decimal import Decimal
 
 from services.fx import get_rate as _fx_get_rate
+from services.positions import position as _positions_position
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +122,7 @@ def calculate_value_at_date(asset, date, investor, currency=None, account_ids=No
     Returns:
         Decimal: The calculated market value.
     """
-    position = asset.position(date, investor, account_ids)
+    position = _positions_position(asset, date, investor, account_ids)
     if position == 0:
         return Decimal(0)
 

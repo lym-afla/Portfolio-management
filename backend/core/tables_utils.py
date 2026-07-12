@@ -12,6 +12,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from core.formatting_utils import currency_format
 from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
 from services.pricing import calculate_value_at_date, price_at_date
+from services.positions import (
+    entry_dates as _positions_entry_dates,
+    exit_dates as _positions_exit_dates,
+    position as _positions_position,
+)
 
 
 def calculate_positions_table_output(
@@ -87,8 +92,12 @@ def _calculate_closed_table_output_for_api(
     portfolio_closed_totals = {}
 
     for asset in portfolio:
-        exit_dates = list(asset.exit_dates(end_date, user_id, selected_account_ids, start_date))
-        entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
+        exit_dates = list(
+            _positions_exit_dates(asset, end_date, user_id, selected_account_ids, start_date)
+        )
+        entry_dates = list(
+            _positions_entry_dates(asset, end_date, user_id, selected_account_ids)
+        )
 
         for exit_date in exit_dates:
             currency_used = None if use_default_currency else currency_target
@@ -105,7 +114,9 @@ def _calculate_closed_table_output_for_api(
             }
 
             # Determine entry_date
-            first_entry_date = asset.entry_dates(exit_date, user_id, selected_account_ids)[-1]
+            first_entry_date = _positions_entry_dates(
+                asset, exit_date, user_id, selected_account_ids
+            )[-1]
             entry_date = (
                 start_date if start_date and start_date >= first_entry_date else first_entry_date
             )
@@ -143,8 +154,8 @@ def _calculate_closed_table_output_for_api(
 
             # Calculate entry value and quantity
             if start_date is not None:
-                entry_quantity = asset.position(
-                    entry_date - timedelta(days=1), user_id, selected_account_ids
+                entry_quantity = _positions_position(
+                    asset, entry_date - timedelta(days=1), user_id, selected_account_ids
                 )
                 # Use calculate_value_at_date for proper bond notional handling
                 entry_value = calculate_value_at_date(
@@ -344,13 +355,17 @@ def _calculate_open_table_output_for_api(
             "currency": currency_format(None, asset.currency),
         }
 
-        position["current_position"] = asset.position(end_date, user_id, selected_account_ids)
+        position["current_position"] = _positions_position(
+            asset, end_date, user_id, selected_account_ids
+        )
 
         if position["current_position"] == 0:
             print(f"The position is zero for {asset.name}. Skipping this asset.")
             continue
 
-        position_entry_date = asset.entry_dates(end_date, user_id, selected_account_ids)[-1]
+        position_entry_date = _positions_entry_dates(
+            asset, end_date, user_id, selected_account_ids
+        )[-1]
         if "investment_date" in categories:
             position["investment_date"] = position_entry_date
 

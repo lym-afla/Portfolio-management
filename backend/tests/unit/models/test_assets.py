@@ -15,6 +15,12 @@ from decimal import Decimal
 import pytest
 
 from common.models import Prices, Transactions
+from services.positions import (
+    entry_dates as get_entry_dates,
+    exit_dates as get_exit_dates,
+    investment_date as get_investment_date,
+    position as get_position,
+)
 from services.pricing import price_at_date
 
 
@@ -37,7 +43,7 @@ class TestAssetPositionCalculation:
             commission=Decimal("5.00"),
         )
 
-        position = asset.position(date(2023, 1, 16), investor=user)
+        position = get_position(asset, date(2023, 1, 16), investor=user)
         assert position == Decimal("100")
 
     def test_position_multiple_purchases(self, user, broker, account, asset):
@@ -68,7 +74,7 @@ class TestAssetPositionCalculation:
             commission=Decimal("3.00"),
         )
 
-        position = asset.position(date(2023, 2, 16), investor=user)
+        position = get_position(asset, date(2023, 2, 16), investor=user)
         assert position == Decimal("150")
 
     def test_position_with_partial_sale(self, user, broker, account, asset):
@@ -99,7 +105,7 @@ class TestAssetPositionCalculation:
             commission=Decimal("3.00"),
         )
 
-        position = asset.position(date(2023, 3, 16), investor=user)
+        position = get_position(asset, date(2023, 3, 16), investor=user)
         assert position == Decimal("70")
 
     def test_position_after_full_sale(self, user, broker, account, asset):
@@ -130,7 +136,7 @@ class TestAssetPositionCalculation:
             commission=Decimal("5.00"),
         )
 
-        position = asset.position(date(2023, 2, 16), investor=user)
+        position = get_position(asset, date(2023, 2, 16), investor=user)
         assert position == Decimal("0")
 
     def test_position_short_position(self, user, broker, account, asset):
@@ -148,7 +154,7 @@ class TestAssetPositionCalculation:
             commission=Decimal("5.00"),
         )
 
-        position = asset.position(date(2023, 1, 16), investor=user)
+        position = get_position(asset, date(2023, 1, 16), investor=user)
         assert position == Decimal("-100")
 
     def test_position_covering_short(self, user, broker, account, asset):
@@ -179,7 +185,7 @@ class TestAssetPositionCalculation:
             commission=Decimal("3.00"),
         )
 
-        position = asset.position(date(2023, 2, 16), investor=user)
+        position = get_position(asset, date(2023, 2, 16), investor=user)
         assert position == Decimal("-50")
 
     def test_position_broker_filtering(self, user, broker, broker_uk, account, account_uk, asset):
@@ -213,20 +219,20 @@ class TestAssetPositionCalculation:
         )
 
         # Calculate position for first broker only
-        position_broker1 = asset.position(
-            date(2023, 2, 16), investor=user, account_ids=[account.id]
+        position_broker1 = get_position(
+            asset, date(2023, 2, 16), investor=user, account_ids=[account.id]
         )
         assert position_broker1 == Decimal("100")
 
         # Calculate position for second broker only
-        position_broker2 = asset.position(
-            date(2023, 2, 16), investor=user, account_ids=[account_uk.id]
+        position_broker2 = get_position(
+            asset, date(2023, 2, 16), investor=user, account_ids=[account_uk.id]
         )
         assert position_broker2 == Decimal("75")
 
         # Calculate position for both brokers
-        position_both = asset.position(
-            date(2023, 2, 16), investor=user, account_ids=[account.id, account_uk.id]
+        position_both = get_position(
+            asset, date(2023, 2, 16), investor=user, account_ids=[account.id, account_uk.id]
         )
         assert position_both == Decimal("175")
 
@@ -248,20 +254,20 @@ class TestAssetPositionCalculation:
         )
 
         # Position before transaction should be zero
-        position_before = asset.position(date(2023, 1, 14), investor=user)
+        position_before = get_position(asset, date(2023, 1, 14), investor=user)
         assert position_before == Decimal("0")
 
         # Position on transaction date should include transaction
-        position_on = asset.position(transaction_date, investor=user)
+        position_on = get_position(asset, transaction_date, investor=user)
         assert position_on == Decimal("100")
 
         # Position after transaction should include transaction
-        position_after = asset.position(date(2023, 1, 16), investor=user)
+        position_after = get_position(asset, date(2023, 1, 16), investor=user)
         assert position_after == Decimal("100")
 
     def test_position_no_transactions(self, user, broker, account, asset):
         """Test position calculation with no transactions."""
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset, date(2023, 6, 15), investor=user)
         assert position == Decimal("0")
 
     def test_position_future_date(self, user, broker, account, asset):
@@ -279,8 +285,8 @@ class TestAssetPositionCalculation:
             commission=Decimal("5.00"),
         )
 
-        future_position = asset.position(date(2025, 1, 1), investor=user)
-        current_position = asset.position(date(2023, 6, 15), investor=user)
+        future_position = get_position(asset, date(2025, 1, 1), investor=user)
+        current_position = get_position(asset, date(2023, 6, 15), investor=user)
 
         assert future_position == current_position
 
@@ -306,7 +312,7 @@ class TestAssetEntryExitDates:
             commission=Decimal("5.00"),
         )
 
-        entry_dates = asset.entry_dates(date(2023, 6, 15), investor=user)
+        entry_dates = get_entry_dates(asset, date(2023, 6, 15), investor=user)
         assert len(entry_dates) == 1
         assert entry_dates[0].date() == purchase_date
 
@@ -341,7 +347,7 @@ class TestAssetEntryExitDates:
             commission=Decimal("3.00"),
         )
 
-        entry_dates = asset.entry_dates(date(2023, 6, 15), investor=user)
+        entry_dates = get_entry_dates(asset, date(2023, 6, 15), investor=user)
         assert len(entry_dates) == 1  # Only first entry from zero to non-zero
         assert entry_dates[0].date() == first_purchase
 
@@ -390,7 +396,7 @@ class TestAssetEntryExitDates:
             commission=Decimal("4.00"),
         )
 
-        entry_dates = asset.entry_dates(date(2023, 6, 15), investor=user)
+        entry_dates = get_entry_dates(asset, date(2023, 6, 15), investor=user)
         assert len(entry_dates) == 2
         assert entry_dates[0].date() == purchase1
         assert entry_dates[1].date() == purchase2
@@ -426,7 +432,7 @@ class TestAssetEntryExitDates:
             commission=Decimal("3.00"),
         )
 
-        exit_dates = asset.exit_dates(date(2023, 6, 15), investor=user)
+        exit_dates = get_exit_dates(asset, date(2023, 6, 15), investor=user)
         assert len(exit_dates) == 0  # Position not closed
 
     def test_exit_dates_full_sale(self, user, broker, account, asset):
@@ -460,7 +466,7 @@ class TestAssetEntryExitDates:
             commission=Decimal("5.00"),
         )
 
-        exit_dates = asset.exit_dates(date(2023, 6, 15), investor=user)
+        exit_dates = get_exit_dates(asset, date(2023, 6, 15), investor=user)
         assert len(exit_dates) == 1
         assert exit_dates[0].date() == sale
 
@@ -495,8 +501,8 @@ class TestAssetEntryExitDates:
             commission=Decimal("5.00"),
         )
 
-        entry_dates = asset.entry_dates(date(2023, 6, 15), investor=user)
-        exit_dates = asset.exit_dates(date(2023, 6, 15), investor=user)
+        entry_dates = get_entry_dates(asset, date(2023, 6, 15), investor=user)
+        exit_dates = get_exit_dates(asset, date(2023, 6, 15), investor=user)
 
         # For short positions, entry is when position goes from 0 to negative
         assert len(entry_dates) == 1
@@ -551,8 +557,8 @@ class TestAssetEntryExitDates:
             commission=Decimal("3.00"),
         )
 
-        entry_dates = asset.entry_dates(date(2023, 6, 15), investor=user)
-        exit_dates = asset.exit_dates(date(2023, 6, 15), investor=user)
+        entry_dates = get_entry_dates(asset, date(2023, 6, 15), investor=user)
+        exit_dates = get_exit_dates(asset, date(2023, 6, 15), investor=user)
 
         # Should get first entry date (only detects 0 to non-zero transitions)
         assert len(entry_dates) == 1
@@ -644,7 +650,7 @@ class TestAssetPriceMethods:
             commission=Decimal("5.00"),
         )
 
-        investment_date = asset.investment_date(user)
+        investment_date = get_investment_date(asset, user)
         assert investment_date.date() == transaction_date
 
     def test_investment_date_multiple_transactions(self, user, broker, account, asset):
@@ -678,12 +684,12 @@ class TestAssetPriceMethods:
             commission=Decimal("3.00"),
         )
 
-        investment_date = asset.investment_date(user)
+        investment_date = get_investment_date(asset, user)
         assert investment_date.date() == first_date  # Should return earliest transaction
 
     def test_investment_date_no_transactions(self, user, broker, account, asset):
         """Test investment date detection with no transactions."""
-        investment_date = asset.investment_date(user)
+        investment_date = get_investment_date(asset, user)
         assert investment_date is None
 
     def test_investment_date_with_broker_filter(
@@ -719,11 +725,11 @@ class TestAssetPriceMethods:
         )
 
         # Investment date for first broker
-        investment_date_broker1 = asset.investment_date(user, account_ids=[account.id])
+        investment_date_broker1 = get_investment_date(asset, user, account_ids=[account.id])
         assert investment_date_broker1.date() == date(2023, 1, 15)
 
         # Investment date for second broker
-        investment_date_broker2 = asset.investment_date(user, account_ids=[account_uk.id])
+        investment_date_broker2 = get_investment_date(asset, user, account_ids=[account_uk.id])
         assert investment_date_broker2.date() == date(2023, 2, 15)
 
 
@@ -746,7 +752,7 @@ class TestAssetEdgeCases:
             commission=Decimal("0.01"),
         )
 
-        position = asset.position(date(2023, 1, 16), investor=user)
+        position = get_position(asset, date(2023, 1, 16), investor=user)
         assert position == Decimal("0.000001")
         assert position.as_tuple().exponent <= -6
 
@@ -765,7 +771,7 @@ class TestAssetEdgeCases:
             commission=Decimal("100.00"),
         )
 
-        position = asset.position(date(2023, 1, 16), investor=user)
+        position = get_position(asset, date(2023, 1, 16), investor=user)
         assert position == Decimal("1000000000")
 
     def test_position_decimal_precision(self, user, broker, account, asset):
@@ -785,7 +791,7 @@ class TestAssetEdgeCases:
             commission=Decimal("0.05"),
         )
 
-        position = asset.position(date(2023, 1, 16), investor=user)
+        position = get_position(asset, date(2023, 1, 16), investor=user)
         assert abs(float(position) - float(quantity)) < 0.000001
         assert position.as_tuple().exponent <= -6
 
@@ -832,7 +838,7 @@ class TestAssetEdgeCases:
             commission=None,
         )
 
-        position = asset.position(date(2023, 4, 15), investor=user)
+        position = get_position(asset, date(2023, 4, 15), investor=user)
         assert position == Decimal("100")  # Should only count quantity transactions
 
     def test_position_with_corporate_action(self, user, broker, account, asset):
@@ -865,5 +871,5 @@ class TestAssetEdgeCases:
             commission=None,
         )
 
-        position = asset.position(date(2023, 2, 2), investor=user)
+        position = get_position(asset, date(2023, 2, 2), investor=user)
         assert position == Decimal("200")  # Should be 200 shares after split

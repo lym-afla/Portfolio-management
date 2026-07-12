@@ -16,6 +16,7 @@ import pytest
 
 from common.models import Assets, MergerRecord, Transactions
 from constants import TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_MERGER_IN, TRANSACTION_TYPE_MERGER_OUT
+from services.positions import position
 
 
 def _create_transaction(investor, account, security, txn_type, txn_date, quantity, price, **kwargs):
@@ -66,7 +67,7 @@ class TestAllStockMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 15), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user, account_ids=[account.id])
+        old_position = position(old_sec,merger_date, user, account_ids=[account.id])
         assert old_position == Decimal("100")
 
         old_cost = old_sec.calculate_buy_in_price(merger_date, user, old_sec.currency, account_ids=[account.id])
@@ -98,8 +99,8 @@ class TestAllStockMerger:
         )
 
         # Verify positions
-        assert old_sec.position(merger_date, user) == Decimal("0")
-        assert new_sec.position(merger_date, user) == Decimal("75")
+        assert position(old_sec,merger_date, user) == Decimal("0")
+        assert position(new_sec,merger_date, user) == Decimal("75")
 
     def test_all_stock_cost_basis_carries_over(self, user, account):
         """Buy-in price of new security reflects carryover cost."""
@@ -109,7 +110,7 @@ class TestAllStockMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 10), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
         conversion_ratio = Decimal("0.75")
         new_quantity = old_position * conversion_ratio
@@ -138,7 +139,7 @@ class TestAllStockMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 10), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
 
         merger = MergerRecord.objects.create(
@@ -166,7 +167,7 @@ class TestAllStockMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 2, 15), Decimal("40"), Decimal("15"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
         # Weighted avg = (60*10 + 40*15) / 100 = 1200/100 = 12
 
@@ -206,7 +207,7 @@ class TestAllCashMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 10), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
 
         cash_per_share = Decimal("15")
@@ -223,7 +224,7 @@ class TestAllCashMerger:
             quantity=-old_position, price=old_cost, cash_flow=total_cash, merger=merger,
         )
 
-        assert old_sec.position(merger_date, user) == Decimal("0")
+        assert position(old_sec,merger_date, user) == Decimal("0")
         assert MergerRecord.objects.get(id=merger.id).new_security is None
 
     def test_all_cash_realized_gain(self, user, account):
@@ -233,7 +234,7 @@ class TestAllCashMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 10), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
 
         cash_per_share = Decimal("15")
@@ -273,7 +274,7 @@ class TestHybridMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 10), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
         total_old_cost = old_position * old_cost  # 1000
 
@@ -300,8 +301,8 @@ class TestHybridMerger:
             quantity=new_quantity, price=new_cost_per_share, merger=merger,
         )
 
-        assert old_sec.position(merger_date, user) == Decimal("0")
-        assert new_sec.position(merger_date, user) == Decimal("50")
+        assert position(old_sec,merger_date, user) == Decimal("0")
+        assert position(new_sec,merger_date, user) == Decimal("50")
 
     def test_hybrid_buy_in_price(self, user, account):
         """Buy-in price of new security in hybrid merger reflects full carryover cost."""
@@ -311,7 +312,7 @@ class TestHybridMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_BUY, date(2025, 1, 10), Decimal("100"), Decimal("10"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
 
         conversion_ratio = Decimal("0.5")
@@ -429,7 +430,7 @@ class TestPartialPositionMerger:
         _create_transaction(user, account, old_sec, TRANSACTION_TYPE_SELL, date(2025, 3, 15), Decimal("-30"), Decimal("12"))
 
         merger_date = date(2025, 6, 1)
-        old_position = old_sec.position(merger_date, user)
+        old_position = position(old_sec,merger_date, user)
         assert old_position == Decimal("70")
 
         old_cost = old_sec.calculate_buy_in_price(merger_date, user)
@@ -448,7 +449,7 @@ class TestPartialPositionMerger:
         _create_transaction(user, account, new_sec, TRANSACTION_TYPE_MERGER_IN, merger_date,
                             quantity=new_quantity, price=new_cost, merger=merger)
 
-        assert new_sec.position(merger_date, user) == Decimal("52.5")  # 70 * 0.75
+        assert position(new_sec,merger_date, user) == Decimal("52.5")  # 70 * 0.75
         new_buy_in = new_sec.calculate_buy_in_price(merger_date, user)
         # 70 shares * $10 = $700 total cost, 52.5 new shares = ~13.333/share
         expected = Decimal("700") / Decimal("52.5")
@@ -493,10 +494,10 @@ class TestMultiAccountMergerApi:
         assert Decimal(by_acc[account_uk.id]["new_quantity"]) == Decimal("30")
 
         merger_date = date(2025, 6, 1)
-        assert old_sec.position(merger_date, user, account_ids=[account.id]) == Decimal("0")
-        assert old_sec.position(merger_date, user, account_ids=[account_uk.id]) == Decimal("0")
-        assert new_sec.position(merger_date, user, account_ids=[account.id]) == Decimal("45")
-        assert new_sec.position(merger_date, user, account_ids=[account_uk.id]) == Decimal("30")
+        assert position(old_sec,merger_date, user, account_ids=[account.id]) == Decimal("0")
+        assert position(old_sec,merger_date, user, account_ids=[account_uk.id]) == Decimal("0")
+        assert position(new_sec,merger_date, user, account_ids=[account.id]) == Decimal("45")
+        assert position(new_sec,merger_date, user, account_ids=[account_uk.id]) == Decimal("30")
 
         # Exactly one MergerRecord covers both accounts.
         assert MergerRecord.objects.filter(old_security=old_sec, merger_date=merger_date).count() == 1

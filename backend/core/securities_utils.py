@@ -18,6 +18,7 @@ from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from core.portfolio_utils import IRR
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date, price_at_date
+from services.positions import investment_date, position
 
 from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
@@ -382,9 +383,9 @@ def _get_securities_data(user, securities, effective_current_date):
             "type": security.type,
             "ISIN": security.ISIN,
             "name": security.name,
-            "first_investment": security.investment_date(user) or "None",
+            "first_investment": investment_date(security, user) or "None",
             "currency": security.currency,
-            "open_position": security.position(effective_current_date, user),
+            "open_position": position(security, effective_current_date, user),
             "current_value": calculate_value_at_date(
                 security, effective_current_date, user, security.currency
             ),
@@ -434,9 +435,11 @@ def get_security_detail(request, security_id, account_id=None):
         "instrument_type": security.type,
         "ISIN": security.ISIN,
         "name": security.name,
-        "first_investment": security.investment_date(user, account_ids=account_ids) or "None",
+        "first_investment": investment_date(security, user, account_ids=account_ids) or "None",
         "currency": security.currency,
-        "open_position": security.position(effective_current_date, user, account_ids=account_ids),
+        "open_position": position(
+            security, effective_current_date, user, account_ids=account_ids
+        ),
         "current_value": calculate_value_at_date(
             security, effective_current_date, user, security.currency, account_ids=account_ids
         ),
@@ -481,7 +484,9 @@ def get_security_detail(request, security_id, account_id=None):
         # Calculate total ACI for position using the already-fetched aci_data
         # This avoids calling get_current_aci() twice and duplicating MICEX API calls
         if aci_data:
-            position_qty = security.position(effective_current_date, user, account_ids=account_ids)
+            position_qty = position(
+                security, effective_current_date, user, account_ids=account_ids
+            )
             total_aci = (
                 aci_data["aci_amount"] * Decimal(position_qty) if position_qty else Decimal(0)
             )

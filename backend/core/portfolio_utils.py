@@ -26,6 +26,7 @@ from constants import (
 from core.formatting_utils import format_percentage
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
+from services.positions import position
 from users.models import AccountGroup, CustomUser
 
 logger = logging.getLogger("dashboard")
@@ -163,7 +164,7 @@ def NAV_at_date(
 
     for security in portfolio:
         for account in portfolio_accounts:
-            account_position = security.position(date, user_id, [account.id])
+            account_position = position(security, date, user_id, [account.id])
             if account_position == 0:
                 continue
 

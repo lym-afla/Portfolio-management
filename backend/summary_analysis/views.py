@@ -14,6 +14,7 @@ from core.formatting_utils import currency_format, format_percentage, format_tab
 from core.portfolio_utils import get_fx_rate
 from core.summary_utils import accounts_summary_data
 from services.pricing import calculate_value_at_date, price_at_date
+from services.positions import position
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,7 @@ class SummaryViewSet(viewsets.ViewSet):
             asset_category = self.categorize_asset(asset)
 
             # Calculate values
-            asset.current_position = asset.position(end_date, user, account_ids)
+            asset.current_position = position(asset, end_date, user, account_ids)
             asset.entry_price = asset.calculate_buy_in_price(
                 end_date, user, currency_target, account_ids, start_date
             ) or Decimal(0)

@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from common.models import Accounts, Assets, Brokers, Prices, Transactions
+from services.positions import position as get_position
 from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CRYPTO_REWARD,
@@ -53,7 +54,7 @@ def test_crypto_reward_increases_position_and_capital_distribution(user, crypto_
         price=Decimal("50000.000000000"),
     )
 
-    assert btc.position(datetime(2026, 1, 11).date(), user, [crypto_account.id]) == Decimal(
+    assert get_position(btc, datetime(2026, 1, 11).date(), user, [crypto_account.id]) == Decimal(
         "0.010000000"
     )
     assert btc.get_capital_distribution(

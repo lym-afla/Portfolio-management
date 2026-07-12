@@ -12,6 +12,7 @@ from decimal import Decimal
 from django.db import models
 
 from common.models import Assets, Brokers, Transactions
+from services.positions import position
 
 from .formatting_utils import format_table_data
 from .pagination_utils import paginate_table
@@ -102,7 +103,7 @@ def _get_brokers_data(user, brokers, effective_current_date, currency_target):
                 1
                 for asset in active_assets
                 if asset.transactions.filter(account_id__in=account_ids).exists()
-                and asset.position(effective_current_date, user, account_ids=account_ids) != 0
+                and position(asset, effective_current_date, user, account_ids=account_ids) != 0
             )
 
             irr = IRR(

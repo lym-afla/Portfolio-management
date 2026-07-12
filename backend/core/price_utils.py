@@ -12,6 +12,7 @@ from common.models import Assets, Prices
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.sorting_utils import sort_entries
+from services.positions import position
 
 
 def get_prices_table_api(request):
@@ -117,7 +118,9 @@ def _filter_prices(
         securities_with_positions = [
             security.id
             for security in securities_in_account
-            if security.position(date=position_date, investor=user, account_ids=[selected_account])
+            if position(
+                security, date=position_date, investor=user, account_ids=[selected_account]
+            )
             != 0
         ]
 

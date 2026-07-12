@@ -15,6 +15,7 @@ from django.db.models.query import QuerySet
 from django.http import HttpRequest
 
 from common.models import Accounts, Assets
+from services.positions import exit_dates
 from users.models import CustomUser
 
 from .formatting_utils import currency_format, format_table_data
@@ -206,7 +207,7 @@ def _filter_assets(
         return [
             asset
             for asset in assets
-            if len(asset.exit_dates(end_date, user, selected_account_ids)) > 0
+            if len(exit_dates(asset, end_date, user, selected_account_ids)) > 0
             and abs(asset.total_quantity or 0) < zero_threshold
         ]
     else:

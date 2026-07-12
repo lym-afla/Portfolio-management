@@ -17,6 +17,7 @@ import pytest
 from common.models import FX, Accounts, AnnualPerformance, Assets, Prices, Transactions
 from constants import ACCOUNT_TYPE_INDIVIDUAL
 from services.fx import get_rate as fx_get_rate
+from services.positions import position as get_position
 from services.pricing import price_at_date
 
 
@@ -28,7 +29,7 @@ class TestNAVCalculation:
     def test_simple_portfolio_nav(self, user, broker, asset, sample_transactions, price_history):
         """Test NAV calculation for a simple portfolio."""
         # Calculate position at a specific date
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset,date(2023, 6, 15), investor=user)
         assert position == Decimal("120")  # 100 + 50 - 30
 
         # Get current price
@@ -99,7 +100,7 @@ class TestNAVCalculation:
         valuation_date = date(2023, 6, 15)
 
         for asset in assets:
-            position = asset.position(valuation_date, investor=user)
+            position = get_position(asset,valuation_date, investor=user)
             if position > 0:
                 current_price = price_at_date(asset, valuation_date)
                 if current_price:
@@ -126,7 +127,7 @@ class TestNAVCalculation:
         total_nav_usd = Decimal("0")
 
         for asset in assets:
-            position = asset.position(valuation_date, investor=multi_currency_user)
+            position = get_position(asset,valuation_date, investor=multi_currency_user)
             if position > 0:
                 current_price = price_at_date(asset, valuation_date)
                 if current_price:
@@ -191,7 +192,7 @@ class TestNAVCalculation:
         assert total_cash < 0  # Cash should be negative (outflow)
 
         # Calculate asset market value
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset,date(2023, 6, 15), investor=user)
         current_price = price_at_date(asset, date(2023, 6, 15))
         asset_value = position * current_price.price if current_price else Decimal("0")
 
@@ -206,7 +207,7 @@ class TestNAVCalculation:
         nav_values = []
 
         for valuation_date in dates:
-            position = asset.position(valuation_date, investor=user)
+            position = get_position(asset,valuation_date, investor=user)
             current_price = price_at_date(asset, valuation_date)
 
             if position > 0 and current_price:
@@ -230,7 +231,7 @@ class TestNAVCalculation:
         valuation_date = date(2023, 6, 15)
 
         # Calculate asset market value
-        position = asset.position(valuation_date, investor=user)
+        position = get_position(asset,valuation_date, investor=user)
 
         # Get current price (create if not exists)
         current_price = price_at_date(asset, valuation_date)
@@ -269,7 +270,7 @@ class TestNAVCalculation:
         # )
 
         # Calculate NAV
-        # position = asset.position(date(2023, 6, 15))
+        # position = get_position(asset,date(2023, 6, 15))
         # asset_value = position * current_price.price
 
         # Get cash balance (should include commission)
@@ -315,7 +316,7 @@ class TestNAVCalculation:
             commission=Decimal("5.00"),
         )
 
-        position = asset.position(date(2023, 3, 15), investor=user)
+        position = get_position(asset,date(2023, 3, 15), investor=user)
         assert position == 0
 
         # NAV from this asset should be zero
@@ -369,7 +370,7 @@ class TestNAVAggregation:
         )
 
         # Calculate NAV for each broker
-        total_position = asset.position(date(2023, 6, 15), investor=user)
+        total_position = get_position(asset,date(2023, 6, 15), investor=user)
         asset_value = total_position * current_price.price
 
         # Calculate total cash across brokers
@@ -444,8 +445,8 @@ class TestNAVAggregation:
         )
 
         # Calculate sector allocations
-        tech_nav = tech_asset.position(date(2023, 6, 15), investor=user) * Decimal("110.00")
-        finance_nav = finance_asset.position(date(2023, 6, 15), investor=user) * Decimal("85.00")
+        tech_nav = get_position(tech_asset,date(2023, 6, 15), investor=user) * Decimal("110.00")
+        finance_nav = get_position(finance_asset,date(2023, 6, 15), investor=user) * Decimal("85.00")
         total_nav = tech_nav + finance_nav
 
         tech_allocation = (tech_nav / total_nav) * Decimal("100")
@@ -500,10 +501,10 @@ class TestNAVAggregation:
         Prices.objects.create(date=valuation_date, security=asset_gbp, price=Decimal("37.00"))
 
         # Calculate NAV by currency
-        eur_value = asset_eur.position(valuation_date, investor=multi_currency_user) * Decimal(
+        eur_value = get_position(asset_eur,valuation_date, investor=multi_currency_user) * Decimal(
             "42.00"
         )
-        gbp_value = asset_gbp.position(valuation_date, investor=multi_currency_user) * Decimal(
+        gbp_value = get_position(asset_gbp,valuation_date, investor=multi_currency_user) * Decimal(
             "37.00"
         )
 
@@ -535,12 +536,12 @@ class TestNAVPerformance:
         end_date = date(2023, 6, 15)
 
         # Calculate NAV at start
-        start_position = asset.position(start_date, investor=user)
+        start_position = get_position(asset,start_date, investor=user)
         start_price = price_at_date(asset, start_date)
         start_nav = start_position * start_price.price if start_price else Decimal("0")
 
         # Calculate NAV at end
-        end_position = asset.position(end_date, investor=user)
+        end_position = get_position(asset,end_date, investor=user)
         end_price = price_at_date(asset, end_date)
         end_nav = end_position * end_price.price if end_price else Decimal("0")
 
@@ -638,7 +639,7 @@ class TestNAVPerformance:
         nav_values = []
         for i in range(0, 30, 5):  # Sample every 5 days
             current_date = date(2023, 6, 1) + timedelta(days=i)
-            position = asset.position(current_date, investor=user)
+            position = get_position(asset,current_date, investor=user)
             current_price = price_at_date(asset, current_date)
             if current_price:
                 nav_value = position * current_price.price
@@ -677,7 +678,7 @@ class TestNAVEdgeCases:
         )
 
         # Try to calculate NAV without price data
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset,date(2023, 6, 15), investor=user)
         current_price = price_at_date(asset, date(2023, 6, 15))
 
         if current_price is None:
@@ -709,7 +710,7 @@ class TestNAVEdgeCases:
         )
 
         # Calculate NAV
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset,date(2023, 6, 15), investor=user)
         asset_value = position * current_price.price
 
         assert asset_value == Decimal("20000.00")
@@ -736,7 +737,7 @@ class TestNAVEdgeCases:
         )
 
         # Calculate NAV with high precision
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset,date(2023, 6, 15), investor=user)
         asset_value = position * current_price.price
 
         # Should maintain high precision
@@ -764,7 +765,7 @@ class TestNAVEdgeCases:
         )
 
         # Calculate NAV for short position
-        position = asset.position(date(2023, 6, 15), investor=user)
+        position = get_position(asset,date(2023, 6, 15), investor=user)
         asset_value = position * current_price.price
 
         # Short position should have negative value

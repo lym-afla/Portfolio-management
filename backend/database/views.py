@@ -21,6 +21,7 @@ from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
 from common.models import MergerRecord
 from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
 from services.fx import get_rate as fx_get_rate
+from services.positions import position
 from constants import (
     TRANSACTION_TYPE_MERGER_IN,
     TRANSACTION_TYPE_MERGER_OUT,
@@ -150,7 +151,9 @@ def api_get_security_position_history(request, security_id):
 
         if start_date:
             transactions = transactions.filter(date__date__gt=start_date)
-            current_position = security.position(start_date, request.user, account_ids=account_ids)
+            current_position = position(
+                security, start_date, request.user, account_ids=account_ids
+            )
             position_history = [{"date": start_date, "position": current_position}]
         else:
             current_position = 0
@@ -581,7 +584,7 @@ def api_create_merger(request):
     )
     accounts_with_positions = []
     for acc in Accounts.objects.filter(id__in=list(candidate_account_ids), broker__investor=user):
-        pos = old_security.position(merger_date, user, account_ids=[acc.id])
+        pos = position(old_security, merger_date, user, account_ids=[acc.id])
         if pos and pos > 0:
             accounts_with_positions.append((acc, pos))
 

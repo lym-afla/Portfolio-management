@@ -70,6 +70,66 @@ def _pricing_price_at_date(asset, price_date, currency=None):
     return price_at_date(asset, price_date, currency)
 
 
+def _positions_position(asset, date, investor, account_ids=None):
+    """Deferred-import bridge to ``services.positions.position``.
+
+    Importing ``services.positions`` at the top of ``common.models`` would
+    eventually pull in ``services.pricing`` -> ``services.fx`` -> this module,
+    so we resolve it lazily on first call.
+    """
+    from services.positions import position
+
+    return position(asset, date, investor, account_ids)
+
+
+def _positions_entry_dates(asset, date_as_of, investor, account_ids=None, start_date=None):
+    """Deferred-import bridge to ``services.positions.entry_dates``.
+
+    Importing ``services.positions`` at the top of ``common.models`` would
+    eventually pull in ``services.pricing`` -> ``services.fx`` -> this module,
+    so we resolve it lazily on first call.
+    """
+    from services.positions import entry_dates
+
+    return entry_dates(asset, date_as_of, investor, account_ids, start_date)
+
+
+def _positions_exit_dates(asset, end_date, investor, account_ids=None, start_date=None):
+    """Deferred-import bridge to ``services.positions.exit_dates``.
+
+    Importing ``services.positions`` at the top of ``common.models`` would
+    eventually pull in ``services.pricing`` -> ``services.fx`` -> this module,
+    so we resolve it lazily on first call.
+    """
+    from services.positions import exit_dates
+
+    return exit_dates(asset, end_date, investor, account_ids, start_date)
+
+
+def _positions_get_accounts_with_positions(asset, date, investor):
+    """Deferred-import bridge to ``services.positions.get_accounts_with_positions``.
+
+    Importing ``services.positions`` at the top of ``common.models`` would
+    eventually pull in ``services.pricing`` -> ``services.fx`` -> this module,
+    so we resolve it lazily on first call.
+    """
+    from services.positions import get_accounts_with_positions
+
+    return get_accounts_with_positions(asset, date, investor)
+
+
+def _positions_investment_date(asset, investor, account_ids=None):
+    """Deferred-import bridge to ``services.positions.investment_date``.
+
+    Importing ``services.positions`` at the top of ``common.models`` would
+    eventually pull in ``services.pricing`` -> ``services.fx`` -> this module,
+    so we resolve it lazily on first call.
+    """
+    from services.positions import investment_date
+
+    return investment_date(asset, investor, account_ids)
+
+
 # Table with FX data
 class FX(models.Model):
     """FX model."""
@@ -269,123 +329,6 @@ class Assets(models.Model):
 
         return bond_meta.get_current_notional(date, investor, account_ids, currency)
 
-    # Define position at date by summing all movements to date
-    def position(self, date, investor, account_ids=None):
-        """Get the position of an asset at a given date."""
-        query = self.transactions.filter(date__date__lte=date, investor=investor)
-        if account_ids is not None:
-            query = query.filter(account_id__in=account_ids)
-        total_quantity = query.aggregate(total=models.Sum("quantity"))["total"]
-        return round(Decimal(total_quantity), 6) if total_quantity else Decimal(0)
-
-    def get_accounts_with_positions(self, date, investor):
-        """
-        Get list of accounts with non-zero positions at a given date.
-
-        Args:
-            date: Date to check positions at
-            investor: Investor to check for
-
-        Returns:
-            list: List of account IDs with non-zero positions
-        """
-        # Get all accounts that have transactions for this security
-        account_ids = (
-            self.transactions.filter(investor=investor, quantity__isnull=False)
-            .values_list("account_id", flat=True)
-            .distinct()
-        )
-
-        # Check position for each account and keep only non-zero ones
-        accounts_with_positions = []
-        for account_id in account_ids:
-            position = self.position(date=date, investor=investor, account_ids=[account_id])
-            if position and position != 0:
-                accounts_with_positions.append(account_id)
-
-        return accounts_with_positions
-
-    # The very first investment date
-    def investment_date(self, investor, account_ids=None):
-        """Get the investment date for this security."""
-        queryset = self.transactions.filter(investor=investor)
-        if account_ids:
-            queryset = queryset.filter(account_id__in=account_ids)
-        query = queryset.order_by("date").values_list("date", flat=True).first()
-        return query
-
-    def entry_dates(self, date_as_of, investor, account_ids=None, start_date=None):
-        """Get a list of dates when the position changes from 0 to non-zero."""
-        transactions = self.transactions.filter(quantity__isnull=False, investor=investor)
-        if isinstance(date_as_of, datetime):
-            transactions = transactions.filter(date__lte=date_as_of)
-        else:
-            transactions = transactions.filter(date__date__lte=date_as_of)
-        if account_ids is not None:
-            transactions = transactions.filter(account_id__in=account_ids)
-
-        transactions = transactions.order_by("date", "id")
-
-        entry_dates = []
-        position = 0
-
-        for transaction in transactions:
-            new_position = position + transaction.quantity
-            if position == 0 and new_position != 0:
-                if start_date is not None:
-                    if transaction.date < start_date:
-                        position = new_position
-                        continue
-                entry_dates.append(transaction.date)
-
-            position = new_position
-
-        return entry_dates
-
-    def exit_dates(self, end_date, investor, account_ids=None, start_date=None):
-        """Get a list of dates when the position changes from non-zero to 0."""
-        transactions = self.transactions.filter(quantity__isnull=False, investor=investor)
-        if isinstance(end_date, datetime):
-            transactions = transactions.filter(date__lte=end_date)
-        else:
-            transactions = transactions.filter(date__date__lte=end_date)
-        if account_ids is not None:
-            transactions = transactions.filter(account_id__in=account_ids)
-        if start_date is not None:
-            query_start_date = start_date
-            if isinstance(query_start_date, datetime):
-                transactions = transactions.filter(date__gte=query_start_date)
-            else:
-                transactions = transactions.filter(date__date__gte=query_start_date)
-
-        transactions = transactions.order_by("date", "id")
-
-        exit_dates = []
-        if start_date is not None:
-            opening_position_query = self.transactions.filter(
-                quantity__isnull=False,
-                investor=investor,
-            )
-            if isinstance(start_date, datetime):
-                opening_position_query = opening_position_query.filter(date__lt=start_date)
-            else:
-                opening_position_query = opening_position_query.filter(date__date__lt=start_date)
-            if account_ids is not None:
-                opening_position_query = opening_position_query.filter(account_id__in=account_ids)
-            position = (
-                opening_position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
-            )
-        else:
-            position = 0
-
-        for transaction in transactions:
-            new_position = position + transaction.quantity
-            if position != 0 and new_position == 0:
-                exit_dates.append(transaction.date)
-            position = new_position
-
-        return exit_dates
-
     def calculate_buy_in_price(
         self,
         date_as_of,
@@ -441,7 +384,7 @@ class Assets(models.Model):
             return None
 
         # Get latest entry date
-        entry_dates = self.entry_dates(date_as_of, investor, account_ids)
+        entry_dates = _positions_entry_dates(self, date_as_of, investor, account_ids)
         if not entry_dates:
             logger.warning("No entry dates found")
             return None
@@ -465,7 +408,7 @@ class Assets(models.Model):
         if start_date and start_date > entry_date:
             # Add artificial transaction at start_date
             logger.debug(f"Start date {start_date} is after latest entry date {entry_date}")
-            position = self.position(start_date, investor, account_ids)
+            position = _positions_position(self, start_date, investor, account_ids)
             logger.debug(f"Position at start date: {position}")
             if position != 0:
                 price_at_start = _pricing_price_at_date(self, start_date)
@@ -509,7 +452,7 @@ class Assets(models.Model):
             current_position = sum((t.quantity or Decimal(0)) for t in transactions)
         else:
             # Use the existing position method for performance
-            current_position = self.position(date_as_of, investor, account_ids)
+            current_position = _positions_position(self, date_as_of, investor, account_ids)
 
         # Determine if it's a long or short position:
         # - If current_position > 0: currently long → use average buy price
@@ -972,8 +915,8 @@ class Assets(models.Model):
                     # Gain is zero only if bought at par and redeemed at par
                     cash_received = transaction.cash_flow or Decimal(0)
                     notional_redeemed_per_bond = getattr(transaction, "notional_change", None)
-                    notional_redeemed = notional_redeemed_per_bond * transaction.security.position(
-                        transaction.date, investor, account_ids
+                    notional_redeemed = notional_redeemed_per_bond * _positions_position(
+                        transaction.security, transaction.date, investor, account_ids
                     )
 
                     logger.debug(
@@ -1262,8 +1205,8 @@ class Assets(models.Model):
             raise ValueError("Invalid start_date")
 
         # Calculate all-time realized gain/loss
-        exit_dates = self.exit_dates(date_as_of, investor, account_ids, start_date)
-        entry_dates = self.entry_dates(date_as_of, investor, account_ids, start_date)
+        exit_dates = _positions_exit_dates(self, date_as_of, investor, account_ids, start_date)
+        entry_dates = _positions_entry_dates(self, date_as_of, investor, account_ids, start_date)
 
         if start_date is not None and len(entry_dates) == 0:
             entry_dates = [start_date]
@@ -1355,7 +1298,7 @@ class Assets(models.Model):
                 current_position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
             )
         else:
-            current_position = self.position(date_as_of, investor, account_ids)
+            current_position = _positions_position(self, date_as_of, investor, account_ids)
 
         current_price_in_lcl_cur = (
             _pricing_price_at_date(self, date_as_of, currency=None).price
@@ -2648,7 +2591,7 @@ class BondMetadata(InstrumentMetadata):
             return Decimal(0)
 
         # Get current position
-        position_qty = self.asset.position(date, investor, account_ids)
+        position_qty = _positions_position(self.asset, date, investor, account_ids)
         if not position_qty or position_qty == 0:
             return Decimal(0)
 

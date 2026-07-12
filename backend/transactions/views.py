@@ -40,6 +40,7 @@ from core.import_utils import (
     transaction_exists,
 )
 from core.transactions_utils import get_transactions_table_api
+from services.positions import position as _positions_position
 
 from .serializers import FXTransactionFormSerializer, TransactionFormSerializer
 
@@ -553,8 +554,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 )
 
             # Calculate current position
-            position = security.position(
-                date=position_date, investor=request.user, account_ids=[account_id]
+            position = _positions_position(
+                security, date=position_date, investor=request.user, account_ids=[account_id]
             )
 
             return Response(
