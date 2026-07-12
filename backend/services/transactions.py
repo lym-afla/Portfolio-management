@@ -50,6 +50,8 @@ import logging
 from datetime import timedelta
 from decimal import Decimal
 
+from django.db import transaction
+
 from constants import (
     TRANSACTION_TYPE_BOND_MATURITY,
     TRANSACTION_TYPE_BOND_REDEMPTION,
@@ -478,3 +480,463 @@ def create_split_history(transaction):
             f"Error creating SplitHistory for transaction {transaction.id}: {e}",
             exc_info=True,
         )
+
+
+# =============================================================================
+# Transaction save orchestration (moved from TransactionViewSet)
+# =============================================================================
+#
+# These functions own the 3-way branch (FX / asset-transfer / regular),
+# Decimal normalization, object creation, phantom-cash-flow generation, and
+# bond-redemption NotionalHistory creation that previously lived inline on
+# ``TransactionViewSet.save_single_transaction`` and
+# ``TransactionViewSet.save_transactions``.
+#
+# The viewset methods (and the WebSocket consumer that delegates to them via
+# ``self.view_set.save_*``) now become thin wrappers that call these functions.
+#
+# ``save_single_transaction`` persists one row at a time via ``.create()`` (so
+# the created row has a primary key) and returns a result dict. The bulk
+# ``save_transactions`` accumulates unsaved model instances and uses
+# ``bulk_create`` for efficiency, mirroring the original split behavior
+# exactly — including the deliberately different ``exchange_rate`` rounding
+# (single uses ROUND_HALF_UP quantize; bulk uses Python ``round``).
+#
+# Numeric safety: ``Decimal`` everywhere for money. Never ``float``.
+
+
+# Field lists used by the two entry points. Kept module-level as constants so
+# both the single and bulk paths normalize the same set of fields.
+_REGULAR_DECIMAL_FIELDS = [
+    "quantity",
+    "price",
+    "notional",
+    "cash_flow",
+    "commission",
+    "aci",
+    "notional_change",
+]
+
+_FX_DECIMAL_FIELDS = [
+    "exchange_rate",
+    "from_amount",
+    "to_amount",
+    "commission",
+]
+
+
+def _normalize_decimal_field(value, max_digits, decimal_places):
+    """Normalize a Decimal value to fit database constraints.
+
+    Moved verbatim from the nested helper in
+    ``TransactionViewSet.save_single_transaction``. Quantizes ``value`` to the
+    field's ``decimal_places`` (ROUND_HALF_UP), shrinking precision if the
+    integer part would otherwise overflow ``max_digits``. Returns ``Decimal(0)``
+    on any error or overflow.
+    """
+    from decimal import ROUND_HALF_UP, InvalidOperation as DecimalInvalidOperation
+
+    try:
+        original_value = Decimal(str(value))
+
+        # Calculate how many integer digits we have
+        abs_value = abs(original_value)
+        if abs_value == 0:
+            int_digits = 1
+        else:
+            int_digits = len(str(int(abs_value)))
+
+        # Determine max decimal places we can use
+        max_decimal_places = min(decimal_places, max_digits - int_digits)
+
+        if max_decimal_places < 0:
+            logger.warning(
+                f"Value {original_value} too large for field "
+                f"(max_digits={max_digits}, needs {int_digits} integer digits)"
+            )
+            return Decimal("0")
+
+        # Use quantize to properly set the decimal places
+        quantizer = Decimal("0.1") ** max_decimal_places
+        return original_value.quantize(quantizer, rounding=ROUND_HALF_UP)
+
+    except (DecimalInvalidOperation, Exception) as e:
+        logger.error(f"Error normalizing decimal: {e}")
+        return Decimal("0")
+
+
+def _normalize_decimal_fields(data, model, field_names):
+    """Normalize the named Decimal fields in ``data`` in place.
+
+    Looks up each field's ``max_digits``/``decimal_places`` from ``model._meta``
+    and applies :func:`_normalize_decimal_field`. Fields absent or ``None`` are
+    skipped. Shared by the single and bulk save paths for the regular- and
+    FX-transaction branches.
+    """
+    for field_name in field_names:
+        if field_name in data and data[field_name] is not None:
+            field = model._meta.get_field(field_name)
+            data[field_name] = _normalize_decimal_field(
+                data[field_name],
+                field.max_digits,
+                field.decimal_places,
+            )
+
+
+def _coerce_date(data):
+    """Convert a pandas Timestamp ``date`` to a naive Python datetime in place.
+
+    SQLite cannot store pandas Timestamps directly. No-op for datetimes/None.
+    """
+    date_val = data.get("date")
+    if date_val is not None and hasattr(date_val, "to_pydatetime"):
+        data["date"] = date_val.to_pydatetime()
+
+
+def _resolve_asset_transfer_price(data):
+    """Resolve the price for an asset-transfer transaction in place.
+
+    Tries the buy-in price first (via :func:`services.realized.calculate_buy_in_price`)
+    and falls back to the most recent market price on or before the transfer
+    date, then to ``Decimal(0)``. Only runs when ``needs_price_calculation`` is
+    truthy and a security is present. The lookups are wrapped to mirror the
+    original best-effort behavior (errors fall back to 0 rather than raising).
+    """
+    # Deferred import to avoid a circular top-level dependency: services.realized
+    # imports from common.models, which imports this module lazily.
+    from services.realized import calculate_buy_in_price
+
+    security = data["security"]
+    transfer_date = data["date"]
+    investor = data["investor"]
+    account = data["account"]
+
+    buy_in_price = calculate_buy_in_price(
+        security,
+        date=transfer_date,
+        investor=investor,
+        account_ids=[account.id],
+    )
+
+    if buy_in_price:
+        data["price"] = buy_in_price
+        return
+
+    try:
+        price_obj = (
+            security.prices.filter(date__lte=transfer_date).order_by("-date").first()
+        )
+        data["price"] = price_obj.price if price_obj else Decimal(0)
+    except Exception:
+        data["price"] = Decimal(0)
+
+
+def _build_phantom_cash_transaction(data):
+    """Build (but do not save) the balancing phantom cash transaction.
+
+    For a Buy asset transfer this is a ``Cash in`` of ``+|price*qty|``; for a
+    Sell it is a ``Cash out`` of ``-|price*qty|``. Returns ``None`` when there
+    is no price or quantity to balance. The caller is responsible for saving
+    (``.create()`` for the single path, ``bulk_create`` for the bulk path) so
+    this helper is shared verbatim by both.
+    """
+    if not (data.get("price") and data.get("quantity")):
+        return None
+
+    # Deferred import: services.transactions is imported lazily by
+    # common.models, and Transactions/FXTransaction live in common.models.
+    from common.models import Transactions
+
+    transfer_value = abs(data["price"] * data["quantity"])
+    if data["type"] == "Buy":
+        phantom_type = "Cash in"
+        phantom_cash_flow = transfer_value
+    else:
+        phantom_type = "Cash out"
+        phantom_cash_flow = -transfer_value
+
+    return Transactions(
+        investor=data["investor"],
+        account=data["account"],
+        security=None,
+        date=data["date"],
+        type=phantom_type,
+        quantity=None,
+        price=None,
+        currency=data.get("currency"),
+        cash_flow=phantom_cash_flow,
+        commission=None,
+        comment=(
+            "Phantom cash movement for asset transfer: "
+            f"{data.get('security').name if data.get('security') else 'Unknown'}"
+        ),
+    )
+
+
+def _create_notional_history_if_bond_redemption(created_transaction):
+    """Create the NotionalHistory row for a bond redemption/maturity, if due.
+
+    No-op for non-bond-redemption types or when there is no security /
+    ``notional_change``. Errors from :func:`create_notional_history` are logged
+    and swallowed (best-effort), matching the original inline behavior.
+    """
+    if created_transaction.type not in [
+        TRANSACTION_TYPE_BOND_REDEMPTION,
+        TRANSACTION_TYPE_BOND_MATURITY,
+    ]:
+        return
+
+    if not (
+        created_transaction.security
+        and created_transaction.notional_change
+        and created_transaction.notional_change != 0
+    ):
+        return
+
+    try:
+        create_notional_history(created_transaction)
+        logger.debug(
+            "Created NotionalHistory for transaction "
+            f"{created_transaction.id}"
+        )
+    except Exception as e:
+        logger.error("Error creating NotionalHistory: " f"{e}", exc_info=True)
+
+
+def save_single_transaction(transaction_data):
+    """Save a single transaction dict and return a result dict.
+
+    Handles the 3-way branch (FX / asset-transfer / regular), Decimal
+    normalization, object creation via ``.create()``, phantom cash flow for
+    asset transfers, and NotionalHistory creation for bond redemptions.
+
+    Was ``TransactionViewSet.save_single_transaction``. Returns
+    ``{"success": True, "transaction_id": <id>, "type": <kind>}`` on success or
+    ``{"success": False, "error": <str>}`` on failure (the whole body is
+    wrapped in a try/except that logs and returns the error, matching the
+    original). Mutates ``transaction_data`` in place (pops ``is_fx``,
+    ``is_asset_transfer``, ``needs_price_calculation``).
+    """
+    try:
+        _coerce_date(transaction_data)
+
+        # Deferred import: services.transactions is imported lazily by
+        # common.models, and Transactions/FXTransaction live in common.models.
+        from common.models import FXTransaction, Transactions
+
+        # Check if this is an FX transaction
+        is_fx = transaction_data.pop("is_fx", False)
+
+        # Check if this is an asset transfer
+        is_asset_transfer = transaction_data.pop("is_asset_transfer", False)
+        needs_price_calculation = transaction_data.pop("needs_price_calculation", False)
+
+        if is_fx:
+            # Normalize FX transaction decimal fields
+            _normalize_decimal_fields(
+                transaction_data, FXTransaction, _FX_DECIMAL_FIELDS
+            )
+
+            fx_transaction = FXTransaction.objects.create(**transaction_data)
+            logger.debug(f"Saved FX transaction with ID: {fx_transaction.id}")
+            return {
+                "success": True,
+                "transaction_id": fx_transaction.id,
+                "type": "fx",
+            }
+
+        elif is_asset_transfer:
+            # Handle asset transfer
+            if needs_price_calculation and transaction_data.get("security"):
+                _resolve_asset_transfer_price(transaction_data)
+
+            transaction_data["cash_flow"] = None
+            transaction_data["commission"] = None
+
+            # Create main transaction
+            created_transaction = Transactions.objects.create(**transaction_data)
+
+            # Create phantom cash transaction
+            phantom = _build_phantom_cash_transaction(transaction_data)
+            if phantom is not None:
+                phantom.save()
+
+            logger.debug(
+                "Saved asset transfer transaction with ID: " f"{created_transaction.id}"
+            )
+            return {
+                "success": True,
+                "transaction_id": created_transaction.id,
+                "type": "asset_transfer",
+            }
+
+        else:
+            # Normalize regular transaction decimal fields
+            _normalize_decimal_fields(
+                transaction_data, Transactions, _REGULAR_DECIMAL_FIELDS
+            )
+
+            created_transaction = Transactions.objects.create(**transaction_data)
+
+            # Create NotionalHistory for bond redemptions
+            _create_notional_history_if_bond_redemption(created_transaction)
+
+            logger.debug(f"Saved regular transaction with ID: {created_transaction.id}")
+            return {
+                "success": True,
+                "transaction_id": created_transaction.id,
+                "type": "regular",
+            }
+
+    except Exception as e:
+        logger.error(f"Error saving single transaction: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+def save_transactions(transactions_to_create):
+    """Save a list of transaction dicts in bulk.
+
+    Partitions rows into regular / FX / phantom-cash lists, recomputes
+    buy-in/market price for asset transfers, builds phantom cash rows,
+    ``bulk_create``s each batch, then loops over created rows to seed
+    NotionalHistory for bond redemptions (``bulk_create`` bypasses
+    ``Transactions.save()``).
+
+    Was ``TransactionViewSet.save_transactions``. Returns ``None`` (the original
+    method had no return value). The whole body runs inside one atomic block
+    and re-raises on error so the caller's transaction rolls back.
+
+    Note: the bulk FX branch rounds ``exchange_rate`` with Python's ``round``
+    (banker's rounding) rather than ``_normalize_decimal_field``'s
+    ``ROUND_HALF_UP`` — this deliberately mirrors the original bulk method,
+    which differed from the single-row method.
+    """
+    logger.debug(f"About to save {len(transactions_to_create)} transactions")
+
+    # Log each transaction data for debugging
+    for i, data in enumerate(transactions_to_create):
+        logger.debug(f"Transaction {i + 1}: {data}")
+
+        # Check for None values that might cause issues
+        for key, value in data.items():
+            if value is None and key in ["quantity", "price"]:
+                logger.warning(f"Transaction {i + 1} has None value for {key}")
+
+    try:
+        with transaction.atomic():
+            # Deferred import: services.transactions is imported lazily by
+            # common.models, and Transactions/FXTransaction live in common.models.
+            from common.models import FXTransaction, Transactions
+
+            regular_transactions = []
+            fx_transactions = []
+            phantom_cash_transactions = []
+
+            for data in transactions_to_create:
+                _coerce_date(data)
+
+                logger.debug(f"Creating transaction with data: {data}")
+
+                # Check if this is an FX transaction
+                is_fx = data.pop("is_fx", False)
+
+                # Check if this is an asset transfer
+                is_asset_transfer = data.pop("is_asset_transfer", False)
+                needs_price_calculation = data.pop("needs_price_calculation", False)
+
+                if is_fx:
+                    # Create FXTransaction - round exchange_rate to match DB precision
+                    if "exchange_rate" in data and data["exchange_rate"] is not None:
+                        # Get decimal_places from the model field dynamically
+                        exchange_rate_field = FXTransaction._meta.get_field("exchange_rate")
+                        decimal_places = exchange_rate_field.decimal_places
+                        data["exchange_rate"] = round(
+                            Decimal(str(data["exchange_rate"])), decimal_places
+                        )
+                    fx_transaction = FXTransaction(**data)
+                    fx_transactions.append(fx_transaction)
+                    logger.debug("Created FX transaction")
+                elif is_asset_transfer:
+                    # Handle asset transfer
+                    logger.debug(f"Processing asset transfer: {data['type']}")
+
+                    # Calculate price if needed (use buy-in price or market price)
+                    if needs_price_calculation and data.get("security"):
+                        _resolve_asset_transfer_price(data)
+
+                    # Ensure cash_flow and commission are None for asset transfers
+                    data["cash_flow"] = None
+                    data["commission"] = None
+
+                    # Create the main transaction
+                    created_transaction = Transactions(**data)
+                    regular_transactions.append(created_transaction)
+
+                    # Create phantom cash transaction to balance the cash effect
+                    phantom = _build_phantom_cash_transaction(data)
+                    if phantom is not None:
+                        phantom_cash_transactions.append(phantom)
+                        logger.debug(
+                            f"Created phantom {phantom.type} transaction with "
+                            f"cash_flow: "
+                            f"{phantom.cash_flow}"
+                        )
+                else:
+                    # Create regular Transaction
+                    created_transaction = Transactions(**data)
+                    regular_transactions.append(created_transaction)
+
+            # Use bulk_create for efficiency
+            if regular_transactions:
+                created_transactions = Transactions.objects.bulk_create(regular_transactions)
+                logger.debug(
+                    f"Successfully saved {len(regular_transactions)} " "regular transactions"
+                )
+
+                # Manually create NotionalHistory for bond redemptions
+                # (bulk_create bypasses save())
+                for txn in created_transactions:
+                    if txn.type in [
+                        TRANSACTION_TYPE_BOND_REDEMPTION,
+                        TRANSACTION_TYPE_BOND_MATURITY,
+                    ]:
+                        if txn.security and txn.notional_change and txn.notional_change != 0:
+                            try:
+                                create_notional_history(txn)
+                                logger.debug(
+                                    f"Created NotionalHistory for transaction "
+                                    f"{txn.id}: "
+                                    f"{txn.security.name}"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    "Error creating NotionalHistory "
+                                    f"for transaction {txn.id}: {e}",
+                                    exc_info=True,
+                                )
+
+            if fx_transactions:
+                FXTransaction.objects.bulk_create(fx_transactions)
+                logger.debug(f"Successfully saved {len(fx_transactions)} FX transactions")
+
+            if phantom_cash_transactions:
+                Transactions.objects.bulk_create(phantom_cash_transactions)
+                logger.debug(
+                    f"Successfully saved {len(phantom_cash_transactions)} "
+                    "phantom cash transactions"
+                )
+
+            transactions_saved = (
+                len(regular_transactions)
+                + len(fx_transactions)
+                + len(phantom_cash_transactions)
+            )
+            logger.debug(f"Total transactions saved: " f"{transactions_saved}")
+
+    except Exception as e:
+        logger.error(f"Error saving transactions: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        import traceback
+
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise
