@@ -25,6 +25,7 @@ from common.models import (
 )
 from users.models import CustomUser
 from services.fx import get_rate as fx_get_rate
+from services.pricing import price_at_date
 
 
 @pytest.mark.integration
@@ -531,7 +532,7 @@ class TestMultiAssetWorkflows:
 
             for asset in [usd_asset, eur_asset, gbp_asset]:
                 position = asset.position(date(2023, 6, 15), user)
-                local_price = asset.price_at_date(date(2023, 6, 15)).price
+                local_price = price_at_date(asset, date(2023, 6, 15)).price
                 local_value = position * local_price
 
                 if asset.currency != base_currency:

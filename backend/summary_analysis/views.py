@@ -13,6 +13,7 @@ from common.models import Accounts, Assets, Transactions
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from core.portfolio_utils import get_fx_rate
 from core.summary_utils import accounts_summary_data
+from services.pricing import calculate_value_at_date, price_at_date
 
 logger = logging.getLogger(__name__)
 
@@ -186,11 +187,11 @@ class SummaryViewSet(viewsets.ViewSet):
             cost = round(asset.entry_price * asset.current_position, 2)
 
             asset.current_price = Decimal(
-                getattr(asset.price_at_date(end_date, currency_target), "price", 0)
+                getattr(price_at_date(asset, end_date, currency_target), "price", 0)
             )
             # Use calculate_value_at_date for proper bond notional handling
             market_value = round(
-                asset.calculate_value_at_date(end_date, user, currency_target, account_ids),
+                calculate_value_at_date(asset, end_date, user, currency_target, account_ids),
                 2,
             )
 

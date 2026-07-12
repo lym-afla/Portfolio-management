@@ -25,6 +25,7 @@ from constants import (
 )
 from core.formatting_utils import format_percentage
 from services.fx import get_rate as fx_get_rate
+from services.pricing import calculate_value_at_date
 from users.models import AccountGroup, CustomUser
 
 logger = logging.getLogger("dashboard")
@@ -167,8 +168,8 @@ def NAV_at_date(
                 continue
 
             # Use calculate_value_at_date for proper bond notional handling
-            account_value = security.calculate_value_at_date(
-                date, user_id, target_currency, [account.id]
+            account_value = calculate_value_at_date(
+                security, date, user_id, target_currency, [account.id]
             )
 
             analysis["Total NAV"] += account_value
@@ -213,7 +214,7 @@ def _calculate_portfolio_value(
     else:
         asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         try:
-            portfolio_value = asset.calculate_value_at_date(date, user_id, currency, account_ids)
+            portfolio_value = calculate_value_at_date(asset, date, user_id, currency, account_ids)
         except Exception:
             portfolio_value = Decimal(0)
 

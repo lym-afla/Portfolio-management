@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from common.models import Prices, Transactions
+from services.pricing import price_at_date
 
 
 @pytest.mark.unit
@@ -572,7 +573,7 @@ class TestAssetPriceMethods:
 
         Prices.objects.create(date=test_date, security=asset, price=test_price)
 
-        price_record = asset.price_at_date(test_date)
+        price_record = price_at_date(asset, test_date)
         assert price_record is not None
         assert price_record.price == test_price
         assert price_record.date == test_date
@@ -585,7 +586,7 @@ class TestAssetPriceMethods:
 
         # Request price before start date
         early_date = date(2023, 1, 15)
-        price_record = asset.price_at_date(early_date)
+        price_record = price_at_date(asset, early_date)
 
         assert price_record is None  # Should return None when no price available
 
@@ -598,7 +599,7 @@ class TestAssetPriceMethods:
 
         # Request price between records
         request_date = date(2023, 6, 10)
-        price_record = asset.price_at_date(request_date)
+        price_record = price_at_date(asset, request_date)
 
         assert price_record is not None
         assert price_record.price == Decimal("52.00")  # Should get latest before date
@@ -614,16 +615,16 @@ class TestAssetPriceMethods:
         Prices.objects.create(date=test_date, security=asset_eur, price=local_price)
 
         # Get price in local currency (EUR)
-        price_eur = asset_eur.price_at_date(test_date, currency="EUR")
+        price_eur = price_at_date(asset_eur, test_date, currency="EUR")
         assert price_eur.price == local_price
 
         # Get price in converted currency (USD)
-        price_usd = asset_eur.price_at_date(test_date, currency="USD")
+        price_usd = price_at_date(asset_eur, test_date, currency="USD")
         assert price_usd.price > local_price  # USD should be higher value
 
     def test_price_at_date_no_price_data(self, user, broker, account, asset):
         """Test price retrieval when no price data exists."""
-        price_record = asset.price_at_date(date(2023, 6, 15))
+        price_record = price_at_date(asset, date(2023, 6, 15))
         assert price_record is None
 
     def test_investment_date_single_transaction(self, user, broker, account, asset):

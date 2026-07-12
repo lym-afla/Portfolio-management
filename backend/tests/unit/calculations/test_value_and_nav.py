@@ -1,5 +1,5 @@
 """
-Characterization tests for Assets.calculate_value_at_date and core.portfolio_utils.NAV_at_date.
+Characterization tests for services.pricing.calculate_value_at_date and core.portfolio_utils.NAV_at_date.
 
 These tests document CURRENT (pre-extraction) behavior of the value/NAV
 calculation paths so that the upcoming service-layer extraction has a
@@ -24,6 +24,7 @@ from common.models import (
 )
 from core.portfolio_utils import NAV_at_date
 from services.fx import get_rate as fx_get_rate
+from services.pricing import calculate_value_at_date
 
 
 # ===========================================================================
@@ -34,7 +35,7 @@ from services.fx import get_rate as fx_get_rate
 @pytest.mark.nav
 @pytest.mark.unit
 class TestCalculateValueAtDate:
-    """Characterization tests for Assets.calculate_value_at_date."""
+    """Characterization tests for services.pricing.calculate_value_at_date."""
 
     def test_simple_position_value(self, user, account, asset):
         """100 shares at price $55 -> value $5500."""
@@ -53,7 +54,7 @@ class TestCalculateValueAtDate:
             date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
         )
 
-        value = asset.calculate_value_at_date(date(2023, 6, 15), investor=user)
+        value = calculate_value_at_date(asset, date(2023, 6, 15), investor=user)
 
         assert value == Decimal("5500.00")
 
@@ -64,7 +65,7 @@ class TestCalculateValueAtDate:
         ever querying a price, so it returns Decimal(0) rather than None.
         """
         # No transactions, no prices - still returns Decimal(0)
-        value = asset.calculate_value_at_date(date(2023, 6, 15), investor=user)
+        value = calculate_value_at_date(asset, date(2023, 6, 15), investor=user)
 
         assert value == Decimal(0)
 
@@ -96,7 +97,7 @@ class TestCalculateValueAtDate:
             date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
         )
 
-        value = asset.calculate_value_at_date(date(2023, 6, 15), investor=user)
+        value = calculate_value_at_date(asset, date(2023, 6, 15), investor=user)
 
         assert value == Decimal(0)
 
@@ -122,7 +123,7 @@ class TestCalculateValueAtDate:
         )
         # Deliberately create NO Prices row
 
-        value = asset.calculate_value_at_date(date(2023, 6, 15), investor=user)
+        value = calculate_value_at_date(asset, date(2023, 6, 15), investor=user)
 
         # Falls back to the Buy transaction price of 50.00
         assert value == Decimal("5000.000000000000000")
@@ -157,7 +158,7 @@ class TestCalculateValueAtDate:
             date=date(2023, 6, 15), security=bond_asset, price=Decimal("99")
         )
 
-        value = bond_asset.calculate_value_at_date(date(2023, 6, 15), investor=user)
+        value = calculate_value_at_date(bond_asset, date(2023, 6, 15), investor=user)
 
         # 5 * 99 * 1000 / 100 = 4950
         assert value == Decimal("4950.000")
@@ -191,8 +192,8 @@ class TestCalculateValueAtDate:
         expected_fx = fx_get_rate("EUR", "USD", date(2023, 1, 2))["FX"]
         expected = Decimal("100") * Decimal("40.00") * expected_fx
 
-        value = asset_eur.calculate_value_at_date(
-            date(2023, 1, 2), investor=user, currency="USD"
+        value = calculate_value_at_date(
+            asset_eur, date(2023, 1, 2), investor=user, currency="USD"
         )
 
         assert value == expected
@@ -228,11 +229,11 @@ class TestCalculateValueAtDate:
             date=date(2023, 6, 15), security=asset, price=Decimal("55.00")
         )
 
-        value_a = asset.calculate_value_at_date(
-            date(2023, 6, 15), investor=user, account_ids=[acct_a.id]
+        value_a = calculate_value_at_date(
+            asset, date(2023, 6, 15), investor=user, account_ids=[acct_a.id]
         )
-        value_b = asset.calculate_value_at_date(
-            date(2023, 6, 15), investor=user, account_ids=[acct_b.id]
+        value_b = calculate_value_at_date(
+            asset, date(2023, 6, 15), investor=user, account_ids=[acct_b.id]
         )
 
         assert value_a == Decimal("5500.00")  # 100 * 55

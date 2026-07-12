@@ -51,6 +51,7 @@ from constants import (
 )
 from core.broker_api_utils import get_broker_api
 from core.tinkoff_utils import get_user_token, save_bond_redemption_history
+from services.pricing import get_cumulative_split_factor
 
 # logger = structlog.get_logger(__name__)
 logger = logging.getLogger(__name__)
@@ -979,8 +980,8 @@ async def import_security_prices_from_tbank(security, dates, user):
                 # after this date, we need to reverse the adjustment to store
                 # the actual historical price.
                 cumulative_factor = await database_sync_to_async(
-                    security.get_cumulative_split_factor
-                )(d)
+                    get_cumulative_split_factor
+                )(security, d)
                 if cumulative_factor != Decimal("1"):
                     # Reverse the adjustment: if factor is 0.5 (2:1 split),
                     # the actual pre-split price was 2x the T-Bank adjusted price

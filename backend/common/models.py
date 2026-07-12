@@ -57,6 +57,19 @@ def _fx_get_rate(source, target, date_as_of, investor=None):
     return get_rate(source, target, date_as_of, investor)
 
 
+def _pricing_price_at_date(asset, price_date, currency=None):
+    """Deferred-import bridge to ``services.pricing.price_at_date``.
+
+    ``services.pricing`` imports ``services.fx`` at its top level, and
+    ``services.fx`` imports the ``FX`` model from this module, so importing
+    ``services.pricing`` at the top of ``common.models`` would create a
+    circular import. Resolving it lazily (on first call) sidesteps that.
+    """
+    from services.pricing import price_at_date
+
+    return price_at_date(asset, price_date, currency)
+
+
 # Table with FX data
 class FX(models.Model):
     """FX model."""
@@ -256,95 +269,6 @@ class Assets(models.Model):
 
         return bond_meta.get_current_notional(date, investor, account_ids, currency)
 
-    # Returns price at the date or latest available before the date
-    def price_at_date(self, price_date, currency=None):
-        """Get the price of an asset at a given date."""
-        logger.debug(f"Fetching price for {self.name} as of {price_date} in currency {currency}")
-        # Use date directly for query (now using naive datetime objects)
-        quote = self.prices.filter(date__lte=price_date).order_by("-date").first()
-        if quote is None:
-            # If no quote is found, take the price from the last transaction
-            last_transaction = (
-                self.transactions.filter(date__date__lte=price_date, quantity__isnull=False)
-                .order_by("-date")
-                .first()
-            )
-            if last_transaction:
-                logger.debug(
-                    f"Using last transaction price for {self.name} "
-                    f"as of {last_transaction.date}"
-                )
-                quote = type(
-                    "obj",
-                    (object,),
-                    {"price": last_transaction.price, "date": last_transaction.date},
-                )
-            else:
-                logger.warning(f"No transaction found for {self.name} as of {price_date}")
-                return None
-
-        if currency is not None:
-            if self.is_bond:
-                fx_rate = Decimal(1)
-            else:
-                fx_rate = _fx_get_rate(self.currency, currency, price_date)["FX"]
-
-            logger.debug(
-                f"Converting price from {self.currency} to {currency} " f"using FX rate {fx_rate}"
-            )
-            quote.price = quote.price * fx_rate
-        logger.debug(
-            f"Price for {self.name} as of {quote.date} is {quote.price} "
-            f"in currency {currency or self.currency}"
-        )
-        return quote
-
-    def calculate_value_at_date(self, date, investor, currency=None, account_ids=None):
-        """
-        Calculate the market value of this asset at a given date.
-
-        For bonds, this accounts for the effective notional value.
-        For other assets, this is simply position * price.
-
-        Args:
-            date: The date for which to calculate value
-            investor: The investor who owns the asset
-            currency: Optional currency for conversion
-            account_ids: Optional list of account IDs to filter by
-
-        Returns:
-            Decimal: The calculated market value
-        """
-        position = self.position(date, investor, account_ids)
-        if position == 0:
-            return Decimal(0)
-
-        price_quote = self.price_at_date(date, currency)
-        if price_quote is None:
-            logger.warning(f"No price found for {self.name} at {date}")
-            return Decimal(0)
-
-        price = price_quote.price  # For bonds: percentage of par
-
-        # For bonds: value = position * (price% / 100) * notional
-        # For others: value = position * price
-        if self.is_bond:
-            effective_notional = self.get_effective_notional(date, investor, account_ids, currency)
-            value = position * price * effective_notional / Decimal(100)
-            logger.debug(
-                f"Bond value calculation for {self.name}: "
-                f"position={position}, price%={price}, notional={effective_notional}, "
-                f"value={value}"
-            )
-        else:
-            value = position * price
-            logger.debug(
-                f"Standard value calculation for {self.name}: "
-                f"position={position}, price={price}, value={value}"
-            )
-
-        return value
-
     # Define position at date by summing all movements to date
     def position(self, date, investor, account_ids=None):
         """Get the position of an asset at a given date."""
@@ -353,79 +277,6 @@ class Assets(models.Model):
             query = query.filter(account_id__in=account_ids)
         total_quantity = query.aggregate(total=models.Sum("quantity"))["total"]
         return round(Decimal(total_quantity), 6) if total_quantity else Decimal(0)
-
-    def get_cumulative_split_factor(self, from_date, to_date=None):
-        """
-        Get the cumulative split adjustment factor between two dates.
-
-        This is used to adjust historical prices. For example, if there was a
-        2:1 split, historical prices should be multiplied by 0.5 to compare
-        with current prices.
-
-        Args:
-            from_date: The historical date (price date)
-            to_date: The reference date (usually today). If None, uses all
-                     splits after from_date.
-
-        Returns:
-            Decimal: The cumulative adjustment factor. Multiply historical
-                     prices by this to get equivalent current prices.
-        """
-        query = self.split_history.filter(date__gt=from_date)
-        if to_date:
-            query = query.filter(date__lte=to_date)
-
-        splits = query.values_list("adjustment_factor", flat=True)
-
-        factor = Decimal("1")
-        for split_factor in splits:
-            factor *= split_factor
-
-        return factor
-
-    def get_split_adjusted_price(self, price, price_date, target_date=None):
-        """
-        Adjust a historical price for splits that occurred after the price date.
-
-        Args:
-            price: The historical price to adjust
-            price_date: The date of the historical price
-            target_date: The date to adjust to (default: None = adjust for all
-                         subsequent splits)
-
-        Returns:
-            Decimal: The split-adjusted price
-        """
-        if price is None:
-            return None
-
-        factor = self.get_cumulative_split_factor(price_date, target_date)
-        return price * factor
-
-    def reverse_split_adjustment(self, adjusted_price, price_date):
-        """
-        Reverse the split adjustment to get the actual historical price.
-
-        T-Bank provides split-adjusted prices. To store actual historical prices,
-        we need to reverse this adjustment.
-
-        Args:
-            adjusted_price: The split-adjusted price (from T-Bank)
-            price_date: The date of the price
-
-        Returns:
-            Decimal: The actual (non-adjusted) historical price
-        """
-        if adjusted_price is None:
-            return None
-
-        factor = self.get_cumulative_split_factor(price_date)
-        if factor == Decimal("0"):
-            return adjusted_price
-
-        # Reverse the adjustment: if factor is 0.5 (2:1 split),
-        # the actual pre-split price was 2x the adjusted price
-        return adjusted_price / factor
 
     def get_accounts_with_positions(self, date, investor):
         """
@@ -617,7 +468,7 @@ class Assets(models.Model):
             position = self.position(start_date, investor, account_ids)
             logger.debug(f"Position at start date: {position}")
             if position != 0:
-                price_at_start = self.price_at_date(start_date)
+                price_at_start = _pricing_price_at_date(self, start_date)
                 if price_at_start:
                     logger.debug(f"Price at start date: {price_at_start.price}")
                     artificial_transaction = {
@@ -1507,12 +1358,14 @@ class Assets(models.Model):
             current_position = self.position(date_as_of, investor, account_ids)
 
         current_price_in_lcl_cur = (
-            self.price_at_date(date_as_of, currency=None).price
-            if self.price_at_date(date_as_of)
+            _pricing_price_at_date(self, date_as_of, currency=None).price
+            if _pricing_price_at_date(self, date_as_of)
             else 0
         )
         current_price_in_target_cur = (
-            self.price_at_date(date_as_of, currency).price if self.price_at_date(date_as_of) else 0
+            _pricing_price_at_date(self, date_as_of, currency).price
+            if _pricing_price_at_date(self, date_as_of)
+            else 0
         )
         buy_in_price_in_lcl_cur = self.calculate_buy_in_price(
             date_as_of,

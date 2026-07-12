@@ -15,6 +15,11 @@ from decimal import Decimal
 import pytest
 
 from common.models import Assets, SplitHistory, Transactions
+from services.pricing import (
+    get_cumulative_split_factor,
+    get_split_adjusted_price,
+    reverse_split_adjustment,
+)
 
 
 @pytest.mark.unit
@@ -104,7 +109,7 @@ class TestCumulativeSplitFactor:
 
     def test_no_splits_returns_one(self, user, asset):
         """Test that no splits returns factor of 1."""
-        factor = asset.get_cumulative_split_factor(date(2023, 1, 1))
+        factor = get_cumulative_split_factor(asset, date(2023, 1, 1))
         assert factor == Decimal("1")
 
     def test_single_split_factor(self, user, asset):
@@ -118,11 +123,11 @@ class TestCumulativeSplitFactor:
         )
 
         # Price before split should be adjusted
-        factor = asset.get_cumulative_split_factor(date(2023, 1, 1))
+        factor = get_cumulative_split_factor(asset, date(2023, 1, 1))
         assert factor == Decimal("0.5")
 
         # Price after split should not be adjusted
-        factor_after = asset.get_cumulative_split_factor(date(2023, 7, 1))
+        factor_after = get_cumulative_split_factor(asset, date(2023, 7, 1))
         assert factor_after == Decimal("1")
 
     def test_multiple_splits_cumulative_factor(self, user, asset):
@@ -146,17 +151,17 @@ class TestCumulativeSplitFactor:
         )
 
         # Price from January should be adjusted by both splits: 0.5 * 0.333... = 0.1666...
-        factor = asset.get_cumulative_split_factor(date(2023, 1, 1))
+        factor = get_cumulative_split_factor(asset, date(2023, 1, 1))
         expected = Decimal("0.5") * Decimal("1") / Decimal("3")
         assert abs(factor - expected) < Decimal("0.0001")
 
         # Price from July (between splits) should only be adjusted by second split
-        factor_july = asset.get_cumulative_split_factor(date(2023, 7, 1))
+        factor_july = get_cumulative_split_factor(asset, date(2023, 7, 1))
         expected_july = Decimal("1") / Decimal("3")
         assert abs(factor_july - expected_july) < Decimal("0.0001")
 
         # Price from October (after both splits) should not be adjusted
-        factor_oct = asset.get_cumulative_split_factor(date(2023, 10, 1))
+        factor_oct = get_cumulative_split_factor(asset, date(2023, 10, 1))
         assert factor_oct == Decimal("1")
 
     def test_cumulative_factor_with_to_date(self, user, asset):
@@ -180,8 +185,8 @@ class TestCumulativeSplitFactor:
         )
 
         # From January to July: only first split applies
-        factor = asset.get_cumulative_split_factor(
-            date(2023, 1, 1), to_date=date(2023, 7, 1)
+        factor = get_cumulative_split_factor(
+            asset, date(2023, 1, 1), to_date=date(2023, 7, 1)
         )
         assert factor == Decimal("0.5")
 
@@ -201,9 +206,7 @@ class TestSplitAdjustedPrice:
         )
 
         # Historical price of 100 before 2:1 split should show as 50 today
-        adjusted = asset.get_split_adjusted_price(
-            Decimal("100"), date(2023, 1, 1)
-        )
+        adjusted = get_split_adjusted_price(asset, Decimal("100"), date(2023, 1, 1))
         assert adjusted == Decimal("50")
 
     def test_reverse_split_adjustment(self, user, asset):
@@ -218,9 +221,7 @@ class TestSplitAdjustedPrice:
 
         # T-Bank reports split-adjusted price of 50
         # Actual historical price before split was 100
-        actual_price = asset.reverse_split_adjustment(
-            Decimal("50"), date(2023, 1, 1)
-        )
+        actual_price = reverse_split_adjustment(asset, Decimal("50"), date(2023, 1, 1))
         assert actual_price == Decimal("100")
 
     def test_none_price_handling(self, user, asset):
@@ -233,10 +234,10 @@ class TestSplitAdjustedPrice:
             source="MANUAL",
         )
 
-        adjusted = asset.get_split_adjusted_price(None, date(2023, 1, 1))
+        adjusted = get_split_adjusted_price(asset, None, date(2023, 1, 1))
         assert adjusted is None
 
-        reversed_price = asset.reverse_split_adjustment(None, date(2023, 1, 1))
+        reversed_price = reverse_split_adjustment(asset, None, date(2023, 1, 1))
         assert reversed_price is None
 
 

@@ -17,6 +17,7 @@ from common.models import Assets, Transactions
 from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
 from core.portfolio_utils import IRR
 from services.fx import get_rate as fx_get_rate
+from services.pricing import calculate_value_at_date, price_at_date
 
 from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
@@ -384,8 +385,8 @@ def _get_securities_data(user, securities, effective_current_date):
             "first_investment": security.investment_date(user) or "None",
             "currency": security.currency,
             "open_position": security.position(effective_current_date, user),
-            "current_value": security.calculate_value_at_date(
-                effective_current_date, user, security.currency
+            "current_value": calculate_value_at_date(
+                security, effective_current_date, user, security.currency
             ),
             "realized": security.realized_gain_loss(effective_current_date, user)["all_time"][
                 "total"
@@ -424,7 +425,7 @@ def get_security_detail(request, security_id, account_id=None):
     account_ids = [account_id] if account_id else None
 
     # Cache price lookup to avoid duplicate queries
-    current_price_obj = security.price_at_date(effective_current_date)
+    current_price_obj = price_at_date(security, effective_current_date)
     current_price = current_price_obj.price if current_price_obj else None
 
     # Base security data
@@ -436,8 +437,8 @@ def get_security_detail(request, security_id, account_id=None):
         "first_investment": security.investment_date(user, account_ids=account_ids) or "None",
         "currency": security.currency,
         "open_position": security.position(effective_current_date, user, account_ids=account_ids),
-        "current_value": security.calculate_value_at_date(
-            effective_current_date, user, security.currency, account_ids=account_ids
+        "current_value": calculate_value_at_date(
+            security, effective_current_date, user, security.currency, account_ids=account_ids
         ),
         "realized": security.realized_gain_loss(
             effective_current_date, user, account_ids=account_ids

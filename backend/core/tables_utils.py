@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.formatting_utils import currency_format
 from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
+from services.pricing import calculate_value_at_date, price_at_date
 
 
 def calculate_positions_table_output(
@@ -146,7 +147,8 @@ def _calculate_closed_table_output_for_api(
                     entry_date - timedelta(days=1), user_id, selected_account_ids
                 )
                 # Use calculate_value_at_date for proper bond notional handling
-                entry_value = asset.calculate_value_at_date(
+                entry_value = calculate_value_at_date(
+                    asset,
                     entry_date - timedelta(days=1),
                     user_id,
                     currency_used,
@@ -375,9 +377,9 @@ def _calculate_open_table_output_for_api(
         if "current_value" in categories:
             # Use percentage of par for bonds without currency effect
             if asset.type == "Bond":
-                asset_price = asset.price_at_date(end_date, asset.currency)
+                asset_price = price_at_date(asset, end_date, asset.currency)
             else:
-                asset_price = asset.price_at_date(end_date, currency_used)
+                asset_price = price_at_date(asset, end_date, currency_used)
 
             if asset_price is not None:
                 position["current_price"] = asset_price.price
@@ -385,8 +387,8 @@ def _calculate_open_table_output_for_api(
                 position["current_price"] = position["entry_price"]
 
             # Use calculate_value_at_date for proper bond notional handling
-            position["current_value"] = asset.calculate_value_at_date(
-                end_date, user_id, currency_used, selected_account_ids
+            position["current_value"] = calculate_value_at_date(
+                asset, end_date, user_id, currency_used, selected_account_ids
             )
             position["share_of_portfolio"] = position["current_value"] / portfolio_NAV
 
