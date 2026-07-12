@@ -22,6 +22,7 @@ from constants import (
     TRANSACTION_TYPE_SELL,
 )
 from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+from services.bonds import get_current_aci
 
 User = get_user_model()
 
@@ -91,7 +92,7 @@ class BondACICalculationTests(TestCase):
         # Q1 period: Jan 15 - Apr 15 (91 days)
         test_date = date(2024, 3, 1)
 
-        aci_data = self.bond_meta.get_current_aci(test_date, user=None)
+        aci_data = get_current_aci(self.bond_meta, test_date, user=None)
 
         self.assertIsNotNone(aci_data)
         self.assertEqual(aci_data["coupon_start"], date(2024, 1, 15))
@@ -109,7 +110,7 @@ class BondACICalculationTests(TestCase):
         """Test ACI at the start of a coupon period (should be 0)."""
         test_date = date(2024, 4, 15)
 
-        aci_data = self.bond_meta.get_current_aci(test_date)
+        aci_data = get_current_aci(self.bond_meta, test_date)
 
         self.assertIsNotNone(aci_data)
         # Should be in the new period (Q2)
@@ -121,7 +122,7 @@ class BondACICalculationTests(TestCase):
         test_date = date(2024, 6, 1)
 
         # Calculate in USD
-        aci_data = self.bond_meta.get_current_aci(test_date, currency="USD")
+        aci_data = get_current_aci(self.bond_meta, test_date, currency="USD")
 
         self.assertIsNotNone(aci_data)
         self.assertEqual(aci_data["currency"], "USD")
@@ -155,7 +156,7 @@ class BondACICalculationTests(TestCase):
             coupon_frequency=2,
         )
 
-        aci_data = bond_meta2.get_current_aci(date(2024, 6, 1))
+        aci_data = get_current_aci(bond_meta2, date(2024, 6, 1))
         self.assertIsNone(aci_data)
 
     def test_aci_after_maturity(self):
@@ -163,7 +164,7 @@ class BondACICalculationTests(TestCase):
         # Test date after maturity
         test_date = date(2026, 2, 1)
 
-        aci_data = self.bond_meta.get_current_aci(test_date)
+        aci_data = get_current_aci(self.bond_meta, test_date)
         self.assertIsNone(aci_data)
 
 

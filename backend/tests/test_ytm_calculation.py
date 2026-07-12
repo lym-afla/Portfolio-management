@@ -21,7 +21,7 @@ from common.models import (
     FX,
     Transactions,
 )
-from core.securities_utils import calculate_bond_ytm
+from services.bonds import calculate_bond_ytm
 
 CustomUser = get_user_model()
 
@@ -254,7 +254,7 @@ class YTMCalculationTestCase(TestCase):
         )
 
         # Mock the XIRR function to capture cash flows
-        with patch("core.securities_utils.xirr") as mock_xirr:
+        with patch("services.bonds.xirr") as mock_xirr:
             mock_xirr.return_value = Decimal("0.05")  # 5% return
 
             effective_date = datetime.date(2024, 6, 15)
