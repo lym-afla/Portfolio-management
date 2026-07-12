@@ -248,12 +248,12 @@ async def test_progress_reporting(setup_data):
 
     with patch("services.importer.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
-            "dummy.xlsx", "GBP", broker.id, investor.id, confirm_every=False
+            "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )
 
         progress_updates = []
         async for item in generator:
-            if item["status"] == "progress":
+            if item.get("status") == "progress":
                 progress_updates.append(item)
 
     assert len(progress_updates) > 0
