@@ -150,7 +150,7 @@
 
 <script>
 import { ref, onMounted, watch, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { getBrokersTable, deleteBroker } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import { useTableSettings } from '@/composables/useTableSettings'
@@ -162,7 +162,7 @@ export default {
     BrokerFormDialog,
   },
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
     const { handleApiError } = useErrorHandler()
 
     const {
@@ -181,7 +181,7 @@ export default {
     const totalItems = ref(0)
     const showBrokerDialog = ref(false)
     const editingBroker = ref(null)
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
     const pageCount = computed(() =>
       Math.ceil(totalItems.value / itemsPerPage.value)
     )
@@ -276,7 +276,7 @@ export default {
 
     watch(
       [
-        () => store.state.dataRefreshTrigger,
+        () => appStore.dataRefreshTrigger,
         search,
         itemsPerPage,
         currentPage,

@@ -42,7 +42,7 @@
 
 <script>
 import { ref, computed, watch, onMounted } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { format, parseISO } from 'date-fns'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
 
@@ -56,14 +56,14 @@ export default {
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const menu = ref(false)
     const selectedRange = ref(props.modelValue.dateRange)
     const dateFrom = ref(props.modelValue.dateFrom)
     const dateTo = ref(props.modelValue.dateTo)
 
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const dateRangeOptions = computed(() => {

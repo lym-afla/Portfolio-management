@@ -203,7 +203,7 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { format } from 'date-fns'
 import {
   getTransactions,
@@ -236,7 +236,7 @@ export default {
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const { handleApiError } = useErrorHandler()
 
     const {
@@ -278,9 +278,9 @@ export default {
     const showImportDialog = ref(false)
     const showTransferDialog = ref(false)
 
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const pageCount = computed(() =>
@@ -366,7 +366,7 @@ export default {
 
     watch(
       [
-        () => store.state.dataRefreshTrigger,
+        () => appStore.dataRefreshTrigger,
         itemsPerPage,
         currentPage,
         sortBy,
@@ -485,7 +485,7 @@ export default {
     onMounted(async () => {
       emit('update-page-title', 'Transactions')
       if (!effectiveCurrentDate.value) {
-        await store.dispatch('fetchEffectiveCurrentDate')
+        await appStore.fetchEffectiveCurrentDate()
       }
       fetchTransactions()
     })

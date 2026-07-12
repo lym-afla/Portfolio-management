@@ -149,7 +149,7 @@
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import AccountFormDialog from '@/components/dialogs/AccountFormDialog.vue'
 import {
   getAccountsTable,
@@ -165,7 +165,7 @@ export default {
     AccountFormDialog,
   },
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
     const {
       itemsPerPage,
       currentPage,
@@ -184,7 +184,7 @@ export default {
 
     const currencies = ref([])
     const totalItems = ref(0)
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
     const pageCount = computed(() =>
       Math.ceil(totalItems.value / itemsPerPage.value)
     )
@@ -317,7 +317,7 @@ export default {
 
     watch(
       [
-        () => store.state.dataRefreshTrigger,
+        () => appStore.dataRefreshTrigger,
         search,
         itemsPerPage,
         currentPage,

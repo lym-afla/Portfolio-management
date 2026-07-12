@@ -275,7 +275,7 @@
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { useRouter } from 'vue-router'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import {
@@ -289,7 +289,7 @@ export default {
   name: 'SummaryPage',
   emits: ['update-page-title'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const router = useRouter()
     const { handleApiError } = useErrorHandler()
     const loading = ref({
@@ -355,12 +355,12 @@ export default {
     ])
 
     const portfolioBreakdownSubHeaders = ref([
-      { text: `(${store.state.selectedCurrency})`, value: 'unrealized' },
+      { text: `(${appStore.selectedCurrency})`, value: 'unrealized' },
       { text: '(%)', value: 'unrealized_percent', class: 'fst-italic' },
-      { text: `(${store.state.selectedCurrency})`, value: 'realized' },
+      { text: `(${appStore.selectedCurrency})`, value: 'realized' },
       { text: '(%)', value: 'realized_percent', class: 'fst-italic' },
       {
-        text: `(${store.state.selectedCurrency})`,
+        text: `(${appStore.selectedCurrency})`,
         value: 'capital_distribution',
       },
       {
@@ -368,9 +368,9 @@ export default {
         value: 'capital_distribution_percent',
         class: 'fst-italic',
       },
-      { text: `(${store.state.selectedCurrency})`, value: 'commission' },
+      { text: `(${appStore.selectedCurrency})`, value: 'commission' },
       { text: '(%)', value: 'commission_percent', class: 'fst-italic' },
-      { text: `(${store.state.selectedCurrency})`, value: 'total' },
+      { text: `(${appStore.selectedCurrency})`, value: 'total' },
       { text: '(%)', value: 'total_percent', class: 'fst-italic' },
     ])
 
@@ -507,7 +507,7 @@ export default {
 
     // Watch for changes in the store that should trigger a data refresh
     watch(
-      () => store.state.dataRefreshTrigger,
+      () => appStore.dataRefreshTrigger,
       () => {
         fetchAccountPerformanceData()
         fetchPortfolioBreakdown(selectedYear.value)
@@ -516,7 +516,7 @@ export default {
 
     // This watch is used to update the year options when the selected account changes.
     watch(
-      () => store.state.selectedAccount,
+      () => appStore.accountSelection,
       () => {
         fetchYearOptions()
       }

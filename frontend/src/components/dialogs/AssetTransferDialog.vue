@@ -133,7 +133,7 @@ import {
   getSecurityPosition,
 } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import logger from '@/utils/logger'
 
 export default {
@@ -147,7 +147,7 @@ export default {
   emits: ['update:modelValue', 'transfer-completed'],
   setup(props, { emit }) {
     const { handleApiError } = useErrorHandler()
-    const store = useStore()
+    const appStore = useAppStore()
     const form = ref(null)
     const valid = ref(false)
     const submitting = ref(false)
@@ -234,7 +234,7 @@ export default {
 
       try {
         loadingQuantity.value = true
-        const effectiveDate = store.state.effectiveCurrentDate || null
+        const effectiveDate = appStore.effectiveCurrentDate || null
 
         const response = await getSecurityPosition(
           formData.value.security,

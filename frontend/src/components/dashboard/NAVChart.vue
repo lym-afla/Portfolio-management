@@ -48,7 +48,7 @@
 
 <script>
 import { ref, watch, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import StackedBarLineChart from '@/components/charts/StackedBarLineChart.vue'
 import { getChartOptions } from '@/config/chartConfig'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
@@ -80,10 +80,10 @@ export default {
   },
   emits: ['update-params'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const chartOptions = ref(null)
 
-    const navChartParams = computed(() => store.state.navChartParams)
+    const navChartParams = computed(() => appStore.navChartParams)
 
     const selectedBreakdown = ref(navChartParams.value.breakdown)
     const selectedFrequency = ref(navChartParams.value.frequency)
@@ -109,7 +109,7 @@ export default {
         breakdown: selectedBreakdown.value,
         dateRange: dateRange.value,
       }
-      store.dispatch('updateNavChartParams', params)
+      appStore.updateNavChartParams(params)
       emit('update-params', params)
     }
 

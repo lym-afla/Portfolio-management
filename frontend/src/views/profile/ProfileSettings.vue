@@ -133,7 +133,7 @@
 
 <script>
 import { provide } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import {
   getUserSettings,
   updateUserSettings,
@@ -151,12 +151,12 @@ export default {
   },
 
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
     // Provide error handling function for child components
     provide('showError', (message) => {
       this.showErrorMessage(message)
     })
-    return { store }
+    return { appStore }
   },
 
   data() {
@@ -214,8 +214,7 @@ export default {
           (option) => option.value === settings.default_currency
         )
         if (selectedCurrencyOption) {
-          this.store.commit(
-            'SET_SELECTED_CURRENCY',
+          this.appStore.setSelectedCurrency(
             selectedCurrencyOption.title
           )
         }
@@ -274,8 +273,7 @@ export default {
             (option) => option.value === this.settingsForm.default_currency
           )
           if (selectedCurrencyOption) {
-            this.store.commit(
-              'SET_SELECTED_CURRENCY',
+            this.appStore.setSelectedCurrency(
               selectedCurrencyOption.title
             )
           }

@@ -28,7 +28,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 // import axios from 'axios'
-import store from '@/store'
+import { useAuthStore } from '@/stores/auth'
 import LoginForm from '@/components/LoginForm.vue'
 import logger from '@/utils/logger'
 
@@ -41,16 +41,17 @@ export default {
     const loading = ref(false)
     const router = useRouter()
     const loginForm = ref(null)
+    const authStore = useAuthStore()
 
     const handleLogin = async (credentials) => {
       logger.log('Unknown', 'Handling login with credentials:', credentials)
       loading.value = true
 
       try {
-        const result = await store.dispatch('login', credentials)
+        const result = await authStore.login(credentials)
         console.log(
           '[LoginPage.vue] Token set in the store:',
-          store.state.accessToken
+          authStore.accessToken
         )
         console.log(
           '[LoginPage.vue] Token from localStorage:',

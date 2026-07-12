@@ -90,7 +90,7 @@
 <script>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 
 export default {
   name: 'Navigation',
@@ -99,9 +99,9 @@ export default {
     const extended = ref(false)
     const route = useRoute()
     const router = useRouter()
-    const store = useStore()
+    const appStore = useAppStore()
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const menuItems = [

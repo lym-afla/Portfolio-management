@@ -77,7 +77,7 @@
 <script>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
 // import store from '@/store'
 import { deleteUserAccount, logout } from '@/services/api'
 import logger from '@/utils/logger'
@@ -85,7 +85,7 @@ import logger from '@/utils/logger'
 export default {
   setup() {
     const router = useRouter()
-    const store = useStore()
+    const authStore = useAuthStore()
     const showDeleteConfirmation = ref(false)
     const confirmationText = ref('')
     const isLoading = ref(false)
@@ -94,7 +94,7 @@ export default {
       isLoading.value = true
       try {
         await logout()
-        store.commit('CLEAR_TOKENS')
+        authStore.clearTokens()
         router.push('/login')
       } catch (error) {
         logger.error('Unknown', 'Error logging out:', error)
@@ -111,7 +111,7 @@ export default {
       try {
         await deleteUserAccount()
         // Clear authentication state
-        store.commit('CLEAR_TOKENS')
+        authStore.clearTokens()
         // Redirect to register page
         router.push('/register')
       } catch (error) {
@@ -126,7 +126,6 @@ export default {
 
     return {
       router,
-      store,
       showDeleteConfirmation,
       confirmationText,
       isLoading,

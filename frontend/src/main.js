@@ -6,7 +6,7 @@ import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
 import router from './router'
-import store from './store'
+import { createPinia } from 'pinia'
 import './assets/fonts.css'
 import './plugins/vee-validate'
 import logger from './utils/logger'
@@ -49,7 +49,7 @@ if (import.meta.env.DEV) {
 // Create and mount the app
 const app = createApp(App)
 app.use(vuetify)
-app.use(store)
+app.use(createPinia())
 app.use(router)
 
 // Make debugging tools available globally for debugging in development

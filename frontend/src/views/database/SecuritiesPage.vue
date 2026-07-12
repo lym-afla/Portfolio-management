@@ -116,7 +116,7 @@
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 import MergerDialog from '@/components/dialogs/MergerDialog.vue'
 import {
@@ -135,7 +135,7 @@ export default {
     MergerDialog,
   },
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
     const {
       itemsPerPage,
       currentPage,
@@ -219,7 +219,7 @@ export default {
     })
 
     const totalItems = ref(0)
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
     const pageCount = computed(() =>
       Math.ceil(totalItems.value / itemsPerPage.value)
     )
@@ -302,7 +302,7 @@ export default {
 
     watch(
       [
-        () => store.state.dataRefreshTrigger,
+        () => appStore.dataRefreshTrigger,
         search,
         itemsPerPage,
         currentPage,

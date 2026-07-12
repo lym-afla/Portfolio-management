@@ -158,7 +158,7 @@
 
 <script>
 import { ref, computed, watch, watchEffect, onMounted } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import {
   getFXData,
   deleteFXRate,
@@ -177,7 +177,7 @@ export default {
   name: 'FXPage',
   components: { DateRangeSelector, FXDialog, FXImportDialog },
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
 
     const dateRange = ref('ytd')
     const {
@@ -201,12 +201,12 @@ export default {
     const totalItems = ref(0)
     const currencies = ref([])
 
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
     const pageCount = computed(() =>
       Math.ceil(totalItems.value / itemsPerPage.value)
     )
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const headers = computed(() => [
@@ -260,8 +260,7 @@ export default {
       if (!effectiveCurrentDate.value) {
         try {
           const fetchedDate = await getEffectiveCurrentDate()
-          store.commit(
-            'SET_EFFECTIVE_CURRENT_DATE',
+          appStore.setEffectiveCurrentDate(
             fetchedDate.effective_current_date
           )
         } catch (error) {

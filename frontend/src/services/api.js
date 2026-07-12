@@ -1,5 +1,6 @@
 import axiosInstance from '@/config/axiosConfig'
-import store from '@/store'
+import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
 export const login = async (username, password) => {
@@ -226,15 +227,18 @@ export const updateDashboardSettings = async (settings) => {
           `JWT token refreshed with new effective_date: ${response.data.new_effective_date}`
         )
 
-        // Force update the Vuex store immediately
-        if (window.store) {
+        // Force update the auth store immediately with the refreshed tokens.
+        try {
+          const authStore = useAuthStore()
           const accessToken = localStorage.getItem('accessToken')
           const refreshToken = localStorage.getItem('refreshToken')
-          window.store.commit('SET_TOKENS', {
+          authStore.setTokens({
             accessToken: accessToken,
             refreshToken: refreshToken,
           })
-          logger.log('Unknown', 'Vuex store updated with new tokens')
+          logger.log('Unknown', 'Auth store updated with new tokens')
+        } catch (e) {
+          logger.warn('Unknown', 'Could not sync tokens to auth store:', e)
         }
 
         // Small delay to ensure token propagation
@@ -579,7 +583,7 @@ export const getAccountPerformanceFormData = async () => {
 
 export const updateAccountPerformance = async (formData) => {
   try {
-    const effectiveCurrentDate = store.state.effectiveCurrentDate
+    const effectiveCurrentDate = useAppStore().effectiveCurrentDate
     if (!effectiveCurrentDate) {
       throw new Error('Effective current date not set')
     }
@@ -770,7 +774,7 @@ export const createMerger = async ({
 
 export const importPrices = async (importData) => {
   try {
-    const effectiveCurrentDate = store.state.effectiveCurrentDate
+    const effectiveCurrentDate = useAppStore().effectiveCurrentDate
     if (!effectiveCurrentDate) {
       throw new Error('Effective current date not set')
     }

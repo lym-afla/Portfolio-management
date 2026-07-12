@@ -86,7 +86,7 @@
 
 <script>
 import { ref, onMounted, onUnmounted, inject, watch, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
@@ -111,7 +111,7 @@ export default {
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const { handleApiError } = useErrorHandler()
     const clearErrors = inject('clearErrors')
     const summary = ref({})
@@ -127,16 +127,16 @@ export default {
       labels: [],
       datasets: [],
     })
-    // const navChartInitialParams = computed(() => store.state.navChartParams)
+    // const navChartInitialParams = computed(() => appStore.navChartParams)
 
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const isEffectiveDateLoading = ref(true)
 
     const navChartInitialParams = computed(() => {
-      const params = store.state.navChartParams
+      const params = appStore.navChartParams
       const defaultDateRange = 'ytd'
 
       if (!effectiveCurrentDate.value) {
@@ -178,7 +178,7 @@ export default {
       currency: 'Currency',
     }
 
-    const userCurrency = computed(() => store.state.selectedCurrency)
+    const userCurrency = computed(() => appStore.selectedCurrency)
 
     const fetchSummaryData = async () => {
       try {
@@ -267,19 +267,19 @@ export default {
     const initializeData = async () => {
       try {
         if (!effectiveCurrentDate.value) {
-          await store.dispatch('fetchEffectiveCurrentDate')
+          await appStore.fetchEffectiveCurrentDate()
         }
 
         if (
-          !store.state.navChartParams.dateFrom ||
-          !store.state.navChartParams.dateTo
+          !appStore.navChartParams.dateFrom ||
+          !appStore.navChartParams.dateTo
         ) {
           const defaultDateRange = 'ytd'
           const calculatedDateRange = calculateDateRange(
             defaultDateRange,
             effectiveCurrentDate.value
           )
-          await store.dispatch('updateNavChartParams', {
+          await appStore.updateNavChartParams({
             dateRange: defaultDateRange,
             dateFrom: calculatedDateRange.from,
             dateTo: calculatedDateRange.to,
@@ -315,7 +315,7 @@ export default {
 
     // Replace the account selection watcher with dataRefreshTrigger watcher
     watch(
-      () => store.state.dataRefreshTrigger,
+      () => appStore.dataRefreshTrigger,
       () => {
         logger.log(
           'Unknown',

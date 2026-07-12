@@ -105,7 +105,7 @@
 import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { changePassword as apiChangePassword } from '@/services/api'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
 export default {
@@ -117,11 +117,11 @@ export default {
     )
 
     const router = useRouter()
-    const store = useStore()
+    const authStore = useAuthStore()
 
     // Get user data from store
     const userInfo = computed(() => {
-      const user = store.state.user
+      const user = authStore.user
       console.log(
         `[ProfilePage][${componentId}] Computing userInfo, user exists:`,
         !!user
@@ -233,11 +233,11 @@ export default {
     }
 
     const fetchProfile = async () => {
-      if (!store.state.user) {
+      if (!authStore.user) {
         console.log(
           `[ProfilePage][${componentId}] No user data, fetching profile...`
         )
-        await store.dispatch('fetchUserData')
+        await authStore.fetchUserData()
       } else {
         console.log(
           `[ProfilePage][${componentId}] User data exists, skipping fetch`

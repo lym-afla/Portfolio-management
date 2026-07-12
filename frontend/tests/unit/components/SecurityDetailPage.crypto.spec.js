@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import SecurityDetailPage from '@/views/database/SecurityDetailPage.vue'
 import {
   getAccountChoices,
@@ -8,6 +9,7 @@ import {
   getSecurityPriceHistory,
   getSecurityTransactions,
 } from '@/services/api'
+import { useAppStore } from '@/stores/app'
 import { getChartOptions } from '@/config/chartConfig'
 import { generateVuetifyStubs } from '../test-utils'
 
@@ -15,15 +17,12 @@ vi.mock('chartjs-adapter-date-fns', () => ({}))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 1 } }),
-}))
-
-const mockDispatch = vi.fn()
-
-vi.mock('vuex', () => ({
-  useStore: () => ({
-    state: { effectiveCurrentDate: '2026-01-02' },
-    dispatch: mockDispatch,
+  useRouter: () => ({ push: vi.fn() }),
+  createRouter: () => ({
+    beforeEach: () => {},
+    afterEach: () => {},
   }),
+  createWebHistory: () => ({}),
 }))
 
 vi.mock('@/services/api', () => ({
@@ -62,6 +61,13 @@ const flushPromises = async () => {
 describe('SecurityDetailPage crypto rewards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setActivePinia(createPinia())
+    const appStore = useAppStore()
+    // Seed the effective date so the page does not call the (mocked) API for it.
+    appStore.setEffectiveCurrentDate('2026-01-02')
+    // Guard: spy on fetchEffectiveCurrentDate in case the page falls back to it.
+    vi.spyOn(appStore, 'fetchEffectiveCurrentDate').mockResolvedValue()
+
     getAccountChoices.mockResolvedValue({ options: [] })
     getSecurityDetail.mockResolvedValue({
       id: 1,
@@ -89,7 +95,6 @@ describe('SecurityDetailPage crypto rewards', () => {
       colorPalette: ['#000000', '#111111'],
       navChartOptions: {},
     })
-    mockDispatch.mockResolvedValue()
   })
 
   it('renders native and fiat reward totals for crypto securities', async () => {

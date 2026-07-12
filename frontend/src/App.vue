@@ -63,7 +63,7 @@ import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
 export default {
@@ -74,11 +74,11 @@ export default {
     SettingsDialog,
   },
   setup() {
-    const store = useStore()
+    const authStore = useAuthStore()
     const router = useRouter()
     const route = useRoute()
     const user = ref(null)
-    const isAuthenticated = computed(() => store.getters.isAuthenticated)
+    const isAuthenticated = computed(() => authStore.isAuthenticated)
     const layoutLoading = ref(true)
     const pageTitle = ref('')
 
@@ -97,7 +97,7 @@ export default {
     }
 
     const handleLogout = async () => {
-      await store.dispatch('logout')
+      await authStore.logout()
       router.push('/login')
     }
 

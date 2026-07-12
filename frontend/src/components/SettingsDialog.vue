@@ -61,13 +61,15 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { getDashboardSettings, updateDashboardSettings } from '@/services/api'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
 import logger from '@/utils/logger'
 
 export default {
   setup() {
-    const store = useStore()
+    const authStore = useAuthStore()
+    const appStore = useAppStore()
     const dialog = ref(false)
     const form = ref(null)
     const errors = ref({})
@@ -108,9 +110,9 @@ export default {
         // Set the currency in the store to the second element of the found list
         if (
           selectedCurrency &&
-          store.state.selectedCurrency !== selectedCurrency[1]
+          appStore.selectedCurrency !== selectedCurrency[1]
         ) {
-          store.commit('SET_SELECTED_CURRENCY', selectedCurrency[1])
+          appStore.setSelectedCurrency(selectedCurrency[1])
         }
       } catch (error) {
         logger.error('Unknown', 'Failed to fetch settings data:', error)
@@ -138,7 +140,7 @@ export default {
 
         // Enhanced authentication debugging before making API call
         const accessToken = localStorage.getItem('accessToken')
-        const isAuthenticated = store.getters.isAuthenticated
+        const isAuthenticated = authStore.isAuthenticated
 
         logger.log(
           'SettingsDialog',
@@ -151,7 +153,7 @@ export default {
         )
         logger.log(
           'SettingsDialog',
-          `- User data: ${store.state.user ? 'Present' : 'Missing'}`
+          `- User data: ${authStore.user ? 'Present' : 'Missing'}`
         )
 
         if (!accessToken) {
@@ -189,32 +191,35 @@ export default {
             (option) => option.value === formData.default_currency
           )
           if (selectedCurrencyOption) {
-            store.commit('SET_SELECTED_CURRENCY', selectedCurrencyOption.text)
+            appStore.setSelectedCurrency(selectedCurrencyOption.text)
           }
 
-          store.dispatch('updateEffectiveCurrentDate', response.table_date)
+          appStore.updateEffectiveCurrentDate(response.table_date)
 
           // Get the current state from the store
-          const currentState = store.state
-          logger.log('Unknown', '[SettingsDialog] Current state:', currentState)
+          logger.log('Unknown', '[SettingsDialog] Current appStore state:', {
+            effectiveCurrentDate: appStore.effectiveCurrentDate,
+            selectedCurrency: appStore.selectedCurrency,
+            tableSettings: appStore.tableSettings,
+          })
 
           // Calculate new date range based on the new effective date
           const dateRange = calculateDateRangeFromTimespan(
-            currentState.tableSettings.timespan,
+            appStore.tableSettings.timespan,
             response.table_date
           )
 
           // Update table settings and trigger data refresh
-          store.dispatch('updateTableSettings', {
-            timespan: currentState.tableSettings.timespan,
+          appStore.updateTableSettings({
+            timespan: appStore.tableSettings.timespan,
             dateFrom: dateRange.dateFrom,
             dateTo: dateRange.dateTo,
-            page: currentState.tableSettings.page,
-            itemsPerPage: currentState.tableSettings.itemsPerPage,
-            search: currentState.tableSettings.search,
-            sortBy: currentState.tableSettings.sortBy,
+            page: appStore.tableSettings.page,
+            itemsPerPage: appStore.tableSettings.itemsPerPage,
+            search: appStore.tableSettings.search,
+            sortBy: appStore.tableSettings.sortBy,
           })
-          store.dispatch('triggerDataRefresh')
+          appStore.triggerDataRefresh()
 
           closeDialog()
         } else {

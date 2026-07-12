@@ -452,7 +452,7 @@
 <script>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import {
   getSecurityDetail,
   getSecurityPriceHistory,
@@ -510,7 +510,7 @@ export default {
   emits: ['update-page-title'],
   setup(props, { emit }) {
     const route = useRoute()
-    const store = useStore()
+    const appStore = useAppStore()
     const security = ref(null)
     const priceHistory = ref([])
     const positionHistory = ref([])
@@ -534,7 +534,7 @@ export default {
     })
 
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const selectedPeriod = ref('1Y')
@@ -626,7 +626,7 @@ export default {
         logger.log(
           'SecurityDetailPage',
           '[DEBUG] fetchSecurityData - Current effectiveCurrentDate from store:',
-          store.state.effectiveCurrentDate
+          appStore.effectiveCurrentDate
         )
 
         // loading.value = true
@@ -647,11 +647,11 @@ export default {
           'SecurityDetailPage',
           '[DEBUG] fetchSecurityData - Fetching effective current date from backend...'
         )
-        await store.dispatch('fetchEffectiveCurrentDate')
+        await appStore.fetchEffectiveCurrentDate()
         logger.log(
           'SecurityDetailPage',
           '[DEBUG] fetchSecurityData - Updated effectiveCurrentDate from store:',
-          store.state.effectiveCurrentDate
+          appStore.effectiveCurrentDate
         )
 
         const [priceHistoryResponse, positionHistoryResponse] =
@@ -744,21 +744,21 @@ export default {
       logger.log(
         'SecurityDetailPage',
         '[DEBUG] onMounted - Initial effectiveCurrentDate from store:',
-        store.state.effectiveCurrentDate
+        appStore.effectiveCurrentDate
       )
       loading.value = true
       await fetchSecurityData()
       logger.log(
         'SecurityDetailPage',
         '[DEBUG] onMounted - After fetchSecurityData, effectiveCurrentDate from store:',
-        store.state.effectiveCurrentDate
+        appStore.effectiveCurrentDate
       )
       await fetchTransactions()
       loading.value = false
       logger.log(
         'SecurityDetailPage',
         '[DEBUG] onMounted - Completed, final effectiveCurrentDate from store:',
-        store.state.effectiveCurrentDate
+        appStore.effectiveCurrentDate
       )
     })
 

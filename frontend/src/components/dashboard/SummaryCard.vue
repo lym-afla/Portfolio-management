@@ -28,7 +28,8 @@
 
 <script>
 import { computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
+import { useAppStore } from '@/stores/app'
 
 export default {
   name: 'SummaryCard',
@@ -43,7 +44,8 @@ export default {
     },
   },
   setup(props) {
-    const store = useStore()
+    const authStore = useAuthStore()
+    const appStore = useAppStore()
 
     const formatKey = (key) => {
       return key
@@ -55,11 +57,11 @@ export default {
     const formatAccountSelection = computed(() => {
       console.log(
         '[SummaryCard]',
-        store.state.accountSelection,
-        store.state.selectedCurrency,
-        store.state.user
+        appStore.accountSelection,
+        appStore.selectedCurrency,
+        authStore.user
       )
-      const selection = store.state.accountSelection
+      const selection = appStore.accountSelection
       if (selection.type === 'all') {
         return 'All Accounts'
       } else if (selection.type === 'broker') {

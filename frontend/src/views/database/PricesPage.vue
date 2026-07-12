@@ -286,7 +286,7 @@
 
 <script>
 import { ref, watch, computed, onMounted, inject } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import {
   getAssetTypes,
   getAccounts,
@@ -322,7 +322,7 @@ export default {
     PriceImportDialog,
   },
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
     const {
       dateFrom,
       dateTo,
@@ -354,7 +354,7 @@ export default {
     const isDeleting = ref(false)
     const showError = inject('showError')
 
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
+    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
     const pageCount = computed(() =>
       Math.ceil(totalItems.value / itemsPerPage.value)
     )
@@ -538,7 +538,7 @@ export default {
     }
 
     watch(
-      [() => store.state.dataRefreshTrigger, itemsPerPage, currentPage, sortBy],
+      [() => appStore.dataRefreshTrigger, itemsPerPage, currentPage, sortBy],
       () => {
         if (!isApplyingFilters.value) {
           fetchPriceData()
@@ -553,7 +553,7 @@ export default {
     const chartOptionsLoaded = ref(false)
 
     const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
+      () => appStore.effectiveCurrentDate
     )
 
     const getStartDate = (period) => {
@@ -727,7 +727,7 @@ export default {
 
     onMounted(async () => {
       if (!effectiveCurrentDate.value) {
-        await store.dispatch('fetchEffectiveCurrentDate')
+        await appStore.fetchEffectiveCurrentDate()
       }
       await applyFilters()
     })

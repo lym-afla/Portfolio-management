@@ -122,7 +122,7 @@
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { getYearOptions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import logger from '@/utils/logger'
@@ -145,7 +145,7 @@ export default {
   },
   emits: ['update-page-title'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const positions = ref([])
     const totals = ref({})
     const tableLoading = ref(true)
@@ -202,12 +202,21 @@ export default {
         totals.value = data.totals
         totalItems.value = data.total_items
       } catch (error) {
-        store.dispatch('setError', error)
+        appStore.setError(error)
         logger.error('Unknown', 'Error fetching positions:', error)
       } finally {
         tableLoading.value = false
         initialLoading.value = false
-        logger.log('Unknown', '[PositionsPageBase] Current state:', store.state)
+        logger.log(
+          'Unknown',
+          '[PositionsPageBase] Current appStore state:',
+          {
+            loading: appStore.loading,
+            error: appStore.error,
+            effectiveCurrentDate: appStore.effectiveCurrentDate,
+            dataRefreshTrigger: appStore.dataRefreshTrigger,
+          }
+        )
       }
     }
 
@@ -216,7 +225,7 @@ export default {
         const years = await getYearOptions()
         yearOptions.value = years
       } catch (error) {
-        store.dispatch('setError', error)
+        appStore.setError(error)
       } finally {
         initialLoading.value = false
       }
@@ -224,7 +233,7 @@ export default {
 
     watch(
       [
-        () => store.state.dataRefreshTrigger,
+        () => appStore.dataRefreshTrigger,
         search,
         itemsPerPage,
         currentPage,
@@ -240,9 +249,9 @@ export default {
     )
 
     // This watch is used to update the year options when the selected account changes.
-    // Data refresh is handled in AccountSelection.vue, dispatching the dataRefreshTrigger action.
+    // Data refresh is handled in AccountSelection.vue, triggering dataRefreshTrigger.
     watch(
-      () => store.state.selectedAccount,
+      () => appStore.accountSelection,
       () => {
         fetchYearOptions()
       }
@@ -251,20 +260,20 @@ export default {
     const initializeData = async () => {
       emit('update-page-title', props.pageTitle)
 
-      if (!store.state.effectiveCurrentDate) {
-        await store.dispatch('fetchEffectiveCurrentDate')
+      if (!appStore.effectiveCurrentDate) {
+        await appStore.fetchEffectiveCurrentDate()
       }
 
       // Check if dateFrom and dateTo are already set in the store
       if (
-        !store.state.tableSettings.dateFrom ||
-        !store.state.tableSettings.dateTo
+        !appStore.tableSettings.dateFrom ||
+        !appStore.tableSettings.dateTo
       ) {
         // If not set, use the default 'ytd' timespan
-        await handleTimespanChange(store.state.tableSettings.timespan)
+        await handleTimespanChange(appStore.tableSettings.timespan)
       } else {
         // If already set, update the local timespan value
-        timespan.value = store.state.tableSettings.timespan
+        timespan.value = appStore.tableSettings.timespan
       }
 
       // Fetch year options
@@ -305,7 +314,7 @@ export default {
       yearOptions,
       search,
       itemsPerPage,
-      itemsPerPageOptions: computed(() => store.state.itemsPerPageOptions),
+      itemsPerPageOptions: computed(() => appStore.itemsPerPageOptions),
       currentPage,
       sortBy,
       flattenedHeaders,
@@ -318,8 +327,8 @@ export default {
       // handleSortChange: handleSortChangeWrapper,
       handleSortChange,
       handleTimespanChange,
-      loading: computed(() => store.state.loading),
-      error: computed(() => store.state.error),
+      loading: computed(() => appStore.loading),
+      error: computed(() => appStore.error),
       initialLoading,
     }
   },

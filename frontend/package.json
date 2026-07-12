@@ -22,12 +22,12 @@
     "core-js": "^3.8.3",
     "date-fns": "^3.6.0",
     "lodash": "^4.17.21",
+    "pinia": "^3.0.4",
     "vee-validate": "^4.5.8",
     "vue": "^3.4.37",
     "vue-chartjs": "^5.3.1",
     "vue-router": "^4.4.3",
     "vuetify": "^3.12.5",
-    "vuex": "^4.0.2",
     "yup": "^1.4.0"
   },
   "devDependencies": {

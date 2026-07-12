@@ -55,7 +55,7 @@
 
 <script>
 import { ref, computed, onMounted } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { getAccountChoices } from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
 import logger from '@/utils/logger'
@@ -63,7 +63,7 @@ import logger from '@/utils/logger'
 export default {
   name: 'AccountSelection',
   setup() {
-    const store = useStore()
+    const appStore = useAppStore()
     const accountOptions = ref([])
     const selectedAccount = ref(null)
 
@@ -111,15 +111,15 @@ export default {
       logger.log('Unknown', 'handleAccountChange called with:', newValue)
       selectedAccount.value = newValue
 
-      await store.dispatch('updateAccountSelection', {
+      await appStore.updateAccountSelection({
         type: newValue.type,
         id: newValue.id,
       })
 
       // Log the updated store state after the dispatch completes
       console.log(
-        '[handleAccountChange] store.state.accountSelection:',
-        store.state.accountSelection
+        '[handleAccountChange] appStore.accountSelection:',
+        appStore.accountSelection
       )
 
       // // Update data for the new account

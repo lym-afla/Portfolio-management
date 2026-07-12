@@ -86,7 +86,7 @@
 import { ref, computed, watch } from 'vue'
 import { getAccountPerformanceFormData } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { formatAccountChoices } from '@/utils/accountUtils'
 // import { updateAccountPerformance } from '@/services/api'
 import axiosInstance from '@/config/axiosConfig'
@@ -99,7 +99,7 @@ export default {
   },
   emits: ['update:modelValue', 'update-started', 'update-error'],
   setup(props, { emit }) {
-    const store = useStore()
+    const appStore = useAppStore()
     const form = ref(null)
     const loading = ref(false)
     const generalError = ref('')
@@ -108,7 +108,7 @@ export default {
     const restrictedOptions = ref([])
     const selectedAccount = ref(null)
 
-    const selectedCurrency = computed(() => store.state.selectedCurrency)
+    const selectedCurrency = computed(() => appStore.selectedCurrency)
 
     const formData = ref({
       selection_account_type: '',
@@ -123,7 +123,7 @@ export default {
     })
 
     // Get current account selection from store
-    const currentStoreSelection = computed(() => store.state.accountSelection)
+    const currentStoreSelection = computed(() => appStore.accountSelection)
 
     const { handleApiError } = useErrorHandler()
     const fetchFormData = async () => {
@@ -217,7 +217,7 @@ export default {
     )
 
     const prepareFormData = () => {
-      const effectiveCurrentDate = store.state.effectiveCurrentDate
+      const effectiveCurrentDate = appStore.effectiveCurrentDate
       if (!effectiveCurrentDate) {
         throw new Error('Effective current date not set')
       }
