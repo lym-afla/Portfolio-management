@@ -3,7 +3,6 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from django.core.cache import cache
 from django.db.models import Q
@@ -18,15 +17,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
-from common.models import MergerRecord
 from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
+from services.corporate_actions import (
+    CorporateActionError,
+    execute_merger,
+)
 from services.fx import get_rate as fx_get_rate
 from services.positions import position
-from services.realized import calculate_buy_in_price
-from constants import (
-    TRANSACTION_TYPE_MERGER_IN,
-    TRANSACTION_TYPE_MERGER_OUT,
-)
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
@@ -529,158 +526,22 @@ def api_create_merger(request):
         merger_date (str): Date of the merger (YYYY-MM-DD).
         conversion_ratio (str, optional): New shares per old share. Required for all-stock/hybrid.
         cash_per_share (str, optional): Cash per old share. Required for all-cash/hybrid.
+
+    The business logic lives in :func:`services.corporate_actions.execute_merger`;
+    this view is a thin orchestrator that parses the request and shapes the
+    response.
     """
-    user = request.user
-    old_security_id = request.data.get("old_security_id")
-    new_security_id = request.data.get("new_security_id")
-    merger_date_str = request.data.get("merger_date")
-    conversion_ratio = request.data.get("conversion_ratio")
-    cash_per_share = request.data.get("cash_per_share", "0")
-
-    if not old_security_id or not merger_date_str:
-        return Response(
-            {"error": "old_security_id and merger_date are required"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     try:
-        merger_date = datetime.strptime(merger_date_str, "%Y-%m-%d").date()
-    except ValueError:
-        return Response(
-            {"error": "Invalid merger_date format. Use YYYY-MM-DD."},
-            status=status.HTTP_400_BAD_REQUEST,
+        result = execute_merger(
+            user=request.user,
+            old_security_id=request.data.get("old_security_id"),
+            new_security_id=request.data.get("new_security_id"),
+            merger_date=request.data.get("merger_date"),
+            conversion_ratio=request.data.get("conversion_ratio"),
+            cash_per_share=request.data.get("cash_per_share", "0"),
         )
-
-    old_security = get_object_or_404(Assets, id=old_security_id, investors=user)
-
-    new_security = None
-    if new_security_id:
-        new_security = get_object_or_404(Assets, id=new_security_id, investors=user)
-        if not conversion_ratio:
-            return Response(
-                {"error": "conversion_ratio is required when new_security_id is provided"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    try:
-        conversion_ratio_dec = Decimal(conversion_ratio) if conversion_ratio else None
-    except Exception:
-        return Response(
-            {"error": "Invalid conversion_ratio"}, status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        cash_per_share_dec = Decimal(cash_per_share) if cash_per_share else Decimal("0")
-    except Exception:
-        return Response(
-            {"error": "Invalid cash_per_share"}, status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Find every account of this investor that has a positive position in the
-    # old security as of the merger date.
-    candidate_account_ids = (
-        Transactions.objects.filter(investor=user, security=old_security, date__date__lte=merger_date)
-        .values_list("account_id", flat=True)
-        .distinct()
-    )
-    accounts_with_positions = []
-    for acc in Accounts.objects.filter(id__in=list(candidate_account_ids), broker__investor=user):
-        pos = position(old_security, merger_date, user, account_ids=[acc.id])
-        if pos and pos > 0:
-            accounts_with_positions.append((acc, pos))
-
-    if not accounts_with_positions:
-        return Response(
-            {"error": f"Old security has no positive position in any account as of {merger_date}"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    is_all_stock = new_security is not None and cash_per_share_dec == 0
-
-    merger_record = MergerRecord.objects.create(
-        investor=user,
-        old_security=old_security,
-        new_security=new_security,
-        merger_date=merger_date,
-        conversion_ratio=conversion_ratio_dec,
-        cash_per_share=cash_per_share_dec,
-    )
-
-    if new_security:
-        new_security.investors.add(user)
-
-    per_account = []
-    for account, old_position in accounts_with_positions:
-        old_cost_per_share = calculate_buy_in_price(
-            old_security, merger_date, user, old_security.currency, account_ids=[account.id]
-        )
-        if old_cost_per_share is None:
-            old_cost_per_share = Decimal("0")
-
-        total_old_cost = old_position * old_cost_per_share
-        merger_out_cash_flow = (
-            cash_per_share_dec * old_position if not is_all_stock else Decimal("0")
-        )
-
-        merger_out = Transactions.objects.create(
-            investor=user,
-            account=account,
-            security=old_security,
-            currency=old_security.currency,
-            type=TRANSACTION_TYPE_MERGER_OUT,
-            date=datetime.combine(merger_date, datetime.min.time()),
-            quantity=-old_position,
-            price=old_cost_per_share,
-            cash_flow=merger_out_cash_flow if merger_out_cash_flow else None,
-            merger=merger_record,
-        )
-
-        entry = {
-            "account_id": account.id,
-            "account_name": account.name,
-            "old_position": str(old_position),
-            "old_cost_per_share": str(old_cost_per_share),
-            "merger_out_id": merger_out.id,
-        }
-
-        if new_security:
-            new_quantity = old_position * conversion_ratio_dec
-            carryover_cost = total_old_cost
-            new_cost_per_share = (
-                carryover_cost / new_quantity if new_quantity else Decimal("0")
-            )
-            merger_in = Transactions.objects.create(
-                investor=user,
-                account=account,
-                security=new_security,
-                currency=new_security.currency,
-                type=TRANSACTION_TYPE_MERGER_IN,
-                date=datetime.combine(merger_date, datetime.min.time()),
-                quantity=new_quantity,
-                price=new_cost_per_share,
-                cash_flow=None,
-                merger=merger_record,
-            )
-            entry["merger_in_id"] = merger_in.id
-            entry["new_quantity"] = str(new_quantity)
-            entry["new_cost_per_share"] = str(new_cost_per_share)
-
-        per_account.append(entry)
-
-    result = {
-        "merger": {
-            "id": merger_record.id,
-            "old_security": {"id": old_security.id, "name": old_security.name},
-            "new_security": (
-                {"id": new_security.id, "name": new_security.name} if new_security else None
-            ),
-            "merger_date": merger_date.isoformat(),
-            "conversion_ratio": str(conversion_ratio_dec) if conversion_ratio_dec else None,
-            "cash_per_share": str(cash_per_share_dec),
-        },
-        "accounts": per_account,
-    }
-
+    except CorporateActionError as exc:
+        return Response({"error": exc.message}, status=exc.status_code)
     return Response(result, status=status.HTTP_201_CREATED)
 
 

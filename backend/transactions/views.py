@@ -40,6 +40,10 @@ from core.import_utils import (
     transaction_exists,
 )
 from core.transactions_utils import get_transactions_table_api
+from services.corporate_actions import (
+    CorporateActionError,
+    execute_transfer,
+)
 from services.positions import position as _positions_position
 from services.realized import calculate_buy_in_price
 from services.transactions import create_notional_history
@@ -585,6 +589,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
         Creates a sale from the source account and a purchase in the destination account
         at the average cost basis (zero realized gain).
 
+        The business logic lives in
+        :func:`services.corporate_actions.execute_transfer`; this action is a
+        thin orchestrator that parses the request and shapes the response.
+
         :param request: The request object
         :return: A response object
         """
@@ -618,141 +626,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
             # Parse date
             transfer_date = datetime.strptime(transfer_date_str, "%Y-%m-%d").date()
 
-            # Get the security
-            try:
-                security = Assets.objects.get(id=security_id, investors=request.user)
-            except Assets.DoesNotExist:
-                return Response(
-                    {"error": f"Security with id {security_id} not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Get the accounts
-            try:
-                from_account = Accounts.objects.get(
-                    id=from_account_id, broker__investor=request.user
-                )
-                to_account = Accounts.objects.get(id=to_account_id, broker__investor=request.user)
-            except Accounts.DoesNotExist:
-                return Response(
-                    {"error": "One or both accounts not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Calculate the average buy-in price for the security in the from_account
-            buy_in_price = calculate_buy_in_price(
-                security,
-                date=transfer_date,
+            result = execute_transfer(
                 investor=request.user,
-                account_ids=[from_account_id],
+                security_id=security_id,
+                from_account_id=from_account_id,
+                to_account_id=to_account_id,
+                quantity=quantity,
+                transfer_date=transfer_date,
             )
+            return Response(result, status=status.HTTP_201_CREATED)
 
-            if buy_in_price is None:
-                return Response(
-                    {
-                        "error": (
-                            "Unable to calculate buy-in price. "
-                            "No prior transactions found for this security in the "
-                            "source account."
-                        ),
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Get the currency from the security
-            currency = security.currency
-
-            # Create comments
-            sale_comment = f"Transfer out to {to_account.name}"
-            buy_comment = f"Transfer in from {from_account.name}"
-            cash_comment = f"Phantom cash movement for asset transfer: {security.name}"
-
-            # Calculate transfer value
-            transfer_value = Decimal(quantity) * buy_in_price
-
-            # Create all transactions atomically
-            with transaction.atomic():
-                # 1. Sell transaction (from_account) - negative quantity
-                sale_transaction = Transactions.objects.create(
-                    investor=request.user,
-                    account=from_account,
-                    security=security,
-                    date=transfer_date,
-                    type="Sell",
-                    quantity=-Decimal(quantity),  # Negative for sell
-                    price=buy_in_price,
-                    currency=currency,
-                    cash_flow=None,  # Empty cash flow
-                    commission=None,  # Empty commission
-                    comment=sale_comment,
-                )
-
-                # 2. Buy transaction (to_account) - positive quantity
-                buy_transaction = Transactions.objects.create(
-                    investor=request.user,
-                    account=to_account,
-                    security=security,
-                    date=transfer_date,
-                    type="Buy",
-                    quantity=Decimal(quantity),  # Positive for buy
-                    price=buy_in_price,
-                    currency=currency,
-                    cash_flow=None,  # Empty cash flow
-                    commission=None,  # Empty commission
-                    comment=buy_comment,
-                )
-
-                # 3. Phantom cash-out transaction (from_account) -
-                # to balance the cash effect
-                cash_in_transaction = Transactions.objects.create(
-                    investor=request.user,
-                    account=from_account,
-                    security=None,
-                    date=transfer_date,
-                    type="Cash out",
-                    quantity=None,
-                    price=None,
-                    currency=currency,
-                    cash_flow=-transfer_value,  # Negative cash flow
-                    commission=None,
-                    comment=cash_comment,
-                )
-
-                # 4. Phantom cash-in transaction (to_account) -
-                # to balance the cash effect
-                cash_out_transaction = Transactions.objects.create(
-                    investor=request.user,
-                    account=to_account,
-                    security=None,
-                    date=transfer_date,
-                    type="Cash in",
-                    quantity=None,
-                    price=None,
-                    currency=currency,
-                    cash_flow=transfer_value,  # Positive cash flow
-                    commission=None,
-                    comment=cash_comment,
-                )
-
-            logger.info(
-                f"Asset transfer completed: {quantity} units of {security.name} "
-                f"from {from_account.name} to {to_account.name} at "
-                f"{buy_in_price} {currency}"
-            )
-
-            return Response(
-                {
-                    "message": "Asset transfer completed successfully",
-                    "sale_transaction_id": sale_transaction.id,
-                    "buy_transaction_id": buy_transaction.id,
-                    "cash_in_transaction_id": cash_in_transaction.id,
-                    "cash_out_transaction_id": cash_out_transaction.id,
-                    "transfer_price": float(buy_in_price),
-                    "transfer_value": float(transfer_value),
-                },
-                status=status.HTTP_201_CREATED,
-            )
-
+        except CorporateActionError as exc:
+            return Response({"error": exc.message}, status=exc.status_code)
         except Exception as e:
             logger.error(f"Error in transfer_asset: {str(e)}", exc_info=True)
             return Response(
