@@ -101,181 +101,155 @@
   </v-card>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { changePassword as apiChangePassword } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
-export default {
-  setup() {
-    const componentId = Date.now()
-    logger.log(
-      'Unknown',
-      `[ProfilePage][${componentId}] Component setup started`
-    )
+const componentId = Date.now()
+logger.log('Unknown', `[ProfilePage][${componentId}] Component setup started`)
 
-    const router = useRouter()
-    const authStore = useAuthStore()
+const router = useRouter()
+const authStore = useAuthStore()
 
-    // Get user data from store
-    const userInfo = computed(() => {
-      const user = authStore.user
-      console.log(
-        `[ProfilePage][${componentId}] Computing userInfo, user exists:`,
-        !!user
-      )
-      if (!user) return {}
-      return {
-        username: user.username,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name,
-      }
-    })
+// Get user data from store
+const userInfo = computed(() => {
+  const user = authStore.user
+  console.log(
+    `[ProfilePage][${componentId}] Computing userInfo, user exists:`,
+    !!user
+  )
+  if (!user) return {}
+  return {
+    username: user.username,
+    email: user.email,
+    first_name: user.first_name,
+    last_name: user.last_name,
+  }
+})
 
-    const formatLabel = (key) => {
-      return key
-        .split('_')
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ')
-    }
-
-    const changePasswordDialog = ref(false)
-    const passwordForm = reactive({
-      old_password: '',
-      new_password1: '',
-      new_password2: '',
-    })
-    const passwordErrors = reactive({
-      old_password: [],
-      new_password1: [],
-      new_password2: [],
-    })
-    const isLoading = ref(false)
-    const successDialog = ref(false)
-    const errorDialog = ref(false)
-    const successMessage = ref('')
-    const errorMessage = ref('')
-
-    const passwordMismatchError = computed(() => {
-      return passwordForm.new_password1 !== passwordForm.new_password2
-        ? ['Passwords do not match']
-        : []
-    })
-
-    const clearPasswordError = (field) => {
-      passwordErrors[field] = []
-      errorMessage.value = ''
-    }
-
-    const showSuccessMessage = (message) => {
-      successMessage.value = message
-      successDialog.value = true
-    }
-
-    // const showErrorMessage = (message) => {
-    //   errorMessage.value = message
-    //   errorDialog.value = true
-    // }
-
-    const setPasswordErrors = (newErrors) => {
-      if (typeof newErrors === 'string') {
-        errorMessage.value = newErrors
-      } else if (typeof newErrors === 'object') {
-        Object.keys(newErrors).forEach((field) => {
-          if (field in passwordErrors) {
-            passwordErrors[field] = Array.isArray(newErrors[field])
-              ? newErrors[field]
-              : [newErrors[field]]
-          } else {
-            errorMessage.value = newErrors[field]
-          }
-        })
-      }
-    }
-
-    const changePassword = async () => {
-      if (passwordForm.new_password1 !== passwordForm.new_password2) {
-        passwordErrors.new_password2 = ['Passwords do not match']
-        return
-      }
-
-      isLoading.value = true
-      try {
-        const response = await apiChangePassword(passwordForm)
-        if (response.success) {
-          changePasswordDialog.value = false
-          showSuccessMessage(
-            response.message || 'Password changed successfully'
-          )
-          Object.keys(passwordForm).forEach((key) => (passwordForm[key] = ''))
-        } else {
-          setPasswordErrors(response.error || 'Failed to change password')
-        }
-      } catch (error) {
-        logger.error('Unknown', 'Error changing password:', error)
-        if (error.error === 'Incorrect old password') {
-          passwordErrors.old_password = ['Incorrect current password']
-        } else {
-          setPasswordErrors(error.error || 'An unexpected error occurred')
-        }
-      } finally {
-        isLoading.value = false
-      }
-    }
-
-    const closeChangePasswordDialog = () => {
-      changePasswordDialog.value = false
-      Object.keys(passwordForm).forEach((key) => (passwordForm[key] = ''))
-      Object.keys(passwordErrors).forEach((key) => (passwordErrors[key] = []))
-    }
-
-    const fetchProfile = async () => {
-      if (!authStore.user) {
-        console.log(
-          `[ProfilePage][${componentId}] No user data, fetching profile...`
-        )
-        await authStore.fetchUserData()
-      } else {
-        console.log(
-          `[ProfilePage][${componentId}] User data exists, skipping fetch`
-        )
-      }
-    }
-
-    onMounted(() => {
-      logger.log('Unknown', `[ProfilePage][${componentId}] Component mounted`)
-      fetchProfile()
-    })
-
-    const editProfile = () => {
-      router.push('/profile/edit')
-    }
-
-    const showChangePasswordDialog = () => {
-      changePasswordDialog.value = true
-    }
-
-    return {
-      userInfo,
-      formatLabel,
-      changePasswordDialog,
-      passwordForm,
-      passwordErrors,
-      isLoading,
-      successDialog,
-      errorDialog,
-      successMessage,
-      errorMessage,
-      passwordMismatchError,
-      clearPasswordError,
-      changePassword,
-      closeChangePasswordDialog,
-      editProfile,
-      showChangePasswordDialog,
-    }
-  },
+const formatLabel = (key) => {
+  return key
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
+
+const changePasswordDialog = ref(false)
+const passwordForm = reactive({
+  old_password: '',
+  new_password1: '',
+  new_password2: '',
+})
+const passwordErrors = reactive({
+  old_password: [],
+  new_password1: [],
+  new_password2: [],
+})
+const isLoading = ref(false)
+const successDialog = ref(false)
+const errorDialog = ref(false)
+const successMessage = ref('')
+const errorMessage = ref('')
+
+const passwordMismatchError = computed(() => {
+  return passwordForm.new_password1 !== passwordForm.new_password2
+    ? ['Passwords do not match']
+    : []
+})
+
+const clearPasswordError = (field) => {
+  passwordErrors[field] = []
+  errorMessage.value = ''
+}
+
+const showSuccessMessage = (message) => {
+  successMessage.value = message
+  successDialog.value = true
+}
+
+// const showErrorMessage = (message) => {
+//   errorMessage.value = message
+//   errorDialog.value = true
+// }
+
+const setPasswordErrors = (newErrors) => {
+  if (typeof newErrors === 'string') {
+    errorMessage.value = newErrors
+  } else if (typeof newErrors === 'object') {
+    Object.keys(newErrors).forEach((field) => {
+      if (field in passwordErrors) {
+        passwordErrors[field] = Array.isArray(newErrors[field])
+          ? newErrors[field]
+          : [newErrors[field]]
+      } else {
+        errorMessage.value = newErrors[field]
+      }
+    })
+  }
+}
+
+const changePassword = async () => {
+  if (passwordForm.new_password1 !== passwordForm.new_password2) {
+    passwordErrors.new_password2 = ['Passwords do not match']
+    return
+  }
+
+  isLoading.value = true
+  try {
+    const response = await apiChangePassword(passwordForm)
+    if (response.success) {
+      changePasswordDialog.value = false
+      showSuccessMessage(
+        response.message || 'Password changed successfully'
+      )
+      Object.keys(passwordForm).forEach((key) => (passwordForm[key] = ''))
+    } else {
+      setPasswordErrors(response.error || 'Failed to change password')
+    }
+  } catch (error) {
+    logger.error('Unknown', 'Error changing password:', error)
+    if (error.error === 'Incorrect old password') {
+      passwordErrors.old_password = ['Incorrect current password']
+    } else {
+      setPasswordErrors(error.error || 'An unexpected error occurred')
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const closeChangePasswordDialog = () => {
+  changePasswordDialog.value = false
+  Object.keys(passwordForm).forEach((key) => (passwordForm[key] = ''))
+  Object.keys(passwordErrors).forEach((key) => (passwordErrors[key] = []))
+}
+
+const fetchProfile = async () => {
+  if (!authStore.user) {
+    console.log(
+      `[ProfilePage][${componentId}] No user data, fetching profile...`
+    )
+    await authStore.fetchUserData()
+  } else {
+    console.log(
+      `[ProfilePage][${componentId}] User data exists, skipping fetch`
+    )
+  }
+}
+
+const editProfile = () => {
+  router.push('/profile/edit')
+}
+
+const showChangePasswordDialog = () => {
+  changePasswordDialog.value = true
+}
+
+onMounted(() => {
+  logger.log('Unknown', `[ProfilePage][${componentId}] Component mounted`)
+  fetchProfile()
+})
 </script>

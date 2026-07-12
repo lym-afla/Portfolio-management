@@ -156,7 +156,7 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch, watchEffect, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import {
@@ -173,237 +173,199 @@ import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'FXPage',
-  components: { DateRangeSelector, FXDialog, FXImportDialog },
-  setup() {
-    const appStore = useAppStore()
+const appStore = useAppStore()
 
-    const dateRange = ref('ytd')
-    const {
-      dateFrom,
-      dateTo,
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      search,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-    } = useTableSettings()
+const dateRange = ref('ytd')
+const {
+  dateFrom,
+  dateTo,
+  itemsPerPage,
+  currentPage,
+  sortBy,
+  search,
+  handlePageChange,
+  handleItemsPerPageChange,
+  handleSortChange,
+} = useTableSettings()
 
-    const { handleApiError } = useErrorHandler()
+const { handleApiError } = useErrorHandler()
 
-    const loading = ref(true)
-    const tableLoading = ref(false)
-    const deleteLoading = ref(false)
-    const fxData = ref([])
-    const totalItems = ref(0)
-    const currencies = ref([])
+const loading = ref(true)
+const tableLoading = ref(false)
+const deleteLoading = ref(false)
+const fxData = ref([])
+const totalItems = ref(0)
+const currencies = ref([])
 
-    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
-    const effectiveCurrentDate = computed(
-      () => appStore.effectiveCurrentDate
-    )
+const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
+const pageCount = computed(() =>
+  Math.ceil(totalItems.value / itemsPerPage.value)
+)
+const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
-    const headers = computed(() => [
-      { title: 'Date', key: 'date', align: 'start', sortable: true },
-      ...currencies.value.map((currency) => ({
-        title: currency,
-        key: currency,
-        align: 'center',
-        sortable: true,
-      })),
-      { title: 'Actions', key: 'actions', align: 'end', sortable: false },
-    ])
+const headers = computed(() => [
+  { title: 'Date', key: 'date', align: 'start', sortable: true },
+  ...currencies.value.map((currency) => ({
+    title: currency,
+    key: currency,
+    align: 'center',
+    sortable: true,
+  })),
+  { title: 'Actions', key: 'actions', align: 'end', sortable: false },
+])
 
-    const fetchFXData = async () => {
-      if (!dateTo.value) return
+const fetchFXData = async () => {
+  if (!dateTo.value) return
 
-      console.log('Fetching FX data with:', {
-        startDate: dateFrom.value,
-        endDate: dateTo.value,
-        page: currentPage.value,
-        itemsPerPage: itemsPerPage.value,
-        sortBy: sortBy.value[0] || {},
-        search: search.value,
-      })
-      tableLoading.value = true
-      try {
-        const response = await getFXData({
-          startDate: dateFrom.value,
-          endDate: dateTo.value,
-          page: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          sortBy: sortBy.value[0] || {},
-          search: search.value,
-        })
-        logger.log('Unknown', 'FX data received:', response)
-        fxData.value = response.results
-        totalItems.value = response.count
-        currencies.value = response.currencies
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        tableLoading.value = false
-      }
-    }
-
-    const initializeDateRange = async () => {
-      logger.log('Unknown', 'Initializing date range')
-      logger.log('Unknown', 'effectiveCurrentDate:', effectiveCurrentDate.value)
-      logger.log('Unknown', 'dateRange:', dateRange.value)
-
-      if (!effectiveCurrentDate.value) {
-        try {
-          const fetchedDate = await getEffectiveCurrentDate()
-          appStore.setEffectiveCurrentDate(
-            fetchedDate.effective_current_date
-          )
-        } catch (error) {
-          logger.error(
-            'Unknown',
-            'Failed to fetch effective current date:',
-            error
-          )
-          return // Exit the function if we can't get the effective current date
-        }
-      }
-
-      if (effectiveCurrentDate.value) {
-        const { from, to } = calculateDateRange(
-          dateRange.value,
-          effectiveCurrentDate.value,
-          dateFrom.value,
-          dateTo.value
-        )
-        logger.log('Unknown', 'Calculated date range:', { from, to })
-
-        dateFrom.value = from
-        dateTo.value = to
-
-        console.log('Date range initialized:', {
-          dateFrom: dateFrom.value,
-          dateTo: dateTo.value,
-          dateRange: dateRange.value,
-          effectiveCurrentDate: effectiveCurrentDate.value,
-        })
-
-        // Trigger table update after initialization
-        await fetchFXData()
-      } else {
-        console.error(
-          'effectiveCurrentDate is still not set after attempting to fetch it'
-        )
-      }
-    }
-
-    const handleDateRangeChange = (newDateRange) => {
-      logger.log('Unknown', 'Date range changed:', newDateRange)
-      dateRange.value = newDateRange.dateRange
-      dateFrom.value = newDateRange.dateFrom
-      dateTo.value = newDateRange.dateTo
-      fetchFXData()
-    }
-
-    watchEffect(async () => {
-      if (effectiveCurrentDate.value) {
-        await initializeDateRange()
-        loading.value = false
-      }
+  console.log('Fetching FX data with:', {
+    startDate: dateFrom.value,
+    endDate: dateTo.value,
+    page: currentPage.value,
+    itemsPerPage: itemsPerPage.value,
+    sortBy: sortBy.value[0] || {},
+    search: search.value,
+  })
+  tableLoading.value = true
+  try {
+    const response = await getFXData({
+      startDate: dateFrom.value,
+      endDate: dateTo.value,
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      sortBy: sortBy.value[0] || {},
+      search: search.value,
     })
-
-    watch([loading, currentPage, itemsPerPage, sortBy, search], () => {
-      if (!loading.value && dateTo.value) {
-        fetchFXData()
-      }
-    })
-
-    onMounted(async () => {
-      logger.log('Unknown', 'Mounting FXPage')
-      if (!effectiveCurrentDate.value) {
-        await initializeDateRange()
-      }
-    })
-
-    const showFXDialog = ref(false)
-    const showImportDialog = ref(false)
-    const showDeleteDialog = ref(false)
-    const editedItem = ref(null)
-    const itemToDelete = ref(null)
-
-    const openAddFXDialog = () => {
-      editedItem.value = null
-      showFXDialog.value = true
-    }
-
-    const editItem = async (item) => {
-      logger.log('Unknown', 'Editing item:', item)
-      try {
-        const fxDetails = await getFXDetails(item.id)
-        editedItem.value = fxDetails
-        showFXDialog.value = true
-      } catch (error) {
-        handleApiError(error)
-      }
-    }
-
-    const deleteItem = async (item) => {
-      logger.log('Unknown', 'Deleting item:', item)
-      itemToDelete.value = item
-      showDeleteDialog.value = true
-    }
-
-    const confirmDelete = async () => {
-      deleteLoading.value = true
-      try {
-        await deleteFXRate(itemToDelete.value.id)
-        await fetchFXData()
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        showDeleteDialog.value = false
-        itemToDelete.value = null
-        deleteLoading.value = false
-      }
-    }
-
-    return {
-      loading,
-      tableLoading,
-      fxData,
-      totalItems,
-      currentPage,
-      itemsPerPage,
-      itemsPerPageOptions,
-      pageCount,
-      sortBy,
-      search,
-      headers,
-      currencies,
-      dateRangeForSelector: computed(() => ({
-        dateRange: dateRange.value,
-        dateFrom: dateFrom.value,
-        dateTo: dateTo.value,
-      })),
-      handleDateRangeChange,
-      handleItemsPerPageChange,
-      handlePageChange,
-      handleSortChange,
-      showFXDialog,
-      showImportDialog,
-      showDeleteDialog,
-      editedItem,
-      openAddFXDialog,
-      editItem,
-      deleteItem,
-      deleteLoading,
-      confirmDelete,
-      fetchFXData,
-    }
-  },
+    logger.log('Unknown', 'FX data received:', response)
+    fxData.value = response.results
+    totalItems.value = response.count
+    currencies.value = response.currencies
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    tableLoading.value = false
+  }
 }
+
+const initializeDateRange = async () => {
+  logger.log('Unknown', 'Initializing date range')
+  logger.log('Unknown', 'effectiveCurrentDate:', effectiveCurrentDate.value)
+  logger.log('Unknown', 'dateRange:', dateRange.value)
+
+  if (!effectiveCurrentDate.value) {
+    try {
+      const fetchedDate = await getEffectiveCurrentDate()
+      appStore.setEffectiveCurrentDate(fetchedDate.effective_current_date)
+    } catch (error) {
+      logger.error(
+        'Unknown',
+        'Failed to fetch effective current date:',
+        error
+      )
+      return // Exit the function if we can't get the effective current date
+    }
+  }
+
+  if (effectiveCurrentDate.value) {
+    const { from, to } = calculateDateRange(
+      dateRange.value,
+      effectiveCurrentDate.value,
+      dateFrom.value,
+      dateTo.value
+    )
+    logger.log('Unknown', 'Calculated date range:', { from, to })
+
+    dateFrom.value = from
+    dateTo.value = to
+
+    console.log('Date range initialized:', {
+      dateFrom: dateFrom.value,
+      dateTo: dateTo.value,
+      dateRange: dateRange.value,
+      effectiveCurrentDate: effectiveCurrentDate.value,
+    })
+
+    // Trigger table update after initialization
+    await fetchFXData()
+  } else {
+    console.error(
+      'effectiveCurrentDate is still not set after attempting to fetch it'
+    )
+  }
+}
+
+const handleDateRangeChange = (newDateRange) => {
+  logger.log('Unknown', 'Date range changed:', newDateRange)
+  dateRange.value = newDateRange.dateRange
+  dateFrom.value = newDateRange.dateFrom
+  dateTo.value = newDateRange.dateTo
+  fetchFXData()
+}
+
+watchEffect(async () => {
+  if (effectiveCurrentDate.value) {
+    await initializeDateRange()
+    loading.value = false
+  }
+})
+
+watch([loading, currentPage, itemsPerPage, sortBy, search], () => {
+  if (!loading.value && dateTo.value) {
+    fetchFXData()
+  }
+})
+
+onMounted(async () => {
+  logger.log('Unknown', 'Mounting FXPage')
+  if (!effectiveCurrentDate.value) {
+    await initializeDateRange()
+  }
+})
+
+const showFXDialog = ref(false)
+const showImportDialog = ref(false)
+const showDeleteDialog = ref(false)
+const editedItem = ref(null)
+const itemToDelete = ref(null)
+
+const openAddFXDialog = () => {
+  editedItem.value = null
+  showFXDialog.value = true
+}
+
+const editItem = async (item) => {
+  logger.log('Unknown', 'Editing item:', item)
+  try {
+    const fxDetails = await getFXDetails(item.id)
+    editedItem.value = fxDetails
+    showFXDialog.value = true
+  } catch (error) {
+    handleApiError(error)
+  }
+}
+
+const deleteItem = async (item) => {
+  logger.log('Unknown', 'Deleting item:', item)
+  itemToDelete.value = item
+  showDeleteDialog.value = true
+}
+
+const confirmDelete = async () => {
+  deleteLoading.value = true
+  try {
+    await deleteFXRate(itemToDelete.value.id)
+    await fetchFXData()
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    showDeleteDialog.value = false
+    itemToDelete.value = null
+    deleteLoading.value = false
+  }
+}
+
+const dateRangeForSelector = computed(() => ({
+  dateRange: dateRange.value,
+  dateFrom: dateFrom.value,
+  dateTo: dateTo.value,
+}))
 </script>

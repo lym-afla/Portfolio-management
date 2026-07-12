@@ -114,7 +114,7 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
@@ -128,222 +128,182 @@ import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'SecuritiesPage',
-  components: {
-    SecurityFormDialog,
-    MergerDialog,
-  },
-  setup() {
-    const appStore = useAppStore()
-    const {
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      search,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-    } = useTableSettings()
+const appStore = useAppStore()
+const {
+  itemsPerPage,
+  currentPage,
+  sortBy,
+  search,
+  handlePageChange,
+  handleItemsPerPageChange,
+  handleSortChange,
+} = useTableSettings()
 
-    const { handleApiError } = useErrorHandler()
+const { handleApiError } = useErrorHandler()
 
-    const securities = ref([])
-    const loading = ref(false)
-    const tableLoading = ref(false)
-    const dialog = ref(false)
-    const editedIndex = ref(-1)
-    const editedItem = ref({
-      name: '',
-      type: '',
-      ISIN: '',
-      currency: '',
-    })
-    const defaultItem = {
-      name: '',
-      type: '',
-      ISIN: '',
-      currency: '',
-    }
-
-    const headers = ref([
-      { title: 'Type', key: 'type', align: 'start', sortable: true },
-      { title: 'ISIN', key: 'ISIN', align: 'start', sortable: true },
-      { title: 'Name', key: 'name', align: 'start', sortable: true },
-      {
-        title: 'First Investment',
-        key: 'first_investment',
-        align: 'center',
-        sortable: true,
-      },
-      { title: 'Currency', key: 'currency', align: 'center', sortable: true },
-      {
-        title: 'Open Position',
-        key: 'open_position',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Current Value',
-        key: 'current_value',
-        align: 'center',
-        sortable: true,
-      },
-      { title: 'Realised', key: 'realized', align: 'center', sortable: true },
-      {
-        title: 'Unrealised',
-        key: 'unrealized',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Capital Distribution',
-        key: 'capital_distribution',
-        align: 'center',
-        sortable: true,
-      },
-      { title: 'IRR', key: 'irr', align: 'center', sortable: true },
-      { title: 'Actions', key: 'actions', align: 'center', sortable: false },
-    ])
-
-    const headerAlignments = computed(() => {
-      const alignments = {}
-      headers.value.forEach((header) => {
-        alignments[header.key] = header.align || 'start'
-      })
-      return alignments
-    })
-
-    const formTitle = computed(() => {
-      return editedIndex.value === -1 ? 'New Security' : 'Edit Security'
-    })
-
-    const totalItems = ref(0)
-    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
-
-    const fetchSecurities = async () => {
-      tableLoading.value = true
-      console.log(
-        'fetching securities',
-        currentPage.value,
-        itemsPerPage.value,
-        sortBy.value,
-        search.value
-      )
-      try {
-        const response = await getSecuritiesForDatabase({
-          page: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          sortBy: sortBy.value[0] || {},
-          search: search.value,
-        })
-        securities.value = response.securities
-        totalItems.value = response.total_items
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        tableLoading.value = false
-      }
-    }
-
-    const showSecurityDialog = ref(false)
-    const editingSecurity = ref(null)
-
-    const addSecurity = () => {
-      editingSecurity.value = null
-      showSecurityDialog.value = true
-    }
-
-    const editSecurity = async (item) => {
-      try {
-        const securityDetails = await getSecurityDetails(item.id)
-        editingSecurity.value = securityDetails
-        showSecurityDialog.value = true
-      } catch (error) {
-        handleApiError(error)
-      }
-    }
-
-    const handleSecurityAdded = (newSecurity) => {
-      logger.log('Unknown', 'newSecurity added:', newSecurity)
-      fetchSecurities()
-    }
-
-    const onMergerCreated = (mergerResult) => {
-      logger.log('Unknown', 'Merger created:', mergerResult)
-      fetchSecurities()
-    }
-
-    const handleSecurityUpdated = (updatedSecurity) => {
-      logger.log('Unknown', 'updatedSecurity:', updatedSecurity)
-      fetchSecurities()
-    }
-
-    const processDeleteSecurity = async (item) => {
-      const confirm = window.confirm(
-        'Are you sure you want to delete this security?'
-      )
-      if (confirm) {
-        try {
-          await deleteSecurity(item.id)
-          fetchSecurities()
-        } catch (error) {
-          handleApiError(error)
-        }
-      }
-    }
-
-    onMounted(() => {
-      fetchSecurities()
-    })
-
-    watch(
-      [
-        () => appStore.dataRefreshTrigger,
-        search,
-        itemsPerPage,
-        currentPage,
-        sortBy,
-      ],
-      () => {
-        fetchSecurities()
-      },
-      { deep: true }
-    )
-
-    return {
-      securities,
-      loading,
-      tableLoading,
-      dialog,
-      editedIndex,
-      editedItem,
-      defaultItem,
-      headers,
-      formTitle,
-      itemsPerPage,
-      currentPage,
-      totalItems,
-      sortBy,
-      search,
-      itemsPerPageOptions,
-      pageCount,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-      showSecurityDialog,
-      editingSecurity,
-      addSecurity,
-      editSecurity,
-      handleSecurityAdded,
-      onMergerCreated,
-      handleSecurityUpdated,
-      processDeleteSecurity,
-      headerAlignments,
-    }
-  },
+const securities = ref([])
+const loading = ref(false)
+const tableLoading = ref(false)
+const dialog = ref(false)
+const editedIndex = ref(-1)
+const editedItem = ref({
+  name: '',
+  type: '',
+  ISIN: '',
+  currency: '',
+})
+const defaultItem = {
+  name: '',
+  type: '',
+  ISIN: '',
+  currency: '',
 }
+
+const headers = ref([
+  { title: 'Type', key: 'type', align: 'start', sortable: true },
+  { title: 'ISIN', key: 'ISIN', align: 'start', sortable: true },
+  { title: 'Name', key: 'name', align: 'start', sortable: true },
+  {
+    title: 'First Investment',
+    key: 'first_investment',
+    align: 'center',
+    sortable: true,
+  },
+  { title: 'Currency', key: 'currency', align: 'center', sortable: true },
+  {
+    title: 'Open Position',
+    key: 'open_position',
+    align: 'center',
+    sortable: true,
+  },
+  {
+    title: 'Current Value',
+    key: 'current_value',
+    align: 'center',
+    sortable: true,
+  },
+  { title: 'Realised', key: 'realized', align: 'center', sortable: true },
+  {
+    title: 'Unrealised',
+    key: 'unrealized',
+    align: 'center',
+    sortable: true,
+  },
+  {
+    title: 'Capital Distribution',
+    key: 'capital_distribution',
+    align: 'center',
+    sortable: true,
+  },
+  { title: 'IRR', key: 'irr', align: 'center', sortable: true },
+  { title: 'Actions', key: 'actions', align: 'center', sortable: false },
+])
+
+const headerAlignments = computed(() => {
+  const alignments = {}
+  headers.value.forEach((header) => {
+    alignments[header.key] = header.align || 'start'
+  })
+  return alignments
+})
+
+const formTitle = computed(() => {
+  return editedIndex.value === -1 ? 'New Security' : 'Edit Security'
+})
+
+const totalItems = ref(0)
+const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
+const pageCount = computed(() =>
+  Math.ceil(totalItems.value / itemsPerPage.value)
+)
+
+const fetchSecurities = async () => {
+  tableLoading.value = true
+  console.log(
+    'fetching securities',
+    currentPage.value,
+    itemsPerPage.value,
+    sortBy.value,
+    search.value
+  )
+  try {
+    const response = await getSecuritiesForDatabase({
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      sortBy: sortBy.value[0] || {},
+      search: search.value,
+    })
+    securities.value = response.securities
+    totalItems.value = response.total_items
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    tableLoading.value = false
+  }
+}
+
+const showSecurityDialog = ref(false)
+const editingSecurity = ref(null)
+
+const addSecurity = () => {
+  editingSecurity.value = null
+  showSecurityDialog.value = true
+}
+
+const editSecurity = async (item) => {
+  try {
+    const securityDetails = await getSecurityDetails(item.id)
+    editingSecurity.value = securityDetails
+    showSecurityDialog.value = true
+  } catch (error) {
+    handleApiError(error)
+  }
+}
+
+const handleSecurityAdded = (newSecurity) => {
+  logger.log('Unknown', 'newSecurity added:', newSecurity)
+  fetchSecurities()
+}
+
+const onMergerCreated = (mergerResult) => {
+  logger.log('Unknown', 'Merger created:', mergerResult)
+  fetchSecurities()
+}
+
+const handleSecurityUpdated = (updatedSecurity) => {
+  logger.log('Unknown', 'updatedSecurity:', updatedSecurity)
+  fetchSecurities()
+}
+
+const processDeleteSecurity = async (item) => {
+  const confirm = window.confirm(
+    'Are you sure you want to delete this security?'
+  )
+  if (confirm) {
+    try {
+      await deleteSecurity(item.id)
+      fetchSecurities()
+    } catch (error) {
+      handleApiError(error)
+    }
+  }
+}
+
+onMounted(() => {
+  fetchSecurities()
+})
+
+watch(
+  [
+    () => appStore.dataRefreshTrigger,
+    search,
+    itemsPerPage,
+    currentPage,
+    sortBy,
+  ],
+  () => {
+    fetchSecurities()
+  },
+  { deep: true }
+)
 </script>

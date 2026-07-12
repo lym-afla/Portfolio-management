@@ -284,7 +284,7 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, watch, computed, onMounted, inject } from 'vue'
 import { useAppStore } from '@/stores/app'
 import {
@@ -312,480 +312,412 @@ import {
   differenceInDays,
 } from 'date-fns'
 
-export default {
-  name: 'PricesPage',
-  components: {
-    // LineChart,
-    // TimelineSelector,
-    PriceFormDialog,
-    SecurityFormDialog,
-    PriceImportDialog,
-  },
-  setup() {
-    const appStore = useAppStore()
-    const {
-      dateFrom,
-      dateTo,
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-      handleTimespanChange,
-    } = useTableSettings()
+const appStore = useAppStore()
+const {
+  dateFrom,
+  dateTo,
+  itemsPerPage,
+  currentPage,
+  sortBy,
+  handlePageChange,
+  handleItemsPerPageChange,
+  handleSortChange,
+  handleTimespanChange,
+} = useTableSettings()
 
-    const assetTypes = ref([])
-    const accounts = ref([])
-    const securities = ref([])
-    const selectedAssetTypes = ref([])
-    const selectedAccount = ref(null)
-    const selectedSecurities = ref([])
-    const priceData = ref([])
-    const loading = ref(false)
-    const tableLoading = ref(false)
-    const totalItems = ref(0)
-    const deleteDialog = ref(false)
-    const deletedItem = ref({})
-    const editingPrice = ref(null)
-    const showPriceDialog = ref(false)
-    const showSecurityDialog = ref(false)
-    const showImportDialog = ref(false)
-    const isDeleting = ref(false)
-    const showError = inject('showError')
+const assetTypes = ref([])
+const accounts = ref([])
+const securities = ref([])
+const selectedAssetTypes = ref([])
+const selectedAccount = ref(null)
+const selectedSecurities = ref([])
+const priceData = ref([])
+const loading = ref(false)
+const tableLoading = ref(false)
+const totalItems = ref(0)
+const deleteDialog = ref(false)
+const deletedItem = ref({})
+const editingPrice = ref(null)
+const showPriceDialog = ref(false)
+const showSecurityDialog = ref(false)
+const showImportDialog = ref(false)
+const isDeleting = ref(false)
+const showError = inject('showError')
 
-    const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
+const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
+const pageCount = computed(() =>
+  Math.ceil(totalItems.value / itemsPerPage.value)
+)
 
-    const headers = [
-      { title: 'Date', key: 'date' },
-      { title: 'Security', key: 'security__name', align: 'center' },
-      { title: 'Asset Type', key: 'security__type', align: 'center' },
-      { title: 'Currency', key: 'security__currency', align: 'center' },
-      { title: 'Price', key: 'price' },
-      { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
-    ]
+const headers = [
+  { title: 'Date', key: 'date' },
+  { title: 'Security', key: 'security__name', align: 'center' },
+  { title: 'Asset Type', key: 'security__type', align: 'center' },
+  { title: 'Currency', key: 'security__currency', align: 'center' },
+  { title: 'Price', key: 'price' },
+  { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
+]
 
-    const assetTypesAllSelected = computed(() => {
-      return selectedAssetTypes.value.length === assetTypes.value.length
-    })
+const assetTypesAllSelected = computed(() => {
+  return selectedAssetTypes.value.length === assetTypes.value.length
+})
 
-    const assetTypesIndeterminate = computed(() => {
-      return selectedAssetTypes.value.length > 0 && !assetTypesAllSelected.value
-    })
+const assetTypesIndeterminate = computed(() => {
+  return selectedAssetTypes.value.length > 0 && !assetTypesAllSelected.value
+})
 
-    const securitiesAllSelected = computed(() => {
-      return selectedSecurities.value.length === securities.value.length
-    })
+const securitiesAllSelected = computed(() => {
+  return selectedSecurities.value.length === securities.value.length
+})
 
-    const securitiesIndeterminate = computed(() => {
-      return selectedSecurities.value.length > 0 && !securitiesAllSelected.value
-    })
+const securitiesIndeterminate = computed(() => {
+  return selectedSecurities.value.length > 0 && !securitiesAllSelected.value
+})
 
-    const toggleSelectAllAssetTypes = () => {
-      if (assetTypesAllSelected.value) {
-        selectedAssetTypes.value = []
-      } else {
-        selectedAssetTypes.value = assetTypes.value.map((item) => item.value)
-      }
-    }
-
-    const toggleSelectAllSecurities = () => {
-      if (securitiesAllSelected.value) {
-        selectedSecurities.value = []
-      } else {
-        selectedSecurities.value = securities.value.map((item) => item.id)
-      }
-    }
-
-    onMounted(async () => {
-      try {
-        const [assetTypesData, accountsData, securitiesData] =
-          await Promise.all([getAssetTypes(), getAccounts(), getSecurities()])
-        logger.log('PricesPage', 'accountsData', accountsData)
-        logger.log('PricesPage', 'securitiesData', securitiesData)
-        logger.log('PricesPage', 'assetTypesData', assetTypesData)
-        assetTypes.value = assetTypesData
-        accounts.value = accountsData
-        securities.value = securitiesData
-
-        await handleTimespanChange('ytd')
-      } catch (error) {
-        logger.error('PricesPage', 'Error fetching initial data:', error)
-      }
-    })
-
-    const fetchSecurities = debounce(async () => {
-      try {
-        securities.value = await getSecurities(
-          selectedAssetTypes.value,
-          selectedAccount.value
-        )
-        // Reset securities if they are no longer in the list
-        selectedSecurities.value = selectedSecurities.value.filter((id) =>
-          securities.value.some((security) => security.id === id)
-        )
-        // Automatically select all securities if a account is selected
-        if (selectedAccount.value) {
-          selectedSecurities.value = securities.value.map((item) => item.id)
-        }
-      } catch (error) {
-        logger.error('PricesPage', 'Error fetching securities:', error)
-      }
-    }, 300) // 300ms debounce
-
-    watch([selectedAssetTypes, selectedAccount], () => {
-      fetchSecurities()
-    })
-
-    const fetchPriceData = async () => {
-      tableLoading.value = true
-      try {
-        const response = await getPrices({
-          assetTypes: selectedAssetTypes.value,
-          account: selectedAccount.value,
-          securities: selectedSecurities.value,
-          startDate: dateFrom.value,
-          endDate: dateTo.value,
-          page: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          sortBy: sortBy.value[0] || {},
-        })
-        logger.log('PricesPage', 'API Response:', response) // Log the response
-        priceData.value = response.prices
-        totalItems.value = response.total_items
-      } catch (error) {
-        logger.error('PricesPage', 'Error fetching price data:', error)
-      } finally {
-        tableLoading.value = false
-        isApplyingFilters.value = false
-      }
-    }
-
-    const isApplyingFilters = ref(false)
-
-    const applyFilters = () => {
-      isApplyingFilters.value = true
-      currentPage.value = 1
-      fetchPriceData()
-    }
-
-    const openImportDialog = () => {
-      showImportDialog.value = true
-    }
-
-    const handlePricesImported = (summary) => {
-      logger.log('PricesPage', 'Prices imported:', summary)
-      // Refresh your price data here
-      fetchPriceData()
-    }
-
-    const editPrice = async (item) => {
-      try {
-        const priceDetails = await getPriceDetails(item.id)
-        editingPrice.value = priceDetails
-        showPriceDialog.value = true
-      } catch (error) {
-        showError(`Failed to fetch price details: ${error.message}`)
-      }
-    }
-
-    const openDeleteDialog = (item) => {
-      deletedItem.value = item
-      deleteDialog.value = true
-    }
-
-    const closeDeleteDialog = () => {
-      if (!isDeleting.value) {
-        deleteDialog.value = false
-        deletedItem.value = {}
-      }
-    }
-
-    const confirmDelete = async () => {
-      isDeleting.value = true
-      try {
-        await deletePrice(deletedItem.value.id)
-        await fetchPriceData()
-      } catch (error) {
-        const errorMessage =
-          error.response?.data?.message || error.message || 'Unknown error'
-        showError(`Failed to delete price: ${errorMessage}`)
-      } finally {
-        isDeleting.value = false
-        closeDeleteDialog()
-      }
-    }
-
-    const handlePriceUpdated = () => {
-      fetchPriceData()
-    }
-
-    const openAddPriceDialog = () => {
-      editingPrice.value = null
-      showPriceDialog.value = true
-    }
-
-    const handlePriceAdded = (newPrice) => {
-      logger.log('PricesPage', 'New price added:', newPrice)
-      fetchPriceData()
-    }
-
-    const addSecurity = () => {
-      showSecurityDialog.value = true
-    }
-
-    watch(
-      [() => appStore.dataRefreshTrigger, itemsPerPage, currentPage, sortBy],
-      () => {
-        if (!isApplyingFilters.value) {
-          fetchPriceData()
-        }
-        isApplyingFilters.value = false
-      },
-      { deep: true }
-    )
-
-    const chartOptions = ref({})
-    const selectedPeriod = ref('1Y')
-    const chartOptionsLoaded = ref(false)
-
-    const effectiveCurrentDate = computed(
-      () => appStore.effectiveCurrentDate
-    )
-
-    const getStartDate = (period) => {
-      const currentDate = new Date(effectiveCurrentDate.value)
-      switch (period) {
-        case '7d':
-          return subDays(currentDate, 7)
-        case '1m':
-          return subMonths(currentDate, 1)
-        case '3m':
-          return subMonths(currentDate, 3)
-        case '6m':
-          return subMonths(currentDate, 6)
-        case '1Y':
-          return subYears(currentDate, 1)
-        case '3Y':
-          return subYears(currentDate, 3)
-        case '5Y':
-          return subYears(currentDate, 5)
-        case 'All':
-          return null
-        default:
-          if (period.startsWith('YTD-')) {
-            return startOfYear(currentDate)
-          }
-          return subYears(currentDate, 1) // Default to 1Y
-      }
-    }
-
-    const filteredPriceData = computed(() => {
-      const startDate = getStartDate(selectedPeriod.value)
-      if (!startDate) return priceData.value
-      return priceData.value.filter((item) => new Date(item.date) >= startDate)
-    })
-
-    const getLastAvailableDataPoint = (data, targetDate) => {
-      const sortedData = [...data].sort(
-        (a, b) => new Date(b.date) - new Date(a.date)
-      )
-      return (
-        sortedData.find(
-          (item) => new Date(item.date) <= new Date(targetDate)
-        ) || sortedData[0]
-      )
-    }
-
-    const chartData = computed(() => {
-      const groupedData = filteredPriceData.value.reduce((acc, item) => {
-        if (!acc[item.security__name]) {
-          acc[item.security__name] = []
-        }
-        acc[item.security__name].push({ x: new Date(item.date), y: item.price })
-        return acc
-      }, {})
-
-      return {
-        datasets: Object.entries(groupedData).map(
-          ([securityName, data], index) => {
-            if (effectiveCurrentDate.value) {
-              const lastDataPoint = getLastAvailableDataPoint(
-                data,
-                effectiveCurrentDate.value
-              )
-              if (lastDataPoint) {
-                data.push({
-                  x: new Date(effectiveCurrentDate.value),
-                  y: lastDataPoint.y,
-                })
-              }
-            }
-            return {
-              label: securityName,
-              data: data,
-              borderColor:
-                chartOptions.value?.colorPalette?.[
-                  index % (chartOptions.value?.colorPalette?.length || 1)
-                ] || 'rgba(75, 192, 192, 1)',
-              tension: 0.1,
-            }
-          }
-        ),
-      }
-    })
-
-    const getTimeConfig = (period) => {
-      const currentDate = new Date(effectiveCurrentDate.value)
-      const startDate = getStartDate(period)
-      const daysDiff = differenceInDays(currentDate, startDate)
-
-      if (daysDiff <= 14) {
-        return { unit: 'day', stepSize: 1 }
-      } else if (daysDiff <= 31) {
-        return { unit: 'day', stepSize: 2 }
-      } else if (daysDiff <= 90) {
-        return { unit: 'week', stepSize: 1 }
-      } else if (daysDiff <= 180) {
-        return { unit: 'month', stepSize: 1 }
-      } else if (daysDiff <= 365) {
-        return { unit: 'month', stepSize: 2 }
-      } else if (daysDiff <= 365 * 2) {
-        return { unit: 'quarter', stepSize: 1 }
-      } else {
-        return { unit: 'year', stepSize: 1 }
-      }
-    }
-
-    const updateChartOptions = async () => {
-      const baseOptions = await getChartOptions('Price')
-      const timeConfig = getTimeConfig(selectedPeriod.value)
-
-      chartOptions.value = {
-        ...baseOptions.navChartOptions,
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: {
-            type: 'time',
-            time: {
-              unit: timeConfig.unit,
-              stepSize: timeConfig.stepSize,
-              displayFormats: {
-                day: 'd MMM',
-                week: 'd MMM',
-                month: 'MMM yyyy',
-                quarter: 'QQQ yyyy',
-                year: 'yyyy',
-              },
-            },
-            grid: {
-              display: false,
-            },
-            title: {
-              display: false,
-            },
-            max: effectiveCurrentDate.value,
-          },
-          y: {
-            beginAtZero: false,
-            grid: {
-              display: true,
-            },
-            title: {
-              display: true,
-              text: 'Price',
-            },
-          },
-        },
-        plugins: {
-          legend: {
-            display: true,
-          },
-          tooltip: {
-            callbacks: {
-              title: function (context) {
-                return new Date(context[0].parsed.x).toLocaleDateString(
-                  'en-US',
-                  { year: 'numeric', month: 'short', day: 'numeric' }
-                )
-              },
-            },
-          },
-          datalabels: {
-            display: false,
-          },
-        },
-      }
-      chartOptionsLoaded.value = true
-    }
-
-    watch(selectedPeriod, updateChartOptions)
-
-    onMounted(async () => {
-      if (!effectiveCurrentDate.value) {
-        await appStore.fetchEffectiveCurrentDate()
-      }
-      await applyFilters()
-    })
-
-    return {
-      assetTypes,
-      accounts,
-      securities,
-      selectedAssetTypes,
-      selectedAccount,
-      selectedSecurities,
-      dateFrom,
-      dateTo,
-      applyFilters,
-      headers,
-      priceData,
-      loading,
-      tableLoading,
-      totalItems,
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      deleteDialog,
-      deletedItem,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-      fetchPriceData,
-      editPrice,
-      openDeleteDialog,
-      closeDeleteDialog,
-      confirmDelete,
-      assetTypesAllSelected,
-      assetTypesIndeterminate,
-      securitiesAllSelected,
-      securitiesIndeterminate,
-      toggleSelectAllAssetTypes,
-      toggleSelectAllSecurities,
-      fetchSecurities,
-      itemsPerPageOptions,
-      pageCount,
-      editingPrice,
-      handlePriceUpdated,
-      showPriceDialog,
-      openAddPriceDialog,
-      handlePriceAdded,
-      isDeleting,
-      addSecurity,
-      showSecurityDialog,
-      showImportDialog,
-      openImportDialog,
-      handlePricesImported,
-      chartData,
-      chartOptions,
-      selectedPeriod,
-      effectiveCurrentDate,
-      chartOptionsLoaded,
-    }
-  },
+const toggleSelectAllAssetTypes = () => {
+  if (assetTypesAllSelected.value) {
+    selectedAssetTypes.value = []
+  } else {
+    selectedAssetTypes.value = assetTypes.value.map((item) => item.value)
+  }
 }
+
+const toggleSelectAllSecurities = () => {
+  if (securitiesAllSelected.value) {
+    selectedSecurities.value = []
+  } else {
+    selectedSecurities.value = securities.value.map((item) => item.id)
+  }
+}
+
+const fetchSecurities = debounce(async () => {
+  try {
+    securities.value = await getSecurities(
+      selectedAssetTypes.value,
+      selectedAccount.value
+    )
+    // Reset securities if they are no longer in the list
+    selectedSecurities.value = selectedSecurities.value.filter((id) =>
+      securities.value.some((security) => security.id === id)
+    )
+    // Automatically select all securities if a account is selected
+    if (selectedAccount.value) {
+      selectedSecurities.value = securities.value.map((item) => item.id)
+    }
+  } catch (error) {
+    logger.error('PricesPage', 'Error fetching securities:', error)
+  }
+}, 300) // 300ms debounce
+
+watch([selectedAssetTypes, selectedAccount], () => {
+  fetchSecurities()
+})
+
+const isApplyingFilters = ref(false)
+
+const fetchPriceData = async () => {
+  tableLoading.value = true
+  try {
+    const response = await getPrices({
+      assetTypes: selectedAssetTypes.value,
+      account: selectedAccount.value,
+      securities: selectedSecurities.value,
+      startDate: dateFrom.value,
+      endDate: dateTo.value,
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      sortBy: sortBy.value[0] || {},
+    })
+    logger.log('PricesPage', 'API Response:', response) // Log the response
+    priceData.value = response.prices
+    totalItems.value = response.total_items
+  } catch (error) {
+    logger.error('PricesPage', 'Error fetching price data:', error)
+  } finally {
+    tableLoading.value = false
+    isApplyingFilters.value = false
+  }
+}
+
+const applyFilters = () => {
+  isApplyingFilters.value = true
+  currentPage.value = 1
+  fetchPriceData()
+}
+
+const openImportDialog = () => {
+  showImportDialog.value = true
+}
+
+const handlePricesImported = (summary) => {
+  logger.log('PricesPage', 'Prices imported:', summary)
+  // Refresh your price data here
+  fetchPriceData()
+}
+
+const editPrice = async (item) => {
+  try {
+    const priceDetails = await getPriceDetails(item.id)
+    editingPrice.value = priceDetails
+    showPriceDialog.value = true
+  } catch (error) {
+    showError(`Failed to fetch price details: ${error.message}`)
+  }
+}
+
+const openDeleteDialog = (item) => {
+  deletedItem.value = item
+  deleteDialog.value = true
+}
+
+const closeDeleteDialog = () => {
+  if (!isDeleting.value) {
+    deleteDialog.value = false
+    deletedItem.value = {}
+  }
+}
+
+const confirmDelete = async () => {
+  isDeleting.value = true
+  try {
+    await deletePrice(deletedItem.value.id)
+    await fetchPriceData()
+  } catch (error) {
+    const errorMessage =
+      error.response?.data?.message || error.message || 'Unknown error'
+    showError(`Failed to delete price: ${errorMessage}`)
+  } finally {
+    isDeleting.value = false
+    closeDeleteDialog()
+  }
+}
+
+const handlePriceUpdated = () => {
+  fetchPriceData()
+}
+
+const openAddPriceDialog = () => {
+  editingPrice.value = null
+  showPriceDialog.value = true
+}
+
+const handlePriceAdded = (newPrice) => {
+  logger.log('PricesPage', 'New price added:', newPrice)
+  fetchPriceData()
+}
+
+const addSecurity = () => {
+  showSecurityDialog.value = true
+}
+
+watch(
+  [() => appStore.dataRefreshTrigger, itemsPerPage, currentPage, sortBy],
+  () => {
+    if (!isApplyingFilters.value) {
+      fetchPriceData()
+    }
+    isApplyingFilters.value = false
+  },
+  { deep: true }
+)
+
+const chartOptions = ref({})
+const selectedPeriod = ref('1Y')
+const chartOptionsLoaded = ref(false)
+
+const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
+
+const getStartDate = (period) => {
+  const currentDate = new Date(effectiveCurrentDate.value)
+  switch (period) {
+    case '7d':
+      return subDays(currentDate, 7)
+    case '1m':
+      return subMonths(currentDate, 1)
+    case '3m':
+      return subMonths(currentDate, 3)
+    case '6m':
+      return subMonths(currentDate, 6)
+    case '1Y':
+      return subYears(currentDate, 1)
+    case '3Y':
+      return subYears(currentDate, 3)
+    case '5Y':
+      return subYears(currentDate, 5)
+    case 'All':
+      return null
+    default:
+      if (period.startsWith('YTD-')) {
+        return startOfYear(currentDate)
+      }
+      return subYears(currentDate, 1) // Default to 1Y
+  }
+}
+
+const filteredPriceData = computed(() => {
+  const startDate = getStartDate(selectedPeriod.value)
+  if (!startDate) return priceData.value
+  return priceData.value.filter((item) => new Date(item.date) >= startDate)
+})
+
+const getLastAvailableDataPoint = (data, targetDate) => {
+  const sortedData = [...data].sort(
+    (a, b) => new Date(b.date) - new Date(a.date)
+  )
+  return (
+    sortedData.find(
+      (item) => new Date(item.date) <= new Date(targetDate)
+    ) || sortedData[0]
+  )
+}
+
+const chartData = computed(() => {
+  const groupedData = filteredPriceData.value.reduce((acc, item) => {
+    if (!acc[item.security__name]) {
+      acc[item.security__name] = []
+    }
+    acc[item.security__name].push({ x: new Date(item.date), y: item.price })
+    return acc
+  }, {})
+
+  return {
+    datasets: Object.entries(groupedData).map(
+      ([securityName, data], index) => {
+        if (effectiveCurrentDate.value) {
+          const lastDataPoint = getLastAvailableDataPoint(
+            data,
+            effectiveCurrentDate.value
+          )
+          if (lastDataPoint) {
+            data.push({
+              x: new Date(effectiveCurrentDate.value),
+              y: lastDataPoint.y,
+            })
+          }
+        }
+        return {
+          label: securityName,
+          data: data,
+          borderColor:
+            chartOptions.value?.colorPalette?.[
+              index % (chartOptions.value?.colorPalette?.length || 1)
+            ] || 'rgba(75, 192, 192, 1)',
+          tension: 0.1,
+        }
+      }
+    ),
+  }
+})
+
+const getTimeConfig = (period) => {
+  const currentDate = new Date(effectiveCurrentDate.value)
+  const startDate = getStartDate(period)
+  const daysDiff = differenceInDays(currentDate, startDate)
+
+  if (daysDiff <= 14) {
+    return { unit: 'day', stepSize: 1 }
+  } else if (daysDiff <= 31) {
+    return { unit: 'day', stepSize: 2 }
+  } else if (daysDiff <= 90) {
+    return { unit: 'week', stepSize: 1 }
+  } else if (daysDiff <= 180) {
+    return { unit: 'month', stepSize: 1 }
+  } else if (daysDiff <= 365) {
+    return { unit: 'month', stepSize: 2 }
+  } else if (daysDiff <= 365 * 2) {
+    return { unit: 'quarter', stepSize: 1 }
+  } else {
+    return { unit: 'year', stepSize: 1 }
+  }
+}
+
+const updateChartOptions = async () => {
+  const baseOptions = await getChartOptions('Price')
+  const timeConfig = getTimeConfig(selectedPeriod.value)
+
+  chartOptions.value = {
+    ...baseOptions.navChartOptions,
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          unit: timeConfig.unit,
+          stepSize: timeConfig.stepSize,
+          displayFormats: {
+            day: 'd MMM',
+            week: 'd MMM',
+            month: 'MMM yyyy',
+            quarter: 'QQQ yyyy',
+            year: 'yyyy',
+          },
+        },
+        grid: {
+          display: false,
+        },
+        title: {
+          display: false,
+        },
+        max: effectiveCurrentDate.value,
+      },
+      y: {
+        beginAtZero: false,
+        grid: {
+          display: true,
+        },
+        title: {
+          display: true,
+          text: 'Price',
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        display: true,
+      },
+      tooltip: {
+        callbacks: {
+          title: function (context) {
+            return new Date(context[0].parsed.x).toLocaleDateString(
+              'en-US',
+              { year: 'numeric', month: 'short', day: 'numeric' }
+            )
+          },
+        },
+      },
+      datalabels: {
+        display: false,
+      },
+    },
+  }
+  chartOptionsLoaded.value = true
+}
+
+watch(selectedPeriod, updateChartOptions)
+
+onMounted(async () => {
+  try {
+    const [assetTypesData, accountsData, securitiesData] = await Promise.all([
+      getAssetTypes(),
+      getAccounts(),
+      getSecurities(),
+    ])
+    logger.log('PricesPage', 'accountsData', accountsData)
+    logger.log('PricesPage', 'securitiesData', securitiesData)
+    logger.log('PricesPage', 'assetTypesData', assetTypesData)
+    assetTypes.value = assetTypesData
+    accounts.value = accountsData
+    securities.value = securitiesData
+
+    await handleTimespanChange('ytd')
+  } catch (error) {
+    logger.error('PricesPage', 'Error fetching initial data:', error)
+  }
+
+  if (!effectiveCurrentDate.value) {
+    await appStore.fetchEffectiveCurrentDate()
+  }
+  await applyFilters()
+})
 </script>

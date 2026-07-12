@@ -24,7 +24,7 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 // import axios from 'axios'
@@ -32,56 +32,46 @@ import { useAuthStore } from '@/stores/auth'
 import LoginForm from '@/components/LoginForm.vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'LoginPage',
-  components: {
-    LoginForm,
-  },
-  setup() {
-    const loading = ref(false)
-    const router = useRouter()
-    const loginForm = ref(null)
-    const authStore = useAuthStore()
+const loading = ref(false)
+const router = useRouter()
+const loginForm = ref(null)
+const authStore = useAuthStore()
 
-    const handleLogin = async (credentials) => {
-      logger.log('Unknown', 'Handling login with credentials:', credentials)
-      loading.value = true
+const handleLogin = async (credentials) => {
+  logger.log('Unknown', 'Handling login with credentials:', credentials)
+  loading.value = true
 
-      try {
-        const result = await authStore.login(credentials)
-        console.log(
-          '[LoginPage.vue] Token set in the store:',
-          authStore.accessToken
-        )
-        console.log(
-          '[LoginPage.vue] Token from localStorage:',
-          localStorage.getItem('accessToken')
-        )
-        if (result.success) {
-          logger.log('Unknown', 'Login successful from LoginPage.vue')
-          router.push('/profile')
-        }
-      } catch (error) {
-        logger.log('Unknown', 'Login failed from LoginPage.vue', error)
-        if (error.non_field_errors) {
-          logger.log('Unknown', 'Non-field errors:', error.non_field_errors)
-          loginForm.value.setErrors(error.non_field_errors[0])
-        } else if (error) {
-          logger.log('Unknown', 'Field errors:', error)
-          loginForm.value.setErrors(error)
-        } else {
-          logger.log('Unknown', 'Unknown error')
-          loginForm.value.setErrors(
-            'An unknown error occurred. Please try again.'
-          )
-        }
-      } finally {
-        loading.value = false
-      }
+  try {
+    const result = await authStore.login(credentials)
+    console.log(
+      '[LoginPage.vue] Token set in the store:',
+      authStore.accessToken
+    )
+    console.log(
+      '[LoginPage.vue] Token from localStorage:',
+      localStorage.getItem('accessToken')
+    )
+    if (result.success) {
+      logger.log('Unknown', 'Login successful from LoginPage.vue')
+      router.push('/profile')
     }
-
-    return { loading, handleLogin, loginForm }
-  },
+  } catch (error) {
+    logger.log('Unknown', 'Login failed from LoginPage.vue', error)
+    if (error.non_field_errors) {
+      logger.log('Unknown', 'Non-field errors:', error.non_field_errors)
+      loginForm.value.setErrors(error.non_field_errors[0])
+    } else if (error) {
+      logger.log('Unknown', 'Field errors:', error)
+      loginForm.value.setErrors(error)
+    } else {
+      logger.log('Unknown', 'Unknown error')
+      loginForm.value.setErrors(
+        'An unknown error occurred. Please try again.'
+      )
+    }
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

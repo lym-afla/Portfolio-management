@@ -74,98 +74,86 @@
   </v-container>
 </template>
 
-<script>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+<script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 // import store from '@/store'
 import { deleteUserAccount, logout } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  setup() {
-    const router = useRouter()
-    const authStore = useAuthStore()
-    const showDeleteConfirmation = ref(false)
-    const confirmationText = ref('')
-    const isLoading = ref(false)
+const emit = defineEmits(['update-page-title'])
 
-    const handleLogout = async () => {
-      isLoading.value = true
-      try {
-        await logout()
-        authStore.clearTokens()
-        router.push('/login')
-      } catch (error) {
-        logger.error('Unknown', 'Error logging out:', error)
-      } finally {
-        isLoading.value = false
-      }
-    }
+const router = useRouter()
+const route = useRoute()
+const authStore = useAuthStore()
+const showDeleteConfirmation = ref(false)
+const confirmationText = ref('')
+const isLoading = ref(false)
 
-    const processDeleteAccount = async () => {
-      if (confirmationText.value !== 'DELETE') {
-        return
-      }
-      isLoading.value = true
-      try {
-        await deleteUserAccount()
-        // Clear authentication state
-        authStore.clearTokens()
-        // Redirect to register page
-        router.push('/register')
-      } catch (error) {
-        logger.error('Unknown', 'Error deleting account:', error)
-        // Handle error (e.g., show error message to user)
-      } finally {
-        isLoading.value = false
-        showDeleteConfirmation.value = false
-        confirmationText.value = ''
-      }
-    }
+const menuItems = [
+  { title: 'User details', to: '/profile' },
+  { title: 'Settings', to: '/profile/settings' },
+]
 
-    return {
-      router,
-      showDeleteConfirmation,
-      confirmationText,
-      isLoading,
-      processDeleteAccount,
-      handleLogout,
-    }
-  },
-  data() {
-    return {
-      menuItems: [
-        { title: 'User details', to: '/profile' },
-        { title: 'Settings', to: '/profile/settings' },
-      ],
-    }
-  },
-  methods: {
-    // async logout() {
-    //   try {
-    //     await store.dispatch('logout')
-    //     // if (response.success) {
-    //     //   this.$emit('update-page-title', '') // Clear the page title
-    //     //   this.router.push('/login')
-    //     // } else {
-    //     //   logger.error('Unknown', 'Logout failed:', response.error)
-    //     // }
-    //   } catch (error) {
-    //     logger.error('Unknown', 'Logout error:', error)
-    //   }
-    // },
-    isActive(route) {
-      return this.$route.path === route
-    },
-  },
-  mounted() {
-    this.$emit('update-page-title', 'User Profile')
-  },
-  beforeUnmount() {
-    this.$emit('update-page-title', '') // Clear the page title when component is unmounted
-  },
+// async logout() {
+//   try {
+//     await store.dispatch('logout')
+//     // if (response.success) {
+//     //   this.$emit('update-page-title', '') // Clear the page title
+//     //   this.router.push('/login')
+//     // } else {
+//     //   logger.error('Unknown', 'Logout failed:', response.error)
+//     // }
+//   } catch (error) {
+//     logger.error('Unknown', 'Logout error:', error)
+//   }
+// }
+const isActive = (routePath) => {
+  return route.path === routePath
 }
+
+const handleLogout = async () => {
+  isLoading.value = true
+  try {
+    await logout()
+    authStore.clearTokens()
+    router.push('/login')
+  } catch (error) {
+    logger.error('Unknown', 'Error logging out:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const processDeleteAccount = async () => {
+  if (confirmationText.value !== 'DELETE') {
+    return
+  }
+  isLoading.value = true
+  try {
+    await deleteUserAccount()
+    // Clear authentication state
+    authStore.clearTokens()
+    // Redirect to register page
+    router.push('/register')
+  } catch (error) {
+    logger.error('Unknown', 'Error deleting account:', error)
+    // Handle error (e.g., show error message to user)
+  } finally {
+    isLoading.value = false
+    showDeleteConfirmation.value = false
+    confirmationText.value = ''
+  }
+}
+
+onMounted(() => {
+  emit('update-page-title', 'User Profile')
+})
+
+onBeforeUnmount(() => {
+  emit('update-page-title', '') // Clear the page title when component is unmounted
+})
 </script>
 
 <style scoped>

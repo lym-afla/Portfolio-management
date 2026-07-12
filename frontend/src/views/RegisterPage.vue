@@ -41,80 +41,65 @@
   </v-container>
 </template>
 
-<script>
-import { ref, onBeforeUnmount } from 'vue'
+<script setup>
+import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { register } from '@/services/api'
 import RegisterForm from '@/components/RegisterForm.vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'RegisterPage',
-  components: {
-    RegisterForm,
-  },
-  setup() {
-    const loading = ref(false)
-    const successMessage = ref('')
-    const showSuccessDialog = ref(false)
-    const router = useRouter()
-    const registerForm = ref(null)
-    const errors = ref({})
+const emit = defineEmits(['update-page-title'])
 
-    const handleRegister = async (credentials) => {
-      logger.log(
-        'Unknown',
-        'Handling registration with credentials:',
-        credentials
-      )
-      loading.value = true
-      errors.value = {}
+const loading = ref(false)
+const successMessage = ref('')
+const showSuccessDialog = ref(false)
+const router = useRouter()
+const registerForm = ref(null)
+const errors = ref({})
 
-      try {
-        const response = await register(
-          credentials.username,
-          credentials.email,
-          credentials.password,
-          credentials.password2
-        )
-        successMessage.value =
-          response.message ||
-          'Registration successful. You can now log in to your account.'
-        showSuccessDialog.value = true
-      } catch (err) {
-        logger.error('Unknown', '[RegisterPage] Registration error:', err)
-        if (typeof err === 'object' && err !== null) {
-          errors.value = err
-        } else {
-          errors.value = { general: [err.toString()] }
-        }
-      } finally {
-        loading.value = false
-      }
+const handleRegister = async (credentials) => {
+  logger.log(
+    'Unknown',
+    'Handling registration with credentials:',
+    credentials
+  )
+  loading.value = true
+  errors.value = {}
+
+  try {
+    const response = await register(
+      credentials.username,
+      credentials.email,
+      credentials.password,
+      credentials.password2
+    )
+    successMessage.value =
+      response.message ||
+      'Registration successful. You can now log in to your account.'
+    showSuccessDialog.value = true
+  } catch (err) {
+    logger.error('Unknown', '[RegisterPage] Registration error:', err)
+    if (typeof err === 'object' && err !== null) {
+      errors.value = err
+    } else {
+      errors.value = { general: [err.toString()] }
     }
-
-    const redirectToLogin = () => {
-      router.push('/login')
-    }
-
-    onBeforeUnmount(() => {
-      errors.value = {}
-    })
-
-    return {
-      loading,
-      handleRegister,
-      registerForm,
-      successMessage,
-      showSuccessDialog,
-      redirectToLogin,
-      errors,
-    }
-  },
-  mounted() {
-    this.$emit('update-page-title', '') // Clear the page title for register page
-  },
+  } finally {
+    loading.value = false
+  }
 }
+
+const redirectToLogin = () => {
+  router.push('/login')
+}
+
+onBeforeUnmount(() => {
+  errors.value = {}
+})
+
+onMounted(() => {
+  emit('update-page-title', '') // Clear the page title for register page
+})
 </script>
 
 <style scoped>
