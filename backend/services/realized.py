@@ -61,6 +61,14 @@ from services.positions import (
     position as _positions_position,
 )
 from services.pricing import price_at_date as _pricing_price_at_date
+from services.transactions import (
+    get_price as _transactions_get_price,
+    is_disposal_transaction as _transactions_is_disposal_transaction,
+    is_neutral_transfer_transaction as _transactions_is_neutral_transfer_transaction,
+    is_paid_entry_transaction as _transactions_is_paid_entry_transaction,
+    is_reward_transaction as _transactions_is_reward_transaction,
+    reward_value as _transactions_reward_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -431,14 +439,14 @@ def get_economic_basis(
             quantity = transaction.quantity or Decimal(0)
             fx_rate = transaction_fx_rate(transaction, target)
 
-            if transaction.is_paid_entry_transaction():
+            if _transactions_is_paid_entry_transaction(transaction):
                 if transaction.price is not None:
                     basis += quantity * transaction.price * fx_rate
                 position += quantity
-            elif transaction.is_reward_transaction():
-                basis += transaction.reward_value() * fx_rate
+            elif _transactions_is_reward_transaction(transaction):
+                basis += _transactions_reward_value(transaction) * fx_rate
                 position += quantity
-            elif transaction.is_disposal_transaction():
+            elif _transactions_is_disposal_transaction(transaction):
                 disposed_quantity = min(abs(quantity), position) if position > 0 else Decimal(0)
                 basis -= average_basis * disposed_quantity
                 position += quantity
@@ -653,7 +661,7 @@ def realized_gain_loss(
             logger.debug(
                 f"Transaction: {transaction.date}, {transaction.type}, "
                 f"Quantity: {transaction.quantity}, "
-                f"Price: {transaction.get_price()}"
+                f"Price: {_transactions_get_price(transaction)}"
             )
 
             # Check if this is a bond redemption transaction
@@ -741,21 +749,21 @@ def realized_gain_loss(
                 logger.debug(f"Position after redemption: {position}")
                 continue
 
-            if transaction.is_neutral_transfer_transaction():
+            if _transactions_is_neutral_transfer_transaction(transaction):
                 position += transaction.quantity
                 logger.debug(f"Position after neutral transfer: {position}")
                 continue
 
-            is_position_reducing = (position > 0 and transaction.is_disposal_transaction()) or (
-                position < 0 and transaction.is_paid_entry_transaction()
-            )
+            is_position_reducing = (
+                position > 0 and _transactions_is_disposal_transaction(transaction)
+            ) or (position < 0 and _transactions_is_paid_entry_transaction(transaction))
 
             # Determine the quantity that is actually closing the position
             # vs opening a new position in the opposite direction
-            if position > 0 and transaction.is_disposal_transaction():
+            if position > 0 and _transactions_is_disposal_transaction(transaction):
                 # Closing long: portion that closes is min(abs(tx.quantity), position)
                 closing_quantity = -min(abs(transaction.quantity), position)
-            elif position < 0 and transaction.is_paid_entry_transaction():
+            elif position < 0 and _transactions_is_paid_entry_transaction(transaction):
                 # Closing short: portion that closes is min(tx.quantity, abs(position))
                 closing_quantity = min(transaction.quantity, abs(position))
             else:

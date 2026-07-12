@@ -28,6 +28,11 @@ from constants import (
 )
 from core.formatting_utils import format_bond_price, format_value
 from core.user_utils import prepare_account_choices
+from services.transactions import (
+    get_cash_flow_by_currency,
+    get_price,
+    total_cash_flow,
+)
 
 
 class PriceImportSerializer(serializers.Serializer):
@@ -420,7 +425,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             return format_bond_price(obj.price, self.get_digits())
 
         # For others, use get_price() which returns actual price
-        effective_price = obj.get_price()
+        effective_price = get_price(obj)
         return format_value(effective_price, "price", obj.currency, self.get_digits())
 
     def get_value(self, obj):
@@ -433,7 +438,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             str: Formatted value string or None.
         """
         if obj.quantity and obj.price:
-            value = -Decimal(obj.quantity) * Decimal(obj.get_price())
+            value = -Decimal(obj.quantity) * Decimal(get_price(obj))
             return format_value(value, "value", obj.currency, self.get_digits())
         return None
 
@@ -447,7 +452,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             str: Formatted cash flow string or None.
         """
         # Use the centralized calculation method
-        calculated_cash_flow = obj.total_cash_flow()
+        calculated_cash_flow = total_cash_flow(obj)
         return format_value(calculated_cash_flow, "cash_flow", obj.currency, self.get_digits())
 
     def get_commission(self, obj):
@@ -678,7 +683,7 @@ class FXTransactionSerializer(serializers.ModelSerializer):
         Returns:
             str: Formatted from amount string.
         """
-        cash_flow = obj.get_cash_flow_by_currency(obj.from_currency)
+        cash_flow = get_cash_flow_by_currency(obj, obj.from_currency)
         return format_value(cash_flow, "value", obj.from_currency, self.get_digits())
 
     def get_to_amount(self, obj):
@@ -690,7 +695,7 @@ class FXTransactionSerializer(serializers.ModelSerializer):
         Returns:
             str: Formatted to amount string.
         """
-        cash_flow = obj.get_cash_flow_by_currency(obj.to_currency)
+        cash_flow = get_cash_flow_by_currency(obj, obj.to_currency)
         return format_value(cash_flow, "value", obj.to_currency, self.get_digits())
 
     def get_exchange_rate(self, obj):

@@ -1,37 +1,22 @@
 """Common models."""
 
 import logging
-from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal, DecimalException
+from datetime import date
+from decimal import Decimal
 
 from django.db import models
 
 from constants import (
     ACCOUNT_TYPE_ALL,
     ACCOUNT_TYPE_CHOICES,
-    ASSET_TYPE_CRYPTO,
     ASSET_TYPE_CHOICES,
     CURRENCY_CHOICES,
     DATA_SOURCE_CHOICES,
     EXPOSURE_CHOICES,
     TRANSACTION_TYPE_BOND_MATURITY,
     TRANSACTION_TYPE_BOND_REDEMPTION,
-    TRANSACTION_TYPE_BROKER_COMMISSION,
-    TRANSACTION_TYPE_BUY,
-    TRANSACTION_TYPE_CASH_IN,
-    TRANSACTION_TYPE_CASH_OUT,
     TRANSACTION_TYPE_CHOICES,
     TRANSACTION_TYPE_STOCK_SPLIT,
-    TRANSACTION_TYPE_COUPON,
-    TRANSACTION_TYPE_CRYPTO_REWARD,
-    TRANSACTION_TYPE_CRYPTO_TRADE_IN,
-    TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
-    TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
-    TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
-    TRANSACTION_TYPE_DIVIDEND,
-    TRANSACTION_TYPE_INTEREST_INCOME,
-    TRANSACTION_TYPE_SELL,
-    TRANSACTION_TYPE_TAX,
 )
 
 # from .utils import update_FX_database
@@ -40,20 +25,6 @@ from users.models import CustomUser
 from .fields import NaiveDateTimeField
 
 logger = logging.getLogger(__name__)
-
-
-def _fx_get_rate(source, target, date_as_of, investor=None):
-    """Deferred-import bridge to ``services.fx.get_rate``.
-
-    ``services.fx`` imports the ``FX`` model from this module at its own top
-    level, so importing it at the top of ``common.models`` would create a
-    circular import. Resolving it lazily (on first call) sidesteps that:
-    by the time any model method needs an FX rate, both modules are fully
-    loaded.
-    """
-    from services.fx import get_rate
-
-    return get_rate(source, target, date_as_of, investor)
 
 
 # Table with FX data
@@ -129,65 +100,6 @@ class Accounts(models.Model):
     def full_name(self):
         """Get the full name of this account."""
         return f"{self.broker.name} - {self.name}"
-
-    # List of currencies used
-    def get_currencies(self):
-        """Get currencies for this account."""
-        currencies = set()
-        for transaction in self.transactions.all():
-            currencies.add(transaction.currency)
-        return currencies
-
-    # Cash balance at date
-    def balance(self, date):
-        """
-        Calculate account cash balance as of a given date.
-
-        Uses the centralized total_cash_flow() method for consistency.
-        """
-        balance = {}
-
-        # Filter transactions up to and including the given date
-        # Use date__date__lte to compare only the date portion, ignoring time component
-        # of the DateTimeField
-
-        # Process regular transactions using centralized cash flow calculation
-        transactions = self.transactions.filter(date__date__lte=date)
-        for transaction in transactions:
-            # print(f"Processing transaction: {transaction}")
-            cash_flow = transaction.total_cash_flow()
-            if cash_flow == 0 and transaction.type in [
-                TRANSACTION_TYPE_CRYPTO_REWARD,
-                TRANSACTION_TYPE_CRYPTO_TRADE_IN,
-                TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
-                TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
-                TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
-            ]:
-                continue
-            balance[transaction.currency] = (
-                balance.get(transaction.currency, Decimal(0)) + cash_flow
-            )
-
-        # Calculate balance from FX transactions using centralized method
-        fx_transactions = self.fx_transactions.filter(date__date__lte=date)
-        for fx_transaction in fx_transactions:
-            # Get all currencies involved in this FX transaction
-            involved_currencies = {
-                fx_transaction.from_currency,
-                fx_transaction.to_currency,
-            }
-            if fx_transaction.commission_currency:
-                involved_currencies.add(fx_transaction.commission_currency)
-
-            # Update balance for each currency using centralized method
-            for currency in involved_currencies:
-                cash_flow = fx_transaction.get_cash_flow_by_currency(currency)
-                balance[currency] = balance.get(currency, Decimal(0)) + cash_flow
-
-        for key, value in balance.items():
-            balance[key] = round(Decimal(value), 2)
-
-        return balance
 
 
 # Public assets
@@ -340,6 +252,11 @@ class Transactions(models.Model):
         Override save to automatically create:
         - NotionalHistory for bond redemptions
         - SplitHistory for corporate actions (stock splits)
+
+        The history-creation helpers live in ``services.transactions`` and are
+        imported lazily here (Django calls ``save()`` as a lifecycle hook, and
+        importing ``services.transactions`` at module top level would pull in
+        ``services.fx`` -> this module, creating a cycle).
         """
         super().save(*args, **kwargs)
 
@@ -349,315 +266,16 @@ class Transactions(models.Model):
             TRANSACTION_TYPE_BOND_MATURITY,
         ]:
             if self.security and self.notional_change and self.notional_change != 0:
-                self._create_notional_history()
+                from services.transactions import create_notional_history
+
+                create_notional_history(self)
 
         # Auto-create SplitHistory for stock splits
         if self.type == TRANSACTION_TYPE_STOCK_SPLIT:
             if self.security and self.split_from and self.split_to:
-                self._create_split_history()
+                from services.transactions import create_split_history
 
-    def _create_notional_history(self):
-        """Create NotionalHistory entry for this bond redemption."""
-        from datetime import timedelta
-
-        try:
-            # Get bond metadata
-            bond_meta = self.security.bond_metadata
-            if not bond_meta:
-                logger.warning(
-                    f"No bond metadata for {self.security.name}, " "cannot create NotionalHistory"
-                )
-                return
-
-            # notional_change is already per-bond (calculated during import)
-            notional_per_bond = self.notional_change
-
-            # Calculate change_amount (negative for redemptions)
-            change_amount_value = -notional_per_bond
-
-            # Determine change reason
-            change_reason = (
-                "MATURITY" if self.type == TRANSACTION_TYPE_BOND_MATURITY else "REDEMPTION"
-            )
-
-            # Search for existing entry within ±7 days with similar change_amount
-            # This handles cases where API event dates
-            # differ from broker transaction dates
-            # (e.g., event on Friday, transaction settles on Monday)
-            date_range_start = self.date - timedelta(days=7)
-            date_range_end = self.date + timedelta(days=7)
-
-            # Tolerance for matching change_amount (e.g., 0.01 for rounding differences)
-            amount_tolerance = Decimal("0.01")
-
-            # Find potential matches
-            nearby_entries = NotionalHistory.objects.filter(
-                asset=self.security,
-                date__gte=date_range_start,
-                date__lte=date_range_end,
-                change_reason=change_reason,
-            )
-
-            # Look for a matching entry based on similar change_amount
-            matching_entry = None
-            for entry in nearby_entries:
-                if (
-                    entry.change_amount
-                    and abs(entry.change_amount - change_amount_value) <= amount_tolerance
-                ):
-                    matching_entry = entry
-                    break
-
-            if matching_entry:
-                # Update existing entry with actual transaction date
-                old_date = matching_entry.date
-                matching_entry.date = self.date
-                matching_entry.change_amount = change_amount_value
-                matching_entry.comment = (
-                    f"Updated from transaction {self.id} " f"(original API date: {old_date})"
-                )
-                matching_entry.save()
-
-                logger.info(
-                    f"Updated NotionalHistory for {self.security.name}: "
-                    f"date {old_date} → {self.date}, "
-                    f"notional={matching_entry.notional_per_unit}, "
-                    f"change={change_amount_value}"
-                )
-            else:
-                # Get current notional from previous history or initial
-                previous_history = (
-                    NotionalHistory.objects.filter(asset=self.security, date__lt=self.date)
-                    .order_by("-date")
-                    .first()
-                )
-
-                if previous_history:
-                    previous_notional = previous_history.notional_per_unit
-                else:
-                    previous_notional = bond_meta.initial_notional
-
-                # Calculate new notional per unit
-                new_notional = previous_notional - notional_per_bond
-
-                # No matching entry found, create new one
-                NotionalHistory.objects.create(
-                    asset=self.security,
-                    date=self.date,
-                    change_reason=change_reason,
-                    notional_per_unit=new_notional,
-                    change_amount=change_amount_value,
-                    comment=f"Auto-created from transaction {self.id}",
-                )
-
-                logger.info(
-                    f"Created NotionalHistory for {self.security.name}: "
-                    f"notional={new_notional}, change={change_amount_value}"
-                )
-
-        except Exception as e:
-            logger.error(
-                f"Error creating NotionalHistory for transaction {self.id}: {e}",
-                exc_info=True,
-            )
-
-    def _create_split_history(self):
-        """
-        Create SplitHistory entry for this Stock Split transaction.
-
-        Uses the split_from and split_to fields directly.
-        """
-        try:
-            # Avoid duplicate entries - check if entry already exists for this transaction
-            existing = SplitHistory.objects.filter(transaction=self).first()
-            if existing:
-                # Update existing entry
-                existing.date = self.date
-                existing.split_from = self.split_from
-                existing.split_to = self.split_to
-                existing.comment = self.comment
-                existing.save()
-                logger.info(
-                    f"Updated SplitHistory for {self.security.name}: "
-                    f"{self.split_from}:{self.split_to} on {self.date}"
-                )
-            else:
-                # Create new entry
-                SplitHistory.objects.create(
-                    asset=self.security,
-                    transaction=self,
-                    date=self.date,
-                    split_from=self.split_from,
-                    split_to=self.split_to,
-                    source="TRANSACTION",
-                    comment=self.comment,
-                )
-                logger.info(
-                    f"Created SplitHistory for {self.security.name}: "
-                    f"{self.split_from}:{self.split_to} on {self.date}"
-                )
-
-            # Update asset comment with split info
-            if self.security:
-                split_date = self.date.date() if hasattr(self.date, "date") else self.date
-                split_note = f"Stock split {self.split_to}:{self.split_from} on {split_date}"
-                if self.security.comment:
-                    if split_note not in self.security.comment:
-                        self.security.comment = f"{self.security.comment}\n{split_note}"
-                else:
-                    self.security.comment = split_note
-                self.security.save(update_fields=["comment"])
-
-        except Exception as e:
-            logger.error(
-                f"Error creating SplitHistory for transaction {self.id}: {e}",
-                exc_info=True,
-            )
-
-    def is_position_increase(self):
-        """Return True when the transaction increases asset quantity."""
-        return self.quantity is not None and self.quantity > 0
-
-    def is_paid_entry_transaction(self):
-        """Return True when this transaction should affect paid entry price."""
-        return self.type in [TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_CRYPTO_TRADE_IN]
-
-    def is_reward_transaction(self):
-        """Return True when this transaction is crypto income."""
-        return self.type == TRANSACTION_TYPE_CRYPTO_REWARD
-
-    def is_disposal_transaction(self):
-        """Return True when this transaction should realize gain/loss."""
-        return self.type in [TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_CRYPTO_TRADE_OUT]
-
-    def is_neutral_transfer_transaction(self):
-        """Return True when quantity movement is principal transfer only."""
-        return self.type in [
-            TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
-            TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
-        ]
-
-    def reward_value(self):
-        """Return event-date reward value without creating account cash."""
-        if not self.is_reward_transaction() or self.quantity is None or self.price is None:
-            return Decimal("0")
-        return abs(self.quantity) * self.price
-
-    def get_price(self):
-        """
-        Get the effective price per unit for this transaction.
-
-        For stocks/ETFs/etc: returns transaction.price as-is
-        For bonds: converts percentage to actual price using notional
-                   (price_percentage * notional / 100)
-
-        Returns:
-            Decimal: Effective price per unit, or None if price is not available
-        """
-        if not self.price:
-            return None
-
-        # Check if this is a bond transaction
-        if self.security and self.security.type == "Bond":
-            if self.notional:
-                notional = self.notional
-            else:
-                # Pass account_id as a list for the __in lookup
-                account_ids = [self.account_id] if self.account_id else None
-                notional = self.security.get_effective_notional(
-                    self.date, self.investor, account_ids, self.currency
-                )
-            # Bond price is stored as percentage of par
-            # Convert to actual money per bond: price% * notional / 100
-            return (self.price * notional) / Decimal(100)
-        else:
-            # For non-bonds, price is already in actual money terms
-            return self.price
-
-    def total_cash_flow(self, target_currency=None):
-        """
-        Calculate the net cash flow for this transaction.
-
-        This is the SINGLE SOURCE OF TRUTH for cash flow calculations.
-        Handles all transaction types and includes ACI, commission, etc.
-
-        For trades (Buy/Sell):
-            - cash_flow = -quantity * price + aci - commission
-            - (Buy: negative, Sell: positive)
-
-        For cash transactions/dividends/coupons:
-            - Uses the cash_flow field directly
-
-        For bond redemptions:
-            - Uses the cash_flow field (amount received)
-
-        For corporate actions (stock splits):
-            - Always returns 0 (no cash movement)
-
-        Args:
-            target_currency: Optional currency code for conversion.
-                           If None, returns in transaction's currency.
-
-        Returns:
-            Decimal: Net cash flow (can be negative or positive)
-        """
-        # Corporate actions have no cash flow
-        if self.type == TRANSACTION_TYPE_STOCK_SPLIT:
-            return Decimal(0)
-
-        # Initialize cash flow
-        calculated_cash_flow = Decimal(0)
-
-        # Types where cash_flow field is directly used
-        cash_flow_types = [
-            TRANSACTION_TYPE_CASH_IN,
-            TRANSACTION_TYPE_CASH_OUT,
-            TRANSACTION_TYPE_DIVIDEND,
-            TRANSACTION_TYPE_COUPON,
-            TRANSACTION_TYPE_TAX,
-            TRANSACTION_TYPE_BROKER_COMMISSION,
-            TRANSACTION_TYPE_BOND_REDEMPTION,
-            TRANSACTION_TYPE_BOND_MATURITY,
-            TRANSACTION_TYPE_INTEREST_INCOME,
-        ]
-
-        if self.type in cash_flow_types:
-            # Use the cash_flow field directly
-            calculated_cash_flow = self.cash_flow or Decimal(0)
-
-            # Broker commission: the commission field IS the cash flow
-            if (
-                self.type == TRANSACTION_TYPE_BROKER_COMMISSION
-                and not self.cash_flow
-            ):
-                calculated_cash_flow = self.commission or Decimal(0)
-
-        elif self.type in [TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL]:
-            # Calculate from quantity and price
-            if self.quantity and self.price is not None:
-                effective_price = self.get_price() or Decimal(0)
-
-                # Base cash flow: -quantity * price
-                # Buy: negative quantity, negative cash flow
-                # Sell: positive quantity, positive cash flow
-                calculated_cash_flow = -Decimal(self.quantity) * effective_price
-
-                # Add ACI (accrued interest for bonds)
-                # Buy: ACI is negative (you pay it),
-                # Sell: ACI is positive (you receive it)
-                if self.aci:
-                    calculated_cash_flow += Decimal(self.aci)
-
-                # Subtract commission (always reduces cash)
-                if self.commission:
-                    calculated_cash_flow += Decimal(self.commission)
-
-        # Convert to target currency if requested
-        if target_currency and target_currency != self.currency:
-            fx_rate = _fx_get_rate(self.currency, target_currency, self.date)["FX"]
-            calculated_cash_flow *= fx_rate
-
-        return round(calculated_cash_flow, 2)
+                create_split_history(self)
 
     def __str__(self):
         """Return the string representation of the Transactions model."""
@@ -789,51 +407,6 @@ class FXTransaction(models.Model):
     import_event_id = models.CharField(max_length=150, null=True, blank=True, db_index=True)
     import_group_id = models.CharField(max_length=150, null=True, blank=True, db_index=True)
     import_event_type = models.CharField(max_length=50, null=True, blank=True)
-
-    def save(self, *args, **kwargs):
-        """Save the FX transaction."""
-        if not self.exchange_rate:
-            self.exchange_rate = self.from_amount / self.to_amount
-        super().save(*args, **kwargs)
-
-    def get_cash_flow_by_currency(self, currency: str) -> Decimal:
-        """
-        Get the cash flow for this FX transaction in a specific currency.
-
-        This is the SINGLE SOURCE OF TRUTH for FX transaction cash flows per currency.
-        Handles commission in different currencies correctly.
-
-        Args:
-            currency: The currency code to get cash flow for
-
-        Returns:
-            Decimal: Cash flow for the specified currency
-                    - Negative for outflow (from_currency)
-                    - Positive for inflow (to_currency)
-                    - Includes commission in the appropriate currency
-        """
-        cash_flow = Decimal(0)
-
-        # From currency: outflow (negative)
-        if currency == self.from_currency:
-            cash_flow = -self.from_amount
-            # Add commission if it's in the from_currency (commission is negative, makes flow more negative) # noqa: E501
-            if self.commission and self.commission_currency == self.from_currency:
-                cash_flow += self.commission
-
-        # To currency: inflow (positive)
-        elif currency == self.to_currency:
-            cash_flow = self.to_amount
-            # Add commission if it's in the to_currency
-            # (commission is negative, reduces the inflow)
-            if self.commission and self.commission_currency == self.to_currency:
-                cash_flow += self.commission
-
-        # Commission in a third currency
-        elif self.commission and currency == self.commission_currency:
-            cash_flow = self.commission
-
-        return cash_flow
 
     def __str__(self):
         """Return the string representation of the FX transaction."""

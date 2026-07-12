@@ -24,6 +24,7 @@ from services.realized import (
     unrealized_gain_loss,
 )
 from services.capital import get_capital_distribution
+from services.accounts import balance as account_balance
 
 
 @pytest.fixture
@@ -68,7 +69,7 @@ def test_crypto_reward_increases_position_and_capital_distribution(user, crypto_
     assert get_capital_distribution(
         btc, datetime(2026, 1, 11).date(), user, "USD", [crypto_account.id]
     ) == Decimal("500.00")
-    assert crypto_account.balance(datetime(2026, 1, 11).date()) == {}
+    assert account_balance(crypto_account, datetime(2026, 1, 11).date()) == {}
 
 
 @pytest.mark.django_db
@@ -1243,7 +1244,7 @@ def test_crypto_trade_cash_flow_for_irr_without_account_cash(user, crypto_accoun
 
     assert _calculate_cash_flow(trade_in) == Decimal("-100.000000000000000000")
     assert _calculate_cash_flow(trade_out) == Decimal("60.000000000000000000")
-    assert crypto_account.balance(datetime(2026, 1, 3).date()) == {}
+    assert account_balance(crypto_account, datetime(2026, 1, 3).date()) == {}
 
 
 @pytest.mark.django_db
@@ -1272,7 +1273,7 @@ def test_external_crypto_transfer_cash_flow_for_irr_without_account_cash(user, c
 
     assert _calculate_cash_flow(transfer_in) == Decimal("-10000.000000000000000000")
     assert _calculate_cash_flow(transfer_out) == Decimal("4500.000000000000000000")
-    assert crypto_account.balance(datetime(2026, 1, 3).date()) == {}
+    assert account_balance(crypto_account, datetime(2026, 1, 3).date()) == {}
 
 
 @pytest.mark.django_db

@@ -42,6 +42,7 @@ from core.import_utils import (
 from core.transactions_utils import get_transactions_table_api
 from services.positions import position as _positions_position
 from services.realized import calculate_buy_in_price
+from services.transactions import create_notional_history
 
 from .serializers import FXTransactionFormSerializer, TransactionFormSerializer
 
@@ -1034,7 +1035,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         and created_transaction.notional_change != 0
                     ):
                         try:
-                            created_transaction._create_notional_history()
+                            create_notional_history(created_transaction)
                             logger.debug(
                                 "Created NotionalHistory for transaction "
                                 f"{created_transaction.id}"
@@ -1213,7 +1214,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                         ]:
                             if txn.security and txn.notional_change and txn.notional_change != 0:
                                 try:
-                                    txn._create_notional_history()
+                                    create_notional_history(txn)
                                     logger.debug(
                                         f"Created NotionalHistory for transaction "
                                         f"{txn.id}: "

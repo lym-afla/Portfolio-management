@@ -12,6 +12,8 @@ from django.db.models import Q, Sum
 
 from common.models import Accounts, Assets, Transactions
 
+from services.accounts import balance as account_balance, get_currencies
+
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
 from .portfolio_utils import IRR, NAV_at_date
@@ -118,11 +120,11 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
             )["Total NAV"],
             "cash": {
                 currency: currency_format(
-                    account.balance(effective_current_date)[currency],
+                    account_balance(account, effective_current_date)[currency],
                     currency,
                     digits=0,
                 )
-                for currency in account.get_currencies()
+                for currency in get_currencies(account)
             },
             "irr": IRR(
                 user.id,

@@ -21,6 +21,7 @@ from services.realized import (
     realized_gain_loss,
     unrealized_gain_loss,
 )
+from services.accounts import balance as account_balance
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,7 @@ class SummaryViewSet(viewsets.ViewSet):
         accounts = Accounts.objects.filter(broker__investor=user)
         for account in accounts:
             category = "Restricted" if account.restricted else "Unrestricted"
-            cash_balances = account.balance(end_date).items()
+            cash_balances = account_balance(account, end_date).items()
             for currency, balance in cash_balances:
                 try:
                     fx_rate = get_fx_rate(currency, currency_target, end_date, user)

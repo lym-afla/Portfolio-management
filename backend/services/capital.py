@@ -31,6 +31,7 @@ from django.db.models import Q, Sum
 
 from constants import TRANSACTION_TYPE_CRYPTO_REWARD
 from services.fx import get_rate as _fx_get_rate
+from services.transactions import reward_value as get_reward_value
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def get_capital_distribution(
         reward_transactions = reward_transactions.filter(date__date__gte=start_date)
 
     for transaction in reward_transactions:
-        reward_value = transaction.reward_value()
+        reward_value = get_reward_value(transaction)
         if currency is not None and transaction.currency != currency:
             fx_rate = _fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
             if fx_rate:

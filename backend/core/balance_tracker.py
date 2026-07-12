@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Dict, List
 
 from core.formatting_utils import currency_format
+from services.transactions import get_cash_flow_by_currency, total_cash_flow
 
 
 class BalanceTracker:
@@ -75,7 +76,7 @@ class BalanceTracker:
         self.currencies.add(currency)
 
         # Update balance using the centralized cash flow method
-        cash_flow = transaction.total_cash_flow()
+        cash_flow = total_cash_flow(transaction)
         self.balances[currency] += cash_flow
 
         # Store formatted balances for this transaction
@@ -99,7 +100,7 @@ class BalanceTracker:
             self.currencies.add(currency)
 
             # Use centralized cash flow calculation
-            cash_flow = fx_transaction.get_cash_flow_by_currency(currency)
+            cash_flow = get_cash_flow_by_currency(fx_transaction, currency)
             self.balances[currency] += cash_flow
 
         # Store formatted balances for this transaction

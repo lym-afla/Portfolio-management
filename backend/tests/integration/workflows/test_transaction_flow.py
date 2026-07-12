@@ -27,6 +27,7 @@ from users.models import CustomUser
 from services.fx import get_rate as fx_get_rate
 from services.positions import position as get_position
 from services.pricing import price_at_date
+from services.transactions import total_cash_flow
 
 
 @pytest.mark.integration
@@ -100,8 +101,8 @@ class TestCompleteTransactionWorkflows:
 
         # Step 4: Verify financial results
         # Commission is negative expense, so add to cash_flow
-        total_cost = buy_tx.total_cash_flow()
-        total_proceeds = sell_tx.total_cash_flow()
+        total_cost = total_cash_flow(buy_tx)
+        total_proceeds = total_cash_flow(sell_tx)
         net_profit = total_proceeds + total_cost
 
         expected_profit = (Decimal("55.00") - Decimal("50.00")) * Decimal("100") - Decimal("10.00")
@@ -259,7 +260,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify tax loss calculation
-        loss_amount = loss_sale.total_cash_flow() + (purchase_high.total_cash_flow())
+        loss_amount = total_cash_flow(loss_sale) + (total_cash_flow(purchase_high))
         expected_loss = (Decimal("7000")) + (Decimal("-10000") - Decimal("10") * Decimal("2"))
         assert loss_amount == expected_loss
 
@@ -295,7 +296,7 @@ class TestCompleteTransactionWorkflows:
 
         # Calculate total investment and average price
         total_shares = sum(tx.quantity for tx in monthly_investments)
-        total_cost = sum(tx.total_cash_flow() for tx in monthly_investments)
+        total_cost = sum(total_cash_flow(tx) for tx in monthly_investments)
         average_price = -total_cost / total_shares
 
         assert total_shares > 0
@@ -637,7 +638,7 @@ class TestErrorHandlingWorkflows:
 
         # Verify valid transaction was created
         assert valid_transaction.quantity == Decimal("100")
-        assert valid_transaction.total_cash_flow() < 0
+        assert total_cash_flow(valid_transaction) < 0
 
     def test_transaction_sequence_interruption(self):
         """Test handling of interrupted transaction sequences."""
@@ -739,7 +740,7 @@ class TestErrorHandlingWorkflows:
         assert fx_tx.from_amount == Decimal("1000.00")
         assert fx_tx.to_amount == Decimal("920.00")
         # Cash flow is negative for purchases, equals the amount used
-        assert eur_purchase.total_cash_flow() == -fx_tx.to_amount + fx_tx.commission
+        assert total_cash_flow(eur_purchase) == -fx_tx.to_amount + fx_tx.commission
 
     def test_business_rule_enforcement(self):
         """Test enforcement of business rules in workflows."""

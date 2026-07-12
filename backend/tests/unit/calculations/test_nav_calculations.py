@@ -16,6 +16,7 @@ import pytest
 
 from common.models import FX, Accounts, AnnualPerformance, Assets, Prices, Transactions
 from constants import ACCOUNT_TYPE_INDIVIDUAL
+from services.accounts import balance as account_balance
 from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate
 from services.positions import position as get_position
@@ -185,7 +186,7 @@ class TestNAVCalculation:
         )
 
         # Calculate account cash balance
-        cash_balance = account.balance(date(2023, 6, 15))
+        cash_balance = account_balance(account, date(2023, 6, 15))
         assert isinstance(cash_balance, dict)
 
         # Total cash across all currencies
@@ -275,7 +276,7 @@ class TestNAVCalculation:
         # asset_value = position * current_price.price
 
         # Get cash balance (should include commission)
-        cash_balance = account.balance(date(2023, 6, 15))
+        cash_balance = account_balance(account, date(2023, 6, 15))
         total_cash = sum(cash_balance.values())
 
         # NAV should be reduced by commission costs
@@ -375,8 +376,8 @@ class TestNAVAggregation:
         asset_value = total_position * current_price.price
 
         # Calculate total cash across brokers
-        account_us_cash = account_us.balance(date(2023, 6, 15))
-        account_uk_cash = account_uk.balance(date(2023, 6, 15))
+        account_us_cash = account_balance(account_us, date(2023, 6, 15))
+        account_uk_cash = account_balance(account_uk, date(2023, 6, 15))
 
         total_cash = sum(account_us_cash.values()) + sum(account_uk_cash.values())
 

@@ -16,6 +16,8 @@ from core.crypto_exchange_import import (
     CryptoExchangeEvent,
     persist_crypto_exchange_event,
 )
+from services.accounts import balance as account_balance
+from services.transactions import total_cash_flow
 
 
 def _crypto_event(**overrides):
@@ -279,8 +281,8 @@ def test_stablecoin_transfer_import_creates_crypto_asset_without_cash_balance(us
     assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
     assert tx.quantity == Decimal("250.123456789")
     assert tx.price == Decimal("1.000000000")
-    assert tx.total_cash_flow() == Decimal("0")
-    assert crypto_account.balance(date(2026, 1, 1)) == {}
+    assert total_cash_flow(tx) == Decimal("0")
+    assert account_balance(crypto_account, date(2026, 1, 1)) == {}
 
 
 @pytest.mark.django_db

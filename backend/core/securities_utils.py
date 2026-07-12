@@ -24,6 +24,7 @@ from services.realized import (
     realized_gain_loss,
     unrealized_gain_loss,
 )
+from services.transactions import reward_value as get_reward_value
 
 from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
@@ -58,7 +59,7 @@ def get_crypto_reward_totals(
 
     for transaction in reward_transactions:
         native_quantity += transaction.quantity or Decimal("0")
-        reward_value = transaction.reward_value()
+        reward_value = get_reward_value(transaction)
         if transaction.currency != currency:
             fx_rate = fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
             if not fx_rate:

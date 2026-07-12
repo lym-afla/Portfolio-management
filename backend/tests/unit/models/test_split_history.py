@@ -20,6 +20,7 @@ from services.pricing import (
     get_split_adjusted_price,
     reverse_split_adjustment,
 )
+from services.transactions import total_cash_flow
 
 
 @pytest.mark.unit
@@ -264,7 +265,7 @@ class TestCorporateActionTransaction:
         )
 
         # Cash flow should always be 0 for Stock split
-        assert transaction.total_cash_flow() == Decimal("0")
+        assert total_cash_flow(transaction) == Decimal("0")
 
     def test_stock_split_with_nonzero_cash_flow_field(self, user, account, asset):
         """Test that total_cash_flow returns 0 even if cash_flow field is set."""
@@ -285,7 +286,7 @@ class TestCorporateActionTransaction:
         )
 
         # total_cash_flow should still return 0
-        assert transaction.total_cash_flow() == Decimal("0")
+        assert total_cash_flow(transaction) == Decimal("0")
 
     def test_stock_split_auto_creates_split_history(self, user, account, asset):
         """Test that Stock split transaction auto-creates SplitHistory."""

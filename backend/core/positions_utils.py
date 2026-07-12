@@ -15,6 +15,7 @@ from django.db.models.query import QuerySet
 from django.http import HttpRequest
 
 from common.models import Accounts, Assets
+from services.accounts import balance as account_balance
 from services.positions import exit_dates
 from users.models import CustomUser
 
@@ -143,7 +144,7 @@ def _get_cash_balances_for_api(
     for account_id in selected_account_ids:
         try:
             account = Accounts.objects.get(id=account_id, broker__investor=user)
-            for currency, balance in account.balance(target_date).items():
+            for currency, balance in account_balance(account, target_date).items():
                 aggregated_balances[currency] += balance
             logger.debug(f"Aggregated balances after adding {account.name}: {aggregated_balances}")
         except Accounts.DoesNotExist:

@@ -24,11 +24,16 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
 from core.formatting_utils import format_percentage
+from services.accounts import balance as account_balance
 from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 from services.positions import position
 from services.realized import realized_gain_loss, unrealized_gain_loss
+from services.transactions import (
+    is_reward_transaction,
+    total_cash_flow,
+)
 from users.models import AccountGroup, CustomUser
 
 logger = logging.getLogger("dashboard")
@@ -186,7 +191,7 @@ def NAV_at_date(
 
     # Handle cash balances
     for account in portfolio_accounts:
-        broker_balance = account.balance(date)
+        broker_balance = account_balance(account, date)
         for currency, balance in broker_balance.items():
             fx_rate = get_fx_rate(currency, target_currency, date)
             converted_balance = balance * fx_rate
@@ -240,7 +245,7 @@ def calculate_portfolio_cash(
 
     cash_balance = {}
     for account in portfolio_accounts:
-        cash_balance = merge_dictionaries(cash_balance, account.balance(date))
+        cash_balance = merge_dictionaries(cash_balance, account_balance(account, date))
 
     cash = sum(
         balance * get_fx_rate(currency, target_currency, date)
@@ -367,7 +372,7 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     Uses the centralized total_cash_flow() method and applies
     sign convention for IRR (negative = outflow, positive = inflow).
     """
-    if transaction.is_reward_transaction():
+    if is_reward_transaction(transaction):
         return Decimal(0)
 
     if transaction.type in [
@@ -383,7 +388,7 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
         return Decimal(0)
 
     # Get the cash flow using the centralized method
-    cash_flow = transaction.total_cash_flow()
+    cash_flow = total_cash_flow(transaction)
 
     # For IRR calculation, "Cash in" and "Cash out" need to be inverted
     # because they represent external cash flows
