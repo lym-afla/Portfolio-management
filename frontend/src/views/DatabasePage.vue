@@ -19,69 +19,60 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-export default {
-  name: 'DatabasePage',
-  emits: ['update-page-title'],
-  setup(props, { emit }) {
-    const route = useRoute()
-    const activeTab = ref(null)
+const emit = defineEmits(['update-page-title'])
+const route = useRoute()
+const activeTab = ref(null)
 
-    const updateActiveTab = () => {
-      const path = route.path
-      if (path.includes('/accounts')) {
-        activeTab.value = 'accounts'
-      } else if (path.includes('/brokers')) {
-        activeTab.value = 'brokers'
-      } else if (path.includes('/securities')) {
-        activeTab.value = 'securities'
-      } else if (path.includes('/prices')) {
-        activeTab.value = 'prices'
-      } else if (path.includes('/fx')) {
-        activeTab.value = 'fx'
-      }
-    }
-
-    const pageTitle = computed(() => {
-      switch (activeTab.value) {
-        case 'accounts':
-          return 'Database – Accounts'
-        case 'brokers':
-          return 'Database – Brokers'
-        case 'securities':
-          return 'Database – Securities'
-        case 'prices':
-          return 'Database – Prices'
-        case 'fx':
-          return 'Database – FX'
-        default:
-          return 'Database'
-      }
-    })
-
-    watch(() => route.path, updateActiveTab)
-
-    onMounted(() => {
-      updateActiveTab()
-      emit('update-page-title', pageTitle.value)
-    })
-
-    onUnmounted(() => {
-      emit('update-page-title', '')
-    })
-
-    watch(pageTitle, (newTitle) => {
-      emit('update-page-title', newTitle)
-    })
-
-    return {
-      activeTab,
-    }
-  },
+const updateActiveTab = () => {
+  const path = route.path
+  if (path.includes('/accounts')) {
+    activeTab.value = 'accounts'
+  } else if (path.includes('/brokers')) {
+    activeTab.value = 'brokers'
+  } else if (path.includes('/securities')) {
+    activeTab.value = 'securities'
+  } else if (path.includes('/prices')) {
+    activeTab.value = 'prices'
+  } else if (path.includes('/fx')) {
+    activeTab.value = 'fx'
+  }
 }
+
+const pageTitle = computed(() => {
+  switch (activeTab.value) {
+    case 'accounts':
+      return 'Database – Accounts'
+    case 'brokers':
+      return 'Database – Brokers'
+    case 'securities':
+      return 'Database – Securities'
+    case 'prices':
+      return 'Database – Prices'
+    case 'fx':
+      return 'Database – FX'
+    default:
+      return 'Database'
+  }
+})
+
+watch(() => route.path, updateActiveTab)
+
+onMounted(() => {
+  updateActiveTab()
+  emit('update-page-title', pageTitle.value)
+})
+
+onUnmounted(() => {
+  emit('update-page-title', '')
+})
+
+watch(pageTitle, (newTitle) => {
+  emit('update-page-title', newTitle)
+})
 </script>
 
 <style scoped>
