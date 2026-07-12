@@ -20,7 +20,7 @@ deliberate exception — ``pyxirr.xirr`` consumes ``(date, float)`` tuples).
 
 Import graph: this module imports from ``services.fx`` and
 ``services.positions`` (one-way, no cycle). The network fetchers in
-``core.tinkoff_utils`` and ``core.micex_aci_utils`` are imported lazily inside
+``services.importer`` and ``core.micex_aci_utils`` are imported lazily inside
 ``get_current_aci`` so they only execute when needed and to avoid import
 cycles.
 """
@@ -184,7 +184,7 @@ def get_current_aci(bond_meta, date, currency=None, user=None, force_refresh=Fal
             try:
                 from asgiref.sync import async_to_sync
 
-                from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+                from services.importer import fetch_and_cache_bond_coupon_schedule
 
                 success = async_to_sync(fetch_and_cache_bond_coupon_schedule)(
                     bond_meta.asset, user, force_refresh=False
@@ -209,7 +209,7 @@ def get_current_aci(bond_meta, date, currency=None, user=None, force_refresh=Fal
             try:
                 from asgiref.sync import async_to_sync
 
-                from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+                from services.importer import fetch_and_cache_bond_coupon_schedule
 
                 async_to_sync(fetch_and_cache_bond_coupon_schedule)(
                     bond_meta.asset, user, force_refresh=True

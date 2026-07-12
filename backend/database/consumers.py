@@ -24,7 +24,7 @@ from core.database_utils import (
     get_years_count,
     save_or_update_annual_broker_performance,
 )
-from core.import_utils import (
+from services.importer import (
     generate_dates_for_price_import,
     import_security_prices_from_ft,
     import_security_prices_from_micex,

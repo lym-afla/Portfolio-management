@@ -16,7 +16,7 @@ from t_tech.invest.exceptions import RequestError
 
 from common.models import Assets, Brokers
 from constants import TRANSACTION_TYPE_BUY
-from core.tinkoff_utils import (
+from services.importer import (
     _find_or_create_security,
     get_account_info,
     get_security_by_uid,
@@ -80,7 +80,7 @@ async def test_get_user_token(user, tinkoff_token):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-@patch("core.tinkoff_utils.Client")
+@patch("services.importer.Client")
 async def test_get_security_by_uid(mock_client, user, tinkoff_token):
     """Test security details retrieval from Tinkoff API."""
     """Test security details retrieval from Tinkoff API."""
@@ -137,8 +137,8 @@ async def test_get_security_by_uid(mock_client, user, tinkoff_token):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-@patch("core.tinkoff_utils.get_security_by_uid")
-@patch("core.import_utils.create_security_from_micex")
+@patch("services.importer.get_security_by_uid")
+@patch("services.importer.create_security_from_micex")
 async def test_find_or_create_security(mock_create_security, mock_get_security, user, broker):
     """Test finding or creating security by UID."""
     mock_get_security.return_value = [("Test Stock", "TEST123456789", "stock")]
@@ -179,7 +179,7 @@ async def test_find_or_create_security(mock_create_security, mock_get_security, 
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-@patch("core.tinkoff_utils._find_or_create_security")
+@patch("services.importer._find_or_create_security")
 async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, broker):
     """Test mapping Tinkoff operation to transaction."""
     # Create mock operation
@@ -216,7 +216,7 @@ async def test_map_tinkoff_operation_to_transaction(mock_find_or_create, user, b
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-@patch("core.tinkoff_utils.Client")
+@patch("services.importer.Client")
 async def test_verify_token_access(mock_client, user, tinkoff_token):
     """Test token access verification."""
     mock_client_instance = MagicMock()
@@ -234,7 +234,7 @@ async def test_verify_token_access(mock_client, user, tinkoff_token):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-@patch("core.tinkoff_utils.Client")
+@patch("services.importer.Client")
 async def test_get_account_info(mock_client, user, tinkoff_token):
     """Test account information retrieval."""
     mock_account = MagicMock()

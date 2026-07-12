@@ -37,7 +37,7 @@ from .crypto_exchange_import import (
     normalize_okx_reward,
     normalize_okx_spot_fill,
 )
-from .tinkoff_utils import (
+from services.importer import (
     get_user_token,
     map_tinkoff_operation_to_transaction,
     verify_token_access,

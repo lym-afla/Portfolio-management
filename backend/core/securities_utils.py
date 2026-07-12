@@ -328,7 +328,7 @@ def get_security_detail(request, security_id, account_id=None):
             try:
                 from asgiref.sync import async_to_sync
 
-                from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+                from services.importer import fetch_and_cache_bond_coupon_schedule
 
                 success = async_to_sync(fetch_and_cache_bond_coupon_schedule)(
                     security, user, force_refresh=False
@@ -368,7 +368,7 @@ def get_security_detail(request, security_id, account_id=None):
                 try:
                     from asgiref.sync import async_to_sync
 
-                    from core.tinkoff_utils import save_bond_redemption_history
+                    from services.importer import save_bond_redemption_history
 
                     entries_created = async_to_sync(save_bond_redemption_history)(
                         security, security.tbank_instrument_uid, user
