@@ -50,110 +50,95 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch } from 'vue'
 import { addPrice, updatePrice } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'PriceFormDialog',
-  props: {
-    modelValue: Boolean,
-    editItem: Object,
-    securities: Array,
-  },
-  emits: ['update:modelValue', 'price-added', 'price-updated'],
-  setup(props, { emit }) {
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-    const isEdit = computed(() => !!props.editItem)
-    const form = ref({
-      date: '',
-      security: null,
-      price: null,
-    })
-    const errorMessages = ref({
-      date: [],
-      security: [],
-      price: [],
-    })
-    const generalError = ref('')
-    const isSubmitting = ref(false)
+const props = defineProps({
+  modelValue: Boolean,
+  editItem: Object,
+  securities: Array,
+})
+const emit = defineEmits(['update:modelValue', 'price-added', 'price-updated'])
 
-    watch(
-      () => props.editItem,
-      (newValue) => {
-        if (newValue) {
-          form.value = { ...newValue }
-        } else {
-          form.value = { date: '', security: null, price: null }
-        }
-      },
-      { immediate: true }
-    )
+const dialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
+const isEdit = computed(() => !!props.editItem)
+const form = ref({
+  date: '',
+  security: null,
+  price: null,
+})
+const errorMessages = ref({
+  date: [],
+  security: [],
+  price: [],
+})
+const generalError = ref('')
+const isSubmitting = ref(false)
 
-    const closeDialog = () => {
-      dialog.value = false
-      form.value = { date: '', security: null, price: null }
-      errorMessages.value = { date: [], security: [], price: [] }
-      generalError.value = ''
-    }
-
-    const submitForm = async () => {
-      isSubmitting.value = true
-      errorMessages.value = { date: [], security: [], price: [] }
-      generalError.value = ''
-
-      try {
-        let response
-        if (isEdit.value) {
-          response = await updatePrice(props.editItem.id, form.value)
-          emit('price-updated', response)
-        } else {
-          response = await addPrice(form.value)
-          emit('price-added', response)
-        }
-        closeDialog()
-      } catch (error) {
-        logger.error('Unknown', 'Error submitting price:', error)
-        logger.log('Unknown', error.response, error.errors)
-        if (error.errors) {
-          const errors = error.errors
-          if (errors) {
-            Object.keys(errors).forEach((key) => {
-              if (key === '__all__') {
-                generalError.value = errors[key][0]
-              } else {
-                errorMessages.value[key] = Array.isArray(errors[key])
-                  ? errors[key]
-                  : [errors[key]]
-              }
-            })
-          } else {
-            generalError.value =
-              'An unexpected error occurred. Please try again.'
-          }
-        } else {
-          generalError.value =
-            error.message || 'An unexpected error occurred. Please try again.'
-        }
-      } finally {
-        isSubmitting.value = false
-      }
-    }
-
-    return {
-      dialog,
-      isEdit,
-      form,
-      errorMessages,
-      generalError,
-      isSubmitting,
-      closeDialog,
-      submitForm,
-    }
-  },
+const closeDialog = () => {
+  dialog.value = false
+  form.value = { date: '', security: null, price: null }
+  errorMessages.value = { date: [], security: [], price: [] }
+  generalError.value = ''
 }
+
+const submitForm = async () => {
+  isSubmitting.value = true
+  errorMessages.value = { date: [], security: [], price: [] }
+  generalError.value = ''
+
+  try {
+    let response
+    if (isEdit.value) {
+      response = await updatePrice(props.editItem.id, form.value)
+      emit('price-updated', response)
+    } else {
+      response = await addPrice(form.value)
+      emit('price-added', response)
+    }
+    closeDialog()
+  } catch (error) {
+    logger.error('Unknown', 'Error submitting price:', error)
+    logger.log('Unknown', error.response, error.errors)
+    if (error.errors) {
+      const errors = error.errors
+      if (errors) {
+        Object.keys(errors).forEach((key) => {
+          if (key === '__all__') {
+            generalError.value = errors[key][0]
+          } else {
+            errorMessages.value[key] = Array.isArray(errors[key])
+              ? errors[key]
+              : [errors[key]]
+          }
+        })
+      } else {
+        generalError.value =
+          'An unexpected error occurred. Please try again.'
+      }
+    } else {
+      generalError.value =
+        error.message || 'An unexpected error occurred. Please try again.'
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+watch(
+  () => props.editItem,
+  (newValue) => {
+    if (newValue) {
+      form.value = { ...newValue }
+    } else {
+      form.value = { date: '', security: null, price: null }
+    }
+  },
+  { immediate: true }
+)
 </script>

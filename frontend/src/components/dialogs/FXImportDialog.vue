@@ -253,237 +253,194 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getFXImportStats, importFXRates, cancelFXImport } from '@/services/api'
 import ProgressDialog from './ProgressDialog.vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'FXImportDialog',
-  components: { ProgressDialog },
-  props: {
-    modelValue: Boolean,
-  },
-  emits: ['update:modelValue', 'import-completed', 'refresh-table'],
-  setup(props, { emit }) {
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-    const stats = ref(null)
-    const error = ref('')
-    const importOption = ref(null)
-    const importOptions = [
-      { text: 'Import missing instances only', value: 'missing' },
-      { text: 'Update incomplete instances only', value: 'incomplete' },
-      { text: 'Import missing and update incomplete', value: 'both' },
-    ]
-    const isImporting = ref(false)
-    const showProgress = ref(false)
-    const progress = ref(0)
-    const progressError = ref('')
-    const current = ref(0)
-    const total = ref(0)
-    const currentMessage = ref('')
-    const showSuccessDialog = ref(false)
-    const importStats = ref({
-      totalImported: 0,
-      missingFilled: 0,
-      incompleteUpdated: 0,
-    })
-    const abortController = ref(null)
-    const showStopDialog = ref(false)
+const props = defineProps({
+  modelValue: Boolean,
+})
+const emit = defineEmits(['update:modelValue', 'import-completed', 'refresh-table'])
 
-    const importType = ref('auto')
-    const importTypes = [
-      { text: 'Auto Import', value: 'auto' },
-      { text: 'Manual Import', value: 'manual' },
-    ]
-    const dateType = ref('single')
-    const singleDate = ref(null)
-    const startDate = ref(null)
-    const endDate = ref(null)
-    const frequency = ref(null)
-    const frequencyOptions = [
-      { text: 'Daily', value: 'daily' },
-      { text: 'Weekly', value: 'weekly' },
-      { text: 'Monthly', value: 'monthly' },
-      { text: 'Quarterly', value: 'quarterly' },
-      { text: 'Yearly', value: 'yearly' },
-    ]
+const dialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
+const stats = ref(null)
+const error = ref('')
+const importOption = ref(null)
+const importOptions = [
+  { text: 'Import missing instances only', value: 'missing' },
+  { text: 'Update incomplete instances only', value: 'incomplete' },
+  { text: 'Import missing and update incomplete', value: 'both' },
+]
+const isImporting = ref(false)
+const showProgress = ref(false)
+const progress = ref(0)
+const progressError = ref('')
+const current = ref(0)
+const total = ref(0)
+const currentMessage = ref('')
+const showSuccessDialog = ref(false)
+const importStats = ref({
+  totalImported: 0,
+  missingFilled: 0,
+  incompleteUpdated: 0,
+})
+const abortController = ref(null)
+const showStopDialog = ref(false)
 
-    const isFormValid = computed(() => {
-      if (importType.value === 'auto') {
-        return !!importOption.value
-      } else {
-        if (dateType.value === 'single') {
-          return !!singleDate.value
-        } else {
-          return !!startDate.value && !!endDate.value && !!frequency.value
-        }
-      }
-    })
+const importType = ref('auto')
+const importTypes = [
+  { text: 'Auto Import', value: 'auto' },
+  { text: 'Manual Import', value: 'manual' },
+]
+const dateType = ref('single')
+const singleDate = ref(null)
+const startDate = ref(null)
+const endDate = ref(null)
+const frequency = ref(null)
+const frequencyOptions = [
+  { text: 'Daily', value: 'daily' },
+  { text: 'Weekly', value: 'weekly' },
+  { text: 'Monthly', value: 'monthly' },
+  { text: 'Quarterly', value: 'quarterly' },
+  { text: 'Yearly', value: 'yearly' },
+]
 
-    const fetchStats = async () => {
-      if (importType.value === 'auto') {
-        try {
-          stats.value = await getFXImportStats()
-          logger.log('Unknown', 'Fetched stats:', stats.value)
-        } catch (err) {
-          error.value = 'Failed to fetch import statistics'
-          logger.error('Unknown', 'Error fetching stats:', err)
-        }
-      } else {
-        stats.value = null
-      }
+const isFormValid = computed(() => {
+  if (importType.value === 'auto') {
+    return !!importOption.value
+  } else {
+    if (dateType.value === 'single') {
+      return !!singleDate.value
+    } else {
+      return !!startDate.value && !!endDate.value && !!frequency.value
     }
+  }
+})
 
-    watch(importType, fetchStats)
-
-    // watch(() => dialog.value, (newValue) => {
-    //   if (newValue) {
-    //     fetchStats()
-    //   }
-    // })
-
-    const closeDialog = () => {
-      dialog.value = false
-      error.value = ''
-      importOption.value = null
+const fetchStats = async () => {
+  if (importType.value === 'auto') {
+    try {
+      stats.value = await getFXImportStats()
+      logger.log('Unknown', 'Fetched stats:', stats.value)
+    } catch (err) {
+      error.value = 'Failed to fetch import statistics'
+      logger.error('Unknown', 'Error fetching stats:', err)
     }
-
-    const startImport = async () => {
-      isImporting.value = true
-      showProgress.value = true
-      progress.value = 0
-      progressError.value = ''
-      current.value = 0
-      total.value = 0
-      currentMessage.value = 'Starting import'
-      abortController.value = new AbortController()
-      try {
-        dialog.value = false // Close the FXImportDialog
-        let importData
-        if (importType.value === 'auto') {
-          importData = { import_option: importOption.value }
-        } else {
-          importData = {
-            import_option: 'manual',
-            date_type: dateType.value,
-            single_date: singleDate.value,
-            start_date: startDate.value,
-            end_date: endDate.value,
-            frequency: frequency.value,
-          }
-        }
-        await importFXRates(importData, abortController.value.signal)
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          error.value = 'Import process was stopped'
-        } else {
-          error.value = 'Failed to start import process'
-          logger.error('Unknown', err)
-        }
-        showProgress.value = false
-      } finally {
-        isImporting.value = false
-        abortController.value = null
-      }
-    }
-
-    const stopImport = async () => {
-      if (abortController.value) {
-        abortController.value.abort()
-      }
-      try {
-        await cancelFXImport()
-        currentMessage.value = 'Cancelling import'
-        showProgress.value = false
-        showStopDialog.value = true
-      } catch (err) {
-        logger.error('Unknown', 'Error cancelling import:', err)
-        progressError.value = 'Failed to cancel import'
-      }
-    }
-
-    const closeStopDialog = () => {
-      showStopDialog.value = false
-      closeDialog()
-      emit('refresh-table') // Emit event to refresh the table
-    }
-
-    const handleProgress = (event) => {
-      const data = event.detail
-      if (data.status === 'initializing') {
-        currentMessage.value = data.message
-        total.value = data.total
-      }
-      if (data.status === 'updating') {
-        progress.value = data.progress
-        current.value = data.current
-        currentMessage.value = data.message
-      }
-      if (data.status === 'completed') {
-        showProgress.value = false
-        importStats.value = data.stats // Assuming the backend sends stats in the completed event
-        showSuccessDialog.value = true
-        emit('import-completed', data)
-      }
-      if (data.status === 'cancelled') {
-        showProgress.value = false
-        showStopDialog.value = true
-      }
-    }
-
-    const closeSuccessDialog = () => {
-      showSuccessDialog.value = false
-      fetchStats()
-      closeDialog()
-    }
-
-    onMounted(() => {
-      fetchStats()
-      window.addEventListener('fxImportProgress', handleProgress)
-    })
-
-    onUnmounted(() => {
-      window.removeEventListener('fxImportProgress', handleProgress)
-    })
-
-    logger.log('Unknown', 'Import options:', importOptions)
-
-    return {
-      dialog,
-      stats,
-      error,
-      importOption,
-      importOptions,
-      isImporting,
-      showProgress,
-      progress,
-      progressError,
-      closeDialog,
-      startImport,
-      current,
-      total,
-      currentMessage,
-      showSuccessDialog,
-      importStats,
-      closeSuccessDialog,
-      stopImport,
-      showStopDialog,
-      closeStopDialog,
-      importType,
-      importTypes,
-      dateType,
-      singleDate,
-      startDate,
-      endDate,
-      frequency,
-      frequencyOptions,
-      isFormValid,
-    }
-  },
+  } else {
+    stats.value = null
+  }
 }
+
+const closeDialog = () => {
+  dialog.value = false
+  error.value = ''
+  importOption.value = null
+}
+
+const startImport = async () => {
+  isImporting.value = true
+  showProgress.value = true
+  progress.value = 0
+  progressError.value = ''
+  current.value = 0
+  total.value = 0
+  currentMessage.value = 'Starting import'
+  abortController.value = new AbortController()
+  try {
+    dialog.value = false // Close the FXImportDialog
+    let importData
+    if (importType.value === 'auto') {
+      importData = { import_option: importOption.value }
+    } else {
+      importData = {
+        import_option: 'manual',
+        date_type: dateType.value,
+        single_date: singleDate.value,
+        start_date: startDate.value,
+        end_date: endDate.value,
+        frequency: frequency.value,
+      }
+    }
+    await importFXRates(importData, abortController.value.signal)
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      error.value = 'Import process was stopped'
+    } else {
+      error.value = 'Failed to start import process'
+      logger.error('Unknown', err)
+    }
+    showProgress.value = false
+  } finally {
+    isImporting.value = false
+    abortController.value = null
+  }
+}
+
+const stopImport = async () => {
+  if (abortController.value) {
+    abortController.value.abort()
+  }
+  try {
+    await cancelFXImport()
+    currentMessage.value = 'Cancelling import'
+    showProgress.value = false
+    showStopDialog.value = true
+  } catch (err) {
+    logger.error('Unknown', 'Error cancelling import:', err)
+    progressError.value = 'Failed to cancel import'
+  }
+}
+
+const closeStopDialog = () => {
+  showStopDialog.value = false
+  closeDialog()
+  emit('refresh-table') // Emit event to refresh the table
+}
+
+const closeSuccessDialog = () => {
+  showSuccessDialog.value = false
+  fetchStats()
+  closeDialog()
+}
+
+const handleProgress = (event) => {
+  const data = event.detail
+  if (data.status === 'initializing') {
+    currentMessage.value = data.message
+    total.value = data.total
+  }
+  if (data.status === 'updating') {
+    progress.value = data.progress
+    current.value = data.current
+    currentMessage.value = data.message
+  }
+  if (data.status === 'completed') {
+    showProgress.value = false
+    importStats.value = data.stats // Assuming the backend sends stats in the completed event
+    showSuccessDialog.value = true
+    emit('import-completed', data)
+  }
+  if (data.status === 'cancelled') {
+    showProgress.value = false
+    showStopDialog.value = true
+  }
+}
+
+onMounted(() => {
+  fetchStats()
+  window.addEventListener('fxImportProgress', handleProgress)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('fxImportProgress', handleProgress)
+})
+
+watch(importType, fetchStats)
+
+logger.log('Unknown', 'Import options:', importOptions)
 </script>

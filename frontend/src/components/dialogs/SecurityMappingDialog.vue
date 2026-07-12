@@ -57,96 +57,84 @@
   </v-card>
 </template>
 
-<script>
+<script setup>
 import { ref, watch, onMounted } from 'vue'
 import { getSecurities } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'SecurityMappingDialog',
-  props: {
-    showSecurityMapping: {
-      type: Boolean,
-      default: false,
-    },
-    security: String,
-    bestMatch: Object,
+const props = defineProps({
+  showSecurityMapping: {
+    type: Boolean,
+    default: false,
   },
-  emits: ['security-selected', 'create-security'],
-  setup(props, { emit }) {
-    logger.log('Unknown', 'SecurityMappingDialog setup called')
+  security: String,
+  bestMatch: Object,
+})
+const emit = defineEmits(['security-selected', 'create-security'])
 
-    const selectedSecurity = ref(null)
-    const securityOptions = ref([])
-    const loadingSecurities = ref(false)
-    const securityError = ref(null)
+logger.log('Unknown', 'SecurityMappingDialog setup called')
 
-    const fetchSecurities = async () => {
-      loadingSecurities.value = true
-      securityError.value = null
-      try {
-        const securities = await getSecurities()
-        logger.log('Unknown', 'Fetched securities:', securities)
-        if (Array.isArray(securities)) {
-          securityOptions.value = securities.map((security) => ({
-            id: security.id,
-            name: security.name,
-          }))
-          // Only set selectedSecurity if bestMatch exists
-          if (props.bestMatch && props.bestMatch.match_id) {
-            selectedSecurity.value = props.bestMatch.match_id
-            logger.log(
-              'Unknown',
-              'Assigning value to Select',
-              props.bestMatch.match_id,
-              props.bestMatch.match_name,
-              selectedSecurity.value
-            )
-          }
-        } else {
-          logger.error(
-            'Unknown',
-            'Fetched securities is not an array:',
-            securities
-          )
-          securityError.value = 'Invalid data received from server'
-        }
-      } catch (error) {
-        logger.error('Unknown', 'Error fetching securities:', error)
-        securityError.value = 'Failed to fetch securities'
-      } finally {
-        loadingSecurities.value = false
+const selectedSecurity = ref(null)
+const securityOptions = ref([])
+const loadingSecurities = ref(false)
+const securityError = ref(null)
+
+const fetchSecurities = async () => {
+  loadingSecurities.value = true
+  securityError.value = null
+  try {
+    const securities = await getSecurities()
+    logger.log('Unknown', 'Fetched securities:', securities)
+    if (Array.isArray(securities)) {
+      securityOptions.value = securities.map((security) => ({
+        id: security.id,
+        name: security.name,
+      }))
+      // Only set selectedSecurity if bestMatch exists
+      if (props.bestMatch && props.bestMatch.match_id) {
+        selectedSecurity.value = props.bestMatch.match_id
+        logger.log(
+          'Unknown',
+          'Assigning value to Select',
+          props.bestMatch.match_id,
+          props.bestMatch.match_name,
+          selectedSecurity.value
+        )
       }
+    } else {
+      logger.error(
+        'Unknown',
+        'Fetched securities is not an array:',
+        securities
+      )
+      securityError.value = 'Invalid data received from server'
     }
-
-    const createNewSecurity = () => {
-      logger.log('Unknown', 'Creating new security for:', props.security)
-      emit('create-security')
-    }
-
-    // watch(() => props.accountId, (newValue) => {
-    //   logger.log('Unknown', 'accountId changed:', newValue)
-    //   if (newValue) {
-    //     fetchSecurities()
-    //   }
-    // }, { immediate: true })
-
-    watch(
-      () => selectedSecurity.value,
-      (newValue) => {
-        emit('security-selected', newValue)
-      }
-    )
-
-    onMounted(fetchSecurities)
-
-    return {
-      selectedSecurity,
-      securityOptions,
-      loadingSecurities,
-      securityError,
-      createNewSecurity,
-    }
-  },
+  } catch (error) {
+    logger.error('Unknown', 'Error fetching securities:', error)
+    securityError.value = 'Failed to fetch securities'
+  } finally {
+    loadingSecurities.value = false
+  }
 }
+
+const createNewSecurity = () => {
+  logger.log('Unknown', 'Creating new security for:', props.security)
+  emit('create-security')
+}
+
+// watch(() => props.accountId, (newValue) => {
+//   logger.log('Unknown', 'accountId changed:', newValue)
+//   if (newValue) {
+//     fetchSecurities()
+//   }
+// }, { immediate: true })
+
+watch(
+  () => selectedSecurity.value,
+  (newValue) => {
+    emit('security-selected', newValue)
+  }
+)
+
+onMounted(fetchSecurities)
 </script>

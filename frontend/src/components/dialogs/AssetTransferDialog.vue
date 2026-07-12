@@ -125,7 +125,7 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch } from 'vue'
 import {
   getTransactionFormStructure,
@@ -136,220 +136,196 @@ import { useErrorHandler } from '@/composables/useErrorHandler'
 import { useAppStore } from '@/stores/app'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'AssetTransferDialog',
-  props: {
-    modelValue: {
-      type: Boolean,
-      default: false,
-    },
+const props = defineProps({
+  modelValue: {
+    type: Boolean,
+    default: false,
   },
-  emits: ['update:modelValue', 'transfer-completed'],
-  setup(props, { emit }) {
-    const { handleApiError } = useErrorHandler()
-    const appStore = useAppStore()
-    const form = ref(null)
-    const valid = ref(false)
-    const submitting = ref(false)
-    const loadingSecurities = ref(false)
-    const loadingAccounts = ref(false)
-    const loadingQuantity = ref(false)
-    const securities = ref([])
-    const accounts = ref([])
-    const currentQuantity = ref(null)
+})
+const emit = defineEmits(['update:modelValue', 'transfer-completed'])
 
-    const localDialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
+const { handleApiError } = useErrorHandler()
+const appStore = useAppStore()
+const form = ref(null)
+const valid = ref(false)
+const submitting = ref(false)
+const loadingSecurities = ref(false)
+const loadingAccounts = ref(false)
+const loadingQuantity = ref(false)
+const securities = ref([])
+const accounts = ref([])
+const currentQuantity = ref(null)
 
-    const formData = ref({
-      security: null,
-      fromAccount: null,
-      toAccount: null,
-      quantity: null,
-      date: new Date().toISOString().split('T')[0],
-    })
+const localDialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
 
-    const fromAccounts = computed(() => {
-      // All accounts available
-      return accounts.value
-    })
+const formData = ref({
+  security: null,
+  fromAccount: null,
+  toAccount: null,
+  quantity: null,
+  date: new Date().toISOString().split('T')[0],
+})
 
-    const toAccounts = computed(() => {
-      // All accounts except the fromAccount
-      return accounts.value.filter(
-        (acc) => acc.value !== formData.value.fromAccount
-      )
-    })
+const fromAccounts = computed(() => {
+  // All accounts available
+  return accounts.value
+})
 
-    const displayQuantity = computed(() => {
-      if (currentQuantity.value === null) {
-        return ''
-      }
-      return currentQuantity.value.toString()
-    })
+const toAccounts = computed(() => {
+  // All accounts except the fromAccount
+  return accounts.value.filter(
+    (acc) => acc.value !== formData.value.fromAccount
+  )
+})
 
-    const rules = {
-      required: (value) => !!value || 'Required',
-      differentAccount: (value) =>
-        value !== formData.value.fromAccount ||
-        'Must be different from source account',
+const displayQuantity = computed(() => {
+  if (currentQuantity.value === null) {
+    return ''
+  }
+  return currentQuantity.value.toString()
+})
+
+const rules = {
+  required: (value) => !!value || 'Required',
+  differentAccount: (value) =>
+    value !== formData.value.fromAccount ||
+    'Must be different from source account',
+}
+
+const fetchFormChoices = async () => {
+  try {
+    loadingSecurities.value = true
+    loadingAccounts.value = true
+    const response = await getTransactionFormStructure()
+
+    // Extract security choices
+    const securityField = response.fields.find(
+      (field) => field.name === 'security'
+    )
+    if (securityField) {
+      securities.value = securityField.choices
     }
 
-    const fetchFormChoices = async () => {
-      try {
-        loadingSecurities.value = true
-        loadingAccounts.value = true
-        const response = await getTransactionFormStructure()
-
-        // Extract security choices
-        const securityField = response.fields.find(
-          (field) => field.name === 'security'
-        )
-        if (securityField) {
-          securities.value = securityField.choices
-        }
-
-        // Extract account choices
-        const accountField = response.fields.find(
-          (field) => field.name === 'account'
-        )
-        if (accountField) {
-          accounts.value = accountField.choices
-        }
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        loadingSecurities.value = false
-        loadingAccounts.value = false
-      }
+    // Extract account choices
+    const accountField = response.fields.find(
+      (field) => field.name === 'account'
+    )
+    if (accountField) {
+      accounts.value = accountField.choices
     }
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    loadingSecurities.value = false
+    loadingAccounts.value = false
+  }
+}
 
-    const fetchCurrentPosition = async () => {
-      if (!formData.value.security || !formData.value.fromAccount) {
-        currentQuantity.value = null
-        return
-      }
+const fetchCurrentPosition = async () => {
+  if (!formData.value.security || !formData.value.fromAccount) {
+    currentQuantity.value = null
+    return
+  }
 
-      try {
-        loadingQuantity.value = true
-        const effectiveDate = appStore.effectiveCurrentDate || null
+  try {
+    loadingQuantity.value = true
+    const effectiveDate = appStore.effectiveCurrentDate || null
 
-        const response = await getSecurityPosition(
-          formData.value.security,
-          formData.value.fromAccount,
-          effectiveDate
-        )
-
-        currentQuantity.value = response.position || 0
-        formData.value.quantity = currentQuantity.value
-
-        logger.log(
-          'AssetTransferDialog',
-          `Current position for security ${formData.value.security} in account ${formData.value.fromAccount}: ${currentQuantity.value}`
-        )
-      } catch (error) {
-        logger.error(
-          'AssetTransferDialog',
-          'Error fetching current position:',
-          error
-        )
-        handleApiError(error)
-        currentQuantity.value = 0
-      } finally {
-        loadingQuantity.value = false
-      }
-    }
-
-    const onSecurityChange = () => {
-      // Reset account selections and quantity when security changes
-      formData.value.fromAccount = null
-      formData.value.toAccount = null
-      currentQuantity.value = null
-      formData.value.quantity = null
-    }
-
-    const onFromAccountChange = () => {
-      // Reset quantity when from account changes
-      formData.value.toAccount = null
-      fetchCurrentPosition()
-    }
-
-    const submit = async () => {
-      if (!form.value.validate()) return
-
-      if (!formData.value.quantity || formData.value.quantity <= 0) {
-        handleApiError({
-          error:
-            'No holdings found in the source account for this security. Cannot transfer.',
-        })
-        return
-      }
-
-      try {
-        submitting.value = true
-        logger.log(
-          'AssetTransferDialog',
-          'Submitting transfer:',
-          formData.value
-        )
-
-        await transferAsset(formData.value)
-
-        logger.log('AssetTransferDialog', 'Transfer completed successfully')
-        emit('transfer-completed')
-        close()
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        submitting.value = false
-      }
-    }
-
-    const close = () => {
-      formData.value = {
-        security: null,
-        fromAccount: null,
-        toAccount: null,
-        quantity: null,
-        date: new Date().toISOString().split('T')[0],
-      }
-      currentQuantity.value = null
-      if (form.value) {
-        form.value.reset()
-      }
-      localDialog.value = false
-    }
-
-    watch(
-      () => props.modelValue,
-      (newVal) => {
-        if (newVal) {
-          fetchFormChoices()
-        }
-      }
+    const response = await getSecurityPosition(
+      formData.value.security,
+      formData.value.fromAccount,
+      effectiveDate
     )
 
-    return {
-      form,
-      valid,
-      submitting,
-      loadingSecurities,
-      loadingAccounts,
-      loadingQuantity,
-      securities,
-      fromAccounts,
-      toAccounts,
-      formData,
-      rules,
-      localDialog,
-      displayQuantity,
-      onSecurityChange,
-      onFromAccountChange,
-      submit,
-      close,
-    }
-  },
+    currentQuantity.value = response.position || 0
+    formData.value.quantity = currentQuantity.value
+
+    logger.log(
+      'AssetTransferDialog',
+      `Current position for security ${formData.value.security} in account ${formData.value.fromAccount}: ${currentQuantity.value}`
+    )
+  } catch (error) {
+    logger.error(
+      'AssetTransferDialog',
+      'Error fetching current position:',
+      error
+    )
+    handleApiError(error)
+    currentQuantity.value = 0
+  } finally {
+    loadingQuantity.value = false
+  }
 }
+
+const onSecurityChange = () => {
+  // Reset account selections and quantity when security changes
+  formData.value.fromAccount = null
+  formData.value.toAccount = null
+  currentQuantity.value = null
+  formData.value.quantity = null
+}
+
+const onFromAccountChange = () => {
+  // Reset quantity when from account changes
+  formData.value.toAccount = null
+  fetchCurrentPosition()
+}
+
+const close = () => {
+  formData.value = {
+    security: null,
+    fromAccount: null,
+    toAccount: null,
+    quantity: null,
+    date: new Date().toISOString().split('T')[0],
+  }
+  currentQuantity.value = null
+  if (form.value) {
+    form.value.reset()
+  }
+  localDialog.value = false
+}
+
+const submit = async () => {
+  if (!form.value.validate()) return
+
+  if (!formData.value.quantity || formData.value.quantity <= 0) {
+    handleApiError({
+      error:
+        'No holdings found in the source account for this security. Cannot transfer.',
+    })
+    return
+  }
+
+  try {
+    submitting.value = true
+    logger.log(
+      'AssetTransferDialog',
+      'Submitting transfer:',
+      formData.value
+    )
+
+    await transferAsset(formData.value)
+
+    logger.log('AssetTransferDialog', 'Transfer completed successfully')
+    emit('transfer-completed')
+    close()
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+watch(
+  () => props.modelValue,
+  (newVal) => {
+    if (newVal) {
+      fetchFormChoices()
+    }
+  }
+)
 </script>

@@ -116,7 +116,7 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import {
   createSecurity,
@@ -125,187 +125,170 @@ import {
 } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'SecurityFormDialog',
-  props: {
-    modelValue: Boolean,
-    editItem: Object,
-    isImport: Boolean,
-  },
-  emits: [
-    'update:modelValue',
-    'security-added',
-    'security-updated',
-    'security-skipped',
-  ],
-  setup(props, { emit }) {
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-    const isEdit = computed(() => !!props.editItem)
-    const form = ref({})
-    const formFields = ref([])
-    const errorMessages = ref({})
-    const generalError = ref('')
-    const isSubmitting = ref(false)
+const props = defineProps({
+  modelValue: Boolean,
+  editItem: Object,
+  isImport: Boolean,
+})
+const emit = defineEmits([
+  'update:modelValue',
+  'security-added',
+  'security-updated',
+  'security-skipped',
+])
 
-    const fetchFormStructure = async () => {
-      try {
-        const structure = await getSecurityFormStructure()
-        formFields.value = structure.fields
-        logger.log('Unknown', 'SecurityFormDialog formFields', formFields.value)
-        initializeForm()
-      } catch (error) {
-        logger.error('Unknown', 'Error fetching form structure:', error)
-        generalError.value = 'Failed to load form structure'
-      }
-    }
+const dialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
+const isEdit = computed(() => !!props.editItem)
+const form = ref({})
+const formFields = ref([])
+const errorMessages = ref({})
+const generalError = ref('')
+const isSubmitting = ref(false)
 
-    const initializeForm = () => {
-      form.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = field.initial !== undefined ? field.initial : ''
-        return acc
-      }, {})
-      errorMessages.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = []
-        return acc
-      }, {})
-    }
-
-    onMounted(fetchFormStructure)
-
-    watch(
-      () => props.editItem,
-      (newValue) => {
-        if (newValue) {
-          // Prefill the form with the editItem data
-          form.value = { ...newValue }
-        } else {
-          initializeForm()
-        }
-        errorMessages.value = formFields.value.reduce((acc, field) => {
-          acc[field.name] = []
-          return acc
-        }, {})
-        generalError.value = ''
-      },
-      { immediate: true }
-    )
-
-    const closeDialog = () => {
-      // Only emit security-skipped if it's an import AND the dialog is closed via Cancel button
-      if (props.isImport && !isSubmitting.value) {
-        logger.log('Unknown', 'Emitting security-skipped from Cancel button') // Debug log
-        emit('security-skipped')
-      }
-      dialog.value = false
-      initializeForm()
-      generalError.value = ''
-    }
-
-    const submitForm = async () => {
-      isSubmitting.value = true
-      errorMessages.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = []
-        return acc
-      }, {})
-      generalError.value = ''
-
-      try {
-        let response
-        if (isEdit.value && !props.isImport) {
-          response = await updateSecurity(props.editItem.id, form.value)
-          emit('security-updated', response)
-        } else {
-          response = await createSecurity(form.value)
-          logger.log('Unknown', 'createSecurity response:', response)
-          if (props.isImport) {
-            logger.log('Unknown', 'Emitting security-added with:', {
-              id: response.id,
-              name: response.name,
-            })
-            emit('security-added', { id: response.id, name: response.name })
-          } else {
-            emit('security-added', response)
-          }
-        }
-        closeDialog()
-      } catch (error) {
-        logger.error('Unknown', 'Error submitting security:', error)
-        if (error.errors) {
-          Object.keys(error.errors).forEach((key) => {
-            if (key === '__all__') {
-              generalError.value = error.errors[key][0]
-            } else {
-              errorMessages.value[key] = Array.isArray(error.errors[key])
-                ? error.errors[key]
-                : [error.errors[key]]
-            }
-          })
-        } else {
-          generalError.value =
-            error.message || 'An unexpected error occurred. Please try again.'
-        }
-      } finally {
-        isSubmitting.value = false
-      }
-    }
-
-    const shouldShowField = (fieldName) => {
-      if (fieldName === 'yahoo_symbol' && form.value.data_source !== 'YAHOO') {
-        return false
-      }
-      if (fieldName === 'update_link' && form.value.data_source !== 'FT') {
-        return false
-      }
-      if (
-        fieldName === 'fund_fee' &&
-        form.value.type !== 'Mutual fund' &&
-        form.value.type !== 'ETF'
-      ) {
-        return false
-      }
-      if (fieldName === 'secid' && form.value.data_source !== 'MICEX') {
-        return false
-      }
-      if (
-        fieldName === 'tbank_instrument_uid' &&
-        form.value.data_source !== 'TBANK'
-      ) {
-        return false
-      }
-
-      // Bond-specific fields
-      const bondFields = [
-        'initial_notional',
-        'issue_date',
-        'maturity_date',
-        'coupon_rate',
-        'coupon_frequency',
-        'is_amortizing',
-        'bond_type',
-        'credit_rating',
-      ]
-      if (bondFields.includes(fieldName) && form.value.type !== 'Bond') {
-        return false
-      }
-
-      return true
-    }
-
-    return {
-      dialog,
-      isEdit,
-      form,
-      formFields,
-      errorMessages,
-      generalError,
-      isSubmitting,
-      closeDialog,
-      submitForm,
-      shouldShowField,
-    }
-  },
+const initializeForm = () => {
+  form.value = formFields.value.reduce((acc, field) => {
+    acc[field.name] = field.initial !== undefined ? field.initial : ''
+    return acc
+  }, {})
+  errorMessages.value = formFields.value.reduce((acc, field) => {
+    acc[field.name] = []
+    return acc
+  }, {})
 }
+
+const fetchFormStructure = async () => {
+  try {
+    const structure = await getSecurityFormStructure()
+    formFields.value = structure.fields
+    logger.log('Unknown', 'SecurityFormDialog formFields', formFields.value)
+    initializeForm()
+  } catch (error) {
+    logger.error('Unknown', 'Error fetching form structure:', error)
+    generalError.value = 'Failed to load form structure'
+  }
+}
+
+const closeDialog = () => {
+  // Only emit security-skipped if it's an import AND the dialog is closed via Cancel button
+  if (props.isImport && !isSubmitting.value) {
+    logger.log('Unknown', 'Emitting security-skipped from Cancel button') // Debug log
+    emit('security-skipped')
+  }
+  dialog.value = false
+  initializeForm()
+  generalError.value = ''
+}
+
+const submitForm = async () => {
+  isSubmitting.value = true
+  errorMessages.value = formFields.value.reduce((acc, field) => {
+    acc[field.name] = []
+    return acc
+  }, {})
+  generalError.value = ''
+
+  try {
+    let response
+    if (isEdit.value && !props.isImport) {
+      response = await updateSecurity(props.editItem.id, form.value)
+      emit('security-updated', response)
+    } else {
+      response = await createSecurity(form.value)
+      logger.log('Unknown', 'createSecurity response:', response)
+      if (props.isImport) {
+        logger.log('Unknown', 'Emitting security-added with:', {
+          id: response.id,
+          name: response.name,
+        })
+        emit('security-added', { id: response.id, name: response.name })
+      } else {
+        emit('security-added', response)
+      }
+    }
+    closeDialog()
+  } catch (error) {
+    logger.error('Unknown', 'Error submitting security:', error)
+    if (error.errors) {
+      Object.keys(error.errors).forEach((key) => {
+        if (key === '__all__') {
+          generalError.value = error.errors[key][0]
+        } else {
+          errorMessages.value[key] = Array.isArray(error.errors[key])
+            ? error.errors[key]
+            : [error.errors[key]]
+        }
+      })
+    } else {
+      generalError.value =
+        error.message || 'An unexpected error occurred. Please try again.'
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const shouldShowField = (fieldName) => {
+  if (fieldName === 'yahoo_symbol' && form.value.data_source !== 'YAHOO') {
+    return false
+  }
+  if (fieldName === 'update_link' && form.value.data_source !== 'FT') {
+    return false
+  }
+  if (
+    fieldName === 'fund_fee' &&
+    form.value.type !== 'Mutual fund' &&
+    form.value.type !== 'ETF'
+  ) {
+    return false
+  }
+  if (fieldName === 'secid' && form.value.data_source !== 'MICEX') {
+    return false
+  }
+  if (
+    fieldName === 'tbank_instrument_uid' &&
+    form.value.data_source !== 'TBANK'
+  ) {
+    return false
+  }
+
+  // Bond-specific fields
+  const bondFields = [
+    'initial_notional',
+    'issue_date',
+    'maturity_date',
+    'coupon_rate',
+    'coupon_frequency',
+    'is_amortizing',
+    'bond_type',
+    'credit_rating',
+  ]
+  if (bondFields.includes(fieldName) && form.value.type !== 'Bond') {
+    return false
+  }
+
+  return true
+}
+
+onMounted(fetchFormStructure)
+
+watch(
+  () => props.editItem,
+  (newValue) => {
+    if (newValue) {
+      // Prefill the form with the editItem data
+      form.value = { ...newValue }
+    } else {
+      initializeForm()
+    }
+    errorMessages.value = formFields.value.reduce((acc, field) => {
+      acc[field.name] = []
+      return acc
+    }, {})
+    generalError.value = ''
+  },
+  { immediate: true }
+)
 </script>
