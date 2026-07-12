@@ -41,6 +41,7 @@ from core.import_utils import (
 )
 from core.transactions_utils import get_transactions_table_api
 from services.positions import position as _positions_position
+from services.realized import calculate_buy_in_price
 
 from .serializers import FXTransactionFormSerializer, TransactionFormSerializer
 
@@ -638,7 +639,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 )
 
             # Calculate the average buy-in price for the security in the from_account
-            buy_in_price = security.calculate_buy_in_price(
+            buy_in_price = calculate_buy_in_price(
+                security,
                 date=transfer_date,
                 investor=request.user,
                 account_ids=[from_account_id],
@@ -939,7 +941,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     investor = transaction_data["investor"]
                     account = transaction_data["account"]
 
-                    buy_in_price = security.calculate_buy_in_price(
+                    buy_in_price = calculate_buy_in_price(
+                        security,
                         date=transfer_date,
                         investor=investor,
                         account_ids=[account.id],
@@ -1118,7 +1121,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
                             account = data["account"]
 
                             # Try to get buy-in price first
-                            buy_in_price = security.calculate_buy_in_price(
+                            buy_in_price = calculate_buy_in_price(
+                                security,
                                 date=transfer_date,
                                 investor=investor,
                                 account_ids=[account.id],

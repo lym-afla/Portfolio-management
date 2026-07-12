@@ -22,6 +22,7 @@ from common.models import MergerRecord
 from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
 from services.fx import get_rate as fx_get_rate
 from services.positions import position
+from services.realized import calculate_buy_in_price
 from constants import (
     TRANSACTION_TYPE_MERGER_IN,
     TRANSACTION_TYPE_MERGER_OUT,
@@ -610,8 +611,8 @@ def api_create_merger(request):
 
     per_account = []
     for account, old_position in accounts_with_positions:
-        old_cost_per_share = old_security.calculate_buy_in_price(
-            merger_date, user, old_security.currency, account_ids=[account.id]
+        old_cost_per_share = calculate_buy_in_price(
+            old_security, merger_date, user, old_security.currency, account_ids=[account.id]
         )
         if old_cost_per_share is None:
             old_cost_per_share = Decimal("0")

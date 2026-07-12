@@ -16,6 +16,13 @@ import pytest
 
 from common.models import Accounts, Assets, Prices, Transactions
 
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
+
 
 @pytest.mark.nav
 @pytest.mark.unit
@@ -44,7 +51,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
 
         assert buy_in_price == Decimal("50.00")
 
@@ -87,7 +94,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 2, 16), user)
 
         # Weighted average: (100*50 + 50*55) / 150 = 51.666...
         expected_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
@@ -151,7 +158,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 3, 16), user)
 
         # Buy-in price should remain the same as it's based on remaining position
         expected_price = (Decimal("5000") + Decimal("2750")) / Decimal("150")
@@ -216,7 +223,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-4.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 3, 16), user)
 
         # Should be based on new position only
         assert buy_in_price == Decimal("52.00")
@@ -242,7 +249,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
 
         # For short positions, buy-in price should be the sale price
         assert buy_in_price == Decimal("50.00")
@@ -287,7 +294,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-3.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 2, 16), user)
 
         # For remaining short position, buy-in price should still be original sale price
         assert buy_in_price == Decimal("50.00")
@@ -316,11 +323,11 @@ class TestBuyInPriceCalculation:
         )
 
         # Calculate buy-in price in EUR (local currency)
-        buy_in_price_eur = asset_eur.calculate_buy_in_price(date(2023, 1, 16), multi_currency_user)
+        buy_in_price_eur = calculate_buy_in_price(asset_eur, date(2023, 1, 16), multi_currency_user)
         assert buy_in_price_eur == Decimal("40.00")
 
         # Calculate buy-in price in USD (converted)
-        buy_in_price_usd = asset_eur.calculate_buy_in_price(
+        buy_in_price_usd = calculate_buy_in_price(asset_eur, 
             date(2023, 1, 16), currency="USD", investor=multi_currency_user
         )
         assert buy_in_price_usd > Decimal("40.00")  # EUR converted to USD
@@ -359,7 +366,7 @@ class TestBuyInPriceCalculation:
 
         # Calculate with start date (should use start date price for existing position)
         start_date = date(2023, 1, 1)
-        buy_in_price = asset.calculate_buy_in_price(
+        buy_in_price = calculate_buy_in_price(asset, 
             date(2023, 1, 16), investor=user, start_date=start_date
         )
 
@@ -369,13 +376,13 @@ class TestBuyInPriceCalculation:
         assert buy_in_price == Decimal("47.50")
 
         # Calculate without start date (should include both)
-        buy_in_price_all = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price_all = calculate_buy_in_price(asset, date(2023, 1, 16), user)
         expected_all = (Decimal("3000") + Decimal("5000")) / Decimal("200")
         assert buy_in_price_all == expected_all.quantize(Decimal("0.000001"))
 
     def test_buy_in_price_no_transactions(self, user, broker, asset):
         """Test buy-in price calculation with no transactions."""
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
         assert buy_in_price is None
 
     def test_buy_in_price_zero_position(self, user, broker, asset):
@@ -424,7 +431,7 @@ class TestBuyInPriceCalculation:
             commission=Decimal("-5.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 2, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 2, 16), user)
         assert buy_in_price == Decimal("55.00")
 
     def test_buy_in_price_broker_filter(self, user, broker, broker_uk, asset):
@@ -467,19 +474,19 @@ class TestBuyInPriceCalculation:
         )
 
         # Calculate for first broker only
-        buy_in_price_broker1 = asset.calculate_buy_in_price(
+        buy_in_price_broker1 = calculate_buy_in_price(asset, 
             date(2023, 2, 16), investor=user, account_ids=[account.id]
         )
         assert buy_in_price_broker1 == Decimal("50.00")
 
         # Calculate for second broker only
-        buy_in_price_broker2 = asset.calculate_buy_in_price(
+        buy_in_price_broker2 = calculate_buy_in_price(asset, 
             date(2023, 2, 16), investor=user, account_ids=[account_uk.id]
         )
         assert buy_in_price_broker2 == Decimal("60.00")
 
         # Calculate for both brokers
-        buy_in_price_both = asset.calculate_buy_in_price(
+        buy_in_price_both = calculate_buy_in_price(asset, 
             date(2023, 2, 16), investor=user, account_ids=[account.id, account_uk.id]
         )
         expected_both = (Decimal("5000") + Decimal("6000")) / Decimal("200")
@@ -533,7 +540,7 @@ class TestBuyInPriceEdgeCases:
             commission=None,
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 3, 16), user)
         assert buy_in_price == Decimal("50.00")
 
     def test_buy_in_price_very_small_quantities(self, user, broker, asset):
@@ -556,7 +563,7 @@ class TestBuyInPriceEdgeCases:
             commission=Decimal("-0.01"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
         assert buy_in_price == Decimal("1000.00")
 
     def test_buy_in_price_very_large_quantities(self, user, broker, asset):
@@ -579,7 +586,7 @@ class TestBuyInPriceEdgeCases:
             commission=Decimal("-10.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
         assert buy_in_price == Decimal("0.01")
 
     def test_buy_in_price_high_precision(self, user, broker, asset):
@@ -602,7 +609,7 @@ class TestBuyInPriceEdgeCases:
             commission=Decimal("-0.15"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
         assert buy_in_price == Decimal("123.456789")
         # Should maintain high precision
         assert buy_in_price.as_tuple().exponent <= -6
@@ -628,7 +635,7 @@ class TestBuyInPriceEdgeCases:
             commission=Decimal("-100.00"),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 1, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 1, 16), user)
         # Commission should not affect buy-in price
         assert buy_in_price == Decimal("50.00")
 
@@ -693,7 +700,7 @@ class TestBuyInPriceEdgeCases:
             commission=None,
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 3, 16), user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 3, 16), user)
         # Should only be based on purchase transactions
         assert buy_in_price == Decimal("50.00")
 
@@ -729,7 +736,7 @@ class TestBuyInPricePerformance:
             )
 
         start_time = time.time()
-        buy_in_price = asset.calculate_buy_in_price(date(2023, 4, 1), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date(2023, 4, 1), investor=user)
         end_time = time.time()
 
         execution_time = end_time - start_time
@@ -776,7 +783,7 @@ class TestBuyInPricePerformance:
         start_time = time.time()
         results = []
         for asset in assets:
-            buy_in_price = asset.calculate_buy_in_price(date(2023, 6, 15), investor=user)
+            buy_in_price = calculate_buy_in_price(asset, date(2023, 6, 15), investor=user)
             results.append(buy_in_price)
         end_time = time.time()
 

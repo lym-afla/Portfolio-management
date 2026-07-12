@@ -19,6 +19,11 @@ from core.portfolio_utils import IRR
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date, price_at_date
 from services.positions import investment_date, position
+from services.realized import (
+    calculate_buy_in_price,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
 
 from .formatting_utils import format_table_data, format_value
 from .pagination_utils import paginate_table
@@ -389,10 +394,10 @@ def _get_securities_data(user, securities, effective_current_date):
             "current_value": calculate_value_at_date(
                 security, effective_current_date, user, security.currency
             ),
-            "realized": security.realized_gain_loss(effective_current_date, user)["all_time"][
+            "realized": realized_gain_loss(security, effective_current_date, user)["all_time"][
                 "total"
             ],
-            "unrealized": security.unrealized_gain_loss(effective_current_date, user)["total"],
+            "unrealized": unrealized_gain_loss(security, effective_current_date, user)["total"],
             "capital_distribution": security.get_capital_distribution(effective_current_date, user),
             "irr": IRR(user.id, effective_current_date, security.currency, asset_id=security.id),
         }
@@ -443,11 +448,11 @@ def get_security_detail(request, security_id, account_id=None):
         "current_value": calculate_value_at_date(
             security, effective_current_date, user, security.currency, account_ids=account_ids
         ),
-        "realized": security.realized_gain_loss(
-            effective_current_date, user, account_ids=account_ids
+        "realized": realized_gain_loss(
+            security, effective_current_date, user, account_ids=account_ids
         )["all_time"]["total"],
-        "unrealized": security.unrealized_gain_loss(
-            effective_current_date, user, account_ids=account_ids
+        "unrealized": unrealized_gain_loss(
+            security, effective_current_date, user, account_ids=account_ids
         )["total"],
         "capital_distribution": security.get_capital_distribution(
             effective_current_date, user, account_ids=account_ids
@@ -465,8 +470,8 @@ def get_security_detail(request, security_id, account_id=None):
         "comment": security.comment,
         # Note: current_aci moved to bond_data below
         # Add buy-in price
-        "buy_in_price": security.calculate_buy_in_price(
-            effective_current_date, user, security.currency, account_ids=account_ids
+        "buy_in_price": calculate_buy_in_price(
+            security, effective_current_date, user, security.currency, account_ids=account_ids
         ),
         # Add current price (using cached value)
         "current_price": current_price,

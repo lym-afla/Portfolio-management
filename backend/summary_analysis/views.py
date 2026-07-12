@@ -15,6 +15,11 @@ from core.portfolio_utils import get_fx_rate
 from core.summary_utils import accounts_summary_data
 from services.pricing import calculate_value_at_date, price_at_date
 from services.positions import position
+from services.realized import (
+    calculate_buy_in_price,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +187,8 @@ class SummaryViewSet(viewsets.ViewSet):
 
             # Calculate values
             asset.current_position = position(asset, end_date, user, account_ids)
-            asset.entry_price = asset.calculate_buy_in_price(
-                end_date, user, currency_target, account_ids, start_date
+            asset.entry_price = calculate_buy_in_price(
+                asset, end_date, user, currency_target, account_ids, start_date
             ) or Decimal(0)
             cost = round(asset.entry_price * asset.current_position, 2)
 
@@ -196,11 +201,11 @@ class SummaryViewSet(viewsets.ViewSet):
                 2,
             )
 
-            unrealized = asset.unrealized_gain_loss(
-                end_date, user, currency_target, account_ids, start_date
+            unrealized = unrealized_gain_loss(
+                asset, end_date, user, currency_target, account_ids, start_date
             )["total"]
-            realized = asset.realized_gain_loss(
-                end_date, user, currency_target, account_ids, start_date
+            realized = realized_gain_loss(
+                asset, end_date, user, currency_target, account_ids, start_date
             )["all_time"]["total"]
             capital_distribution = asset.get_capital_distribution(
                 end_date, user, currency_target, account_ids, start_date

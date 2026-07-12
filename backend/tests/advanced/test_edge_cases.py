@@ -28,6 +28,13 @@ from tests.fixtures.factories.transaction_factory import (
 )
 from users.models import CustomUser
 
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
+
 
 # Helper function to create required transaction dependencies
 def create_transaction_dependencies():
@@ -72,7 +79,7 @@ class TestCalculationEdgeCases:
         """Test buy-in price calculation with zero transactions."""
         asset = AssetFactory.create()
         user = CustomUser.objects.create_user(username="testuser", password="12345")
-        result = asset.calculate_buy_in_price(date_as_of=date.today(), investor=user)
+        result = calculate_buy_in_price(asset, date_as_of=date.today(), investor=user)
         # With no transactions, should return None
         assert result is None
 
@@ -92,7 +99,7 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         assert result == Decimal("50.00")
@@ -113,7 +120,7 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result = sell_tx.security.calculate_buy_in_price(date.today(), investor=sell_tx.investor)
+        result = calculate_buy_in_price(sell_tx.security, date.today(), investor=sell_tx.investor)
         assert result == Decimal("50.00")  # Should return sell price
 
     def test_buy_in_price_equal_buy_sell_quantities(self):
@@ -141,7 +148,7 @@ class TestCalculationEdgeCases:
             date=date(2024, 1, 2),
         )
 
-        result = buy_tx.security.calculate_buy_in_price(date.today(), investor=buy_tx.investor)
+        result = calculate_buy_in_price(buy_tx.security, date.today(), investor=buy_tx.investor)
         assert result == Decimal("50.00")  # Should return original buy price
 
     def test_buy_in_price_more_sells_than_buys(self):
@@ -169,7 +176,7 @@ class TestCalculationEdgeCases:
             date=date(2024, 1, 2),
         )
 
-        result = buy_tx.security.calculate_buy_in_price(date.today(), investor=buy_tx.investor)
+        result = calculate_buy_in_price(buy_tx.security, date.today(), investor=buy_tx.investor)
         assert result == Decimal("60.00")  # Should return sell price for short position
 
     def test_buy_in_price_very_small_quantities(self):
@@ -180,7 +187,7 @@ class TestCalculationEdgeCases:
         tx1 = create_simple_transaction(asset, user, account, "Buy", "0.000001", "1000000.00")
         create_simple_transaction(asset, user, account, "Buy", "0.000002", "500000.00")
 
-        result = tx1.security.calculate_buy_in_price(date_as_of=date.today(), investor=tx1.investor)
+        result = calculate_buy_in_price(tx1.security, date_as_of=date.today(), investor=tx1.investor)
         expected = (
             Decimal("0.000001") * Decimal("1000000.00") + Decimal("0.000002") * Decimal("500000.00")
         ) / Decimal("0.000003")
@@ -211,7 +218,7 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result = tx1.security.calculate_buy_in_price(date_as_of=date.today(), investor=tx1.investor)
+        result = calculate_buy_in_price(tx1.security, date_as_of=date.today(), investor=tx1.investor)
         expected = Decimal("0.015")
         assert result == expected
 
@@ -231,7 +238,7 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         assert result == Decimal("-50.00")
@@ -243,7 +250,7 @@ class TestCalculationEdgeCases:
 
         transaction = create_simple_transaction(asset, user, account, "Buy", 100, "0.00")
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         assert result == Decimal("0.00")
@@ -270,7 +277,7 @@ class TestCalculationEdgeCases:
             "51.12345678901234567890",
         )
 
-        result = tx1.security.calculate_buy_in_price(date_as_of=date.today(), investor=tx1.investor)
+        result = calculate_buy_in_price(tx1.security, date_as_of=date.today(), investor=tx1.investor)
 
         # Calculate expected value with high precision
         total_cost = Decimal("100.12345678901234567890") * Decimal(
@@ -331,10 +338,10 @@ class TestCalculationEdgeCases:
         asset = AssetFactory.create()
         user, broker, account = create_transaction_dependencies()
 
-        result_realized = asset.realized_gain_loss(
+        result_realized = realized_gain_loss(asset, 
             date_as_of=date.today(), investor=user, account_ids=[account.id]
         )
-        result_unrealized = asset.unrealized_gain_loss(
+        result_unrealized = unrealized_gain_loss(asset, 
             date_as_of=date.today(), investor=user, account_ids=[account.id]
         )
         assert result_realized["all_time"]["total"] == Decimal("0")
@@ -356,12 +363,12 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result_realized = buy_tx.security.realized_gain_loss(
+        result_realized = realized_gain_loss(buy_tx.security, 
             date_as_of=date.today(),
             investor=buy_tx.investor,
             account_ids=[buy_tx.account.id],
         )
-        result_unrealized = buy_tx.security.unrealized_gain_loss(
+        result_unrealized = unrealized_gain_loss(buy_tx.security, 
             date_as_of=date.today(),
             investor=buy_tx.investor,
             account_ids=[buy_tx.account.id],
@@ -393,12 +400,12 @@ class TestCalculationEdgeCases:
             date=date.today(),
         )
 
-        result_realized = sell_tx.security.realized_gain_loss(
+        result_realized = realized_gain_loss(sell_tx.security, 
             date_as_of=date.today(),
             investor=sell_tx.investor,
             account_ids=[sell_tx.account.id],
         )
-        result_unrealized = sell_tx.security.unrealized_gain_loss(
+        result_unrealized = unrealized_gain_loss(sell_tx.security, 
             date_as_of=date.today(),
             investor=sell_tx.investor,
             account_ids=[sell_tx.account.id],
@@ -970,7 +977,7 @@ class TestFinancialCalculationBoundaries:
             asset, user, account, "Buy", "100", str(high_precision)
         )
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         # Result should preserve reasonable precision (within 1e-6)
@@ -983,7 +990,7 @@ class TestFinancialCalculationBoundaries:
         user, _broker, account = create_transaction_dependencies()
         transaction = create_simple_transaction(asset, user, account, "Buy", "1000000", "1")
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         assert result == Decimal("1")
@@ -998,7 +1005,7 @@ class TestFinancialCalculationBoundaries:
         user, _broker, account = create_transaction_dependencies()
         transaction = create_simple_transaction(asset, user, account, "Buy", "1", str(large_price))
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         # Should handle large values accurately
@@ -1016,7 +1023,7 @@ class TestFinancialCalculationBoundaries:
             asset, user, account, "Buy", str(large_quantity), "100.50"
         )
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         # Should handle large quantities and return accurate price
@@ -1033,7 +1040,7 @@ class TestFinancialCalculationBoundaries:
             asset, user, account, "Buy", "10000", str(very_small)
         )
 
-        result = transaction.security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transaction.security, 
             date_as_of=date.today(), investor=transaction.investor
         )
         # Should preserve small values within precision tolerance
@@ -1056,7 +1063,7 @@ class TestFinancialCalculationBoundaries:
             date=date.today(),
         )
 
-        result = asset.calculate_buy_in_price(date_as_of=date.today(), investor=user)
+        result = calculate_buy_in_price(asset, date_as_of=date.today(), investor=user)
         # With zero quantity, function should handle gracefully
         # Either return None (no valid transactions) or Decimal(0)
         assert result is None or result == Decimal("0")
@@ -1149,7 +1156,7 @@ class TestSystemRobustness:
                 transactions.append(tx)
 
         # System should handle large datasets without crashing
-        result = transactions[0].security.calculate_buy_in_price(
+        result = calculate_buy_in_price(transactions[0].security, 
             date_as_of=date.today(), investor=transactions[0].investor
         )
         assert isinstance(result, Decimal)
@@ -1271,7 +1278,7 @@ class TestSystemRobustness:
         ), f"Expected {transaction_count} transactions, got {db_transaction_count}"
 
         # Verify calculations work correctly with all transactions
-        buy_in_price = asset.calculate_buy_in_price(date_as_of=date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date_as_of=date.today(), investor=user)
         assert isinstance(buy_in_price, Decimal)
         assert buy_in_price > 0
 

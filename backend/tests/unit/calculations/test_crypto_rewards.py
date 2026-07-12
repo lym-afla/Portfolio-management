@@ -17,6 +17,13 @@ from constants import (
 )
 from core.portfolio_utils import IRR, _calculate_cash_flow
 
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
+
 
 @pytest.fixture
 def crypto_account(user):
@@ -87,10 +94,10 @@ def test_crypto_reward_does_not_distort_paid_entry_price(user, crypto_account, b
         price=Decimal("200.000000000"),
     )
 
-    assert btc.calculate_buy_in_price(
+    assert calculate_buy_in_price(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("100.000000")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("120.00")
 
@@ -129,7 +136,7 @@ def test_crypto_transfer_out_reduces_economic_basis_for_remaining_lots(user, cry
         price=Decimal("150.000000000"),
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
     ) == Decimal("92.73")
 
@@ -163,13 +170,13 @@ def test_rewarded_crypto_lot_unrealized_gain_uses_economic_basis(user, crypto_ac
         price=Decimal("200.000000"),
     )
 
-    assert btc.calculate_buy_in_price(
+    assert calculate_buy_in_price(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("100.000000")
     assert btc.get_capital_distribution(
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("20.00")
-    unrealized = btc.unrealized_gain_loss(
+    unrealized = unrealized_gain_loss(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     )
     assert unrealized["total"] == Decimal("100.00")
@@ -194,7 +201,7 @@ def test_crypto_unrealized_gain_uses_unrounded_current_position(user, crypto_acc
         price=Decimal("120000000.000000"),
     )
 
-    unrealized = btc.unrealized_gain_loss(
+    unrealized = unrealized_gain_loss(btc, 
         datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id]
     )
     assert unrealized["total"] == Decimal("10.00")
@@ -234,7 +241,7 @@ def test_rewarded_crypto_lot_realized_gain_uses_economic_basis(user, crypto_acco
         price=Decimal("200.000000000"),
     )
 
-    realized = btc.realized_gain_loss(datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id])
+    realized = realized_gain_loss(btc, datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("100.00")
     assert btc.get_capital_distribution(
         datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
@@ -275,7 +282,7 @@ def test_crypto_realized_gain_uses_basis_only_up_to_disposal_time(user, crypto_a
         price=Decimal("1000.000000000"),
     )
 
-    realized = btc.realized_gain_loss(datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id])
+    realized = realized_gain_loss(btc, datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("50.00")
 
 
@@ -323,7 +330,7 @@ def test_crypto_realized_gain_separates_same_day_round_trips(user, crypto_accoun
         price=Decimal("1100.000000000"),
     )
 
-    realized = btc.realized_gain_loss(datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id])
+    realized = realized_gain_loss(btc, datetime(2026, 1, 2).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("200.00")
 
 
@@ -356,7 +363,7 @@ def test_crypto_unrealized_gain_with_start_date_uses_opening_basis(user, crypto_
         price=Decimal("200.000000"),
     )
 
-    unrealized = btc.unrealized_gain_loss(
+    unrealized = unrealized_gain_loss(btc, 
         datetime(2026, 1, 10).date(),
         user,
         "USD",
@@ -400,7 +407,7 @@ def test_crypto_realized_gain_with_start_date_uses_opening_basis(user, crypto_ac
         price=Decimal("200.000000000"),
     )
 
-    realized = btc.realized_gain_loss(
+    realized = realized_gain_loss(btc, 
         datetime(2026, 1, 11).date(),
         user,
         "USD",
@@ -436,7 +443,7 @@ def test_crypto_realized_gain_start_date_disposal_is_not_current_position(
         price=Decimal("200.000000000"),
     )
 
-    realized = btc.realized_gain_loss(
+    realized = realized_gain_loss(btc, 
         datetime(2026, 1, 6).date(),
         user,
         "USD",
@@ -473,7 +480,7 @@ def test_crypto_realized_gain_with_start_date_uses_unrounded_opening_position(
         price=Decimal("120000000.000000000"),
     )
 
-    realized = btc.realized_gain_loss(
+    realized = realized_gain_loss(btc, 
         datetime(2026, 1, 11).date(),
         user,
         "USD",
@@ -507,8 +514,8 @@ def test_crypto_realized_gain_uses_unrounded_economic_basis(user, crypto_account
         price=Decimal("100.021000000"),
     )
 
-    realized = btc.realized_gain_loss(datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id])
-    assert btc.get_economic_basis(
+    realized = realized_gain_loss(btc, datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id])
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 1).date(), user, "USD", [crypto_account.id]
     ) == Decimal("100.02")
     assert realized["all_time"]["total"] == Decimal("0.01")
@@ -556,16 +563,16 @@ def test_grouped_internal_transfer_carries_economic_basis(user, crypto_account, 
         import_group_id=transfer_group,
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(),
         user,
         "USD",
         [crypto_account.id, account_b.id],
     ) == Decimal("100.00")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
     ) == Decimal("60.00")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("40.00")
 
@@ -642,16 +649,16 @@ def test_chained_grouped_transfers_preserve_economic_basis(user, crypto_account,
         import_provider="bybit",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 4).date(),
         user,
         "USD",
         [crypto_account.id, account_b.id, account_c.id],
     ) == Decimal("100.00")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 4).date(), user, "USD", [account_b.id]
     ) == Decimal("15.00")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 4).date(), user, "USD", [account_c.id]
     ) == Decimal("25.00")
 
@@ -698,7 +705,7 @@ def test_grouped_transfer_preserves_sub_micro_crypto_basis(user, crypto_account,
         import_group_id=transfer_group,
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("50.00")
 
@@ -765,7 +772,7 @@ def test_grouped_transfer_basis_ignores_other_asset_transactions(user, crypto_ac
         import_group_id=transfer_group,
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("40.00")
 
@@ -818,7 +825,7 @@ def test_grouped_transfer_basis_does_not_cross_import_provider(user, crypto_acco
         import_account_id="okx-funding",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("0.00")
 
@@ -919,7 +926,7 @@ def test_grouped_transfer_basis_requires_unambiguous_source_account(user, crypto
         import_account_id="bybit-y",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("0.00")
 
@@ -990,13 +997,13 @@ def test_split_grouped_transfer_allocates_basis_proportionally(user, crypto_acco
         import_account_id="bybit-earn",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("50.00")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_c.id]
     ) == Decimal("50.00")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id, account_c.id]
     ) == Decimal("100.00")
 
@@ -1092,13 +1099,13 @@ def test_split_grouped_transfer_outs_from_same_source_allocate_basis(user, crypt
         import_account_id="bybit-earn",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("54.71")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_c.id]
     ) == Decimal("54.71")
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id, account_c.id]
     ) == Decimal("109.41")
 
@@ -1151,7 +1158,7 @@ def test_grouped_transfer_basis_does_not_use_future_transfer_out(user, crypto_ac
         import_account_id="bybit-main",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("0.00")
 
@@ -1204,7 +1211,7 @@ def test_blank_provider_transfer_in_does_not_match_provider_transfer_out(user, c
         import_account_id="manual-funding",
     )
 
-    assert btc.get_economic_basis(
+    assert get_economic_basis(btc, 
         datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
     ) == Decimal("0.00")
 
@@ -1412,5 +1419,5 @@ def test_crypto_trade_out_realizes_gain_but_transfer_out_is_neutral(user, crypto
         price=Decimal("200.000000000"),
     )
 
-    realized = btc.realized_gain_loss(datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id])
+    realized = realized_gain_loss(btc, datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id])
     assert realized["all_time"]["total"] == Decimal("25.000000000000000000")

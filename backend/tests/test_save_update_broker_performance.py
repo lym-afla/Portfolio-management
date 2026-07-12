@@ -32,6 +32,13 @@ from core.accounts_utils import get_accounts_table_api
 from core.portfolio_utils import calculate_performance, get_last_exit_date_for_accounts
 from database.consumers import UpdateAccountPerformanceConsumer
 
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
+
 User = get_user_model()
 
 
@@ -453,7 +460,7 @@ def test_calculate_performance(user, account, caplog):
         print(f"Transaction: {t.date} {t.type} {t.quantity} {t.price} {t.currency}")
 
     # Get the realized gain/loss value first
-    realized_gain = asset.realized_gain_loss(
+    realized_gain = realized_gain_loss(asset, 
         end_date, user, "USD", account_ids=[account.id], start_date=start_date
     )
     print(f"Price change: {realized_gain}")

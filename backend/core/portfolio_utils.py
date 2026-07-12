@@ -27,6 +27,7 @@ from core.formatting_utils import format_percentage
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 from services.positions import position
+from services.realized import realized_gain_loss, unrealized_gain_loss
 from users.models import AccountGroup, CustomUser
 
 logger = logging.getLogger("dashboard")
@@ -561,14 +562,16 @@ def calculate_performance(
         logger.debug(f"Assets: {assets}")
 
         for asset in assets:
-            asset_realized_gl = asset.realized_gain_loss(
+            asset_realized_gl = realized_gain_loss(
+                asset,
                 end_date,
                 user,
                 currency_target,
                 account_ids=[account.id],
                 start_date=start_date,
             )
-            asset_unrealized_gl = asset.unrealized_gain_loss(
+            asset_unrealized_gl = unrealized_gain_loss(
+                asset,
                 end_date,
                 user,
                 currency_target,
