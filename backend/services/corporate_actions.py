@@ -333,7 +333,7 @@ def execute_transfer(
     # Calculate the average buy-in price for the security in the from_account
     buy_in_price = _calculate_buy_in_price(
         security,
-        date=transfer_date,
+        transfer_date,
         investor=investor,
         account_ids=[from_account_id],
     )
