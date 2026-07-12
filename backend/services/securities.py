@@ -26,9 +26,9 @@ from services.realized import (
 )
 from services.transactions import reward_value as get_reward_value
 
-from .formatting_utils import format_table_data, format_value
-from .pagination_utils import paginate_table
-from .sorting_utils import sort_entries
+from core.formatting_utils import format_table_data, format_value
+from core.pagination_utils import paginate_table
+from core.sorting_utils import sort_entries
 
 logger = logging.getLogger(__name__)
 

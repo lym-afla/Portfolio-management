@@ -94,12 +94,12 @@ from constants import (
 from services.pricing import get_cumulative_split_factor
 from users.models import TinkoffApiToken
 
-# ``core.broker_api_utils`` imports names from this module at its top level
+# ``services.broker_api`` imports names from this module at its top level
 # (``get_user_token`` etc.), so importing it eagerly here would create a
 # circular import. ``get_broker_api`` is only used inside async functions
 # below, so a deferred import is both safe and cycle-free.
 def _get_broker_api():
-    from core.broker_api_utils import get_broker_api
+    from services.broker_api import get_broker_api
 
     return get_broker_api
 

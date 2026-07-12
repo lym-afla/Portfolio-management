@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from core.crypto_exchange_import import (
+from services.crypto_exchange import (
     CryptoExchangeEvent,
     fetch_crypto_usd_price_from_yahoo,
     normalize_bybit_spot_execution,
@@ -333,7 +333,7 @@ def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
         index=pd.to_datetime(["2025-12-31", "2026-01-01"]),
     )
 
-    with patch("core.crypto_exchange_import.yf.Ticker") as ticker_class:
+    with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
         ticker_class.return_value.history.return_value = history
 
         price = fetch_crypto_usd_price_from_yahoo("BTC", date(2026, 1, 1))
@@ -353,7 +353,7 @@ def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
         index=pd.to_datetime(["2025-12-31"]),
     )
 
-    with patch("core.crypto_exchange_import.yf.Ticker") as ticker_class:
+    with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
         ticker_class.return_value.history.return_value = history
 
         price = fetch_crypto_usd_price_from_yahoo("BTC", date(2026, 1, 1))
@@ -362,14 +362,14 @@ def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
 
 
 def test_fetch_crypto_usd_price_from_yahoo_returns_none_for_unsupported_symbol():
-    with patch("core.crypto_exchange_import.yf.Ticker") as ticker_class:
+    with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
         price = fetch_crypto_usd_price_from_yahoo("ETH", date(2026, 1, 1))
 
     ticker_class.assert_not_called()
     assert price is None
 
 
-from core.crypto_exchange_import import _single_leg
+from services.crypto_exchange import _single_leg
 
 
 def test_single_leg_builds_one_element_list_with_defaults():
@@ -392,7 +392,7 @@ def test_single_leg_accepts_option_instrument():
     assert legs[0]["role"] == "base"
 
 
-from core.crypto_exchange_import import _merge_sorted_events
+from services.crypto_exchange import _merge_sorted_events
 
 
 def _event(ts, eid):
@@ -443,7 +443,7 @@ def test_merge_sorted_events_single_stream():
     assert result == ["a1", "a2"]
 
 
-from core.crypto_exchange_import import (
+from services.crypto_exchange import (
     normalize_bybit_deposit,
     normalize_bybit_withdrawal,
     normalize_okx_deposit_withdrawal,
@@ -524,7 +524,7 @@ def test_normalize_okx_withdrawal_direction_prefixed_id():
     assert event.legs[0]["quantity"] == Decimal("-0.1")
 
 
-from core.crypto_exchange_import import (
+from services.crypto_exchange import (
     normalize_bybit_reward,
     normalize_okx_reward,
 )
@@ -593,7 +593,7 @@ def test_normalize_okx_reward_skips_internal_transfer():
     assert event is None
 
 
-from core.crypto_exchange_import import (
+from services.crypto_exchange import (
     normalize_bybit_option_execution,
     normalize_bybit_option_settlement,
     normalize_okx_option_fill,

@@ -289,7 +289,7 @@ class YTMCalculationTestCase(TestCase):
         """Compare new YTM function results with existing get_security_detail method."""
         from django.test import RequestFactory
 
-        from core.securities_utils import get_security_detail
+        from services.securities import get_security_detail
 
         # Create a buy transaction
         Transactions.objects.create(

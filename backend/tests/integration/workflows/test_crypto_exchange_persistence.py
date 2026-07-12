@@ -12,7 +12,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
-from core.crypto_exchange_import import (
+from services.crypto_exchange import (
     CryptoExchangeEvent,
     persist_crypto_exchange_event,
 )
@@ -164,7 +164,7 @@ def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account
     )
 
     with patch(
-        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
         return_value=None,
         create=True,
     ):
@@ -199,7 +199,7 @@ def test_crypto_crypto_pair_imports_missing_btc_usd_price_from_yahoo(user, crypt
     )
 
     with patch(
-        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
         return_value=Decimal("61000.123456789"),
         create=True,
     ) as fetch_price:
@@ -242,7 +242,7 @@ def test_auto_imported_btc_price_rolls_back_when_event_validation_fails(user, cr
     )
 
     with patch(
-        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
         return_value=Decimal("61000.123456789"),
         create=True,
     ):
@@ -506,7 +506,7 @@ def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
     # Regression: a real normalizer output must round-trip through persistence
     # without crashing. Closes the seam between normalization and persistence so
     # a None-price default in _single_leg can never silently break deposits.
-    from core.crypto_exchange_import import normalize_bybit_deposit
+    from services.crypto_exchange import normalize_bybit_deposit
 
     event = normalize_bybit_deposit(
         {

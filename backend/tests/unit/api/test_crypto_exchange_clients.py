@@ -7,8 +7,8 @@ import pytest
 from asgiref.sync import async_to_sync
 
 from common.models import Accounts, Brokers
-from core.broker_api_utils import BybitAPI, OKXAPI, get_broker_api
-from core.crypto_exchange_import import CryptoExchangeEvent
+from services.broker_api import BybitAPI, OKXAPI, get_broker_api
+from services.crypto_exchange import CryptoExchangeEvent
 from core.crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
 from users.models import BybitApiToken, OKXApiToken
 
@@ -368,7 +368,7 @@ def test_bybit_api_get_transactions_uses_active_token_and_normalizer(monkeypatch
         def iter_option_settlements(self, params):
             yield from []
 
-    monkeypatch.setattr("core.broker_api_utils.BybitClient", FakeBybitClient)
+    monkeypatch.setattr("services.broker_api.BybitClient", FakeBybitClient)
 
     api = BybitAPI()
     async_to_sync(api.connect)(user)
@@ -440,7 +440,7 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
         def iter_option_settlements(self, params):
             yield from []
 
-    monkeypatch.setattr("core.broker_api_utils.OKXClient", FakeOKXClient)
+    monkeypatch.setattr("services.broker_api.OKXClient", FakeOKXClient)
 
     api = OKXAPI()
     async_to_sync(api.connect)(user)

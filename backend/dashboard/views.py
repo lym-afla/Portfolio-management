@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from common.models import AnnualPerformance, Transactions
-from core.chart_utils import get_nav_chart_data
+from services.charts import get_nav_chart_data
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from services.fx import get_rate as fx_get_rate
 from services.nav import IRR, NAV_at_date

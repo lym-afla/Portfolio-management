@@ -30,7 +30,7 @@ from core.date_utils import get_start_date
 from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
-from core.securities_utils import get_securities_table_api, get_security_detail
+from services.securities import get_securities_table_api, get_security_detail
 from core.sorting_utils import sort_entries
 from core.user_utils import format_account_display
 

@@ -20,7 +20,7 @@ from django.utils.formats import date_format
 from common.models import FX, Assets, Transactions
 from constants import CURRENCY_CHOICES
 from services.fx import update_fx_rate as fx_update_fx_rate
-from core.database_utils import (
+from services.annual_performance import (
     get_years_count,
     save_or_update_annual_broker_performance,
 )

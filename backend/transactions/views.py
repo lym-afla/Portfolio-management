@@ -25,8 +25,8 @@ from constants import (
     CHARLES_STANLEY_BROKER,
     CURRENCY_CHOICES,
 )
-from core.broker_api_utils import BrokerAPIException, TinkoffAPIException, get_broker_api
-from core.crypto_exchange_import import CryptoExchangeEvent, persist_crypto_exchange_event
+from services.broker_api import BrokerAPIException, TinkoffAPIException, get_broker_api
+from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 from services.importer import (
     fx_transaction_exists,
     get_account,
