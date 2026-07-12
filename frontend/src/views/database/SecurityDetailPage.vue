@@ -449,7 +449,7 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -483,6 +483,11 @@ import {
   differenceInDays,
 } from 'date-fns'
 import logger from '@/utils/logger'
+import TransactionRow from '@/components/transactions/TransactionRow.vue'
+
+defineOptions({ name: 'SecurityDetailPage' })
+
+const emit = defineEmits(['update-page-title'])
 
 // Register Chart.js components
 Chart.register(
@@ -498,483 +503,444 @@ Chart.register(
 // Set the default locale for Chart.js
 Chart.defaults.locale = 'en-US'
 
-import TransactionRow from '@/components/transactions/TransactionRow.vue'
+const route = useRoute()
+const appStore = useAppStore()
+const security = ref(null)
+const priceHistory = ref([])
+const positionHistory = ref([])
+const transactions = ref([])
+const chartOptions = ref(null)
+const chartOptionsLoaded = ref(false)
+const loading = ref(true)
+const loadingPriceChart = ref(true)
+const loadingPositionChart = ref(true)
+const loadingTransactions = ref(true)
+const totalTransactions = ref(0)
 
-export default {
-  name: 'SecurityDetailPage',
-  components: {
-    LineChart,
-    TimelineSelector,
-    TransactionRow,
-  },
-  emits: ['update-page-title'],
-  setup(props, { emit }) {
-    const route = useRoute()
-    const appStore = useAppStore()
-    const security = ref(null)
-    const priceHistory = ref([])
-    const positionHistory = ref([])
-    const transactions = ref([])
-    const chartOptions = ref(null)
-    const chartOptionsLoaded = ref(false)
-    const loading = ref(true)
-    const loadingPriceChart = ref(true)
-    const loadingPositionChart = ref(true)
-    const loadingTransactions = ref(true)
-    const totalTransactions = ref(0)
+// Account filtering
+const selectedAccount = ref(null)
+const accountOptions = ref([])
 
-    // Account filtering
-    const selectedAccount = ref(null)
-    const accountOptions = ref([])
+const selectedAccountId = computed(() => {
+  if (!selectedAccount.value || selectedAccount.value.type === 'all')
+    return null
+  return selectedAccount.value.id
+})
 
-    const selectedAccountId = computed(() => {
-      if (!selectedAccount.value || selectedAccount.value.type === 'all')
-        return null
-      return selectedAccount.value.id
-    })
+const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
-    const effectiveCurrentDate = computed(
-      () => appStore.effectiveCurrentDate
+const selectedPeriod = ref('1Y')
+
+const transactionOptions = ref({
+  page: 1,
+  itemsPerPage: 10,
+})
+
+const itemsPerPageOptions = [10, 25, 50, 100]
+
+const transactionHeaders = [
+  { title: 'Date', key: 'date', align: 'start' },
+  { title: 'Account', key: 'broker_account', align: 'start' },
+  { title: 'Description', key: 'description', align: 'start' },
+  { title: 'Type', key: 'type', align: 'center' },
+  { title: 'Cash Flow', key: 'cash_flow', align: 'center' },
+]
+
+const pageCount = computed(() =>
+  Math.ceil(totalTransactions.value / transactionOptions.value.itemsPerPage)
+)
+
+const getTransactionDescription = (item) => {
+  if (
+    item.type.includes('Cash') ||
+    item.type === 'Dividend' ||
+    item.type.includes('Coupon')
+  ) {
+    return item.type
+  } else if (item.type === 'Close') {
+    return `${item.quantity} of ${item.price}`
+  } else {
+    return `${item.quantity} @ ${item.price}`
+  }
+}
+
+const updateChartPeriod = (period) => {
+  selectedPeriod.value = period
+}
+
+const getStartDate = (period) => {
+  const currentDate = new Date(effectiveCurrentDate.value)
+  switch (period) {
+    case '7d':
+      return subDays(currentDate, 7)
+    case '1m':
+      return subMonths(currentDate, 1)
+    case '3m':
+      return subMonths(currentDate, 3)
+    case '6m':
+      return subMonths(currentDate, 6)
+    case '1Y':
+      return subYears(currentDate, 1)
+    case '3Y':
+      return subYears(currentDate, 3)
+    case '5Y':
+      return subYears(currentDate, 5)
+    case 'ytd':
+      return startOfYear(currentDate)
+    case 'All':
+      return null
+    default:
+      return subYears(currentDate, 1) // Default to 1Y
+  }
+}
+
+const filteredPriceHistory = computed(() => {
+  const startDate = getStartDate(selectedPeriod.value)
+  if (!startDate) return priceHistory.value
+  return priceHistory.value.filter(
+    (item) => new Date(item.date) >= startDate
+  )
+})
+
+const filteredPositionHistory = computed(() => {
+  const startDate = getStartDate(selectedPeriod.value)
+  if (!startDate) return positionHistory.value
+  return positionHistory.value.filter(
+    (item) => new Date(item.date) >= startDate
+  )
+})
+
+const fetchSecurityData = async () => {
+  try {
+    const securityId = route.params.id
+
+    // Debug logging - Log current effective date before API calls
+    logger.log(
+      'SecurityDetailPage',
+      '[DEBUG] fetchSecurityData - Current effectiveCurrentDate from store:',
+      appStore.effectiveCurrentDate
     )
 
-    const selectedPeriod = ref('1Y')
+    // loading.value = true
+    loadingPriceChart.value = true
+    loadingPositionChart.value = true
 
-    const transactionOptions = ref({
-      page: 1,
-      itemsPerPage: 10,
-    })
+    if (!security.value) {
+      const securityResponse = await getSecurityDetail(
+        securityId,
+        selectedAccountId.value
+      )
+      security.value = securityResponse
+      emit('update-page-title', security.value.name)
+    }
 
-    const itemsPerPageOptions = [10, 25, 50, 100]
-
-    const transactionHeaders = [
-      { title: 'Date', key: 'date', align: 'start' },
-      { title: 'Account', key: 'broker_account', align: 'start' },
-      { title: 'Description', key: 'description', align: 'start' },
-      { title: 'Type', key: 'type', align: 'center' },
-      { title: 'Cash Flow', key: 'cash_flow', align: 'center' },
-    ]
-
-    const pageCount = computed(() =>
-      Math.ceil(totalTransactions.value / transactionOptions.value.itemsPerPage)
+    // Always fetch the effective current date to ensure it's up-to-date
+    logger.log(
+      'SecurityDetailPage',
+      '[DEBUG] fetchSecurityData - Fetching effective current date from backend...'
+    )
+    await appStore.fetchEffectiveCurrentDate()
+    logger.log(
+      'SecurityDetailPage',
+      '[DEBUG] fetchSecurityData - Updated effectiveCurrentDate from store:',
+      appStore.effectiveCurrentDate
     )
 
-    const getTransactionDescription = (item) => {
-      if (
-        item.type.includes('Cash') ||
-        item.type === 'Dividend' ||
-        item.type.includes('Coupon')
-      ) {
-        return item.type
-      } else if (item.type === 'Close') {
-        return `${item.quantity} of ${item.price}`
-      } else {
-        return `${item.quantity} @ ${item.price}`
-      }
-    }
-
-    const updateChartPeriod = (period) => {
-      selectedPeriod.value = period
-    }
-
-    const getStartDate = (period) => {
-      const currentDate = new Date(effectiveCurrentDate.value)
-      switch (period) {
-        case '7d':
-          return subDays(currentDate, 7)
-        case '1m':
-          return subMonths(currentDate, 1)
-        case '3m':
-          return subMonths(currentDate, 3)
-        case '6m':
-          return subMonths(currentDate, 6)
-        case '1Y':
-          return subYears(currentDate, 1)
-        case '3Y':
-          return subYears(currentDate, 3)
-        case '5Y':
-          return subYears(currentDate, 5)
-        case 'ytd':
-          return startOfYear(currentDate)
-        case 'All':
-          return null
-        default:
-          return subYears(currentDate, 1) // Default to 1Y
-      }
-    }
-
-    const filteredPriceHistory = computed(() => {
-      const startDate = getStartDate(selectedPeriod.value)
-      if (!startDate) return priceHistory.value
-      return priceHistory.value.filter(
-        (item) => new Date(item.date) >= startDate
-      )
-    })
-
-    const filteredPositionHistory = computed(() => {
-      const startDate = getStartDate(selectedPeriod.value)
-      if (!startDate) return positionHistory.value
-      return positionHistory.value.filter(
-        (item) => new Date(item.date) >= startDate
-      )
-    })
-
-    const fetchSecurityData = async () => {
-      try {
-        const securityId = route.params.id
-
-        // Debug logging - Log current effective date before API calls
-        logger.log(
-          'SecurityDetailPage',
-          '[DEBUG] fetchSecurityData - Current effectiveCurrentDate from store:',
-          appStore.effectiveCurrentDate
-        )
-
-        // loading.value = true
-        loadingPriceChart.value = true
-        loadingPositionChart.value = true
-
-        if (!security.value) {
-          const securityResponse = await getSecurityDetail(
-            securityId,
-            selectedAccountId.value
-          )
-          security.value = securityResponse
-          emit('update-page-title', security.value.name)
-        }
-
-        // Always fetch the effective current date to ensure it's up-to-date
-        logger.log(
-          'SecurityDetailPage',
-          '[DEBUG] fetchSecurityData - Fetching effective current date from backend...'
-        )
-        await appStore.fetchEffectiveCurrentDate()
-        logger.log(
-          'SecurityDetailPage',
-          '[DEBUG] fetchSecurityData - Updated effectiveCurrentDate from store:',
-          appStore.effectiveCurrentDate
-        )
-
-        const [priceHistoryResponse, positionHistoryResponse] =
-          await Promise.all([
-            getSecurityPriceHistory(securityId, selectedPeriod.value),
-            getSecurityPositionHistory(
-              securityId,
-              selectedPeriod.value,
-              selectedAccountId.value
-            ),
-          ])
-
-        priceHistory.value = priceHistoryResponse || []
-        positionHistory.value = positionHistoryResponse || []
-
-        if (!chartOptionsLoaded.value) {
-          chartOptions.value = await getChartOptions(security.value.currency)
-          chartOptionsLoaded.value = true
-        }
-
-        loadingPriceChart.value = false
-        loadingPositionChart.value = false
-      } catch (error) {
-        logger.error('Unknown', 'Error fetching security data:', error)
-        // } finally {
-        //   loading.value = false
-      }
-    }
-
-    const fetchTransactions = async () => {
-      try {
-        loadingTransactions.value = true
-        const securityId = route.params.id
-        const response = await getSecurityTransactions(
+    const [priceHistoryResponse, positionHistoryResponse] =
+      await Promise.all([
+        getSecurityPriceHistory(securityId, selectedPeriod.value),
+        getSecurityPositionHistory(
           securityId,
-          {
-            page: transactionOptions.value.page,
-            itemsPerPage: transactionOptions.value.itemsPerPage,
-          },
           selectedPeriod.value,
           selectedAccountId.value
-        )
-        transactions.value = response.transactions
-        totalTransactions.value = response.total_items
-      } catch (error) {
-        logger.error('Unknown', 'Error fetching transactions:', error)
-      } finally {
-        loadingTransactions.value = false
-      }
+        ),
+      ])
+
+    priceHistory.value = priceHistoryResponse || []
+    positionHistory.value = positionHistoryResponse || []
+
+    if (!chartOptionsLoaded.value) {
+      chartOptions.value = await getChartOptions(security.value.currency)
+      chartOptionsLoaded.value = true
     }
 
-    watch(selectedPeriod, () => {
-      fetchSecurityData()
-      transactionOptions.value.page = 1
-      fetchTransactions()
-    })
-
-    watch(selectedAccount, async () => {
-      // Reset and refetch all data for the new account
-      loading.value = true
-      security.value = null
-      await fetchSecurityData()
-      transactionOptions.value.page = 1
-      await fetchTransactions()
-      loading.value = false
-    })
-
-    watch(
-      transactionOptions,
-      () => {
-        fetchTransactions()
-      },
-      { deep: true }
-    )
-
-    onMounted(async () => {
-      // Fetch account options for the filter
-      try {
-        const data = await getAccountChoices()
-        accountOptions.value = formatAccountChoices(data.options)
-      } catch (error) {
-        logger.error(
-          'SecurityDetailPage',
-          'Error fetching account choices:',
-          error
-        )
-      }
-
-      logger.log('SecurityDetailPage', '[DEBUG] onMounted - Starting...')
-      logger.log(
-        'SecurityDetailPage',
-        '[DEBUG] onMounted - Initial effectiveCurrentDate from store:',
-        appStore.effectiveCurrentDate
-      )
-      loading.value = true
-      await fetchSecurityData()
-      logger.log(
-        'SecurityDetailPage',
-        '[DEBUG] onMounted - After fetchSecurityData, effectiveCurrentDate from store:',
-        appStore.effectiveCurrentDate
-      )
-      await fetchTransactions()
-      loading.value = false
-      logger.log(
-        'SecurityDetailPage',
-        '[DEBUG] onMounted - Completed, final effectiveCurrentDate from store:',
-        appStore.effectiveCurrentDate
-      )
-    })
-
-    const getLastAvailableDataPoint = (data, targetDate) => {
-      const sortedData = [...data].sort(
-        (a, b) => new Date(b.date) - new Date(a.date)
-      )
-      return (
-        sortedData.find(
-          (item) => new Date(item.date) <= new Date(targetDate)
-        ) || sortedData[0]
-      )
-    }
-
-    const priceChartData = computed(() => {
-      let chartData = filteredPriceHistory.value.map((item) => ({
-        x: new Date(item.date),
-        y: item.price,
-      }))
-
-      if (effectiveCurrentDate.value) {
-        const lastDataPoint = getLastAvailableDataPoint(
-          filteredPriceHistory.value,
-          effectiveCurrentDate.value
-        )
-        if (lastDataPoint) {
-          chartData.push({
-            x: new Date(effectiveCurrentDate.value),
-            y: lastDataPoint.price,
-          })
-        }
-      }
-
-      return {
-        labels: chartData.map((item) => item.x),
-        datasets: [
-          {
-            label: 'Price',
-            data: chartData,
-            borderColor:
-              chartOptions.value?.colorPalette[0] || 'rgba(75, 192, 192, 1)',
-            tension: 0.1,
-          },
-        ],
-      }
-    })
-
-    const positionChartData = computed(() => {
-      let chartData = filteredPositionHistory.value.map((item) => ({
-        x: new Date(item.date),
-        y: item.position,
-      }))
-
-      if (effectiveCurrentDate.value) {
-        const lastDataPoint = getLastAvailableDataPoint(
-          filteredPositionHistory.value,
-          effectiveCurrentDate.value
-        )
-        if (lastDataPoint) {
-          chartData.push({
-            x: new Date(effectiveCurrentDate.value),
-            y: lastDataPoint.position,
-          })
-        }
-      }
-
-      return {
-        labels: chartData.map((item) => item.x),
-        datasets: [
-          {
-            label: 'Position',
-            data: chartData,
-            borderColor:
-              chartOptions.value?.colorPalette[1] || 'rgba(153, 102, 255, 1)',
-            tension: 0.1,
-          },
-        ],
-      }
-    })
-
-    const getTimeConfig = (period) => {
-      const currentDate = new Date(effectiveCurrentDate.value)
-      const startDate = getStartDate(period)
-      const daysDiff = differenceInDays(currentDate, startDate)
-
-      if (daysDiff <= 14) {
-        return { unit: 'day', stepSize: 1 }
-      } else if (daysDiff <= 31) {
-        return { unit: 'day', stepSize: 2 }
-      } else if (daysDiff <= 90) {
-        return { unit: 'week', stepSize: 1 }
-      } else if (daysDiff <= 180) {
-        return { unit: 'month', stepSize: 1 }
-      } else if (daysDiff <= 365) {
-        return { unit: 'month', stepSize: 2 }
-      } else if (daysDiff <= 365 * 2) {
-        return { unit: 'quarter', stepSize: 1 }
-      } else {
-        return { unit: 'year', stepSize: 1 }
-      }
-    }
-
-    const commonChartOptions = computed(() => {
-      const timeConfig = getTimeConfig(selectedPeriod.value)
-      return {
-        ...chartOptions.value?.navChartOptions,
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: {
-            type: 'time',
-            time: {
-              unit: timeConfig.unit,
-              stepSize: timeConfig.stepSize,
-              displayFormats: {
-                day: 'd MMM',
-                week: 'd MMM',
-                month: 'MMM yyyy',
-                quarter: 'QQQ yyyy',
-                year: 'yyyy',
-              },
-            },
-            grid: {
-              display: false, // Remove vertical grid lines
-            },
-            title: {
-              display: false,
-            },
-            max: effectiveCurrentDate.value,
-          },
-          y: {
-            beginAtZero: false,
-            grid: {
-              display: true, // Keep horizontal grid lines
-            },
-            title: {
-              display: true,
-            },
-          },
-        },
-        plugins: {
-          legend: {
-            display: false,
-          },
-          tooltip: {
-            callbacks: {
-              title: function (context) {
-                return new Date(context[0].parsed.x).toLocaleDateString(
-                  'en-US',
-                  { year: 'numeric', month: 'short', day: 'numeric' }
-                )
-              },
-            },
-          },
-          datalabels: {
-            display: false,
-          },
-        },
-      }
-    })
-
-    const priceChartOptions = computed(() => ({
-      ...commonChartOptions.value,
-      scales: {
-        ...commonChartOptions.value.scales,
-        y: {
-          ...commonChartOptions.value.scales.y,
-          title: {
-            ...commonChartOptions.value.scales.y.title,
-            text: `Price (${security.value?.currency})`,
-          },
-        },
-      },
-    }))
-
-    const positionChartOptions = computed(() => ({
-      ...commonChartOptions.value,
-      scales: {
-        ...commonChartOptions.value.scales,
-        y: {
-          ...commonChartOptions.value.scales.y,
-          beginAtZero: true,
-          title: {
-            ...commonChartOptions.value.scales.y.title,
-            text: 'Position',
-          },
-        },
-      },
-    }))
-
-    return {
-      security,
-      priceChartData,
-      positionChartData,
-      priceChartOptions,
-      positionChartOptions,
-      transactions,
-      transactionHeaders,
-      transactionOptions,
-      totalTransactions,
-      itemsPerPageOptions,
-      pageCount,
-      chartOptionsLoaded,
-      loading,
-      loadingPriceChart,
-      loadingPositionChart,
-      loadingTransactions,
-      selectedPeriod,
-      updateChartPeriod,
-      effectiveCurrentDate,
-      getTransactionDescription,
-      selectedAccount,
-      accountOptions,
-    }
-  },
+    loadingPriceChart.value = false
+    loadingPositionChart.value = false
+  } catch (error) {
+    logger.error('Unknown', 'Error fetching security data:', error)
+    // } finally {
+    //   loading.value = false
+  }
 }
+
+const fetchTransactions = async () => {
+  try {
+    loadingTransactions.value = true
+    const securityId = route.params.id
+    const response = await getSecurityTransactions(
+      securityId,
+      {
+        page: transactionOptions.value.page,
+        itemsPerPage: transactionOptions.value.itemsPerPage,
+      },
+      selectedPeriod.value,
+      selectedAccountId.value
+    )
+    transactions.value = response.transactions
+    totalTransactions.value = response.total_items
+  } catch (error) {
+    logger.error('Unknown', 'Error fetching transactions:', error)
+  } finally {
+    loadingTransactions.value = false
+  }
+}
+
+watch(selectedPeriod, () => {
+  fetchSecurityData()
+  transactionOptions.value.page = 1
+  fetchTransactions()
+})
+
+watch(selectedAccount, async () => {
+  // Reset and refetch all data for the new account
+  loading.value = true
+  security.value = null
+  await fetchSecurityData()
+  transactionOptions.value.page = 1
+  await fetchTransactions()
+  loading.value = false
+})
+
+watch(
+  transactionOptions,
+  () => {
+    fetchTransactions()
+  },
+  { deep: true }
+)
+
+const getLastAvailableDataPoint = (data, targetDate) => {
+  const sortedData = [...data].sort(
+    (a, b) => new Date(b.date) - new Date(a.date)
+  )
+  return (
+    sortedData.find(
+      (item) => new Date(item.date) <= new Date(targetDate)
+    ) || sortedData[0]
+  )
+}
+
+const priceChartData = computed(() => {
+  let chartData = filteredPriceHistory.value.map((item) => ({
+    x: new Date(item.date),
+    y: item.price,
+  }))
+
+  if (effectiveCurrentDate.value) {
+    const lastDataPoint = getLastAvailableDataPoint(
+      filteredPriceHistory.value,
+      effectiveCurrentDate.value
+    )
+    if (lastDataPoint) {
+      chartData.push({
+        x: new Date(effectiveCurrentDate.value),
+        y: lastDataPoint.price,
+      })
+    }
+  }
+
+  return {
+    labels: chartData.map((item) => item.x),
+    datasets: [
+      {
+        label: 'Price',
+        data: chartData,
+        borderColor:
+          chartOptions.value?.colorPalette[0] || 'rgba(75, 192, 192, 1)',
+        tension: 0.1,
+      },
+    ],
+  }
+})
+
+const positionChartData = computed(() => {
+  let chartData = filteredPositionHistory.value.map((item) => ({
+    x: new Date(item.date),
+    y: item.position,
+  }))
+
+  if (effectiveCurrentDate.value) {
+    const lastDataPoint = getLastAvailableDataPoint(
+      filteredPositionHistory.value,
+      effectiveCurrentDate.value
+    )
+    if (lastDataPoint) {
+      chartData.push({
+        x: new Date(effectiveCurrentDate.value),
+        y: lastDataPoint.position,
+      })
+    }
+  }
+
+  return {
+    labels: chartData.map((item) => item.x),
+    datasets: [
+      {
+        label: 'Position',
+        data: chartData,
+        borderColor:
+          chartOptions.value?.colorPalette[1] || 'rgba(153, 102, 255, 1)',
+        tension: 0.1,
+      },
+    ],
+  }
+})
+
+const getTimeConfig = (period) => {
+  const currentDate = new Date(effectiveCurrentDate.value)
+  const startDate = getStartDate(period)
+  const daysDiff = differenceInDays(currentDate, startDate)
+
+  if (daysDiff <= 14) {
+    return { unit: 'day', stepSize: 1 }
+  } else if (daysDiff <= 31) {
+    return { unit: 'day', stepSize: 2 }
+  } else if (daysDiff <= 90) {
+    return { unit: 'week', stepSize: 1 }
+  } else if (daysDiff <= 180) {
+    return { unit: 'month', stepSize: 1 }
+  } else if (daysDiff <= 365) {
+    return { unit: 'month', stepSize: 2 }
+  } else if (daysDiff <= 365 * 2) {
+    return { unit: 'quarter', stepSize: 1 }
+  } else {
+    return { unit: 'year', stepSize: 1 }
+  }
+}
+
+const commonChartOptions = computed(() => {
+  const timeConfig = getTimeConfig(selectedPeriod.value)
+  return {
+    ...chartOptions.value?.navChartOptions,
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          unit: timeConfig.unit,
+          stepSize: timeConfig.stepSize,
+          displayFormats: {
+            day: 'd MMM',
+            week: 'd MMM',
+            month: 'MMM yyyy',
+            quarter: 'QQQ yyyy',
+            year: 'yyyy',
+          },
+        },
+        grid: {
+          display: false, // Remove vertical grid lines
+        },
+        title: {
+          display: false,
+        },
+        max: effectiveCurrentDate.value,
+      },
+      y: {
+        beginAtZero: false,
+        grid: {
+          display: true, // Keep horizontal grid lines
+        },
+        title: {
+          display: true,
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        callbacks: {
+          title: function (context) {
+            return new Date(context[0].parsed.x).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            })
+          },
+        },
+      },
+      datalabels: {
+        display: false,
+      },
+    },
+  }
+})
+
+const priceChartOptions = computed(() => ({
+  ...commonChartOptions.value,
+  scales: {
+    ...commonChartOptions.value.scales,
+    y: {
+      ...commonChartOptions.value.scales.y,
+      title: {
+        ...commonChartOptions.value.scales.y.title,
+        text: `Price (${security.value?.currency})`,
+      },
+    },
+  },
+}))
+
+const positionChartOptions = computed(() => ({
+  ...commonChartOptions.value,
+  scales: {
+    ...commonChartOptions.value.scales,
+    y: {
+      ...commonChartOptions.value.scales.y,
+      beginAtZero: true,
+      title: {
+        ...commonChartOptions.value.scales.y.title,
+        text: 'Position',
+      },
+    },
+  },
+}))
+
+onMounted(async () => {
+  // Fetch account options for the filter
+  try {
+    const data = await getAccountChoices()
+    accountOptions.value = formatAccountChoices(data.options)
+  } catch (error) {
+    logger.error(
+      'SecurityDetailPage',
+      'Error fetching account choices:',
+      error
+    )
+  }
+
+  logger.log('SecurityDetailPage', '[DEBUG] onMounted - Starting...')
+  logger.log(
+    'SecurityDetailPage',
+    '[DEBUG] onMounted - Initial effectiveCurrentDate from store:',
+    appStore.effectiveCurrentDate
+  )
+  loading.value = true
+  await fetchSecurityData()
+  logger.log(
+    'SecurityDetailPage',
+    '[DEBUG] onMounted - After fetchSecurityData, effectiveCurrentDate from store:',
+    appStore.effectiveCurrentDate
+  )
+  await fetchTransactions()
+  loading.value = false
+  logger.log(
+    'SecurityDetailPage',
+    '[DEBUG] onMounted - Completed, final effectiveCurrentDate from store:',
+    appStore.effectiveCurrentDate
+  )
+})
 </script>
 
 <style scoped>

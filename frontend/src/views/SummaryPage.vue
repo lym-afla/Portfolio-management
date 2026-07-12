@@ -273,7 +273,7 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useRouter } from 'vue-router'
@@ -285,265 +285,241 @@ import {
 } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'SummaryPage',
-  emits: ['update-page-title'],
-  setup(props, { emit }) {
-    const appStore = useAppStore()
-    const router = useRouter()
-    const { handleApiError } = useErrorHandler()
-    const loading = ref({
-      accountPerformance: true,
-      portfolioBreakdown: true,
-    })
-    const accountPerformanceData = ref([])
-    const emptyBreakdownData = () => ({
-      consolidated_context: [],
-      unrestricted_context: [],
-      restricted_context: [],
-    })
-    const portfolioBreakdownData = ref(emptyBreakdownData())
-    const years = ref([])
-    const currentYear = new Date().getFullYear()
-    const selectedYear = ref(currentYear.toString())
-    const yearOptions = ref([])
+defineOptions({ name: 'SummaryPage' })
 
-    const accountPerformanceHeaders = computed(() => [
-      { text: 'Account', value: 'name', sortable: false, rowspan: 2 },
-      ...years.value.map((year) => ({
-        text: year === 'YTD' ? currentYear : year,
-        value: year,
-        sortable: false,
-        align: 'center',
-        colspan: subHeaders.value.length,
-        class: year === 'YTD' || year === 'All-time' ? 'highlight-column' : '',
-      })),
-    ])
+const emit = defineEmits(['update-page-title'])
 
-    const accountPerformanceSubHeaders = computed(() =>
-      years.value.flatMap((year) =>
-        subHeaders.value.map((subheader) => ({
-          text: subheader.text,
-          value: `${year}.${subheader.value}`,
-          sortable: false,
-          align: 'center',
-          class:
-            year === 'YTD' || year === 'All-time' ? 'highlight-column' : '',
-        }))
-      )
-    )
+const appStore = useAppStore()
+const router = useRouter()
+const { handleApiError } = useErrorHandler()
+const loading = ref({
+  accountPerformance: true,
+  portfolioBreakdown: true,
+})
+const accountPerformanceData = ref([])
+const emptyBreakdownData = () => ({
+  consolidated_context: [],
+  unrestricted_context: [],
+  restricted_context: [],
+})
+const portfolioBreakdownData = ref(emptyBreakdownData())
+const years = ref([])
+const currentYear = new Date().getFullYear()
+const selectedYear = ref(currentYear.toString())
+const yearOptions = ref([])
 
-    const portfolioBreakdownHeaders = ref([
-      { text: 'Asset Class', value: 'name', rowspan: 2, class: 'fixed-column' },
-      { text: 'Cost', value: 'cost', rowspan: 2 },
-      { text: 'Unrealized', value: 'unrealized', colspan: 2 },
-      { text: 'Market value', value: 'market_value', rowspan: 2 },
-      {
-        text: '% of portfolio',
-        value: 'portfolio_percent',
-        rowspan: 2,
-        class: 'fst-italic',
-      },
-      { text: 'Realized', value: 'realized', colspan: 2 },
-      {
-        text: 'Capital distribution',
-        value: 'capital_distribution',
-        colspan: 2,
-      },
-      { text: 'Commission', value: 'commission', colspan: 2 },
-      { text: 'Total', value: 'total', colspan: 2 },
-    ])
+const subHeaders = ref([
+  { text: 'BoP NAV', value: 'BoP NAV' },
+  { text: 'Cash-in/(out)', value: 'Cash-in/out' },
+  { text: 'Return', value: 'Return' },
+  { text: 'FX', value: 'FX' },
+  { text: 'TSR', value: 'TSR percentage' },
+  { text: 'EoP NAV', value: 'EoP NAV' },
+  { text: 'Commissions', value: 'Commission' },
+  { text: 'Fee per AuM', value: 'Fee per AuM (percentage)' },
+])
 
-    const portfolioBreakdownSubHeaders = ref([
-      { text: `(${appStore.selectedCurrency})`, value: 'unrealized' },
-      { text: '(%)', value: 'unrealized_percent', class: 'fst-italic' },
-      { text: `(${appStore.selectedCurrency})`, value: 'realized' },
-      { text: '(%)', value: 'realized_percent', class: 'fst-italic' },
-      {
-        text: `(${appStore.selectedCurrency})`,
-        value: 'capital_distribution',
-      },
-      {
-        text: '(%)',
-        value: 'capital_distribution_percent',
-        class: 'fst-italic',
-      },
-      { text: `(${appStore.selectedCurrency})`, value: 'commission' },
-      { text: '(%)', value: 'commission_percent', class: 'fst-italic' },
-      { text: `(${appStore.selectedCurrency})`, value: 'total' },
-      { text: '(%)', value: 'total_percent', class: 'fst-italic' },
-    ])
+const accountPerformanceHeaders = computed(() => [
+  { text: 'Account', value: 'name', sortable: false, rowspan: 2 },
+  ...years.value.map((year) => ({
+    text: year === 'YTD' ? currentYear : year,
+    value: year,
+    sortable: false,
+    align: 'center',
+    colspan: subHeaders.value.length,
+    class: year === 'YTD' || year === 'All-time' ? 'highlight-column' : '',
+  })),
+])
 
-    const portfolioBreakdownCategories = [
-      'consolidated',
-      'unrestricted',
-      'restricted',
-    ]
+const accountPerformanceSubHeaders = computed(() =>
+  years.value.flatMap((year) =>
+    subHeaders.value.map((subheader) => ({
+      text: subheader.text,
+      value: `${year}.${subheader.value}`,
+      sortable: false,
+      align: 'center',
+      class: year === 'YTD' || year === 'All-time' ? 'highlight-column' : '',
+    }))
+  )
+)
 
-    const subHeaders = ref([
-      { text: 'BoP NAV', value: 'BoP NAV' },
-      { text: 'Cash-in/(out)', value: 'Cash-in/out' },
-      { text: 'Return', value: 'Return' },
-      { text: 'FX', value: 'FX' },
-      { text: 'TSR', value: 'TSR percentage' },
-      { text: 'EoP NAV', value: 'EoP NAV' },
-      { text: 'Commissions', value: 'Commission' },
-      { text: 'Fee per AuM', value: 'Fee per AuM (percentage)' },
-    ])
-
-    const totalData = ref({})
-
-    const fetchYearOptions = async () => {
-      try {
-        const years = await getYearOptions()
-        yearOptions.value = years
-      } catch (error) {
-        handleApiError(error)
-      }
-    }
-
-    const fetchAccountPerformanceData = async () => {
-      try {
-        loading.value.accountPerformance = true
-        const data = await getAccountPerformanceSummary()
-        if (
-          data &&
-          data.public_markets_context &&
-          data.restricted_investments_context &&
-          data.total_context
-        ) {
-          accountPerformanceData.value = [
-            {
-              name: 'public_markets_context',
-              lines: data.public_markets_context.lines || [],
-              subtotal: data.public_markets_context.subtotal || null,
-            },
-            {
-              name: 'restricted_investments_context',
-              lines: data.restricted_investments_context.lines || [],
-              subtotal: data.restricted_investments_context.subtotal || null,
-            },
-          ]
-          totalData.value = data.total_context.line || {}
-          years.value = data.total_context.years || []
-        } else {
-          logger.error('Unknown', 'Unexpected data structure:', data)
-        }
-      } catch (error) {
-        if (error.message === 'Authentication required') {
-          router.push('/login')
-        } else {
-          handleApiError(error)
-        }
-      } finally {
-        loading.value.accountPerformance = false
-      }
-    }
-
-    const fetchPortfolioBreakdown = async (year) => {
-      try {
-        loading.value.portfolioBreakdown = true
-        const data = await getPortfolioBreakdownSummary(year)
-        portfolioBreakdownData.value = data
-        if (!data || !data.consolidated_context) {
-          console.error(
-            'Unexpected data structure for portfolio breakdown:',
-            data
-          )
-        }
-      } catch (error) {
-        portfolioBreakdownData.value = emptyBreakdownData()
-        handleApiError(error)
-      } finally {
-        loading.value.portfolioBreakdown = false
-      }
-    }
-
-    const handleYearChange = (year) => {
-      selectedYear.value = year
-      fetchPortfolioBreakdown(year)
-    }
-
-    const error = ref(null)
-
-    const hasBreakdownData = computed(() => {
-      const d = portfolioBreakdownData.value
-      return (
-        d &&
-        d.consolidated_context &&
-        d.consolidated_context.length > 0
-      )
-    })
-
-    const portfolioBreakdownItems = computed(() => {
-      if (!portfolioBreakdownData.value) return []
-
-      const result = []
-      for (const category of [
-        'consolidated_context',
-        'unrestricted_context',
-        'restricted_context',
-      ]) {
-        if (portfolioBreakdownData.value[category]) {
-          result.push({
-            name: category.replace('_context', '').toUpperCase(),
-            isHeader: true,
-          })
-
-          portfolioBreakdownData.value[category].forEach((item) => {
-            result.push(item)
-          })
-        }
-      }
-      return result
-    })
-
-    onMounted(async () => {
-      emit('update-page-title', 'Summary Analysis')
-      await fetchYearOptions()
-      await fetchAccountPerformanceData()
-      await fetchPortfolioBreakdown(selectedYear.value)
-    })
-
-    // Watch for changes in the store that should trigger a data refresh
-    watch(
-      () => appStore.dataRefreshTrigger,
-      () => {
-        fetchAccountPerformanceData()
-        fetchPortfolioBreakdown(selectedYear.value)
-      }
-    )
-
-    // This watch is used to update the year options when the selected account changes.
-    watch(
-      () => appStore.accountSelection,
-      () => {
-        fetchYearOptions()
-      }
-    )
-
-    return {
-      loading,
-      accountPerformanceData: accountPerformanceData,
-      portfolioBreakdownData,
-      accountPerformanceHeaders,
-      accountPerformanceSubHeaders,
-      portfolioBreakdownHeaders,
-      portfolioBreakdownSubHeaders,
-      portfolioBreakdownCategories,
-      years,
-      subHeaders,
-      currentYear,
-      selectedYear,
-      yearOptions,
-      handleYearChange,
-      error,
-      totalData,
-      portfolioBreakdownItems,
-      hasBreakdownData,
-    }
+const portfolioBreakdownHeaders = ref([
+  { text: 'Asset Class', value: 'name', rowspan: 2, class: 'fixed-column' },
+  { text: 'Cost', value: 'cost', rowspan: 2 },
+  { text: 'Unrealized', value: 'unrealized', colspan: 2 },
+  { text: 'Market value', value: 'market_value', rowspan: 2 },
+  {
+    text: '% of portfolio',
+    value: 'portfolio_percent',
+    rowspan: 2,
+    class: 'fst-italic',
   },
+  { text: 'Realized', value: 'realized', colspan: 2 },
+  {
+    text: 'Capital distribution',
+    value: 'capital_distribution',
+    colspan: 2,
+  },
+  { text: 'Commission', value: 'commission', colspan: 2 },
+  { text: 'Total', value: 'total', colspan: 2 },
+])
+
+const portfolioBreakdownSubHeaders = ref([
+  { text: `(${appStore.selectedCurrency})`, value: 'unrealized' },
+  { text: '(%)', value: 'unrealized_percent', class: 'fst-italic' },
+  { text: `(${appStore.selectedCurrency})`, value: 'realized' },
+  { text: '(%)', value: 'realized_percent', class: 'fst-italic' },
+  {
+    text: `(${appStore.selectedCurrency})`,
+    value: 'capital_distribution',
+  },
+  {
+    text: '(%)',
+    value: 'capital_distribution_percent',
+    class: 'fst-italic',
+  },
+  { text: `(${appStore.selectedCurrency})`, value: 'commission' },
+  { text: '(%)', value: 'commission_percent', class: 'fst-italic' },
+  { text: `(${appStore.selectedCurrency})`, value: 'total' },
+  { text: '(%)', value: 'total_percent', class: 'fst-italic' },
+])
+
+const portfolioBreakdownCategories = [
+  'consolidated',
+  'unrestricted',
+  'restricted',
+]
+
+const totalData = ref({})
+
+const fetchYearOptions = async () => {
+  try {
+    const years = await getYearOptions()
+    yearOptions.value = years
+  } catch (error) {
+    handleApiError(error)
+  }
 }
+
+const fetchAccountPerformanceData = async () => {
+  try {
+    loading.value.accountPerformance = true
+    const data = await getAccountPerformanceSummary()
+    if (
+      data &&
+      data.public_markets_context &&
+      data.restricted_investments_context &&
+      data.total_context
+    ) {
+      accountPerformanceData.value = [
+        {
+          name: 'public_markets_context',
+          lines: data.public_markets_context.lines || [],
+          subtotal: data.public_markets_context.subtotal || null,
+        },
+        {
+          name: 'restricted_investments_context',
+          lines: data.restricted_investments_context.lines || [],
+          subtotal: data.restricted_investments_context.subtotal || null,
+        },
+      ]
+      totalData.value = data.total_context.line || {}
+      years.value = data.total_context.years || []
+    } else {
+      logger.error('Unknown', 'Unexpected data structure:', data)
+    }
+  } catch (error) {
+    if (error.message === 'Authentication required') {
+      router.push('/login')
+    } else {
+      handleApiError(error)
+    }
+  } finally {
+    loading.value.accountPerformance = false
+  }
+}
+
+const fetchPortfolioBreakdown = async (year) => {
+  try {
+    loading.value.portfolioBreakdown = true
+    const data = await getPortfolioBreakdownSummary(year)
+    portfolioBreakdownData.value = data
+    if (!data || !data.consolidated_context) {
+      console.error(
+        'Unexpected data structure for portfolio breakdown:',
+        data
+      )
+    }
+  } catch (error) {
+    portfolioBreakdownData.value = emptyBreakdownData()
+    handleApiError(error)
+  } finally {
+    loading.value.portfolioBreakdown = false
+  }
+}
+
+const handleYearChange = (year) => {
+  selectedYear.value = year
+  fetchPortfolioBreakdown(year)
+}
+
+const error = ref(null)
+
+const hasBreakdownData = computed(() => {
+  const d = portfolioBreakdownData.value
+  return (
+    d &&
+    d.consolidated_context &&
+    d.consolidated_context.length > 0
+  )
+})
+
+const portfolioBreakdownItems = computed(() => {
+  if (!portfolioBreakdownData.value) return []
+
+  const result = []
+  for (const category of [
+    'consolidated_context',
+    'unrestricted_context',
+    'restricted_context',
+  ]) {
+    if (portfolioBreakdownData.value[category]) {
+      result.push({
+        name: category.replace('_context', '').toUpperCase(),
+        isHeader: true,
+      })
+
+      portfolioBreakdownData.value[category].forEach((item) => {
+        result.push(item)
+      })
+    }
+  }
+  return result
+})
+
+onMounted(async () => {
+  emit('update-page-title', 'Summary Analysis')
+  await fetchYearOptions()
+  await fetchAccountPerformanceData()
+  await fetchPortfolioBreakdown(selectedYear.value)
+})
+
+// Watch for changes in the store that should trigger a data refresh
+watch(
+  () => appStore.dataRefreshTrigger,
+  () => {
+    fetchAccountPerformanceData()
+    fetchPortfolioBreakdown(selectedYear.value)
+  }
+)
+
+// This watch is used to update the year options when the selected account changes.
+watch(
+  () => appStore.accountSelection,
+  () => {
+    fetchYearOptions()
+  }
+)
 </script>
 
 <style scoped>
