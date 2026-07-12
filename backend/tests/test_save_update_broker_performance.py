@@ -29,7 +29,7 @@ from constants import (
     TRANSACTION_TYPE_SELL,
 )
 from core.accounts_utils import get_accounts_table_api
-from core.portfolio_utils import calculate_performance, get_last_exit_date_for_accounts
+from services.performance import calculate_performance, get_last_exit_date_for_accounts
 from database.consumers import UpdateAccountPerformanceConsumer
 
 from services.realized import (

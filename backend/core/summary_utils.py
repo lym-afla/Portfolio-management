@@ -10,8 +10,8 @@ from decimal import Decimal
 
 from common.models import Accounts, AnnualPerformance
 from core.formatting_utils import currency_format_dict_values
-from core.portfolio_utils import (
-    IRR,
+from services.nav import IRR
+from services.performance import (
     calculate_performance,
     get_last_exit_date_for_accounts,
     get_selected_account_ids,

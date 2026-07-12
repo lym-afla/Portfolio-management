@@ -21,9 +21,9 @@ from users.models import CustomUser
 
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import get_selected_account_ids
 from .sorting_utils import sort_entries
 from .tables_utils import calculate_positions_table_output
+from services.performance import get_selected_account_ids
 
 logger = logging.getLogger(__name__)
 

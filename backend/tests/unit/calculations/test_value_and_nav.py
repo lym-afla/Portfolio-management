@@ -1,5 +1,5 @@
 """
-Characterization tests for services.pricing.calculate_value_at_date and core.portfolio_utils.NAV_at_date.
+Characterization tests for services.pricing.calculate_value_at_date and services.nav.NAV_at_date.
 
 These tests document CURRENT (pre-extraction) behavior of the value/NAV
 calculation paths so that the upcoming service-layer extraction has a
@@ -22,7 +22,7 @@ from common.models import (
     Prices,
     Transactions,
 )
-from core.portfolio_utils import NAV_at_date
+from services.nav import NAV_at_date
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 
@@ -248,7 +248,7 @@ class TestCalculateValueAtDate:
 @pytest.mark.nav
 @pytest.mark.unit
 class TestNAVAtDate:
-    """Characterization tests for core.portfolio_utils.NAV_at_date."""
+    """Characterization tests for services.nav.NAV_at_date."""
 
     def test_empty_portfolio_returns_zero(self, user, broker):
         """No assets, no accounts with transactions -> NAV Decimal(0)."""

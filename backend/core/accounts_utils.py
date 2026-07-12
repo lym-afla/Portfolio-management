@@ -16,8 +16,8 @@ from services.accounts import balance as account_balance, get_currencies
 
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import IRR, NAV_at_date
 from .sorting_utils import sort_entries
+from services.nav import IRR, NAV_at_date
 
 
 def get_accounts_table_api(request):

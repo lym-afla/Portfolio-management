@@ -17,8 +17,8 @@ from services.accounts import balance as account_balance, get_currencies
 
 from .balance_tracker import BalanceTracker
 from .pagination_utils import paginate_table
-from .portfolio_utils import get_selected_account_ids
 from .sorting_utils import sort_entries
+from services.performance import get_selected_account_ids
 
 
 def get_transactions_table_api(request):

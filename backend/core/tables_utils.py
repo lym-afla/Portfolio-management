@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.formatting_utils import currency_format
-from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
+from services.nav import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
 from services.capital import get_capital_distribution, get_commission
 from services.pricing import calculate_value_at_date, price_at_date
 from services.positions import (

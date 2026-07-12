@@ -15,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 from django.db.models import Min
 
 from common.models import Transactions
-from core.portfolio_utils import IRR, NAV_at_date, get_fx_rate
+from services.nav import IRR, NAV_at_date, get_fx_rate
 
 logger = logging.getLogger("dashboard")
 

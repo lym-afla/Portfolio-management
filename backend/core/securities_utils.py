@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404
 
 from common.models import Assets, Transactions
 from constants import ASSET_TYPE_CRYPTO, TRANSACTION_TYPE_CRYPTO_REWARD
-from core.portfolio_utils import IRR
+from services.nav import IRR
 from services.bonds import calculate_bond_ytm, get_current_aci, get_current_notional
 from services.capital import get_capital_distribution
 from services.fx import get_rate as fx_get_rate

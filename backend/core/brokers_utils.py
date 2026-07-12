@@ -16,8 +16,8 @@ from services.positions import position
 
 from .formatting_utils import format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import IRR, NAV_at_date
 from .sorting_utils import sort_entries
+from services.nav import IRR, NAV_at_date
 
 logger = logging.getLogger(__name__)
 

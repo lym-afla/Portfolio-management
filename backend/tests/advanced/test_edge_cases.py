@@ -19,7 +19,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
-from core.portfolio_utils import NAV_at_date
+from services.nav import NAV_at_date
 from services.fx import get_rate as fx_get_rate
 from tests.fixtures.factories.asset_factory import AssetFactory, StockFactory
 from tests.fixtures.factories.transaction_factory import (

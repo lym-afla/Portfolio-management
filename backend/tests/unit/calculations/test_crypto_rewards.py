@@ -15,7 +15,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
-from core.portfolio_utils import IRR, _calculate_cash_flow
+from services.nav import IRR, _calculate_cash_flow
 
 from services.realized import (
     calculate_buy_in_price,
@@ -1298,7 +1298,7 @@ def test_portfolio_irr_includes_external_crypto_transfer_flow(
         captured["cash_flows"] = cash_flows
         return Decimal("0.10")
 
-    monkeypatch.setattr("core.portfolio_utils.xirr", capture_xirr)
+    monkeypatch.setattr("services.nav.xirr", capture_xirr)
 
     result = IRR(
         user.id,
@@ -1354,7 +1354,7 @@ def test_internal_crypto_transfer_is_account_flow_but_portfolio_neutral(
         captured.append(cash_flows)
         return Decimal("0.10")
 
-    monkeypatch.setattr("core.portfolio_utils.xirr", capture_xirr)
+    monkeypatch.setattr("services.nav.xirr", capture_xirr)
 
     IRR(
         user.id,

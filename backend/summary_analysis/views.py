@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from common.models import Accounts, Assets, Transactions
 from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.portfolio_utils import get_fx_rate
+from services.nav import get_fx_rate
 from core.summary_utils import accounts_summary_data
 from services.capital import get_capital_distribution, get_commission
 from services.pricing import calculate_value_at_date, price_at_date
