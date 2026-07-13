@@ -9,7 +9,8 @@
     "lint": "eslint src/",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "format": "prettier --write \"src/**/*.{js,vue,json,css,scss}\""
+    "format": "prettier --write \"src/**/*.{js,vue,json,css,scss}\"",
+    "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -41,8 +42,10 @@
     "jsdom": "^29.1.1",
     "prettier": "^3.3.3",
     "resize-observer-polyfill": "^1.5.1",
+    "typescript": "^5.9.3",
     "vite": "^8.1.4",
     "vite-plugin-vuetify": "^2.1.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.7"
   }
 }
