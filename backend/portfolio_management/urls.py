@@ -2,6 +2,7 @@
 
 from django.contrib import admin
 from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView
 
 from common import views
 
@@ -18,6 +19,8 @@ urlpatterns = [
     path("transactions/", include("transactions.urls", namespace="transactions")),
     path("database/", include("database.urls", namespace="database")),
     path("summary/", include("summary_analysis.urls", namespace="summary_analysis")),
+    # OpenAPI schema endpoint
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     # APIs not related to any specific app
     path("api/get-year-options/", views.get_year_options_api, name="get_year_options_api"),
     path(

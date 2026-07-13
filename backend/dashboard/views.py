@@ -8,12 +8,20 @@ from decimal import Decimal
 
 from django.db import DatabaseError
 from django.db.models import Sum
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from common.models import AnnualPerformance, Transactions
+from common.schema_serializers import (
+    DashboardBreakdownResponseSerializer,
+    DashboardSummaryOverTimeResponseSerializer,
+    DashboardSummaryResponseSerializer,
+    MessageResponseSerializer,
+    NavChartDataResponseSerializer,
+)
 from services.charts import get_nav_chart_data
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from services.fx import get_rate as fx_get_rate
@@ -28,6 +36,12 @@ from services.performance import (
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    responses={
+        200: DashboardSummaryResponseSerializer,
+        500: MessageResponseSerializer,
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_dashboard_summary_api(request):
