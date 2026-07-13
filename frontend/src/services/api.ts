@@ -2,8 +2,61 @@ import axiosInstance from '@/config/axiosConfig'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
+import type { components } from '@/types/api'
 
-export const login = async (username, password) => {
+// Schema aliases sourced from the generated OpenAPI types.
+type Account = components['schemas']['Account']
+type AccountGroup = components['schemas']['AccountGroup']
+type Broker = components['schemas']['Broker']
+type FX = components['schemas']['FX']
+type TransactionForm = components['schemas']['TransactionForm']
+type FXTransactionForm = components['schemas']['FXTransactionForm']
+type DashboardSummaryResponse = components['schemas']['DashboardSummaryResponse']
+type User = components['schemas']['User']
+
+// The /users/api/profile/ endpoint returns the User schema plus extra
+// account-selection preference fields that aren't captured by the
+// generated OpenAPI schema.
+type UserProfile = User & {
+  selected_account_type?: string | null
+  selected_account_id?: number | null
+  [key: string]: unknown
+}
+
+// The backend serves several function-based-view endpoints that return
+// untyped dicts. These aliases keep the signatures readable while staying
+// honest about the fact that their shapes aren't in the OpenAPI spec.
+type ApiRecord = Record<string, unknown>
+
+// Sort descriptor shape used by the data-table endpoints (open/closed
+// positions, transactions, prices, FX). The backend accepts a single sort
+// object or an empty object.
+interface SortBy {
+  key?: string
+  order?: 'asc' | 'desc'
+  [key: string]: unknown
+}
+
+// Login response shape (JWT tokens + user info). The login FBV is not
+// described in the OpenAPI spec, but it is one of the most-used functions
+// so we type it explicitly.
+interface LoginResponse {
+  access?: string
+  refresh?: string
+  user?: User
+  effective_current_date?: string
+  [key: string]: unknown
+}
+
+// Paginated table response used by open/closed positions and transactions.
+interface PaginatedTableResponse {
+  count?: number
+  page?: number
+  num_pages?: number
+  [key: string]: unknown
+}
+
+export const login = async (username: string, password: string): Promise<LoginResponse> => {
   try {
     const response = await axiosInstance.post('/users/api/login/', {
       username,
@@ -16,7 +69,7 @@ export const login = async (username, password) => {
   }
 }
 
-export const refreshToken = async () => {
+export const refreshToken = async (): Promise<{ access?: string; refresh?: string; effective_current_date?: string }> => {
   const refreshToken = localStorage.getItem('refreshToken')
   if (!refreshToken) {
     throw new Error('No refresh token available')
@@ -33,7 +86,7 @@ export const refreshToken = async () => {
   }
 }
 
-export const register = async (username, email, password, password2) => {
+export const register = async (username: string, email: string, password: string, password2: string): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post('/users/api/register/', {
       username,
@@ -53,7 +106,7 @@ export const register = async (username, email, password, password2) => {
   }
 }
 
-export const getAccountChoices = async () => {
+export const getAccountChoices = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/users/api/get_account_choices/')
     return response.data
@@ -62,7 +115,7 @@ export const getAccountChoices = async () => {
   }
 }
 
-export const updateUserDataForNewAccount = async (selection) => {
+export const updateUserDataForNewAccount = async (selection: { type: string; id: number }): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/update_user_data_for_new_account/',
@@ -77,7 +130,7 @@ export const updateUserDataForNewAccount = async (selection) => {
   }
 }
 
-export const getUserProfile = async () => {
+export const getUserProfile = async (): Promise<UserProfile> => {
   try {
     const response = await axiosInstance.get('/users/api/profile/')
     return response.data
@@ -86,7 +139,7 @@ export const getUserProfile = async () => {
   }
 }
 
-export const editUserProfile = async (profileData) => {
+export const editUserProfile = async (profileData: Partial<UserProfile>): Promise<{ success: boolean; errors?: ApiRecord }> => {
   try {
     const response = await axiosInstance.put(
       '/users/api/edit_profile/',
@@ -101,7 +154,7 @@ export const editUserProfile = async (profileData) => {
   }
 }
 
-export const changePassword = async (passwordData) => {
+export const changePassword = async (passwordData: { old_password?: string; new_password?: string; [key: string]: unknown }): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/change_password/',
@@ -113,7 +166,7 @@ export const changePassword = async (passwordData) => {
   }
 }
 
-export const getUserSettings = async () => {
+export const getUserSettings = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/users/api/user_settings/')
     return response.data
@@ -122,7 +175,7 @@ export const getUserSettings = async () => {
   }
 }
 
-export const updateUserSettings = async (settings) => {
+export const updateUserSettings = async (settings: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/user_settings/',
@@ -134,7 +187,7 @@ export const updateUserSettings = async (settings) => {
   }
 }
 
-export const getSettingsChoices = async () => {
+export const getSettingsChoices = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/users/api/user_settings_choices/'
@@ -145,7 +198,7 @@ export const getSettingsChoices = async () => {
   }
 }
 
-export const logout = async () => {
+export const logout = async (): Promise<ApiRecord> => {
   try {
     const refreshToken = localStorage.getItem('refreshToken')
     if (!refreshToken) {
@@ -169,7 +222,7 @@ export const logout = async () => {
   }
 }
 
-export const deleteUserAccount = async () => {
+export const deleteUserAccount = async (): Promise<ApiRecord> => {
   try {
     const refreshToken = localStorage.getItem('refreshToken')
     const response = await axiosInstance.delete('/users/api/delete_account/', {
@@ -185,7 +238,7 @@ export const deleteUserAccount = async () => {
   }
 }
 
-export const getDashboardSettings = async () => {
+export const getDashboardSettings = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/users/api/dashboard_settings/')
     return response.data
@@ -195,7 +248,7 @@ export const getDashboardSettings = async () => {
   }
 }
 
-export const updateDashboardSettings = async (settings) => {
+export const updateDashboardSettings = async (settings: ApiRecord): Promise<{ success: boolean; error?: ApiRecord; requires_token_refresh?: boolean; new_effective_date?: string; [key: string]: unknown }> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/update_dashboard_settings/',
@@ -261,12 +314,12 @@ export const updateDashboardSettings = async (settings) => {
   }
 }
 
-export const getEffectiveCurrentDate = async () => {
+export const getEffectiveCurrentDate = async (): Promise<{ date?: string; effective_current_date?: string; [key: string]: unknown }> => {
   const response = await axiosInstance.get('/api/effective-current-date/')
   return response.data
 }
 
-export const getAssetTypes = async () => {
+export const getAssetTypes = async (): Promise<ApiRecord | ApiRecord[]> => {
   try {
     const response = await axiosInstance.get('/database/api/get-asset-types/')
     return response.data
@@ -276,13 +329,13 @@ export const getAssetTypes = async () => {
 }
 
 export const getOpenPositions = async (
-  dateFrom,
-  dateTo,
-  page,
-  itemsPerPage,
+  dateFrom: string,
+  dateTo: string,
+  page: number,
+  itemsPerPage: number,
   search = '',
-  sortBy = {}
-) => {
+  sortBy: SortBy = {}
+): Promise<PaginatedTableResponse> => {
   console.log('[api.js] getOpenPositions called with:', {
     dateFrom,
     dateTo,
@@ -311,13 +364,13 @@ export const getOpenPositions = async (
 }
 
 export const getClosedPositions = async (
-  dateFrom,
-  dateTo,
-  page,
-  itemsPerPage,
+  dateFrom: string,
+  dateTo: string,
+  page: number,
+  itemsPerPage: number,
   search = '',
-  sortBy = {}
-) => {
+  sortBy: SortBy = {}
+): Promise<{ portfolio_closed?: ApiRecord[]; [key: string]: unknown }> => {
   try {
     const response = await axiosInstance.post(
       '/closed_positions/api/get_closed_positions_table/',
@@ -355,7 +408,7 @@ export const getClosedPositions = async (
   }
 }
 
-export const getYearOptions = async () => {
+export const getYearOptions = async (): Promise<number[]> => {
   try {
     const response = await axiosInstance.get('/api/get-year-options/')
     return response.data.table_years
@@ -364,14 +417,14 @@ export const getYearOptions = async () => {
   }
 }
 
-export const getSecurities = async (assetTypes = [], accountId = null) => {
+export const getSecurities = async (assetTypes: string[] = [], accountId: number | null = null): Promise<ApiRecord[]> => {
   try {
     const params = new URLSearchParams()
     if (assetTypes.length > 0) {
       params.append('asset_types', assetTypes.join(','))
     }
     if (accountId) {
-      params.append('account_id', accountId)
+      params.append('account_id', String(accountId))
     }
     const response = await axiosInstance.get('/database/api/get-securities/', {
       params,
@@ -382,7 +435,7 @@ export const getSecurities = async (assetTypes = [], accountId = null) => {
   }
 }
 
-export const getPrices = async (params) => {
+export const getPrices = async (params: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/get-prices-table/',
@@ -395,7 +448,7 @@ export const getPrices = async (params) => {
   }
 }
 
-export const getSecuritiesForDatabase = async (params) => {
+export const getSecuritiesForDatabase = async (params: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/get-securities-for-database/',
@@ -407,7 +460,7 @@ export const getSecuritiesForDatabase = async (params) => {
   }
 }
 
-export const createSecurity = async (securityData) => {
+export const createSecurity = async (securityData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/create-security/',
@@ -419,9 +472,9 @@ export const createSecurity = async (securityData) => {
   }
 }
 
-export const getSecurityDetail = async (securityId, accountId = null) => {
+export const getSecurityDetail = async (securityId: number, accountId: number | null = null): Promise<ApiRecord> => {
   try {
-    const params = {}
+    const params: Record<string, number> = {}
     if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/`,
@@ -434,7 +487,7 @@ export const getSecurityDetail = async (securityId, accountId = null) => {
   }
 }
 
-export const getSecurityPriceHistory = async (securityId, period) => {
+export const getSecurityPriceHistory = async (securityId: number, period: string): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/price-history/`,
@@ -450,9 +503,9 @@ export const getSecurityPriceHistory = async (securityId, period) => {
   }
 }
 
-export const getSecurityPositionHistory = async (securityId, period, accountId = null) => {
+export const getSecurityPositionHistory = async (securityId: number, period: string, accountId: number | null = null): Promise<ApiRecord> => {
   try {
-    const params = { period }
+    const params: Record<string, string | number> = { period }
     if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/position-history/`,
@@ -466,10 +519,10 @@ export const getSecurityPositionHistory = async (securityId, period, accountId =
   }
 }
 
-export const getSecurityTransactions = async (securityId, options, period, accountId = null) => {
+export const getSecurityTransactions = async (securityId: number, options: { page: number; itemsPerPage: number }, period: string, accountId: number | null = null): Promise<ApiRecord> => {
   try {
     const { page, itemsPerPage } = options
-    const params = {
+    const params: Record<string, number | string> = {
       page,
       itemsPerPage,
       period,
@@ -487,7 +540,7 @@ export const getSecurityTransactions = async (securityId, options, period, accou
   }
 }
 
-export const updateSecurity = async (securityId, securityData) => {
+export const updateSecurity = async (securityId: number, securityData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.put(
       `/database/api/update-security/${securityId}/`,
@@ -499,7 +552,7 @@ export const updateSecurity = async (securityId, securityData) => {
   }
 }
 
-export const deleteSecurity = async (securityId) => {
+export const deleteSecurity = async (securityId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.delete(
       `/database/api/delete-security/${securityId}/`
@@ -510,7 +563,7 @@ export const deleteSecurity = async (securityId) => {
   }
 }
 
-export const getDashboardBreakdown = async () => {
+export const getDashboardBreakdown = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/dashboard/api/get-breakdown/')
     return response.data
@@ -520,7 +573,7 @@ export const getDashboardBreakdown = async () => {
   }
 }
 
-export const getDashboardSummaryOverTime = async () => {
+export const getDashboardSummaryOverTime = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/dashboard/api/get-summary-over-time/'
@@ -533,11 +586,11 @@ export const getDashboardSummaryOverTime = async () => {
 }
 
 export const getNAVChartData = async (
-  breakdown,
-  frequency,
-  dateFrom,
-  dateTo
-) => {
+  breakdown: string,
+  frequency: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<ApiRecord> => {
   try {
     console.log('API request params for NAV chart:', {
       breakdown: breakdown,
@@ -564,7 +617,7 @@ export const getNAVChartData = async (
   }
 }
 
-export const getDashboardSummary = async () => {
+export const getDashboardSummary = async (): Promise<DashboardSummaryResponse> => {
   try {
     const response = await axiosInstance.get('/dashboard/api/get-summary/')
     return response.data
@@ -574,14 +627,14 @@ export const getDashboardSummary = async () => {
   }
 }
 
-export const getAccountPerformanceFormData = async () => {
+export const getAccountPerformanceFormData = async (): Promise<ApiRecord> => {
   const response = await axiosInstance.get(
     '/database/api/update-account-performance/'
   )
   return response.data
 }
 
-export const updateAccountPerformance = async (formData) => {
+export const updateAccountPerformance = async (formData: ApiRecord): Promise<{ status: string; message?: string; [key: string]: unknown }> => {
   try {
     const effectiveCurrentDate = useAppStore().effectiveCurrentDate
     if (!effectiveCurrentDate) {
@@ -654,7 +707,8 @@ export const updateAccountPerformance = async (formData) => {
 
       // Handle authentication errors
       source.addEventListener('error', (event) => {
-        if (event.target.readyState === EventSource.CLOSED) {
+        const target = event.target as unknown as EventSource
+        if (target.readyState === EventSource.CLOSED) {
           logger.error('Unknown', 'SSE connection closed due to error')
           reject(new Error('Connection closed due to error'))
         }
@@ -671,7 +725,7 @@ export const updateAccountPerformance = async (formData) => {
   }
 }
 
-export const addPrice = async (priceData) => {
+export const addPrice = async (priceData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/add-price/',
@@ -683,7 +737,7 @@ export const addPrice = async (priceData) => {
   }
 }
 
-export const deletePrice = async (priceId) => {
+export const deletePrice = async (priceId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.delete(
       `/database/api/delete-price/${priceId}/`
@@ -694,7 +748,7 @@ export const deletePrice = async (priceId) => {
   }
 }
 
-export const getPriceDetails = async (priceId) => {
+export const getPriceDetails = async (priceId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       `/database/api/get-price-details/${priceId}/`
@@ -705,7 +759,7 @@ export const getPriceDetails = async (priceId) => {
   }
 }
 
-export const updatePrice = async (priceId, priceData) => {
+export const updatePrice = async (priceId: number, priceData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.put(
       `/database/api/update-price/${priceId}/`,
@@ -717,7 +771,7 @@ export const updatePrice = async (priceId, priceData) => {
   }
 }
 
-export const getSecurityFormStructure = async () => {
+export const getSecurityFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/database/api/security-form-structure/'
@@ -728,7 +782,7 @@ export const getSecurityFormStructure = async () => {
   }
 }
 
-export const getSecurityDetails = async (id) => {
+export const getSecurityDetails = async (id: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       `/database/api/get-security-details/${id}/`
@@ -739,7 +793,7 @@ export const getSecurityDetails = async (id) => {
   }
 }
 
-export const getPriceImportFormStructure = async () => {
+export const getPriceImportFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/database/api/price-import/')
     return response.data
@@ -754,9 +808,15 @@ export const createMerger = async ({
   mergerDate,
   conversionRatio,
   cashPerShare,
-}) => {
+}: {
+  oldSecurityId: number
+  newSecurityId?: number | null
+  mergerDate: string
+  conversionRatio?: number | string | null
+  cashPerShare?: number | string | null
+}): Promise<ApiRecord> => {
   try {
-    const data = {
+    const data: Record<string, unknown> = {
       old_security_id: oldSecurityId,
       merger_date: mergerDate,
     }
@@ -772,7 +832,7 @@ export const createMerger = async ({
   }
 }
 
-export const importPrices = async (importData) => {
+export const importPrices = async (importData: ApiRecord): Promise<string | ApiRecord> => {
   try {
     const effectiveCurrentDate = useAppStore().effectiveCurrentDate
     if (!effectiveCurrentDate) {
@@ -834,7 +894,7 @@ export const importPrices = async (importData) => {
   }
 }
 
-export const getAccountsTable = async (params = {}) => {
+export const getAccountsTable = async (params: ApiRecord = {}): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/accounts/list_accounts/',
@@ -846,7 +906,7 @@ export const getAccountsTable = async (params = {}) => {
   }
 }
 
-export const getAccounts = async () => {
+export const getAccounts = async (): Promise<Account[]> => {
   try {
     const response = await axiosInstance.get('/database/api/accounts/')
     return response.data
@@ -855,7 +915,7 @@ export const getAccounts = async () => {
   }
 }
 
-export const getAccountDetails = async (accountId) => {
+export const getAccountDetails = async (accountId: number): Promise<Account> => {
   try {
     const response = await axiosInstance.get(
       `/database/api/accounts/${accountId}/`
@@ -866,7 +926,7 @@ export const getAccountDetails = async (accountId) => {
   }
 }
 
-export const createAccount = async (accountData) => {
+export const createAccount = async (accountData: Partial<Account>): Promise<Account> => {
   const response = await axiosInstance.post(
     '/database/api/accounts/',
     accountData
@@ -874,7 +934,7 @@ export const createAccount = async (accountData) => {
   return response.data
 }
 
-export const updateAccount = async (accountId, accountData) => {
+export const updateAccount = async (accountId: number, accountData: Partial<Account>): Promise<Account> => {
   try {
     const response = await axiosInstance.put(
       `/database/api/accounts/${accountId}/`,
@@ -886,7 +946,7 @@ export const updateAccount = async (accountId, accountData) => {
   }
 }
 
-export const deleteAccount = async (accountId) => {
+export const deleteAccount = async (accountId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.delete(
       `/database/api/accounts/${accountId}/`
@@ -897,7 +957,7 @@ export const deleteAccount = async (accountId) => {
   }
 }
 
-export const getAccountFormStructure = async () => {
+export const getAccountFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/database/api/accounts/form_structure/'
@@ -908,7 +968,7 @@ export const getAccountFormStructure = async () => {
   }
 }
 
-export const getFXFormStructure = async () => {
+export const getFXFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/database/api/fx/form_structure/')
     return response.data
@@ -925,7 +985,14 @@ export const getFXData = async ({
   itemsPerPage,
   sortBy,
   search,
-}) => {
+}: {
+  startDate: string
+  endDate: string
+  page: number
+  itemsPerPage: number
+  sortBy: SortBy
+  search: string
+}): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post('/database/api/fx/list_fx/', {
       startDate,
@@ -942,7 +1009,7 @@ export const getFXData = async ({
   }
 }
 
-export const getFXDetails = async (fxId) => {
+export const getFXDetails = async (fxId: number): Promise<FX> => {
   try {
     const response = await axiosInstance.get(`/database/api/fx/${fxId}/`)
     return response.data
@@ -952,7 +1019,7 @@ export const getFXDetails = async (fxId) => {
   }
 }
 
-export const addFXRate = async (fxData) => {
+export const addFXRate = async (fxData: Partial<FX>): Promise<FX> => {
   try {
     const response = await axiosInstance.post('/database/api/fx/', fxData)
     return response.data
@@ -962,7 +1029,7 @@ export const addFXRate = async (fxData) => {
   }
 }
 
-export const updateFXRate = async (fxId, fxData) => {
+export const updateFXRate = async (fxId: number, fxData: Partial<FX>): Promise<FX> => {
   try {
     const response = await axiosInstance.put(
       `/database/api/fx/${fxId}/`,
@@ -975,7 +1042,7 @@ export const updateFXRate = async (fxId, fxData) => {
   }
 }
 
-export const deleteFXRate = async (fxId) => {
+export const deleteFXRate = async (fxId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.delete(`/database/api/fx/${fxId}/`)
     return response.data
@@ -985,7 +1052,7 @@ export const deleteFXRate = async (fxId) => {
   }
 }
 
-export const getFXImportStats = async () => {
+export const getFXImportStats = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get('/database/api/fx/import_stats/')
     logger.log('Unknown', 'GetFXImportStats API response:', response.data)
@@ -996,7 +1063,7 @@ export const getFXImportStats = async () => {
   }
 }
 
-export const importFXRates = async (importData, signal) => {
+export const importFXRates = async (importData: ApiRecord, signal: AbortSignal): Promise<string | ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/fx-import/sse/',
@@ -1050,7 +1117,7 @@ export const importFXRates = async (importData, signal) => {
   }
 }
 
-export const cancelFXImport = async () => {
+export const cancelFXImport = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post('/database/api/fx/cancel_import/')
     return response.data
@@ -1061,13 +1128,13 @@ export const cancelFXImport = async () => {
 }
 
 export const getTransactions = async (
-  dateFrom,
-  dateTo,
-  page,
-  itemsPerPage,
+  dateFrom: string,
+  dateTo: string,
+  page: number,
+  itemsPerPage: number,
   search = '',
-  sortBy = {}
-) => {
+  sortBy: SortBy = {}
+): Promise<PaginatedTableResponse> => {
   console.log('API request payload for transactions:', {
     dateFrom,
     dateTo,
@@ -1096,7 +1163,7 @@ export const getTransactions = async (
   }
 }
 
-export const getTransactionFormStructure = async () => {
+export const getTransactionFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/transactions/api/form_structure/'
@@ -1108,7 +1175,7 @@ export const getTransactionFormStructure = async () => {
   }
 }
 
-export const getTransactionDetails = async (id) => {
+export const getTransactionDetails = async (id: number): Promise<TransactionForm> => {
   try {
     const response = await axiosInstance.get(`/transactions/api/${id}/`)
     return response.data
@@ -1118,7 +1185,7 @@ export const getTransactionDetails = async (id) => {
   }
 }
 
-export const addTransaction = async (transactionData) => {
+export const addTransaction = async (transactionData: Partial<TransactionForm>): Promise<TransactionForm> => {
   try {
     const response = await axiosInstance.post(
       '/transactions/api/',
@@ -1131,7 +1198,7 @@ export const addTransaction = async (transactionData) => {
   }
 }
 
-export const updateTransaction = async (id, transactionData) => {
+export const updateTransaction = async (id: number, transactionData: Partial<TransactionForm>): Promise<TransactionForm> => {
   try {
     const response = await axiosInstance.put(
       `/transactions/api/${id}/`,
@@ -1144,7 +1211,7 @@ export const updateTransaction = async (id, transactionData) => {
   }
 }
 
-export const deleteTransaction = async (id) => {
+export const deleteTransaction = async (id: number): Promise<void> => {
   try {
     await axiosInstance.delete(`/transactions/api/${id}/`)
   } catch (error) {
@@ -1154,7 +1221,7 @@ export const deleteTransaction = async (id) => {
 }
 
 // FX Transaction API functions
-export const getFXTransactionFormStructure = async () => {
+export const getFXTransactionFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/transactions/api/fx/form_structure/'
@@ -1170,7 +1237,7 @@ export const getFXTransactionFormStructure = async () => {
   }
 }
 
-export const getFXTransactionDetails = async (id) => {
+export const getFXTransactionDetails = async (id: number): Promise<FXTransactionForm> => {
   try {
     const response = await axiosInstance.get(`/transactions/api/fx/${id}/`)
     return response.data
@@ -1180,7 +1247,7 @@ export const getFXTransactionDetails = async (id) => {
   }
 }
 
-export const addFXTransaction = async (transactionData) => {
+export const addFXTransaction = async (transactionData: Partial<FXTransactionForm>): Promise<FXTransactionForm> => {
   try {
     logger.log('Unknown', 'Sending FX transaction data:', transactionData) // Add this line
     const response = await axiosInstance.post(
@@ -1198,7 +1265,7 @@ export const addFXTransaction = async (transactionData) => {
   }
 }
 
-export const updateFXTransaction = async (id, transactionData) => {
+export const updateFXTransaction = async (id: number, transactionData: Partial<FXTransactionForm>): Promise<FXTransactionForm> => {
   try {
     const response = await axiosInstance.put(
       `/transactions/api/fx/${id}/`,
@@ -1211,7 +1278,7 @@ export const updateFXTransaction = async (id, transactionData) => {
   }
 }
 
-export const deleteFXTransaction = async (id) => {
+export const deleteFXTransaction = async (id: number): Promise<void> => {
   try {
     await axiosInstance.delete(`/transactions/api/fx/${id}/`)
   } catch (error) {
@@ -1221,10 +1288,10 @@ export const deleteFXTransaction = async (id) => {
 }
 
 export const getSecurityPosition = async (
-  securityId,
-  accountId,
-  date = null
-) => {
+  securityId: number,
+  accountId: number,
+  date: string | null = null
+): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/transactions/api/get_security_position/',
@@ -1241,7 +1308,7 @@ export const getSecurityPosition = async (
   }
 }
 
-export const transferAsset = async (transferData) => {
+export const transferAsset = async (transferData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/transactions/api/transfer_asset/',
@@ -1254,7 +1321,7 @@ export const transferAsset = async (transferData) => {
   }
 }
 
-export const analyzeFile = async (formData) => {
+export const analyzeFile = async (formData: FormData): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/transactions/api/analyze_file/',
@@ -1272,7 +1339,7 @@ export const analyzeFile = async (formData) => {
   }
 }
 
-export async function getAccountPerformanceSummary() {
+export async function getAccountPerformanceSummary(): Promise<ApiRecord> {
   try {
     const response = await axiosInstance.get('/summary/api/summary_data/')
     return response.data
@@ -1284,7 +1351,7 @@ export async function getAccountPerformanceSummary() {
   }
 }
 
-export async function getPortfolioBreakdownSummary(year) {
+export async function getPortfolioBreakdownSummary(year: number): Promise<ApiRecord> {
   try {
     const response = await axiosInstance.get(
       '/summary/api/portfolio_breakdown/',
@@ -1299,7 +1366,7 @@ export async function getPortfolioBreakdownSummary(year) {
   }
 }
 
-export const getBrokerTokens = async () => {
+export const getBrokerTokens = async (): Promise<ApiRecord | ApiRecord[]> => {
   logger.log('Unknown', 'getBrokerTokens called') // Debug log
   try {
     logger.log('Unknown', 'Making request to /users/api/broker_tokens/') // Debug log
@@ -1312,7 +1379,7 @@ export const getBrokerTokens = async () => {
   }
 }
 
-export const saveTinkoffToken = async (tokenData) => {
+export const saveTinkoffToken = async (tokenData: ApiRecord): Promise<ApiRecord> => {
   logger.log('Unknown', 'Attempting to save Tinkoff token...')
   try {
     const response = await axiosInstance.post(
@@ -1327,7 +1394,7 @@ export const saveTinkoffToken = async (tokenData) => {
   }
 }
 
-export const testTinkoffConnection = async (tokenId) => {
+export const testTinkoffConnection = async (tokenId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       `/users/api/tinkoff-tokens/${tokenId}/test_connection/`
@@ -1344,7 +1411,7 @@ export const testTinkoffConnection = async (tokenId) => {
   }
 }
 
-export const saveIBToken = async (tokenData) => {
+export const saveIBToken = async (tokenData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/ib-tokens/',
@@ -1357,7 +1424,7 @@ export const saveIBToken = async (tokenData) => {
   }
 }
 
-export const saveBybitToken = async (tokenData) => {
+export const saveBybitToken = async (tokenData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/bybit-tokens/',
@@ -1370,7 +1437,7 @@ export const saveBybitToken = async (tokenData) => {
   }
 }
 
-export const saveOKXToken = async (tokenData) => {
+export const saveOKXToken = async (tokenData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/users/api/okx-tokens/',
@@ -1383,7 +1450,7 @@ export const saveOKXToken = async (tokenData) => {
   }
 }
 
-export const testIBConnection = async (tokenId) => {
+export const testIBConnection = async (tokenId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       `/users/api/ib-tokens/${tokenId}/test_connection/`
@@ -1395,7 +1462,7 @@ export const testIBConnection = async (tokenId) => {
   }
 }
 
-export const revokeToken = async (broker, tokenId) => {
+export const revokeToken = async (broker: string, tokenId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post('/users/api/revoke_token/', {
       token_type: broker,
@@ -1408,7 +1475,7 @@ export const revokeToken = async (broker, tokenId) => {
   }
 }
 
-export const deleteToken = async (broker, tokenId) => {
+export const deleteToken = async (broker: string, tokenId: number): Promise<unknown> => {
   let brokerEndpoint
   switch (broker) {
     case 'tinkoff':
@@ -1430,7 +1497,7 @@ export const deleteToken = async (broker, tokenId) => {
   return await axiosInstance.delete(`/users/api/${brokerEndpoint}/${tokenId}/`)
 }
 
-export const getAccountGroups = async () => {
+export const getAccountGroups = async (): Promise<AccountGroup[]> => {
   try {
     logger.log('Unknown', 'Fetching account groups') // Debug log
     const response = await axiosInstance.get('/users/api/account-groups/')
@@ -1442,7 +1509,7 @@ export const getAccountGroups = async () => {
   }
 }
 
-export const saveAccountGroup = async (groupData) => {
+export const saveAccountGroup = async (groupData: Partial<AccountGroup>): Promise<AccountGroup> => {
   try {
     logger.log('Unknown', 'Saving account group:', groupData) // Debug log
     const response = await axiosInstance.post(
@@ -1457,7 +1524,7 @@ export const saveAccountGroup = async (groupData) => {
   }
 }
 
-export const updateAccountGroup = async (groupData) => {
+export const updateAccountGroup = async (groupData: AccountGroup): Promise<AccountGroup> => {
   try {
     const response = await axiosInstance.put(
       `/users/api/account-groups/${groupData.id}/`,
@@ -1470,7 +1537,7 @@ export const updateAccountGroup = async (groupData) => {
   }
 }
 
-export const deleteAccountGroup = async (groupId) => {
+export const deleteAccountGroup = async (groupId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.delete(
       `/users/api/account-groups/${groupId}/`
@@ -1482,7 +1549,7 @@ export const deleteAccountGroup = async (groupId) => {
   }
 }
 
-export const getAvailableBrokers = async () => {
+export const getAvailableBrokers = async (): Promise<Broker[]> => {
   try {
     const response = await axiosInstance.get('/database/api/brokers/')
     return response.data
@@ -1492,7 +1559,7 @@ export const getAvailableBrokers = async () => {
   }
 }
 
-export const getBrokersTable = async (params = {}) => {
+export const getBrokersTable = async (params: ApiRecord = {}): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(
       '/database/api/brokers/list_brokers/',
@@ -1504,7 +1571,7 @@ export const getBrokersTable = async (params = {}) => {
   }
 }
 
-export const getBrokerDetails = async (brokerId) => {
+export const getBrokerDetails = async (brokerId: number): Promise<Broker> => {
   try {
     const response = await axiosInstance.get(
       `/database/api/brokers/${brokerId}/`
@@ -1515,7 +1582,7 @@ export const getBrokerDetails = async (brokerId) => {
   }
 }
 
-export const createBroker = async (brokerData) => {
+export const createBroker = async (brokerData: Partial<Broker>): Promise<Broker> => {
   const response = await axiosInstance.post(
     '/database/api/brokers/',
     brokerData
@@ -1523,7 +1590,7 @@ export const createBroker = async (brokerData) => {
   return response.data
 }
 
-export const updateBroker = async (brokerId, brokerData) => {
+export const updateBroker = async (brokerId: number, brokerData: Partial<Broker>): Promise<Broker> => {
   try {
     const response = await axiosInstance.put(
       `/database/api/brokers/${brokerId}/`,
@@ -1535,7 +1602,7 @@ export const updateBroker = async (brokerId, brokerData) => {
   }
 }
 
-export const deleteBroker = async (brokerId) => {
+export const deleteBroker = async (brokerId: number): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.delete(
       `/database/api/brokers/${brokerId}/`
@@ -1546,7 +1613,7 @@ export const deleteBroker = async (brokerId) => {
   }
 }
 
-export const getBrokerFormStructure = async () => {
+export const getBrokerFormStructure = async (): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/database/api/brokers/form_structure/'
@@ -1557,7 +1624,7 @@ export const getBrokerFormStructure = async () => {
   }
 }
 
-export const getBrokersWithTokens = async () => {
+export const getBrokersWithTokens = async (): Promise<Broker[]> => {
   try {
     const response = await axiosInstance.get('/database/api/brokers/', {
       params: { with_active_tokens: true },
