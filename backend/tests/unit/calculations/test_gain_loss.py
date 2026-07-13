@@ -15,6 +15,14 @@ from decimal import Decimal
 import pytest
 
 from common.models import FX, Prices, Transactions
+from services.fx import get_rate as fx_get_rate
+
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
 
 
 @pytest.mark.nav
@@ -50,7 +58,7 @@ class TestRealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 7, 16), investor=user)
+        result = realized_gain_loss(asset, date(2023, 7, 16), investor=user)
 
         # Expected: (60 - 50) * 100 = 1000 profit
         expected_profit = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
@@ -92,7 +100,7 @@ class TestRealizedGainLoss:
             price=Decimal("1000.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 1, 16), investor=user)
+        result = realized_gain_loss(asset, date(2023, 1, 16), investor=user)
 
         assert result["all_time"]["total"] == Decimal("100.00")
 
@@ -124,7 +132,7 @@ class TestRealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
+        result = realized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Expected: (40 - 50) * 100 = -1000 loss
         expected_loss = (Decimal("40.00") - Decimal("50.00")) * Decimal("100")
@@ -172,7 +180,7 @@ class TestRealizedGainLoss:
             commission=Decimal("-3.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
+        result = realized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Buy-in price: (100*50 + 50*55) / 150 = 51.666...
         # Realized gain: (60 - 51.666...) * 30 = 250
@@ -221,7 +229,7 @@ class TestRealizedGainLoss:
             commission=Decimal("-3.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
+        result = realized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Should calculate realized gain for both sales
         assert result["current_position"]["total"] > 0  # Should be profitable
@@ -272,7 +280,7 @@ class TestRealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
+        result = realized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Dividend should not affect realized gain calculation
         expected_gain = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
@@ -294,7 +302,7 @@ class TestRealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        result = asset.realized_gain_loss(date(2023, 6, 15), investor=user)
+        result = realized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         assert result["current_position"]["total"] == Decimal("0")
         assert result["all_time"]["total"] == Decimal("0")
@@ -327,7 +335,7 @@ class TestUnrealizedGainLoss:
             price=Decimal("65.00"),
         )
 
-        result = asset.unrealized_gain_loss(date(2024, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2024, 6, 15), investor=user)
 
         expected_gain = (Decimal("65.00") - Decimal("50.00")) * Decimal("100")
         assert result["total"] == expected_gain
@@ -354,7 +362,7 @@ class TestUnrealizedGainLoss:
             price=Decimal("35.00"),
         )
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Expected: (35 - 50) * 100 = -1500 loss
         expected_loss = (Decimal("35.00") - Decimal("50.00")) * Decimal("100")
@@ -390,7 +398,7 @@ class TestUnrealizedGainLoss:
         # Create current price
         Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Buy-in price: (100*50 + 50*55) / 150 = 51.666...
         # Unrealized gain: (60 - 51.666...) * 150 = 1250
@@ -429,7 +437,7 @@ class TestUnrealizedGainLoss:
         # Create current price
         Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Remaining position: 70 shares
         # Buy-in price should still be 50.00
@@ -465,7 +473,7 @@ class TestUnrealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         assert result["total"] == 0
 
@@ -484,7 +492,7 @@ class TestUnrealizedGainLoss:
             commission=Decimal("-5.00"),
         )
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         assert result["total"] == 0  # Should return 0 when no price data
 
@@ -528,14 +536,14 @@ class TestMultiCurrencyGainLoss:
         Prices.objects.create(date=date(2024, 6, 15), security=asset_eur, price=Decimal("45.00"))
 
         # Calculate realized gain in EUR (local currency)
-        result_eur = asset_eur.realized_gain_loss(
+        result_eur = realized_gain_loss(asset_eur, 
             date(2024, 6, 15), currency="EUR", investor=multi_currency_user
         )
         expected_eur = (Decimal("45.00") - Decimal("40.00")) * Decimal("100")
         assert abs(result_eur["all_time"]["total"] - expected_eur) < Decimal("0.01")
 
         # Calculate realized gain in USD (converted)
-        result_usd = asset_eur.realized_gain_loss(
+        result_usd = realized_gain_loss(asset_eur, 
             date(2024, 6, 15), currency="USD", investor=multi_currency_user
         )
         assert (
@@ -563,14 +571,14 @@ class TestMultiCurrencyGainLoss:
         Prices.objects.create(date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00"))
 
         # Calculate unrealized gain in EUR
-        result_eur = asset_eur.unrealized_gain_loss(
+        result_eur = unrealized_gain_loss(asset_eur, 
             date(2023, 6, 15), currency="EUR", investor=multi_currency_user
         )
         expected_eur = (Decimal("45.00") - Decimal("40.00")) * Decimal("100")
         assert result_eur["total"] == expected_eur
 
         # Calculate unrealized gain in USD
-        result_usd = asset_eur.unrealized_gain_loss(
+        result_usd = unrealized_gain_loss(asset_eur, 
             date(2023, 6, 15), currency="USD", investor=multi_currency_user
         )
         assert result_usd["total"] > result_eur["total"]  # USD conversion should increase value
@@ -596,16 +604,16 @@ class TestMultiCurrencyGainLoss:
         Prices.objects.create(date=date(2023, 6, 15), security=asset_eur, price=Decimal("45.00"))
 
         # Calculate gains in both currencies
-        gain_eur = asset_eur.unrealized_gain_loss(
+        gain_eur = unrealized_gain_loss(asset_eur, 
             date(2023, 6, 15), currency="EUR", investor=multi_currency_user
         )
-        gain_usd = asset_eur.unrealized_gain_loss(
+        gain_usd = unrealized_gain_loss(asset_eur, 
             date(2023, 6, 15), currency="USD", investor=multi_currency_user
         )
 
         # FX effect should be the difference
         fx_effect = gain_usd["total"] - (
-            gain_eur["total"] * FX.get_rate("EUR", "USD", date(2023, 6, 15))["FX"]
+            gain_eur["total"] * fx_get_rate("EUR", "USD", date(2023, 6, 15))["FX"]
         )
 
         # FX effect should be minimal due to similar conversion rates
@@ -635,7 +643,7 @@ class TestGainLossEdgeCases:
         # Create current price (higher than short price - loss for short)
         Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # For short position: (50 - 60) * 100 = -1000 (loss)
         expected_loss = (Decimal("50.00") - Decimal("60.00")) * Decimal("100")
@@ -659,7 +667,7 @@ class TestGainLossEdgeCases:
         # Create current price
         Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("1100.00"))
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Expected: (1100 - 1000) * 0.001 = 0.1
         expected_gain = (Decimal("1100.00") - Decimal("1000.00")) * Decimal("0.001")
@@ -683,7 +691,7 @@ class TestGainLossEdgeCases:
         # Create current price
         Prices.objects.create(date=date(2024, 6, 15), security=asset, price=Decimal("125.678901"))
 
-        result = asset.unrealized_gain_loss(date(2024, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2024, 6, 15), investor=user)
 
         # Expected: (125.678901 - 123.456789) * 1.234567
         # rounded to 2 decimal places as per the method definition
@@ -710,7 +718,7 @@ class TestGainLossEdgeCases:
         # Create current price
         Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("60.00"))
 
-        result = asset.unrealized_gain_loss(date(2023, 6, 15), investor=user)
+        result = unrealized_gain_loss(asset, date(2023, 6, 15), investor=user)
 
         # Commission should not affect unrealized gain calculation
         expected_gain = (Decimal("60.00") - Decimal("50.00")) * Decimal("100")
@@ -748,21 +756,21 @@ class TestGainLossEdgeCases:
         Prices.objects.create(date=date(2023, 6, 15), security=asset, price=Decimal("55.00"))
 
         # Calculate for first account only
-        result_account1 = asset.unrealized_gain_loss(
+        result_account1 = unrealized_gain_loss(asset, 
             date(2023, 6, 15), account_ids=[account.id], investor=user
         )
         expected_account1 = (Decimal("55.00") - Decimal("50.00")) * Decimal("100")
         assert result_account1["total"] == expected_account1
 
         # Calculate for second account only
-        result_account2 = asset.unrealized_gain_loss(
+        result_account2 = unrealized_gain_loss(asset, 
             date(2023, 6, 15), account_ids=[account_uk.id], investor=user
         )
         expected_account2 = (Decimal("55.00") - Decimal("60.00")) * Decimal("100")
         assert result_account2["total"] == expected_account2
 
         # Calculate for both accounts
-        result_both_accounts = asset.unrealized_gain_loss(
+        result_both_accounts = unrealized_gain_loss(asset, 
             date(2023, 6, 15), account_ids=[account.id, account_uk.id], investor=user
         )
         # Average buy-in price: (5000 + 6000) / 200 = 55

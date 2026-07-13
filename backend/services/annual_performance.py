@@ -12,7 +12,7 @@ from channels.db import database_sync_to_async
 from django.db import OperationalError, transaction
 
 from common.models import AnnualPerformance, Transactions
-from core.portfolio_utils import (
+from services.performance import (
     calculate_performance,
     get_last_exit_date_for_accounts,
     get_selected_account_ids,

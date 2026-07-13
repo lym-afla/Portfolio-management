@@ -13,12 +13,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from common.models import FX, AnnualPerformance, Transactions
-from core.chart_utils import get_nav_chart_data
+from common.models import AnnualPerformance, Transactions
+from services.charts import get_nav_chart_data
 from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.portfolio_utils import (
-    IRR,
-    NAV_at_date,
+from services.fx import get_rate as fx_get_rate
+from services.nav import IRR, NAV_at_date
+from services.performance import (
     calculate_percentage_shares,
     calculate_performance,
     get_last_exit_date_for_accounts,
@@ -70,7 +70,7 @@ def get_dashboard_summary_api(request):
     )
 
     for transaction in transactions:
-        fx_rate = FX.get_rate(transaction["currency"], currency_target, transaction["date"], user)[
+        fx_rate = fx_get_rate(transaction["currency"], currency_target, transaction["date"], user)[
             "FX"
         ]
         if transaction["type"] == "Cash in":

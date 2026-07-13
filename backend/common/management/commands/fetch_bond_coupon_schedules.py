@@ -7,7 +7,7 @@ from asgiref.sync import async_to_sync
 from django.core.management.base import BaseCommand
 
 from common.models import Assets
-from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+from services.importer import fetch_and_cache_bond_coupon_schedule
 from users.models import CustomUser
 
 logger = logging.getLogger(__name__)

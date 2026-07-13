@@ -18,7 +18,7 @@ from django.forms import model_to_dict
 
 from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
-from core.import_utils import (
+from services.importer import (
     fx_transaction_exists,
     get_security,
     match_tinkoff_broker_account,

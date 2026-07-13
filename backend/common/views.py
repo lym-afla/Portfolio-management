@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from common.models import Transactions
 from constants import ALL_TIME, YTD
-from core.portfolio_utils import (
+from services.performance import (
     get_last_exit_date_for_accounts,
     get_selected_account_ids,
 )

@@ -22,8 +22,8 @@ from t_tech.invest import (
 from common.models import Accounts, Brokers
 from users.models import BybitApiToken, OKXApiToken
 
-from .crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
-from .crypto_exchange_import import (
+from core.crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
+from services.crypto_exchange import (
     _merge_sorted_events,
     normalize_bybit_deposit,
     normalize_bybit_reward,
@@ -37,7 +37,7 @@ from .crypto_exchange_import import (
     normalize_okx_reward,
     normalize_okx_spot_fill,
 )
-from .tinkoff_utils import (
+from services.importer import (
     get_user_token,
     map_tinkoff_operation_to_transaction,
     verify_token_access,

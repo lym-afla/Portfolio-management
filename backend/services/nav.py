@@ -1,8 +1,36 @@
-"""Core portfolio calculation utilities.
+"""NAV (Net Asset Value) and IRR service.
 
-This module provides functions for calculating Net Asset Value (NAV),
-Internal Rate of Return (IRR), performance metrics, and other
-portfolio-level calculations.
+Owns the portfolio-level NAV assembly and Internal Rate of Return (IRR)
+calculations that previously lived at module level in ``core.portfolio_utils``:
+
+- :func:`NAV_at_date` builds the NAV breakdown for a set of accounts at a
+  single date (asset values plus cash balances, optionally split by asset
+  type / currency / asset class / account).
+- :func:`calculate_portfolio_cash` returns the total cash balance across
+  accounts in a target currency.
+- :func:`IRR` computes the XIRR-based internal rate of return for a portfolio
+  or a single asset over a date range.
+- :func:`get_fx_rate` is a cached wrapper around :func:`services.fx.get_rate`
+  returning just the ``"FX"`` multiplier.
+- :func:`get_accounts_for_security` and :func:`_portfolio_at_date` are the ORM
+  lookups backing NAV assembly.
+- :func:`merge_dictionaries`, :func:`_calculate_cash_flow`, and
+  :func:`_calculate_portfolio_value` are small internal helpers.
+
+Function names, parameter names, and positions are preserved verbatim from
+``core.portfolio_utils`` so that existing keyword-argument callers (tests,
+views, core utils) keep working unchanged after switching the import path to
+``services.nav``.
+
+Numeric safety: ``Decimal`` everywhere for money and rates. Never ``float``.
+
+Circular-import notes:
+- ``services.fx``, ``services.pricing``, ``services.positions``,
+  ``services.accounts``, ``services.transactions`` do not import this module
+  at top level, so importing them here is safe.
+- ``common.models`` is imported lazily by the dependent services and at module
+  top level here (NAV_at_date needs ``Accounts``); Django's app registry is
+  ready by the time any caller invokes these functions.
 """
 
 import datetime
@@ -13,18 +41,24 @@ from decimal import ROUND_HALF_UP, Decimal
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple, Union
 
-from django.db.models import Prefetch, Q, QuerySet, Sum
+from django.db.models import Q, QuerySet, Sum
 from pyxirr import xirr
 
-from common.models import FX, Accounts, AnnualPerformance, Assets, Brokers, Transactions
+from common.models import Accounts, Assets, Transactions
 from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
-from core.formatting_utils import format_percentage
-from users.models import AccountGroup, CustomUser
+from services.accounts import balance as account_balance
+from services.fx import get_rate as fx_get_rate
+from services.pricing import calculate_value_at_date
+from services.positions import position
+from services.transactions import (
+    is_reward_transaction,
+    total_cash_flow,
+)
 
 logger = logging.getLogger("dashboard")
 
@@ -90,7 +124,7 @@ def get_fx_rate(
     Returns:
         Decimal: The FX rate.
     """
-    return FX.get_rate(currency, target_currency, date, user)["FX"]
+    return fx_get_rate(currency, target_currency, date, user)["FX"]
 
 
 def merge_dictionaries(dict_1: dict, dict_2: dict) -> dict:
@@ -161,13 +195,13 @@ def NAV_at_date(
 
     for security in portfolio:
         for account in portfolio_accounts:
-            account_position = security.position(date, user_id, [account.id])
+            account_position = position(security, date, user_id, [account.id])
             if account_position == 0:
                 continue
 
             # Use calculate_value_at_date for proper bond notional handling
-            account_value = security.calculate_value_at_date(
-                date, user_id, target_currency, [account.id]
+            account_value = calculate_value_at_date(
+                security, date, user_id, target_currency, [account.id]
             )
 
             analysis["Total NAV"] += account_value
@@ -181,7 +215,7 @@ def NAV_at_date(
 
     # Handle cash balances
     for account in portfolio_accounts:
-        broker_balance = account.balance(date)
+        broker_balance = account_balance(account, date)
         for currency, balance in broker_balance.items():
             fx_rate = get_fx_rate(currency, target_currency, date)
             converted_balance = balance * fx_rate
@@ -212,7 +246,7 @@ def _calculate_portfolio_value(
     else:
         asset = Assets.objects.get(id=asset_id, investors__id=user_id)
         try:
-            portfolio_value = asset.calculate_value_at_date(date, user_id, currency, account_ids)
+            portfolio_value = calculate_value_at_date(asset, date, user_id, currency, account_ids)
         except Exception:
             portfolio_value = Decimal(0)
 
@@ -235,7 +269,7 @@ def calculate_portfolio_cash(
 
     cash_balance = {}
     for account in portfolio_accounts:
-        cash_balance = merge_dictionaries(cash_balance, account.balance(date))
+        cash_balance = merge_dictionaries(cash_balance, account_balance(account, date))
 
     cash = sum(
         balance * get_fx_rate(currency, target_currency, date)
@@ -362,7 +396,7 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     Uses the centralized total_cash_flow() method and applies
     sign convention for IRR (negative = outflow, positive = inflow).
     """
-    if transaction.is_reward_transaction():
+    if is_reward_transaction(transaction):
         return Decimal(0)
 
     if transaction.type in [
@@ -378,7 +412,7 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
         return Decimal(0)
 
     # Get the cash flow using the centralized method
-    cash_flow = transaction.total_cash_flow()
+    cash_flow = total_cash_flow(transaction)
 
     # For IRR calculation, "Cash in" and "Cash out" need to be inverted
     # because they represent external cash flows
@@ -386,335 +420,3 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
         return -cash_flow
 
     return cash_flow
-
-
-def get_selected_account_ids(
-    user: CustomUser, selection_type: str, selection_id: Optional[int] = None
-) -> List[int]:
-    """
-    Get list of broker account IDs based on selection type and ID.
-
-    Args:
-        user: CustomUser instance
-        selection_type: Type of selection ('all', 'account', 'group', 'broker')
-        selection_id: ID of selected item (None for 'all')
-
-    Returns:
-        List of broker account IDs
-    """
-    if selection_type == "all":
-        return list(Accounts.objects.filter(broker__investor=user).values_list("id", flat=True))
-
-    elif selection_type == "account":
-        return (
-            [selection_id]
-            if Accounts.objects.filter(id=selection_id, broker__investor=user).exists()
-            else []
-        )
-
-    elif selection_type == "group":
-        try:
-            group = AccountGroup.objects.get(id=selection_id, user=user)
-            return list(group.accounts.values_list("id", flat=True))
-        except AccountGroup.DoesNotExist:
-            return []
-
-    elif selection_type == "broker":
-        try:
-            broker = Brokers.objects.get(id=selection_id, investor=user)
-            return list(Accounts.objects.filter(broker=broker).values_list("id", flat=True))
-        except Brokers.DoesNotExist:
-            return []
-
-    return []
-
-
-def calculate_performance(
-    user,
-    start_date,
-    end_date,
-    account_group_type,
-    account_group_id,
-    currency_target,
-    is_restricted=None,
-):
-    """Calculate performance metrics for a given date range and account group.
-
-    Args:
-        user: The user instance.
-        start_date: Start date for performance calculation.
-        end_date: End date for performance calculation.
-        account_group_type: Type of account group.
-        account_group_id: ID of the account group.
-        currency_target: Target currency for values.
-        is_restricted: Whether to calculate restricted performance (optional).
-
-    Returns:
-        dict: Dictionary containing performance metrics including gain_loss,
-            nav_start, nav_end, tsr, and breakdown values.
-    """
-    performance_data = defaultdict(Decimal)
-    logger.debug(
-        f"Calculating performance for {user.username}, {account_group_type} {account_group_id} "
-        f"from {start_date} to {end_date}, currency {currency_target}, restricted {is_restricted}"
-    )
-
-    # Initialize all required fields with Decimal(0)
-    for field in [
-        "bop_nav",
-        "invested",
-        "cash_out",
-        "price_change",
-        "capital_distribution",
-        "commission",
-        "tax",
-        "fx",
-        "eop_nav",
-        "tsr",
-    ]:
-        performance_data[field] = Decimal("0")
-
-    alternative_fx_check = Decimal("0")
-
-    selected_account_ids = get_selected_account_ids(user, account_group_type, account_group_id)
-    accounts = Accounts.objects.filter(
-        id__in=selected_account_ids, broker__investor=user
-    ).select_related("broker")
-
-    bop_nav = (
-        AnnualPerformance.objects.filter(
-            investor=user,
-            account_type=account_group_type,
-            account_id=account_group_id,
-            year=start_date.year - 1,
-            currency=currency_target,
-        )
-        .values_list("eop_nav", flat=True)
-        .first()
-    )
-
-    logger.info(f"BOP NAV: {bop_nav}")
-    logger.debug(f"Accounts: {accounts}")
-
-    # bop_nav_dict = {nav['broker']: nav['eop_nav'] for nav in bop_navs}
-
-    for account in accounts:
-        # bop_nav = bop_nav_dict.get(broker.id)
-        if not bop_nav:
-            bop_nav_account = NAV_at_date(
-                user.id,
-                tuple([account.id]),
-                start_date - timedelta(days=1),
-                currency_target,
-            )["Total NAV"]
-            performance_data["bop_nav"] += bop_nav_account
-
-        transactions = Transactions.objects.filter(
-            investor=user,
-            account=account,
-            date__date__gte=start_date,
-            date__date__lte=end_date,
-        )
-
-        if is_restricted is not None:
-            restricted_filter = Q(security__isnull=False, security__restricted=is_restricted)
-            if not is_restricted:
-                restricted_filter |= Q(security__isnull=True)
-            transactions = transactions.filter(restricted_filter)
-
-        # Calculate transaction-based metrics
-        for transaction in transactions:
-            fx_rate = get_fx_rate(transaction.currency, currency_target, transaction.date)
-
-            if transaction.cash_flow is not None:
-                converted_amount = transaction.cash_flow * fx_rate
-                if transaction.type == "Cash in":
-                    performance_data["invested"] += converted_amount
-                elif transaction.type == "Cash out":
-                    performance_data["cash_out"] += converted_amount
-                elif transaction.type == "Tax":
-                    performance_data["tax"] += converted_amount
-
-            performance_data["commission"] += (transaction.commission or 0) * fx_rate
-
-        # Calculate asset-based metrics
-        assets = (
-            Assets.objects.filter(investors__id=user.id, transactions__account=account)
-            .prefetch_related(
-                Prefetch(
-                    "transactions",
-                    queryset=Transactions.objects.filter(
-                        account=account, date__date__gte=start_date, date__date__lte=end_date
-                    ),
-                    to_attr="period_transactions",
-                )
-            )
-            .distinct()
-        )
-
-        if is_restricted is not None:
-            assets = assets.filter(restricted=is_restricted)
-
-        logger.debug(f"Assets: {assets}")
-
-        for asset in assets:
-            asset_realized_gl = asset.realized_gain_loss(
-                end_date,
-                user,
-                currency_target,
-                account_ids=[account.id],
-                start_date=start_date,
-            )
-            asset_unrealized_gl = asset.unrealized_gain_loss(
-                end_date,
-                user,
-                currency_target,
-                account_ids=[account.id],
-                start_date=start_date,
-            )
-
-            performance_data["price_change"] += (
-                asset_realized_gl["all_time"]["price_appreciation"] if asset_realized_gl else 0
-            )
-            logger.debug(f"Realized GL for {asset.name}: {asset_realized_gl}")
-            alternative_fx_check += asset_realized_gl["all_time"]["fx_effect"]
-            performance_data["price_change"] += asset_unrealized_gl["price_appreciation"]
-            logger.debug(f"Unrealized GL for {asset.name}: {asset_unrealized_gl}")
-            alternative_fx_check += asset_unrealized_gl["fx_effect"]
-            performance_data["capital_distribution"] += asset.get_capital_distribution(
-                end_date,
-                user,
-                currency_target,
-                account_ids=[account.id],
-                start_date=start_date,
-            )
-            logger.debug(
-                f"Capital distribution for {asset.name}: {performance_data['capital_distribution']}"
-            )
-
-        # Calculate EOP NAV
-        eop_nav = NAV_at_date(user.id, tuple([account.id]), end_date, currency_target)["Total NAV"]
-        performance_data["eop_nav"] += eop_nav
-
-    if bop_nav:
-        performance_data["bop_nav"] = bop_nav
-
-    # Calculate FX impact
-    components_sum = sum(
-        performance_data[key]
-        for key in [
-            "bop_nav",
-            "invested",
-            "cash_out",
-            "price_change",
-            "capital_distribution",
-            "commission",
-            "tax",
-        ]
-    )
-    performance_data["fx"] += performance_data["eop_nav"] - components_sum
-
-    # Calculate TSR
-    performance_data["tsr"] = format_percentage(
-        IRR(
-            user.id,
-            end_date,
-            currency_target,
-            account_ids=selected_account_ids,
-            start_date=start_date,
-        ),
-        digits=1,
-    )
-
-    # Adjust FX for rounding errors
-    performance_data["fx"] = (
-        Decimal("0") if abs(performance_data["fx"]) < 0.1 else performance_data["fx"]
-    )
-
-    logger.debug(f"Alternative FX check: {alternative_fx_check}")
-    logger.debug(f"FX effect: {performance_data['fx']}")
-
-    return dict(performance_data)
-
-
-# Add percentage shares to the dict
-def calculate_percentage_shares(data_dict, selected_keys):
-    """Calculate percentage shares for selected breakdown categories."""
-    if not data_dict:
-        return
-
-    total_nav = data_dict.get("Total NAV", Decimal(0))
-
-    for key in selected_keys:
-        percentage_key = key + "_percentage"
-        data_dict[percentage_key] = {}
-
-        for item in data_dict[key]:
-            if total_nav > 0:
-                percentage = data_dict[key][item] / total_nav * 100
-                data_dict[percentage_key][item] = format_percentage(percentage, digits=1)
-            else:
-                data_dict[percentage_key][item] = "–"
-
-
-def get_last_exit_date_for_accounts(
-    account_ids: List[int], effective_current_date: date
-) -> Optional[date]:
-    """
-    Determine the last relevant date for a set of broker accounts.
-
-    Considers both open positions and transaction history. If any account has
-    open positions, returns the effective_current_date. If all positions are
-    closed, returns the date of the last transaction. If no transactions exist,
-    returns the effective_current_date.
-
-    Args:
-        account_ids (List[int]): List of broker account IDs to analyze
-        effective_current_date (date): The reference date for position calculations
-
-    Returns:
-        Optional[date]:
-            - effective_current_date if any positions are open or no transactions exist
-            - date of the last transaction if all positions are closed
-    """
-    # Ensure date is a date object
-    if isinstance(effective_current_date, str):
-        effective_current_date = datetime.strptime(effective_current_date, "%Y-%m-%d").date()
-
-    # Step 1: Check for open positions using aggregation
-    open_positions = (
-        Assets.objects.filter(
-            transactions__account_id__in=account_ids,
-            transactions__date__date__lte=effective_current_date,
-        )
-        .annotate(
-            total_quantity=Sum(
-                "transactions__quantity",
-                filter=Q(
-                    transactions__date__date__lte=effective_current_date,
-                    transactions__account_id__in=account_ids,
-                ),
-            )
-        )
-        .exclude(total_quantity=0)
-        .exists()
-    )
-
-    if open_positions:
-        return effective_current_date
-
-    # Step 2: If no open positions, find the latest transaction date
-    latest_transaction_date = (
-        Transactions.objects.filter(account_id__in=account_ids, date__lte=effective_current_date)
-        .order_by("-date")
-        .values_list("date", flat=True)
-        .first()
-    )
-
-    if latest_transaction_date is not None:
-        # Convert datetime to date if needed (Transactions.date is DateTimeField)
-        if hasattr(latest_transaction_date, "date"):
-            latest_transaction_date = latest_transaction_date.date()
-        return latest_transaction_date
-
-    return effective_current_date

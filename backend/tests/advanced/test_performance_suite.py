@@ -19,7 +19,15 @@ import pytest
 from django.db import transaction
 
 from common.models import FX, Accounts, Assets, Transactions
+from services.fx import get_rate as fx_get_rate
 from tests.fixtures.factories.asset_factory import AssetFactory
+
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
 
 
 def create_test_transaction(investor, account, security, **kwargs):
@@ -69,12 +77,12 @@ class TestCalculationPerformance:
             transactions.append(tx)
 
         # Warm up
-        asset.calculate_buy_in_price(date.today(), investor=user)
+        calculate_buy_in_price(asset, date.today(), investor=user)
 
         # Performance test
         start_time = time.time()
         for _ in range(100):  # 100 iterations
-            result = asset.calculate_buy_in_price(date.today(), investor=user)
+            result = calculate_buy_in_price(asset, date.today(), investor=user)
         end_time = time.time()
 
         avg_time = (end_time - start_time) / 100
@@ -109,12 +117,12 @@ class TestCalculationPerformance:
         target_asset = assets[-1]
 
         # Warm up
-        target_asset.calculate_buy_in_price(date.today(), investor=user)
+        calculate_buy_in_price(target_asset, date.today(), investor=user)
 
         # Performance test
         start_time = time.time()
         for _ in range(50):  # 50 iterations
-            result = target_asset.calculate_buy_in_price(date.today(), investor=user)
+            result = calculate_buy_in_price(target_asset, date.today(), investor=user)
         end_time = time.time()
 
         avg_time = (end_time - start_time) / 50
@@ -149,12 +157,12 @@ class TestCalculationPerformance:
         target_asset = assets[-1]
 
         # Warm up
-        target_asset.calculate_buy_in_price(date.today(), investor=user)
+        calculate_buy_in_price(target_asset, date.today(), investor=user)
 
         # Performance test
         start_time = time.time()
         for _ in range(10):  # 10 iterations
-            result = target_asset.calculate_buy_in_price(date.today(), investor=user)
+            result = calculate_buy_in_price(target_asset, date.today(), investor=user)
         end_time = time.time()
 
         avg_time = (end_time - start_time) / 10
@@ -194,7 +202,7 @@ class TestCalculationPerformance:
             # Performance test - calculate buy-in price (NAV-like operation)
             target_asset = assets[-1]
             start_time = time.time()
-            result = target_asset.calculate_buy_in_price(date.today(), investor=user)
+            result = calculate_buy_in_price(target_asset, date.today(), investor=user)
             end_time = time.time()
 
             calc_time = end_time - start_time
@@ -234,7 +242,7 @@ class TestCalculationPerformance:
         start_time = time.time()
         results = []
         for asset in assets:
-            result = asset.calculate_buy_in_price(date.today(), investor=user)
+            result = calculate_buy_in_price(asset, date.today(), investor=user)
             results.append(result)
 
         end_time = time.time()
@@ -528,7 +536,7 @@ class TestFXRatePerformance:
 
         for i in range(100):  # Reduced iterations
             pair = currency_pairs[i % len(currency_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         end_time = time.time()
@@ -546,7 +554,7 @@ class TestFXRatePerformance:
 
         for i in range(50):  # Reduced iterations
             pair = cross_pairs[i % len(cross_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         end_time = time.time()
@@ -568,7 +576,7 @@ class TestFXRatePerformance:
         results = []
         for _ in range(30):  # Reduced iterations
             for pair in currency_pairs:
-                result = FX.get_rate(pair[0], pair[1], test_date)
+                result = fx_get_rate(pair[0], pair[1], test_date)
                 results.append(result)
 
         end_time = time.time()
@@ -586,12 +594,12 @@ class TestFXRatePerformance:
 
         # First lookup (cache miss)
         start_time = time.time()
-        rate1 = FX.get_rate("USD", "EUR", test_date)
+        rate1 = fx_get_rate("USD", "EUR", test_date)
         _ = time.time() - start_time
 
         # Second lookup (cache hit)
         start_time = time.time()
-        rate2 = FX.get_rate("USD", "EUR", test_date)
+        rate2 = fx_get_rate("USD", "EUR", test_date)
         second_lookup_time = time.time() - start_time
 
         assert rate1 is not None
@@ -605,7 +613,7 @@ class TestFXRatePerformance:
         start_time = time.time()
 
         for _ in range(100):  # Reduced iterations
-            result = FX.get_rate("USD", "EUR", test_date)
+            result = fx_get_rate("USD", "EUR", test_date)
             assert result is not None
 
         end_time = time.time()
@@ -654,7 +662,7 @@ class TestMemoryUsage:
 
             # Perform calculations
             for asset in assets:
-                asset.calculate_buy_in_price(date.today(), investor=user)
+                calculate_buy_in_price(asset, date.today(), investor=user)
 
             # Measure memory after calculations
             after_memory = process.memory_info().rss
@@ -692,7 +700,7 @@ class TestMemoryUsage:
 
         for i in range(500):  # Reduced from 10000
             pair = currency_pairs[i % len(currency_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         final_memory = process.memory_info().rss
@@ -731,7 +739,7 @@ class TestMemoryUsage:
 
             # Perform calculations
             for asset in assets:
-                asset.calculate_buy_in_price(date.today(), investor=user)
+                calculate_buy_in_price(asset, date.today(), investor=user)
 
             # Measure memory
             memory_sample = process.memory_info().rss
@@ -816,7 +824,7 @@ class TestStressTesting:
         # Calculate buy-in price for all assets
         results = []
         for asset in assets:
-            result = asset.calculate_buy_in_price(date.today(), investor=user)
+            result = calculate_buy_in_price(asset, date.today(), investor=user)
             results.append(result)
 
         end_time = time.time()

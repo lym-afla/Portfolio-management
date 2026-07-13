@@ -16,7 +16,15 @@ from decimal import Decimal
 import pytest
 
 from common.models import FX, Accounts, Transactions
+from services.fx import get_rate as fx_get_rate
 from tests.fixtures.factories.asset_factory import AssetFactory
+
+from services.realized import (
+    calculate_buy_in_price,
+    get_economic_basis,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
 
 
 def create_test_transaction(investor, account, security, **kwargs):
@@ -51,7 +59,7 @@ class TestCalculationRegression:
         transactions = sample_transactions
 
         # Calculate buy-in price using the security from the first transaction
-        buy_in_price = transactions[0].security.calculate_buy_in_price(
+        buy_in_price = calculate_buy_in_price(transactions[0].security, 
             date.today(), investor=transactions[0].investor
         )
 
@@ -76,7 +84,7 @@ class TestCalculationRegression:
         first_tx = sample_transactions[0]
 
         # Recalculate buy-in price (sales don't change average cost basis for buys)
-        buy_in_price = first_tx.security.calculate_buy_in_price(
+        buy_in_price = calculate_buy_in_price(first_tx.security, 
             date.today(), investor=first_tx.investor
         )
 
@@ -129,7 +137,7 @@ class TestCalculationRegression:
             date=date(2023, 4, 1),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
 
         # Should return a valid buy-in price
         assert buy_in_price >= 0
@@ -140,7 +148,7 @@ class TestCalculationRegression:
         """Regression test for cross-currency FX conversion."""
         # Test USD to EUR conversion using dates from fixture (2023-01-01 to 2023-01-10)
         test_date = date(2023, 1, 5)
-        result = FX.get_rate("USD", "EUR", test_date)
+        result = fx_get_rate("USD", "EUR", test_date)
 
         # Should return a valid result
         assert result is not None
@@ -173,7 +181,7 @@ class TestCalculationRegression:
             date=date(2023, 1, 2),
         )
 
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
 
         # Should return a valid buy-in price with high precision
         assert buy_in_price >= 0
@@ -206,7 +214,7 @@ class TestEdgeCaseRegression:
 
         # Should handle gracefully without division by zero
         # Dividend transactions with zero quantity return None for buy-in price
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
         # Buy-in price can be None (no buy transactions) or >= 0
         assert buy_in_price is None or buy_in_price >= Decimal("0")
 
@@ -227,7 +235,7 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle short positions correctly
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
         assert buy_in_price >= Decimal("0")
 
     def test_regression_very_large_numbers(self, user, broker):
@@ -247,7 +255,7 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle without overflow
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
         assert buy_in_price >= Decimal("0")
 
     def test_regression_very_small_numbers(self, user, broker):
@@ -267,7 +275,7 @@ class TestEdgeCaseRegression:
         )
 
         # Should maintain precision
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
         assert buy_in_price >= Decimal("0")
 
     def test_regression_mixed_currency_precision(self, user, broker):
@@ -298,7 +306,7 @@ class TestEdgeCaseRegression:
         )
 
         # Should handle mixed precision correctly
-        buy_in_price = asset.calculate_buy_in_price(date.today() + timedelta(days=1), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today() + timedelta(days=1), investor=user)
         assert buy_in_price >= 0
         assert isinstance(buy_in_price, Decimal)
 
@@ -333,7 +341,7 @@ class TestPerformanceRegression:
             )
 
         start_time = time.time()
-        buy_in_price = asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(asset, date.today(), investor=user)
         end_time = time.time()
 
         calculation_time = end_time - start_time
@@ -364,7 +372,7 @@ class TestPerformanceRegression:
 
         target_asset = assets[0]
         start_time = time.time()
-        buy_in_price = target_asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(target_asset, date.today(), investor=user)
         end_time = time.time()
 
         calculation_time = end_time - start_time
@@ -395,7 +403,7 @@ class TestPerformanceRegression:
 
         target_asset = assets[0]
         start_time = time.time()
-        buy_in_price = target_asset.calculate_buy_in_price(date.today(), investor=user)
+        buy_in_price = calculate_buy_in_price(target_asset, date.today(), investor=user)
         end_time = time.time()
 
         calculation_time = end_time - start_time
@@ -417,7 +425,7 @@ class TestPerformanceRegression:
 
         for i in range(100):  # Reduced from 1000
             pair = currency_pairs[i % len(currency_pairs)]
-            result = FX.get_rate(pair[0], pair[1], test_date)
+            result = fx_get_rate(pair[0], pair[1], test_date)
             assert result is not None
 
         end_time = time.time()
@@ -542,19 +550,19 @@ class TestDataIntegrityRegression:
         test_date = date(2023, 1, 5)
 
         # Test that FX rates can be retrieved
-        usd_to_eur_result = FX.get_rate("USD", "EUR", test_date)
+        usd_to_eur_result = fx_get_rate("USD", "EUR", test_date)
         assert usd_to_eur_result is not None
 
-        eur_to_usd_result = FX.get_rate("EUR", "USD", test_date)
+        eur_to_usd_result = fx_get_rate("EUR", "USD", test_date)
         assert eur_to_usd_result is not None
 
     def test_regression_financial_calculation_consistency(self, sample_transactions):
         """Regression test for financial calculation consistency."""
         # Multiple calculations should be consistent
-        buy_in_price_1 = sample_transactions[0].security.calculate_buy_in_price(
+        buy_in_price_1 = calculate_buy_in_price(sample_transactions[0].security, 
             date.today(), investor=sample_transactions[0].investor
         )
-        buy_in_price_2 = sample_transactions[0].security.calculate_buy_in_price(
+        buy_in_price_2 = calculate_buy_in_price(sample_transactions[0].security, 
             date.today(), investor=sample_transactions[0].investor
         )
 

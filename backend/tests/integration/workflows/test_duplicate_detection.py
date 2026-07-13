@@ -8,7 +8,7 @@ from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 
 from common.models import Accounts, Brokers, FXTransaction, Transactions
-from core.import_utils import fx_transaction_exists, transaction_exists
+from services.importer import fx_transaction_exists, transaction_exists
 
 CustomUser = get_user_model()
 

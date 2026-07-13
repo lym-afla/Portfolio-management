@@ -15,6 +15,7 @@ from decimal import Decimal
 import pytest
 
 from common.models import Transactions
+from services.transactions import total_cash_flow
 
 
 @pytest.mark.unit
@@ -234,7 +235,7 @@ class TestTransactionValidation:
             price=Decimal("50.00"),
             commission=Decimal("-5.00"),
         )
-        assert buy_tx.total_cash_flow() < 0
+        assert total_cash_flow(buy_tx) < 0
 
         # Sell transactions should have positive cash flow (inflow)
         sell_tx = Transactions.objects.create(
@@ -248,7 +249,7 @@ class TestTransactionValidation:
             price=Decimal("55.00"),
             commission=Decimal("-5.00"),
         )
-        assert sell_tx.total_cash_flow() > 0
+        assert total_cash_flow(sell_tx) > 0
 
         # Dividend transactions should have positive cash flow
         dividend_tx = Transactions.objects.create(
@@ -263,7 +264,7 @@ class TestTransactionValidation:
             cash_flow=Decimal("200.00"),
             commission=None,
         )
-        assert dividend_tx.total_cash_flow() > 0
+        assert total_cash_flow(dividend_tx) > 0
 
     def test_transaction_commission_validation(self, user, account, asset):
         """Test commission validation."""
@@ -359,7 +360,7 @@ class TestTransactionCashFlowCalculations:
         )
 
         # Use the calculation method instead of accessing the field directly
-        assert transaction.total_cash_flow() == expected_cash_flow
+        assert total_cash_flow(transaction) == expected_cash_flow
 
     def test_sell_transaction_cash_flow_calculation(self, user, account, asset):
         """Test cash flow calculation for sell transactions."""
@@ -383,7 +384,7 @@ class TestTransactionCashFlowCalculations:
         )
 
         # Use the calculation method instead of manual calculation
-        assert transaction.total_cash_flow() == expected_cash_flow
+        assert total_cash_flow(transaction) == expected_cash_flow
 
     def test_zero_commission_transaction(self, user, account, asset):
         """Test transaction with zero commission."""
@@ -406,7 +407,7 @@ class TestTransactionCashFlowCalculations:
         )
 
         # Use the calculation method instead of manual calculation
-        assert transaction.total_cash_flow() == expected_cash_flow
+        assert total_cash_flow(transaction) == expected_cash_flow
         assert transaction.commission == Decimal("0.00")
 
     def test_high_value_transaction(self, user, account, asset):
@@ -430,8 +431,8 @@ class TestTransactionCashFlowCalculations:
         )
 
         # Use the calculation method instead of manual calculation
-        assert transaction.total_cash_flow() == expected_cash_flow
-        assert transaction.total_cash_flow() < -Decimal("1000000")  # Should be over $1M
+        assert total_cash_flow(transaction) == expected_cash_flow
+        assert total_cash_flow(transaction) < -Decimal("1000000")  # Should be over $1M
 
     def test_fractional_shares_transaction(self, user, account, asset):
         """Test cash flow calculation for fractional shares."""
@@ -454,7 +455,7 @@ class TestTransactionCashFlowCalculations:
         )
 
         # Use the calculation method and maintain high precision (allow for model rounding)
-        assert abs(transaction.total_cash_flow() - expected_cash_flow) < Decimal("0.01")
+        assert abs(total_cash_flow(transaction) - expected_cash_flow) < Decimal("0.01")
 
 
 @pytest.mark.unit
@@ -528,7 +529,7 @@ class TestTransactionProcessing:
 
         # Calculate total position and cost using calculation method
         total_quantity = sum(tx.quantity for tx in transactions)
-        total_cost = sum(tx.total_cash_flow() for tx in transactions)
+        total_cost = sum(total_cash_flow(tx) for tx in transactions)
         total_commission = sum(tx.commission for tx in transactions)
 
         assert total_quantity == Decimal("500")
@@ -580,7 +581,7 @@ class TestTransactionProcessing:
         # Verify sequence
         assert initial_buy.date < dividend.date < reinvestment.date
         # Use calculation method for reinvestment cash flow (may have small rounding difference)
-        total_reinvestment = dividend.total_cash_flow() + reinvestment.total_cash_flow()
+        total_reinvestment = total_cash_flow(dividend) + total_cash_flow(reinvestment)
         assert abs(total_reinvestment) < Decimal("1.00")  # Allow small difference due to commission
 
     def test_transaction_sequence_tax_loss_harvesting(self, user, account, asset):
@@ -629,7 +630,7 @@ class TestTransactionProcessing:
         assert wash_sale_period.days >= 30
 
         # Calculate realized loss using calculation method
-        loss = loss_sale.total_cash_flow() + purchase.total_cash_flow()
+        loss = total_cash_flow(loss_sale) + total_cash_flow(purchase)
         assert abs(loss) == Decimal("3020.00")  # Exact calculated loss
 
     def test_transaction_sequence_dollar_cost_averaging(self, user, account, asset):
@@ -658,7 +659,7 @@ class TestTransactionProcessing:
 
         # Calculate total investment and average price
         total_shares = sum(tx.quantity for tx in transactions)
-        total_invested = sum(abs(tx.total_cash_flow()) for tx in transactions)
+        total_invested = sum(abs(total_cash_flow(tx)) for tx in transactions)
         average_price = total_invested / total_shares
 
         assert total_shares > 0
@@ -751,7 +752,7 @@ class TestTransactionEdgeCases:
         assert transaction.quantity == Decimal("0.000001")
         assert transaction.price == Decimal("1000000.00")
         # Use the calculation method instead of manual calculation
-        assert transaction.total_cash_flow() == Decimal("-1.01")
+        assert total_cash_flow(transaction) == Decimal("-1.01")
 
     def test_negative_price_transaction(self, user, account, asset):
         """Test transaction with negative price (should be avoided in practice)."""

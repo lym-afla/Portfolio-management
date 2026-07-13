@@ -17,7 +17,7 @@ from t_tech.invest import (
     RequestError,
 )
 
-from core.broker_api_utils import TinkoffAPI, TinkoffAPIException
+from services.broker_api import TinkoffAPI, TinkoffAPIException
 from users.models import CustomUser
 
 
@@ -64,9 +64,9 @@ async def tinkoff_api():
 async def test_connect_success(tinkoff_api, mock_user):
     """Test successful API connection with valid token."""
     with (
-        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
-        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
-        patch("core.broker_api_utils.Client") as mock_client_cls,
+        patch("services.broker_api.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("services.broker_api.verify_token_access", new_callable=AsyncMock) as mock_verify,
+        patch("services.broker_api.Client") as mock_client_cls,
     ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = True
@@ -84,8 +84,8 @@ async def test_connect_success(tinkoff_api, mock_user):
 async def test_connect_invalid_token(tinkoff_api, mock_user):
     """Test API connection fails with invalid token."""
     with (
-        patch("core.broker_api_utils.get_user_token", new_callable=AsyncMock) as mock_get_token,
-        patch("core.broker_api_utils.verify_token_access", new_callable=AsyncMock) as mock_verify,
+        patch("services.broker_api.get_user_token", new_callable=AsyncMock) as mock_get_token,
+        patch("services.broker_api.verify_token_access", new_callable=AsyncMock) as mock_verify,
     ):
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = False
@@ -178,9 +178,9 @@ async def test_get_transactions_success(tinkoff_api, mock_user, mock_account):
     mock_response.has_next = False
 
     with (
-        patch("core.broker_api_utils.Client") as mock_client_cls,
+        patch("services.broker_api.Client") as mock_client_cls,
         patch(
-            "core.broker_api_utils.map_tinkoff_operation_to_transaction",
+            "services.broker_api.map_tinkoff_operation_to_transaction",
             new_callable=AsyncMock,
         ) as mock_map,
     ):
@@ -228,9 +228,9 @@ async def test_get_transactions_pagination(tinkoff_api, mock_user, mock_account)
     mock_response2.has_next = False
 
     with (
-        patch("core.broker_api_utils.Client") as mock_client_cls,
+        patch("services.broker_api.Client") as mock_client_cls,
         patch(
-            "core.broker_api_utils.map_tinkoff_operation_to_transaction",
+            "services.broker_api.map_tinkoff_operation_to_transaction",
             new_callable=AsyncMock,
         ) as mock_map,
     ):
@@ -285,7 +285,7 @@ async def test_get_transactions_with_dates(tinkoff_api, mock_user, mock_account)
     mock_response.items = []
     mock_response.has_next = False
 
-    with patch("core.broker_api_utils.Client") as mock_client_cls:
+    with patch("services.broker_api.Client") as mock_client_cls:
         mock_client_instance = MagicMock()
         mock_client_instance.operations.get_operations_by_cursor = Mock(return_value=mock_response)
         mock_client_cls.return_value.__enter__.return_value = mock_client_instance

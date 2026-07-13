@@ -15,13 +15,15 @@ from django.db.models.query import QuerySet
 from django.http import HttpRequest
 
 from common.models import Accounts, Assets
+from services.accounts import balance as account_balance
+from services.positions import exit_dates
 from users.models import CustomUser
 
 from .formatting_utils import currency_format, format_table_data
 from .pagination_utils import paginate_table
-from .portfolio_utils import get_selected_account_ids
 from .sorting_utils import sort_entries
 from .tables_utils import calculate_positions_table_output
+from services.performance import get_selected_account_ids
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +144,7 @@ def _get_cash_balances_for_api(
     for account_id in selected_account_ids:
         try:
             account = Accounts.objects.get(id=account_id, broker__investor=user)
-            for currency, balance in account.balance(target_date).items():
+            for currency, balance in account_balance(account, target_date).items():
                 aggregated_balances[currency] += balance
             logger.debug(f"Aggregated balances after adding {account.name}: {aggregated_balances}")
         except Accounts.DoesNotExist:
@@ -206,7 +208,7 @@ def _filter_assets(
         return [
             asset
             for asset in assets
-            if len(asset.exit_dates(end_date, user, selected_account_ids)) > 0
+            if len(exit_dates(asset, end_date, user, selected_account_ids)) > 0
             and abs(asset.total_quantity or 0) < zero_threshold
         ]
     else:
