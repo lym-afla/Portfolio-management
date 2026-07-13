@@ -24,7 +24,7 @@
   </v-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 // import axios from 'axios'
@@ -32,12 +32,30 @@ import { useAuthStore } from '@/stores/auth'
 import LoginForm from '@/components/LoginForm.vue'
 import logger from '@/utils/logger'
 
+// Shape of the credentials emitted by LoginForm's @submit event.
+interface LoginCredentials {
+  username: string
+  password: string
+}
+
+// Shape of the error body thrown by authStore.login (DRF error response).
+interface LoginError {
+  non_field_errors?: string[]
+  [key: string]: unknown
+}
+
+// Methods exposed by LoginForm via defineExpose.
+interface LoginFormInstance {
+  setErrors: (errors: string | Record<string, unknown>) => void
+  clearError: (field: string) => void
+}
+
 const loading = ref(false)
 const router = useRouter()
-const loginForm = ref(null)
+const loginForm = ref<LoginFormInstance | null>(null)
 const authStore = useAuthStore()
 
-const handleLogin = async (credentials) => {
+const handleLogin = async (credentials: LoginCredentials) => {
   logger.log('Unknown', 'Handling login with credentials:', credentials)
   loading.value = true
 
@@ -57,15 +75,16 @@ const handleLogin = async (credentials) => {
     }
   } catch (error) {
     logger.log('Unknown', 'Login failed from LoginPage.vue', error)
-    if (error.non_field_errors) {
-      logger.log('Unknown', 'Non-field errors:', error.non_field_errors)
-      loginForm.value.setErrors(error.non_field_errors[0])
+    const loginError = error as LoginError
+    if (loginError.non_field_errors) {
+      logger.log('Unknown', 'Non-field errors:', loginError.non_field_errors)
+      loginForm.value?.setErrors(loginError.non_field_errors[0])
     } else if (error) {
       logger.log('Unknown', 'Field errors:', error)
-      loginForm.value.setErrors(error)
+      loginForm.value?.setErrors(error as Record<string, unknown>)
     } else {
       logger.log('Unknown', 'Unknown error')
-      loginForm.value.setErrors(
+      loginForm.value?.setErrors(
         'An unknown error occurred. Please try again.'
       )
     }

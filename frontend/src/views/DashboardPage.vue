@@ -84,7 +84,7 @@
   </v-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted, inject, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
@@ -103,21 +103,59 @@ import logger from '@/utils/logger'
 
 defineOptions({ name: 'DashboardPage' })
 
-const emit = defineEmits(['update-page-title'])
+const emit = defineEmits<{
+  (e: 'update-page-title', title: string): void
+}>()
+
+// Shape of the breakdown payload (one entry per chart type). The backend
+// returns an opaque record, plus a top-level totalNAV string.
+interface BreakdownData {
+  assetType: Record<string, unknown>
+  assetClass: Record<string, unknown>
+  currency: Record<string, unknown>
+  totalNAV?: string
+  [key: string]: unknown
+}
+
+// Chart.js-compatible shape returned by getNAVChartData / summary endpoints.
+interface ChartData {
+  labels: unknown[]
+  datasets: unknown[]
+  [key: string]: unknown
+}
+
+// Shape consumed by SummaryOverTimeTable (lines/years/currentYear). The
+// backend returns an opaque record, but the template reads these fields.
+interface SummaryOverTimeData {
+  lines?: unknown[]
+  years?: unknown[]
+  currentYear?: string
+  [key: string]: unknown
+}
+
+// Parameters driving the NAV chart request (mirrors appStore.navChartParams).
+interface NavChartParams {
+  frequency?: string
+  breakdown?: string
+  dateRange?: string
+  dateFrom?: string | null
+  dateTo?: string | null
+  [key: string]: unknown
+}
 
 const appStore = useAppStore()
 const { handleApiError } = useErrorHandler()
-const clearErrors = inject('clearErrors')
-const summary = ref({})
+const clearErrors = inject<() => void>('clearErrors')
+const summary = ref<Record<string, unknown>>({})
 
-const breakdownData = ref({
+const breakdownData = ref<BreakdownData>({
   assetType: {},
   assetClass: {},
   currency: {},
 })
 const totalNAV = ref('')
-const summaryOverTimeData = ref({})
-const navChartData = ref({
+const summaryOverTimeData = ref<SummaryOverTimeData | null>({})
+const navChartData = ref<ChartData>({
   labels: [],
   datasets: [],
 })
@@ -127,7 +165,7 @@ const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
 const isEffectiveDateLoading = ref(true)
 
-const navChartInitialParams = computed(() => {
+const navChartInitialParams = computed<NavChartParams>(() => {
   const params = appStore.navChartParams
   const defaultDateRange = 'ytd'
 
@@ -156,15 +194,20 @@ const loading = ref({
   navChart: false,
 })
 const updating = ref({ navChart: false })
-const error = ref({
+const error = ref<{
+  summary: string | null
+  breakdownCharts: string | null
+  summaryOverTime: string | null
+  navChart: string | null
+}>({
   summary: null,
   breakdownCharts: null,
   summaryOverTime: null,
   navChart: null,
 })
 
-const chartTypes = ['assetType', 'assetClass', 'currency']
-const chartTitles = {
+const chartTypes = ['assetType', 'assetClass', 'currency'] as const
+const chartTitles: Record<string, string> = {
   assetType: 'Asset Type',
   assetClass: 'Asset Class',
   currency: 'Currency',
@@ -174,7 +217,7 @@ const userCurrency = computed(() => appStore.selectedCurrency)
 
 const fetchSummaryData = async () => {
   try {
-    clearErrors()
+    clearErrors?.()
     loading.value.summary = true
     logger.log('Unknown', 'Fetching dashboard summary...')
     const data = await getDashboardSummary()
@@ -192,8 +235,8 @@ const fetchBreakdownData = () => {
   loading.value.breakdownCharts = true
   getDashboardBreakdown()
     .then((data) => {
-      breakdownData.value = data
-      totalNAV.value = data.totalNAV
+      breakdownData.value = data as unknown as BreakdownData
+      totalNAV.value = (data as unknown as BreakdownData).totalNAV ?? ''
     })
     .catch((err) => {
       logger.error('Unknown', 'Error fetching breakdown data:', err)
@@ -206,7 +249,7 @@ const fetchBreakdownData = () => {
 
 const fetchSummaryOverTimeData = async () => {
   try {
-    clearErrors()
+    clearErrors?.()
     loading.value.summaryOverTime = true
     logger.log('Unknown', 'Fetching summary over time data...')
     const data = await getDashboardSummaryOverTime()
@@ -215,7 +258,8 @@ const fetchSummaryOverTimeData = async () => {
     loading.value.summaryOverTime = false
   } catch (err) {
     logger.error('Unknown', 'Error fetching summary over time:', err)
-    if (err.response && err.response.status === 404) {
+    const axiosErr = err as { response?: { status?: number } }
+    if (axiosErr.response && axiosErr.response.status === 404) {
       // Handle 404 as "no data" instead of an error
       summaryOverTimeData.value = null
     } else {
@@ -226,11 +270,11 @@ const fetchSummaryOverTimeData = async () => {
 }
 
 const fetchNAVChartData = async (
-  params = navChartInitialParams.value,
+  params: NavChartParams = navChartInitialParams.value,
   isInitialLoad = false
 ) => {
   try {
-    clearErrors()
+    clearErrors?.()
     // Use skeleton loader for initial load/account change, overlay for chart updates
     if (isInitialLoad) {
       loading.value.navChart = true
@@ -246,7 +290,7 @@ const fetchNAVChartData = async (
       params.dateTo
     )
     logger.log('Unknown', 'Received NAV chart data:', data)
-    navChartData.value = data
+    navChartData.value = data as unknown as ChartData
   } catch (err) {
     logger.error('Unknown', 'Error fetching NAV chart data:', err)
     error.value.navChart = handleApiError(err)

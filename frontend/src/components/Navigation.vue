@@ -87,10 +87,17 @@
   </v-navigation-drawer>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+
+interface NavItem {
+  title: string
+  icon: string
+  value?: string
+  to: string
+}
 
 const drawer = ref(true)
 const extended = ref(false)
@@ -99,7 +106,7 @@ const router = useRouter()
 const appStore = useAppStore()
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
-const menuItems = [
+const menuItems: NavItem[] = [
   {
     title: 'Dashboard',
     icon: 'mdi-monitor-dashboard',
@@ -126,7 +133,7 @@ const menuItems = [
   },
 ]
 
-const databaseSubItems = [
+const databaseSubItems: NavItem[] = [
   {
     title: 'Brokers',
     icon: 'mdi-office-building',
@@ -150,7 +157,7 @@ const toggleExtended = () => {
   extended.value = !extended.value
 }
 
-const isActive = (path) => {
+const isActive = (path: string) => {
   if (path === '/database') {
     // Check if current route is database or any of its children
     return route.path.startsWith('/database')
@@ -158,7 +165,7 @@ const isActive = (path) => {
   return route.path === path
 }
 
-const goToPage = (path) => {
+const goToPage = (path: string) => {
   router.push(path)
 }
 

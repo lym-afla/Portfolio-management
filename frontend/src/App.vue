@@ -57,7 +57,7 @@
   </v-app>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { provide, ref, onMounted, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
@@ -69,7 +69,7 @@ import logger from '@/utils/logger'
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const user = ref(null)
+const user = ref<Record<string, unknown> | null>(null)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const layoutLoading = ref(true)
 const pageTitle = ref('')
@@ -83,7 +83,7 @@ const showComponents = computed(
 )
 const showSettingsDialog = computed(() => isSummaryPage.value)
 
-const setUser = (userData) => {
+const setUser = (userData: Record<string, unknown> | null) => {
   user.value = userData
 }
 
@@ -92,12 +92,12 @@ const handleLogout = async () => {
   router.push('/login')
 }
 
-const updatePageTitle = (title) => {
+const updatePageTitle = (title: string) => {
   pageTitle.value = title
 }
 
 const mainPadding = computed(() => {
-  return route.meta.paddingTop || '140px' // Default padding
+  return (route.meta.paddingTop as string) || '140px' // Default padding
 })
 
 onMounted(() => {
@@ -105,9 +105,9 @@ onMounted(() => {
 })
 
 const errorSnackbar = ref(false)
-const errorMessages = ref([])
+const errorMessages = ref<string[]>([])
 
-const showError = (message) => {
+const showError = (message: string) => {
   clearErrors()
   logger.log('Unknown', 'Showing error:', message)
   errorMessages.value.push(message)
@@ -119,8 +119,8 @@ const clearErrors = () => {
   errorSnackbar.value = false
 }
 
-provide('showError', showError)
-provide('clearErrors', clearErrors)
+provide<(message: string) => void>('showError', showError)
+provide<() => void>('clearErrors', clearErrors)
 </script>
 <style>
 html {

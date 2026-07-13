@@ -120,34 +120,69 @@
   </v-container>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { getYearOptions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import logger from '@/utils/logger'
 
-const props = defineProps({
-  fetchPositions: {
-    type: Function,
-    required: true,
-  },
-  headers: {
-    type: Array,
-    required: true,
-  },
-  pageTitle: {
-    type: String,
-    required: true,
-  },
-})
-const emit = defineEmits(['update-page-title'])
+// A column header may group children (parent header) or be a leaf column.
+// `align` mirrors Vuetify's accepted values so the prop type is compatible
+// with <v-data-table :headers>.
+interface TableHeader {
+  key?: string
+  title?: string
+  align?: 'start' | 'center' | 'end'
+  children?: TableHeader[]
+  [key: string]: unknown
+}
+
+// Query params passed to the parent-provided fetchPositions function.
+interface FetchPositionsParams {
+  dateFrom: string | null
+  dateTo: string | null
+  page: number
+  itemsPerPage: number
+  search: string
+  sortBy: Record<string, unknown>
+  [key: string]: unknown
+}
+
+// Response returned by fetchPositions (shape of the paginated table payload).
+interface FetchPositionsResponse {
+  positions: Record<string, unknown>[]
+  totals: Record<string, unknown>
+  total_items: number
+  [key: string]: unknown
+}
+
+// The year <v-select> items. The backend returns plain years, but the
+// template renders them as items with text/value and an optional divider, so
+// we widen the local ref to match what the template expects.
+interface YearOption {
+  text: string
+  value: number | string
+  divider?: boolean
+  [key: string]: unknown
+}
+
+interface Props {
+  fetchPositions: (params: FetchPositionsParams) => Promise<FetchPositionsResponse>
+  headers: TableHeader[]
+  pageTitle: string
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<{
+  (e: 'update-page-title', title: string): void
+}>()
 
 const appStore = useAppStore()
-const positions = ref([])
-const totals = ref({})
+const positions = ref<Record<string, unknown>[]>([])
+const totals = ref<Record<string, unknown>>({})
 const tableLoading = ref(true)
-const yearOptions = ref([])
+const yearOptions = ref<YearOption[]>([])
 const totalItems = ref(0)
 const initialLoading = ref(true)
 
@@ -169,9 +204,9 @@ const pageCount = computed(() =>
   Math.ceil(totalItems.value / itemsPerPage.value)
 )
 
-const flattenedHeaders = computed(() => {
+const flattenedHeaders = computed<TableHeader[]>(() => {
   return props.headers.flatMap((header) =>
-    header.children ? header.children : header
+    header.children ? header.children : [header]
   )
 })
 
@@ -226,7 +261,9 @@ const fetchData = async () => {
 const fetchYearOptions = async () => {
   try {
     const years = await getYearOptions()
-    yearOptions.value = years
+    // The backend returns plain years; the template consumes {text, value,
+    // divider} items, so cast through unknown to the expected shape.
+    yearOptions.value = years as unknown as YearOption[]
   } catch (error) {
     appStore.setError(error)
   } finally {

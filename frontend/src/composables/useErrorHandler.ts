@@ -4,7 +4,7 @@ import logger from '@/utils/logger'
 export function useErrorHandler() {
   const showError = inject<(message: string) => void>('showError')
 
-  const handleApiError = (error: unknown) => {
+  const handleApiError = (error: unknown): string => {
     let errorMessage = 'An unexpected error occurred.'
     logger.log('Unknown', 'handleApiError:', error)
 
@@ -23,6 +23,7 @@ export function useErrorHandler() {
     }
 
     showError?.(errorMessage)
+    return errorMessage
   }
 
   return {
