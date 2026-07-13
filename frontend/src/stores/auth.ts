@@ -111,7 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function doRefreshToken() {
     logger.log('AuthStore', 'Refreshing token...')
     try {
-      const response = await api.refreshToken(refreshToken.value)
+      const response = await api.refreshToken()
       setTokens({
         accessToken: response.access,
         refreshToken: response.refresh || refreshToken.value,
