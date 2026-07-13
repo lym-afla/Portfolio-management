@@ -160,3 +160,4 @@ backend/secrets.json
 backend/.coverage
 backend/htmlcov/
 backend/coverage.xml
+.playwright-mcp/
