@@ -83,155 +83,133 @@
   />
 </template>
 
-<script>
+<script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import UpdateAccountPerformanceDialog from '@/components/dialogs/UpdateAccountPerformanceDialog.vue'
 import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
 import { updateAccountPerformance } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'SummaryOverTimeTable',
-  components: {
-    UpdateAccountPerformanceDialog,
-    ProgressDialog,
+defineProps({
+  lines: {
+    type: Array,
+    default: () => [],
   },
-  props: {
-    lines: {
-      type: Array,
-      default: () => [],
-    },
-    years: {
-      type: Array,
-      default: () => [],
-    },
-    currentYear: {
-      type: String,
-      default: '',
-    },
-    error: {
-      type: String,
-      default: '',
-    },
+  years: {
+    type: Array,
+    default: () => [],
   },
-  emits: ['refresh-data'],
-  setup(props, { emit }) {
-    const showDialog = ref(false)
-    const showProgressDialog = ref(false)
-    const updateProgress = ref(0)
-    const currentOperation = ref(0)
-    const totalOperations = ref(0)
-    const currentMessage = ref('')
-    const errors = ref([])
-
-    const showUpdateDialog = () => {
-      showDialog.value = true
-    }
-
-    const handleUpdateStarted = async (formData) => {
-      showDialog.value = false
-      showProgressDialog.value = true
-      currentMessage.value = 'Starting update'
-      updateProgress.value = 0
-      currentOperation.value = 0
-      totalOperations.value = 0
-      errors.value = []
-
-      try {
-        await updateAccountPerformance(formData)
-        emit('refresh-data')
-      } catch (error) {
-        handleUpdateError(error)
-      }
-    }
-
-    const handleProgress = (event) => {
-      const data = event.detail
-      logger.log('Unknown', 'Progress:', data)
-
-      if (!showProgressDialog.value) {
-        showProgressDialog.value = true
-      }
-
-      switch (data.status) {
-        case 'initializing':
-          totalOperations.value = data.total
-          break
-
-        case 'progress':
-          updateProgress.value = data.progress
-          currentOperation.value = data.current
-          currentMessage.value = compileProgressMessage(data)
-          break
-
-        case 'complete':
-          emit('refresh-data')
-          setTimeout(() => {
-            showProgressDialog.value = false
-          }, 1000)
-          break
-
-        case 'error':
-          handleUpdateError(data.message)
-          break
-      }
-    }
-
-    const compileProgressMessage = (data) => {
-      return `Processing year ${data.year}, currency: ${data.currency}, restricted: ${data.is_restricted}`
-    }
-
-    const handleUpdateError = (error) => {
-      logger.error('Unknown', '[handleUpdateError] Update error:', error)
-      const errorMessage =
-        error.response?.data?.message || error.message || String(error)
-      errors.value.push(errorMessage)
-      currentMessage.value = `Error: ${errorMessage}`
-    }
-
-    const handleStopImport = () => {
-      // Implement stop import logic here
-      logger.log('Unknown', 'Stop import requested')
-      showProgressDialog.value = false
-    }
-
-    onMounted(() => {
-      window.addEventListener(
-        'accountPerformanceUpdateProgress',
-        handleProgress
-      )
-      window.addEventListener(
-        'accountPerformanceUpdateError',
-        handleUpdateError
-      )
-    })
-
-    onUnmounted(() => {
-      window.removeEventListener(
-        'accountPerformanceUpdateProgress',
-        handleProgress
-      )
-      window.removeEventListener(
-        'accountPerformanceUpdateError',
-        handleUpdateError
-      )
-    })
-
-    return {
-      showDialog,
-      showProgressDialog,
-      showUpdateDialog,
-      handleUpdateStarted,
-      handleUpdateError,
-      updateProgress,
-      currentOperation,
-      totalOperations,
-      currentMessage,
-      errors,
-      handleStopImport,
-    }
+  currentYear: {
+    type: String,
+    default: '',
   },
+  error: {
+    type: String,
+    default: '',
+  },
+})
+const emit = defineEmits(['refresh-data'])
+
+const showDialog = ref(false)
+const showProgressDialog = ref(false)
+const updateProgress = ref(0)
+const currentOperation = ref(0)
+const totalOperations = ref(0)
+const currentMessage = ref('')
+const errors = ref([])
+
+function showUpdateDialog() {
+  showDialog.value = true
 }
+
+async function handleUpdateStarted(formData) {
+  showDialog.value = false
+  showProgressDialog.value = true
+  currentMessage.value = 'Starting update'
+  updateProgress.value = 0
+  currentOperation.value = 0
+  totalOperations.value = 0
+  errors.value = []
+
+  try {
+    await updateAccountPerformance(formData)
+    emit('refresh-data')
+  } catch (error) {
+    handleUpdateError(error)
+  }
+}
+
+function handleProgress(event) {
+  const data = event.detail
+  logger.log('Unknown', 'Progress:', data)
+
+  if (!showProgressDialog.value) {
+    showProgressDialog.value = true
+  }
+
+  switch (data.status) {
+    case 'initializing':
+      totalOperations.value = data.total
+      break
+
+    case 'progress':
+      updateProgress.value = data.progress
+      currentOperation.value = data.current
+      currentMessage.value = compileProgressMessage(data)
+      break
+
+    case 'complete':
+      emit('refresh-data')
+      setTimeout(() => {
+        showProgressDialog.value = false
+      }, 1000)
+      break
+
+    case 'error':
+      handleUpdateError(data.message)
+      break
+  }
+}
+
+function compileProgressMessage(data) {
+  return `Processing year ${data.year}, currency: ${data.currency}, restricted: ${data.is_restricted}`
+}
+
+function handleUpdateError(error) {
+  logger.error('Unknown', '[handleUpdateError] Update error:', error)
+  const errorMessage =
+    error.response?.data?.message || error.message || String(error)
+  errors.value.push(errorMessage)
+  currentMessage.value = `Error: ${errorMessage}`
+}
+
+function handleStopImport() {
+  // Implement stop import logic here
+  logger.log('Unknown', 'Stop import requested')
+  showProgressDialog.value = false
+}
+
+onMounted(() => {
+  window.addEventListener(
+    'accountPerformanceUpdateProgress',
+    handleProgress
+  )
+  window.addEventListener(
+    'accountPerformanceUpdateError',
+    handleUpdateError
+  )
+})
+
+onUnmounted(() => {
+  window.removeEventListener(
+    'accountPerformanceUpdateProgress',
+    handleProgress
+  )
+  window.removeEventListener(
+    'accountPerformanceUpdateError',
+    handleUpdateError
+  )
+})
 </script>
 
 <style scoped>

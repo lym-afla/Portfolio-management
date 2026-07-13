@@ -1,14 +1,14 @@
 import { computed, ref } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { debounce } from 'lodash'
 import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
 import logger from '@/utils/logger'
 
 export function useTableSettings() {
-  const store = useStore()
-  const effectiveCurrentDate = ref(store.state.effectiveCurrentDate)
+  const appStore = useAppStore()
+  const effectiveCurrentDate = ref(appStore.effectiveCurrentDate)
 
-  const tableSettings = computed(() => store.state.tableSettings)
+  const tableSettings = computed(() => appStore.tableSettings)
 
   const timespan = computed({
     get: () => tableSettings.value.timespan,
@@ -17,34 +17,33 @@ export function useTableSettings() {
 
   const dateFrom = computed({
     get: () => tableSettings.value.dateFrom,
-    set: (value) => store.dispatch('updateTableSettings', { dateFrom: value }),
+    set: (value) => appStore.updateTableSettings({ dateFrom: value }),
   })
 
   const dateTo = computed({
     get: () => tableSettings.value.dateTo,
-    set: (value) => store.dispatch('updateTableSettings', { dateTo: value }),
+    set: (value) => appStore.updateTableSettings({ dateTo: value }),
   })
 
   const itemsPerPage = computed({
     get: () => tableSettings.value.itemsPerPage,
-    set: (value) =>
-      store.dispatch('updateTableSettings', { itemsPerPage: value }),
+    set: (value) => appStore.updateTableSettings({ itemsPerPage: value }),
   })
 
   const currentPage = computed({
     get: () => tableSettings.value.page,
-    set: (value) => store.dispatch('updateTableSettings', { page: value }),
+    set: (value) => appStore.updateTableSettings({ page: value }),
   })
 
   const sortBy = computed({
     get: () => tableSettings.value.sortBy,
-    set: (value) => store.dispatch('updateTableSettings', { sortBy: value }),
+    set: (value) => appStore.updateTableSettings({ sortBy: value }),
   })
 
   const search = computed({
     get: () => tableSettings.value.search,
     set: debounce(
-      (value) => store.dispatch('updateTableSettings', { search: value }),
+      (value) => appStore.updateTableSettings({ search: value }),
       500
     ),
   })
@@ -53,8 +52,8 @@ export function useTableSettings() {
     let currentDate = effectiveCurrentDate.value
 
     if (!currentDate) {
-      await store.dispatch('fetchEffectiveCurrentDate')
-      currentDate = store.state.effectiveCurrentDate
+      await appStore.fetchEffectiveCurrentDate()
+      currentDate = appStore.effectiveCurrentDate
       effectiveCurrentDate.value = currentDate
     }
 
@@ -66,7 +65,7 @@ export function useTableSettings() {
     const dateRange = calculateDateRangeFromTimespan(value, currentDate)
     if (!dateRange) return
 
-    store.dispatch('updateTableSettings', {
+    appStore.updateTableSettings({
       timespan: value,
       dateFrom: dateRange.dateFrom,
       dateTo: dateRange.dateTo,

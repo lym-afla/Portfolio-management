@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { vi } from 'vitest'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 import {
   saveTinkoffToken,
@@ -11,13 +12,13 @@ import {
 import { generateVuetifyStubs } from '../test-utils'
 
 // Mock API calls
-jest.mock('@/services/api', () => ({
-  saveTinkoffToken: jest.fn(),
-  saveIBToken: jest.fn(),
-  saveBybitToken: jest.fn(),
-  saveOKXToken: jest.fn(),
-  getAvailableBrokers: jest.fn(),
-  getBrokerTokens: jest.fn()
+vi.mock('@/services/api', () => ({
+  saveTinkoffToken: vi.fn(),
+  saveIBToken: vi.fn(),
+  saveBybitToken: vi.fn(),
+  saveOKXToken: vi.fn(),
+  getAvailableBrokers: vi.fn(),
+  getBrokerTokens: vi.fn()
 }))
 
 describe('BrokerTokenManager', () => {
@@ -26,9 +27,9 @@ describe('BrokerTokenManager', () => {
   const originalConsoleLog = console.log
 
   beforeAll(() => {
-    console.warn = jest.fn()
-    console.error = jest.fn()
-    console.log = jest.fn()
+    console.warn = vi.fn()
+    console.error = vi.fn()
+    console.log = vi.fn()
   })
 
   afterAll(() => {
@@ -41,7 +42,7 @@ describe('BrokerTokenManager', () => {
 
   beforeEach(() => {
     // Reset API mocks
-    jest.clearAllMocks()
+    vi.clearAllMocks()
 
     // Mock API responses
     getAvailableBrokers.mockResolvedValue([
@@ -235,7 +236,6 @@ describe('BrokerTokenManager', () => {
   it('handles API errors gracefully', async () => {
     // Setup error scenario
     saveTinkoffToken.mockRejectedValue(new Error('API Error'))
-    const errorSpy = jest.spyOn(wrapper.vm, 'handleError')
 
     // Setup token data
     wrapper.vm.newToken = {
@@ -249,8 +249,8 @@ describe('BrokerTokenManager', () => {
     // Trigger save
     await wrapper.vm.saveToken()
 
-    // Verify error handling
-    expect(errorSpy).toHaveBeenCalled()
+    // Verify error handling: the component emits an 'error' event and resets isSaving
+    expect(wrapper.emitted('error')).toBeTruthy()
     expect(wrapper.vm.isSaving).toBe(false)
   })
 })

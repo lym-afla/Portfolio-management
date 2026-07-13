@@ -43,80 +43,67 @@
   </v-form>
 </template>
 
-<script>
+<script setup>
 import { ref, reactive, watch } from 'vue'
 import logger from '@/utils/logger'
 
-export default {
-  props: {
-    loading: Boolean,
-    errors: {
-      type: Object,
-      default: () => ({}),
-    },
+const props = defineProps({
+  loading: Boolean,
+  errors: {
+    type: Object,
+    default: () => ({}),
   },
-  emits: ['register'],
-  setup(props, { emit }) {
-    const username = ref('')
-    const email = ref('')
-    const password = ref('')
-    const password2 = ref('')
-    const formErrors = reactive({
-      username: [],
-      email: [],
-      password: [],
-      password2: [],
-      general: [],
-    })
+})
+const emit = defineEmits(['register'])
 
-    const clearError = (field) => {
-      formErrors[field] = []
-      formErrors.general = []
-    }
+const username = ref('')
+const email = ref('')
+const password = ref('')
+const password2 = ref('')
+const formErrors = reactive({
+  username: [],
+  email: [],
+  password: [],
+  password2: [],
+  general: [],
+})
 
-    const submitForm = () => {
-      // Clear previous errors
-      Object.keys(formErrors).forEach((key) => (formErrors[key] = []))
-
-      emit('register', {
-        username: username.value,
-        email: email.value,
-        password: password.value,
-        password2: password2.value,
-      })
-    }
-
-    // Watch for errors from parent component
-    watch(
-      () => props.errors,
-      (newErrors) => {
-        logger.log(
-          'Unknown',
-          '[RegisterForm.vue] New errors received:',
-          newErrors
-        )
-        Object.keys(formErrors).forEach((key) => {
-          if (newErrors[key]) {
-            formErrors[key] = Array.isArray(newErrors[key])
-              ? newErrors[key]
-              : [newErrors[key]]
-          } else {
-            formErrors[key] = []
-          }
-        })
-      },
-      { deep: true }
-    )
-
-    return {
-      username,
-      email,
-      password,
-      password2,
-      formErrors,
-      submitForm,
-      clearError,
-    }
-  },
+function clearError(field) {
+  formErrors[field] = []
+  formErrors.general = []
 }
+
+function submitForm() {
+  // Clear previous errors
+  Object.keys(formErrors).forEach((key) => (formErrors[key] = []))
+
+  emit('register', {
+    username: username.value,
+    email: email.value,
+    password: password.value,
+    password2: password2.value,
+  })
+}
+
+// Watch for errors from parent component
+watch(
+  () => props.errors,
+  (newErrors) => {
+    logger.log(
+      'Unknown',
+      '[RegisterForm.vue] New errors received:',
+      newErrors
+    )
+    Object.keys(formErrors).forEach((key) => {
+      if (newErrors[key]) {
+        formErrors[key] = Array.isArray(newErrors[key])
+          ? newErrors[key]
+          : [newErrors[key]]
+      } else {
+        formErrors[key] = []
+      }
+    })
+  },
+  { deep: true }
+)
 </script>

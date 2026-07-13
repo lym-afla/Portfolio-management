@@ -1,9 +1,9 @@
 import { ref } from 'vue'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
 export function useWebSocket(baseUrl) {
-  const store = useStore()
+  const authStore = useAuthStore()
   const socket = ref(null)
   const isConnected = ref(false)
   const lastMessage = ref(null)
@@ -14,7 +14,7 @@ export function useWebSocket(baseUrl) {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.hostname
     const port = 8000
-    const token = store.state.accessToken
+    const token = authStore.accessToken
 
     logger.log('Unknown', 'Token being used:', token?.substring(0, 10) + '...')
 
@@ -46,7 +46,7 @@ export function useWebSocket(baseUrl) {
       }
 
       // Don't attempt connection if no token is available
-      if (!store.state.accessToken) {
+      if (!authStore.accessToken) {
         logger.warn(
           'Unknown',
           'No access token available for WebSocket connection'
@@ -74,7 +74,7 @@ export function useWebSocket(baseUrl) {
           isConnected.value = false
           if (!intentionalClose.value) {
             // Only attempt reconnect if app is fully initialized
-            if (store.state.isInitialized) {
+            if (authStore.isInitialized) {
               setTimeout(() => {
                 connectionAttempted.value = false // Reset the flag to allow reconnect
                 connect()
@@ -128,7 +128,7 @@ export function useWebSocket(baseUrl) {
   }
 
   // Only attempt to connect if the app is fully initialized
-  if (store.state.isInitialized) {
+  if (authStore.isInitialized) {
     connect().catch((error) => {
       logger.error(
         'Unknown',

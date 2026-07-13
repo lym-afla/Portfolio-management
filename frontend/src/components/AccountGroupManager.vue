@@ -221,7 +221,8 @@
   </v-card>
 </template>
 
-<script>
+<script setup>
+import { ref, computed, onMounted } from 'vue'
 import {
   getAccountGroups,
   saveAccountGroup,
@@ -229,221 +230,212 @@ import {
   updateAccountGroup,
 } from '@/services/api'
 
-export default {
-  name: 'AccountGroupManager',
+const emit = defineEmits(['error', 'success'])
 
-  emits: ['error', 'success'],
+const groupForm = ref(null)
+const renameForm = ref(null)
 
-  data() {
-    return {
-      loading: true,
-      accountGroups: {},
-      availableAccounts: [], // Will be populated with user's accounts
-      showAddGroupDialog: false,
-      showAddAccountToGroupDialog: false,
-      isGroupFormValid: false,
-      isSaving: false,
-      isAddingAccount: false,
-      selectedGroup: null,
-      selectedGroupName: '',
-      selectedAccounts: [],
-      newGroup: {
-        name: '',
-        accounts: [],
-      },
-      showRenameDialog: false,
-      isRenameFormValid: false,
-      isRenaming: false,
-      renameData: {
-        groupId: null,
-        newName: '',
-      },
-      showDeleteConfirmation: false,
-      groupToDelete: null,
-      isDeleting: false,
-    }
-  },
+const loading = ref(true)
+const accountGroups = ref({})
+const availableAccounts = ref([]) // Will be populated with user's accounts
+const showAddGroupDialog = ref(false)
+const showAddAccountToGroupDialog = ref(false)
+const isGroupFormValid = ref(false)
+const isSaving = ref(false)
+const isAddingAccount = ref(false)
+const selectedGroup = ref(null)
+const selectedGroupName = ref('')
+const selectedAccounts = ref([])
+const newGroup = ref({
+  name: '',
+  accounts: [],
+})
+const showRenameDialog = ref(false)
+const isRenameFormValid = ref(false)
+const isRenaming = ref(false)
+const renameData = ref({
+  groupId: null,
+  newName: '',
+})
+const showDeleteConfirmation = ref(false)
+const groupToDelete = ref(null)
+const isDeleting = ref(false)
 
-  computed: {
-    availableAccountsForGroup() {
-      if (!this.selectedGroup) return this.availableAccounts
-      const currentAccounts = new Set(
-        this.accountGroups[this.selectedGroup].accounts
-      )
-      return this.availableAccounts.filter(
-        (account) => !currentAccounts.has(account.value)
-      )
-    },
-    filteredAvailableAccounts() {
-      if (
-        !this.selectedGroup ||
-        !this.accountGroups ||
-        !this.availableAccounts
-      ) {
-        return []
-      }
+const availableAccountsForGroup = computed(() => {
+  if (!selectedGroup.value) return availableAccounts.value
+  const currentAccounts = new Set(
+    accountGroups.value[selectedGroup.value].accounts
+  )
+  return availableAccounts.value.filter(
+    (account) => !currentAccounts.has(account.value)
+  )
+})
+const filteredAvailableAccounts = computed(() => {
+  if (
+    !selectedGroup.value ||
+    !accountGroups.value ||
+    !availableAccounts.value
+  ) {
+    return []
+  }
 
-      const currentGroup = this.accountGroups[this.selectedGroup]
-      if (!currentGroup) {
-        return this.availableAccounts
-      }
+  const currentGroup = accountGroups.value[selectedGroup.value]
+  if (!currentGroup) {
+    return availableAccounts.value
+  }
 
-      // Get IDs of accounts already in the group
-      const existingAccountIds = new Set(
-        currentGroup.accounts.map((account) => account.id)
-      )
+  // Get IDs of accounts already in the group
+  const existingAccountIds = new Set(
+    currentGroup.accounts.map((account) => account.id)
+  )
 
-      // Filter out accounts that are already in the group
-      return this.availableAccounts.filter(
-        (account) => !existingAccountIds.has(account.value)
-      )
-    },
-  },
+  // Filter out accounts that are already in the group
+  return availableAccounts.value.filter(
+    (account) => !existingAccountIds.has(account.value)
+  )
+})
 
-  methods: {
-    handleError(error) {
-      let errorMessage = 'An unexpected error occurred.'
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-      this.$emit('error', errorMessage)
-    },
-
-    async fetchGroups() {
-      this.loading = true
-      try {
-        // Fetch account groups
-        const response = await getAccountGroups()
-        this.accountGroups = response.groups
-
-        // Update available accounts from response
-        this.availableAccounts = response.available_accounts
-      } catch (error) {
-        this.handleError(error)
-      } finally {
-        this.loading = false
-      }
-    },
-
-    async saveGroup() {
-      this.isSaving = true
-      try {
-        await saveAccountGroup({
-          name: this.newGroup.name,
-          accounts: this.newGroup.accounts,
-        })
-        await this.fetchGroups()
-        this.showAddGroupDialog = false
-        this.$refs.groupForm?.reset()
-        this.$emit('success', 'Group saved successfully')
-      } catch (error) {
-        this.handleError(error)
-      } finally {
-        this.isSaving = false
-      }
-    },
-
-    deleteGroup(groupId) {
-      this.groupToDelete = {
-        id: groupId,
-        name: this.accountGroups[groupId].name,
-      }
-      this.showDeleteConfirmation = true
-    },
-
-    async confirmDeleteGroup() {
-      if (!this.groupToDelete) return
-
-      this.isDeleting = true
-      try {
-        await deleteAccountGroup(this.groupToDelete.id)
-        await this.fetchGroups()
-        this.$emit('success', 'Group deleted successfully')
-        this.showDeleteConfirmation = false
-      } catch (error) {
-        this.handleError(error)
-      } finally {
-        this.isDeleting = false
-        this.groupToDelete = null
-      }
-    },
-
-    showAddAccountDialog(groupId) {
-      this.selectedGroup = groupId
-      this.selectedGroupName = this.accountGroups[groupId].name
-      this.selectedAccounts = []
-      this.showAddAccountToGroupDialog = true
-    },
-
-    async addAccountsToGroup() {
-      this.isAddingAccount = true
-      try {
-        const group = this.accountGroups[this.selectedGroup]
-        const currentAccountIds = group.accounts.map((account) => account.id)
-        await updateAccountGroup({
-          id: this.selectedGroup,
-          name: group.name,
-          accounts: [...currentAccountIds, ...this.selectedAccounts],
-        })
-        await this.fetchGroups()
-        this.showAddAccountToGroupDialog = false
-        this.$emit('success', 'Accounts added successfully')
-      } catch (error) {
-        this.handleError(error)
-      } finally {
-        this.isAddingAccount = false
-      }
-    },
-
-    async removeAccountFromGroup(groupId, accountId) {
-      try {
-        const group = this.accountGroups[groupId]
-        const updatedAccounts = group.accounts
-          .filter((account) => account.id !== accountId)
-          .map((account) => account.id)
-
-        await updateAccountGroup({
-          id: groupId,
-          name: group.name,
-          accounts: updatedAccounts,
-        })
-        await this.fetchGroups()
-        this.$emit('success', 'Account removed from group')
-      } catch (error) {
-        this.handleError(error)
-      }
-    },
-
-    openRenameDialog(groupId, currentName) {
-      this.renameData.groupId = groupId
-      this.renameData.newName = currentName
-      this.showRenameDialog = true
-    },
-
-    async renameGroup() {
-      this.isRenaming = true
-      try {
-        const group = this.accountGroups[this.renameData.groupId]
-        await updateAccountGroup({
-          id: this.renameData.groupId,
-          name: this.renameData.newName,
-          accounts: group.accounts.map((account) => account.id),
-        })
-        await this.fetchGroups()
-        this.showRenameDialog = false
-        this.$emit('success', 'Group renamed successfully')
-      } catch (error) {
-        this.handleError(error)
-      } finally {
-        this.isRenaming = false
-      }
-    },
-  },
-
-  async mounted() {
-    await this.fetchGroups()
-  },
+function handleError(error) {
+  let errorMessage = 'An unexpected error occurred.'
+  if (error.response?.data?.error) {
+    errorMessage = error.response.data.error
+  } else if (error.message) {
+    errorMessage = error.message
+  }
+  emit('error', errorMessage)
 }
+
+async function fetchGroups() {
+  loading.value = true
+  try {
+    // Fetch account groups
+    const response = await getAccountGroups()
+    accountGroups.value = response.groups
+
+    // Update available accounts from response
+    availableAccounts.value = response.available_accounts
+  } catch (error) {
+    handleError(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function saveGroup() {
+  isSaving.value = true
+  try {
+    await saveAccountGroup({
+      name: newGroup.value.name,
+      accounts: newGroup.value.accounts,
+    })
+    await fetchGroups()
+    showAddGroupDialog.value = false
+    groupForm.value?.reset()
+    emit('success', 'Group saved successfully')
+  } catch (error) {
+    handleError(error)
+  } finally {
+    isSaving.value = false
+  }
+}
+
+function deleteGroup(groupId) {
+  groupToDelete.value = {
+    id: groupId,
+    name: accountGroups.value[groupId].name,
+  }
+  showDeleteConfirmation.value = true
+}
+
+async function confirmDeleteGroup() {
+  if (!groupToDelete.value) return
+
+  isDeleting.value = true
+  try {
+    await deleteAccountGroup(groupToDelete.value.id)
+    await fetchGroups()
+    emit('success', 'Group deleted successfully')
+    showDeleteConfirmation.value = false
+  } catch (error) {
+    handleError(error)
+  } finally {
+    isDeleting.value = false
+    groupToDelete.value = null
+  }
+}
+
+function showAddAccountDialog(groupId) {
+  selectedGroup.value = groupId
+  selectedGroupName.value = accountGroups.value[groupId].name
+  selectedAccounts.value = []
+  showAddAccountToGroupDialog.value = true
+}
+
+async function addAccountsToGroup() {
+  isAddingAccount.value = true
+  try {
+    const group = accountGroups.value[selectedGroup.value]
+    const currentAccountIds = group.accounts.map((account) => account.id)
+    await updateAccountGroup({
+      id: selectedGroup.value,
+      name: group.name,
+      accounts: [...currentAccountIds, ...selectedAccounts.value],
+    })
+    await fetchGroups()
+    showAddAccountToGroupDialog.value = false
+    emit('success', 'Accounts added successfully')
+  } catch (error) {
+    handleError(error)
+  } finally {
+    isAddingAccount.value = false
+  }
+}
+
+async function removeAccountFromGroup(groupId, accountId) {
+  try {
+    const group = accountGroups.value[groupId]
+    const updatedAccounts = group.accounts
+      .filter((account) => account.id !== accountId)
+      .map((account) => account.id)
+
+    await updateAccountGroup({
+      id: groupId,
+      name: group.name,
+      accounts: updatedAccounts,
+    })
+    await fetchGroups()
+    emit('success', 'Account removed from group')
+  } catch (error) {
+    handleError(error)
+  }
+}
+
+function openRenameDialog(groupId, currentName) {
+  renameData.value.groupId = groupId
+  renameData.value.newName = currentName
+  showRenameDialog.value = true
+}
+
+async function renameGroup() {
+  isRenaming.value = true
+  try {
+    const group = accountGroups.value[renameData.value.groupId]
+    await updateAccountGroup({
+      id: renameData.value.groupId,
+      name: renameData.value.newName,
+      accounts: group.accounts.map((account) => account.id),
+    })
+    await fetchGroups()
+    showRenameDialog.value = false
+    emit('success', 'Group renamed successfully')
+  } catch (error) {
+    handleError(error)
+  } finally {
+    isRenaming.value = false
+  }
+}
+
+onMounted(async () => {
+  await fetchGroups()
+})
 </script>

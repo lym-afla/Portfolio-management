@@ -4,7 +4,7 @@
  */
 
 // Check if we're in production environment
-const isProduction = process.env.NODE_ENV === 'production'
+const isProduction = import.meta.env.PROD
 
 // Allow override for testing in non-production environments
 let debugEnabled = !isProduction

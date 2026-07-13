@@ -87,106 +87,87 @@
   </v-navigation-drawer>
 </template>
 
-<script>
+<script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 
-export default {
-  name: 'Navigation',
-  setup() {
-    const drawer = ref(true)
-    const extended = ref(false)
-    const route = useRoute()
-    const router = useRouter()
-    const store = useStore()
-    const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
-    )
+const drawer = ref(true)
+const extended = ref(false)
+const route = useRoute()
+const router = useRouter()
+const appStore = useAppStore()
+const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
-    const menuItems = [
-      {
-        title: 'Dashboard',
-        icon: 'mdi-monitor-dashboard',
-        value: 'dashboard',
-        to: '/dashboard',
-      },
-      {
-        title: 'Open Positions',
-        icon: 'mdi-clipboard-check',
-        value: 'open',
-        to: '/open-positions',
-      },
-      {
-        title: 'Closed Positions',
-        icon: 'mdi-clipboard-remove',
-        value: 'closed',
-        to: '/closed-positions',
-      },
-      {
-        title: 'Transactions',
-        icon: 'mdi-swap-horizontal',
-        value: 'transactions',
-        to: '/transactions',
-      },
-    ]
-
-    const databaseSubItems = [
-      {
-        title: 'Brokers',
-        icon: 'mdi-office-building',
-        to: '/database/brokers',
-      },
-      { title: 'Accounts', icon: 'mdi-bank', to: '/database/accounts' },
-      {
-        title: 'Prices',
-        icon: 'mdi-file-document-outline',
-        to: '/database/prices',
-      },
-      {
-        title: 'Securities',
-        icon: 'mdi-chart-line',
-        to: '/database/securities',
-      },
-      { title: 'FX', icon: 'mdi-currency-usd', to: '/database/fx' },
-    ]
-
-    const toggleExtended = () => {
-      extended.value = !extended.value
-    }
-
-    const isActive = (path) => {
-      if (path === '/database') {
-        // Check if current route is database or any of its children
-        return route.path.startsWith('/database')
-      }
-      return route.path === path
-    }
-
-    const goToPage = (path) => {
-      router.push(path)
-    }
-
-    const handleDatabaseClick = () => {
-      if (!extended.value) {
-        extended.value = true
-        // } else {
-        //   // If already extended, navigate to a default database page or toggle the group
-        //   router.push('/database') // or any default database route
-      }
-    }
-
-    return {
-      drawer,
-      extended,
-      menuItems,
-      databaseSubItems,
-      toggleExtended,
-      isActive,
-      goToPage,
-      effectiveCurrentDate,
-      handleDatabaseClick,
-    }
+const menuItems = [
+  {
+    title: 'Dashboard',
+    icon: 'mdi-monitor-dashboard',
+    value: 'dashboard',
+    to: '/dashboard',
   },
+  {
+    title: 'Open Positions',
+    icon: 'mdi-clipboard-check',
+    value: 'open',
+    to: '/open-positions',
+  },
+  {
+    title: 'Closed Positions',
+    icon: 'mdi-clipboard-remove',
+    value: 'closed',
+    to: '/closed-positions',
+  },
+  {
+    title: 'Transactions',
+    icon: 'mdi-swap-horizontal',
+    value: 'transactions',
+    to: '/transactions',
+  },
+]
+
+const databaseSubItems = [
+  {
+    title: 'Brokers',
+    icon: 'mdi-office-building',
+    to: '/database/brokers',
+  },
+  { title: 'Accounts', icon: 'mdi-bank', to: '/database/accounts' },
+  {
+    title: 'Prices',
+    icon: 'mdi-file-document-outline',
+    to: '/database/prices',
+  },
+  {
+    title: 'Securities',
+    icon: 'mdi-chart-line',
+    to: '/database/securities',
+  },
+  { title: 'FX', icon: 'mdi-currency-usd', to: '/database/fx' },
+]
+
+const toggleExtended = () => {
+  extended.value = !extended.value
+}
+
+const isActive = (path) => {
+  if (path === '/database') {
+    // Check if current route is database or any of its children
+    return route.path.startsWith('/database')
+  }
+  return route.path === path
+}
+
+const goToPage = (path) => {
+  router.push(path)
+}
+
+const handleDatabaseClick = () => {
+  if (!extended.value) {
+    extended.value = true
+    // } else {
+    //   // If already extended, navigate to a default database page or toggle the group
+    //   router.push('/database') // or any default database route
+  }
 }
 </script>

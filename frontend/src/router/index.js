@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import store from '@/store'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 import OpenPositionsPage from '../views/OpenPositionsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
@@ -22,7 +22,7 @@ import BrokersPage from '../views/database/BrokersPage.vue'
 
 // Development-only debug components
 const AuthDebugPanel =
-  process.env.NODE_ENV !== 'production'
+  import.meta.env.DEV
     ? () => import('../components/AuthDebugPanel.vue')
     : null
 
@@ -133,7 +133,7 @@ const routes = [
     meta: { requiresAuth: true, paddingTop: '70px' },
   },
   // Development-only debug route
-  ...(process.env.NODE_ENV !== 'production' && AuthDebugPanel
+  ...(import.meta.env.DEV && AuthDebugPanel
     ? [
         {
           path: '/debug-auth',
@@ -150,7 +150,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 
@@ -160,6 +160,8 @@ router.beforeEach(async (to, from, next) => {
     'Router',
     `[${guardId}] Navigation from ${from.path} to ${to.path}`
   )
+
+  const authStore = useAuthStore()
 
   // Check if user is going to auth pages
   const goingToAuthPage = to.name === 'Login' || to.name === 'Register'
@@ -171,7 +173,7 @@ router.beforeEach(async (to, from, next) => {
       `[${guardId}] Going to auth page, skipping initialization`
     )
     // But first check if already authenticated
-    if (store.getters.isAuthenticated) {
+    if (authStore.isAuthenticated) {
       logger.log(
         'Router',
         `[${guardId}] User is authenticated, redirecting to Profile`
@@ -184,11 +186,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // For non-auth pages, check initialization
-  if (!store.state.isInitialized) {
+  if (!authStore.isInitialized) {
     logger.log('Router', `[${guardId}] App not initialized, initializing...`)
     try {
       // Set a timeout to prevent infinite initialization
-      const initPromise = store.dispatch('initializeApp')
+      const initPromise = authStore.initializeApp()
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Initialization timeout')), 3000)
       })
@@ -201,12 +203,12 @@ router.beforeEach(async (to, from, next) => {
         error
       )
       // Force initialization to complete to prevent infinite loops
-      store.commit('SET_INITIALIZED', true)
+      authStore.setInitialized(true)
     }
   }
 
   // After initialization (successful or not), check authentication
-  const isAuthenticated = store.getters.isAuthenticated
+  const isAuthenticated = authStore.isAuthenticated
 
   // Check if the route requires authentication
   if (to.matched.some((record) => record.meta.requiresAuth)) {

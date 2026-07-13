@@ -53,128 +53,113 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { getAccountChoices } from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'AccountSelection',
-  setup() {
-    const store = useStore()
-    const accountOptions = ref([])
-    const selectedAccount = ref(null)
+const appStore = useAppStore()
+const accountOptions = ref([])
+const selectedAccount = ref(null)
 
-    const currentIndex = computed(() => {
-      if (!selectedAccount.value) return -1
-      return accountOptions.value.findIndex(
-        (option) =>
-          option.type === 'option' &&
-          option.value.type === selectedAccount.value.type &&
-          option.value.id === selectedAccount.value.id
-      )
-    })
+const currentIndex = computed(() => {
+  if (!selectedAccount.value) return -1
+  return accountOptions.value.findIndex(
+    (option) =>
+      option.type === 'option' &&
+      option.value.type === selectedAccount.value.type &&
+      option.value.id === selectedAccount.value.id
+  )
+})
 
-    const canSwitchLeft = computed(() => {
-      return accountOptions.value
-        .slice(0, currentIndex.value)
-        .some((option) => option.type === 'option')
-    })
+const canSwitchLeft = computed(() => {
+  return accountOptions.value
+    .slice(0, currentIndex.value)
+    .some((option) => option.type === 'option')
+})
 
-    const canSwitchRight = computed(() => {
-      return accountOptions.value
-        .slice(currentIndex.value + 1)
-        .some((option) => option.type === 'option')
-    })
+const canSwitchRight = computed(() => {
+  return accountOptions.value
+    .slice(currentIndex.value + 1)
+    .some((option) => option.type === 'option')
+})
 
-    const fetchAccounts = async () => {
-      try {
-        const data = await getAccountChoices()
-        accountOptions.value = formatAccountChoices(data.options)
-        // Find the option matching the selected type and id
-        const selected = data.selected
-        const matchingOption = accountOptions.value.find(
-          (option) =>
-            option.type === 'option' &&
-            option.value.type === selected.type &&
-            option.value.id === selected.id
-        )
-        selectedAccount.value = matchingOption?.value || null
-      } catch (error) {
-        logger.error('Unknown', 'Error fetching accounts:', error)
-      }
-    }
-
-    const handleAccountChange = async (newValue) => {
-      logger.log('Unknown', 'handleAccountChange called with:', newValue)
-      selectedAccount.value = newValue
-
-      await store.dispatch('updateAccountSelection', {
-        type: newValue.type,
-        id: newValue.id,
-      })
-
-      // Log the updated store state after the dispatch completes
-      console.log(
-        '[handleAccountChange] store.state.accountSelection:',
-        store.state.accountSelection
-      )
-
-      // // Update data for the new account
-      // await updateDataForAccount(newValue)
-    }
-
-    // const updateDataForAccount = async (selection) => {
-    //   try {
-    //     logger.log('Unknown', 'updateDataForAccount called with:', selection)
-    //     const response = await updateUserDataForNewAccount({
-    //       type: selection.type,
-    //       id: selection.id
-    //     })
-    //     logger.log('Unknown', 'updateForNewAccount response:', response)
-    //     store.dispatch('triggerDataRefresh')
-    //   } catch (error) {
-    //     logger.error('Unknown', 'Error updating account selection:', error)
-    //   }
-    // }
-
-    const switchAccount = (direction) => {
-      let newIndex = currentIndex.value + direction
-
-      // Skip dividers and headers
-      while (newIndex >= 0 && newIndex < accountOptions.value.length) {
-        const currentOption = accountOptions.value[newIndex]
-        if (currentOption.type === 'option') {
-          break
-        }
-        newIndex += direction
-      }
-
-      // Check if the new index is valid
-      if (newIndex >= 0 && newIndex < accountOptions.value.length) {
-        const newAccount = accountOptions.value[newIndex]
-        handleAccountChange(newAccount.value)
-      }
-    }
-
-    onMounted(() => {
-      logger.log('Unknown', 'AccountSelection component mounted')
-      fetchAccounts()
-    })
-
-    return {
-      accountOptions,
-      selectedAccount,
-      currentIndex,
-      handleAccountChange,
-      switchAccount,
-      canSwitchLeft,
-      canSwitchRight,
-    }
-  },
+const fetchAccounts = async () => {
+  try {
+    const data = await getAccountChoices()
+    accountOptions.value = formatAccountChoices(data.options)
+    // Find the option matching the selected type and id
+    const selected = data.selected
+    const matchingOption = accountOptions.value.find(
+      (option) =>
+        option.type === 'option' &&
+        option.value.type === selected.type &&
+        option.value.id === selected.id
+    )
+    selectedAccount.value = matchingOption?.value || null
+  } catch (error) {
+    logger.error('Unknown', 'Error fetching accounts:', error)
+  }
 }
+
+const handleAccountChange = async (newValue) => {
+  logger.log('Unknown', 'handleAccountChange called with:', newValue)
+  selectedAccount.value = newValue
+
+  await appStore.updateAccountSelection({
+    type: newValue.type,
+    id: newValue.id,
+  })
+
+  // Log the updated store state after the dispatch completes
+  console.log(
+    '[handleAccountChange] appStore.accountSelection:',
+    appStore.accountSelection
+  )
+
+  // // Update data for the new account
+  // await updateDataForAccount(newValue)
+}
+
+// const updateDataForAccount = async (selection) => {
+//   try {
+//     logger.log('Unknown', 'updateDataForAccount called with:', selection)
+//     const response = await updateUserDataForNewAccount({
+//       type: selection.type,
+//       id: selection.id
+//     })
+//     logger.log('Unknown', 'updateForNewAccount response:', response)
+//     store.dispatch('triggerDataRefresh')
+//   } catch (error) {
+//     logger.error('Unknown', 'Error updating account selection:', error)
+//   }
+// }
+
+const switchAccount = (direction) => {
+  let newIndex = currentIndex.value + direction
+
+  // Skip dividers and headers
+  while (newIndex >= 0 && newIndex < accountOptions.value.length) {
+    const currentOption = accountOptions.value[newIndex]
+    if (currentOption.type === 'option') {
+      break
+    }
+    newIndex += direction
+  }
+
+  // Check if the new index is valid
+  if (newIndex >= 0 && newIndex < accountOptions.value.length) {
+    const newAccount = accountOptions.value[newIndex]
+    handleAccountChange(newAccount.value)
+  }
+}
+
+onMounted(() => {
+  logger.log('Unknown', 'AccountSelection component mounted')
+  fetchAccounts()
+})
 </script>
 
 <style scoped>

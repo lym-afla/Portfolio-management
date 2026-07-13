@@ -1,8 +1,9 @@
 import axios from 'axios'
 import logger from '@/utils/logger'
+import { useAuthStore } from '@/stores/auth'
 
 const axiosInstance = axios.create({
-  baseURL: process.env.VUE_APP_API_URL,
+  baseURL: import.meta.env.VITE_API_URL,
 })
 
 let isRefreshing = false
@@ -70,12 +71,14 @@ const refreshToken = async (newEffectiveDate = null) => {
     logger.log('AuthDebugger', 'Token refreshed successfully')
     console.log('[AuthDebugger] ✅ Token refreshed successfully')
 
-    // Update Vuex store with new tokens
-    if (window.store) {
-      window.store.commit('SET_TOKENS', {
-        accessToken: access,
-        refreshToken: refresh,
-      })
+    // Update Pinia auth store with new tokens. useAuthStore() is callable
+    // outside a component as long as Pinia is active (it is, once main.js
+    // installs it before mounting the app).
+    try {
+      const authStore = useAuthStore()
+      authStore.setTokens({ accessToken: access, refreshToken: refresh })
+    } catch (e) {
+      logger.warn('Axios', 'Could not sync tokens to auth store:', e)
     }
 
     return access
@@ -87,10 +90,13 @@ const refreshToken = async (newEffectiveDate = null) => {
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('effective_current_date') // Also clear effective date
 
-    // Clear Vuex store
-    if (window.store) {
-      window.store.commit('CLEAR_TOKENS')
-      window.store.commit('SET_USER', null)
+    // Clear Pinia auth store
+    try {
+      const authStore = useAuthStore()
+      authStore.clearTokens()
+      authStore.setUser(null)
+    } catch (e) {
+      logger.warn('Axios', 'Could not clear auth store:', e)
     }
 
     throw error

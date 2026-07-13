@@ -24,53 +24,43 @@
   <template v-else>–</template>
 </template>
 
-<script>
+<script setup>
 import { computed } from 'vue'
 
-export default {
-  name: 'TransactionCashFlow',
-  props: {
-    transaction: {
-      type: Object,
-      required: true,
-    },
-    currency: {
-      type: String,
-      required: true,
-    },
+const props = defineProps({
+  transaction: {
+    type: Object,
+    required: true,
   },
-  setup(props) {
-    const isFXTransaction = computed(
-      () =>
-        props.transaction.transaction_type === 'fx' ||
-        props.transaction.type === 'FX'
-    )
-
-    const isRegularTransaction = computed(
-      () =>
-        props.transaction.transaction_type === 'regular' ||
-        !isFXTransaction.value
-    )
-
-    // Check if FX transaction has commission in this currency (third currency case)
-    const hasCommissionInCurrency = computed(() => {
-      if (!isFXTransaction.value) return false
-
-      // Commission exists and this currency matches the commission_currency
-      // AND it's not the from or to currency (those already include commission)
-      return (
-        props.transaction.commission &&
-        props.transaction.commission_currency === props.currency &&
-        props.currency !== props.transaction.from_cur &&
-        props.currency !== props.transaction.to_cur
-      )
-    })
-
-    return {
-      isFXTransaction,
-      isRegularTransaction,
-      hasCommissionInCurrency,
-    }
+  currency: {
+    type: String,
+    required: true,
   },
-}
+})
+
+const isFXTransaction = computed(
+  () =>
+    props.transaction.transaction_type === 'fx' ||
+    props.transaction.type === 'FX'
+)
+
+const isRegularTransaction = computed(
+  () =>
+    props.transaction.transaction_type === 'regular' ||
+    !isFXTransaction.value
+)
+
+// Check if FX transaction has commission in this currency (third currency case)
+const hasCommissionInCurrency = computed(() => {
+  if (!isFXTransaction.value) return false
+
+  // Commission exists and this currency matches the commission_currency
+  // AND it's not the from or to currency (those already include commission)
+  return (
+    props.transaction.commission &&
+    props.transaction.commission_currency === props.currency &&
+    props.currency !== props.transaction.from_cur &&
+    props.currency !== props.transaction.to_cur
+  )
+})
 </script>

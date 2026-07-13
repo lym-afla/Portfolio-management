@@ -58,7 +58,7 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch } from 'vue'
 import {
   createBroker,
@@ -68,137 +68,119 @@ import {
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'BrokerFormDialog',
-  props: {
-    modelValue: Boolean,
-    editItem: Object,
-  },
-  emits: ['update:modelValue', 'broker-added', 'broker-updated'],
-  setup(props, { emit }) {
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-    const isEdit = computed(() => !!props.editItem)
-    const form = ref({})
-    const formFields = ref([])
-    const errorMessages = ref({})
-    const generalError = ref('')
-    const isSubmitting = ref(false)
+const props = defineProps({
+  modelValue: Boolean,
+  editItem: Object,
+})
+const emit = defineEmits(['update:modelValue', 'broker-added', 'broker-updated'])
 
-    const { handleApiError } = useErrorHandler()
+const dialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
+const isEdit = computed(() => !!props.editItem)
+const form = ref({})
+const formFields = ref([])
+const errorMessages = ref({})
+const generalError = ref('')
+const isSubmitting = ref(false)
 
-    const fetchFormStructure = async () => {
-      try {
-        const structure = await getBrokerFormStructure()
-        if (structure && structure.fields) {
-          formFields.value = structure.fields
-          initializeForm()
-        } else {
-          throw new Error('Invalid form structure received')
-        }
-      } catch (error) {
-        handleApiError(error)
-      }
-    }
+const { handleApiError } = useErrorHandler()
 
-    const initializeForm = () => {
-      if (formFields.value && formFields.value.length > 0) {
-        form.value = formFields.value.reduce((acc, field) => {
-          if (field.type === 'checkbox') {
-            acc[field.name] = false
-          } else {
-            acc[field.name] = ''
-          }
-          return acc
-        }, {})
-        errorMessages.value = formFields.value.reduce((acc, field) => {
-          acc[field.name] = []
-          return acc
-        }, {})
+const initializeForm = () => {
+  if (formFields.value && formFields.value.length > 0) {
+    form.value = formFields.value.reduce((acc, field) => {
+      if (field.type === 'checkbox') {
+        acc[field.name] = false
       } else {
-        generalError.value = 'Failed to initialize form. Please try again.'
+        acc[field.name] = ''
       }
-    }
-
-    watch(
-      () => props.editItem,
-      (newValue) => {
-        if (newValue) {
-          form.value = { ...newValue }
-        } else {
-          initializeForm()
-        }
-        generalError.value = ''
-      },
-      { immediate: true }
-    )
-
-    const closeDialog = () => {
-      dialog.value = false
-      initializeForm()
-      generalError.value = ''
-    }
-
-    const submitForm = async () => {
-      isSubmitting.value = true
-      errorMessages.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = []
-        return acc
-      }, {})
-      generalError.value = ''
-
-      try {
-        let response
-        if (isEdit.value) {
-          response = await updateBroker(props.editItem.id, form.value)
-          emit('broker-updated', response)
-        } else {
-          response = await createBroker(form.value)
-          emit('broker-added', response)
-        }
-        closeDialog()
-      } catch (error) {
-        logger.error('Unknown', 'Error submitting broker:', error)
-        if (
-          error.response &&
-          error.response.status === 400 &&
-          error.response.data
-        ) {
-          Object.keys(error.response.data).forEach((key) => {
-            if (
-              Object.prototype.hasOwnProperty.call(errorMessages.value, key)
-            ) {
-              errorMessages.value[key] = Array.isArray(error.response.data[key])
-                ? error.response.data[key]
-                : [error.response.data[key]]
-            } else {
-              generalError.value = `${key}: ${error.response.data[key]}`
-            }
-          })
-        } else {
-          handleApiError(error)
-        }
-      } finally {
-        isSubmitting.value = false
-      }
-    }
-
-    // Fetch form structure when component is mounted
-    fetchFormStructure()
-
-    return {
-      dialog,
-      isEdit,
-      form,
-      formFields,
-      errorMessages,
-      generalError,
-      isSubmitting,
-      closeDialog,
-      submitForm,
-    }
-  },
+      return acc
+    }, {})
+    errorMessages.value = formFields.value.reduce((acc, field) => {
+      acc[field.name] = []
+      return acc
+    }, {})
+  } else {
+    generalError.value = 'Failed to initialize form. Please try again.'
+  }
 }
+
+const fetchFormStructure = async () => {
+  try {
+    const structure = await getBrokerFormStructure()
+    if (structure && structure.fields) {
+      formFields.value = structure.fields
+      initializeForm()
+    } else {
+      throw new Error('Invalid form structure received')
+    }
+  } catch (error) {
+    handleApiError(error)
+  }
+}
+
+const closeDialog = () => {
+  dialog.value = false
+  initializeForm()
+  generalError.value = ''
+}
+
+const submitForm = async () => {
+  isSubmitting.value = true
+  errorMessages.value = formFields.value.reduce((acc, field) => {
+    acc[field.name] = []
+    return acc
+  }, {})
+  generalError.value = ''
+
+  try {
+    let response
+    if (isEdit.value) {
+      response = await updateBroker(props.editItem.id, form.value)
+      emit('broker-updated', response)
+    } else {
+      response = await createBroker(form.value)
+      emit('broker-added', response)
+    }
+    closeDialog()
+  } catch (error) {
+    logger.error('Unknown', 'Error submitting broker:', error)
+    if (
+      error.response &&
+      error.response.status === 400 &&
+      error.response.data
+    ) {
+      Object.keys(error.response.data).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(errorMessages.value, key)) {
+          errorMessages.value[key] = Array.isArray(error.response.data[key])
+            ? error.response.data[key]
+            : [error.response.data[key]]
+        } else {
+          generalError.value = `${key}: ${error.response.data[key]}`
+        }
+      })
+    } else {
+      handleApiError(error)
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+watch(
+  () => props.editItem,
+  (newValue) => {
+    if (newValue) {
+      form.value = { ...newValue }
+    } else {
+      initializeForm()
+    }
+    generalError.value = ''
+  },
+  { immediate: true }
+)
+
+// Fetch form structure when component is mounted
+fetchFormStructure()
 </script>

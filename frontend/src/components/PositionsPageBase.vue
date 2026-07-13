@@ -120,210 +120,177 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { getYearOptions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'PositionsPageBase',
-  props: {
-    fetchPositions: {
-      type: Function,
-      required: true,
-    },
-    headers: {
-      type: Array,
-      required: true,
-    },
-    pageTitle: {
-      type: String,
-      required: true,
-    },
+const props = defineProps({
+  fetchPositions: {
+    type: Function,
+    required: true,
   },
-  emits: ['update-page-title'],
-  setup(props, { emit }) {
-    const store = useStore()
-    const positions = ref([])
-    const totals = ref({})
-    const tableLoading = ref(true)
-    const yearOptions = ref([])
-    const totalItems = ref(0)
-    const initialLoading = ref(true)
-
-    const {
-      timespan,
-      dateFrom,
-      dateTo,
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      search,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-      handleTimespanChange,
-    } = useTableSettings()
-
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
-
-    const flattenedHeaders = computed(() => {
-      return props.headers.flatMap((header) =>
-        header.children ? header.children : header
-      )
-    })
-
-    const fetchData = async () => {
-      tableLoading.value = true
-      try {
-        console.log('[PositionsPageBase] fetchData called with:', {
-          // timespan: timespan.value,
-          dateFrom: dateFrom.value,
-          dateTo: dateTo.value,
-          currentPage: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          search: search.value,
-          sortBy: sortBy.value,
-        })
-        const data = await props.fetchPositions({
-          // timespan: timespan.value,
-          dateFrom: dateFrom.value,
-          dateTo: dateTo.value,
-          page: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          search: search.value,
-          sortBy: sortBy.value[0] || {},
-        })
-        positions.value = data.positions
-        totals.value = data.totals
-        totalItems.value = data.total_items
-      } catch (error) {
-        store.dispatch('setError', error)
-        logger.error('Unknown', 'Error fetching positions:', error)
-      } finally {
-        tableLoading.value = false
-        initialLoading.value = false
-        logger.log('Unknown', '[PositionsPageBase] Current state:', store.state)
-      }
-    }
-
-    const fetchYearOptions = async () => {
-      try {
-        const years = await getYearOptions()
-        yearOptions.value = years
-      } catch (error) {
-        store.dispatch('setError', error)
-      } finally {
-        initialLoading.value = false
-      }
-    }
-
-    watch(
-      [
-        () => store.state.dataRefreshTrigger,
-        search,
-        itemsPerPage,
-        currentPage,
-        sortBy,
-        timespan,
-        dateFrom,
-        dateTo,
-      ],
-      () => {
-        fetchData()
-      },
-      { deep: true }
-    )
-
-    // This watch is used to update the year options when the selected account changes.
-    // Data refresh is handled in AccountSelection.vue, dispatching the dataRefreshTrigger action.
-    watch(
-      () => store.state.selectedAccount,
-      () => {
-        fetchYearOptions()
-      }
-    )
-
-    const initializeData = async () => {
-      emit('update-page-title', props.pageTitle)
-
-      if (!store.state.effectiveCurrentDate) {
-        await store.dispatch('fetchEffectiveCurrentDate')
-      }
-
-      // Check if dateFrom and dateTo are already set in the store
-      if (
-        !store.state.tableSettings.dateFrom ||
-        !store.state.tableSettings.dateTo
-      ) {
-        // If not set, use the default 'ytd' timespan
-        await handleTimespanChange(store.state.tableSettings.timespan)
-      } else {
-        // If already set, update the local timespan value
-        timespan.value = store.state.tableSettings.timespan
-      }
-
-      // Fetch year options
-      await fetchYearOptions()
-      await fetchData()
-    }
-
-    onMounted(() => {
-      initializeData()
-    })
-
-    onUnmounted(() => {
-      emit('update-page-title', '')
-    })
-
-    // const handlePageChangeWrapper = (newPage) => {
-    //   handlePageChange(newPage)
-    //   fetchData()
-    // }
-
-    // const handleItemsPerPageChangeWrapper = (newItemsPerPage) => {
-    //   handleItemsPerPageChange(newItemsPerPage)
-    //   fetchData()
-    // }
-
-    // const handleSortChangeWrapper = (newSortBy) => {
-    //   handleSortChange(newSortBy)
-    //   fetchData()
-    // }
-
-    return {
-      positions,
-      totals,
-      tableLoading,
-      timespan,
-      dateFrom,
-      dateTo,
-      yearOptions,
-      search,
-      itemsPerPage,
-      itemsPerPageOptions: computed(() => store.state.itemsPerPageOptions),
-      currentPage,
-      sortBy,
-      flattenedHeaders,
-      totalItems,
-      pageCount,
-      // handlePageChange: handlePageChangeWrapper,
-      handlePageChange,
-      // handleItemsPerPageChange: handleItemsPerPageChangeWrapper,
-      handleItemsPerPageChange,
-      // handleSortChange: handleSortChangeWrapper,
-      handleSortChange,
-      handleTimespanChange,
-      loading: computed(() => store.state.loading),
-      error: computed(() => store.state.error),
-      initialLoading,
-    }
+  headers: {
+    type: Array,
+    required: true,
   },
+  pageTitle: {
+    type: String,
+    required: true,
+  },
+})
+const emit = defineEmits(['update-page-title'])
+
+const appStore = useAppStore()
+const positions = ref([])
+const totals = ref({})
+const tableLoading = ref(true)
+const yearOptions = ref([])
+const totalItems = ref(0)
+const initialLoading = ref(true)
+
+const {
+  timespan,
+  dateFrom,
+  dateTo,
+  itemsPerPage,
+  currentPage,
+  sortBy,
+  search,
+  handlePageChange,
+  handleItemsPerPageChange,
+  handleSortChange,
+  handleTimespanChange,
+} = useTableSettings()
+
+const pageCount = computed(() =>
+  Math.ceil(totalItems.value / itemsPerPage.value)
+)
+
+const flattenedHeaders = computed(() => {
+  return props.headers.flatMap((header) =>
+    header.children ? header.children : header
+  )
+})
+
+const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
+
+const loading = computed(() => appStore.loading)
+const error = computed(() => appStore.error)
+
+const fetchData = async () => {
+  tableLoading.value = true
+  try {
+    console.log('[PositionsPageBase] fetchData called with:', {
+      // timespan: timespan.value,
+      dateFrom: dateFrom.value,
+      dateTo: dateTo.value,
+      currentPage: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      search: search.value,
+      sortBy: sortBy.value,
+    })
+    const data = await props.fetchPositions({
+      // timespan: timespan.value,
+      dateFrom: dateFrom.value,
+      dateTo: dateTo.value,
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      search: search.value,
+      sortBy: sortBy.value[0] || {},
+    })
+    positions.value = data.positions
+    totals.value = data.totals
+    totalItems.value = data.total_items
+  } catch (error) {
+    appStore.setError(error)
+    logger.error('Unknown', 'Error fetching positions:', error)
+  } finally {
+    tableLoading.value = false
+    initialLoading.value = false
+    logger.log(
+      'Unknown',
+      '[PositionsPageBase] Current appStore state:',
+      {
+        loading: appStore.loading,
+        error: appStore.error,
+        effectiveCurrentDate: appStore.effectiveCurrentDate,
+        dataRefreshTrigger: appStore.dataRefreshTrigger,
+      }
+    )
+  }
 }
+
+const fetchYearOptions = async () => {
+  try {
+    const years = await getYearOptions()
+    yearOptions.value = years
+  } catch (error) {
+    appStore.setError(error)
+  } finally {
+    initialLoading.value = false
+  }
+}
+
+watch(
+  [
+    () => appStore.dataRefreshTrigger,
+    search,
+    itemsPerPage,
+    currentPage,
+    sortBy,
+    timespan,
+    dateFrom,
+    dateTo,
+  ],
+  () => {
+    fetchData()
+  },
+  { deep: true }
+)
+
+// This watch is used to update the year options when the selected account changes.
+// Data refresh is handled in AccountSelection.vue, triggering dataRefreshTrigger.
+watch(
+  () => appStore.accountSelection,
+  () => {
+    fetchYearOptions()
+  }
+)
+
+const initializeData = async () => {
+  emit('update-page-title', props.pageTitle)
+
+  if (!appStore.effectiveCurrentDate) {
+    await appStore.fetchEffectiveCurrentDate()
+  }
+
+  // Check if dateFrom and dateTo are already set in the store
+  if (
+    !appStore.tableSettings.dateFrom ||
+    !appStore.tableSettings.dateTo
+  ) {
+    // If not set, use the default 'ytd' timespan
+    await handleTimespanChange(appStore.tableSettings.timespan)
+  } else {
+    // If already set, update the local timespan value
+    timespan.value = appStore.tableSettings.timespan
+  }
+
+  // Fetch year options
+  await fetchYearOptions()
+  await fetchData()
+}
+
+onMounted(() => {
+  initializeData()
+})
+
+onUnmounted(() => {
+  emit('update-page-title', '')
+})
 </script>
 <style scoped>
 .nowrap-table :deep(td) {

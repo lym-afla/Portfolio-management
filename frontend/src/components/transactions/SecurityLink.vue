@@ -9,18 +9,15 @@
   <span v-else>–</span>
 </template>
 
-<script>
-export default {
-  name: 'SecurityLink',
-  props: {
-    id: {
-      type: [Number, String],
-      default: null,
-    },
-    name: {
-      type: String,
-      default: null,
-    },
+<script setup>
+defineProps({
+  id: {
+    type: [Number, String],
+    default: null,
   },
-}
+  name: {
+    type: String,
+    default: null,
+  },
+})
 </script>
