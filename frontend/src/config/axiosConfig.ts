@@ -7,9 +7,9 @@ const axiosInstance = axios.create({
 })
 
 let isRefreshing = false
-let failedQueue = []
+let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: unknown) => void }> = []
 
-const processQueue = (error, token = null) => {
+const processQueue = (error: unknown, token: string | null = null): void => {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error)
@@ -20,7 +20,7 @@ const processQueue = (error, token = null) => {
   failedQueue = []
 }
 
-const refreshToken = async (newEffectiveDate = null) => {
+const refreshToken = async (newEffectiveDate: string | null = null): Promise<unknown> => {
   logger.log('Unknown', 'Attempting to refresh token...')
   const refreshToken = localStorage.getItem('refreshToken')
   if (!refreshToken) {
@@ -33,7 +33,7 @@ const refreshToken = async (newEffectiveDate = null) => {
     logger.log('AuthDebugger', 'Sending refresh token request...')
     console.log('[AuthDebugger] 🔄 Refreshing token...')
 
-    const requestData = { refresh: refreshToken }
+    const requestData: { refresh: string; effective_current_date?: string } = { refresh: refreshToken }
 
     // Include effective_current_date if provided (for updating JWT payload)
     if (newEffectiveDate) {
@@ -109,7 +109,7 @@ axiosInstance.interceptors.request.use(
 
     // Ensure headers object exists
     if (!config.headers) {
-      config.headers = {}
+      config.headers = {} as typeof config.headers
     }
 
     // Enhanced debugging for authentication
@@ -203,7 +203,7 @@ axiosInstance.interceptors.response.use(
       isRefreshing = true
 
       try {
-        const newToken = await refreshToken()
+        const newToken = await refreshToken() as string
         processQueue(null, newToken)
         originalRequest.headers['Authorization'] = `Bearer ${newToken}`
         return axiosInstance(originalRequest)

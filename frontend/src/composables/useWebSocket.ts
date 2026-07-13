@@ -2,15 +2,15 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
-export function useWebSocket(baseUrl) {
+export function useWebSocket(baseUrl: string) {
   const authStore = useAuthStore()
-  const socket = ref(null)
+  const socket = ref<WebSocket | null>(null)
   const isConnected = ref(false)
-  const lastMessage = ref(null)
+  const lastMessage = ref<MessageEvent | null>(null)
   const intentionalClose = ref(false)
   const connectionAttempted = ref(false)
 
-  const getWebSocketUrl = (baseUrl) => {
+  const getWebSocketUrl = (baseUrl: string): string => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.hostname
     const port = 8000

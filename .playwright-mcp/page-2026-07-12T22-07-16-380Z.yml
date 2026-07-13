@@ -1,0 +1,21 @@
+- generic [active] [ref=f1e1]:
+  - main [ref=f1e5]:
+    - generic [ref=f1e9]:
+      - generic [ref=f1e10]: Login
+      - generic [ref=f1e12]:
+        - generic [ref=f1e13]:
+          - generic [ref=f1e16]:
+            - generic: Username
+            - textbox "Username" [ref=f1e17]
+          - alert [ref=f1e18]
+        - generic [ref=f1e20]:
+          - generic [ref=f1e23]:
+            - generic: Password
+            - textbox "Password" [ref=f1e24]
+          - alert [ref=f1e25]
+        - button "Login" [ref=f1e27] [cursor=pointer]
+      - generic [ref=f1e30]:
+        - text: Don't have an account?
+        - link "Register" [ref=f1e31] [cursor=pointer]:
+          - /url: /register
+  - progressbar [ref=f1e34]

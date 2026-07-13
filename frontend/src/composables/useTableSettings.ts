@@ -48,7 +48,7 @@ export function useTableSettings() {
     ),
   })
 
-  const handleTimespanChange = async (value) => {
+  const handleTimespanChange = async (value: string) => {
     let currentDate = effectiveCurrentDate.value
 
     if (!currentDate) {
@@ -72,16 +72,16 @@ export function useTableSettings() {
     })
   }
 
-  const handlePageChange = (newPage) => {
+  const handlePageChange = (newPage: number) => {
     currentPage.value = newPage
   }
 
-  const handleItemsPerPageChange = (newItemsPerPage) => {
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
     itemsPerPage.value = newItemsPerPage
     currentPage.value = 1
   }
 
-  const handleSortChange = (newSortBy) => {
+  const handleSortChange = (newSortBy: unknown) => {
     if (Array.isArray(newSortBy) && newSortBy.length > 0) {
       sortBy.value = [newSortBy[0]]
     } else if (typeof newSortBy === 'object' && newSortBy !== null) {

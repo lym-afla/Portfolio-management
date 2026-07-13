@@ -1,10 +1,12 @@
 import { ref, computed } from 'vue'
 
+export type ImportState = 'idle' | 'analyzing' | 'importing' | 'mapping' | 'complete' | 'error'
+
 export function useImportState() {
-  const state = ref('idle') // idle, analyzing, importing, mapping, complete, error
+  const state = ref<ImportState>('idle')
   const progress = ref(0)
   const currentMessage = ref('')
-  const securityToMap = ref(null)
+  const securityToMap = ref<Record<string, unknown> | null>(null)
 
   const isIdle = computed(() => state.value === 'idle')
   const isAnalyzing = computed(() => state.value === 'analyzing')
@@ -13,16 +15,16 @@ export function useImportState() {
   const isComplete = computed(() => state.value === 'complete')
   const isError = computed(() => state.value === 'error')
 
-  const setState = (newState, message = '') => {
+  const setState = (newState: ImportState, message = '') => {
     state.value = newState
     currentMessage.value = message
   }
 
-  const setProgress = (value) => {
+  const setProgress = (value: number) => {
     progress.value = value
   }
 
-  const setSecurityToMap = (security) => {
+  const setSecurityToMap = (security: Record<string, unknown>) => {
     securityToMap.value = security
     setState('mapping')
   }
