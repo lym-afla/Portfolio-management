@@ -41,6 +41,7 @@ Async signatures are preserved: Tinkoff helpers use
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 from io import StringIO
@@ -104,6 +105,10 @@ def _get_broker_api():
     return get_broker_api
 
 logger = logging.getLogger(__name__)
+
+# Bounded executor for blocking I/O calls (yfinance, requests, etc.)
+# Prevents unbounded thread creation when multiple price imports run concurrently.
+_blocking_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="blocking-io")
 
 CustomUser = get_user_model()
 
@@ -802,11 +807,11 @@ async def import_security_prices_from_yahoo(security, dates):
         try:
             # Use run_in_executor to run yfinance operations in a separate thread
             # Let yfinance handle the session internally (uses curl_cffi for browser mimicking)
-            loop = asyncio.get_event_loop()
-            ticker = await loop.run_in_executor(None, yf.Ticker, security.yahoo_symbol)
+            loop = asyncio.get_running_loop()
+            ticker = await loop.run_in_executor(_blocking_executor, yf.Ticker, security.yahoo_symbol)
             # Set auto_adjust to False to get unadjusted close prices
             history = await loop.run_in_executor(
-                None,
+                _blocking_executor,
                 lambda ticker=ticker, start_date=start_date, end_date=end_date: ticker.history(
                     start=start_date, end=end_date, auto_adjust=False
                 ),
