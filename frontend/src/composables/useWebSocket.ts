@@ -12,13 +12,14 @@ export function useWebSocket(baseUrl: string) {
 
   const getWebSocketUrl = (baseUrl: string): string => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const host = window.location.hostname
-    const port = 8000
+    // Derive WebSocket host:port from VITE_API_URL so it always matches the backend
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const apiHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
     const token = authStore.accessToken
 
     logger.log('Unknown', 'Token being used:', token?.substring(0, 10) + '...')
 
-    return `${protocol}://${host}:${port}${baseUrl}?token=${token}`
+    return `${protocol}://${apiHost}${baseUrl}?token=${token}`
   }
 
   const connect = () => {
