@@ -30,7 +30,8 @@ Full rules: `.memory-bank/Rules for AI Coding Agent.md`. Key rules summarized be
 - Dependencies are managed with **uv project mode**: `backend/pyproject.toml` declares all dependencies; `backend/uv.lock` is the committed lockfile. There are no `requirements*.txt` files.
 - All commands run from `backend/`.
 - Install everything (creates `backend/.venv` with runtime + dev deps): `uv sync`
-- Run any command inside the project env: `uv run <cmd>` (e.g. `uv run python manage.py runserver`, `uv run python -m pytest`). You don't need to activate the venv manually.
+- Run any command inside the project env: `uv run <cmd>` (e.g. `uv run python run_uvicorn.py`, `uv run python -m pytest`). You don't need to activate the venv manually.
+- Start the backend dev server with `uv run python run_uvicorn.py` (NOT `manage.py runserver` — the app uses Django Channels WebSockets which require an ASGI server).
 - Add a runtime dependency: edit `[project.dependencies]` in `backend/pyproject.toml`, then `uv lock` to update the lockfile.
 - Add a dev-only dependency: edit `[dependency-groups.dev]`, then `uv lock`.
 - Commit both `pyproject.toml` and `uv.lock` after any dependency change. CI installs with `uv sync --frozen` (never modifies the lockfile).
