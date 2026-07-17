@@ -31,7 +31,7 @@ uv run python manage.py migrate
 uv run python run_uvicorn.py
 ```
 
-The backend will be available at `http://localhost:8000`.
+The backend will be available at `http://127.0.0.1:8000`.
 
 > **Important:** Use `run_uvicorn.py`, not `manage.py runserver`. The app uses
 > Django Channels for WebSocket-based transaction imports, which requires an
@@ -50,11 +50,11 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:8080`.
+The frontend will be available at `http://127.0.0.1:8080`.
 
 ### 3. Open the app
 
-Navigate to `http://localhost:8080` in your browser. Register a new account or
+Navigate to `http://127.0.0.1:8080` in your browser. Register a new account or
 log in with existing credentials.
 
 ## Environment Configuration
@@ -62,7 +62,7 @@ log in with existing credentials.
 ### Frontend (`.env.development`)
 
 ```
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://127.0.0.1:8000
 ```
 
 - The frontend API URL must point to the backend's host:port.

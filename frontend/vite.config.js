@@ -23,7 +23,7 @@ export default defineConfig({
     },
   },
   server: {
-    host: 'localhost', // Use 'localhost' consistently (matches VITE_API_URL and CORS)
+    host: '127.0.0.1', // IPv4 only — consistent with backend bind address and CORS
     port: 8080,
   },
   test: {
