@@ -1159,8 +1159,15 @@ const dialog = ref(props.modelValue)
           // For security errors, keep the connection but handle the error
           handleImportError(message.data.error)
         } else {
-          // For other errors, close the account matching dialog if open
+          // For non-security errors, show the error to the user
           showAccountMatching.value = false
+          showProgressDialog.value = false
+          showSuccessDialog.value = false
+          showSecurityMapping.value = false
+          showTransactionConfirmation.value = false
+
+          errorMessage.value = message.data?.error || 'An unexpected error occurred during import'
+          showErrorDialog.value = true
 
           if (message.type === 'critical_error') {
             // Handle critical errors that require disconnecting
