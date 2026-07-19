@@ -147,9 +147,9 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import AccountFormDialog from '@/components/dialogs/AccountFormDialog.vue'
 import {
   getAccountsTable,
@@ -159,212 +159,175 @@ import {
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
-export default {
-  name: 'AccountsPage',
-  components: {
-    AccountFormDialog,
+const appStore = useAppStore()
+const {
+  itemsPerPage,
+  currentPage,
+  sortBy,
+  search,
+  handlePageChange,
+  handleItemsPerPageChange,
+  handleSortChange,
+} = useTableSettings()
+
+const { handleApiError } = useErrorHandler()
+
+const accounts = ref([])
+const loading = ref(false)
+const tableLoading = ref(false)
+
+const currencies = ref([])
+const totalItems = ref(0)
+const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
+const pageCount = computed(() =>
+  Math.ceil(totalItems.value / itemsPerPage.value)
+)
+
+const headers = computed(() => [
+  { title: 'Name', key: 'name', align: 'start', sortable: true },
+  { title: 'Broker', key: 'broker_name', align: 'center', sortable: true },
+  {
+    title: 'Number of securities',
+    key: 'no_of_securities',
+    align: 'center',
+    sortable: true,
   },
-  setup() {
-    const store = useStore()
-    const {
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      search,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-    } = useTableSettings()
-
-    const { handleApiError } = useErrorHandler()
-
-    const accounts = ref([])
-    const loading = ref(false)
-    const tableLoading = ref(false)
-
-    const currencies = ref([])
-    const totalItems = ref(0)
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
-
-    const headers = computed(() => [
-      { title: 'Name', key: 'name', align: 'start', sortable: true },
-      { title: 'Broker', key: 'broker_name', align: 'center', sortable: true },
-      {
-        title: 'Number of securities',
-        key: 'no_of_securities',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'First investment',
-        key: 'first_investment',
-        align: 'center',
-        sortable: true,
-      },
-      { title: 'Current NAV', key: 'nav', align: 'center', sortable: true },
-      {
-        title: 'Cash balance',
-        key: 'cash',
-        align: 'center',
-        sortable: false,
-        children: currencies.value.map((currency) => ({
-          title: currency,
-          key: `cash_${currency}`,
-          align: 'center',
-          sortable: true,
-        })),
-      },
-      { title: 'IRR', key: 'irr', align: 'center', sortable: true },
-      { title: 'Actions', key: 'actions', align: 'end', sortable: false },
-    ])
-
-    const headerAlignments = computed(() => {
-      const alignments = {}
-      headers.value.forEach((header) => {
-        alignments[header.key] = header.align || 'start'
-        if (header.children) {
-          header.children.forEach((child) => {
-            alignments[child.key] = child.align || 'start'
-          })
-        }
-      })
-      return alignments
-    })
-
-    const totals = ref({})
-
-    const flattenedHeaders = computed(() => {
-      const flattened = []
-      headers.value.forEach((header) => {
-        if (header.children) {
-          header.children.forEach((child) => {
-            flattened.push(child)
-          })
-        } else {
-          flattened.push(header)
-        }
-      })
-      return flattened
-    })
-
-    const fetchAccounts = async () => {
-      tableLoading.value = true
-      try {
-        const response = await getAccountsTable({
-          page: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          sortBy: sortBy.value[0] || {},
-          search: search.value,
-        })
-        accounts.value = response.accounts
-        totalItems.value = response.total_items
-        currencies.value = [
-          ...new Set(
-            accounts.value.flatMap((account) => Object.keys(account.cash))
-          ),
-        ]
-        totals.value = response.totals
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        tableLoading.value = false
-      }
-    }
-
-    const openAddDialog = () => {
-      editingAccount.value = null
-      showAccountDialog.value = true
-    }
-
-    const editAccount = async (item) => {
-      try {
-        const accountDetails = await getAccountDetails(item.id)
-        editingAccount.value = accountDetails
-        showAccountDialog.value = true
-      } catch (error) {
-        handleApiError(error)
-      }
-    }
-
-    const processDeleteAccount = async (item) => {
-      const confirm = window.confirm(
-        'Are you sure you want to delete this account?'
-      )
-      if (confirm) {
-        try {
-          await deleteAccount(item.id)
-          fetchAccounts()
-        } catch (error) {
-          handleApiError(error)
-        }
-      }
-    }
-
-    const handleAccountAdded = () => {
-      fetchAccounts()
-    }
-
-    const handleAccountUpdated = () => {
-      fetchAccounts()
-    }
-
-    onMounted(() => {
-      fetchAccounts()
-    })
-
-    watch(
-      [
-        () => store.state.dataRefreshTrigger,
-        search,
-        itemsPerPage,
-        currentPage,
-        sortBy,
-      ],
-      () => {
-        fetchAccounts()
-      },
-      { deep: true }
-    )
-
-    const showAccountDialog = ref(false)
-    const editingAccount = ref(null)
-
-    const addAccount = () => {
-      editingAccount.value = null
-      showAccountDialog.value = true
-    }
-
-    return {
-      accounts: accounts,
-      loading,
-      tableLoading,
-      headers,
-      itemsPerPage,
-      currentPage,
-      totalItems,
-      sortBy,
-      search,
-      itemsPerPageOptions,
-      pageCount,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-      openAddDialog,
-      editAccount: editAccount,
-      processDeleteAccount: processDeleteAccount,
-      currencies,
-      handleAccountAdded,
-      handleAccountUpdated: handleAccountUpdated,
-      headerAlignments,
-      totals,
-      flattenedHeaders,
-      showAccountDialog,
-      editingAccount,
-      addAccount,
-    }
+  {
+    title: 'First investment',
+    key: 'first_investment',
+    align: 'center',
+    sortable: true,
   },
+  { title: 'Current NAV', key: 'nav', align: 'center', sortable: true },
+  {
+    title: 'Cash balance',
+    key: 'cash',
+    align: 'center',
+    sortable: false,
+    children: currencies.value.map((currency) => ({
+      title: currency,
+      key: `cash_${currency}`,
+      align: 'center',
+      sortable: true,
+    })),
+  },
+  { title: 'IRR', key: 'irr', align: 'center', sortable: true },
+  { title: 'Actions', key: 'actions', align: 'end', sortable: false },
+])
+
+const headerAlignments = computed(() => {
+  const alignments = {}
+  headers.value.forEach((header) => {
+    alignments[header.key] = header.align || 'start'
+    if (header.children) {
+      header.children.forEach((child) => {
+        alignments[child.key] = child.align || 'start'
+      })
+    }
+  })
+  return alignments
+})
+
+const totals = ref({})
+
+const flattenedHeaders = computed(() => {
+  const flattened = []
+  headers.value.forEach((header) => {
+    if (header.children) {
+      header.children.forEach((child) => {
+        flattened.push(child)
+      })
+    } else {
+      flattened.push(header)
+    }
+  })
+  return flattened
+})
+
+const fetchAccounts = async () => {
+  tableLoading.value = true
+  try {
+    const response = await getAccountsTable({
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      sortBy: sortBy.value[0] || {},
+      search: search.value,
+    })
+    accounts.value = response.accounts
+    totalItems.value = response.total_items
+    currencies.value = [
+      ...new Set(
+        accounts.value.flatMap((account) => Object.keys(account.cash))
+      ),
+    ]
+    totals.value = response.totals
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    tableLoading.value = false
+  }
 }
+
+const showAccountDialog = ref(false)
+const editingAccount = ref(null)
+
+const openAddDialog = () => {
+  editingAccount.value = null
+  showAccountDialog.value = true
+}
+
+const editAccount = async (item) => {
+  try {
+    const accountDetails = await getAccountDetails(item.id)
+    editingAccount.value = accountDetails
+    showAccountDialog.value = true
+  } catch (error) {
+    handleApiError(error)
+  }
+}
+
+const processDeleteAccount = async (item) => {
+  const confirm = window.confirm(
+    'Are you sure you want to delete this account?'
+  )
+  if (confirm) {
+    try {
+      await deleteAccount(item.id)
+      fetchAccounts()
+    } catch (error) {
+      handleApiError(error)
+    }
+  }
+}
+
+const handleAccountAdded = () => {
+  fetchAccounts()
+}
+
+const handleAccountUpdated = () => {
+  fetchAccounts()
+}
+
+const addAccount = () => {
+  editingAccount.value = null
+  showAccountDialog.value = true
+}
+
+onMounted(() => {
+  fetchAccounts()
+})
+
+watch(
+  [
+    () => appStore.dataRefreshTrigger,
+    search,
+    itemsPerPage,
+    currentPage,
+    sortBy,
+  ],
+  () => {
+    fetchAccounts()
+  },
+  { deep: true }
+)
 </script>

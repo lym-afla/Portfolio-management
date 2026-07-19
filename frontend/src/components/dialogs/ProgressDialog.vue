@@ -71,87 +71,80 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { computed, watch } from 'vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'ProgressDialog',
-  props: {
-    modelValue: Boolean,
-    title: {
-      type: String,
-      default: 'Progress',
-    },
-    progress: {
-      type: Number,
-      default: 0,
-    },
-    current: {
-      type: Number,
-      default: 0,
-    },
-    total: {
-      type: Number,
-      default: 0,
-    },
-    currentMessage: {
-      type: String,
-      default: '',
-    },
-    error: {
-      type: String,
-      default: '',
-    },
-    canStop: {
-      type: Boolean,
-      default: true,
-    },
+const props = defineProps({
+  modelValue: Boolean,
+  title: {
+    type: String,
+    default: 'Progress',
   },
-  emits: ['update:modelValue', 'stop-import', 'reset'],
-  setup(props, { emit }) {
-    const dialogModel = computed({
-      get: () => props.modelValue,
-      set: (value) => {
-        emit('update:modelValue', value)
-        if (!value) {
-          emit('reset')
-        }
-      },
-    })
+  progress: {
+    type: Number,
+    default: 0,
+  },
+  current: {
+    type: Number,
+    default: 0,
+  },
+  total: {
+    type: Number,
+    default: 0,
+  },
+  currentMessage: {
+    type: String,
+    default: '',
+  },
+  error: {
+    type: String,
+    default: '',
+  },
+  canStop: {
+    type: Boolean,
+    default: true,
+  },
+})
+const emit = defineEmits(['update:modelValue', 'stop-import', 'reset'])
 
-    // Watch for error changes
-    watch(
-      () => props.error,
-      (newError) => {
-        if (newError) {
-          logger.log('Unknown', 'ProgressDialog error changed:', newError)
-        }
-      }
-    )
-
-    // Watch for message changes
-    watch(
-      () => props.currentMessage,
-      (newMessage) => {
-        if (newMessage) {
-          logger.log(
-            'Unknown',
-            'ProgressDialog: currentMessage changed to',
-            newMessage
-          )
-        }
-      }
-    )
-
-    return {
-      dialogModel,
-      closeDialog: () => {
-        dialogModel.value = false
-        emit('reset')
-      },
-      stopImport: () => emit('stop-import'),
+const dialogModel = computed({
+  get: () => props.modelValue,
+  set: (value) => {
+    emit('update:modelValue', value)
+    if (!value) {
+      emit('reset')
     }
   },
+})
+
+const closeDialog = () => {
+  dialogModel.value = false
+  emit('reset')
 }
+const stopImport = () => emit('stop-import')
+
+// Watch for error changes
+watch(
+  () => props.error,
+  (newError) => {
+    if (newError) {
+      logger.log('Unknown', 'ProgressDialog error changed:', newError)
+    }
+  }
+)
+
+// Watch for message changes
+watch(
+  () => props.currentMessage,
+  (newMessage) => {
+    if (newMessage) {
+      logger.log(
+        'Unknown',
+        'ProgressDialog: currentMessage changed to',
+        newMessage
+      )
+    }
+  }
+)
 </script>

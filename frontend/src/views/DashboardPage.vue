@@ -84,9 +84,9 @@
   </v-container>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted, inject, watch, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
@@ -101,262 +101,276 @@ import {
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'DashboardPage',
-  components: {
-    SummaryCard,
-    BreakdownChart,
-    SummaryOverTimeTable,
-    NAVChart,
-  },
-  emits: ['update-page-title'],
-  setup(props, { emit }) {
-    const store = useStore()
-    const { handleApiError } = useErrorHandler()
-    const clearErrors = inject('clearErrors')
-    const summary = ref({})
+defineOptions({ name: 'DashboardPage' })
 
-    const breakdownData = ref({
-      assetType: {},
-      assetClass: {},
-      currency: {},
-    })
-    const totalNAV = ref('')
-    const summaryOverTimeData = ref({})
-    const navChartData = ref({
-      labels: [],
-      datasets: [],
-    })
-    // const navChartInitialParams = computed(() => store.state.navChartParams)
+const emit = defineEmits<{
+  (e: 'update-page-title', title: string): void
+}>()
 
-    const effectiveCurrentDate = computed(
-      () => store.state.effectiveCurrentDate
-    )
-
-    const isEffectiveDateLoading = ref(true)
-
-    const navChartInitialParams = computed(() => {
-      const params = store.state.navChartParams
-      const defaultDateRange = 'ytd'
-
-      if (!effectiveCurrentDate.value) {
-        return params
-      }
-
-      if (!params.dateFrom || !params.dateTo) {
-        const calculatedRange = calculateDateRange(
-          params.dateRange || defaultDateRange,
-          effectiveCurrentDate.value
-        )
-        return {
-          ...params,
-          dateRange: params.dateRange || defaultDateRange,
-          dateFrom: calculatedRange.from,
-          dateTo: calculatedRange.to,
-        }
-      }
-      return params
-    })
-    const loading = ref({
-      summary: false,
-      breakdownCharts: false,
-      summaryOverTime: false,
-      navChart: false,
-    })
-    const updating = ref({ navChart: false })
-    const error = ref({
-      summary: null,
-      breakdownCharts: null,
-      summaryOverTime: null,
-      navChart: null,
-    })
-
-    const chartTypes = ['assetType', 'assetClass', 'currency']
-    const chartTitles = {
-      assetType: 'Asset Type',
-      assetClass: 'Asset Class',
-      currency: 'Currency',
-    }
-
-    const userCurrency = computed(() => store.state.selectedCurrency)
-
-    const fetchSummaryData = async () => {
-      try {
-        clearErrors()
-        loading.value.summary = true
-        logger.log('Unknown', 'Fetching dashboard summary...')
-        const data = await getDashboardSummary()
-        logger.log('Unknown', 'Received summary data:', data)
-        summary.value = data
-        loading.value.summary = false
-      } catch (err) {
-        logger.error('Unknown', 'Error fetching summary:', err)
-        error.value.summary = handleApiError(err)
-        loading.value.summary = false
-      }
-    }
-
-    const fetchBreakdownData = () => {
-      loading.value.breakdownCharts = true
-      getDashboardBreakdown()
-        .then((data) => {
-          breakdownData.value = data
-          totalNAV.value = data.totalNAV
-        })
-        .catch((err) => {
-          logger.error('Unknown', 'Error fetching breakdown data:', err)
-          error.value.breakdownCharts = handleApiError(err)
-        })
-        .finally(() => {
-          loading.value.breakdownCharts = false
-        })
-    }
-
-    const fetchSummaryOverTimeData = async () => {
-      try {
-        clearErrors()
-        loading.value.summaryOverTime = true
-        logger.log('Unknown', 'Fetching summary over time data...')
-        const data = await getDashboardSummaryOverTime()
-        logger.log('Unknown', 'Received summary over time data:', data)
-        summaryOverTimeData.value = data
-        loading.value.summaryOverTime = false
-      } catch (err) {
-        logger.error('Unknown', 'Error fetching summary over time:', err)
-        if (err.response && err.response.status === 404) {
-          // Handle 404 as "no data" instead of an error
-          summaryOverTimeData.value = null
-        } else {
-          error.value.summaryOverTime = handleApiError(err)
-        }
-        loading.value.summaryOverTime = false
-      }
-    }
-
-    const fetchNAVChartData = async (
-      params = navChartInitialParams.value,
-      isInitialLoad = false
-    ) => {
-      try {
-        clearErrors()
-        // Use skeleton loader for initial load/account change, overlay for chart updates
-        if (isInitialLoad) {
-          loading.value.navChart = true
-        } else {
-          updating.value.navChart = true
-        }
-
-        logger.log('Unknown', 'Fetching NAV chart data...')
-        const data = await getNAVChartData(
-          params.breakdown,
-          params.frequency,
-          params.dateFrom,
-          params.dateTo
-        )
-        logger.log('Unknown', 'Received NAV chart data:', data)
-        navChartData.value = data
-      } catch (err) {
-        logger.error('Unknown', 'Error fetching NAV chart data:', err)
-        error.value.navChart = handleApiError(err)
-      } finally {
-        updating.value.navChart = false
-        loading.value.navChart = false
-      }
-    }
-
-    const initializeData = async () => {
-      try {
-        if (!effectiveCurrentDate.value) {
-          await store.dispatch('fetchEffectiveCurrentDate')
-        }
-
-        if (
-          !store.state.navChartParams.dateFrom ||
-          !store.state.navChartParams.dateTo
-        ) {
-          const defaultDateRange = 'ytd'
-          const calculatedDateRange = calculateDateRange(
-            defaultDateRange,
-            effectiveCurrentDate.value
-          )
-          await store.dispatch('updateNavChartParams', {
-            dateRange: defaultDateRange,
-            dateFrom: calculatedDateRange.from,
-            dateTo: calculatedDateRange.to,
-          })
-        }
-      } catch (error) {
-        logger.error('Unknown', 'Error initializing dashboard:', error)
-      } finally {
-        isEffectiveDateLoading.value = false
-      }
-    }
-
-    const refreshAllData = () => {
-      // Clear previous data to default state
-      summary.value = {}
-      breakdownData.value = {
-        assetType: {},
-        assetClass: {},
-        currency: {},
-      }
-      summaryOverTimeData.value = {}
-      navChartData.value = {
-        labels: [],
-        datasets: [],
-      }
-
-      // Then fetch new data
-      fetchSummaryData()
-      fetchBreakdownData()
-      fetchSummaryOverTimeData()
-      fetchNAVChartData(navChartInitialParams.value, true) // Pass true for initial load
-    }
-
-    // Replace the account selection watcher with dataRefreshTrigger watcher
-    watch(
-      () => store.state.dataRefreshTrigger,
-      () => {
-        logger.log(
-          'Unknown',
-          'Data refresh triggered, refreshing dashboard data...'
-        )
-        refreshAllData()
-      }
-    )
-
-    onMounted(async () => {
-      emit('update-page-title', 'Dashboard')
-      await initializeData()
-      // Initial data load
-      refreshAllData()
-    })
-
-    onUnmounted(() => {
-      emit('update-page-title', '')
-    })
-
-    return {
-      summary,
-      userCurrency,
-      breakdownData,
-      totalNAV,
-      summaryOverTimeData,
-      navChartData,
-      loading,
-      error,
-      updating,
-      chartTypes,
-      chartTitles,
-      navChartInitialParams,
-      fetchNAVChartData,
-      fetchSummaryOverTimeData,
-      effectiveCurrentDate,
-      refreshAllData,
-      isEffectiveDateLoading,
-    }
-  },
+// Shape of the breakdown payload (one entry per chart type). The backend
+// returns an opaque record, plus a top-level totalNAV string.
+interface BreakdownData {
+  assetType: Record<string, unknown>
+  assetClass: Record<string, unknown>
+  currency: Record<string, unknown>
+  totalNAV?: string
+  [key: string]: unknown
 }
+
+// Chart.js-compatible shape returned by getNAVChartData / summary endpoints.
+interface ChartData {
+  labels: unknown[]
+  datasets: unknown[]
+  [key: string]: unknown
+}
+
+// Shape consumed by SummaryOverTimeTable (lines/years/currentYear). The
+// backend returns an opaque record, but the template reads these fields.
+interface SummaryOverTimeData {
+  lines?: unknown[]
+  years?: unknown[]
+  currentYear?: string
+  [key: string]: unknown
+}
+
+// Parameters driving the NAV chart request (mirrors appStore.navChartParams).
+interface NavChartParams {
+  frequency?: string
+  breakdown?: string
+  dateRange?: string
+  dateFrom?: string | null
+  dateTo?: string | null
+  [key: string]: unknown
+}
+
+const appStore = useAppStore()
+const { handleApiError } = useErrorHandler()
+const clearErrors = inject<() => void>('clearErrors')
+const summary = ref<Record<string, unknown>>({})
+
+const breakdownData = ref<BreakdownData>({
+  assetType: {},
+  assetClass: {},
+  currency: {},
+})
+const totalNAV = ref('')
+const summaryOverTimeData = ref<SummaryOverTimeData | null>({})
+const navChartData = ref<ChartData>({
+  labels: [],
+  datasets: [],
+})
+// const navChartInitialParams = computed(() => appStore.navChartParams)
+
+const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
+
+const isEffectiveDateLoading = ref(true)
+
+const navChartInitialParams = computed<NavChartParams>(() => {
+  const params = appStore.navChartParams
+  const defaultDateRange = 'ytd'
+
+  if (!effectiveCurrentDate.value) {
+    return params
+  }
+
+  if (!params.dateFrom || !params.dateTo) {
+    const calculatedRange = calculateDateRange(
+      params.dateRange || defaultDateRange,
+      effectiveCurrentDate.value
+    )
+    return {
+      ...params,
+      dateRange: params.dateRange || defaultDateRange,
+      dateFrom: calculatedRange.from,
+      dateTo: calculatedRange.to,
+    }
+  }
+  return params
+})
+const loading = ref({
+  summary: false,
+  breakdownCharts: false,
+  summaryOverTime: false,
+  navChart: false,
+})
+const updating = ref({ navChart: false })
+const error = ref<{
+  summary: string | null
+  breakdownCharts: string | null
+  summaryOverTime: string | null
+  navChart: string | null
+}>({
+  summary: null,
+  breakdownCharts: null,
+  summaryOverTime: null,
+  navChart: null,
+})
+
+const chartTypes = ['assetType', 'assetClass', 'currency'] as const
+const chartTitles: Record<string, string> = {
+  assetType: 'Asset Type',
+  assetClass: 'Asset Class',
+  currency: 'Currency',
+}
+
+const userCurrency = computed(() => appStore.selectedCurrency)
+
+const fetchSummaryData = async () => {
+  try {
+    clearErrors?.()
+    loading.value.summary = true
+    logger.log('Unknown', 'Fetching dashboard summary...')
+    const data = await getDashboardSummary()
+    logger.log('Unknown', 'Received summary data:', data)
+    summary.value = data
+    loading.value.summary = false
+  } catch (err) {
+    logger.error('Unknown', 'Error fetching summary:', err)
+    error.value.summary = handleApiError(err)
+    loading.value.summary = false
+  }
+}
+
+const fetchBreakdownData = () => {
+  loading.value.breakdownCharts = true
+  getDashboardBreakdown()
+    .then((data) => {
+      breakdownData.value = data as unknown as BreakdownData
+      totalNAV.value = (data as unknown as BreakdownData).totalNAV ?? ''
+    })
+    .catch((err) => {
+      logger.error('Unknown', 'Error fetching breakdown data:', err)
+      error.value.breakdownCharts = handleApiError(err)
+    })
+    .finally(() => {
+      loading.value.breakdownCharts = false
+    })
+}
+
+const fetchSummaryOverTimeData = async () => {
+  try {
+    clearErrors?.()
+    loading.value.summaryOverTime = true
+    logger.log('Unknown', 'Fetching summary over time data...')
+    const data = await getDashboardSummaryOverTime()
+    logger.log('Unknown', 'Received summary over time data:', data)
+    summaryOverTimeData.value = data
+    loading.value.summaryOverTime = false
+  } catch (err) {
+    logger.error('Unknown', 'Error fetching summary over time:', err)
+    const axiosErr = err as { response?: { status?: number } }
+    if (axiosErr.response && axiosErr.response.status === 404) {
+      // Handle 404 as "no data" instead of an error
+      summaryOverTimeData.value = null
+    } else {
+      error.value.summaryOverTime = handleApiError(err)
+    }
+    loading.value.summaryOverTime = false
+  }
+}
+
+const fetchNAVChartData = async (
+  params: NavChartParams = navChartInitialParams.value,
+  isInitialLoad = false
+) => {
+  try {
+    clearErrors?.()
+    // Use skeleton loader for initial load/account change, overlay for chart updates
+    if (isInitialLoad) {
+      loading.value.navChart = true
+    } else {
+      updating.value.navChart = true
+    }
+
+    logger.log('Unknown', 'Fetching NAV chart data...')
+    const data = await getNAVChartData(
+      params.breakdown,
+      params.frequency,
+      params.dateFrom,
+      params.dateTo
+    )
+    logger.log('Unknown', 'Received NAV chart data:', data)
+    navChartData.value = data as unknown as ChartData
+  } catch (err) {
+    logger.error('Unknown', 'Error fetching NAV chart data:', err)
+    error.value.navChart = handleApiError(err)
+  } finally {
+    updating.value.navChart = false
+    loading.value.navChart = false
+  }
+}
+
+const initializeData = async () => {
+  try {
+    if (!effectiveCurrentDate.value) {
+      await appStore.fetchEffectiveCurrentDate()
+    }
+
+    if (
+      !appStore.navChartParams.dateFrom ||
+      !appStore.navChartParams.dateTo
+    ) {
+      const defaultDateRange = 'ytd'
+      const calculatedDateRange = calculateDateRange(
+        defaultDateRange,
+        effectiveCurrentDate.value
+      )
+      await appStore.updateNavChartParams({
+        dateRange: defaultDateRange,
+        dateFrom: calculatedDateRange.from,
+        dateTo: calculatedDateRange.to,
+      })
+    }
+  } catch (error) {
+    logger.error('Unknown', 'Error initializing dashboard:', error)
+  } finally {
+    isEffectiveDateLoading.value = false
+  }
+}
+
+const refreshAllData = () => {
+  // Clear previous data to default state
+  summary.value = {}
+  breakdownData.value = {
+    assetType: {},
+    assetClass: {},
+    currency: {},
+  }
+  summaryOverTimeData.value = {}
+  navChartData.value = {
+    labels: [],
+    datasets: [],
+  }
+
+  // Then fetch new data
+  fetchSummaryData()
+  fetchBreakdownData()
+  fetchSummaryOverTimeData()
+  fetchNAVChartData(navChartInitialParams.value, true) // Pass true for initial load
+}
+
+// Replace the account selection watcher with dataRefreshTrigger watcher
+watch(
+  () => appStore.dataRefreshTrigger,
+  () => {
+    logger.log(
+      'Unknown',
+      'Data refresh triggered, refreshing dashboard data...'
+    )
+    refreshAllData()
+  }
+)
+
+onMounted(async () => {
+  emit('update-page-title', 'Dashboard')
+  await initializeData()
+  // Initial data load
+  refreshAllData()
+})
+
+onUnmounted(() => {
+  emit('update-page-title', '')
+})
 </script>
 <style scoped>
 .equal-height-row {

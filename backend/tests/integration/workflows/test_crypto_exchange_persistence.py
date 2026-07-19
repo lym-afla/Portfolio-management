@@ -12,10 +12,12 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
-from core.crypto_exchange_import import (
+from services.crypto_exchange import (
     CryptoExchangeEvent,
     persist_crypto_exchange_event,
 )
+from services.accounts import balance as account_balance
+from services.transactions import total_cash_flow
 
 
 def _crypto_event(**overrides):
@@ -162,7 +164,7 @@ def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account
     )
 
     with patch(
-        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
         return_value=None,
         create=True,
     ):
@@ -197,7 +199,7 @@ def test_crypto_crypto_pair_imports_missing_btc_usd_price_from_yahoo(user, crypt
     )
 
     with patch(
-        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
         return_value=Decimal("61000.123456789"),
         create=True,
     ) as fetch_price:
@@ -240,7 +242,7 @@ def test_auto_imported_btc_price_rolls_back_when_event_validation_fails(user, cr
     )
 
     with patch(
-        "core.crypto_exchange_import.fetch_crypto_usd_price_from_yahoo",
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
         return_value=Decimal("61000.123456789"),
         create=True,
     ):
@@ -279,8 +281,8 @@ def test_stablecoin_transfer_import_creates_crypto_asset_without_cash_balance(us
     assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
     assert tx.quantity == Decimal("250.123456789")
     assert tx.price == Decimal("1.000000000")
-    assert tx.total_cash_flow() == Decimal("0")
-    assert crypto_account.balance(date(2026, 1, 1)) == {}
+    assert total_cash_flow(tx) == Decimal("0")
+    assert account_balance(crypto_account, date(2026, 1, 1)) == {}
 
 
 @pytest.mark.django_db
@@ -504,7 +506,7 @@ def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
     # Regression: a real normalizer output must round-trip through persistence
     # without crashing. Closes the seam between normalization and persistence so
     # a None-price default in _single_leg can never silently break deposits.
-    from core.crypto_exchange_import import normalize_bybit_deposit
+    from services.crypto_exchange import normalize_bybit_deposit
 
     event = normalize_bybit_deposit(
         {

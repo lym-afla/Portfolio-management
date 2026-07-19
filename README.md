@@ -1,379 +1,235 @@
 # Portfolio Management System
 
-This is a portfolio management application built with:
-- Frontend: Vue.js 3 and Vuetify 3
-- Backend: Django
-- Database: SQLite
+A portfolio management application for tracking investments, calculating NAV,
+and analyzing performance across multiple brokers and asset classes.
 
-## Project Overview
+- **Frontend:** Vue 3 + Vite + Pinia + Vuetify 3 + TypeScript
+- **Backend:** Django + Django REST Framework + Django Channels
+- **Database:** SQLite (local dev)
 
-This application allows users to manage and analyze their investment portfolio. It provides features for tracking open and closed positions, viewing dashboard summaries, and managing user profiles.
+## Prerequisites
 
-## Technologies Used
+- **Python ≥3.13** + [uv](https://docs.astral.sh/uv/) (package manager)
+- **Node.js ≥20** + npm
+- Git
 
-- Frontend:
-  - Vue.js 3
-  - Vuetify 3
-  - Vuex 4
-  - Vue Router 4
-  - Chart.js
-  - Vee-Validate
-- Backend:
-  - Django
-- Database:
-  - SQLite
-- Previously used (in old frontend):
-  - HTML, CSS, JavaScript
-  - Bootstrap
-  - jQuery
-  - DataTables
-  - Chart.js
+## Quick Start
 
-## Project Setup
+### 1. Clone and set up the backend
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/lym-afla/Portfolio-management.git
-   ```
+```bash
+git clone https://github.com/lym-afla/Portfolio-management.git
+cd Portfolio-management/backend
 
-2. Set up the backend:
-   ```bash
-   cd Portfolio-management/backend
-   uv sync
-   uv run python manage.py migrate
-   uv run python manage.py runserver
-   ```
+# Install all dependencies (creates .venv automatically)
+uv sync
 
-3. Set up the frontend:
-   ```bash
-   cd ../portfolio_frontend
-   npm install
-   ```
+# Apply database migrations
+uv run python manage.py migrate
 
-4. Configure environment:
-   ```bash
-   cp .env.example .env.development
-   cp .env.example .env.production
-   ```
-   Edit the `.env.development` and `.env.production` files with your configuration.
-
-### Development
-
-To run the frontend in development mode with hot-reloads:
-```
-npm run serve
+# Start the backend server (ASGI via Uvicorn — required for WebSockets)
+uv run python run_uvicorn.py
 ```
 
-### Production Build
+The backend will be available at `http://127.0.0.1:8000`.
 
-To compile and minify for production:
+> **Important:** Use `run_uvicorn.py`, not `manage.py runserver`. The app uses
+> Django Channels for WebSocket-based transaction imports, which requires an
+> ASGI server. `manage.py runserver` (WSGI) will work for REST endpoints but
+> WebSockets will fail.
+
+### 2. Set up the frontend
+
+```bash
+cd ../frontend
+
+# Install dependencies
+npm install
+
+# Start the dev server (Vite)
+npm run dev
 ```
-npm run build
+
+The frontend will be available at `http://127.0.0.1:8080`.
+
+### 3. Open the app
+
+Navigate to `http://127.0.0.1:8080` in your browser. Register a new account or
+log in with existing credentials.
+
+## Environment Configuration
+
+### Frontend (`.env.development`)
+
+```
+VITE_API_URL=http://127.0.0.1:8000
 ```
 
-### Linting
+- The frontend API URL must point to the backend's host:port.
+- Vite exposes env vars prefixed with `VITE_` (not `VUE_APP_`).
+- Access via `import.meta.env.VITE_API_URL` in code.
 
-To lint and fix files:
+### CORS
+
+Django's CORS settings allow these frontend origins:
+- `http://localhost:8080`
+- `http://127.0.0.1:8080`
+
+If Vite grabs a different port (8081, 8082, etc.) because 8080 is occupied,
+the CORS check will fail. Kill the process holding port 8080 first.
+
+### Backend Settings (`backend/portfolio_management/settings.py`)
+
+Key development settings:
+- `DEBUG = True`
+- `DATABASES`: SQLite (`db.sqlite3`)
+- `SECRET_KEY`: set in `.env` or settings — used for JWT signing and token encryption
+- `CORS_ALLOWED_ORIGINS`: see above
+
+## NPM Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Vite dev server with HMR |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Preview the production build locally |
+| `npm run test:unit` | Run Vitest unit tests |
+| `npm run type-check` | Run `vue-tsc --noEmit` (TypeScript type checking) |
+| `npm run lint` | Run ESLint on `src/` |
+| `npm run format` | Run Prettier on `src/` |
+
+## Backend Commands
+
+All backend commands run from `backend/` via `uv run`:
+
+| Command | Description |
+|---------|-------------|
+| `uv sync` | Install/update all dependencies |
+| `uv run python run_uvicorn.py` | Start ASGI dev server (port 8000) |
+| `uv run python manage.py migrate` | Apply database migrations |
+| `uv run python manage.py makemigrations` | Create new migrations |
+| `uv run python manage.py createsuperuser` | Create admin user |
+| `uv run python manage.py spectacular --format openapi-json` | Generate OpenAPI schema |
+| `uv run python -m pytest` | Run the test suite |
+| `uv run python -m pytest -q --no-cov` | Run tests quietly without coverage |
+
+## API Type Generation
+
+The frontend has auto-generated TypeScript types from the backend's OpenAPI schema.
+To regenerate after backend API changes:
+
+```bash
+bash frontend/scripts/generate-api-types.sh
 ```
-npm run lint
+
+This runs `drf-spectacular` on the backend and `openapi-typescript` on the frontend,
+producing `frontend/src/types/api.d.ts`.
+
+## Architecture
+
 ```
-
-## Folder Structure
-
 Portfolio-management/
 ├── backend/
-├── portfolio_frontend/
-│   ├── public/
+│   ├── services/            # Business logic layer (financial calculations)
+│   ├── common/              # Django models (Assets, Transactions, FX, etc.)
+│   ├── core/                # Framework-agnostic utilities + table API entrypoints
+│   ├── database/            # Securities/brokers/prices/FX management views
+│   ├── transactions/        # Transaction CRUD + import views + WebSocket consumer
+│   ├── dashboard/           # Dashboard summary + NAV chart APIs
+│   ├── users/               # Auth, JWT, broker API token management
+│   ├── portfolio_management/# Django settings, URLs, ASGI/WSGI
+│   ├── tests/               # Unit, integration, and advanced test suites
+│   └── pyproject.toml       # uv project config (runtime + dev dependencies)
+├── frontend/
 │   ├── src/
-│       ├── assets/
-│           ├── fonts.css
-│       ├── components/
-│           ├── buttons/
-│           ├── charts/
-│               ├── PriceChart.vue
-│           ├── dashboard
-│               ├── BreakdownChart.vue
-│               ├── NAVChart.vue
-│               ├── SummaryCard.vue
-│               ├── SummaryOverTimeTable.vue
-│           ├── dialogs/
-│               ├── BrokerFormDialog.vue
-│               ├── PriceFormDialog.vue
-│               ├── PriceImportDialog.vue
-│               ├── ProgressDialog.vue
-│               ├── SecurityFormDialog.vue
-│               ├── UpdateBrokerPerformanceDialog.vue
-│           ├── BrokerSelection.vue
-│           ├── DatePicker.vue
-│           ├── DateRangeSelector.vue
-│           ├── LoginForm.vue
-│           ├── Navigation.vue
-│           ├── PositionsPageBase.vue
-│           ├── RegisterForm.vue
-│           ├── SettingsDialog.vue
-│       ├── composables/
-│           ├── useErrorHandler.js
-│           ├── useTableSettings.js
-│       ├── config/
-│           ├── chartConfig.js
-│       ├── plugins/
-│           ├── vee-validate.js
-│       ├── router/
-│           ├── index.js
-│       ├── services/
-│           ├── api.js
-│       ├── store/
-│           ├── index.js
-│       ├── utils/
-│           ├── auth.js
-│           ├── brokerUtils.js
-│           ├── dateRangeUtils.js
-│           ├── dateUtils.js
-│       ├── views/
-│           ├── profile/
-│               ├── ProfileLayout.vue
-│               ├── ProfilePage.vue
-│               ├── ProfileEdit.vue
-│               ├── ProfileSettings.vue
-│           ├── database/
-│               ├── PricesPage.vue
-│               ├── BrokersPage.vue
-│               ├── SecuritiesPage.vue
-│           ├── ClosedPositionsPage.vue
-│           ├── DashboardPage.vue
-│           ├── LoginPage.vue
-│           ├── OpenPositionsPage.vue
-│           ├── RegisterPage.vue
-│           ├── TransactionsPage.vue
-│           ├── DatabasePage.vue
-│       ├── App.vue
-│       ├── main.js
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── vue.config.js
-├── backend/
-│   ├── closed_positions/
-│       ├── migrations/
-│       ├── templates/
-│           ├── closed_positions.html
-│           ├── closed_positions_tbody.html
-│           ├── closed_positions_tfoot.html
-│       ├── urls.py
-│       ├── views.py
-│   ├── common/
-│       ├── migrations/
-│       ├── templatetags/
-│           ├── custom_filters.py
-│       ├── apps.py
-│       ├── forms.py
-│       ├── models.py
-│       ├── tests.py
-│       ├── views.py
-│   ├── dashboard/
-│       ├── migrations/
-│       ├── templates/
-│           ├── dashboard.html
-│       ├── urls.py
-│       ├── views.py
-│   ├── database/
-│       ├── migrations/
-│       ├── templates/
-│           ├── brokers.html
-│           ├── database.html
-│           ├── prices.html
-│           ├── securities.html
-│       ├── forms.py
-│       ├── urls.py
-│       ├── views.py
-│   ├── open_positions/
-│       ├── migrations/
-│       ├── templates/
-│           ├── open_positions.html
-│           ├── open_positions_tbody.html
-│           ├── open_positions_tfoot.html
-│       ├── urls.py
-│       ├── views.py
-│   ├── backend/
-│       ├── middleware.py
-│       ├── settings.py
-│       ├── urls.py
-│       ├── wsgi.py
-│   ├── static/
-│       ├── css/
-│           ├── styles.css
-│       ├── icons/
-│           ├── icon.png
-│       ├── js/
-│           ├── closed-positions.js
-│           ├── dashboard.js
-│           ├── edit-delete.js
-│           ├── formHandler.js
-│           ├── nav-chart.js
-│           ├── open-positions.js
-│           ├── price-import.js
-│           ├── profile_settings.js
-│           ├── sidebar.js
-│           ├── summary.js
-│           ├── transaction-form.js
-│   ├── summary_analysis/
-│       ├── migrations/
-│       ├── templates/
-│           ├── summary.html
-│       ├── urls.py
-│       ├── views.py
-│   ├── templates/
-│       ├── registration/
-│           ├── login.html
-│           ├── logout.html
-│           ├── signup.html
-│       ├── snippets/
-│           ├── broker_selection_header.html
-│           ├── buttons-settings-header.html
-│           ├── handle_database_item.html
-│       ├── layout.html
-│   ├── transactions/
-│       ├── migrations/
-│       ├── templates/
-│           ├── transactions.html
-│       ├── urls.py
-│       ├── views.py
-│   ├── users/
-│       ├── migrations/
-│       ├── templates/
-│           ├── profile.html
-│           ├── profile_edit.html
-│           ├── profile_layout.html
-│       ├── forms.py
-│       ├── models.py
-│       ├── serializers.py
-│       ├── urls.py
-│       ├── views.py
-│   ├── constants.py
-│   ├── db.sqlite3
-│   ├── manage.py
-│   ├── pytest.ini
-│   ├── test_utils.py
-│   ├── utils.py
-├── .cursorignore
-├── .gitignore
-├── .cursorrules
-├── README.md
-├── pyproject.toml
+│   │   ├── stores/          # Pinia stores (auth.ts, app.ts)
+│   │   ├── services/        # API client (api.ts — typed)
+│   │   ├── composables/     # Vue composables (useWebSocket, useTableSettings, etc.)
+│   │   ├── types/           # Generated API types (api.d.ts)
+│   │   ├── components/      # Vue SFCs (dialogs, charts, dashboard widgets)
+│   │   ├── views/           # Page-level Vue SFCs
+│   │   ├── config/          # Axios instance + interceptors
+│   │   └── router/          # Vue Router config
+│   ├── vite.config.js       # Vite + Vuetify + Vitest config
+│   ├── tsconfig.json        # TypeScript config (gradual typing)
+│   └── package.json
+├── docs/                    # Architecture specs + implementation plans
+└── .memory-bank/            # Project knowledge base
+```
 
 ## Features
 
-- User authentication (login, registration, profile management)
-- Dashboard with portfolio summary
-- Open positions tracking
-- Closed positions history
-- Broker selection
-- Data import and export capabilities
-- Price import functionality
-- Database management (securities, brokers, prices)
+- User authentication (JWT via SimpleJWT)
+- Dashboard with portfolio NAV summary and charts
+- Open/closed positions tracking with realized/unrealized gain-loss
+- Multi-currency support with FX rate graph (networkx shortest-path)
+- Bond amortization, ACI (accrued interest), and YTM calculations
+- Transaction import from Excel (Charles Stanley, Galaxy) and broker APIs (Tinkoff, Bybit, OKX)
+- Corporate actions (mergers, asset transfers, stock splits)
+- Broker API token management (encrypted storage with HKDF key derivation)
 
-## API Integration
+## Testing
 
-The Vue.js frontend integrates with the Django backend through RESTful API endpoints. Key endpoints include:
+### Backend
 
-- Authentication
-- Portfolio data
-- Transactions management
-- Price import
-- Database management (securities, brokers, prices)
-
-For full API documentation, please refer to the backend codebase.
-
-## Deployment
-
-[Add deployment instructions here, e.g., how to deploy to a production server]
-
-## License
-
-[Specify the license, e.g., MIT License, GNU GPL, etc.]
-
-## Contributing
-
-[If you want to accept contributions, add guidelines here]
-
-### Customize Configuration
-For detailed explanation on how things work, check out the [Configuration Reference](https://cli.vuejs.org/config/).
-
-## Environment Setup
-
-The frontend application uses Vue CLI for development and build tooling. Environment variables are managed through `.env` files in the `frontend` directory.
-
-### Environment Files
-
-- `.env.development`: Used during development
-- `.env.production`: Used in production
-- `.env.example`: Example configuration (committed to repository)
-
-### Required Environment Variables
-
-The application uses Vue CLI, which requires environment variables to be prefixed with `VUE_APP_` to be exposed to the application.
-
-| Variable | Required Prefix | Description | Example |
-|----------|----------------|-------------|---------|
-| VUE_APP_API_URL | VUE_APP_ | Backend API URL | `http://localhost:8000` |
-
-> **Note**: Only variables prefixed with `VUE_APP_` will be available in your application code through `process.env.VUE_APP_*`
-
-Example usage in code:
-```javascript
-const apiUrl = process.env.VUE_APP_API_URL
-console.log(apiUrl) // http://localhost:8000
+```bash
+cd backend
+uv run python -m pytest                    # Full suite
+uv run python -m pytest tests/unit/        # Unit tests only
+uv run python -m pytest -k "test_nav"      # Run tests matching pattern
+uv run python -m pytest --cov=services     # Coverage for services layer
 ```
 
-### Setup Instructions
+### Frontend
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-
-2. Copy the example environment file:
-   ```bash
-   cp .env.example .env.development
-   cp .env.example .env.production
-   ```
-
-3. Edit the environment files according to your setup:
-   - `.env.development`: Configure for local development
-   - `.env.production`: Configure for production deployment
-
-> **Note**: Never commit `.env.production` to version control as it may contain sensitive information.
-
-### Environment Usage
-
-- Development: Uses `.env.development`
-  ```bash
-  npm run serve
-  ```
-
-- Production: Uses `.env.production`
-  ```bash
-  npm run build
-  ```
-
-### Frontend Directory Structure
-
-The environment files should be placed in the root of your frontend directory:
-
-```
-frontend/
-├── .env.development    # Development environment variables
-├── .env.production    # Production environment variables (do not commit)
-├── .env.example       # Example environment file (committed)
-├── src/
-├── public/
-├── package.json
-└── ...
+```bash
+cd frontend
+npm run test:unit                          # Run all Vitest specs
+npm run test:unit -- --watch               # Watch mode
 ```
 
-### About Vue CLI
+## Troubleshooting
 
-Vue CLI is the standard tooling for Vue.js development that:
-- Provides development server with hot-reload
-- Handles production builds with webpack
-- Manages environment variables
-- Provides extensible plugin system
+### CORS error on login
+
+The frontend must be on port 8080 (matching Django's CORS allowlist). If Vite
+starts on a different port, kill whatever is holding 8080:
+
+```bash
+# Find and kill the process on port 8080
+netstat -ano | findstr ":8080.*LISTENING"
+taskkill /PID <pid> /F
+```
+
+### Tinkoff API import fails with `CERTIFICATE_VERIFY_FAILED`
+
+T-Bank serves its public gRPC API with a certificate rooted in the Russian
+Ministry of Digital Development's CA, which is not in the default Windows /
+Python trust store. The `t_tech` SDK ships the authoritative root CA and loads
+it when `SSL_TBANK_VERIFY=true`. The app sets this automatically on startup in
+`backend/portfolio_management/__init__.py`. If imports still fail after a
+restart, verify the flag is exported in your shell and not shadowed by a
+`false`/`0` value:
+
+```bash
+echo $SSL_TBANK_VERIFY   # should print "true"
+```
+
+See `.memory-bank/Tech details/external-api-patterns.md` for the full rationale.
+
+### WebSocket connection fails on Transactions page
+
+The backend must be started with `run_uvicorn.py` (ASGI), not
+`manage.py runserver` (WSGI). Also check that port 8000 is free.
+
+### Database locked errors
+
+This is a SQLite limitation during concurrent writes. For local dev, retry the
+operation. This would not occur with PostgreSQL (planned for production).
+
+## Documentation
+
+- [Architecture spec](docs/superpowers/specs/2026-07-11-architecture-review-design.md)
+- [Phase plans](docs/superpowers/plans/)
+- [Project knowledge base](.memory-bank/index.md)
+- [API schema](http://localhost:8000/api/schema/) (when backend is running)

@@ -2,7 +2,7 @@
  * Authentication Debugging Utility
  * Helps diagnose frontend authentication and session issues
  */
-import store from '@/store'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
 class AuthDebugger {
@@ -74,37 +74,36 @@ class AuthDebugger {
   }
 
   /**
-   * Phase 1: Verify authentication status in Vuex store
+   * Phase 1: Verify authentication status in the auth store
    */
   checkStoreAuthentication() {
     this.log('=== Phase 1: Store Authentication Check ===')
 
-    const storeState = store.state
-    const isAuthenticated = store.getters.isAuthenticated
+    const authStore = useAuthStore()
 
     const authStatus = {
-      isAuthenticated,
-      hasAccessToken: !!storeState.accessToken,
-      hasRefreshToken: !!storeState.refreshToken,
-      hasUser: !!storeState.user,
-      user: storeState.user
+      isAuthenticated: authStore.isAuthenticated,
+      hasAccessToken: !!authStore.accessToken,
+      hasRefreshToken: !!authStore.refreshToken,
+      hasUser: !!authStore.user,
+      user: authStore.user
         ? {
-            id: storeState.user.id,
-            username: storeState.user.username,
-            email: storeState.user.email,
+            id: authStore.user.id,
+            username: authStore.user.username,
+            email: authStore.user.email,
           }
         : null,
-      isInitialized: storeState.isInitialized,
-      isInitializing: storeState.isInitializing,
+      isInitialized: authStore.isInitialized,
+      isInitializing: authStore.isInitializing,
     }
 
     this.log('Store authentication status:', authStatus)
 
     // Check for inconsistencies
-    if (isAuthenticated && !storeState.user) {
+    if (authStatus.isAuthenticated && !authStore.user) {
       this.error('Authenticated but no user data in store')
     }
-    if (isAuthenticated && !storeState.accessToken) {
+    if (authStatus.isAuthenticated && !authStore.accessToken) {
       this.error('Authenticated but no access token in store')
     }
 
@@ -265,8 +264,10 @@ class AuthDebugger {
 
       // Remove corrupted refresh token
       localStorage.removeItem('refreshToken')
-      if (window.store) {
-        window.store.commit('CLEAR_TOKENS')
+      try {
+        useAuthStore().clearTokens()
+      } catch (e) {
+        // Pinia not active yet — ignore.
       }
 
       this.log('Removed corrupted refresh token from localStorage and store')
@@ -280,8 +281,10 @@ class AuthDebugger {
 
       // Remove corrupted access token
       localStorage.removeItem('accessToken')
-      if (window.store) {
-        window.store.commit('CLEAR_TOKENS')
+      try {
+        useAuthStore().clearTokens()
+      } catch (e) {
+        // Pinia not active yet — ignore.
       }
 
       this.log('Removed corrupted access token from localStorage and store')

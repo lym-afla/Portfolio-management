@@ -64,7 +64,7 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import {
   getFXTransactionFormStructure,
@@ -73,124 +73,106 @@ import {
 } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'FXTransactionDialog',
-  props: {
-    modelValue: Boolean,
-    editItem: Object,
-  },
-  emits: ['update:modelValue', 'transaction-added', 'transaction-updated'],
-  setup(props, { emit }) {
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-    const isEdit = computed(() => !!props.editItem)
-    const form = ref({})
-    const formFields = ref([])
-    const errorMessages = ref({})
-    const generalError = ref('')
-    const isSubmitting = ref(false)
+const props = defineProps({
+  modelValue: Boolean,
+  editItem: Object,
+})
+const emit = defineEmits([
+  'update:modelValue',
+  'transaction-added',
+  'transaction-updated',
+])
 
-    const initializeForm = () => {
-      form.value = {}
-      errorMessages.value = {}
-      generalError.value = ''
+const dialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
+const isEdit = computed(() => !!props.editItem)
+const form = ref({})
+const formFields = ref([])
+const errorMessages = ref({})
+const generalError = ref('')
+const isSubmitting = ref(false)
+
+const initializeForm = () => {
+  form.value = {}
+  errorMessages.value = {}
+  generalError.value = ''
+}
+
+const fetchFormStructure = async () => {
+  try {
+    const response = await getFXTransactionFormStructure()
+    formFields.value = response.fields
+    initializeForm()
+  } catch (error) {
+    logger.error('Unknown', 'Error fetching form structure:', error)
+    generalError.value = 'Failed to load form structure. Please try again.'
+  }
+}
+
+const closeDialog = () => {
+  dialog.value = false
+  initializeForm()
+}
+
+const submitForm = async () => {
+  isSubmitting.value = true
+  errorMessages.value = {}
+  generalError.value = ''
+
+  try {
+    let response
+    if (isEdit.value) {
+      response = await updateFXTransaction(form.value.id, form.value)
+      emit('transaction-updated', response)
+    } else {
+      response = await addFXTransaction(form.value)
+      emit('transaction-added', response)
     }
-
-    const fetchFormStructure = async () => {
-      try {
-        const response = await getFXTransactionFormStructure()
-        formFields.value = response.fields
-        initializeForm()
-      } catch (error) {
-        logger.error('Unknown', 'Error fetching form structure:', error)
-        generalError.value = 'Failed to load form structure. Please try again.'
-      }
-    }
-
-    watch(
-      () => props.editItem,
-      (newValue) => {
-        if (newValue) {
-          logger.log('Unknown', 'newValue', newValue)
-          form.value = { ...newValue }
-          Object.keys(form.value).forEach((key) => {
-            if (
-              typeof form.value[key] === 'object' &&
-              form.value[key] !== null
-            ) {
-              form.value[key] = String(form.value[key].id)
-            }
-          })
-          if (form.value.date) {
-            form.value.date = form.value.date.split('T')[0]
-          }
-          logger.log('Unknown', 'form', form.value)
+    closeDialog()
+  } catch (error) {
+    logger.error('Unknown', 'Error submitting FX transaction:', error)
+    if (error && typeof error === 'object') {
+      Object.entries(error).forEach(([key, value]) => {
+        if (key === '__all__') {
+          generalError.value = Array.isArray(value) ? value[0] : value
         } else {
-          initializeForm()
+          errorMessages.value[key] = Array.isArray(value) ? value : [value]
         }
+      })
+    } else {
+      generalError.value =
+        error.message || 'An unexpected error occurred. Please try again.'
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+onMounted(fetchFormStructure)
+
+watch(
+  () => props.editItem,
+  (newValue) => {
+    if (newValue) {
+      logger.log('Unknown', 'newValue', newValue)
+      form.value = { ...newValue }
+      Object.keys(form.value).forEach((key) => {
+        if (
+          typeof form.value[key] === 'object' &&
+          form.value[key] !== null
+        ) {
+          form.value[key] = String(form.value[key].id)
+        }
+      })
+      if (form.value.date) {
+        form.value.date = form.value.date.split('T')[0]
       }
-    )
-
-    // watch(() => props.modelValue, (newValue) => {
-    //   if (newValue) {
-    //     fetchFormStructure()
-    //   }
-    // })
-
-    const closeDialog = () => {
-      dialog.value = false
+      logger.log('Unknown', 'form', form.value)
+    } else {
       initializeForm()
     }
-
-    const submitForm = async () => {
-      isSubmitting.value = true
-      errorMessages.value = {}
-      generalError.value = ''
-
-      try {
-        let response
-        if (isEdit.value) {
-          response = await updateFXTransaction(form.value.id, form.value)
-          emit('transaction-updated', response)
-        } else {
-          response = await addFXTransaction(form.value)
-          emit('transaction-added', response)
-        }
-        closeDialog()
-      } catch (error) {
-        logger.error('Unknown', 'Error submitting FX transaction:', error)
-        if (error && typeof error === 'object') {
-          Object.entries(error).forEach(([key, value]) => {
-            if (key === '__all__') {
-              generalError.value = Array.isArray(value) ? value[0] : value
-            } else {
-              errorMessages.value[key] = Array.isArray(value) ? value : [value]
-            }
-          })
-        } else {
-          generalError.value =
-            error.message || 'An unexpected error occurred. Please try again.'
-        }
-      } finally {
-        isSubmitting.value = false
-      }
-    }
-
-    onMounted(fetchFormStructure)
-
-    return {
-      dialog,
-      isEdit,
-      form,
-      formFields,
-      errorMessages,
-      generalError,
-      isSubmitting,
-      closeDialog,
-      submitForm,
-    }
-  },
-}
+  }
+)
 </script>

@@ -19,6 +19,7 @@ import pytest
 from rest_framework import status
 
 from common.models import FX
+from services.fx import get_rate as fx_get_rate
 
 
 @pytest.mark.integration
@@ -77,7 +78,7 @@ class TestFXRateCalculationIntegration:
         """Test direct FX rate retrieval."""
         # Use actual FX model method
         test_date = date(2023, 1, 1)
-        rate_data = FX.get_rate("USD", "EUR", test_date)
+        rate_data = fx_get_rate("USD", "EUR", test_date)
 
         assert rate_data is not None
         assert "FX" in rate_data
@@ -96,7 +97,7 @@ class TestFXRateCalculationIntegration:
         test_date = date(2023, 1, 1)
 
         # This should work through cross-currency calculation
-        gbp_to_eur_data = FX.get_rate("GBP", "EUR", test_date)
+        gbp_to_eur_data = fx_get_rate("GBP", "EUR", test_date)
 
         assert gbp_to_eur_data is not None
         assert "FX" in gbp_to_eur_data
@@ -107,7 +108,7 @@ class TestFXRateCalculationIntegration:
     def test_get_exchange_rate_historical(self, fx_rates):
         """Test historical FX rate retrieval."""
         historical_date = date(2023, 1, 5)  # Use a date that should exist
-        rate_data = FX.get_rate("USD", "EUR", historical_date)
+        rate_data = fx_get_rate("USD", "EUR", historical_date)
 
         assert rate_data is not None
         assert "FX" in rate_data
@@ -122,7 +123,7 @@ class TestFXRateCalculationIntegration:
 
         # Should raise ValueError for missing date
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", target_date)
+            fx_get_rate("USD", "EUR", target_date)
 
     def test_fx_rate_precision_storage(self, fx_rates):
         """Test FX rate precision storage."""
@@ -144,14 +145,14 @@ class TestFXRateCalculationIntegration:
         """Test FX rate error handling."""
         # Test invalid currency code
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("INVALID", "EUR", date.today())
+            fx_get_rate("INVALID", "EUR", date.today())
 
         # Test empty currency code
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("", "EUR", date.today())
+            fx_get_rate("", "EUR", date.today())
 
         # Test same currency (should return 1.0)
-        rate_data = FX.get_rate("USD", "USD", date.today())
+        rate_data = fx_get_rate("USD", "USD", date.today())
         assert rate_data is not None
         assert "FX" in rate_data
         assert rate_data["FX"] == Decimal("1")
@@ -260,7 +261,7 @@ class TestFXRatePerformance:
 
         for from_curr, to_curr in currency_pairs:
             for i in range(5):  # 5 lookups per pair
-                rate_data = FX.get_rate(from_curr, to_curr, date(2023, 1, 1 + i))
+                rate_data = fx_get_rate(from_curr, to_curr, date(2023, 1, 1 + i))
                 assert rate_data is not None
 
         end_time = time.time()

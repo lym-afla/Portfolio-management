@@ -11,8 +11,17 @@ from rest_framework.response import Response
 
 from common.models import Accounts, Assets, Transactions
 from core.formatting_utils import currency_format, format_percentage, format_table_data
-from core.portfolio_utils import get_fx_rate
-from core.summary_utils import accounts_summary_data
+from services.nav import get_fx_rate
+from services.summary import accounts_summary_data
+from services.capital import get_capital_distribution, get_commission
+from services.pricing import calculate_value_at_date, price_at_date
+from services.positions import position
+from services.realized import (
+    calculate_buy_in_price,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
+from services.accounts import balance as account_balance
 
 logger = logging.getLogger(__name__)
 
@@ -179,32 +188,32 @@ class SummaryViewSet(viewsets.ViewSet):
             asset_category = self.categorize_asset(asset)
 
             # Calculate values
-            asset.current_position = asset.position(end_date, user, account_ids)
-            asset.entry_price = asset.calculate_buy_in_price(
-                end_date, user, currency_target, account_ids, start_date
+            asset.current_position = position(asset, end_date, user, account_ids)
+            asset.entry_price = calculate_buy_in_price(
+                asset, end_date, user, currency_target, account_ids, start_date
             ) or Decimal(0)
             cost = round(asset.entry_price * asset.current_position, 2)
 
             asset.current_price = Decimal(
-                getattr(asset.price_at_date(end_date, currency_target), "price", 0)
+                getattr(price_at_date(asset, end_date, currency_target), "price", 0)
             )
             # Use calculate_value_at_date for proper bond notional handling
             market_value = round(
-                asset.calculate_value_at_date(end_date, user, currency_target, account_ids),
+                calculate_value_at_date(asset, end_date, user, currency_target, account_ids),
                 2,
             )
 
-            unrealized = asset.unrealized_gain_loss(
-                end_date, user, currency_target, account_ids, start_date
+            unrealized = unrealized_gain_loss(
+                asset, end_date, user, currency_target, account_ids, start_date
             )["total"]
-            realized = asset.realized_gain_loss(
-                end_date, user, currency_target, account_ids, start_date
+            realized = realized_gain_loss(
+                asset, end_date, user, currency_target, account_ids, start_date
             )["all_time"]["total"]
-            capital_distribution = asset.get_capital_distribution(
-                end_date, user, currency_target, account_ids, start_date
+            capital_distribution = get_capital_distribution(
+                asset, end_date, user, currency_target, account_ids, start_date
             )
-            commission = asset.get_commission(
-                end_date, user, currency_target, account_ids, start_date
+            commission = get_commission(
+                asset, end_date, user, currency_target, account_ids, start_date
             )
 
             for cat in [
@@ -229,7 +238,7 @@ class SummaryViewSet(viewsets.ViewSet):
         accounts = Accounts.objects.filter(broker__investor=user)
         for account in accounts:
             category = "Restricted" if account.restricted else "Unrestricted"
-            cash_balances = account.balance(end_date).items()
+            cash_balances = account_balance(account, end_date).items()
             for currency, balance in cash_balances:
                 try:
                     fx_rate = get_fx_rate(currency, currency_target, end_date, user)

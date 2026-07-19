@@ -57,100 +57,70 @@
   </v-app>
 </template>
 
-<script>
+<script setup lang="ts">
 import { provide, ref, onMounted, computed } from 'vue'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'App',
-  components: {
-    Navigation,
-    AccountSelection,
-    SettingsDialog,
-  },
-  setup() {
-    const store = useStore()
-    const router = useRouter()
-    const route = useRoute()
-    const user = ref(null)
-    const isAuthenticated = computed(() => store.getters.isAuthenticated)
-    const layoutLoading = ref(true)
-    const pageTitle = ref('')
+const authStore = useAuthStore()
+const router = useRouter()
+const route = useRoute()
+const user = ref<Record<string, unknown> | null>(null)
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+const layoutLoading = ref(true)
+const pageTitle = ref('')
 
-    const isProfilePage = computed(() => route.path.startsWith('/profile'))
-    const isDatabasePage = computed(() => route.path.startsWith('/database'))
-    const isSummaryPage = computed(() => route.path === '/summary')
+const isProfilePage = computed(() => route.path.startsWith('/profile'))
+const isDatabasePage = computed(() => route.path.startsWith('/database'))
+const isSummaryPage = computed(() => route.path === '/summary')
 
-    const showComponents = computed(
-      () =>
-        !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value
-    )
-    const showSettingsDialog = computed(() => isSummaryPage.value)
+const showComponents = computed(
+  () => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value
+)
+const showSettingsDialog = computed(() => isSummaryPage.value)
 
-    const setUser = (userData) => {
-      user.value = userData
-    }
-
-    const handleLogout = async () => {
-      await store.dispatch('logout')
-      router.push('/login')
-    }
-
-    const updatePageTitle = (title) => {
-      pageTitle.value = title
-    }
-
-    const mainPadding = computed(() => {
-      return route.meta.paddingTop || '140px' // Default padding
-    })
-
-    onMounted(() => {
-      layoutLoading.value = false
-    })
-
-    const errorSnackbar = ref(false)
-    const errorMessages = ref([])
-
-    const showError = (message) => {
-      clearErrors()
-      logger.log('Unknown', 'Showing error:', message)
-      errorMessages.value.push(message)
-      errorSnackbar.value = true
-    }
-
-    const clearErrors = () => {
-      errorMessages.value = []
-      errorSnackbar.value = false
-    }
-
-    provide('showError', showError)
-    provide('clearErrors', clearErrors)
-
-    return {
-      user,
-      setUser,
-      router,
-      isAuthenticated,
-      layoutLoading,
-      pageTitle,
-      handleLogout,
-      updatePageTitle,
-      isProfilePage,
-      isDatabasePage,
-      errorSnackbar,
-      errorMessages,
-      clearErrors,
-      mainPadding,
-      showComponents,
-      showSettingsDialog,
-    }
-  },
+const setUser = (userData: Record<string, unknown> | null) => {
+  user.value = userData
 }
+
+const handleLogout = async () => {
+  await authStore.logout()
+  router.push('/login')
+}
+
+const updatePageTitle = (title: string) => {
+  pageTitle.value = title
+}
+
+const mainPadding = computed(() => {
+  return (route.meta.paddingTop as string) || '140px' // Default padding
+})
+
+onMounted(() => {
+  layoutLoading.value = false
+})
+
+const errorSnackbar = ref(false)
+const errorMessages = ref<string[]>([])
+
+const showError = (message: string) => {
+  clearErrors()
+  logger.log('Unknown', 'Showing error:', message)
+  errorMessages.value.push(message)
+  errorSnackbar.value = true
+}
+
+const clearErrors = () => {
+  errorMessages.value = []
+  errorSnackbar.value = false
+}
+
+provide<(message: string) => void>('showError', showError)
+provide<() => void>('clearErrors', clearErrors)
 </script>
 <style>
 html {

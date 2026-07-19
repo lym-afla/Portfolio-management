@@ -1,4 +1,6 @@
 import { mount } from '@vue/test-utils'
+import { vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import SecurityDetailPage from '@/views/database/SecurityDetailPage.vue'
 import {
   getAccountChoices,
@@ -7,44 +9,48 @@ import {
   getSecurityPriceHistory,
   getSecurityTransactions,
 } from '@/services/api'
+import { useAppStore } from '@/stores/app'
 import { getChartOptions } from '@/config/chartConfig'
 import { generateVuetifyStubs } from '../test-utils'
 
-jest.mock('chartjs-adapter-date-fns', () => ({}))
+vi.mock('chartjs-adapter-date-fns', () => ({}))
 
-jest.mock('vue-router', () => ({
+vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 1 } }),
-}))
-
-const mockDispatch = jest.fn()
-
-jest.mock('vuex', () => ({
-  useStore: () => ({
-    state: { effectiveCurrentDate: '2026-01-02' },
-    dispatch: mockDispatch,
+  useRouter: () => ({ push: vi.fn() }),
+  createRouter: () => ({
+    beforeEach: () => {},
+    afterEach: () => {},
   }),
+  createWebHistory: () => ({}),
 }))
 
-jest.mock('@/services/api', () => ({
-  getAccountChoices: jest.fn(),
-  getSecurityDetail: jest.fn(),
-  getSecurityPositionHistory: jest.fn(),
-  getSecurityPriceHistory: jest.fn(),
-  getSecurityTransactions: jest.fn(),
+vi.mock('@/services/api', () => ({
+  getAccountChoices: vi.fn(),
+  getSecurityDetail: vi.fn(),
+  getSecurityPositionHistory: vi.fn(),
+  getSecurityPriceHistory: vi.fn(),
+  getSecurityTransactions: vi.fn(),
 }))
 
-jest.mock('@/config/chartConfig', () => ({
-  getChartOptions: jest.fn(),
+vi.mock('@/config/chartConfig', () => ({
+  getChartOptions: vi.fn(),
 }))
 
-jest.mock('@/utils/logger', () => ({
-  log: jest.fn(),
-  error: jest.fn(),
+vi.mock('@/utils/logger', () => ({
+  default: {
+    log: vi.fn(),
+    error: vi.fn(),
+  },
+  log: vi.fn(),
+  error: vi.fn(),
 }))
 
-jest.mock('@/components/charts/LineChart.vue', () => ({
-  name: 'LineChart',
-  template: '<div class="line-chart" />',
+vi.mock('@/components/charts/LineChart.vue', () => ({
+  default: {
+    name: 'LineChart',
+    template: '<div class="line-chart" />',
+  },
 }))
 
 const flushPromises = async () => {
@@ -54,7 +60,14 @@ const flushPromises = async () => {
 
 describe('SecurityDetailPage crypto rewards', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+    const appStore = useAppStore()
+    // Seed the effective date so the page does not call the (mocked) API for it.
+    appStore.setEffectiveCurrentDate('2026-01-02')
+    // Guard: spy on fetchEffectiveCurrentDate in case the page falls back to it.
+    vi.spyOn(appStore, 'fetchEffectiveCurrentDate').mockResolvedValue()
+
     getAccountChoices.mockResolvedValue({ options: [] })
     getSecurityDetail.mockResolvedValue({
       id: 1,
@@ -82,7 +95,6 @@ describe('SecurityDetailPage crypto rewards', () => {
       colorPalette: ['#000000', '#111111'],
       navChartOptions: {},
     })
-    mockDispatch.mockResolvedValue()
   })
 
   it('renders native and fiat reward totals for crypto securities', async () => {

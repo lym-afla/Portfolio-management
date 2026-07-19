@@ -60,7 +60,7 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import {
   createAccount,
@@ -70,159 +70,145 @@ import {
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'AccountFormDialog',
-  props: {
-    modelValue: Boolean,
-    editItem: Object,
-  },
-  emits: ['update:modelValue', 'account-added', 'account-updated'],
-  setup(props, { emit }) {
-    const dialog = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-    const isEdit = computed(() => !!props.editItem)
-    const form = ref({})
-    const formFields = ref([])
-    const errorMessages = ref({})
-    const generalError = ref('')
-    const isSubmitting = ref(false)
+const props = defineProps({
+  modelValue: Boolean,
+  editItem: Object,
+})
+const emit = defineEmits([
+  'update:modelValue',
+  'account-added',
+  'account-updated',
+])
 
-    const { handleApiError } = useErrorHandler()
+const dialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
+const isEdit = computed(() => !!props.editItem)
+const form = ref({})
+const formFields = ref([])
+const errorMessages = ref({})
+const generalError = ref('')
+const isSubmitting = ref(false)
 
-    const fetchFormStructure = async () => {
-      try {
-        const structure = await getAccountFormStructure()
-        if (structure && structure.fields) {
-          formFields.value = structure.fields
-          initializeForm()
-        } else {
-          throw new Error('Invalid form structure received')
-        }
-      } catch (error) {
-        handleApiError(error)
-      }
-    }
+const { handleApiError } = useErrorHandler()
 
-    const initializeForm = () => {
-      if (formFields.value && formFields.value.length > 0) {
-        form.value = formFields.value.reduce((acc, field) => {
-          if (field.type === 'checkbox') {
-            acc[field.name] = false // Initialize checkboxes to false
-          } else {
-            acc[field.name] = ''
-          }
-          return acc
-        }, {})
-        errorMessages.value = formFields.value.reduce((acc, field) => {
-          acc[field.name] = []
-          return acc
-        }, {})
+const initializeForm = () => {
+  if (formFields.value && formFields.value.length > 0) {
+    form.value = formFields.value.reduce((acc, field) => {
+      if (field.type === 'checkbox') {
+        acc[field.name] = false // Initialize checkboxes to false
       } else {
-        generalError.value = 'Failed to initialize form. Please try again.'
+        acc[field.name] = ''
       }
-    }
+      return acc
+    }, {})
+    errorMessages.value = formFields.value.reduce((acc, field) => {
+      acc[field.name] = []
+      return acc
+    }, {})
+  } else {
+    generalError.value = 'Failed to initialize form. Please try again.'
+  }
+}
 
-    onMounted(fetchFormStructure)
-
-    watch(
-      () => props.editItem,
-      (newValue) => {
-        if (newValue) {
-          form.value = { ...newValue }
-        } else {
-          initializeForm()
-        }
-        if (formFields.value && formFields.value.length > 0) {
-          errorMessages.value = formFields.value.reduce((acc, field) => {
-            acc[field.name] = []
-            return acc
-          }, {})
-        }
-        generalError.value = ''
-      },
-      { immediate: true }
-    )
-
-    const closeDialog = () => {
-      dialog.value = false
+const fetchFormStructure = async () => {
+  try {
+    const structure = await getAccountFormStructure()
+    if (structure && structure.fields) {
+      formFields.value = structure.fields
       initializeForm()
-      generalError.value = ''
+    } else {
+      throw new Error('Invalid form structure received')
     }
+  } catch (error) {
+    handleApiError(error)
+  }
+}
 
-    const submitForm = async () => {
-      isSubmitting.value = true
+const closeDialog = () => {
+  dialog.value = false
+  initializeForm()
+  generalError.value = ''
+}
+
+const submitForm = async () => {
+  isSubmitting.value = true
+  errorMessages.value = formFields.value.reduce((acc, field) => {
+    acc[field.name] = []
+    return acc
+  }, {})
+  generalError.value = ''
+
+  // Prepare form data with consistent broker format
+  const formData = Object.keys(form.value).reduce((acc, key) => {
+    const field = formFields.value.find((f) => f.name === key)
+    if (field && field.type === 'checkbox') {
+      acc[key] = Boolean(form.value[key])
+    } else if (key === 'broker') {
+      // Ensure consistent broker format
+      acc[key] =
+        typeof form.value[key] === 'object'
+          ? form.value[key].value // Handle {value: id, text: name} format
+          : form.value[key] // Handle direct ID format
+    } else {
+      acc[key] = form.value[key]
+    }
+    return acc
+  }, {})
+
+  try {
+    let response
+    if (isEdit.value) {
+      response = await updateAccount(props.editItem.id, formData)
+      emit('account-updated', response)
+    } else {
+      response = await createAccount(formData)
+      emit('account-added', response)
+    }
+    closeDialog()
+  } catch (error) {
+    logger.error('Unknown', 'Error submitting account:', error)
+    if (
+      error.response &&
+      error.response.status === 400 &&
+      error.response.data
+    ) {
+      Object.keys(error.response.data).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(errorMessages.value, key)) {
+          errorMessages.value[key] = Array.isArray(error.response.data[key])
+            ? error.response.data[key]
+            : [error.response.data[key]]
+        } else {
+          generalError.value = `${key}: ${error.response.data[key]}`
+        }
+      })
+    } else {
+      handleApiError(error)
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+onMounted(fetchFormStructure)
+
+watch(
+  () => props.editItem,
+  (newValue) => {
+    if (newValue) {
+      form.value = { ...newValue }
+    } else {
+      initializeForm()
+    }
+    if (formFields.value && formFields.value.length > 0) {
       errorMessages.value = formFields.value.reduce((acc, field) => {
         acc[field.name] = []
         return acc
       }, {})
-      generalError.value = ''
-
-      // Prepare form data with consistent broker format
-      const formData = Object.keys(form.value).reduce((acc, key) => {
-        const field = formFields.value.find((f) => f.name === key)
-        if (field && field.type === 'checkbox') {
-          acc[key] = Boolean(form.value[key])
-        } else if (key === 'broker') {
-          // Ensure consistent broker format
-          acc[key] =
-            typeof form.value[key] === 'object'
-              ? form.value[key].value // Handle {value: id, text: name} format
-              : form.value[key] // Handle direct ID format
-        } else {
-          acc[key] = form.value[key]
-        }
-        return acc
-      }, {})
-
-      try {
-        let response
-        if (isEdit.value) {
-          response = await updateAccount(props.editItem.id, formData)
-          emit('account-updated', response)
-        } else {
-          response = await createAccount(formData)
-          emit('account-added', response)
-        }
-        closeDialog()
-      } catch (error) {
-        logger.error('Unknown', 'Error submitting account:', error)
-        if (
-          error.response &&
-          error.response.status === 400 &&
-          error.response.data
-        ) {
-          Object.keys(error.response.data).forEach((key) => {
-            if (
-              Object.prototype.hasOwnProperty.call(errorMessages.value, key)
-            ) {
-              errorMessages.value[key] = Array.isArray(error.response.data[key])
-                ? error.response.data[key]
-                : [error.response.data[key]]
-            } else {
-              generalError.value = `${key}: ${error.response.data[key]}`
-            }
-          })
-        } else {
-          handleApiError(error)
-        }
-      } finally {
-        isSubmitting.value = false
-      }
     }
-
-    return {
-      dialog,
-      isEdit,
-      form,
-      formFields,
-      errorMessages,
-      generalError,
-      isSubmitting,
-      closeDialog,
-      submitForm,
-    }
+    generalError.value = ''
   },
-}
+  { immediate: true }
+)
 </script>

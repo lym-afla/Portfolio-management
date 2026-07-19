@@ -3,7 +3,7 @@ Tests for Bond ACI (Accrued Interest) calculation and capital distribution.
 
 Tests cover:
 1. BondMetadata.get_current_aci() - calculating current accrued interest
-2. Assets.get_capital_distribution() - excluding negative ACI (paid when buying)
+2. services.capital.get_capital_distribution() - excluding negative ACI (paid when buying)
 3. fetch_and_cache_bond_coupon_schedule() - T-Bank API integration
 """
 
@@ -21,7 +21,9 @@ from constants import (
     TRANSACTION_TYPE_COUPON,
     TRANSACTION_TYPE_SELL,
 )
-from core.tinkoff_utils import fetch_and_cache_bond_coupon_schedule
+from services.importer import fetch_and_cache_bond_coupon_schedule
+from services.bonds import get_current_aci
+from services.capital import get_capital_distribution
 
 User = get_user_model()
 
@@ -89,7 +91,7 @@ class BondACICalculationTests(TestCase):
         # Q1 period: Jan 15 - Apr 15 (91 days)
         test_date = date(2024, 3, 1)
 
-        aci_data = self.bond_meta.get_current_aci(test_date)
+        aci_data = get_current_aci(self.bond_meta, test_date)
 
         self.assertIsNotNone(aci_data)
         self.assertEqual(aci_data["coupon_start"], date(2024, 1, 15))
@@ -107,7 +109,7 @@ class BondACICalculationTests(TestCase):
         """Test ACI at the start of a coupon period (should be 0)."""
         test_date = date(2024, 4, 15)
 
-        aci_data = self.bond_meta.get_current_aci(test_date)
+        aci_data = get_current_aci(self.bond_meta, test_date)
 
         self.assertIsNotNone(aci_data)
         # Should be in the new period (Q2)
@@ -119,7 +121,7 @@ class BondACICalculationTests(TestCase):
         test_date = date(2024, 6, 1)
 
         # Calculate in USD
-        aci_data = self.bond_meta.get_current_aci(test_date, currency="USD")
+        aci_data = get_current_aci(self.bond_meta, test_date, currency="USD")
 
         self.assertIsNotNone(aci_data)
         self.assertEqual(aci_data["currency"], "USD")
@@ -153,7 +155,7 @@ class BondACICalculationTests(TestCase):
             coupon_frequency=2,
         )
 
-        aci_data = bond_meta2.get_current_aci(date(2024, 6, 1))
+        aci_data = get_current_aci(bond_meta2, date(2024, 6, 1))
         self.assertIsNone(aci_data)
 
     def test_aci_after_maturity(self):
@@ -161,12 +163,12 @@ class BondACICalculationTests(TestCase):
         # Test date after maturity
         test_date = date(2026, 2, 1)
 
-        aci_data = self.bond_meta.get_current_aci(test_date)
+        aci_data = get_current_aci(self.bond_meta, test_date)
         self.assertIsNone(aci_data)
 
 
 class CapitalDistributionTests(TestCase):
-    """Test Assets.get_capital_distribution() with ACI handling."""
+    """Test services.capital.get_capital_distribution() with ACI handling."""
 
     def setUp(self):
         """Set up test data with bond transactions including ACI."""
@@ -243,7 +245,8 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Calculate capital distribution
-        capital_dist = self.bond.get_capital_distribution(
+        capital_dist = get_capital_distribution(
+            self.bond,
             date=date(2024, 6, 1),
             investor=self.user,
         )
@@ -284,7 +287,8 @@ class CapitalDistributionTests(TestCase):
         )
 
         # Calculate in USD
-        capital_dist_usd = self.bond.get_capital_distribution(
+        capital_dist_usd = get_capital_distribution(
+            self.bond,
             date=date(2024, 6, 1),
             investor=self.user,
             currency="USD",
@@ -340,10 +344,10 @@ class CouponScheduleFetchTests(TestCase):
         mock_response = Mock()
         mock_response.events = [mock_coupon]
 
-        with patch("core.tinkoff_utils.get_user_token", new_callable=AsyncMock) as mock_get_token:
+        with patch("services.importer.get_user_token", new_callable=AsyncMock) as mock_get_token:
             mock_get_token.return_value = "test-token"
 
-            with patch("core.tinkoff_utils.Client") as mock_client:
+            with patch("services.importer.Client") as mock_client:
                 mock_client_instance = mock_client.return_value.__enter__.return_value
                 mock_client_instance.instruments.get_bond_coupons.return_value = mock_response
 
@@ -380,7 +384,7 @@ class CouponScheduleFetchTests(TestCase):
             coupon_amount=Decimal("25.00"),
         )
 
-        with patch("core.tinkoff_utils.get_user_token", new_callable=AsyncMock) as mock_get_token:
+        with patch("services.importer.get_user_token", new_callable=AsyncMock) as mock_get_token:
             # Should not call API if schedule is recent
             result = await fetch_and_cache_bond_coupon_schedule(self.bond, self.user)
 
@@ -415,10 +419,10 @@ class CouponScheduleFetchTests(TestCase):
         mock_response = Mock()
         mock_response.events = [mock_coupon]
 
-        with patch("core.tinkoff_utils.get_user_token", new_callable=AsyncMock) as mock_get_token:
+        with patch("services.importer.get_user_token", new_callable=AsyncMock) as mock_get_token:
             mock_get_token.return_value = "test-token"
 
-            with patch("core.tinkoff_utils.Client") as mock_client:
+            with patch("services.importer.Client") as mock_client:
                 mock_client_instance = mock_client.return_value.__enter__.return_value
                 mock_client_instance.instruments.get_bond_coupons.return_value = mock_response
 

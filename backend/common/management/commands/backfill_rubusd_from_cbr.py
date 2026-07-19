@@ -19,7 +19,8 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
-from common.models import FX, CBRRateLimitError, update_FX_from_CBR
+from common.models import FX
+from services.fx import CBRRateLimitError, update_FX_from_CBR
 
 logger = logging.getLogger(__name__)
 

@@ -19,6 +19,7 @@ from django.db import transaction
 
 from common.models import Transactions
 from constants import TRANSACTION_TYPE_BOND_MATURITY, TRANSACTION_TYPE_BOND_REDEMPTION
+from services.transactions import create_notional_history
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +138,7 @@ class Command(BaseCommand):
             try:
                 if not dry_run:
                     with transaction.atomic():
-                        txn._create_notional_history()
+                        create_notional_history(txn)
                         total_created += 1
                         self.stdout.write(
                             f"  ✓ Created NotionalHistory for transaction {txn.id} "

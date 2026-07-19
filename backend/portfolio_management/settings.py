@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "channels",
+    "drf_spectacular",
     # 'rest_framework.authtoken',
     "django.contrib.admin",
     "django.contrib.auth",
@@ -311,6 +312,14 @@ REST_FRAMEWORK = {
         # 'rest_framework.authentication.SessionAuthentication',
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Portfolio Management API",
+    "DESCRIPTION": "Investment portfolio management system",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
 }
 
 # JWT settings for authentication

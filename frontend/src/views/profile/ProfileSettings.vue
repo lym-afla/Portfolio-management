@@ -131,9 +131,9 @@
   </div>
 </template>
 
-<script>
-import { provide } from 'vue'
-import { useStore } from 'vuex'
+<script setup>
+import { ref, reactive, provide, onMounted } from 'vue'
+import { useAppStore } from '@/stores/app'
 import {
   getUserSettings,
   updateUserSettings,
@@ -144,182 +144,163 @@ import AccountGroupManager from '@/components/AccountGroupManager.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 import logger from '@/utils/logger'
 
-export default {
-  components: {
-    AccountGroupManager,
-    BrokerTokenManager,
+const appStore = useAppStore()
+
+const loading = ref(true)
+const settingsForm = reactive({
+  default_currency: '',
+  use_default_currency_where_relevant: false,
+  chart_frequency: '',
+  chart_timeline: '',
+  NAV_barchart_default_breakdown: '',
+  digits: 0,
+  selected_account: {
+    type: 'all',
+    id: null,
   },
+})
+const currencyChoices = ref([])
+const frequencyChoices = ref([])
+const timelineChoices = ref([])
+const navBreakdownChoices = ref([])
+const accountChoices = ref([])
+const fieldErrors = reactive({
+  default_currency: [],
+  use_default_currency_where_relevant: [],
+  chart_frequency: [],
+  chart_timeline: [],
+  NAV_barchart_default_breakdown: [],
+  digits: [],
+  selected_account: [],
+})
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
-  setup() {
-    const store = useStore()
-    // Provide error handling function for child components
-    provide('showError', (message) => {
-      this.showErrorMessage(message)
-    })
-    return { store }
-  },
-
-  data() {
-    return {
-      loading: true,
-      settingsForm: {
-        default_currency: '',
-        use_default_currency_where_relevant: false,
-        chart_frequency: '',
-        chart_timeline: '',
-        NAV_barchart_default_breakdown: '',
-        digits: 0,
-        selected_account: {
-          type: 'all',
-          id: null,
-        },
-      },
-      currencyChoices: [],
-      frequencyChoices: [],
-      timelineChoices: [],
-      navBreakdownChoices: [],
-      accountChoices: [],
-      fieldErrors: {
-        default_currency: [],
-        use_default_currency_where_relevant: [],
-        chart_frequency: [],
-        chart_timeline: [],
-        NAV_barchart_default_breakdown: [],
-        digits: [],
-        selected_account: [],
-      },
-      snackbar: false,
-      snackbarMessage: '',
-      snackbarColor: 'success',
-    }
-  },
-
-  async mounted() {
-    logger.log('Unknown', 'ProfileSettings component mounted')
-    await this.loadData()
-  },
-
-  methods: {
-    async loadData() {
-      try {
-        this.loading = true
-        const [settings, choices] = await Promise.all([
-          getUserSettings(),
-          getSettingsChoices(),
-        ])
-
-        // Format choices and set initial currency in store
-        this.currencyChoices = this.formatChoices(choices.currency_choices)
-        const selectedCurrencyOption = this.currencyChoices.find(
-          (option) => option.value === settings.default_currency
-        )
-        if (selectedCurrencyOption) {
-          this.store.commit(
-            'SET_SELECTED_CURRENCY',
-            selectedCurrencyOption.title
-          )
-        }
-
-        // Format all choices first
-        this.frequencyChoices = this.formatChoices(choices.frequency_choices)
-        this.timelineChoices = this.formatChoices(choices.timeline_choices)
-        this.navBreakdownChoices = this.formatChoices(
-          choices.nav_breakdown_choices
-        )
-        this.accountChoices = formatAccountChoices(choices.account_choices)
-
-        // Find the matching account option
-        const matchingAccount = this.accountChoices.find(
-          (option) =>
-            option.type === 'option' &&
-            option.value.type === settings.selected_account_type &&
-            option.value.id === settings.selected_account_id
-        )
-
-        // Update form with settings
-        this.settingsForm = {
-          ...settings,
-          selected_account: matchingAccount?.value || {
-            type: 'all',
-            id: null,
-          },
-        }
-      } catch (error) {
-        logger.error('Unknown', 'Error loading settings data:', error)
-        this.showErrorMessage('Failed to load settings. Please try again.')
-      } finally {
-        this.loading = false
-      }
-    },
-    formatChoices(choices) {
-      return choices.map((choice) => ({
-        value: choice[0],
-        title: choice[1],
-      }))
-    },
-    async saveSettings() {
-      try {
-        // Transform the data before sending
-        const settingsToSave = {
-          ...this.settingsForm,
-          selected_account_type: this.settingsForm.selected_account.type,
-          selected_account_id: this.settingsForm.selected_account.id,
-        }
-        delete settingsToSave.selected_account // Remove the combined field
-
-        const response = await updateUserSettings(settingsToSave)
-        if (response.success) {
-          // Update store with new currency
-          const selectedCurrencyOption = this.currencyChoices.find(
-            (option) => option.value === this.settingsForm.default_currency
-          )
-          if (selectedCurrencyOption) {
-            this.store.commit(
-              'SET_SELECTED_CURRENCY',
-              selectedCurrencyOption.title
-            )
-          }
-
-          this.showSuccessMessage('Settings saved successfully')
-        } else {
-          this.handleFieldErrors(response.errors)
-        }
-      } catch (error) {
-        logger.error('Unknown', 'Error saving settings:', error)
-        this.showErrorMessage('Failed to save settings. Please try again.')
-      }
-    },
-    handleFieldErrors(errors) {
-      this.clearFieldErrors()
-      Object.keys(errors).forEach((field) => {
-        if (field in this.fieldErrors) {
-          this.fieldErrors[field] = errors[field]
-        }
-      })
-      this.showErrorMessage('Please correct the errors in the form.')
-    },
-    clearFieldErrors() {
-      Object.keys(this.fieldErrors).forEach((field) => {
-        this.fieldErrors[field] = []
-      })
-    },
-    showSuccessMessage(message) {
-      this.snackbarMessage = message
-      this.snackbarColor = 'success'
-      this.snackbar = true
-    },
-    showErrorMessage(message) {
-      this.snackbarMessage = message
-      this.snackbarColor = 'error'
-      this.snackbar = true
-    },
-    showInfoMessage(message) {
-      this.snackbarMessage = message
-      this.snackbarColor = 'info'
-      this.snackbar = true
-    },
-  },
+const showSuccessMessage = (message) => {
+  snackbarMessage.value = message
+  snackbarColor.value = 'success'
+  snackbar.value = true
 }
+const showErrorMessage = (message) => {
+  snackbarMessage.value = message
+  snackbarColor.value = 'error'
+  snackbar.value = true
+}
+const showInfoMessage = (message) => {
+  snackbarMessage.value = message
+  snackbarColor.value = 'info'
+  snackbar.value = true
+}
+
+// Provide error handling function for child components
+provide('showError', (message) => {
+  showErrorMessage(message)
+})
+
+const formatChoices = (choices) => {
+  return choices.map((choice) => ({
+    value: choice[0],
+    title: choice[1],
+  }))
+}
+
+const clearFieldErrors = () => {
+  Object.keys(fieldErrors).forEach((field) => {
+    fieldErrors[field] = []
+  })
+}
+
+const handleFieldErrors = (errors) => {
+  clearFieldErrors()
+  Object.keys(errors).forEach((field) => {
+    if (field in fieldErrors) {
+      fieldErrors[field] = errors[field]
+    }
+  })
+  showErrorMessage('Please correct the errors in the form.')
+}
+
+const loadData = async () => {
+  try {
+    loading.value = true
+    const [settings, choices] = await Promise.all([
+      getUserSettings(),
+      getSettingsChoices(),
+    ])
+
+    // Format choices and set initial currency in store
+    currencyChoices.value = formatChoices(choices.currency_choices)
+    const selectedCurrencyOption = currencyChoices.value.find(
+      (option) => option.value === settings.default_currency
+    )
+    if (selectedCurrencyOption) {
+      appStore.setSelectedCurrency(selectedCurrencyOption.title)
+    }
+
+    // Format all choices first
+    frequencyChoices.value = formatChoices(choices.frequency_choices)
+    timelineChoices.value = formatChoices(choices.timeline_choices)
+    navBreakdownChoices.value = formatChoices(choices.nav_breakdown_choices)
+    accountChoices.value = formatAccountChoices(choices.account_choices)
+
+    // Find the matching account option
+    const matchingAccount = accountChoices.value.find(
+      (option) =>
+        option.type === 'option' &&
+        option.value.type === settings.selected_account_type &&
+        option.value.id === settings.selected_account_id
+    )
+
+    // Update form with settings
+    Object.assign(settingsForm, settings, {
+      selected_account: matchingAccount?.value || {
+        type: 'all',
+        id: null,
+      },
+    })
+  } catch (error) {
+    logger.error('Unknown', 'Error loading settings data:', error)
+    showErrorMessage('Failed to load settings. Please try again.')
+  } finally {
+    loading.value = false
+  }
+}
+
+const saveSettings = async () => {
+  try {
+    // Transform the data before sending
+    const settingsToSave = {
+      ...settingsForm,
+      selected_account_type: settingsForm.selected_account.type,
+      selected_account_id: settingsForm.selected_account.id,
+    }
+    delete settingsToSave.selected_account // Remove the combined field
+
+    const response = await updateUserSettings(settingsToSave)
+    if (response.success) {
+      // Update store with new currency
+      const selectedCurrencyOption = currencyChoices.value.find(
+        (option) => option.value === settingsForm.default_currency
+      )
+      if (selectedCurrencyOption) {
+        appStore.setSelectedCurrency(selectedCurrencyOption.title)
+      }
+
+      showSuccessMessage('Settings saved successfully')
+    } else {
+      handleFieldErrors(response.errors)
+    }
+  } catch (error) {
+    logger.error('Unknown', 'Error saving settings:', error)
+    showErrorMessage('Failed to save settings. Please try again.')
+  }
+}
+
+onMounted(async () => {
+  logger.log('Unknown', 'ProfileSettings component mounted')
+  await loadData()
+})
 </script>
 
 <style scoped>

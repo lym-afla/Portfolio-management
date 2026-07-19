@@ -72,55 +72,48 @@
   </tr>
 </template>
 
-<script>
+<script setup>
+import { computed } from 'vue'
 import TransactionDescription from './TransactionDescription.vue'
 import TransactionCashFlow from './TransactionCashFlow.vue'
 
-export default {
-  name: 'TransactionRow',
-  components: {
-    TransactionDescription,
-    TransactionCashFlow,
+const props = defineProps({
+  transaction: {
+    type: Object,
+    required: true,
   },
-  props: {
-    transaction: {
-      type: Object,
-      required: true,
-    },
-    currencies: {
-      type: Array,
-      default: () => [],
-    },
-    showBalances: {
-      type: Boolean,
-      default: false,
-    },
-    showActions: {
-      type: Boolean,
-      default: true,
-    },
-    showCashFlow: {
-      type: Boolean,
-      default: false,
-    },
-    showSingleCashFlow: {
-      type: Boolean,
-      default: false,
-    },
-    showBrokerAccount: {
-      type: Boolean,
-      default: false,
-    },
+  currencies: {
+    type: Array,
+    default: () => [],
   },
-  emits: ['edit', 'delete'],
-  computed: {
-    brokerAccountLabel() {
-      if (!this.transaction.account) return ''
-      const parts = []
-      if (this.transaction.account.broker_name) parts.push(this.transaction.account.broker_name)
-      if (this.transaction.account.name) parts.push(this.transaction.account.name)
-      return parts.join(' — ')
-    },
+  showBalances: {
+    type: Boolean,
+    default: false,
   },
-}
+  showActions: {
+    type: Boolean,
+    default: true,
+  },
+  showCashFlow: {
+    type: Boolean,
+    default: false,
+  },
+  showSingleCashFlow: {
+    type: Boolean,
+    default: false,
+  },
+  showBrokerAccount: {
+    type: Boolean,
+    default: false,
+  },
+})
+defineEmits(['edit', 'delete'])
+
+const brokerAccountLabel = computed(() => {
+  if (!props.transaction.account) return ''
+  const parts = []
+  if (props.transaction.account.broker_name) parts.push(props.transaction.account.broker_name)
+  if (props.transaction.account.name) parts.push(props.transaction.account.name)
+  return parts.join(' — ')
+})
 </script>

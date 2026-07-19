@@ -15,7 +15,7 @@ from constants import (
     TRANSACTION_TYPE_DIVIDEND,
     TRANSACTION_TYPE_INTEREST_INCOME,
 )
-from core.import_utils import parse_charles_stanley_transactions
+from services.importer import parse_charles_stanley_transactions
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
@@ -65,7 +65,7 @@ async def test_parse_charles_stanley_transactions(charles_stanley_setup):
     }
     mock_df = pd.DataFrame(mock_data)
 
-    with patch("core.import_utils.read_excel_file", return_value=mock_df):
+    with patch("services.importer.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
             "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )
@@ -115,7 +115,7 @@ async def test_skip_existing_transaction(charles_stanley_setup):
     }
     mock_df = pd.DataFrame(mock_data)
 
-    with patch("core.import_utils.read_excel_file", return_value=mock_df):
+    with patch("services.importer.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
             "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )
@@ -144,7 +144,7 @@ async def test_different_transaction_types(charles_stanley_setup):
     }
     mock_df = pd.DataFrame(mock_data)
 
-    with patch("core.import_utils.read_excel_file", return_value=mock_df):
+    with patch("services.importer.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
             "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )
@@ -176,7 +176,7 @@ async def test_security_mapping(charles_stanley_setup):
     }
     mock_df = pd.DataFrame(mock_data)
 
-    with patch("core.import_utils.read_excel_file", return_value=mock_df):
+    with patch("services.importer.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
             "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )
@@ -219,7 +219,7 @@ async def test_progress_reporting(charles_stanley_setup):
     }
     mock_df = pd.DataFrame(mock_data)
 
-    with patch("core.import_utils.read_excel_file", return_value=mock_df):
+    with patch("services.importer.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
             "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )

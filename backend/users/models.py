@@ -4,6 +4,8 @@ import base64
 import logging
 
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -15,19 +17,49 @@ from constants import ACCOUNT_TYPE_CHOICES, CURRENCY_CHOICES, NAV_BARCHART_CHOIC
 
 logger = logging.getLogger(__name__)
 
+# Current encryption key version. Increment when rotating keys.
+# Version 1 = legacy truncation scheme (backward compat for existing tokens).
+# Version 2 = HKDF-SHA256 derivation.
+ENCRYPTION_KEY_VERSION = 2
 
-def get_encryption_key(user):
-    """
-    Generate a user-specific encryption key.
 
-    :param user: The user to generate the encryption key for
-    :return: The encryption key
+def _derive_key_v1(user):
+    """Legacy key derivation (backward compatibility for existing tokens).
+
+    Truncates/pads SECRET_KEY + user_id to 32 bytes. Not a real KDF —
+    preserved so existing v1 tokens can still decrypt.
     """
-    # Combine the user's ID with the SECRET_KEY
     key_material = f"{settings.SECRET_KEY}_{user.id}"
-    # Create a consistent key by hashing the combined material
-    key = base64.urlsafe_b64encode(key_material.encode()[:32].ljust(32, b"0"))
-    return key
+    return base64.urlsafe_b64encode(key_material.encode()[:32].ljust(32, b"0"))
+
+
+def _derive_key_v2(user, salt=None):
+    """HKDF-based key derivation (current).
+
+    Uses HMAC-SHA256 to derive a 32-byte Fernet key from
+    SECRET_KEY + user ID. An optional salt allows per-token key derivation.
+    """
+    ikm = f"{settings.SECRET_KEY}:{user.id}".encode()
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        info=b"portfolio-management-token-encryption-v2",
+    )
+    raw_key = hkdf.derive(ikm)
+    return base64.urlsafe_b64encode(raw_key)
+
+
+def get_encryption_key(user, version=ENCRYPTION_KEY_VERSION, salt=None):
+    """Get the Fernet encryption key for a user.
+
+    Supports key versioning for forward migration and rotation.
+    Version 1 = legacy truncation (backward compat).
+    Version 2 = HKDF-SHA256 (current).
+    """
+    if version == 1:
+        return _derive_key_v1(user)
+    return _derive_key_v2(user, salt)
 
 
 class CustomUser(AbstractUser):
@@ -86,6 +118,7 @@ class BaseApiToken(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     encrypted_token = models.BinaryField()
+    key_version = models.IntegerField(default=1, help_text="Encryption key version")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -95,23 +128,28 @@ class BaseApiToken(models.Model):
         abstract = True
 
     def set_token(self, token_value, user):
-        """Encrypt and save token value."""
+        """Encrypt and save token value using the current key version."""
         try:
-            key = get_encryption_key(user)
+            key = get_encryption_key(user, version=ENCRYPTION_KEY_VERSION)
             f = Fernet(key)
             self.encrypted_token = f.encrypt(token_value.encode())
+            self.key_version = ENCRYPTION_KEY_VERSION
             self.save()
         except Exception as e:
             logger.error(f"Error encrypting token for user {user.id}: {str(e)}")
             raise
 
     def get_token(self, user=None):
-        """Get decrypted token value."""
+        """Get decrypted token value.
+
+        Uses the token's stored key_version to select the correct derivation.
+        Legacy tokens (version 1) decrypt with the old truncation scheme.
+        """
         if not user:
             raise ValueError("User is required to decrypt token")
 
         try:
-            key = get_encryption_key(user)
+            key = get_encryption_key(user, version=self.key_version)
             f = Fernet(key)
             if not self.encrypted_token:
                 raise ValueError("No token stored")
@@ -300,10 +338,11 @@ class OKXApiToken(BaseApiToken):
     def set_credentials(self, api_secret, passphrase, user):
         """Encrypt and save the OKX API secret and passphrase."""
         try:
-            key = get_encryption_key(user)
+            key = get_encryption_key(user, version=ENCRYPTION_KEY_VERSION)
             f = Fernet(key)
             self.encrypted_token = f.encrypt(api_secret.encode())
             self.encrypted_passphrase = f.encrypt(passphrase.encode())
+            self.key_version = ENCRYPTION_KEY_VERSION
             self.save()
         except Exception as e:
             logger.error(f"Error encrypting OKX credentials for user {user.id}: {str(e)}")
@@ -316,7 +355,7 @@ class OKXApiToken(BaseApiToken):
     def set_passphrase(self, passphrase, user):
         """Encrypt and save the OKX passphrase."""
         try:
-            key = get_encryption_key(user)
+            key = get_encryption_key(user, version=self.key_version)
             f = Fernet(key)
             self.encrypted_passphrase = f.encrypt(passphrase.encode())
             self.save()
@@ -327,7 +366,7 @@ class OKXApiToken(BaseApiToken):
     def get_passphrase(self, user):
         """Decrypt the OKX passphrase."""
         try:
-            key = get_encryption_key(user)
+            key = get_encryption_key(user, version=self.key_version)
             f = Fernet(key)
             return f.decrypt(self.encrypted_passphrase).decode()
         except Exception as e:

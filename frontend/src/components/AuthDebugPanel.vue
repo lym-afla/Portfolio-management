@@ -145,142 +145,123 @@
   </v-card>
 </template>
 
-<script>
+<script setup>
 import { ref } from 'vue'
 import { getDashboardSettings } from '@/services/api'
 import authDebug from '@/utils/authDebug'
 
-export default {
-  name: 'AuthDebugPanel',
-  setup() {
-    const isLoading = ref(false)
-    const isRunningDiagnostic = ref(false)
-    const results = ref(null)
-    const diagnosticResults = ref(null)
-    const apiTestResult = ref(null)
+const isLoading = ref(false)
+const isRunningDiagnostic = ref(false)
+const results = ref(null)
+const diagnosticResults = ref(null)
+const apiTestResult = ref(null)
 
-    const runDiagnostic = async () => {
-      isRunningDiagnostic.value = true
-      try {
-        diagnosticResults.value = authDebug.runFullDiagnostic()
-        results.value = diagnosticResults.value
-      } catch (error) {
-        console.error('Diagnostic error:', error)
-      } finally {
-        isRunningDiagnostic.value = false
-      }
+const runDiagnostic = async () => {
+  isRunningDiagnostic.value = true
+  try {
+    diagnosticResults.value = authDebug.runFullDiagnostic()
+    results.value = diagnosticResults.value
+  } catch (error) {
+    console.error('Diagnostic error:', error)
+  } finally {
+    isRunningDiagnostic.value = false
+  }
+}
+
+const checkTokenStorage = async () => {
+  isLoading.value = true
+  try {
+    results.value = {
+      ...results.value,
+      tokenStorage: authDebug.checkTokenStorage(),
     }
+  } catch (error) {
+    console.error('Token storage check error:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
 
-    const checkTokenStorage = async () => {
-      isLoading.value = true
-      try {
-        results.value = {
-          ...results.value,
-          tokenStorage: authDebug.checkTokenStorage(),
-        }
-      } catch (error) {
-        console.error('Token storage check error:', error)
-      } finally {
-        isLoading.value = false
-      }
+const checkStoreAuth = async () => {
+  isLoading.value = true
+  try {
+    results.value = {
+      ...results.value,
+      storeAuth: authDebug.checkStoreAuthentication(),
     }
+  } catch (error) {
+    console.error('Store auth check error:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
 
-    const checkStoreAuth = async () => {
-      isLoading.value = true
-      try {
-        results.value = {
-          ...results.value,
-          storeAuth: authDebug.checkStoreAuthentication(),
-        }
-      } catch (error) {
-        console.error('Store auth check error:', error)
-      } finally {
-        isLoading.value = false
-      }
+const checkTokenExpiration = async () => {
+  isLoading.value = true
+  try {
+    results.value = {
+      ...results.value,
+      tokenExpiration: authDebug.checkTokenExpiration(),
     }
+  } catch (error) {
+    console.error('Token expiration check error:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
 
-    const checkTokenExpiration = async () => {
-      isLoading.value = true
-      try {
-        results.value = {
-          ...results.value,
-          tokenExpiration: authDebug.checkTokenExpiration(),
-        }
-      } catch (error) {
-        console.error('Token expiration check error:', error)
-      } finally {
-        isLoading.value = false
-      }
+const testApiCall = async () => {
+  isLoading.value = true
+  try {
+    console.log(
+      '[AuthDebugPanel] 🧪 Testing API call to dashboard settings...'
+    )
+    const response = await getDashboardSettings()
+    apiTestResult.value = {
+      success: true,
+      status: 'success',
+      data: response,
     }
-
-    const testApiCall = async () => {
-      isLoading.value = true
-      try {
-        console.log(
-          '[AuthDebugPanel] 🧪 Testing API call to dashboard settings...'
-        )
-        const response = await getDashboardSettings()
-        apiTestResult.value = {
-          success: true,
-          status: 'success',
-          data: response,
-        }
-        console.log('[AuthDebugPanel] ✅ API call successful:', response)
-      } catch (error) {
-        apiTestResult.value = {
-          success: false,
-          status: 'error',
-          error: error.message,
-          response: error.response?.data,
-        }
-        console.error('[AuthDebugPanel] ❌ API call failed:', error)
-      } finally {
-        isLoading.value = false
-      }
+    console.log('[AuthDebugPanel] ✅ API call successful:', response)
+  } catch (error) {
+    apiTestResult.value = {
+      success: false,
+      status: 'error',
+      error: error.message,
+      response: error.response?.data,
     }
+    console.error('[AuthDebugPanel] ❌ API call failed:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
 
-    const fixCorruptedTokens = async () => {
-      isLoading.value = true
-      try {
-        console.log('[AuthDebugPanel] 🛠️ Attempting to fix corrupted tokens...')
-        const result = authDebug.fixCorruptedTokens()
+const fixCorruptedTokens = async () => {
+  isLoading.value = true
+  try {
+    console.log('[AuthDebugPanel] 🛠️ Attempting to fix corrupted tokens...')
+    const result = authDebug.fixCorruptedTokens()
 
-        if (result.fixed) {
-          console.log(
-            '[AuthDebugPanel] ✅ Fixed corrupted tokens:',
-            result.issues
-          )
-          // Re-run diagnostic after fixing
-          setTimeout(() => {
-            runDiagnostic()
-          }, 1000)
-        } else {
-          console.log('[AuthDebugPanel] ℹ️ No corrupted tokens found to fix')
-        }
-      } catch (error) {
-        console.error(
-          '[AuthDebugPanel] ❌ Error fixing corrupted tokens:',
-          error
-        )
-      } finally {
-        isLoading.value = false
-      }
+    if (result.fixed) {
+      console.log(
+        '[AuthDebugPanel] ✅ Fixed corrupted tokens:',
+        result.issues
+      )
+      // Re-run diagnostic after fixing
+      setTimeout(() => {
+        runDiagnostic()
+      }, 1000)
+    } else {
+      console.log('[AuthDebugPanel] ℹ️ No corrupted tokens found to fix')
     }
-
-    return {
-      isLoading,
-      isRunningDiagnostic,
-      results,
-      diagnosticResults,
-      apiTestResult,
-      runDiagnostic,
-      checkTokenStorage,
-      checkStoreAuth,
-      checkTokenExpiration,
-      testApiCall,
-      fixCorruptedTokens,
-    }
-  },
+  } catch (error) {
+    console.error(
+      '[AuthDebugPanel] ❌ Error fixing corrupted tokens:',
+      error
+    )
+  } finally {
+    isLoading.value = false
+  }
 }
 </script>
 

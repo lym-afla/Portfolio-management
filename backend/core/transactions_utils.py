@@ -13,11 +13,12 @@ from django.db.models import Q
 
 from common.models import Accounts, FXTransaction, Transactions
 from database.serializers import FXTransactionSerializer, TransactionSerializer
+from services.accounts import balance as account_balance, get_currencies
 
 from .balance_tracker import BalanceTracker
 from .pagination_utils import paginate_table
-from .portfolio_utils import get_selected_account_ids
 from .sorting_utils import sort_entries
+from services.performance import get_selected_account_ids
 
 
 def get_transactions_table_api(request):
@@ -126,7 +127,7 @@ def _calculate_transactions_table_output(
     # Get all currencies used in the accounts
     currencies = set()
     for account in Accounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
-        currencies.update(account.get_currencies())
+        currencies.update(get_currencies(account))
 
     # Initialize balance tracker
     balance_tracker = BalanceTracker(number_of_digits=number_of_digits)
@@ -136,8 +137,8 @@ def _calculate_transactions_table_output(
     if start_date:
         for account_id in selected_account_ids:
             account = Accounts.objects.get(id=account_id)
-            account_balance = account.balance(start_date)
-            for currency, amount in account_balance.items():
+            acct_balance = account_balance(account, start_date)
+            for currency, amount in acct_balance.items():
                 initial_balances[currency] += amount
 
     balance_tracker.set_initial_balances(initial_balances)

@@ -7,40 +7,31 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, watch } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import logger from '@/utils/logger'
 
-export default {
-  setup() {
-    const { sendMessage, connect, isConnected, lastMessage } =
-      useWebSocket('/ws/transactions/')
-    const messageReceived = ref(false)
+const { sendMessage, connect, isConnected, lastMessage } =
+  useWebSocket('/ws/transactions/')
+const messageReceived = ref(false)
 
-    const sendTestMessage = () => {
-      if (isConnected.value) {
-        sendMessage({
-          type: 'test_message',
-          content: 'This is a test message',
-        })
-      } else {
-        logger.error('Unknown', 'WebSocket is not connected')
-      }
-    }
-
-    connect()
-
-    watch(lastMessage, (newMessage) => {
-      if (newMessage) {
-        messageReceived.value = true
-      }
+const sendTestMessage = () => {
+  if (isConnected.value) {
+    sendMessage({
+      type: 'test_message',
+      content: 'This is a test message',
     })
-
-    return {
-      sendTestMessage,
-      messageReceived,
-    }
-  },
+  } else {
+    logger.error('Unknown', 'WebSocket is not connected')
+  }
 }
+
+connect()
+
+watch(lastMessage, (newMessage) => {
+  if (newMessage) {
+    messageReceived.value = true
+  }
+})
 </script>

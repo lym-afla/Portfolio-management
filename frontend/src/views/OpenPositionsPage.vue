@@ -148,271 +148,251 @@
   </PositionsPageBase>
 </template>
 
-<script>
+<script setup>
 import { ref, computed } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getOpenPositions } from '@/services/api'
 
-export default {
-  name: 'OpenPositions',
-  components: {
-    PositionsPageBase,
-  },
-  setup() {
-    const totals = ref({})
-    const cashBalances = ref({})
-    const cashBalancesLoading = ref(true)
+const totals = ref({})
+const cashBalances = ref({})
+const cashBalancesLoading = ref(true)
 
-    const headers = ref([
-      { title: 'Type', key: 'type', align: 'start', sortable: true },
-      { title: 'Name', key: 'name', align: 'start', sortable: true },
-      { title: 'Currency', key: 'currency', align: 'center', sortable: true },
+const headers = ref([
+  { title: 'Type', key: 'type', align: 'start', sortable: true },
+  { title: 'Name', key: 'name', align: 'start', sortable: true },
+  { title: 'Currency', key: 'currency', align: 'center', sortable: true },
+  {
+    title: 'Position',
+    key: 'current_position',
+    align: 'center',
+    sortable: true,
+  },
+  {
+    title: 'Entry',
+    key: 'entry',
+    align: 'center',
+    sortable: false,
+    rowspan: 1,
+    colspan: 3,
+    children: [
       {
-        title: 'Position',
-        key: 'current_position',
+        title: 'Date',
+        key: 'investment_date',
+        align: 'center',
+        sortable: true,
+        rowspan: 2,
+      },
+      {
+        title: 'Price',
+        key: 'entry_price',
+        align: 'center',
+        sortable: true,
+        rowspan: 2,
+      },
+      {
+        title: 'Value',
+        key: 'entry_value',
+        align: 'center',
+        sortable: true,
+        rowspan: 2,
+      },
+    ],
+  },
+  {
+    title: 'Current',
+    key: 'current',
+    align: 'center',
+    sortable: false,
+    children: [
+      {
+        title: 'Price',
+        key: 'current_price',
         align: 'center',
         sortable: true,
       },
       {
-        title: 'Entry',
-        key: 'entry',
+        title: 'Value',
+        key: 'current_value',
+        align: 'center',
+        sortable: true,
+      },
+      {
+        title: 'Share',
+        key: 'share_of_portfolio',
+        align: 'center',
+        sortable: true,
+      },
+      {
+        title: 'Gain/Loss',
+        key: 'gain_loss',
         align: 'center',
         sortable: false,
-        rowspan: 1,
-        colspan: 3,
         children: [
           {
-            title: 'Date',
-            key: 'investment_date',
+            title: 'Realized',
+            key: 'realized_gl',
             align: 'center',
             sortable: true,
-            rowspan: 2,
           },
           {
-            title: 'Price',
-            key: 'entry_price',
+            title: 'Unrealized',
+            key: 'unrealized_gl',
             align: 'center',
             sortable: true,
-            rowspan: 2,
           },
           {
-            title: 'Value',
-            key: 'entry_value',
+            title: '%',
+            key: 'price_change_percentage',
             align: 'center',
+            class: 'font-italic',
             sortable: true,
-            rowspan: 2,
           },
         ],
       },
       {
-        title: 'Current',
-        key: 'current',
+        title: 'Capital Distribution',
+        key: 'capital_distribution',
         align: 'center',
         sortable: false,
         children: [
           {
-            title: 'Price',
-            key: 'current_price',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: 'Value',
-            key: 'current_value',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: 'Share',
-            key: 'share_of_portfolio',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: 'Gain/Loss',
-            key: 'gain_loss',
-            align: 'center',
-            sortable: false,
-            children: [
-              {
-                title: 'Realized',
-                key: 'realized_gl',
-                align: 'center',
-                sortable: true,
-              },
-              {
-                title: 'Unrealized',
-                key: 'unrealized_gl',
-                align: 'center',
-                sortable: true,
-              },
-              {
-                title: '%',
-                key: 'price_change_percentage',
-                align: 'center',
-                class: 'font-italic',
-                sortable: true,
-              },
-            ],
-          },
-          {
-            title: 'Capital Distribution',
+            title: 'Amount',
             key: 'capital_distribution',
             align: 'center',
-            sortable: false,
-            children: [
-              {
-                title: 'Amount',
-                key: 'capital_distribution',
-                align: 'center',
-                sortable: true,
-              },
-              {
-                title: '%',
-                key: 'capital_distribution_percentage',
-                align: 'center',
-                class: 'font-italic',
-                sortable: true,
-              },
-            ],
+            sortable: true,
           },
           {
-            title: 'Commission',
-            key: 'commission',
+            title: '%',
+            key: 'capital_distribution_percentage',
             align: 'center',
-            sortable: false,
-            children: [
-              {
-                title: 'Amount',
-                key: 'commission',
-                align: 'center',
-                sortable: true,
-              },
-              {
-                title: '%',
-                key: 'commission_percentage',
-                align: 'center',
-                class: 'font-italic',
-                sortable: true,
-              },
-            ],
-          },
-          {
-            title: 'Total Return',
-            key: 'total',
-            align: 'center',
-            sortable: false,
-            children: [
-              {
-                title: 'Amount',
-                key: 'total_return_amount',
-                align: 'center',
-                sortable: true,
-              },
-              {
-                title: '%',
-                key: 'total_return_percentage',
-                align: 'center',
-                class: 'font-italic',
-                sortable: true,
-              },
-              {
-                title: 'IRR',
-                key: 'irr',
-                align: 'center',
-                class: 'font-italic',
-                sortable: true,
-              },
-            ],
+            class: 'font-italic',
+            sortable: true,
           },
         ],
       },
-    ])
+      {
+        title: 'Commission',
+        key: 'commission',
+        align: 'center',
+        sortable: false,
+        children: [
+          {
+            title: 'Amount',
+            key: 'commission',
+            align: 'center',
+            sortable: true,
+          },
+          {
+            title: '%',
+            key: 'commission_percentage',
+            align: 'center',
+            class: 'font-italic',
+            sortable: true,
+          },
+        ],
+      },
+      {
+        title: 'Total Return',
+        key: 'total',
+        align: 'center',
+        sortable: false,
+        children: [
+          {
+            title: 'Amount',
+            key: 'total_return_amount',
+            align: 'center',
+            sortable: true,
+          },
+          {
+            title: '%',
+            key: 'total_return_percentage',
+            align: 'center',
+            class: 'font-italic',
+            sortable: true,
+          },
+          {
+            title: 'IRR',
+            key: 'irr',
+            align: 'center',
+            class: 'font-italic',
+            sortable: true,
+          },
+        ],
+      },
+    ],
+  },
+])
 
-    const percentageColumns = [
-      'share_of_portfolio',
-      'price_change_percentage',
-      'capital_distribution_percentage',
-      'commission_percentage',
-      'total_return_percentage',
-      'irr',
-      'all_assets_share_of_portfolio_percentage',
-    ]
+const percentageColumns = [
+  'share_of_portfolio',
+  'price_change_percentage',
+  'capital_distribution_percentage',
+  'commission_percentage',
+  'total_return_percentage',
+  'irr',
+  'all_assets_share_of_portfolio_percentage',
+]
 
-    const fetchOpenPositions = async ({
+const fetchOpenPositions = async ({
+  dateFrom,
+  dateTo,
+  page,
+  itemsPerPage,
+  search,
+  sortBy,
+}) => {
+  console.log('[OpenPositionsPage] fetchOpenPositions called with:', {
+    dateFrom,
+    dateTo,
+    page,
+    itemsPerPage,
+    search,
+    sortBy,
+  })
+  cashBalancesLoading.value = true
+  try {
+    const data = await getOpenPositions(
       dateFrom,
       dateTo,
       page,
       itemsPerPage,
       search,
-      sortBy,
-    }) => {
-      console.log('[OpenPositionsPage] fetchOpenPositions called with:', {
-        dateFrom,
-        dateTo,
-        page,
-        itemsPerPage,
-        search,
-        sortBy,
-      })
-      cashBalancesLoading.value = true
-      try {
-        const data = await getOpenPositions(
-          dateFrom,
-          dateTo,
-          page,
-          itemsPerPage,
-          search,
-          sortBy
-        )
-        totals.value = data.portfolio_open_totals
-        cashBalances.value = data.cash_balances
-        return {
-          positions: data.portfolio_open,
-          totals: data.portfolio_open_totals,
-          total_items: data.total_items,
-        }
-      } finally {
-        cashBalancesLoading.value = false
-      }
-    }
-
-    const flattenHeaders = (headers) => {
-      return headers.flatMap((header) => {
-        if (header.children) {
-          return flattenHeaders(header.children)
-        }
-        return header
-      })
-    }
-
-    const flattenedHeaders = computed(() => {
-      return flattenHeaders(headers.value)
-    })
-
-    const getColspan = (header) => {
-      if (!header.children) return 1
-      return header.children.reduce((acc, child) => acc + getColspan(child), 0)
-    }
-
-    const getRowspan = (header, level) => {
-      if (!header.children) return 3 - level
-      if (level === 1 && !header.children[0].children) return 1
-      return 1
-    }
-
+      sortBy
+    )
+    totals.value = data.portfolio_open_totals
+    cashBalances.value = data.cash_balances
     return {
-      headers,
-      percentageColumns,
-      fetchOpenPositions,
-      totals,
-      flattenedHeaders,
-      getColspan,
-      getRowspan,
-      cashBalances,
-      cashBalancesLoading,
+      positions: data.portfolio_open,
+      totals: data.portfolio_open_totals,
+      total_items: data.total_items,
     }
-  },
+  } finally {
+    cashBalancesLoading.value = false
+  }
+}
+
+const flattenHeaders = (headers) => {
+  return headers.flatMap((header) => {
+    if (header.children) {
+      return flattenHeaders(header.children)
+    }
+    return header
+  })
+}
+
+const flattenedHeaders = computed(() => {
+  return flattenHeaders(headers.value)
+})
+
+const getColspan = (header) => {
+  if (!header.children) return 1
+  return header.children.reduce((acc, child) => acc + getColspan(child), 0)
+}
+
+const getRowspan = (header, level) => {
+  if (!header.children) return 3 - level
+  if (level === 1 && !header.children[0].children) return 1
+  return 1
 }
 </script>
 

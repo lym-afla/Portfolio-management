@@ -23,6 +23,7 @@ from constants import (
 )
 from core.balance_tracker import BalanceTracker
 from database.serializers import FXTransactionSerializer, TransactionSerializer
+from services.transactions import total_cash_flow
 
 User = get_user_model()
 
@@ -46,7 +47,7 @@ class TestCashFlowCalculation:
         )
 
         # Expected: -100 * 150.00 - 9.95 = -15,009.95
-        cash_flow = transaction.total_cash_flow()
+        cash_flow = total_cash_flow(transaction)
         assert cash_flow == Decimal("-15009.95")
 
     def test_sell_transaction_cash_flow(self, user, account, stock):
@@ -64,7 +65,7 @@ class TestCashFlowCalculation:
         )
 
         # Expected: -100 * 160.00 - 9.95 = 15,990.05
-        cash_flow = transaction.total_cash_flow()
+        cash_flow = total_cash_flow(transaction)
         assert cash_flow == Decimal("15990.05")
 
     def test_bond_buy_with_aci(self, user, account, bond):
@@ -85,7 +86,7 @@ class TestCashFlowCalculation:
 
         # Effective price: 98.5% * 1000 / 100 = 985.00 per bond
         # Expected: -(-10) * 985.00 + (-25.50) - 15.00 = -9,890.50
-        cash_flow = transaction.total_cash_flow()
+        cash_flow = total_cash_flow(transaction)
         assert cash_flow == Decimal("-9890.50")
 
     def test_cash_in_transaction(self, user, account):
@@ -99,7 +100,7 @@ class TestCashFlowCalculation:
             currency="USD",
         )
 
-        cash_flow = transaction.total_cash_flow()
+        cash_flow = total_cash_flow(transaction)
         assert cash_flow == Decimal("10000.00")
 
     def test_dividend_transaction(self, user, account, stock):
@@ -114,7 +115,7 @@ class TestCashFlowCalculation:
             currency="USD",
         )
 
-        cash_flow = transaction.total_cash_flow()
+        cash_flow = total_cash_flow(transaction)
         assert cash_flow == Decimal("150.00")
 
 

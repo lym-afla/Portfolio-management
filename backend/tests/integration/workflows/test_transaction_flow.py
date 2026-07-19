@@ -24,6 +24,10 @@ from common.models import (
     Transactions,
 )
 from users.models import CustomUser
+from services.fx import get_rate as fx_get_rate
+from services.positions import position as get_position
+from services.pricing import price_at_date
+from services.transactions import total_cash_flow
 
 
 @pytest.mark.integration
@@ -71,7 +75,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify position after buy
-        position_after_buy = self.asset.position(date(2023, 1, 16), self.user)
+        position_after_buy = get_position(self.asset,date(2023, 1, 16), self.user)
         assert position_after_buy == Decimal("100")
 
         # Step 2: Create price history
@@ -92,13 +96,13 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify position after sell
-        position_after_sell = self.asset.position(date(2023, 3, 16), self.user)
+        position_after_sell = get_position(self.asset,date(2023, 3, 16), self.user)
         assert position_after_sell == Decimal("0")
 
         # Step 4: Verify financial results
         # Commission is negative expense, so add to cash_flow
-        total_cost = buy_tx.total_cash_flow()
-        total_proceeds = sell_tx.total_cash_flow()
+        total_cost = total_cash_flow(buy_tx)
+        total_proceeds = total_cash_flow(sell_tx)
         net_profit = total_proceeds + total_cost
 
         expected_profit = (Decimal("55.00") - Decimal("50.00")) * Decimal("100") - Decimal("10.00")
@@ -133,7 +137,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify remaining position
-        remaining_position = self.asset.position(date(2023, 3, 16), self.user)
+        remaining_position = get_position(self.asset,date(2023, 3, 16), self.user)
         assert remaining_position == Decimal("150")
 
         # Additional purchase
@@ -150,7 +154,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Final position
-        final_position = self.asset.position(date(2023, 5, 16), self.user)
+        final_position = get_position(self.asset,date(2023, 5, 16), self.user)
         assert final_position == Decimal("175")
 
     def test_dividend_reinvestment_workflow(self):
@@ -201,7 +205,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify position after reinvestment
-        final_position = self.asset.position(date(2023, 3, 17), self.user)
+        final_position = get_position(self.asset,date(2023, 3, 17), self.user)
         expected_position = Decimal("100") + Decimal("1.98")
         assert abs(final_position - expected_position) < Decimal("0.01")
 
@@ -256,7 +260,7 @@ class TestCompleteTransactionWorkflows:
         )
 
         # Verify tax loss calculation
-        loss_amount = loss_sale.total_cash_flow() + (purchase_high.total_cash_flow())
+        loss_amount = total_cash_flow(loss_sale) + (total_cash_flow(purchase_high))
         expected_loss = (Decimal("7000")) + (Decimal("-10000") - Decimal("10") * Decimal("2"))
         assert loss_amount == expected_loss
 
@@ -292,7 +296,7 @@ class TestCompleteTransactionWorkflows:
 
         # Calculate total investment and average price
         total_shares = sum(tx.quantity for tx in monthly_investments)
-        total_cost = sum(tx.total_cash_flow() for tx in monthly_investments)
+        total_cost = sum(total_cash_flow(tx) for tx in monthly_investments)
         average_price = -total_cost / total_shares
 
         assert total_shares > 0
@@ -304,7 +308,7 @@ class TestCompleteTransactionWorkflows:
         Prices.objects.create(date=date(2023, 7, 15), security=self.asset, price=final_price)
 
         # Calculate final position value
-        final_position = self.asset.position(date(2023, 7, 15), self.user)
+        final_position = get_position(self.asset,date(2023, 7, 15), self.user)
         final_value = final_position * final_price
 
         # Calculate total return
@@ -529,12 +533,12 @@ class TestMultiAssetWorkflows:
             total_value = Decimal("0")
 
             for asset in [usd_asset, eur_asset, gbp_asset]:
-                position = asset.position(date(2023, 6, 15), user)
-                local_price = asset.price_at_date(date(2023, 6, 15)).price
+                position = get_position(asset, date(2023, 6, 15), user)
+                local_price = price_at_date(asset, date(2023, 6, 15)).price
                 local_value = position * local_price
 
                 if asset.currency != base_currency:
-                    fx_rate = FX.get_rate(asset.currency, base_currency, date(2023, 6, 15))["FX"]
+                    fx_rate = fx_get_rate(asset.currency, base_currency, date(2023, 6, 15))["FX"]
                     converted_value = local_value * fx_rate
                 else:
                     converted_value = local_value
@@ -595,7 +599,7 @@ class TestErrorHandlingWorkflows:
         )
 
         # Current position
-        current_position = self.asset.position(date(2023, 3, 15), self.user)
+        current_position = get_position(self.asset,date(2023, 3, 15), self.user)
         assert current_position == Decimal("100")
 
         # Try to sell more than available (should be handled by business logic)
@@ -613,7 +617,7 @@ class TestErrorHandlingWorkflows:
         )
 
         # Position after oversell attempt
-        final_position = self.asset.position(date(2023, 3, 16), self.user)
+        final_position = get_position(self.asset,date(2023, 3, 16), self.user)
         assert final_position == Decimal("-50")  # Should allow negative positions (shorting)
 
     def test_invalid_transaction_recovery(self):
@@ -634,7 +638,7 @@ class TestErrorHandlingWorkflows:
 
         # Verify valid transaction was created
         assert valid_transaction.quantity == Decimal("100")
-        assert valid_transaction.total_cash_flow() < 0
+        assert total_cash_flow(valid_transaction) < 0
 
     def test_transaction_sequence_interruption(self):
         """Test handling of interrupted transaction sequences."""
@@ -675,7 +679,7 @@ class TestErrorHandlingWorkflows:
 
         # Position should be cumulative
         cumulative_position = sum(tx.quantity for tx in transactions)
-        actual_position = self.asset.position(date(2023, 2, 16), self.user)
+        actual_position = get_position(self.asset,date(2023, 2, 16), self.user)
         assert cumulative_position == actual_position
 
     def test_cross_currency_transaction_validation(self, multi_currency_user):
@@ -736,7 +740,7 @@ class TestErrorHandlingWorkflows:
         assert fx_tx.from_amount == Decimal("1000.00")
         assert fx_tx.to_amount == Decimal("920.00")
         # Cash flow is negative for purchases, equals the amount used
-        assert eur_purchase.total_cash_flow() == -fx_tx.to_amount + fx_tx.commission
+        assert total_cash_flow(eur_purchase) == -fx_tx.to_amount + fx_tx.commission
 
     def test_business_rule_enforcement(self):
         """Test enforcement of business rules in workflows."""
@@ -812,7 +816,7 @@ class TestErrorHandlingWorkflows:
 
         # Verify final position is calculated correctly
         # Position includes initial buy of 100 shares plus concurrent transactions
-        final_position = self.asset.position(same_date, self.user)
+        final_position = get_position(self.asset,same_date, self.user)
         expected_concurrent = sum(tx.quantity for tx in concurrent_transactions)
         # Total includes the initial 100 shares bought earlier
         expected_position = Decimal("100") + expected_concurrent
@@ -820,5 +824,5 @@ class TestErrorHandlingWorkflows:
 
         # Test position calculation with date filtering
         next_day = same_date + timedelta(days=1)
-        next_day_position = self.asset.position(next_day, self.user)
+        next_day_position = get_position(self.asset,next_day, self.user)
         assert next_day_position == expected_position

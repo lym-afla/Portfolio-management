@@ -31,77 +31,66 @@
   </v-form>
 </template>
 
-<script>
+<script setup>
 import { ref, reactive } from 'vue'
 import logger from '@/utils/logger'
 
-export default {
-  props: {
-    loading: Boolean,
-  },
-  emits: ['submit'],
-  setup(props, { emit }) {
-    const username = ref('')
-    const password = ref('')
-    const fieldErrors = reactive({
-      username: [],
-      password: [],
-    })
-    const generalError = ref('')
+defineProps({
+  loading: Boolean,
+})
+const emit = defineEmits(['submit'])
 
-    const clearError = (field) => {
-      fieldErrors[field] = []
-      generalError.value = ''
-    }
+const username = ref('')
+const password = ref('')
+const fieldErrors = reactive({
+  username: [],
+  password: [],
+})
+const generalError = ref('')
 
-    const submitForm = () => {
-      // Clear previous errors
-      fieldErrors.username = []
-      fieldErrors.password = []
-      generalError.value = ''
-
-      const credentials = { username: username.value, password: password.value }
-      logger.log('Unknown', 'Submitting form with data:', credentials)
-      emit('submit', credentials)
-    }
-
-    const setErrors = (errors) => {
-      logger.log('Unknown', 'Setting errors:', errors)
-      if (typeof errors === 'string') {
-        if (errors.includes('Proxy')) {
-          generalError.value =
-            'Proxy error. Please check your internet connection. Or application server is down.'
-        } else {
-          generalError.value = errors
-        }
-      } else if (typeof errors === 'object') {
-        Object.keys(errors).forEach((field) => {
-          if (field in fieldErrors) {
-            fieldErrors[field] = Array.isArray(errors[field])
-              ? errors[field]
-              : [errors[field]]
-          } else if (field === 'non_field_errors') {
-            generalError.value = Array.isArray(errors[field])
-              ? errors[field][0]
-              : errors[field]
-          } else {
-            generalError.value = errors[field]
-          }
-        })
-      }
-      logger.log('Unknown', 'Field errors after setting:', fieldErrors)
-      logger.log('Unknown', 'General error after setting:', generalError.value)
-    }
-
-    return {
-      username,
-      password,
-      fieldErrors,
-      generalError,
-      submitForm,
-      setErrors,
-      clearError,
-    }
-  },
+function clearError(field) {
+  fieldErrors[field] = []
+  generalError.value = ''
 }
+
+function submitForm() {
+  // Clear previous errors
+  fieldErrors.username = []
+  fieldErrors.password = []
+  generalError.value = ''
+
+  const credentials = { username: username.value, password: password.value }
+  logger.log('Unknown', 'Submitting form with data:', credentials)
+  emit('submit', credentials)
+}
+
+function setErrors(errors) {
+  logger.log('Unknown', 'Setting errors:', errors)
+  if (typeof errors === 'string') {
+    if (errors.includes('Proxy')) {
+      generalError.value =
+        'Proxy error. Please check your internet connection. Or application server is down.'
+    } else {
+      generalError.value = errors
+    }
+  } else if (typeof errors === 'object') {
+    Object.keys(errors).forEach((field) => {
+      if (field in fieldErrors) {
+        fieldErrors[field] = Array.isArray(errors[field])
+          ? errors[field]
+          : [errors[field]]
+      } else if (field === 'non_field_errors') {
+        generalError.value = Array.isArray(errors[field])
+          ? errors[field][0]
+          : errors[field]
+      } else {
+        generalError.value = errors[field]
+      }
+    })
+  }
+  logger.log('Unknown', 'Field errors after setting:', fieldErrors)
+  logger.log('Unknown', 'General error after setting:', generalError.value)
+}
+
+defineExpose({ setErrors, clearError })
 </script>

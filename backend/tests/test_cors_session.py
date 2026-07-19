@@ -2,11 +2,22 @@
 
 This module contains integration tests for CORS headers
 and session cookie persistence across requests.
+
+These tests require a live Django server running on localhost:8000 and are
+therefore skipped in normal CI. Run them manually against a dev server:
+
+    cd backend && uv run python manage.py runserver
+    pytest tests/test_cors_session.py --no-header -rN -s
 """
 
+import pytest
 import requests
 
 
+@pytest.mark.skip(
+    reason="Requires a live Django server on localhost:8000; run manually"
+    " against a dev server (manage.py runserver). Not a unit test."
+)
 def test_cors_session_behavior():
     """Test session behavior with CORS headers."""
     print("=== Testing CORS Session Behavior ===")

@@ -259,121 +259,76 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted } from 'vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'AccountMatchingDialog',
-
-  props: {
-    modelValue: Boolean,
-    brokerName: {
-      type: String,
-      default: 'Broker',
-      required: false,
-    },
-    tinkoffAccounts: {
-      type: Array,
-      required: true,
-    },
-    dbAccounts: {
-      type: Array,
-      required: true,
-    },
-    matchedPairs: {
-      type: Array,
-      default: () => [],
-    },
+const props = defineProps({
+  modelValue: Boolean,
+  brokerName: {
+    type: String,
+    default: 'Broker',
+    required: false,
   },
+  tinkoffAccounts: {
+    type: Array,
+    required: true,
+  },
+  dbAccounts: {
+    type: Array,
+    required: true,
+  },
+  matchedPairs: {
+    type: Array,
+    default: () => [],
+  },
+})
 
-  emits: [
-    'update:modelValue',
-    'accounts-matched',
-    'create-account',
-    'use-existing-matches',
-  ],
+const emit = defineEmits([
+  'update:modelValue',
+  'accounts-matched',
+  'create-account',
+  'use-existing-matches',
+])
 
-  setup(props, { emit }) {
-    // Add debugging onMounted hook
-    onMounted(() => {
-      logger.debug('AccountMatchingDialog', 'Component mounted with data:')
-      logger.debug('AccountMatchingDialog', 'matchedPairs:', props.matchedPairs)
+// Helper to log detailed structure of matched pairs
+const logMatchedPairsStructure = () => {
+  if (!props.matchedPairs || props.matchedPairs.length === 0) {
+    logger.debug('AccountMatchingDialog', 'No matched pairs available')
+    return
+  }
+
+  logger.group('AccountMatchingDialog - Matched Pairs Structure')
+  props.matchedPairs.forEach((pair, index) => {
+    logger.debug('AccountMatchingDialog', `Pair #${index + 1}:`)
+    const keys = Object.keys(pair)
+    keys.forEach((key) => {
       logger.debug(
         'AccountMatchingDialog',
-        'tinkoffAccounts:',
-        props.tinkoffAccounts
+        `  ${key}: ${JSON.stringify(pair[key])}`
       )
-      logger.debug('AccountMatchingDialog', 'dbAccounts:', props.dbAccounts)
-
-      // Log detailed structure of matched pairs
-      logMatchedPairsStructure()
-
-      // Check if IDs in matchedPairs exist in the accounts arrays
-      if (props.matchedPairs && props.matchedPairs.length > 0) {
-        props.matchedPairs.forEach((pair) => {
-          const tinkoffExists = props.tinkoffAccounts.some(
-            (acc) => String(acc.id) === String(pair.tinkoff_account_id)
-          )
-          const dbExists = props.dbAccounts.some(
-            (acc) => String(acc.id) === String(pair.db_account_id)
-          )
-
-          logger.debug(
-            'AccountMatchingDialog',
-            `Pair check - Tinkoff ID: ${pair.tinkoff_account_id} exists: ${tinkoffExists}, DB ID: ${pair.db_account_id} exists: ${dbExists}`
-          )
-
-          // Check if pair contains names directly
-          if (pair.tinkoff_account?.name || pair.db_account?.name) {
-            logger.info(
-              'AccountMatchingDialog',
-              'Found embedded names in matchedPairs:',
-              { tinkoff: pair.tinkoff_account?.name, db: pair.db_account?.name }
-            )
-          }
-        })
-      }
     })
+  })
+  logger.groupEnd()
+}
 
-    // Helper to log detailed structure of matched pairs
-    const logMatchedPairsStructure = () => {
-      if (!props.matchedPairs || props.matchedPairs.length === 0) {
-        logger.debug('AccountMatchingDialog', 'No matched pairs available')
-        return
-      }
+// Account pairs for matching
+const accountPairs = ref([{ tinkoffAccount: null, dbAccount: null }])
 
-      logger.group('AccountMatchingDialog - Matched Pairs Structure')
-      props.matchedPairs.forEach((pair, index) => {
-        logger.debug('AccountMatchingDialog', `Pair #${index + 1}:`)
-        const keys = Object.keys(pair)
-        keys.forEach((key) => {
-          logger.debug(
-            'AccountMatchingDialog',
-            `  ${key}: ${JSON.stringify(pair[key])}`
-          )
-        })
-      })
-      logger.groupEnd()
-    }
+// Create new account fields
+const createNewAccount = ref(false)
+const newAccountName = ref('')
+const newAccountComment = ref('')
+const newAccountTinkoffAccount = ref(null)
+const errorMessage = ref('')
 
-    // Account pairs for matching
-    const accountPairs = ref([{ tinkoffAccount: null, dbAccount: null }])
+const dialogModel = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+})
 
-    // Create new account fields
-    const createNewAccount = ref(false)
-    const newAccountName = ref('')
-    const newAccountComment = ref('')
-    const newAccountTinkoffAccount = ref(null)
-    const errorMessage = ref('')
-
-    const dialogModel = computed({
-      get: () => props.modelValue,
-      set: (value) => emit('update:modelValue', value),
-    })
-
-    // Helper methods to get names for the already matched pairs display
-    const getTinkoffAccountName = (id) => {
+// Helper methods to get names for the already matched pairs display
+const getTinkoffAccountName = (id) => {
       // First check if the matched pair has the full tinkoff_account object
       const pair = props.matchedPairs.find(
         (p) => String(p.tinkoff_account_id) === String(id)
@@ -624,41 +579,56 @@ export default {
       }
     }
 
-    const closeDialog = () => {
-      dialogModel.value = false
-      accountPairs.value = [{ tinkoffAccount: null, dbAccount: null }]
-      createNewAccount.value = false
-      newAccountName.value = ''
-      newAccountComment.value = ''
-      newAccountTinkoffAccount.value = null
-      errorMessage.value = ''
-    }
-
-    return {
-      dialogModel,
-      accountPairs,
-      createNewAccount,
-      newAccountName,
-      newAccountComment,
-      newAccountTinkoffAccount,
-      errorMessage,
-      isValid,
-      canAddMorePairs,
-      hasUnmatchedAccounts,
-      availableTinkoffAccounts,
-      availableDbAccounts,
-      remainingTinkoffAccounts,
-      getTinkoffAccountName,
-      getDbAccountName,
-      addPair,
-      removePair,
-      handleCreateNewChange,
-      confirmSelection,
-      continueWithExistingMatches,
-      closeDialog,
-    }
-  },
+const closeDialog = () => {
+  dialogModel.value = false
+  accountPairs.value = [{ tinkoffAccount: null, dbAccount: null }]
+  createNewAccount.value = false
+  newAccountName.value = ''
+  newAccountComment.value = ''
+  newAccountTinkoffAccount.value = null
+  errorMessage.value = ''
 }
+
+// Add debugging onMounted hook
+onMounted(() => {
+  logger.debug('AccountMatchingDialog', 'Component mounted with data:')
+  logger.debug('AccountMatchingDialog', 'matchedPairs:', props.matchedPairs)
+  logger.debug(
+    'AccountMatchingDialog',
+    'tinkoffAccounts:',
+    props.tinkoffAccounts
+  )
+  logger.debug('AccountMatchingDialog', 'dbAccounts:', props.dbAccounts)
+
+  // Log detailed structure of matched pairs
+  logMatchedPairsStructure()
+
+  // Check if IDs in matchedPairs exist in the accounts arrays
+  if (props.matchedPairs && props.matchedPairs.length > 0) {
+    props.matchedPairs.forEach((pair) => {
+      const tinkoffExists = props.tinkoffAccounts.some(
+        (acc) => String(acc.id) === String(pair.tinkoff_account_id)
+      )
+      const dbExists = props.dbAccounts.some(
+        (acc) => String(acc.id) === String(pair.db_account_id)
+      )
+
+      logger.debug(
+        'AccountMatchingDialog',
+        `Pair check - Tinkoff ID: ${pair.tinkoff_account_id} exists: ${tinkoffExists}, DB ID: ${pair.db_account_id} exists: ${dbExists}`
+      )
+
+      // Check if pair contains names directly
+      if (pair.tinkoff_account?.name || pair.db_account?.name) {
+        logger.info(
+          'AccountMatchingDialog',
+          'Found embedded names in matchedPairs:',
+          { tinkoff: pair.tinkoff_account?.name, db: pair.db_account?.name }
+        )
+      }
+    })
+  }
+})
 </script>
 
 <style scoped>

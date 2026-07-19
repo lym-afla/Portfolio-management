@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { vi } from 'vitest'
 import { ref } from 'vue'
 import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
 import { getBrokersWithTokens } from '@/services/api'
@@ -6,13 +7,13 @@ import { generateVuetifyStubs } from '../test-utils'
 import { useWebSocket } from '@/composables/useWebSocket'
 
 // Mock API calls
-jest.mock('@/services/api', () => ({
-  getBrokersWithTokens: jest.fn()
+vi.mock('@/services/api', () => ({
+  getBrokersWithTokens: vi.fn()
 }))
 
 // Mock WebSocket composable
-jest.mock('@/composables/useWebSocket', () => ({
-  useWebSocket: jest.fn()
+vi.mock('@/composables/useWebSocket', () => ({
+  useWebSocket: vi.fn()
 }))
 
 // Store original console methods
@@ -21,8 +22,8 @@ const originalConsoleError = console.error
 
 beforeAll(() => {
   // Disable console warnings and errors during tests
-  console.warn = jest.fn()
-  console.error = jest.fn()
+  console.warn = vi.fn()
+  console.error = vi.fn()
 })
 
 afterAll(() => {
@@ -36,7 +37,7 @@ describe('TransactionImportDialog', () => {
 
   beforeEach(() => {
     // Reset API mocks
-    jest.clearAllMocks()
+    vi.clearAllMocks()
 
     // Mock API responses
     getBrokersWithTokens.mockResolvedValue([
@@ -50,10 +51,10 @@ describe('TransactionImportDialog', () => {
     useWebSocket.mockReturnValue({
       isConnected,
       lastMessage,
-      sendMessage: jest.fn(),
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      reset: jest.fn()
+      sendMessage: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      reset: vi.fn()
     })
 
     // Create a div to mount the component

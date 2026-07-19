@@ -97,128 +97,112 @@
   </v-dialog>
 </template>
 
-<script>
+<script setup>
 import { ref, reactive, shallowRef, computed, watch } from 'vue'
 import { getSecurities } from '@/services/api'
 import { createMerger } from '@/services/api'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'MergerDialog',
-  emits: ['created'],
-  setup(props, { emit }) {
-    const dialog = ref(false)
-    const isSubmitting = ref(false)
-    const error = ref(null)
-    const securities = shallowRef([])
+const emit = defineEmits(['created'])
 
-    const form = reactive({
-      oldSecurityId: null,
-      newSecurityId: null,
-      mergerDate: new Date().toISOString().split('T')[0],
-      conversionRatio: null,
-      cashPerShare: null,
-      notes: null,
-    })
+const dialog = ref(false)
+const isSubmitting = ref(false)
+const error = ref(null)
+const securities = shallowRef([])
 
-    const isAllCash = computed(() => !form.newSecurityId)
-    const isAllStock = computed(() => !!form.newSecurityId && !form.cashPerShare)
+const form = reactive({
+  oldSecurityId: null,
+  newSecurityId: null,
+  mergerDate: new Date().toISOString().split('T')[0],
+  conversionRatio: null,
+  cashPerShare: null,
+  notes: null,
+})
 
-    const mergerType = computed(() => {
-      if (isAllCash.value) return 'All-cash'
-      if (isAllStock.value) return 'All-stock'
-      return 'Hybrid'
-    })
+const isAllCash = computed(() => !form.newSecurityId)
+const isAllStock = computed(() => !!form.newSecurityId && !form.cashPerShare)
 
-    const preview = computed(() => {
-      if (!form.oldSecurityId || !form.conversionRatio) return null
-      const ratio = parseFloat(form.conversionRatio) || 0
-      const cash = parseFloat(form.cashPerShare) || 0
-      const newSec = securities.value.find(s => s.id === form.newSecurityId)
-      return {
-        type: mergerType.value,
-        newQuantity: form.newSecurityId ? `${ratio} per share` : null,
-        newSecurityName: newSec ? newSec.name : 'N/A',
-        cashTotal: cash > 0 ? `${cash} per share` : null,
-      }
-    })
+const mergerType = computed(() => {
+  if (isAllCash.value) return 'All-cash'
+  if (isAllStock.value) return 'All-stock'
+  return 'Hybrid'
+})
 
-    const isFormValid = computed(() => {
-      if (!form.oldSecurityId || !form.mergerDate) return false
-      if (form.newSecurityId && !form.conversionRatio) return false
-      if (!form.newSecurityId && !form.cashPerShare) return false
-      return true
-    })
+const preview = computed(() => {
+  if (!form.oldSecurityId || !form.conversionRatio) return null
+  const ratio = parseFloat(form.conversionRatio) || 0
+  const cash = parseFloat(form.cashPerShare) || 0
+  const newSec = securities.value.find((s) => s.id === form.newSecurityId)
+  return {
+    type: mergerType.value,
+    newQuantity: form.newSecurityId ? `${ratio} per share` : null,
+    newSecurityName: newSec ? newSec.name : 'N/A',
+    cashTotal: cash > 0 ? `${cash} per share` : null,
+  }
+})
 
-    const validateConversionRatio = () => {
-      if (!form.newSecurityId) return true
-      if (!form.conversionRatio) return 'Required when new security is selected'
-      const val = parseFloat(form.conversionRatio)
-      if (isNaN(val) || val <= 0) return 'Must be a positive number'
-      return true
-    }
+const isFormValid = computed(() => {
+  if (!form.oldSecurityId || !form.mergerDate) return false
+  if (form.newSecurityId && !form.conversionRatio) return false
+  if (!form.newSecurityId && !form.cashPerShare) return false
+  return true
+})
 
-    const fetchData = async () => {
-      try {
-        const secData = await getSecurities()
-        const seen = new Set()
-        securities.value = (secData || []).filter(s => {
-          if (seen.has(s.id)) return false
-          seen.add(s.id)
-          return true
-        })
-      } catch (err) {
-        logger.error('MergerDialog', 'Error fetching securities:', err)
-      }
-    }
-
-    watch(dialog, (val) => {
-      if (val) fetchData()
-    })
-
-    const submitForm = async () => {
-      error.value = null
-      isSubmitting.value = true
-      try {
-        const result = await createMerger({
-          oldSecurityId: form.oldSecurityId,
-          newSecurityId: form.newSecurityId || undefined,
-          mergerDate: form.mergerDate,
-          conversionRatio: form.conversionRatio || undefined,
-          cashPerShare: form.cashPerShare || undefined,
-        })
-        emit('created', result)
-        closeDialog()
-      } catch (err) {
-        error.value = typeof err === 'string' ? err : err.error || 'Failed to record merger'
-      } finally {
-        isSubmitting.value = false
-      }
-    }
-
-    const closeDialog = () => {
-      dialog.value = false
-      form.oldSecurityId = null
-      form.newSecurityId = null
-      form.mergerDate = new Date().toISOString().split('T')[0]
-      form.conversionRatio = null
-      form.cashPerShare = null
-      form.notes = null
-      error.value = null
-    }
-
-    return {
-      dialog,
-      form,
-      securities,
-      isSubmitting,
-      error,
-      preview,
-      isFormValid,
-      validateConversionRatio,
-      submitForm,
-      closeDialog,
-    }
-  },
+const validateConversionRatio = () => {
+  if (!form.newSecurityId) return true
+  if (!form.conversionRatio) return 'Required when new security is selected'
+  const val = parseFloat(form.conversionRatio)
+  if (isNaN(val) || val <= 0) return 'Must be a positive number'
+  return true
 }
+
+const fetchData = async () => {
+  try {
+    const secData = await getSecurities()
+    const seen = new Set()
+    securities.value = (secData || []).filter((s) => {
+      if (seen.has(s.id)) return false
+      seen.add(s.id)
+      return true
+    })
+  } catch (err) {
+    logger.error('MergerDialog', 'Error fetching securities:', err)
+  }
+}
+
+const closeDialog = () => {
+  dialog.value = false
+  form.oldSecurityId = null
+  form.newSecurityId = null
+  form.mergerDate = new Date().toISOString().split('T')[0]
+  form.conversionRatio = null
+  form.cashPerShare = null
+  form.notes = null
+  error.value = null
+}
+
+const submitForm = async () => {
+  error.value = null
+  isSubmitting.value = true
+  try {
+    const result = await createMerger({
+      oldSecurityId: form.oldSecurityId,
+      newSecurityId: form.newSecurityId || undefined,
+      mergerDate: form.mergerDate,
+      conversionRatio: form.conversionRatio || undefined,
+      cashPerShare: form.cashPerShare || undefined,
+    })
+    emit('created', result)
+    closeDialog()
+  } catch (err) {
+    error.value =
+      typeof err === 'string' ? err : err.error || 'Failed to record merger'
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+watch(dialog, (val) => {
+  if (val) fetchData()
+})
 </script>

@@ -24,63 +24,73 @@
   </v-container>
 </template>
 
-<script>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 // import axios from 'axios'
-import store from '@/store'
+import { useAuthStore } from '@/stores/auth'
 import LoginForm from '@/components/LoginForm.vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'LoginPage',
-  components: {
-    LoginForm,
-  },
-  setup() {
-    const loading = ref(false)
-    const router = useRouter()
-    const loginForm = ref(null)
+// Shape of the credentials emitted by LoginForm's @submit event.
+interface LoginCredentials {
+  username: string
+  password: string
+}
 
-    const handleLogin = async (credentials) => {
-      logger.log('Unknown', 'Handling login with credentials:', credentials)
-      loading.value = true
+// Shape of the error body thrown by authStore.login (DRF error response).
+interface LoginError {
+  non_field_errors?: string[]
+  [key: string]: unknown
+}
 
-      try {
-        const result = await store.dispatch('login', credentials)
-        console.log(
-          '[LoginPage.vue] Token set in the store:',
-          store.state.accessToken
-        )
-        console.log(
-          '[LoginPage.vue] Token from localStorage:',
-          localStorage.getItem('accessToken')
-        )
-        if (result.success) {
-          logger.log('Unknown', 'Login successful from LoginPage.vue')
-          router.push('/profile')
-        }
-      } catch (error) {
-        logger.log('Unknown', 'Login failed from LoginPage.vue', error)
-        if (error.non_field_errors) {
-          logger.log('Unknown', 'Non-field errors:', error.non_field_errors)
-          loginForm.value.setErrors(error.non_field_errors[0])
-        } else if (error) {
-          logger.log('Unknown', 'Field errors:', error)
-          loginForm.value.setErrors(error)
-        } else {
-          logger.log('Unknown', 'Unknown error')
-          loginForm.value.setErrors(
-            'An unknown error occurred. Please try again.'
-          )
-        }
-      } finally {
-        loading.value = false
-      }
+// Methods exposed by LoginForm via defineExpose.
+interface LoginFormInstance {
+  setErrors: (errors: string | Record<string, unknown>) => void
+  clearError: (field: string) => void
+}
+
+const loading = ref(false)
+const router = useRouter()
+const loginForm = ref<LoginFormInstance | null>(null)
+const authStore = useAuthStore()
+
+const handleLogin = async (credentials: LoginCredentials) => {
+  logger.log('Unknown', 'Handling login with credentials:', credentials)
+  loading.value = true
+
+  try {
+    const result = await authStore.login(credentials)
+    console.log(
+      '[LoginPage.vue] Token set in the store:',
+      authStore.accessToken
+    )
+    console.log(
+      '[LoginPage.vue] Token from localStorage:',
+      localStorage.getItem('accessToken')
+    )
+    if (result.success) {
+      logger.log('Unknown', 'Login successful from LoginPage.vue')
+      router.push('/profile')
     }
-
-    return { loading, handleLogin, loginForm }
-  },
+  } catch (error) {
+    logger.log('Unknown', 'Login failed from LoginPage.vue', error)
+    const loginError = error as LoginError
+    if (loginError.non_field_errors) {
+      logger.log('Unknown', 'Non-field errors:', loginError.non_field_errors)
+      loginForm.value?.setErrors(loginError.non_field_errors[0])
+    } else if (error) {
+      logger.log('Unknown', 'Field errors:', error)
+      loginForm.value?.setErrors(error as Record<string, unknown>)
+    } else {
+      logger.log('Unknown', 'Unknown error')
+      loginForm.value?.setErrors(
+        'An unknown error occurred. Please try again.'
+      )
+    }
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

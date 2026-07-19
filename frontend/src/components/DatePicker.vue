@@ -24,81 +24,69 @@
   </v-container>
 </template>
 
-<script>
+<script setup>
 import { ref, watch } from 'vue'
 import { format, parse, isValid } from 'date-fns'
 
-export default {
-  props: {
-    modelValue: {
-      type: String,
-      default: '',
-    },
-    label: {
-      type: String,
-      default: 'Date',
-    },
-    errorMessage: {
-      type: String,
-      default: '',
-    },
+const props = defineProps({
+  modelValue: {
+    type: String,
+    default: '',
   },
-  emits: ['update:modelValue'],
-  setup(props, { emit }) {
-    const date = ref(props.modelValue ? new Date(props.modelValue) : null)
-    const showDatePicker = ref(false)
-    const inputDate = ref(
-      props.modelValue ? format(new Date(props.modelValue), 'dd/MM/yyyy') : ''
-    )
-
-    const updateDate = (event) => {
-      const value = event.target.value
-      inputDate.value = value
-      if (value && value.length === 10) {
-        const parsedDate = parse(value, 'dd/MM/yyyy', new Date())
-        if (isValid(parsedDate)) {
-          date.value = parsedDate
-          emit('update:modelValue', format(parsedDate, 'yyyy-MM-dd'))
-        }
-      } else {
-        emit('update:modelValue', '')
-      }
-    }
-
-    const formatDate = () => {
-      if (date.value && isValid(date.value)) {
-        inputDate.value = format(date.value, 'dd/MM/yyyy')
-      }
-    }
-
-    const selectDate = (newDate) => {
-      date.value = new Date(newDate)
-      inputDate.value = format(date.value, 'dd/MM/yyyy')
-      emit('update:modelValue', format(date.value, 'yyyy-MM-dd'))
-      showDatePicker.value = false
-    }
-
-    watch(
-      () => props.modelValue,
-      (newValue) => {
-        if (newValue) {
-          date.value = new Date(newValue)
-          inputDate.value = format(date.value, 'dd/MM/yyyy')
-        } else {
-          date.value = null
-          inputDate.value = ''
-        }
-      }
-    )
-
-    return {
-      date,
-      showDatePicker,
-      inputDate,
-      updateDate,
-      formatDate,
-      selectDate,
-    }
+  label: {
+    type: String,
+    default: 'Date',
   },
+  errorMessage: {
+    type: String,
+    default: '',
+  },
+})
+const emit = defineEmits(['update:modelValue'])
+
+const date = ref(props.modelValue ? new Date(props.modelValue) : null)
+const showDatePicker = ref(false)
+const inputDate = ref(
+  props.modelValue ? format(new Date(props.modelValue), 'dd/MM/yyyy') : ''
+)
+
+function updateDate(event) {
+  const value = event.target.value
+  inputDate.value = value
+  if (value && value.length === 10) {
+    const parsedDate = parse(value, 'dd/MM/yyyy', new Date())
+    if (isValid(parsedDate)) {
+      date.value = parsedDate
+      emit('update:modelValue', format(parsedDate, 'yyyy-MM-dd'))
+    }
+  } else {
+    emit('update:modelValue', '')
+  }
 }
+
+function formatDate() {
+  if (date.value && isValid(date.value)) {
+    inputDate.value = format(date.value, 'dd/MM/yyyy')
+  }
+}
+
+function selectDate(newDate) {
+  date.value = new Date(newDate)
+  inputDate.value = format(date.value, 'dd/MM/yyyy')
+  emit('update:modelValue', format(date.value, 'yyyy-MM-dd'))
+  showDatePicker.value = false
+}
+
+watch(
+  () => props.modelValue,
+  (newValue) => {
+    if (newValue) {
+      date.value = new Date(newValue)
+      inputDate.value = format(date.value, 'dd/MM/yyyy')
+    } else {
+      date.value = null
+      inputDate.value = ''
+    }
+  }
+)
 </script>

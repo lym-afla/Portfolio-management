@@ -44,7 +44,7 @@
   </v-card>
 </template>
 
-<script>
+<script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Pie } from 'vue-chartjs'
 import {
@@ -67,91 +67,79 @@ ChartJS.register(
   ChartDataLabels
 )
 
-export default {
-  name: 'BreakdownChart',
-  components: { Pie },
-  props: {
-    title: {
-      type: String,
-      required: true,
-    },
-    data: {
-      type: Object,
-      default: () => ({}),
-    },
-    totalNAV: {
-      type: String,
-    },
-    currency: {
-      type: String,
-      required: true,
-    },
+const props = defineProps({
+  title: {
+    type: String,
+    required: true,
   },
-  setup(props) {
-    const tab = ref('chart')
-    const pieChartOptions = ref({})
-    const colorPalette = ref([])
-
-    const hasData = computed(() => {
-      return (
-        props.data && props.data.data && Object.keys(props.data.data).length > 0
-      )
-    })
-
-    const sortedData = computed(() => {
-      if (!hasData.value) return []
-      return Object.entries(props.data.data)
-        .map(([label, value]) => ({
-          label,
-          value,
-          percentage: props.data.percentage[label],
-        }))
-        .filter(
-          (item) =>
-            item.value !== '–' &&
-            parseFloat(item.value.replace(/[^0-9.-]+/g, '')) !== 0
-        )
-        .sort(
-          (a, b) =>
-            parseFloat(b.value.replace(/[^0-9.-]+/g, '')) -
-            parseFloat(a.value.replace(/[^0-9.-]+/g, ''))
-        )
-    })
-
-    const chartData = computed(() => {
-      if (!hasData.value) return { labels: [], datasets: [] }
-
-      return {
-        labels: sortedData.value.map((item) => item.label),
-        datasets: [
-          {
-            data: sortedData.value.map((item) =>
-              parseFloat(item.value.replace(/[^0-9.-]+/g, ''))
-            ),
-            backgroundColor: colorPalette.value.slice(
-              0,
-              sortedData.value.length
-            ),
-          },
-        ],
-      }
-    })
-    onMounted(async () => {
-      const { pieChartOptions: options, colorPalette: palette } =
-        await getChartOptions()
-      pieChartOptions.value = options
-      colorPalette.value = palette
-    })
-    return {
-      tab,
-      chartData,
-      pieChartOptions,
-      sortedData,
-      hasData,
-      props, // Expose props to the template
-    }
+  data: {
+    type: Object,
+    default: () => ({}),
   },
-}
+  totalNAV: {
+    type: String,
+  },
+  currency: {
+    type: String,
+    required: true,
+  },
+})
+
+const tab = ref('chart')
+const pieChartOptions = ref({})
+const colorPalette = ref([])
+
+const hasData = computed(() => {
+  return (
+    props.data && props.data.data && Object.keys(props.data.data).length > 0
+  )
+})
+
+const sortedData = computed(() => {
+  if (!hasData.value) return []
+  return Object.entries(props.data.data)
+    .map(([label, value]) => ({
+      label,
+      value,
+      percentage: props.data.percentage[label],
+    }))
+    .filter(
+      (item) =>
+        item.value !== '–' &&
+        parseFloat(item.value.replace(/[^0-9.-]+/g, '')) !== 0
+    )
+    .sort(
+      (a, b) =>
+        parseFloat(b.value.replace(/[^0-9.-]+/g, '')) -
+        parseFloat(a.value.replace(/[^0-9.-]+/g, ''))
+    )
+})
+
+const chartData = computed(() => {
+  if (!hasData.value) return { labels: [], datasets: [] }
+
+  return {
+    labels: sortedData.value.map((item) => item.label),
+    datasets: [
+      {
+        data: sortedData.value.map((item) =>
+          parseFloat(item.value.replace(/[^0-9.-]+/g, ''))
+        ),
+        backgroundColor: colorPalette.value.slice(
+          0,
+          sortedData.value.length
+        ),
+      },
+    ],
+  }
+})
+
+onMounted(async () => {
+  const { pieChartOptions: options, colorPalette: palette } =
+    await getChartOptions()
+  pieChartOptions.value = options
+  colorPalette.value = palette
+})
 </script>
 <style scoped>
 .chart-container {

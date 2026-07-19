@@ -17,6 +17,7 @@ dependencies = [
     "django-debug-toolbar",
     "djangorestframework",
     "djangorestframework-simplejwt",
+    "drf-spectacular>=0.30.0",
     "fake-useragent",
     "filelock",
     "fuzzywuzzy",

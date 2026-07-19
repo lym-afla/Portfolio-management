@@ -501,7 +501,7 @@
     @update:model-value="(value) => !value && closeAccountMatching()"
   />
 </template>
-<script>
+<script setup>
 import { ref, watch, onUnmounted, computed, onMounted } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useImportState } from '@/composables/useImportState'
@@ -514,21 +514,12 @@ import SecurityFormDialog from './SecurityFormDialog.vue'
 import AccountMatchingDialog from './AccountMatchingDialog.vue'
 import logger from '@/utils/logger'
 
-export default {
-  name: 'TransactionImportDialog',
-  components: {
-    ProgressDialog,
-    SecurityMappingDialog,
-    TransactionImportProgress,
-    SecurityFormDialog,
-    AccountMatchingDialog,
-  },
-  props: {
-    modelValue: Boolean,
-  },
-  emits: ['update:modelValue', 'import-completed'],
-  setup(props, { emit }) {
-    const dialog = ref(props.modelValue)
+const props = defineProps({
+  modelValue: Boolean,
+})
+const emit = defineEmits(['update:modelValue', 'import-completed'])
+
+const dialog = ref(props.modelValue)
     const file = ref(null)
     const isLoading = ref(false)
     const isAnalyzed = ref(false)
@@ -1168,8 +1159,15 @@ export default {
           // For security errors, keep the connection but handle the error
           handleImportError(message.data.error)
         } else {
-          // For other errors, close the account matching dialog if open
+          // For non-security errors, show the error to the user
           showAccountMatching.value = false
+          showProgressDialog.value = false
+          showSuccessDialog.value = false
+          showSecurityMapping.value = false
+          showTransactionConfirmation.value = false
+
+          errorMessage.value = message.data?.error || 'An unexpected error occurred during import'
+          showErrorDialog.value = true
 
           if (message.type === 'critical_error') {
             // Handle critical errors that require disconnecting
@@ -1640,88 +1638,6 @@ export default {
         errorMessage.value = 'Error sending existing matches to server'
       }
     }
-
-    return {
-      dialog,
-      file,
-      isLoading,
-      isAnalyzed,
-      selectedAccount,
-      accounts,
-      fileId,
-      accountIdentified,
-      identifiedAccount,
-      accountIdentificationComplete,
-      showSuccessDialog,
-      showProgressDialog,
-      currentImported,
-      totalToImport,
-      currentImportMessage,
-      importError,
-      canStopImport,
-      showSecurityMapping,
-      securityToMap,
-      bestMatch,
-      handleFileChange,
-      closeDialog,
-      submitFile,
-      startImport,
-      stopImport,
-      closeSuccessDialog,
-      handleSecuritySelected,
-      handleConfirm,
-      handleSkip,
-      importState,
-      importStats,
-      isConnected,
-      showTransactionConfirmation,
-      currentTransaction,
-      confirmEveryTransaction,
-      isGalaxy,
-      galaxyType,
-      selectedCurrency,
-      currencies,
-      showErrorDialog,
-      errorMessage,
-      closeErrorDialog,
-      handleSecurityAdded,
-      handleSecuritySkipped,
-      showSecurityDialog,
-      securityFormData,
-      confirmDialog,
-      confirmTitle,
-      confirmMessage,
-      handleSecurityConfirm,
-      importMethod,
-      importMethodSelected,
-      selectedBroker: selectedBroker,
-      connectedBrokers: connectedBrokers,
-      dateRange,
-      hasConnectedBrokers,
-      isApiImportValid,
-      accountDisplayItems,
-      selectMethod,
-      confirmMethod,
-      backToSelection,
-      startApiImport,
-      resetImport,
-      showValidation,
-      handleBrokerAccountChange,
-      showAccountSelection,
-      availableAccounts,
-      selectAccount,
-      showAccountMatching,
-      tinkoffAccounts,
-      dbAccounts,
-      matchedPairs,
-      handleAccountsMatched,
-      handleAccountCreation,
-      handleUseExistingMatches,
-      closeAccountMatching,
-      handleCreateSecurityFromMapping,
-    }
-  },
-}
 </script>
 
 <style scoped>

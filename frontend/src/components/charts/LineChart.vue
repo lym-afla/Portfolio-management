@@ -2,7 +2,7 @@
   <Line :data="chartData" :options="options" />
 </template>
 
-<script>
+<script setup>
 import { Line } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -27,18 +27,14 @@ ChartJS.register(
   ChartDataLabels
 )
 
-export default {
-  name: 'LineChart',
-  components: { Line },
-  props: {
-    chartData: {
-      type: Object,
-      required: true,
-    },
-    options: {
-      type: Object,
-      default: () => ({}),
-    },
+defineProps({
+  chartData: {
+    type: Object,
+    required: true,
   },
-}
+  options: {
+    type: Object,
+    default: () => ({}),
+  },
+})
 </script>

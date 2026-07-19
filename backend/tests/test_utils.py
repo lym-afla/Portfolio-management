@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 
 # from utils import chart_dates_old_framework
-from core.chart_utils import _chart_dates
+from services.charts import _chart_dates
 
 
 @pytest.mark.django_db

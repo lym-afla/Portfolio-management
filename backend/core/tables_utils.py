@@ -10,7 +10,20 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.formatting_utils import currency_format
-from core.portfolio_utils import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
+from services.nav import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
+from services.capital import get_capital_distribution, get_commission
+from services.pricing import calculate_value_at_date, price_at_date
+from services.positions import (
+    entry_dates as _positions_entry_dates,
+    exit_dates as _positions_exit_dates,
+    position as _positions_position,
+)
+from services.realized import (
+    calculate_buy_in_price,
+    realized_gain_loss,
+    unrealized_gain_loss,
+)
+from services.transactions import get_price
 
 
 def calculate_positions_table_output(
@@ -86,8 +99,12 @@ def _calculate_closed_table_output_for_api(
     portfolio_closed_totals = {}
 
     for asset in portfolio:
-        exit_dates = list(asset.exit_dates(end_date, user_id, selected_account_ids, start_date))
-        entry_dates = list(asset.entry_dates(end_date, user_id, selected_account_ids))
+        exit_dates = list(
+            _positions_exit_dates(asset, end_date, user_id, selected_account_ids, start_date)
+        )
+        entry_dates = list(
+            _positions_entry_dates(asset, end_date, user_id, selected_account_ids)
+        )
 
         for exit_date in exit_dates:
             currency_used = None if use_default_currency else currency_target
@@ -104,7 +121,9 @@ def _calculate_closed_table_output_for_api(
             }
 
             # Determine entry_date
-            first_entry_date = asset.entry_dates(exit_date, user_id, selected_account_ids)[-1]
+            first_entry_date = _positions_entry_dates(
+                asset, exit_date, user_id, selected_account_ids
+            )[-1]
             entry_date = (
                 start_date if start_date and start_date >= first_entry_date else first_entry_date
             )
@@ -142,11 +161,12 @@ def _calculate_closed_table_output_for_api(
 
             # Calculate entry value and quantity
             if start_date is not None:
-                entry_quantity = asset.position(
-                    entry_date - timedelta(days=1), user_id, selected_account_ids
+                entry_quantity = _positions_position(
+                    asset, entry_date - timedelta(days=1), user_id, selected_account_ids
                 )
                 # Use calculate_value_at_date for proper bond notional handling
-                entry_value = asset.calculate_value_at_date(
+                entry_value = calculate_value_at_date(
+                    asset,
                     entry_date - timedelta(days=1),
                     user_id,
                     currency_used,
@@ -162,7 +182,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                entry_value += transaction.get_price() * abs(transaction.quantity) * fx_rate
+                entry_value += get_price(transaction) * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
             position["entry_value"] = Decimal(entry_value)
@@ -175,7 +195,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                exit_value += transaction.get_price() * abs(transaction.quantity) * fx_rate
+                exit_value += get_price(transaction) * abs(transaction.quantity) * fx_rate
 
             position["exit_value"] = Decimal(exit_value)
 
@@ -194,9 +214,10 @@ def _calculate_closed_table_output_for_api(
             # Calculate capital distribution including dividends after exit_date
             # but before next_entry_date
             if "capital_distribution" in categories:
-                position["capital_distribution"] = asset.get_capital_distribution(
-                    exit_date, user_id, currency_used, selected_account_ids, entry_date
-                ) + asset.get_capital_distribution(
+                position["capital_distribution"] = get_capital_distribution(
+                    asset, exit_date, user_id, currency_used, selected_account_ids, entry_date
+                ) + get_capital_distribution(
+                    asset,
                     next_entry_date,
                     user_id,
                     currency_used,
@@ -212,8 +233,8 @@ def _calculate_closed_table_output_for_api(
                 position["capital_distribution"] = Decimal(0)
 
             if "commission" in categories:
-                position["commission"] = asset.get_commission(
-                    exit_date, user_id, currency_used, selected_account_ids, entry_date
+                position["commission"] = get_commission(
+                    asset, exit_date, user_id, currency_used, selected_account_ids, entry_date
                 )
                 position["commission_percentage"] = (
                     position["commission"] / position["entry_value"]
@@ -342,20 +363,25 @@ def _calculate_open_table_output_for_api(
             "currency": currency_format(None, asset.currency),
         }
 
-        position["current_position"] = asset.position(end_date, user_id, selected_account_ids)
+        position["current_position"] = _positions_position(
+            asset, end_date, user_id, selected_account_ids
+        )
 
         if position["current_position"] == 0:
             print(f"The position is zero for {asset.name}. Skipping this asset.")
             continue
 
-        position_entry_date = asset.entry_dates(end_date, user_id, selected_account_ids)[-1]
+        position_entry_date = _positions_entry_dates(
+            asset, end_date, user_id, selected_account_ids
+        )[-1]
         if "investment_date" in categories:
             position["investment_date"] = position_entry_date
 
         asset_start_date = start_date if start_date is not None else position_entry_date
 
         if asset.type == "Bond":
-            position["entry_price"] = asset.calculate_buy_in_price(
+            position["entry_price"] = calculate_buy_in_price(
+                asset,
                 end_date,
                 user_id,
                 asset.currency,
@@ -363,21 +389,21 @@ def _calculate_open_table_output_for_api(
                 asset_start_date,
             )
         else:
-            position["entry_price"] = asset.calculate_buy_in_price(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["entry_price"] = calculate_buy_in_price(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )
         if position["entry_price"] == 0:
-            position["entry_price"] = asset.calculate_buy_in_price(
-                end_date, user_id, currency_used, selected_account_ids
+            position["entry_price"] = calculate_buy_in_price(
+                asset, end_date, user_id, currency_used, selected_account_ids
             )
         position["entry_value"] = position["entry_price"] * position["current_position"]
 
         if "current_value" in categories:
             # Use percentage of par for bonds without currency effect
             if asset.type == "Bond":
-                asset_price = asset.price_at_date(end_date, asset.currency)
+                asset_price = price_at_date(asset, end_date, asset.currency)
             else:
-                asset_price = asset.price_at_date(end_date, currency_used)
+                asset_price = price_at_date(asset, end_date, currency_used)
 
             if asset_price is not None:
                 position["current_price"] = asset_price.price
@@ -385,8 +411,8 @@ def _calculate_open_table_output_for_api(
                 position["current_price"] = position["entry_price"]
 
             # Use calculate_value_at_date for proper bond notional handling
-            position["current_value"] = asset.calculate_value_at_date(
-                end_date, user_id, currency_used, selected_account_ids
+            position["current_value"] = calculate_value_at_date(
+                asset, end_date, user_id, currency_used, selected_account_ids
             )
             position["share_of_portfolio"] = position["current_value"] / portfolio_NAV
 
@@ -395,15 +421,15 @@ def _calculate_open_table_output_for_api(
             ]
 
         if "realized_gl" in categories:
-            position["realized_gl"] = asset.realized_gain_loss(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["realized_gl"] = realized_gain_loss(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )["current_position"]["total"]
         else:
             position["realized_gl"] = Decimal(0)
 
         if "unrealized_gl" in categories:
-            position["unrealized_gl"] = asset.unrealized_gain_loss(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["unrealized_gl"] = unrealized_gain_loss(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )["total"]
         else:
             position["unrealized_gl"] = Decimal(0)
@@ -415,8 +441,8 @@ def _calculate_open_table_output_for_api(
         )
 
         if "capital_distribution" in categories:
-            position["capital_distribution"] = asset.get_capital_distribution(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["capital_distribution"] = get_capital_distribution(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )
             position["capital_distribution_percentage"] = (
                 position["capital_distribution"] / position["entry_value"]
@@ -427,8 +453,8 @@ def _calculate_open_table_output_for_api(
             position["capital_distribution"] = Decimal(0)
 
         if "commission" in categories:
-            position["commission"] = asset.get_commission(
-                end_date, user_id, currency_used, selected_account_ids, asset_start_date
+            position["commission"] = get_commission(
+                asset, end_date, user_id, currency_used, selected_account_ids, asset_start_date
             )
             position["commission_percentage"] = (
                 position["commission"] / position["entry_value"]
@@ -477,7 +503,8 @@ def _calculate_open_table_output_for_api(
                 elif key == "current_value":
                     addition = position["current_value"]
                 elif key == "realized_gl":
-                    addition = asset.realized_gain_loss(
+                    addition = realized_gain_loss(
+                        asset,
                         end_date,
                         user_id,
                         currency_target,
@@ -485,7 +512,8 @@ def _calculate_open_table_output_for_api(
                         asset_start_date,
                     )["current_position"]["total"]
                 elif key == "unrealized_gl":
-                    addition = asset.unrealized_gain_loss(
+                    addition = unrealized_gain_loss(
+                        asset,
                         end_date,
                         user_id,
                         currency_target,
@@ -493,7 +521,8 @@ def _calculate_open_table_output_for_api(
                         asset_start_date,
                     )["total"]
                 elif key == "capital_distribution":
-                    addition = asset.get_capital_distribution(
+                    addition = get_capital_distribution(
+                        asset,
                         end_date,
                         user_id,
                         currency_target,
@@ -501,7 +530,8 @@ def _calculate_open_table_output_for_api(
                         asset_start_date,
                     )
                 elif key == "commission":
-                    addition = asset.get_commission(
+                    addition = get_commission(
+                        asset,
                         end_date,
                         user_id,
                         currency_target,

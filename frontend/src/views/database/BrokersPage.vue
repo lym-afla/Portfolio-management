@@ -148,173 +148,139 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, onMounted, watch, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAppStore } from '@/stores/app'
 import { getBrokersTable, deleteBroker } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import { useTableSettings } from '@/composables/useTableSettings'
 import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
 
-export default {
-  name: 'BrokersPage',
-  components: {
-    BrokerFormDialog,
+const appStore = useAppStore()
+const { handleApiError } = useErrorHandler()
+
+const {
+  itemsPerPage,
+  currentPage,
+  sortBy,
+  search,
+  handlePageChange,
+  handleItemsPerPageChange,
+  handleSortChange,
+} = useTableSettings()
+
+const loading = ref(false)
+const tableLoading = ref(false)
+const brokers = ref([])
+const totalItems = ref(0)
+const showBrokerDialog = ref(false)
+const editingBroker = ref(null)
+const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
+const pageCount = computed(() =>
+  Math.ceil(totalItems.value / itemsPerPage.value)
+)
+const totals = ref({})
+
+const headers = [
+  { title: 'Name', key: 'name', align: 'start', sortable: true },
+  { title: 'Country', key: 'country', align: 'center', sortable: true },
+  {
+    title: 'Accounts',
+    key: 'no_of_accounts',
+    align: 'center',
+    sortable: true,
   },
-  setup() {
-    const store = useStore()
-    const { handleApiError } = useErrorHandler()
-
-    const {
-      itemsPerPage,
-      currentPage,
-      sortBy,
-      search,
-      handlePageChange,
-      handleItemsPerPageChange,
-      handleSortChange,
-    } = useTableSettings()
-
-    const loading = ref(false)
-    const tableLoading = ref(false)
-    const brokers = ref([])
-    const totalItems = ref(0)
-    const showBrokerDialog = ref(false)
-    const editingBroker = ref(null)
-    const itemsPerPageOptions = computed(() => store.state.itemsPerPageOptions)
-    const pageCount = computed(() =>
-      Math.ceil(totalItems.value / itemsPerPage.value)
-    )
-    const totals = ref({})
-
-    const headers = [
-      { title: 'Name', key: 'name', align: 'start', sortable: true },
-      { title: 'Country', key: 'country', align: 'center', sortable: true },
-      {
-        title: 'Accounts',
-        key: 'no_of_accounts',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Securities',
-        key: 'no_of_securities',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'First Investment',
-        key: 'first_investment',
-        align: 'center',
-        sortable: true,
-      },
-      { title: 'Total NAV', key: 'nav', align: 'center', sortable: true },
-      { title: 'Cash', key: 'cash', align: 'center', sortable: true },
-      { title: 'IRR', key: 'irr', align: 'center', sortable: true },
-      { title: 'Actions', key: 'actions', align: 'end', sortable: false },
-    ]
-
-    const headerAlignments = computed(() => {
-      const alignments = {}
-      headers.forEach((header) => {
-        alignments[header.key] = header.align || 'start'
-      })
-      return alignments
-    })
-
-    const fetchBrokers = async () => {
-      tableLoading.value = true
-      try {
-        const response = await getBrokersTable({
-          page: currentPage.value,
-          itemsPerPage: itemsPerPage.value,
-          sortBy: sortBy.value[0] || {},
-          search: search.value,
-        })
-        brokers.value = response.items
-        totalItems.value = response.total_items
-        totals.value = response.totals
-      } catch (error) {
-        handleApiError(error)
-      } finally {
-        tableLoading.value = false
-      }
-    }
-
-    const openAddDialog = () => {
-      editingBroker.value = null
-      showBrokerDialog.value = true
-    }
-
-    const editBroker = (item) => {
-      editingBroker.value = item
-      showBrokerDialog.value = true
-    }
-
-    const processDeleteBroker = async (item) => {
-      if (confirm(`Are you sure you want to delete broker "${item.name}"?`)) {
-        try {
-          await deleteBroker(item.id)
-          await fetchBrokers()
-        } catch (error) {
-          handleApiError(error)
-        }
-      }
-    }
-
-    const handleBrokerAdded = () => {
-      fetchBrokers()
-    }
-
-    const handleBrokerUpdated = () => {
-      fetchBrokers()
-    }
-
-    onMounted(() => {
-      fetchBrokers()
-    })
-
-    watch(
-      [
-        () => store.state.dataRefreshTrigger,
-        search,
-        itemsPerPage,
-        currentPage,
-        sortBy,
-      ],
-      () => {
-        fetchBrokers()
-      },
-      { deep: true }
-    )
-
-    return {
-      loading,
-      tableLoading,
-      brokers,
-      headers,
-      itemsPerPage,
-      currentPage,
-      totalItems,
-      sortBy,
-      search,
-      itemsPerPageOptions,
-      pageCount,
-      handlePageChange,
-      showBrokerDialog,
-      editingBroker,
-      handleItemsPerPageChange,
-      handleSortChange,
-      openAddDialog,
-      editBroker,
-      processDeleteBroker,
-      handleBrokerAdded,
-      handleBrokerUpdated,
-      headerAlignments,
-      totals,
-    }
+  {
+    title: 'Securities',
+    key: 'no_of_securities',
+    align: 'center',
+    sortable: true,
   },
+  {
+    title: 'First Investment',
+    key: 'first_investment',
+    align: 'center',
+    sortable: true,
+  },
+  { title: 'Total NAV', key: 'nav', align: 'center', sortable: true },
+  { title: 'Cash', key: 'cash', align: 'center', sortable: true },
+  { title: 'IRR', key: 'irr', align: 'center', sortable: true },
+  { title: 'Actions', key: 'actions', align: 'end', sortable: false },
+]
+
+const headerAlignments = computed(() => {
+  const alignments = {}
+  headers.forEach((header) => {
+    alignments[header.key] = header.align || 'start'
+  })
+  return alignments
+})
+
+const fetchBrokers = async () => {
+  tableLoading.value = true
+  try {
+    const response = await getBrokersTable({
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      sortBy: sortBy.value[0] || {},
+      search: search.value,
+    })
+    brokers.value = response.items
+    totalItems.value = response.total_items
+    totals.value = response.totals
+  } catch (error) {
+    handleApiError(error)
+  } finally {
+    tableLoading.value = false
+  }
 }
+
+const openAddDialog = () => {
+  editingBroker.value = null
+  showBrokerDialog.value = true
+}
+
+const editBroker = (item) => {
+  editingBroker.value = item
+  showBrokerDialog.value = true
+}
+
+const processDeleteBroker = async (item) => {
+  if (confirm(`Are you sure you want to delete broker "${item.name}"?`)) {
+    try {
+      await deleteBroker(item.id)
+      await fetchBrokers()
+    } catch (error) {
+      handleApiError(error)
+    }
+  }
+}
+
+const handleBrokerAdded = () => {
+  fetchBrokers()
+}
+
+const handleBrokerUpdated = () => {
+  fetchBrokers()
+}
+
+onMounted(() => {
+  fetchBrokers()
+})
+
+watch(
+  [
+    () => appStore.dataRefreshTrigger,
+    search,
+    itemsPerPage,
+    currentPage,
+    sortBy,
+  ],
+  () => {
+    fetchBrokers()
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>

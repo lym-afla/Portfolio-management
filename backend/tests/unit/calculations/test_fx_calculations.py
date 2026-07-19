@@ -14,6 +14,7 @@ from decimal import Decimal
 import pytest
 
 from common.models import FX
+from services.fx import get_rate as fx_get_rate
 
 
 @pytest.mark.fx
@@ -23,7 +24,7 @@ class TestFXRateCalculation:
 
     def test_fx_get_rate_direct_currency_same_currency(self, user):
         """Test FX rate lookup for same currency."""
-        result = FX.get_rate("USD", "USD", date(2023, 6, 15))
+        result = fx_get_rate("USD", "USD", date(2023, 6, 15))
 
         assert result["FX"] == Decimal("1")
         assert result["conversions"] == 0
@@ -32,7 +33,7 @@ class TestFXRateCalculation:
 
     def test_fx_get_rate_direct_currency_success(self, user, fx_rates_usd_eur):
         """Test successful direct FX rate lookup."""
-        result = FX.get_rate("USD", "EUR", date(2023, 6, 15))
+        result = fx_get_rate("USD", "EUR", date(2023, 6, 15))
 
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
@@ -43,7 +44,7 @@ class TestFXRateCalculation:
 
     def test_fx_get_rate_cross_currency_success(self, user, fx_rates_multi_currency):
         """Test successful cross-currency FX rate lookup."""
-        result = FX.get_rate("GBP", "EUR", date(2023, 6, 15))
+        result = fx_get_rate("GBP", "EUR", date(2023, 6, 15))
 
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
@@ -54,7 +55,7 @@ class TestFXRateCalculation:
     def test_fx_get_rate_date_exact_match(self, user, fx_rates_usd_eur):
         """Test FX rate lookup with exact date match."""
         test_date = date(2023, 6, 15)
-        result = FX.get_rate("USD", "EUR", test_date)
+        result = fx_get_rate("USD", "EUR", test_date)
 
         # Find the expected rate from our fixture data
         expected_fx = FX.objects.filter(
@@ -68,7 +69,7 @@ class TestFXRateCalculation:
         """Test FX rate lookup with date interpolation (use rate before date)."""
         # Use a date that might not have exact data
         test_date = date(2023, 6, 16)
-        result = FX.get_rate("USD", "EUR", test_date)
+        result = fx_get_rate("USD", "EUR", test_date)
 
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
@@ -82,7 +83,7 @@ class TestFXRateCalculation:
         test_date = date(2022, 12, 15)
 
         # This should find the first available rate
-        result = FX.get_rate("USD", "EUR", test_date)
+        result = fx_get_rate("USD", "EUR", test_date)
 
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
@@ -94,18 +95,18 @@ class TestFXRateCalculation:
         """Test FX rate lookup when no data is available."""
         # Use currency pair that doesn't exist in our fixtures
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "JPY", date(2023, 6, 15))
+            fx_get_rate("USD", "JPY", date(2023, 6, 15))
 
     def test_fx_get_rate_invalid_currency_pair(self, user):
         """Test FX rate lookup with invalid currency pair."""
         # Test with currencies that don't have direct or cross rates
         with pytest.raises(ValueError):
-            FX.get_rate("INVALID", "PAIR", date(2023, 6, 15))
+            fx_get_rate("INVALID", "PAIR", date(2023, 6, 15))
 
     def test_fx_get_rate_uses_networkx_algorithm(self, user, fx_rates_multi_currency):
         """Test that FX rate calculation uses NetworkX for path finding."""
         # This is implicitly tested by successful cross-currency conversions
-        result = FX.get_rate("RUB", "PLN", date(2023, 6, 15))
+        result = fx_get_rate("RUB", "PLN", date(2023, 6, 15))
 
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
@@ -113,7 +114,7 @@ class TestFXRateCalculation:
 
     def test_fx_rate_precision(self, user, fx_rates_usd_eur):
         """Test FX rate precision and rounding."""
-        result = FX.get_rate("USD", "EUR", date(2023, 6, 15))
+        result = fx_get_rate("USD", "EUR", date(2023, 6, 15))
 
         # Result should be properly rounded to 6 decimal places
         expected_precision = Decimal("0.000001")
@@ -131,7 +132,7 @@ class TestFXRateCalculation:
 
         results = []
         for test_date in test_dates:
-            result = FX.get_rate("USD", "EUR", test_date)
+            result = fx_get_rate("USD", "EUR", test_date)
             results.append(result)
             assert isinstance(result["FX"], Decimal)
             assert result["FX"] > 0
@@ -142,7 +143,7 @@ class TestFXRateCalculation:
 
     def test_fx_rate_async_dates_detection(self, user, fx_rates_multi_currency):
         """Test detection of asynchronous date usage in cross-currency conversions."""
-        result = FX.get_rate("GBP", "RUB", date(2023, 6, 15))
+        result = fx_get_rate("GBP", "RUB", date(2023, 6, 15))
 
         # Cross-currency conversions might use different dates for different legs
         assert isinstance(result["dates_async"], bool)
@@ -161,7 +162,7 @@ class TestFXRateScenarios:
         amount = Decimal("10000.00")
         conversion_date = date(2023, 6, 15)
 
-        fx_result = FX.get_rate("USD", "EUR", conversion_date)
+        fx_result = fx_get_rate("USD", "EUR", conversion_date)
         converted_amount = amount * fx_result["FX"]
 
         assert converted_amount < amount  # EUR is worth less than USD
@@ -174,7 +175,7 @@ class TestFXRateScenarios:
         amount = Decimal("8000.00")
         conversion_date = date(2023, 6, 15)
 
-        fx_result = FX.get_rate("EUR", "GBP", conversion_date)
+        fx_result = fx_get_rate("EUR", "GBP", conversion_date)
         converted_amount = amount * fx_result["FX"]
 
         assert isinstance(converted_amount, Decimal)
@@ -198,7 +199,7 @@ class TestFXRateScenarios:
             if currency == target_currency:
                 total_usd += amount
             else:
-                fx_result = FX.get_rate(currency, target_currency, valuation_date)
+                fx_result = fx_get_rate(currency, target_currency, valuation_date)
                 converted_amount = amount * fx_result["FX"]
                 total_usd += converted_amount
 
@@ -218,7 +219,7 @@ class TestFXRateScenarios:
 
         valuations = []
         for valuation_date in dates:
-            fx_result = FX.get_rate("USD", "EUR", valuation_date)
+            fx_result = fx_get_rate("USD", "EUR", valuation_date)
             converted_amount = amount * fx_result["FX"]
             valuations.append(converted_amount)
 
@@ -242,7 +243,7 @@ class TestFXRateEdgeCases:
     def test_fx_rate_very_small_amounts(self, user, fx_rates_usd_eur):
         """Test FX rate conversion with very small amounts."""
         small_amount = Decimal("0.01")
-        fx_result = FX.get_rate("USD", "EUR", date(2023, 6, 15))
+        fx_result = fx_get_rate("USD", "EUR", date(2023, 6, 15))
         converted_amount = small_amount * fx_result["FX"]
 
         assert converted_amount > 0
@@ -251,7 +252,7 @@ class TestFXRateEdgeCases:
     def test_fx_rate_very_large_amounts(self, user, fx_rates_usd_eur):
         """Test FX rate conversion with very large amounts."""
         large_amount = Decimal("1000000000.00")  # 1 billion
-        fx_result = FX.get_rate("USD", "EUR", date(2023, 6, 15))
+        fx_result = fx_get_rate("USD", "EUR", date(2023, 6, 15))
         converted_amount = large_amount * fx_result["FX"]
 
         assert converted_amount > 0
@@ -261,7 +262,7 @@ class TestFXRateEdgeCases:
         """Test FX rate lookup on weekends/holidays."""
         # Test with a weekend date
         weekend_date = date(2023, 6, 17)  # Saturday
-        result = FX.get_rate("USD", "EUR", weekend_date)
+        result = fx_get_rate("USD", "EUR", weekend_date)
 
         assert isinstance(result["FX"], Decimal)
         assert result["FX"] > 0
@@ -272,22 +273,22 @@ class TestFXRateEdgeCases:
         future_date = date(2025, 1, 1)
 
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", future_date)
+            fx_get_rate("USD", "EUR", future_date)
 
     def test_fx_rate_ancient_date(self, user, fx_rates_usd_eur):
         """Test FX rate lookup for very old dates."""
         ancient_date = date(1990, 1, 1)
 
         with pytest.raises(ValueError, match="No FX rate found"):
-            FX.get_rate("USD", "EUR", ancient_date)
+            fx_get_rate("USD", "EUR", ancient_date)
 
     def test_fx_rate_calculation_consistency(self, user, fx_rates_multi_currency):
         """Test FX rate calculation consistency across multiple calls."""
         test_date = date(2023, 6, 15)
 
         # Multiple calls should return same result
-        result1 = FX.get_rate("USD", "EUR", test_date)
-        result2 = FX.get_rate("USD", "EUR", test_date)
+        result1 = fx_get_rate("USD", "EUR", test_date)
+        result2 = fx_get_rate("USD", "EUR", test_date)
 
         assert result1["FX"] == result2["FX"]
         assert result1["conversions"] == result2["conversions"]
@@ -299,11 +300,11 @@ class TestFXRateEdgeCases:
         test_date = date(2023, 6, 15)
 
         # Convert USD to EUR
-        usd_to_eur = FX.get_rate("USD", "EUR", test_date)
+        usd_to_eur = fx_get_rate("USD", "EUR", test_date)
         eur_amount = original_amount * usd_to_eur["FX"]
 
         # Convert EUR back to USD
-        eur_to_usd = FX.get_rate("EUR", "USD", test_date)
+        eur_to_usd = fx_get_rate("EUR", "USD", test_date)
         final_amount = eur_amount * eur_to_usd["FX"]
 
         # Should be very close to original (allowing for rounding)
@@ -323,7 +324,7 @@ class TestFXRatePerformance:
         import time
 
         start_time = time.time()
-        result = FX.get_rate("USD", "EUR", date(2023, 6, 15))
+        result = fx_get_rate("USD", "EUR", date(2023, 6, 15))
         end_time = time.time()
 
         execution_time = end_time - start_time
@@ -345,7 +346,7 @@ class TestFXRatePerformance:
         start_time = time.time()
         results = []
         for from_curr, to_curr in currency_pairs:
-            result = FX.get_rate(from_curr, to_curr, date(2023, 6, 15))
+            result = fx_get_rate(from_curr, to_curr, date(2023, 6, 15))
             results.append(result)
         end_time = time.time()
 
