@@ -52,6 +52,54 @@ except Exception as e:
 
 ## T-Bank API Integration
 
+### TLS / Russian Trusted Root CA (REQUIRED)
+
+**Context.** Since 2024 T-Bank's public gRPC endpoint (`invest-public-api.tbank.ru`) serves a certificate chain rooted in the Russian Ministry of Digital Development's CA ("Russian Trusted Root CA" + "Russian Trusted Sub CA"). These CAs are **not** in the default trust stores shipped with Windows, CPython's `ssl` module, or gRPC's BoringSSL. Without intervention every API import fails at the TLS handshake:
+
+```
+Handshake failed with error SSL_ERROR_SSL: error:1000007d:SSL routines:
+OPENSSL_internal:CERTIFICATE_VERIFY_FAILED: self signed certificate in certificate chain
+```
+
+**Resolution.** The `t_tech.invest` SDK ships the authoritative root CA as an embedded resource (`t_tech/invest/certs/RussianTrustedRootCA.pem`) and loads it into the gRPC channel only when the `SSL_TBANK_VERIFY=true` environment variable is set (see `t_tech.invest.channels.create_channel`).
+
+This app sets the variable at the earliest point of Django startup in `backend/portfolio_management/__init__.py`, so every Tinkoff import via `services/broker_api.TinkoffAPIAdapter` is trusted by default:
+
+```python
+def _enable_tinkoff_ssl_trust():
+    """Opt into the t_tech SDK's bundled Russian Trusted Root CA."""
+    os.environ.setdefault("SSL_TBANK_VERIFY", "true")  # explicit env still wins
+```
+
+`setdefault` is deliberate: tests or air-gapped environments can override by exporting `SSL_TBANK_VERIFY=false` before launching the server.
+
+**Why not the alternatives?**
+
+| Alternative | Why rejected |
+|---|---|
+| Install root CA in Windows trust store | Requires admin rights; only fixes BoringSSL on that one machine; the SDK ships the cert anyway. |
+| Build a custom PEM bundle + `SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE` | Doesn't affect gRPC (which ignores those vars); only fixes `requests`/`httpx`. T-Bank imports use gRPC. |
+| Disable verification (`grpc.ssl_channel_credentials()` with no roots) | Insecure — vulnerable to MITM on broker-credential traffic. |
+| Import the GOST 2025 root (`russian_trusted_root_ca_gost_2025.cer`) | GOST R 34.10-2012 signatures can't be verified by BoringSSL — only by Russian crypto providers (CryptoPro). Irrelevant for the RSA chain T-Bank serves to public API clients. |
+
+**Verifying the fix manually:**
+
+```bash
+# Confirm the bundled cert matches the one downloadable from gosuslugi.ru/ca
+openssl x509 -in t_tech/invest/certs/RussianTrustedRootCA.pem -noout -fingerprint -sha256
+# Expect: D2:6D:2D:02:31:B7:C3:9F:92:CC:73:85:12:BA:54:10:35:19:E4:40:5D:68:B5:BD:70:3E:97:88:CA:8E:CF:31
+
+# Confirm the gRPC channel can complete the TLS handshake
+SSL_TBANK_VERIFY=true uv run python -c "
+import grpc
+from t_tech.invest.channels import create_channel
+ch = create_channel()
+grpc.channel_ready_future(ch).result()
+print('OK')
+ch.close()
+"
+```
+
 ### Authentication & Session Management
 
 #### Modern Architecture (v0.2.30+)
@@ -689,3 +737,4 @@ for symbol in symbols:
 | 1.0 | 2025-10-04 | Initial API integration patterns from Yahoo Finance fix |
 | 1.1 | 2025-10-04 | Added T-Bank API patterns and bond redemption handling |
 | 1.2 | 2025-10-04 | Added error handling, monitoring, and testing patterns |
+| 1.3 | 2026-07-17 | Documented Russian Trusted Root CA / `SSL_TBANK_VERIFY` fix for T-Bank gRPC TLS |

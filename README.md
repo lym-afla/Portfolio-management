@@ -201,6 +201,22 @@ netstat -ano | findstr ":8080.*LISTENING"
 taskkill /PID <pid> /F
 ```
 
+### Tinkoff API import fails with `CERTIFICATE_VERIFY_FAILED`
+
+T-Bank serves its public gRPC API with a certificate rooted in the Russian
+Ministry of Digital Development's CA, which is not in the default Windows /
+Python trust store. The `t_tech` SDK ships the authoritative root CA and loads
+it when `SSL_TBANK_VERIFY=true`. The app sets this automatically on startup in
+`backend/portfolio_management/__init__.py`. If imports still fail after a
+restart, verify the flag is exported in your shell and not shadowed by a
+`false`/`0` value:
+
+```bash
+echo $SSL_TBANK_VERIFY   # should print "true"
+```
+
+See `.memory-bank/Tech details/external-api-patterns.md` for the full rationale.
+
 ### WebSocket connection fails on Transactions page
 
 The backend must be started with `run_uvicorn.py` (ASGI), not
