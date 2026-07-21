@@ -62,8 +62,11 @@ class TestAssetModelConstraints:
                     exposure="Equity",
                 )
 
-    def test_asset_isin_different_users_allowed(self) -> None:
-        """Test that same ISIN can be used by different users."""
+    def test_asset_investors_m2m_link_allowed(self) -> None:
+        """Test that multiple users can be linked to the same Assets row via the
+        investors M2M. (Does NOT test the create path — for that, see
+        TestResolveSilentMode.test_resolve_second_user_same_security_no_duplicate_rows
+        in test_asset_resolver.py.)"""
         user1 = CustomUser.objects.create_user(
             username="user1", email="user1@example.com", password="testpass123"
         )
