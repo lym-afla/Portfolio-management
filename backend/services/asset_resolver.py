@@ -123,11 +123,14 @@ def resolve_or_create_asset(
     if existing is None:
         with transaction.atomic():
             try:
-                asset = Assets.objects.create(**asset_fields)
-                created = True
+                with transaction.atomic():
+                    asset = Assets.objects.create(**asset_fields)
+                    created = True
             except IntegrityError:
                 # Race: another transaction inserted the same (ISIN, currency)
                 # between our get() and create(). Re-fetch and treat as existing.
+                # The inner atomic() is a savepoint that rolls back on the error,
+                # leaving the outer transaction usable for the get() below.
                 asset = Assets.objects.get(ISIN=isin, currency=currency)
                 created = False
             linked = False
