@@ -97,6 +97,32 @@ def _fill_empty_fields(asset: Assets, asset_fields: dict) -> list:
     return changed
 
 
+def _compute_diff(asset: Assets, asset_fields: dict) -> tuple[dict, list]:
+    """Compute the (field_diff, fillable) payload for an AssetConflict.
+
+    field_diff: {field: {"existing": <val>, "submitted": <val>}} for fields where
+                the existing value is non-empty AND differs from the submission.
+    fillable:   [field, ...] where the existing value is empty and the submission
+                has a value to contribute.
+    """
+    field_diff = {}
+    fillable = []
+    for field_name, submitted in asset_fields.items():
+        if field_name in ("ISIN", "currency"):
+            continue
+        if _is_empty(submitted):
+            continue
+        existing_val = getattr(asset, field_name, None)
+        if _is_empty(existing_val):
+            fillable.append(field_name)
+        elif existing_val != submitted:
+            field_diff[field_name] = {
+                "existing": existing_val,
+                "submitted": submitted,
+            }
+    return field_diff, fillable
+
+
 def resolve_or_create_asset(
     *,
     user: CustomUser,
@@ -161,4 +187,21 @@ def resolve_or_create_asset(
             asset=existing, created=False, linked=linked, field_diff={}
         )
 
-    raise NotImplementedError("Interactive branches implemented in Task 4")
+    # mode == "interactive"
+    if confirm or already_linked:
+        # Branch D (confirm=True) or already-linked no-op:
+        # link if needed, fill empties, upsert bond metadata. No conflict raised.
+        with transaction.atomic():
+            linked = False
+            if user is not None and not already_linked:
+                existing.investors.add(user)
+                linked = True
+            _fill_empty_fields(existing, asset_fields)
+            _upsert_bond_metadata(existing, bond_fields)
+        return ResolveResult(
+            asset=existing, created=False, linked=linked, field_diff={}
+        )
+
+    # Branch C: interactive, confirm=False, not already linked → raise conflict.
+    field_diff, fillable = _compute_diff(existing, asset_fields)
+    raise AssetConflict(asset=existing, field_diff=field_diff, fillable=fillable)

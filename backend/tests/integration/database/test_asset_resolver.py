@@ -181,3 +181,113 @@ class TestResolveSilentMode:
         )
         existing.refresh_from_db()
         assert existing.ticker == "OLD"
+
+
+@pytest.mark.integration
+@pytest.mark.database
+@pytest.mark.django_db
+class TestResolveInteractiveMode:
+    """Branches C (raise conflict) and D (confirm → link + fill)."""
+
+    def _create_existing_for_other_user(self):
+        from users.models import CustomUser as User
+
+        user_a = User.objects.create_user(
+            username="usera", email="a@example.com", password="pass123"
+        )
+        asset = Assets.objects.create(
+            type="Stock",
+            ISIN="US4444444444",
+            name="User A Stock",
+            currency="USD",
+            exposure="Equity",
+            ticker="OLD",
+        )
+        asset.investors.add(user_a)
+        return user_a, asset
+
+    def test_resolve_interactive_first_user_creates_no_conflict(
+        self, user: CustomUser
+    ) -> None:
+        """First user's interactive call has no existing asset → create."""
+        result = resolve_or_create_asset(
+            user=user,
+            isin="US3333333333",
+            currency="USD",
+            submitted_fields={"name": "Brand New", "type": "Stock"},
+            mode="interactive",
+        )
+        assert result.created is True
+
+    def test_resolve_interactive_raises_conflict_for_second_user(
+        self, user: CustomUser
+    ) -> None:
+        _user_a, _asset = self._create_existing_for_other_user()
+
+        with pytest.raises(AssetConflict) as exc_info:
+            resolve_or_create_asset(
+                user=user,
+                isin="US4444444444",
+                currency="USD",
+                submitted_fields={
+                    "name": "My Name",
+                    "type": "Stock",
+                    "ticker": "NEW",
+                },
+                mode="interactive",
+                confirm=False,
+            )
+        conflict = exc_info.value
+        assert conflict.asset.ISIN == "US4444444444"
+        # ticker differs (OLD vs NEW) and existing is non-empty → in field_diff
+        assert "ticker" in conflict.field_diff
+        assert conflict.field_diff["ticker"]["existing"] == "OLD"
+        assert conflict.field_diff["ticker"]["submitted"] == "NEW"
+
+    def test_resolve_interactive_confirm_links_and_fills(
+        self, user: CustomUser
+    ) -> None:
+        _user_a, asset = self._create_existing_for_other_user()
+
+        result = resolve_or_create_asset(
+            user=user,
+            isin="US4444444444",
+            currency="USD",
+            submitted_fields={
+                "name": "User A Stock",
+                "type": "Stock",
+                "comment": "added by second user",
+            },
+            mode="interactive",
+            confirm=True,
+        )
+        assert result.created is False
+        assert result.linked is True
+        asset.refresh_from_db()
+        assert user in list(asset.investors.all())
+        # comment was empty → filled
+        assert asset.comment == "added by second user"
+
+    def test_resolve_already_linked_user_returns_noop(
+        self, user: CustomUser
+    ) -> None:
+        """User re-adds a security they already have → success, no conflict."""
+        asset = Assets.objects.create(
+            type="Stock",
+            ISIN="US2222222222",
+            name="My Stock",
+            currency="USD",
+            exposure="Equity",
+        )
+        asset.investors.add(user)
+
+        result = resolve_or_create_asset(
+            user=user,
+            isin="US2222222222",
+            currency="USD",
+            submitted_fields={"name": "My Stock", "type": "Stock"},
+            mode="interactive",
+            confirm=False,
+        )
+        assert result.created is False
+        assert result.linked is False  # already linked → no change
