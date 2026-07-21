@@ -348,3 +348,59 @@ class TestResolveRaceSafety:
         assert result.asset.pk == raced.pk
         assert user in list(result.asset.investors.all())
         assert Assets.objects.filter(ISIN=isin, currency=currency).count() == 1
+
+
+from common.models import BondMetadata
+from decimal import Decimal
+
+
+@pytest.mark.integration
+@pytest.mark.database
+@pytest.mark.django_db
+class TestResolveBondMetadata:
+    """BondMetadata upsert must be idempotent across users."""
+
+    def test_resolve_bond_metadata_upsert_idempotent(
+        self, user: CustomUser
+    ) -> None:
+        from users.models import CustomUser as User
+
+        user_a = User.objects.create_user(
+            username="usera", email="a@example.com", password="pass123"
+        )
+        user_b = User.objects.create_user(
+            username="userb", email="b@example.com", password="pass123"
+        )
+        bond_fields = {
+            "name": "Govt Bond 2030",
+            "type": "Bond",
+            "currency": "USD",
+            "exposure": "Fixed Income",
+            "initial_notional": Decimal("1000.00"),
+            "coupon_rate": Decimal("5.25"),
+            "coupon_frequency": 2,
+        }
+
+        # User A creates the bond.
+        resolve_or_create_asset(
+            user=user_a,
+            isin="USBOND000001",
+            currency="USD",
+            submitted_fields=bond_fields,
+            mode="silent",
+        )
+        # User B adds the same bond.
+        resolve_or_create_asset(
+            user=user_b,
+            isin="USBOND000001",
+            currency="USD",
+            submitted_fields=bond_fields,
+            mode="silent",
+        )
+
+        asset = Assets.objects.get(ISIN="USBOND000001", currency="USD")
+        assert BondMetadata.objects.filter(asset=asset).count() == 1
+        meta = asset.bondmetadata_metadata
+        assert meta.initial_notional == Decimal("1000.00")
+        assert meta.coupon_rate == Decimal("5.25")
+        assert meta.coupon_frequency == 2
