@@ -18,6 +18,7 @@ from common.models import (
     Prices,
     Transactions,
 )
+from services.asset_resolver import BOND_FIELDS, resolve_or_create_asset
 from constants import (
     ACCOUNT_TYPE_ALL,
     ACCOUNT_TYPE_BROKER,
@@ -831,6 +832,7 @@ class SecuritySerializer(serializers.ModelSerializer):
     credit_rating = serializers.CharField(
         max_length=10, required=False, allow_null=True, allow_blank=True
     )
+    confirm = serializers.BooleanField(required=False, default=False, write_only=True)
 
     class Meta:
         """Meta class for SecuritySerializer."""
@@ -860,7 +862,14 @@ class SecuritySerializer(serializers.ModelSerializer):
             "secid",
             "tbank_instrument_uid",
             "comment",
+            "confirm",
         ]
+        # Disable the auto-generated UniqueTogetherValidator on (ISIN, currency):
+        # resolve_or_create_asset handles the unique constraint itself (with race
+        # recovery), and the interactive flow needs duplicate (ISIN, currency)
+        # submissions to reach serializer.save() so the view can return HTTP 409
+        # with the field_diff/fillable conflict payload.
+        validators = []
 
     def validate(self, attrs):
         """Replicate SecurityForm.clean() data-source + bond validation."""
@@ -901,17 +910,7 @@ class SecuritySerializer(serializers.ModelSerializer):
         if asset.type != "Bond":
             return
         bond_data = {}
-        for field in (
-            "initial_notional",
-            "nominal_currency",
-            "issue_date",
-            "maturity_date",
-            "coupon_rate",
-            "coupon_frequency",
-            "is_amortizing",
-            "bond_type",
-            "credit_rating",
-        ):
+        for field in BOND_FIELDS:
             value = self.validated_data.get(field)
             if value is not None:
                 bond_data[field] = value
@@ -919,46 +918,34 @@ class SecuritySerializer(serializers.ModelSerializer):
             BondMetadata.objects.update_or_create(asset=asset, defaults=bond_data)
 
     def create(self, validated_data):
-        """Create the Asset and link the requesting user as an investor.
+        """Delegate to resolve_or_create_asset in interactive mode.
 
-        The `user` kwarg is passed by the view via serializer.save(user=request.user).
+        May raise services.asset_resolver.AssetConflict if the security already
+        not confirmed. The view catches this and returns HTTP 409.
+
+        Stashes the ResolveResult on ``self._resolve_result`` so the view can
+        surface ``created``/``linked`` in the success response without breaking
+        DRF's contract that ``save()`` returns the model instance.
         """
         user = validated_data.pop("user", None)
-        # Remove bond fields from validated_data before constructing the Asset
-        bond_fields = (
-            "initial_notional",
-            "nominal_currency",
-            "issue_date",
-            "maturity_date",
-            "coupon_rate",
-            "coupon_frequency",
-            "is_amortizing",
-            "bond_type",
-            "credit_rating",
+        confirm = validated_data.pop("confirm", False)
+        result = resolve_or_create_asset(
+            user=user,
+            isin=validated_data["ISIN"],
+            currency=validated_data["currency"],
+            submitted_fields=validated_data,
+            mode="interactive",
+            confirm=confirm,
         )
-        asset_fields = {k: v for k, v in validated_data.items() if k not in bond_fields}
-        asset = Assets.objects.create(**asset_fields)
-        if user is not None:
-            asset.investors.add(user)
-        self._save_bond_metadata(asset)
-        return asset
+        self._resolve_result = result
+        return result.asset
 
     def update(self, instance, validated_data):
         """Update the Asset fields and upsert bond metadata."""
         user = validated_data.pop("user", None)
-        bond_fields = (
-            "initial_notional",
-            "nominal_currency",
-            "issue_date",
-            "maturity_date",
-            "coupon_rate",
-            "coupon_frequency",
-            "is_amortizing",
-            "bond_type",
-            "credit_rating",
-        )
+        validated_data.pop("confirm", False)  # write-only, not used on update
         for field, value in validated_data.items():
-            if field not in bond_fields:
+            if field not in BOND_FIELDS:
                 setattr(instance, field, value)
         instance.save()
         if user is not None and not instance.investors.filter(pk=user.pk).exists():

@@ -404,3 +404,83 @@ class TestResolveBondMetadata:
         assert meta.initial_notional == Decimal("1000.00")
         assert meta.coupon_rate == Decimal("5.25")
         assert meta.coupon_frequency == 2
+
+
+from rest_framework.test import APIClient
+
+
+@pytest.mark.integration
+@pytest.mark.database
+@pytest.mark.django_db
+class TestApiCreateSecurityConflict:
+    """View-level: POST /database/api/create-security/ returns 409 on conflict."""
+
+    def _client_for(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def _security_payload(self, **overrides):
+        payload = {
+            "name": "API Test Stock",
+            "ISIN": "USAPITEST001",
+            "type": "Stock",
+            "currency": "USD",
+            "exposure": "Equity",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_api_create_security_returns_409_on_conflict(
+        self, user: CustomUser
+    ) -> None:
+        from users.models import CustomUser as User
+
+        user_a = User.objects.create_user(
+            username="usera", email="a@example.com", password="pass123"
+        )
+        client_a = self._client_for(user_a)
+        client_b = self._client_for(user)
+
+        # User A creates the security.
+        resp_a = client_a.post(
+            "/database/api/create-security/", self._security_payload()
+        )
+        assert resp_a.status_code == 201
+
+        # User B submits the same (ISIN, currency) with a differing field.
+        resp_b = client_b.post(
+            "/database/api/create-security/",
+            self._security_payload(name="Different Name"),
+        )
+        assert resp_b.status_code == 409
+        body = resp_b.json()
+        assert body["success"] is False
+        assert body["conflict"] is True
+        assert body["existing_asset"]["ISIN"] == "USAPITEST001"
+        # name differs → in field_diff
+        assert "name" in body["field_diff"]
+
+    def test_api_create_security_confirm_returns_201(
+        self, user: CustomUser
+    ) -> None:
+        from users.models import CustomUser as User
+
+        user_a = User.objects.create_user(
+            username="usera", email="a@example.com", password="pass123"
+        )
+        client_a = self._client_for(user_a)
+        client_b = self._client_for(user)
+
+        client_a.post("/database/api/create-security/", self._security_payload())
+
+        # User B confirms after seeing the conflict.
+        resp = client_b.post(
+            "/database/api/create-security/",
+            {**self._security_payload(), "confirm": True},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["success"] is True
+        assert body["created"] is False
+        assert body["linked"] is True
