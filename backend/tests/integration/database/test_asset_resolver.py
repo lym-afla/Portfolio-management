@@ -291,3 +291,60 @@ class TestResolveInteractiveMode:
         )
         assert result.created is False
         assert result.linked is False  # already linked → no change
+
+
+from unittest.mock import patch
+
+
+@pytest.mark.integration
+@pytest.mark.database
+@pytest.mark.django_db
+class TestResolveRaceSafety:
+    """The create branch must survive a concurrent insert (IntegrityError).
+
+    Models a real cross-transaction race: T1 has already committed the row; T2's
+    initial lookup returns DoesNotExist (stale snapshot); T2's create() then hits
+    the real unique constraint and raises IntegrityError; T2's recovery get() finds
+    T1's committed row and links the user instead of crashing.
+    """
+
+    def test_resolve_confirm_race_falls_back_to_existing(
+        self, user: CustomUser
+    ) -> None:
+        isin = "US1111111111"
+        currency = "USD"
+
+        # Pre-insert the asset — simulates T1 having already committed the row.
+        # Do NOT link `user` here; the helper's recovery should link them.
+        raced = Assets.objects.create(
+            type="Stock",
+            ISIN=isin,
+            name="Raced Stock",
+            currency=currency,
+            exposure="Equity",
+        )
+
+        # Patch the FIRST lookup only to raise DoesNotExist (T2's stale snapshot
+        # that doesn't yet see T1's committed row). The SECOND lookup (the
+        # recovery get in the except clause) returns the pre-inserted row.
+        # The create() between them runs for real and raises a real IntegrityError
+        # against the unique_asset_currency_entry constraint.
+        with patch.object(
+            Assets.objects,
+            "get",
+            side_effect=[Assets.DoesNotExist, raced],
+        ):
+            result = resolve_or_create_asset(
+                user=user,
+                isin=isin,
+                currency=currency,
+                submitted_fields={"name": "Raced Stock", "type": "Stock"},
+                mode="silent",
+            )
+
+        # The helper recovered: it re-fetched T1's existing row and linked the user.
+        assert result.created is False
+        assert result.asset.ISIN == isin
+        assert result.asset.pk == raced.pk
+        assert user in list(result.asset.investors.all())
+        assert Assets.objects.filter(ISIN=isin, currency=currency).count() == 1
