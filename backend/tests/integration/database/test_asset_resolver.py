@@ -64,3 +64,120 @@ class TestResolveCreateBranch:
         assert result.asset.currency == "USD"
         assert result.asset.name == "Test Stock"
         assert list(result.asset.investors.all()) == [user]
+
+
+@pytest.mark.integration
+@pytest.mark.database
+@pytest.mark.django_db
+class TestResolveSilentMode:
+    """Branch B: existing asset + silent mode → link + fill empties."""
+
+    def _create_existing(self, user, **overrides):
+        """Helper: create an asset owned by user with optional field overrides."""
+        defaults = {
+            "type": "Stock",
+            "ISIN": "US8888888888",
+            "name": "Existing Stock",
+            "currency": "USD",
+            "exposure": "Equity",
+        }
+        defaults.update(overrides)
+        asset = Assets.objects.create(**defaults)
+        asset.investors.add(user)
+        return asset
+
+    def test_resolve_links_existing_asset_to_second_user_silent(
+        self, user: CustomUser
+    ) -> None:
+        from users.models import CustomUser as User
+
+        user_a = User.objects.create_user(
+            username="usera", email="a@example.com", password="pass123"
+        )
+        user_b = User.objects.create_user(
+            username="userb", email="b@example.com", password="pass123"
+        )
+        self._create_existing(user_a)
+
+        result = resolve_or_create_asset(
+            user=user_b,
+            isin="US8888888888",
+            currency="USD",
+            submitted_fields={"name": "Existing Stock", "type": "Stock"},
+            mode="silent",
+        )
+        assert result.created is False
+        assert result.linked is True
+        assert list(result.asset.investors.all()) == [user_a, user_b]
+
+    def test_resolve_second_user_same_security_no_duplicate_rows(
+        self, user: CustomUser
+    ) -> None:
+        """Direct regression for the original IntegrityError bug."""
+        from users.models import CustomUser as User
+
+        user_a = User.objects.create_user(
+            username="usera", email="a@example.com", password="pass123"
+        )
+        user_b = User.objects.create_user(
+            username="userb", email="b@example.com", password="pass123"
+        )
+        resolve_or_create_asset(
+            user=user_a,
+            isin="US7777777777",
+            currency="USD",
+            submitted_fields={"name": "Shared Stock", "type": "Stock"},
+            mode="silent",
+        )
+        resolve_or_create_asset(
+            user=user_b,
+            isin="US7777777777",
+            currency="USD",
+            submitted_fields={"name": "Shared Stock", "type": "Stock"},
+            mode="silent",
+        )
+        assert Assets.objects.filter(ISIN="US7777777777", currency="USD").count() == 1
+
+    def test_resolve_silent_fills_empty_fields_only(self, user: CustomUser) -> None:
+        existing = Assets.objects.create(
+            type="Stock",
+            ISIN="US6666666666",
+            name="Has Gap",
+            currency="USD",
+            exposure="Equity",
+            ticker=None,  # empty — should be filled
+        )
+        existing.investors.add(user)
+
+        resolve_or_create_asset(
+            user=user,
+            isin="US6666666666",
+            currency="USD",
+            submitted_fields={"ticker": "GAP", "name": "Has Gap", "type": "Stock"},
+            mode="silent",
+        )
+        existing.refresh_from_db()
+        assert existing.ticker == "GAP"
+
+    def test_resolve_silent_does_not_overwrite_existing_field(
+        self, user: CustomUser
+    ) -> None:
+        existing = Assets.objects.create(
+            type="Stock",
+            ISIN="US5555555555",
+            name="Has Ticker",
+            currency="USD",
+            exposure="Equity",
+            ticker="OLD",
+        )
+        existing.investors.add(user)
+
+        resolve_or_create_asset(
+            user=user,
+            isin="US5555555555",
+            currency="USD",
+            submitted_fields={"ticker": "NEW", "name": "Has Ticker", "type": "Stock"},
+            mode="silent",
+        )
+        existing.refresh_from_db()
+        assert existing.ticker == "OLD"

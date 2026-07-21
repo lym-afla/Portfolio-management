@@ -143,4 +143,22 @@ def resolve_or_create_asset(
             _upsert_bond_metadata(asset, bond_fields)
         return ResolveResult(asset=asset, created=created, linked=linked, field_diff={})
 
-    raise NotImplementedError("Existing-asset branches implemented in Task 3-4")
+    # Branches B/C/D: existing asset found.
+    already_linked = (
+        existing.investors.filter(pk=user.pk).exists() if user is not None else True
+    )
+
+    if mode == "silent":
+        # Branch B: link + fill empties + upsert bond metadata. No conflict.
+        with transaction.atomic():
+            linked = False
+            if user is not None and not already_linked:
+                existing.investors.add(user)
+                linked = True
+            _fill_empty_fields(existing, asset_fields)
+            _upsert_bond_metadata(existing, bond_fields)
+        return ResolveResult(
+            asset=existing, created=False, linked=linked, field_diff={}
+        )
+
+    raise NotImplementedError("Interactive branches implemented in Task 4")
