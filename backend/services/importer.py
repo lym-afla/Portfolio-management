@@ -74,6 +74,7 @@ from common.models import (
     Prices,
     Transactions,
 )
+from services.asset_resolver import resolve_or_create_asset
 from constants import (
     ASSET_TYPE_CHOICES,
     EXPOSURE_CHOICES,
@@ -1630,24 +1631,10 @@ async def create_security_from_tinkoff(
                 asset_type = ASSET_TYPE_CHOICES[0][0]
                 exposure = EXPOSURE_CHOICES[0][0]
 
-            # Create main asset
-            asset = Assets.objects.create(
-                type=asset_type,
-                ISIN=isin if isin else instrument_data.isin,
-                name=instrument_data.name,
-                currency=instrument_data.currency,
-                exposure=exposure,
-                restricted=False,
-                data_source="TBANK",
-                secid=instrument_data.ticker if hasattr(instrument_data, "ticker") else None,
-                tbank_instrument_uid=instrument_uid,
-            )
-            asset.investors.add(user)
-
-            # Create type-specific metadata
+            # Build bond metadata fields up front so the helper can upsert them
+            # idempotently (and link the user) in a single call.
+            bond_data = {}
             if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND and instrument_data:
-                bond_data = {}
-
                 # Extract bond-specific fields
                 if hasattr(instrument_data, "initial_nominal") and instrument_data.initial_nominal:
                     bond_data["initial_notional"] = quotation_to_decimal(
@@ -1686,11 +1673,34 @@ async def create_security_from_tinkoff(
                 if hasattr(instrument_data, "amortization_flag"):
                     bond_data["is_amortizing"] = instrument_data.amortization_flag
 
-                if bond_data:
-                    BondMetadata.objects.create(asset=asset, **bond_data)
-                    logger.info(f"Created BondMetadata from T-Bank for {asset.name}")
+            # Resolve-or-create the asset. The helper links the user (instead of
+            # asset.investors.add) and upserts BondMetadata via update_or_create
+            # (instead of the non-idempotent BondMetadata.objects.create).
+            resolved_isin = isin if isin else instrument_data.isin
+            bond_kwargs = bond_data if bond_data else {}
+            result = resolve_or_create_asset(
+                user=user,
+                isin=resolved_isin,
+                currency=instrument_data.currency,
+                submitted_fields={
+                    "type": asset_type,
+                    "name": instrument_data.name,
+                    "exposure": exposure,
+                    "restricted": False,
+                    "data_source": "TBANK",
+                    "secid": instrument_data.ticker if hasattr(instrument_data, "ticker") else None,
+                    "tbank_instrument_uid": instrument_uid,
+                    **bond_kwargs,
+                },
+                mode="silent",
+            )
+            asset = result.asset
+            if result.created and bond_data:
+                logger.info(f"Created BondMetadata from T-Bank for {asset.name}")
 
-            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES and instrument_data:
+            # Create type-specific metadata (only futures/options here; bond
+            # metadata is handled by resolve_or_create_asset above).
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES and instrument_data:
                 future_data = {}
 
                 if (
@@ -1815,20 +1825,23 @@ async def _create_basic_tbank_asset(
                 asset_type = ASSET_TYPE_CHOICES[0][0]
                 exposure = EXPOSURE_CHOICES[0][0]
 
-            asset = Assets.objects.create(
-                type=asset_type,
-                ISIN=isin,
-                ticker=ticker,
-                name=security_name,
+            result = resolve_or_create_asset(
+                user=user,
+                isin=isin,
                 currency="RUB",
-                exposure=exposure,
-                restricted=False,
-                data_source="TBANK",
-                secid=None,
-                tbank_instrument_uid=instrument_uid,
+                submitted_fields={
+                    "type": asset_type,
+                    "ticker": ticker,
+                    "name": security_name,
+                    "exposure": exposure,
+                    "restricted": False,
+                    "data_source": "TBANK",
+                    "secid": None,
+                    "tbank_instrument_uid": instrument_uid,
+                },
+                mode="silent",
             )
-            asset.investors.add(user)
-            return asset
+            return result.asset
 
         return await create_basic_asset()
     except Exception as e:
@@ -2061,27 +2074,11 @@ async def create_security_from_micex(
         # Create the asset
         @database_sync_to_async
         def create_asset_and_metadata():
-            # Create main asset
-            asset = Assets.objects.create(
-                type=asset_type,
-                ISIN=security_data["isin"] or isin,
-                name=security_data["name"],
-                ticker=ticker,
-                currency=security_data["currency"],
-                exposure=exposure,
-                restricted=False,
-                data_source="MICEX",
-                secid=security_data["secid"],
-            )
-            asset.investors.add(user)
-
-            # Create type-specific metadata
+            # Build bond metadata fields up front so the helper can upsert them
+            # idempotently (and link the user) in a single call.
             data = security_data["data"]
-
+            bond_data = {}
             if instrument_type == InstrumentType.INSTRUMENT_TYPE_BOND:
-                # Create BondMetadata
-                bond_data = {}
-
                 # Parse dates
                 if data.get("ISSUEDATE"):
                     try:
@@ -2151,12 +2148,34 @@ async def create_security_from_micex(
                 else:
                     bond_data["bond_type"] = "FIXED"
 
-                # Create BondMetadata if we have any data
-                if bond_data:
-                    BondMetadata.objects.create(asset=asset, **bond_data)
-                    logger.info(f"Created BondMetadata for {asset.name}: {bond_data}")
+            # Resolve-or-create the asset. The helper links the user (instead of
+            # asset.investors.add) and upserts BondMetadata via update_or_create
+            # (instead of the non-idempotent BondMetadata.objects.create).
+            resolved_isin = security_data["isin"] or isin
+            bond_kwargs = bond_data if bond_data else {}
+            result = resolve_or_create_asset(
+                user=user,
+                isin=resolved_isin,
+                currency=security_data["currency"],
+                submitted_fields={
+                    "type": asset_type,
+                    "name": security_data["name"],
+                    "ticker": ticker,
+                    "exposure": exposure,
+                    "restricted": False,
+                    "data_source": "MICEX",
+                    "secid": security_data["secid"],
+                    **bond_kwargs,
+                },
+                mode="silent",
+            )
+            asset = result.asset
+            if result.created and bond_data:
+                logger.info(f"Created BondMetadata for {asset.name}: {bond_data}")
 
-            elif instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
+            # Create type-specific metadata (only futures/options here; bond
+            # metadata is handled by resolve_or_create_asset above).
+            if instrument_type == InstrumentType.INSTRUMENT_TYPE_FUTURES:
                 # Create FutureMetadata
                 future_data = {}
 
@@ -2998,24 +3017,30 @@ async def _find_or_create_security(
 
     # Try to find a security with all relationships; only go to except if none found
     found_security = None
+    # Resolve existing securities: find by ISIN, then use the helper to link+fill.
     for sec in securities_found:
-        try:
-            found_security = await database_sync_to_async(Assets.objects.get)(
-                ISIN=sec[1], investors=investor
-            )
-            return found_security, "existing_with_relationships"
-        except Assets.DoesNotExist:
-            continue
-    # If none found, fall through to next except block
+        candidate_isin = sec[1]
 
-    # Try to find security without relationships
-    for sec in securities_found:
-        try:
-            found_security = await database_sync_to_async(Assets.objects.get)(ISIN=sec[1])
-            await database_sync_to_async(found_security.investors.add)(investor)
-            return found_security, "existing_added_relationships"
-        except Assets.DoesNotExist:
+        @database_sync_to_async
+        def _find_existing():
+            return Assets.objects.filter(ISIN=candidate_isin).first()
+
+        existing = await _find_existing()
+        if existing is None:
             continue
+        result = await database_sync_to_async(resolve_or_create_asset)(
+            user=investor,
+            isin=candidate_isin,
+            currency=existing.currency,
+            submitted_fields={},
+            mode="silent",
+        )
+        status_str = (
+            "existing_with_relationships"
+            if not result.linked
+            else "existing_added_relationships"
+        )
+        return result.asset, status_str
 
     if not found_security and len(securities_found) == 1:
         # Create new security using MICEX data

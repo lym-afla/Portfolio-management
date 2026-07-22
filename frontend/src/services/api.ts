@@ -460,6 +460,34 @@ export const getSecuritiesForDatabase = async (params: ApiRecord): Promise<ApiRe
   }
 }
 
+export interface SecurityFieldDiffEntry {
+  existing: unknown
+  submitted: unknown
+}
+
+export interface SecurityConflictPayload {
+  success: false
+  conflict: true
+  existing_asset: {
+    id: number
+    name: string
+    ISIN: string
+    currency: string
+  }
+  field_diff: Record<string, SecurityFieldDiffEntry>
+  fillable: string[]
+}
+
+export function isSecurityConflictPayload(
+  data: unknown
+): data is SecurityConflictPayload {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as Record<string, unknown>).conflict === true
+  )
+}
+
 export const createSecurity = async (securityData: ApiRecord): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.post(

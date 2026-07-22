@@ -31,6 +31,7 @@ from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
 from services.securities import get_securities_table_api, get_security_detail
+from services.asset_resolver import AssetConflict
 from core.sorting_utils import sort_entries
 from core.user_utils import format_account_display
 
@@ -310,21 +311,44 @@ def api_security_form_structure(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_create_security(request):
-    """Create security via SecuritySerializer."""
+    """Create security via SecuritySerializer → resolve_or_create_asset."""
     serializer = SecuritySerializer(data=request.data)
     if serializer.is_valid():
-        security = serializer.save(user=request.user)
+        try:
+            security = serializer.save(user=request.user)
+        except AssetConflict as e:
+            return Response(
+                {
+                    "success": False,
+                    "conflict": True,
+                    "existing_asset": {
+                        "id": e.asset.id,
+                        "name": e.asset.name,
+                        "ISIN": e.asset.ISIN,
+                        "currency": e.asset.currency,
+                    },
+                    "field_diff": e.field_diff,
+                    "fillable": e.fillable,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        result = getattr(serializer, "_resolve_result", None)
+        created = getattr(result, "created", True)
+        linked = getattr(result, "linked", False)
         return Response(
             {
                 "success": True,
                 "message": "Security created successfully",
                 "id": security.id,
                 "name": security.name,
+                "created": created,
+                "linked": linked,
             },
             status=status.HTTP_201_CREATED,
         )
     return Response(
-        {"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+        {"success": False, "errors": serializer.errors},
+        status=status.HTTP_400_BAD_REQUEST,
     )
 
 
