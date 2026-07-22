@@ -3017,24 +3017,30 @@ async def _find_or_create_security(
 
     # Try to find a security with all relationships; only go to except if none found
     found_security = None
+    # Resolve existing securities: find by ISIN, then use the helper to link+fill.
     for sec in securities_found:
-        try:
-            found_security = await database_sync_to_async(Assets.objects.get)(
-                ISIN=sec[1], investors=investor
-            )
-            return found_security, "existing_with_relationships"
-        except Assets.DoesNotExist:
-            continue
-    # If none found, fall through to next except block
+        candidate_isin = sec[1]
 
-    # Try to find security without relationships
-    for sec in securities_found:
-        try:
-            found_security = await database_sync_to_async(Assets.objects.get)(ISIN=sec[1])
-            await database_sync_to_async(found_security.investors.add)(investor)
-            return found_security, "existing_added_relationships"
-        except Assets.DoesNotExist:
+        @database_sync_to_async
+        def _find_existing():
+            return Assets.objects.filter(ISIN=candidate_isin).first()
+
+        existing = await _find_existing()
+        if existing is None:
             continue
+        result = await database_sync_to_async(resolve_or_create_asset)(
+            user=investor,
+            isin=candidate_isin,
+            currency=existing.currency,
+            submitted_fields={},
+            mode="silent",
+        )
+        status_str = (
+            "existing_with_relationships"
+            if not result.linked
+            else "existing_added_relationships"
+        )
+        return result.asset, status_str
 
     if not found_security and len(securities_found) == 1:
         # Create new security using MICEX data

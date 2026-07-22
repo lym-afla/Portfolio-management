@@ -21,6 +21,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
+from services.asset_resolver import resolve_or_create_asset
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 STABLECOINS = {"USDT", "USDC", "USD"}
@@ -87,18 +88,19 @@ def _merge_sorted_events(*iterables):
 
 def resolve_crypto_asset(symbol, user):
     normalized_symbol = str(symbol).upper()
-    asset, _ = Assets.objects.get_or_create(
-        ISIN=_crypto_asset_identifier(normalized_symbol),
+    result = resolve_or_create_asset(
+        user=user,
+        isin=_crypto_asset_identifier(normalized_symbol),
         currency="USD",
-        defaults={
+        submitted_fields={
             "type": ASSET_TYPE_CRYPTO,
             "name": normalized_symbol,
             "ticker": normalized_symbol[:10],
             "exposure": "FX" if normalized_symbol in STABLECOINS else "Commodity",
         },
+        mode="silent",
     )
-    asset.investors.add(user)
-    return asset
+    return result.asset
 
 
 def resolve_crypto_option_asset(parsed_option, user):
@@ -114,17 +116,19 @@ def resolve_crypto_option_asset(parsed_option, user):
         f"{parsed_option['expiration_date'].strftime('%d%b%y').upper()}-"
         f"{parsed_option['strike_price']}-{parsed_option['option_type'][0]}"
     )
-    asset, _ = Assets.objects.get_or_create(
-        ISIN=_crypto_asset_identifier(f"OPT:{option_symbol}"),
+    result = resolve_or_create_asset(
+        user=user,
+        isin=_crypto_asset_identifier(f"OPT:{option_symbol}"),
         currency=asset_currency,
-        defaults={
+        submitted_fields={
             "type": "Option",
             "name": option_symbol,
             "ticker": option_symbol[:10],
             "exposure": "Derivatives",
         },
+        mode="silent",
     )
-    asset.investors.add(user)
+    asset = result.asset
     OptionMetadata.objects.get_or_create(
         asset=asset,
         defaults={
