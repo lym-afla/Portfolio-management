@@ -31,7 +31,7 @@ from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
 from services.securities import get_securities_table_api, get_security_detail
-from services.asset_resolver import AssetConflict
+from services.asset_resolver import AssetConflict, resolve_or_create_asset
 from core.sorting_utils import sort_entries
 from core.user_utils import format_account_display
 
@@ -311,44 +311,61 @@ def api_security_form_structure(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def api_create_security(request):
-    """Create security via SecuritySerializer → resolve_or_create_asset."""
+    """Create security via resolve_or_create_asset (interactive mode).
+
+    The serializer validates input; the helper owns the lookup→link→create
+    flow so the view can read the full ResolveResult (created/linked) for the
+    response without a serializer side-channel.
+    """
     serializer = SecuritySerializer(data=request.data)
-    if serializer.is_valid():
-        try:
-            security = serializer.save(user=request.user)
-        except AssetConflict as e:
-            return Response(
-                {
-                    "success": False,
-                    "conflict": True,
-                    "existing_asset": {
-                        "id": e.asset.id,
-                        "name": e.asset.name,
-                        "ISIN": e.asset.ISIN,
-                        "currency": e.asset.currency,
-                    },
-                    "field_diff": e.field_diff,
-                    "fillable": e.fillable,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-        result = getattr(serializer, "_resolve_result", None)
-        created = getattr(result, "created", True)
-        linked = getattr(result, "linked", False)
+    if not serializer.is_valid():
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # `confirm` is a write-only serializer field; pull it from validated_data
+    # before constructing submitted_fields so it isn't treated as an Asset column.
+    confirm = serializer.validated_data.get("confirm", False) is True
+    submitted_fields = {
+        k: v for k, v in serializer.validated_data.items() if k != "confirm"
+    }
+    try:
+        result = resolve_or_create_asset(
+            user=request.user,
+            isin=submitted_fields["ISIN"],
+            currency=submitted_fields["currency"],
+            submitted_fields=submitted_fields,
+            mode="interactive",
+            confirm=confirm,
+        )
+    except AssetConflict as e:
         return Response(
             {
-                "success": True,
-                "message": "Security created successfully",
-                "id": security.id,
-                "name": security.name,
-                "created": created,
-                "linked": linked,
+                "success": False,
+                "conflict": True,
+                "existing_asset": {
+                    "id": e.asset.id,
+                    "name": e.asset.name,
+                    "ISIN": e.asset.ISIN,
+                    "currency": e.asset.currency,
+                },
+                "field_diff": e.field_diff,
+                "fillable": e.fillable,
             },
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_409_CONFLICT,
         )
+
     return Response(
-        {"success": False, "errors": serializer.errors},
-        status=status.HTTP_400_BAD_REQUEST,
+        {
+            "success": True,
+            "message": "Security created successfully",
+            "id": result.asset.id,
+            "name": result.asset.name,
+            "created": result.created,
+            "linked": result.linked,
+        },
+        status=status.HTTP_201_CREATED,
     )
 
 

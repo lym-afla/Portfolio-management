@@ -1677,7 +1677,6 @@ async def create_security_from_tinkoff(
             # asset.investors.add) and upserts BondMetadata via update_or_create
             # (instead of the non-idempotent BondMetadata.objects.create).
             resolved_isin = isin if isin else instrument_data.isin
-            bond_kwargs = bond_data if bond_data else {}
             result = resolve_or_create_asset(
                 user=user,
                 isin=resolved_isin,
@@ -1690,7 +1689,7 @@ async def create_security_from_tinkoff(
                     "data_source": "TBANK",
                     "secid": instrument_data.ticker if hasattr(instrument_data, "ticker") else None,
                     "tbank_instrument_uid": instrument_uid,
-                    **bond_kwargs,
+                    **bond_data,
                 },
                 mode="silent",
             )
@@ -2152,7 +2151,6 @@ async def create_security_from_micex(
             # asset.investors.add) and upserts BondMetadata via update_or_create
             # (instead of the non-idempotent BondMetadata.objects.create).
             resolved_isin = security_data["isin"] or isin
-            bond_kwargs = bond_data if bond_data else {}
             result = resolve_or_create_asset(
                 user=user,
                 isin=resolved_isin,
@@ -2165,7 +2163,7 @@ async def create_security_from_micex(
                     "restricted": False,
                     "data_source": "MICEX",
                     "secid": security_data["secid"],
-                    **bond_kwargs,
+                    **bond_data,
                 },
                 mode="silent",
             )
@@ -3015,9 +3013,8 @@ async def _find_or_create_security(
     if not securities_found or len(securities_found) == 0:
         return None, "Could not get security details from Tinkoff"
 
-    # Try to find a security with all relationships; only go to except if none found
-    found_security = None
     # Resolve existing securities: find by ISIN, then use the helper to link+fill.
+    # If the loop finds nothing, fall through to create_security_from_micex below.
     for sec in securities_found:
         candidate_isin = sec[1]
 
@@ -3042,7 +3039,8 @@ async def _find_or_create_security(
         )
         return result.asset, status_str
 
-    if not found_security and len(securities_found) == 1:
+    # No existing security matched any ISIN — create from MICEX data.
+    if len(securities_found) == 1:
         # Create new security using MICEX data
         # securities_found tuple: (name, isin, instrument_kind, ticker)
         security_name = securities_found[0][0]

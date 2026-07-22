@@ -2,9 +2,13 @@
 
 Spec: docs/superpowers/specs/2026-07-21-shared-securities-resolve-design.md
 """
-import pytest
+from decimal import Decimal
+from unittest.mock import patch
 
-from common.models import Assets
+import pytest
+from rest_framework.test import APIClient
+
+from common.models import Assets, BondMetadata
 from users.models import CustomUser
 
 from services.asset_resolver import (
@@ -243,6 +247,11 @@ class TestResolveInteractiveMode:
         assert "ticker" in conflict.field_diff
         assert conflict.field_diff["ticker"]["existing"] == "OLD"
         assert conflict.field_diff["ticker"]["submitted"] == "NEW"
+        # name also differs ("User A Stock" vs "My Name") and existing is
+        # non-empty → also in field_diff (exercises the multi-field case).
+        assert "name" in conflict.field_diff
+        assert conflict.field_diff["name"]["existing"] == "User A Stock"
+        assert conflict.field_diff["name"]["submitted"] == "My Name"
 
     def test_resolve_interactive_confirm_links_and_fills(
         self, user: CustomUser
@@ -291,9 +300,6 @@ class TestResolveInteractiveMode:
         )
         assert result.created is False
         assert result.linked is False  # already linked → no change
-
-
-from unittest.mock import patch
 
 
 @pytest.mark.integration
@@ -350,25 +356,17 @@ class TestResolveRaceSafety:
         assert Assets.objects.filter(ISIN=isin, currency=currency).count() == 1
 
 
-from common.models import BondMetadata
-from decimal import Decimal
-
-
 @pytest.mark.integration
 @pytest.mark.database
 @pytest.mark.django_db
 class TestResolveBondMetadata:
     """BondMetadata upsert must be idempotent across users."""
 
-    def test_resolve_bond_metadata_upsert_idempotent(
-        self, user: CustomUser
-    ) -> None:
-        from users.models import CustomUser as User
-
-        user_a = User.objects.create_user(
+    def test_resolve_bond_metadata_upsert_idempotent(self) -> None:
+        user_a = CustomUser.objects.create_user(
             username="usera", email="a@example.com", password="pass123"
         )
-        user_b = User.objects.create_user(
+        user_b = CustomUser.objects.create_user(
             username="userb", email="b@example.com", password="pass123"
         )
         bond_fields = {
@@ -404,9 +402,6 @@ class TestResolveBondMetadata:
         assert meta.initial_notional == Decimal("1000.00")
         assert meta.coupon_rate == Decimal("5.25")
         assert meta.coupon_frequency == 2
-
-
-from rest_framework.test import APIClient
 
 
 @pytest.mark.integration
