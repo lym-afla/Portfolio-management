@@ -100,6 +100,72 @@
         <v-alert v-if="generalError" type="error" class="mt-3">
           {{ generalError }}
         </v-alert>
+        <!-- Conflict sub-view: security already exists in the shared catalog -->
+        <v-alert
+          v-if="conflictData"
+          type="warning"
+          variant="tonal"
+          class="mt-3"
+          prominent
+        >
+          <p class="font-weight-bold mb-2">
+            This security already exists in the catalog:
+            {{ conflictData.existing_asset.name }}
+            ({{ conflictData.existing_asset.ISIN }} /
+            {{ conflictData.existing_asset.currency }})
+          </p>
+
+          <v-table
+            v-if="Object.keys(conflictData.field_diff).length > 0"
+            density="compact"
+            class="mb-3"
+          >
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Catalog value</th>
+                <th>Your submission</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(diff, field) in conflictData.field_diff"
+                :key="field"
+              >
+                <td>{{ field }}</td>
+                <td>{{ diff.existing }}</td>
+                <td>{{ diff.submitted }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+
+          <div v-if="conflictData.fillable.length > 0" class="mb-3">
+            <p class="text-body-2 mb-1">
+              Fields that will be added from your submission:
+            </p>
+            <v-chip
+              v-for="field in conflictData.fillable"
+              :key="field"
+              size="small"
+              class="mr-1 mb-1"
+              color="success"
+            >
+              {{ field }}
+            </v-chip>
+          </div>
+
+          <div class="d-flex gap-2 mt-2">
+            <v-btn
+              color="primary"
+              variant="flat"
+              @click="confirmConflict"
+              :loading="isSubmitting"
+            >
+              Add to my portfolio
+            </v-btn>
+            <v-btn variant="text" @click="cancelConflict">Cancel</v-btn>
+          </div>
+        </v-alert>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -116,13 +182,15 @@
   </v-dialog>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import {
   createSecurity,
   updateSecurity,
   getSecurityFormStructure,
+  isSecurityConflictPayload,
 } from '@/services/api'
+import type { SecurityConflictPayload } from '@/services/api'
 import logger from '@/utils/logger'
 
 const props = defineProps({
@@ -142,11 +210,15 @@ const dialog = computed({
   set: (value) => emit('update:modelValue', value),
 })
 const isEdit = computed(() => !!props.editItem)
-const form = ref({})
-const formFields = ref([])
-const errorMessages = ref({})
+// Form structure is served by an untyped backend endpoint; keep these
+// loose-typed so vue-tsc doesn't choke on the existing JS-style access
+// patterns. The new conflict payload below IS typed.
+const form = ref<Record<string, any>>({})
+const formFields = ref<any[]>([])
+const errorMessages = ref<Record<string, any>>({})
 const generalError = ref('')
 const isSubmitting = ref(false)
+const conflictData = ref<SecurityConflictPayload | null>(null)
 
 const initializeForm = () => {
   form.value = formFields.value.reduce((acc, field) => {
@@ -162,7 +234,7 @@ const initializeForm = () => {
 const fetchFormStructure = async () => {
   try {
     const structure = await getSecurityFormStructure()
-    formFields.value = structure.fields
+    formFields.value = structure.fields as any[]
     logger.log('Unknown', 'SecurityFormDialog formFields', formFields.value)
     initializeForm()
   } catch (error) {
@@ -180,6 +252,7 @@ const closeDialog = () => {
   dialog.value = false
   initializeForm()
   generalError.value = ''
+  conflictData.value = null
 }
 
 const submitForm = async () => {
@@ -211,6 +284,14 @@ const submitForm = async () => {
     closeDialog()
   } catch (error) {
     logger.error('Unknown', 'Error submitting security:', error)
+
+    // Check for a 409 conflict payload from resolve_or_create_asset.
+    if (isSecurityConflictPayload(error)) {
+      conflictData.value = error
+      return  // Don't close the dialog — show the conflict sub-view.
+    }
+
+    // Existing per-field error handling (HTTP 400 from DRF).
     if (error.errors) {
       Object.keys(error.errors).forEach((key) => {
         if (key === '__all__') {
@@ -228,6 +309,27 @@ const submitForm = async () => {
   } finally {
     isSubmitting.value = false
   }
+}
+
+const confirmConflict = async () => {
+  isSubmitting.value = true
+  generalError.value = ''
+  try {
+    const response = await createSecurity({ ...form.value, confirm: true })
+    emit('security-added', response)
+    conflictData.value = null
+    closeDialog()
+  } catch (error) {
+    logger.error('Unknown', 'Error confirming conflict:', error)
+    generalError.value =
+      error?.message || 'Failed to add security. Please try again.'
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const cancelConflict = () => {
+  conflictData.value = null
 }
 
 const shouldShowField = (fieldName) => {
