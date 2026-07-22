@@ -921,11 +921,13 @@ class SecuritySerializer(serializers.ModelSerializer):
         """Delegate to resolve_or_create_asset in interactive mode.
 
         May raise services.asset_resolver.AssetConflict if the security already
-        not confirmed. The view catches this and returns HTTP 409.
+        exists and the user has not confirmed. The view catches this and returns
+        HTTP 409.
 
-        Stashes the ResolveResult on ``self._resolve_result`` so the view can
-        surface ``created``/``linked`` in the success response without breaking
-        DRF's contract that ``save()`` returns the model instance.
+        Note: the production create path (api_create_security) calls
+        resolve_or_create_asset directly so it can read the full ResolveResult
+        (created/linked) for the response. This method remains as a valid
+        standalone entry point and is exercised by the serializer unit tests.
         """
         user = validated_data.pop("user", None)
         confirm = validated_data.pop("confirm", False)
@@ -937,7 +939,6 @@ class SecuritySerializer(serializers.ModelSerializer):
             mode="interactive",
             confirm=confirm,
         )
-        self._resolve_result = result
         return result.asset
 
     def update(self, instance, validated_data):
