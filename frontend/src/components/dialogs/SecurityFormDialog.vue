@@ -322,7 +322,7 @@ const confirmConflict = async () => {
   } catch (error) {
     logger.error('Unknown', 'Error confirming conflict:', error)
     generalError.value =
-      error?.message || 'Failed to add security. Please try again.'
+      error.message || 'Failed to add security. Please try again.'
   } finally {
     isSubmitting.value = false
   }
