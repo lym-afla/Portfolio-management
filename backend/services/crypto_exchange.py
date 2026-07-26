@@ -528,9 +528,9 @@ def normalize_bybit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
     amount = -abs(Decimal(payload["amount"]))
     return CryptoExchangeEvent(
         provider="bybit",
-        provider_event_id=payload["id"],
-        group_id=payload["id"],
-        timestamp_ms=int(payload["createdAt"]),
+        provider_event_id=payload["withdrawId"],
+        group_id=payload["withdrawId"],
+        timestamp_ms=int(payload["createTime"]),
         category="withdrawal",
         raw_type="withdrawal",
         legs=_single_leg(coin, amount, coin),

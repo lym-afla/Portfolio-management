@@ -478,10 +478,12 @@ def test_normalize_bybit_withdrawal_btc():
     event = normalize_bybit_withdrawal(
         {
             "coin": "BTC",
+            "chain": "BTC",
             "amount": "0.05",
-            "id": "wd-1",
-            "createdAt": "1700000001000",
+            "txID": "0xdeadbeef",
             "status": "success",
+            "withdrawId": "wd-1",
+            "createTime": "1700000001000",
         }
     )
 
