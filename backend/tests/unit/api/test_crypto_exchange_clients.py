@@ -750,6 +750,94 @@ def test_iter_executions_with_wide_window_calls_get_private_once_per_chunk(monke
     assert ends[-1] == end
 
 
+# --- ByBit 30-day window chunking (deposits/withdrawals) ---------------------
+#
+# ByBit's /v5/asset/deposit/query-record and /v5/asset/withdraw/query-record
+# reject windows over 30 days. _chunked_bybit_windows(params, max_days=30)
+# splits a too-wide window into consecutive <=30-day sub-windows (oldest first).
+
+_THIRTY_DAYS_MS = 30 * 86400 * 1000
+
+
+def test_chunked_bybit_windows_thirty_day_span_yields_original_once():
+    """A span of exactly max_days (30) must NOT chunk — it fits in one window."""
+    start = 1_700_000_000_000
+    end = start + 30 * 86_400_000  # exactly 30 days
+    params = {"startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_days=30))
+
+    assert windows == [params]
+
+
+def test_chunked_bybit_windows_thirty_day_max_yields_two_for_thirty_one_days():
+    """A 31-day span (one day over the 30-day cap) chunks into 30 + 1."""
+    start = 1_700_000_000_000
+    end = start + 31 * 86_400_000  # 31 days -> 30 + 1
+    params = {"startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_days=30))
+
+    assert len(windows) == 2
+    assert windows[0] == {"startTime": str(start), "endTime": str(start + _THIRTY_DAYS_MS)}
+    assert windows[1] == {"startTime": str(start + _THIRTY_DAYS_MS), "endTime": str(end)}
+    # Contiguous and clamped to the original end.
+    assert windows[0]["endTime"] == windows[1]["startTime"]
+    assert windows[-1]["endTime"] == str(end)
+
+
+def test_chunked_bybit_windows_thirty_day_max_yields_two_for_sixty_days():
+    """A 60-day span chunks into exactly two 30-day windows."""
+    start = 1_700_000_000_000
+    end = start + 60 * 86_400_000  # 60 days -> 30 + 30
+    params = {"startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_days=30))
+
+    assert len(windows) == 2
+    for w in windows:
+        assert int(w["endTime"]) - int(w["startTime"]) == _THIRTY_DAYS_MS
+    # Contiguous, ordered, exact endpoints.
+    assert windows[0]["startTime"] == str(start)
+    assert windows[0]["endTime"] == windows[1]["startTime"]
+    assert windows[1]["endTime"] == str(end)
+
+
+def test_iter_deposits_with_wide_window_calls_get_private_once_per_chunk(monkeypatch):
+    """A 60-day deposit window must fan out into one get_private call per <=30-day chunk."""
+    client = BybitClient(api_key="k", api_secret="s")
+    calls = []
+
+    def fake_get(path, params):
+        calls.append((path, dict(params)))
+        # Empty page terminates the pagination loop within each chunk.
+        return {"retCode": 0, "retMsg": "OK", "result": {"rows": [], "nextPageCursor": ""}}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+
+    start = 1_700_000_000_000
+    end = start + 60 * 86_400_000  # 60 days -> 2 chunks (30 + 30)
+    rows = list(client.iter_deposits({"startTime": start, "endTime": end}))
+
+    assert rows == []
+    # 60 days splits into ceil(60/30) = 2 windows.
+    assert len(calls) == 2
+    assert all(path == "/v5/asset/deposit/query-record" for path, _ in calls)
+    # Each call's window must be <= 30 days.
+    for _, params in calls:
+        span = int(params["endTime"]) - int(params["startTime"])
+        assert span <= _THIRTY_DAYS_MS
+    # Windows are chronological and contiguous.
+    starts = [int(p["startTime"]) for _, p in calls]
+    ends = [int(p["endTime"]) for _, p in calls]
+    assert starts == sorted(starts)
+    for i in range(len(calls) - 1):
+        assert ends[i] == starts[i + 1]
+    # First window starts at the original start; last window ends at the original end.
+    assert starts[0] == start
+    assert ends[-1] == end
+
+
 # --- Bug #5: OKX option settlements filter to type=3 -------------------------
 
 

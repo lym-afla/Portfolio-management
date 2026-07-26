@@ -24,14 +24,15 @@ def _encoded_query(params: Dict[str, Any]) -> str:
 _BYBIT_MAX_WINDOW_MS = 7 * 86400 * 1000
 
 
-def _chunked_bybit_windows(params):
-    """Yield successive param dicts with startTime/endTime chunked to <=7 days.
+def _chunked_bybit_windows(params, max_days=7):
+    """Yield successive param dicts with startTime/endTime chunked to <=max_days days.
 
-    ByBit's /v5/execution/list and /v5/account/transaction-log reject windows
-    over 7 days. If params has both startTime and endTime (ms epoch strings or
-    ints) spanning more than 7 days, yield consecutive 7-day sub-windows from
-    oldest to newest. If either bound is missing or the span is <= 7 days,
-    yield the original params once.
+    ByBit caps the startTime/endTime span on several endpoints (7 days for
+    /v5/execution/list and /v5/account/transaction-log; 30 days for the asset
+    deposit/withdrawal records). If params has both startTime and endTime
+    (ms epoch, string or int) spanning more than max_days, yield consecutive
+    max_days-sized sub-windows from oldest to newest, last chunk clamped to the
+    original end. Otherwise yield params once.
     """
     raw_start = params.get("startTime")
     raw_end = params.get("endTime")
@@ -44,12 +45,13 @@ def _chunked_bybit_windows(params):
     except (TypeError, ValueError):
         yield params
         return
-    if end - start <= _BYBIT_MAX_WINDOW_MS:
+    max_window_ms = max_days * 86400 * 1000
+    if end - start <= max_window_ms:
         yield params
         return
     chunk_start = start
     while chunk_start < end:
-        chunk_end = min(chunk_start + _BYBIT_MAX_WINDOW_MS, end)
+        chunk_end = min(chunk_start + max_window_ms, end)
         yield {**params, "startTime": str(chunk_start), "endTime": str(chunk_end)}
         chunk_start = chunk_end
 
@@ -169,44 +171,46 @@ class BybitClient:
                     break
 
     def iter_deposits(self, params=None):
-        cursor = ""
         params = params or {}
-        while True:
-            page_params = dict(params)
-            if cursor:
-                page_params["cursor"] = cursor
+        for window_params in _chunked_bybit_windows(params, max_days=30):
+            cursor = ""
+            while True:
+                page_params = dict(window_params)
+                if cursor:
+                    page_params["cursor"] = cursor
 
-            data = self.get_private("/v5/asset/deposit/query-record", page_params)
-            result = data.get("result", {})
-            rows = result.get("rows")
-            if rows is None:
-                raise CryptoExchangeAPIError(f"Malformed Bybit deposit response: {data}")
-            for row in rows:
-                yield row
+                data = self.get_private("/v5/asset/deposit/query-record", page_params)
+                result = data.get("result", {})
+                rows = result.get("rows")
+                if rows is None:
+                    raise CryptoExchangeAPIError(f"Malformed Bybit deposit response: {data}")
+                for row in rows:
+                    yield row
 
-            cursor = result.get("nextPageCursor")
-            if not cursor:
-                break
+                cursor = result.get("nextPageCursor")
+                if not cursor:
+                    break
 
     def iter_withdrawals(self, params=None):
-        cursor = ""
         params = params or {}
-        while True:
-            page_params = dict(params)
-            if cursor:
-                page_params["cursor"] = cursor
+        for window_params in _chunked_bybit_windows(params, max_days=30):
+            cursor = ""
+            while True:
+                page_params = dict(window_params)
+                if cursor:
+                    page_params["cursor"] = cursor
 
-            data = self.get_private("/v5/asset/withdraw/query-record", page_params)
-            result = data.get("result", {})
-            rows = result.get("rows")
-            if rows is None:
-                raise CryptoExchangeAPIError(f"Malformed Bybit withdrawal response: {data}")
-            for row in rows:
-                yield row
+                data = self.get_private("/v5/asset/withdraw/query-record", page_params)
+                result = data.get("result", {})
+                rows = result.get("rows")
+                if rows is None:
+                    raise CryptoExchangeAPIError(f"Malformed Bybit withdrawal response: {data}")
+                for row in rows:
+                    yield row
 
-            cursor = result.get("nextPageCursor")
-            if not cursor:
-                break
+                cursor = result.get("nextPageCursor")
+                if not cursor:
+                    break
 
     def iter_option_executions(self, params=None):
         params = {**(params or {}), "category": "option"}
