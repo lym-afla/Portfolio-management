@@ -279,7 +279,7 @@ class OKXClient:
             if not after:
                 raise CryptoExchangeAPIError(f"Missing OKX billId cursor in fills response: {rows[-1]}")
 
-    def iter_asset_deposits_withdrawals(self, params=None):
+    def iter_deposits(self, params=None):
         after = None
         params = params or {}
         while True:
@@ -287,19 +287,42 @@ class OKXClient:
             if after:
                 page_params["after"] = after
 
-            data = self.get_private("/api/v5/asset/deposit-withdraw", page_params)
+            data = self.get_private("/api/v5/asset/deposit-history", page_params)
             rows = data.get("data")
             if rows is None:
-                raise CryptoExchangeAPIError(f"Malformed OKX deposit-withdraw response: {data}")
+                raise CryptoExchangeAPIError(f"Malformed OKX deposit response: {data}")
             for row in rows:
                 yield row
 
             if not rows:
                 break
-            after = rows[-1].get("billId")
+            after = rows[-1].get("depId")
             if not after:
                 raise CryptoExchangeAPIError(
-                    f"Missing OKX billId cursor in deposit-withdraw response: {rows[-1]}"
+                    f"Missing OKX depId cursor in deposit response: {rows[-1]}"
+                )
+
+    def iter_withdrawals(self, params=None):
+        after = None
+        params = params or {}
+        while True:
+            page_params = dict(params)
+            if after:
+                page_params["after"] = after
+
+            data = self.get_private("/api/v5/asset/withdrawal-history", page_params)
+            rows = data.get("data")
+            if rows is None:
+                raise CryptoExchangeAPIError(f"Malformed OKX withdrawal response: {data}")
+            for row in rows:
+                yield row
+
+            if not rows:
+                break
+            after = rows[-1].get("wdId")
+            if not after:
+                raise CryptoExchangeAPIError(
+                    f"Missing OKX wdId cursor in withdrawal response: {rows[-1]}"
                 )
 
     def iter_earn_lending_history(self, params=None):
@@ -330,14 +353,17 @@ class OKXClient:
         yield from self.iter_fills_history(params)
 
     def iter_option_settlements(self, params=None):
+        # The dedicated ``/api/v5/account/options-settlement-history`` endpoint
+        # returns HTTP 404. The real source is ``/api/v5/account/bills-archive``
+        # filtered to ``instType=OPTION``.
         after = None
-        params = params or {}
+        params = {"instType": "OPTION", **(params or {})}
         while True:
             page_params = dict(params)
             if after:
                 page_params["after"] = after
 
-            data = self.get_private("/api/v5/account/options-settlement-history", page_params)
+            data = self.get_private("/api/v5/account/bills-archive", page_params)
             rows = data.get("data")
             if rows is None:
                 raise CryptoExchangeAPIError(f"Malformed OKX options-settlement response: {data}")

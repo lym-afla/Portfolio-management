@@ -537,21 +537,39 @@ def normalize_bybit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
     )
 
 
-def normalize_okx_deposit_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+def normalize_okx_deposit(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    # OKX deposit-history (``/api/v5/asset/deposit-history``) returns ``depId``
+    # as the per-row id. The delivered amount is unsigned in the payload; deposits
+    # are always inbound so the signed leg quantity is positive.
     ccy = payload["ccy"].upper()
     amount = Decimal(payload["amt"])
-    direction = payload["type"].lower()
-    if direction not in {"deposit", "withdrawal"}:
-        raise ValueError(f"Unknown OKX asset movement type: {payload['type']}")
-    signed_amount = amount if direction == "deposit" else -abs(amount)
+    dep_id = payload["depId"]
     return CryptoExchangeEvent(
         provider="okx",
-        provider_event_id=f"{direction}:{payload['billId']}",
-        group_id=payload["billId"],
+        provider_event_id=f"deposit:{dep_id}",
+        group_id=dep_id,
         timestamp_ms=int(payload["ts"]),
-        category=direction,
-        raw_type=direction,
-        legs=_single_leg(ccy, signed_amount, ccy),
+        category="deposit",
+        raw_type="deposit",
+        legs=_single_leg(ccy, amount, ccy),
+    )
+
+
+def normalize_okx_withdrawal(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    # OKX withdrawal-history (``/api/v5/asset/withdrawal-history``) returns
+    # ``wdId`` as the per-row id. The amount is unsigned in the payload;
+    # withdrawals are always outbound so the signed leg quantity is negative.
+    ccy = payload["ccy"].upper()
+    amount = -abs(Decimal(payload["amt"]))
+    wd_id = payload.get("wdId") or payload.get("clientId") or payload["ts"]
+    return CryptoExchangeEvent(
+        provider="okx",
+        provider_event_id=f"withdrawal:{wd_id}",
+        group_id=wd_id,
+        timestamp_ms=int(payload["ts"]),
+        category="withdrawal",
+        raw_type="withdrawal",
+        legs=_single_leg(ccy, amount, ccy),
     )
 
 
@@ -573,15 +591,22 @@ def normalize_bybit_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEv
 
 
 def normalize_okx_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEvent]:
+    # The earn-lending endpoint (``/api/v5/finance/savings/lending-history``) does
+    # not return a per-row id; ``ts`` is the millisecond accrual timestamp and is
+    # unique per row in practice, so it stands in as the event id. The
+    # ``subType`` filter is checked defensively (``.get``) because real
+    # earn-lending rows do not carry that key, but bills-style payloads routed
+    # through this normalizer may.
     if payload.get("subType") in SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES:
         return None
     ccy = payload["ccy"].upper()
     amount = Decimal(payload["amt"])
+    ts = payload["ts"]
     return CryptoExchangeEvent(
         provider="okx",
-        provider_event_id=payload["billId"],
-        group_id=payload["billId"],
-        timestamp_ms=int(payload["ts"]),
+        provider_event_id=f"earn:{ts}",
+        group_id=ts,
+        timestamp_ms=int(ts),
         category="reward",
         raw_type="earn",
         legs=_single_leg(ccy, amount, ccy),
@@ -668,9 +693,14 @@ def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchange
 
 
 def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
-    ccy = payload["settlCcy"].upper()
-    amount = Decimal(payload["settlAmt"])
-    settlement_price = Decimal(payload["settlPx"])
+    # Real source is ``/api/v5/account/bills-archive`` filtered to
+    # ``instType=OPTION``. Settlement rows carry the delivered coin in ``ccy``,
+    # the signed delivered amount in ``balChg`` (already signed — passed
+    # through unchanged), and the settlement price in ``px``. There is no
+    # ``settlCcy``/``settlAmt``/``settlPx``.
+    ccy = payload["ccy"].upper()
+    amount = Decimal(payload["balChg"])
+    settlement_price = Decimal(payload["px"])
     legs = _single_leg(ccy, amount, ccy)
     legs[0]["price"] = settlement_price
     return CryptoExchangeEvent(

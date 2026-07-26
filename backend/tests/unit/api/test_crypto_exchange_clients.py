@@ -431,7 +431,10 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
         def iter_option_fills(self, params):
             yield from []
 
-        def iter_asset_deposits_withdrawals(self, params):
+        def iter_deposits(self, params):
+            yield from []
+
+        def iter_withdrawals(self, params):
             yield from []
 
         def iter_earn_lending_history(self, params):
@@ -501,9 +504,9 @@ def test_bybit_iter_option_executions_passes_option_category(monkeypatch):
     assert captured["params"]["category"] == "option"
 
 
-def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
+def test_okx_iter_deposits_yields_data(monkeypatch):
     client = OKXClient(api_key="k", api_secret="s", passphrase="p")
-    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "billId": "b1", "type": "deposit"}]}
+    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "depId": "d1", "type": "4"}]}
     calls = {"n": 0}
 
     def fake_get(path, params=None):
@@ -513,9 +516,50 @@ def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
         return page if calls["n"] == 1 else {"code": "0", "msg": "", "data": []}
 
     monkeypatch.setattr(client, "get_private", fake_get)
-    rows = list(client.iter_asset_deposits_withdrawals({}))
+    rows = list(client.iter_deposits({}))
 
-    assert [r["billId"] for r in rows] == ["b1"]
+    assert [r["depId"] for r in rows] == ["d1"]
+
+
+def test_okx_iter_deposits_requires_dep_id_cursor(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    monkeypatch.setattr(
+        client,
+        "get_private",
+        lambda path, params=None: {"code": "0", "data": [{"ccy": "BTC"}]},
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match="Missing OKX depId cursor"):
+        list(client.iter_deposits({}))
+
+
+def test_okx_iter_withdrawals_yields_data(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "wdId": "w1"}]}
+    calls = {"n": 0}
+
+    def fake_get(path, params=None):
+        calls["n"] += 1
+        # First call returns one row; subsequent calls return an empty page to
+        # terminate the pagination loop (end of history reached).
+        return page if calls["n"] == 1 else {"code": "0", "msg": "", "data": []}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_withdrawals({}))
+
+    assert [r["wdId"] for r in rows] == ["w1"]
+
+
+def test_okx_iter_withdrawals_requires_wd_id_cursor(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    monkeypatch.setattr(
+        client,
+        "get_private",
+        lambda path, params=None: {"code": "0", "data": [{"ccy": "BTC"}]},
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match="Missing OKX wdId cursor"):
+        list(client.iter_withdrawals({}))
 
 
 @pytest.mark.django_db(transaction=True)
