@@ -21,6 +21,39 @@ def _encoded_query(params: Dict[str, Any]) -> str:
     return urlencode(sorted(params.items()))
 
 
+_BYBIT_MAX_WINDOW_MS = 7 * 86400 * 1000
+
+
+def _chunked_bybit_windows(params):
+    """Yield successive param dicts with startTime/endTime chunked to <=7 days.
+
+    ByBit's /v5/execution/list and /v5/account/transaction-log reject windows
+    over 7 days. If params has both startTime and endTime (ms epoch strings or
+    ints) spanning more than 7 days, yield consecutive 7-day sub-windows from
+    oldest to newest. If either bound is missing or the span is <= 7 days,
+    yield the original params once.
+    """
+    raw_start = params.get("startTime")
+    raw_end = params.get("endTime")
+    if raw_start is None or raw_end is None:
+        yield params
+        return
+    try:
+        start = int(raw_start)
+        end = int(raw_end)
+    except (TypeError, ValueError):
+        yield params
+        return
+    if end - start <= _BYBIT_MAX_WINDOW_MS:
+        yield params
+        return
+    chunk_start = start
+    while chunk_start < end:
+        chunk_end = min(chunk_start + _BYBIT_MAX_WINDOW_MS, end)
+        yield {**params, "startTime": str(chunk_start), "endTime": str(chunk_end)}
+        chunk_start = chunk_end
+
+
 @dataclass
 class BybitClient:
     api_key: str
@@ -92,46 +125,48 @@ class BybitClient:
     def iter_transaction_log(
         self, params: Optional[Dict[str, Any]] = None
     ) -> Iterable[Dict[str, Any]]:
-        cursor = ""
         params = params or {}
-        while True:
-            page_params = {**params, "limit": 50}
-            if cursor:
-                page_params["cursor"] = cursor
+        for window_params in _chunked_bybit_windows(params):
+            cursor = ""
+            while True:
+                page_params = {**window_params, "limit": 50}
+                if cursor:
+                    page_params["cursor"] = cursor
 
-            data = self.get_private("/v5/account/transaction-log", page_params)
-            result = data.get("result", {})
-            rows = result.get("list")
-            if rows is None:
-                rows = result.get("log")
-            if rows is None:
-                raise CryptoExchangeAPIError(f"Malformed Bybit transaction log response: {data}")
-            for row in rows:
-                yield row
+                data = self.get_private("/v5/account/transaction-log", page_params)
+                result = data.get("result", {})
+                rows = result.get("list")
+                if rows is None:
+                    rows = result.get("log")
+                if rows is None:
+                    raise CryptoExchangeAPIError(f"Malformed Bybit transaction log response: {data}")
+                for row in rows:
+                    yield row
 
-            cursor = result.get("nextPageCursor")
-            if not cursor:
-                break
+                cursor = result.get("nextPageCursor")
+                if not cursor:
+                    break
 
     def iter_executions(self, params: Optional[Dict[str, Any]] = None) -> Iterable[Dict[str, Any]]:
-        cursor = ""
         params = params or {}
-        while True:
-            page_params = {**params, "limit": 100}
-            if cursor:
-                page_params["cursor"] = cursor
+        for window_params in _chunked_bybit_windows(params):
+            cursor = ""
+            while True:
+                page_params = {**window_params, "limit": 100}
+                if cursor:
+                    page_params["cursor"] = cursor
 
-            data = self.get_private("/v5/execution/list", page_params)
-            result = data.get("result", {})
-            rows = result.get("list")
-            if rows is None:
-                raise CryptoExchangeAPIError(f"Malformed Bybit execution response: {data}")
-            for row in rows:
-                yield row
+                data = self.get_private("/v5/execution/list", page_params)
+                result = data.get("result", {})
+                rows = result.get("list")
+                if rows is None:
+                    raise CryptoExchangeAPIError(f"Malformed Bybit execution response: {data}")
+                for row in rows:
+                    yield row
 
-            cursor = result.get("nextPageCursor")
-            if not cursor:
-                break
+                cursor = result.get("nextPageCursor")
+                if not cursor:
+                    break
 
     def iter_deposits(self, params=None):
         cursor = ""
@@ -368,7 +403,13 @@ class OKXClient:
             if rows is None:
                 raise CryptoExchangeAPIError(f"Malformed OKX options-settlement response: {data}")
             for row in rows:
-                yield row
+                # bills-archive returns BOTH settlement rows and option-premium
+                # trade rows for instType=OPTION. Only ``type == "3"`` rows are
+                # settlements; ``type == "2"`` rows are the premium trades that
+                # ``iter_option_fills`` already fetches via /api/v5/trade/fills
+                # -history, so yielding them here would double-count premiums.
+                if str(row.get("type")) == "3":
+                    yield row
 
             if not rows:
                 break
