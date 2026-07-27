@@ -52,6 +52,24 @@ from .serializers import FXTransactionFormSerializer, TransactionFormSerializer
 logger = logging.getLogger(__name__)
 
 
+def _format_partial_failures(broker_api):
+    """Return a list of ``{endpoint, error}`` dicts for the frontend.
+
+    ``BybitAPI`` / ``OKXAPI`` collect per-endpoint failures in
+    ``self.partial_failures`` (a list of ``(endpoint_name, error_message)``
+    tuples) as their ``_safe`` wrapper catches ``CryptoExchangeAPIError``
+    around each per-endpoint iterator. Without this, an endpoint error (e.g.
+    OKX ``bills-archive`` rejecting a 4-year window) is indistinguishable from
+    a genuine "no data" result, so the user sees identical empty UX whether
+    the endpoint failed or simply had nothing.
+
+    Returns ``[]`` for brokers without partial-failure tracking (e.g.
+    Tinkoff) so the consumer can unconditionally forward this list.
+    """
+    failures = getattr(broker_api, "partial_failures", None) or []
+    return [{"endpoint": name, "error": message} for name, message in failures]
+
+
 @database_sync_to_async
 def ensure_account_native_ids(user, broker_api):
     """
@@ -1072,7 +1090,10 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 return
 
             # Signal completion (stats are tracked in consumers.py)
-            yield {"status": "processing_complete"}
+            yield {
+                "status": "processing_complete",
+                "partial_failures": _format_partial_failures(broker_api),
+            }
 
         except Exception as e:
             logger.error(f"Error in API import: {str(e)}", exc_info=True)

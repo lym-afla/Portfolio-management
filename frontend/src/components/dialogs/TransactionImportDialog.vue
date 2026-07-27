@@ -397,6 +397,25 @@
             </v-card>
           </v-col>
         </v-row>
+        <v-alert
+          v-if="importStats.warnings && importStats.warnings.length"
+          type="warning"
+          variant="tonal"
+          closable
+          class="mt-4"
+          title="Some data sources could not be fetched"
+        >
+          <div class="text-body-2 mb-2">
+            Import completed, but these endpoints returned errors and their data
+            is not included in the results above:
+          </div>
+          <ul class="text-body-2 mb-0">
+            <li v-for="(warning, index) in importStats.warnings" :key="index">
+              <strong>{{ warning.endpoint }}</strong
+              >: {{ warning.error }}
+            </li>
+          </ul>
+        </v-alert>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -550,6 +569,7 @@ const dialog = ref(props.modelValue)
       skippedTransactions: 0,
       duplicateTransactions: 0,
       importErrors: 0,
+      warnings: [],
     })
     const errorMessage = ref('')
     const showErrorDialog = ref(false)
@@ -1021,7 +1041,9 @@ const dialog = ref(props.modelValue)
     }
 
     const handleImportSuccess = (result) => {
-      importStats.value = result
+      // Normalize warnings so the template's v-if always sees an array even
+      // when the backend omits the field (e.g. clean imports, Tinkoff).
+      importStats.value = { warnings: [], ...result }
       showSuccessDialog.value = true
       showProgressDialog.value = false
       emit('import-completed', result)
