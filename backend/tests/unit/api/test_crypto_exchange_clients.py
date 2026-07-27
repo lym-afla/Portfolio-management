@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import time
 from decimal import Decimal
 
 import pytest
@@ -727,7 +728,10 @@ def test_iter_executions_with_wide_window_calls_get_private_once_per_chunk(monke
 
     monkeypatch.setattr(client, "get_private", fake_get_private)
 
-    start = 1_700_000_000_000
+    # Use a recent start (within the 729-day history floor) so iter_executions'
+    # max_history_days=729 clamp leaves the window intact and this test stays
+    # focused on the 7-day chunking fan-out, not the clamp behavior.
+    start = int(time.time() * 1000) - 100 * 86_400_000  # 100 days ago
     end = start + 30 * 86_400_000  # 30 days -> 5 chunks (7+7+7+7+2)
     rows = list(client.iter_executions({"category": "spot", "startTime": start, "endTime": end}))
 
@@ -836,6 +840,75 @@ def test_iter_deposits_with_wide_window_calls_get_private_once_per_chunk(monkeyp
     # First window starts at the original start; last window ends at the original end.
     assert starts[0] == start
     assert ends[-1] == end
+
+
+# --- ByBit 2-year history clamp (max_history_days) ---------------------------
+#
+# ByBit's /v5/execution/list and /v5/account/transaction-log reject queries
+# older than ~730 days ("Can't query order earlier than 2 years"). Passing
+# max_history_days=729 clamps startTime to no earlier than ~729 days ago so an
+# over-long requested window silently truncates to available history instead of
+# erroring. Deposits/withdrawals have NO such limit and must keep the default
+# (None) so pre-2-year history is preserved.
+
+_MS_PER_DAY = 86400 * 1000
+_MS_PER_SEC = 1000
+
+
+def test_chunked_bybit_windows_clamps_start_older_than_2_years():
+    """A start >730 days ago is clamped to ~729 days ago (the safe floor)."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    floor_ms = now_ms - 729 * _MS_PER_DAY
+    far_start = now_ms - 800 * _MS_PER_DAY  # well beyond 729-day floor
+    end = now_ms + _MS_PER_DAY  # end is recent so the whole window isn't old
+    params = {"category": "spot", "startTime": far_start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_history_days=729))
+
+    assert len(windows) >= 1
+    clamped_start = int(windows[0]["startTime"])
+    # Within a 60-second tolerance to absorb time.time() drift between the
+    # helper's call and the test's expected-floor computation.
+    assert abs(clamped_start - floor_ms) <= 60 * _MS_PER_SEC
+    # End is preserved.
+    assert windows[-1]["endTime"] == str(end)
+
+
+def test_chunked_bybit_windows_no_clamp_when_start_within_history():
+    """A start only 100 days ago must NOT be clamped (within the 729-day window)."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    start = now_ms - 100 * _MS_PER_DAY  # well within 729 days
+    params = {"category": "spot", "startTime": start, "endTime": now_ms}
+
+    windows = list(_chunked_bybit_windows(params, max_history_days=729))
+
+    assert len(windows) >= 1
+    assert int(windows[0]["startTime"]) == start  # unchanged
+
+
+def test_chunked_bybit_windows_yields_nothing_when_whole_window_too_old():
+    """If both start and end are older than 729 days, the window is empty."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    end = now_ms - 800 * _MS_PER_DAY  # end is itself beyond the floor
+    start = end - 10 * _MS_PER_DAY
+    params = {"category": "spot", "startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_history_days=729))
+
+    assert windows == []
+
+
+def test_chunked_bybit_windows_no_clamp_when_max_history_days_none():
+    """With max_history_days=None (deposits/withdrawals) very-old starts are preserved."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    far_start = now_ms - 1000 * _MS_PER_DAY  # well beyond 730 days
+    end = far_start + 5 * _MS_PER_DAY  # short span, no chunking expected
+    params = {"startTime": far_start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params))  # default max_history_days=None
+
+    # Original params yielded verbatim — no clamping, no string coercion.
+    assert windows == [params]
 
 
 # --- Bug #5: OKX option settlements filter to type=3 -------------------------

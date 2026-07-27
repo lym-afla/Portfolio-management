@@ -24,7 +24,7 @@ def _encoded_query(params: Dict[str, Any]) -> str:
 _BYBIT_MAX_WINDOW_MS = 7 * 86400 * 1000
 
 
-def _chunked_bybit_windows(params, max_days=7):
+def _chunked_bybit_windows(params, max_days=7, max_history_days=None):
     """Yield successive param dicts with startTime/endTime chunked to <=max_days days.
 
     ByBit caps the startTime/endTime span on several endpoints (7 days for
@@ -33,6 +33,14 @@ def _chunked_bybit_windows(params, max_days=7):
     (ms epoch, string or int) spanning more than max_days, yield consecutive
     max_days-sized sub-windows from oldest to newest, last chunk clamped to the
     original end. Otherwise yield params once.
+
+    If ``max_history_days`` is set, also clamp ``startTime`` to no earlier than
+    ``now - max_history_days`` BEFORE chunking. ByBit's /v5/execution/list and
+    /v5/account/transaction-log reject queries older than ~730 days with
+    "Can't query order earlier than 2 years"; pass max_history_days=729 for
+    those endpoints so an over-long requested window silently truncates to the
+    available history instead of erroring. Endpoints without the limit
+    (deposits/withdrawals) leave this as None.
     """
     raw_start = params.get("startTime")
     raw_end = params.get("endTime")
@@ -45,9 +53,23 @@ def _chunked_bybit_windows(params, max_days=7):
     except (TypeError, ValueError):
         yield params
         return
+    clamped = False
+    if max_history_days is not None:
+        history_floor_ms = int(time.time() * 1000) - max_history_days * 86400 * 1000
+        if start < history_floor_ms:
+            start = history_floor_ms
+            clamped = True
+        # If the entire requested window is older than ByBit keeps, yield nothing.
+        if start >= end:
+            return
     max_window_ms = max_days * 86400 * 1000
     if end - start <= max_window_ms:
-        yield params
+        # Preserve the original params verbatim when no clamping happened (no
+        # string coercion) so callers see exactly what they passed in.
+        if clamped:
+            yield {**params, "startTime": str(start), "endTime": str(end)}
+        else:
+            yield params
         return
     chunk_start = start
     while chunk_start < end:
@@ -128,7 +150,7 @@ class BybitClient:
         self, params: Optional[Dict[str, Any]] = None
     ) -> Iterable[Dict[str, Any]]:
         params = params or {}
-        for window_params in _chunked_bybit_windows(params):
+        for window_params in _chunked_bybit_windows(params, max_history_days=729):
             cursor = ""
             while True:
                 page_params = {**window_params, "limit": 50}
@@ -151,7 +173,7 @@ class BybitClient:
 
     def iter_executions(self, params: Optional[Dict[str, Any]] = None) -> Iterable[Dict[str, Any]]:
         params = params or {}
-        for window_params in _chunked_bybit_windows(params):
+        for window_params in _chunked_bybit_windows(params, max_history_days=729):
             cursor = ""
             while True:
                 page_params = {**window_params, "limit": 100}
