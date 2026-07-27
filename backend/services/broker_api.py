@@ -31,11 +31,12 @@ from services.crypto_exchange import (
     normalize_bybit_option_settlement,
     normalize_bybit_spot_execution,
     normalize_bybit_withdrawal,
-    normalize_okx_deposit_withdrawal,
+    normalize_okx_deposit,
     normalize_okx_option_fill,
     normalize_okx_option_settlement,
     normalize_okx_reward,
     normalize_okx_spot_fill,
+    normalize_okx_withdrawal,
 )
 from services.importer import (
     get_user_token,
@@ -620,7 +621,8 @@ class OKXAPI(BrokerAPI):
         streams = [
             _safe("spot_fills", normalize_okx_spot_fill, lambda: client.iter_fills_history({"instType": "SPOT", **date_params})),
             _safe("option_fills", normalize_okx_option_fill, lambda: client.iter_option_fills(date_params)),
-            _safe("deposits_withdrawals", normalize_okx_deposit_withdrawal, lambda: client.iter_asset_deposits_withdrawals(date_params)),
+            _safe("deposits", normalize_okx_deposit, lambda: client.iter_deposits(date_params)),
+            _safe("withdrawals", normalize_okx_withdrawal, lambda: client.iter_withdrawals(date_params)),
             _safe("earn", normalize_okx_reward, lambda: client.iter_earn_lending_history(date_params)),
             _safe("option_settlements", normalize_okx_option_settlement, lambda: client.iter_option_settlements(date_params)),
         ]

@@ -446,7 +446,8 @@ def test_merge_sorted_events_single_stream():
 from services.crypto_exchange import (
     normalize_bybit_deposit,
     normalize_bybit_withdrawal,
-    normalize_okx_deposit_withdrawal,
+    normalize_okx_deposit,
+    normalize_okx_withdrawal,
 )
 
 
@@ -477,10 +478,12 @@ def test_normalize_bybit_withdrawal_btc():
     event = normalize_bybit_withdrawal(
         {
             "coin": "BTC",
+            "chain": "BTC",
             "amount": "0.05",
-            "id": "wd-1",
-            "createdAt": "1700000001000",
+            "txID": "0xdeadbeef",
             "status": "success",
+            "withdrawId": "wd-1",
+            "createTime": "1700000001000",
         }
     )
 
@@ -492,36 +495,68 @@ def test_normalize_bybit_withdrawal_btc():
 
 
 def test_normalize_okx_deposit():
-    event = normalize_okx_deposit_withdrawal(
+    # Real deposit-history row uses ``depId`` as the per-row id; no ``type`` key.
+    event = normalize_okx_deposit(
         {
+            "depId": "410907740",
+            "amt": "29994.781592",
             "ccy": "USDT",
-            "amt": "200",
-            "billId": "okx-dep-1",
-            "ts": "1700000002000",
-            "type": "deposit",
+            "ts": "1782146981000",
+            "state": "2",
+            "chain": "USDT-TRC20",
+            "txId": "0xabc",
         }
     )
 
     assert event.provider == "okx"
     assert event.category == "deposit"
-    assert event.provider_event_id == "deposit:okx-dep-1"
-    assert event.legs[0]["quantity"] == Decimal("200")
+    assert event.raw_type == "deposit"
+    assert event.provider_event_id == "deposit:410907740"
+    assert event.group_id == "410907740"
+    assert event.timestamp_ms == 1782146981000
+    assert len(event.legs) == 1
+    assert event.legs[0]["asset"] == "USDT"
+    assert event.legs[0]["quantity"] == Decimal("29994.781592")
+    assert event.legs[0]["instrument"] == "coin"
 
 
 def test_normalize_okx_withdrawal_direction_prefixed_id():
-    event = normalize_okx_deposit_withdrawal(
+    # Real withdrawal-history row uses ``wdId`` as the per-row id.
+    event = normalize_okx_withdrawal(
         {
-            "ccy": "BTC",
+            "wdId": "510907741",
             "amt": "0.1",
-            "billId": "okx-wd-1",
-            "ts": "1700000003000",
-            "type": "withdrawal",
+            "ccy": "BTC",
+            "ts": "1782146982000",
+            "state": "2",
+            "chain": "BTC-Bitcoin",
+            "fee": "0.0001",
         }
     )
 
     assert event.category == "withdrawal"
-    assert event.provider_event_id == "withdrawal:okx-wd-1"
+    assert event.raw_type == "withdrawal"
+    assert event.provider_event_id == "withdrawal:510907741"
+    assert event.group_id == "510907741"
+    assert event.timestamp_ms == 1782146982000
+    assert event.legs[0]["asset"] == "BTC"
     assert event.legs[0]["quantity"] == Decimal("-0.1")
+
+
+def test_normalize_okx_withdrawal_falls_back_to_ts_when_no_wd_id():
+    # Per task spec: fall back to ``clientId`` then ``ts`` if ``wdId`` absent.
+    event = normalize_okx_withdrawal(
+        {
+            "clientId": "client-7",
+            "amt": "1",
+            "ccy": "ETH",
+            "ts": "1782146983000",
+        }
+    )
+
+    assert event.provider_event_id == "withdrawal:client-7"
+    assert event.group_id == "client-7"
+    assert event.legs[0]["quantity"] == Decimal("-1")
 
 
 from services.crypto_exchange import (
@@ -564,27 +599,35 @@ def test_normalize_bybit_reward_skips_internal_transfer():
 
 
 def test_normalize_okx_reward_stablecoin():
+    # Real earn-lending row carries no ``billId`` and no ``subType``; ``ts`` is
+    # the unique per-row identifier.
     event = normalize_okx_reward(
         {
+            "amt": "1.0024773435509866",
             "ccy": "USDT",
-            "amt": "5.5",
-            "billId": "okx-earn-1",
-            "ts": "1700000006000",
-            "subType": "24",
+            "earnings": "0.00000183",
+            "rate": "0.0189",
+            "ts": "1785088949000",
         }
     )
 
     assert event.category == "reward"
-    assert event.provider_event_id == "okx-earn-1"
-    assert event.legs[0]["quantity"] == Decimal("5.5")
+    assert event.raw_type == "earn"
+    assert event.provider_event_id == "earn:1785088949000"
+    assert event.group_id == "1785088949000"
+    assert event.timestamp_ms == 1785088949000
+    assert event.legs[0]["asset"] == "USDT"
+    assert event.legs[0]["quantity"] == Decimal("1.0024773435509866")
 
 
 def test_normalize_okx_reward_skips_internal_transfer():
+    # The ``subType`` filter is checked defensively (``.get``) since real
+    # earn-lending rows do not carry it. A payload with a skipped subType must
+    # still be filtered out.
     event = normalize_okx_reward(
         {
-            "ccy": "USDT",
             "amt": "100",
-            "billId": "okx-tr-1",
+            "ccy": "USDT",
             "ts": "1700000007000",
             "subType": "1",
         }
@@ -675,21 +718,29 @@ def test_normalize_bybit_option_settlement_exercised():
 
 
 def test_normalize_okx_option_settlement():
+    # Real bills-archive (OPTION-filtered) row: ``ccy`` is the delivered coin,
+    # ``balChg`` the signed delivered amount, ``px`` the settlement price.
     event = normalize_okx_option_settlement(
         {
-            "instId": "BTC-USD-240315-50000-C",
-            "settlCcy": "BTC",
-            "settlAmt": "0.3",
-            "settlPx": "65000",
-            "ts": "1700000011000",
-            "billId": "okx-settle-1",
+            "billId": "3628711646064058370",
+            "instId": "BTC-USD-260605-80000-C",
+            "instType": "OPTION",
+            "ccy": "BTC",
+            "balChg": "0.0071621135119712",
+            "px": "62703.9433340777132648",
+            "ts": "1780646434327",
+            "subType": "172",
+            "type": "3",
+            "pnl": "0.000154",
             "ordId": "okx-opt-order-1",
         }
     )
 
     assert event.category == "settlement"
-    assert event.provider_event_id == "okx-settle-1"
+    assert event.raw_type == "option_delivery"
+    assert event.provider_event_id == "3628711646064058370"
     assert event.group_id == "okx-opt-order-1"
+    assert event.timestamp_ms == 1780646434327
     assert event.legs[0]["asset"] == "BTC"
-    assert event.legs[0]["quantity"] == Decimal("0.3")
-    assert event.legs[0]["price"] == Decimal("65000")
+    assert event.legs[0]["quantity"] == Decimal("0.0071621135119712")
+    assert event.legs[0]["price"] == Decimal("62703.9433340777132648")

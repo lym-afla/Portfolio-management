@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import time
 from decimal import Decimal
 
 import pytest
@@ -9,7 +10,12 @@ from asgiref.sync import async_to_sync
 from common.models import Accounts, Brokers
 from services.broker_api import BybitAPI, OKXAPI, get_broker_api
 from services.crypto_exchange import CryptoExchangeEvent
-from core.crypto_exchange_clients import BybitClient, CryptoExchangeAPIError, OKXClient
+from core.crypto_exchange_clients import (
+    BybitClient,
+    CryptoExchangeAPIError,
+    OKXClient,
+    _chunked_bybit_windows,
+)
 from users.models import BybitApiToken, OKXApiToken
 
 
@@ -431,7 +437,10 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
         def iter_option_fills(self, params):
             yield from []
 
-        def iter_asset_deposits_withdrawals(self, params):
+        def iter_deposits(self, params):
+            yield from []
+
+        def iter_withdrawals(self, params):
             yield from []
 
         def iter_earn_lending_history(self, params):
@@ -501,9 +510,9 @@ def test_bybit_iter_option_executions_passes_option_category(monkeypatch):
     assert captured["params"]["category"] == "option"
 
 
-def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
+def test_okx_iter_deposits_yields_data(monkeypatch):
     client = OKXClient(api_key="k", api_secret="s", passphrase="p")
-    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "billId": "b1", "type": "deposit"}]}
+    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "depId": "d1", "type": "4"}]}
     calls = {"n": 0}
 
     def fake_get(path, params=None):
@@ -513,9 +522,50 @@ def test_okx_iter_asset_deposits_withdrawals_yields_data(monkeypatch):
         return page if calls["n"] == 1 else {"code": "0", "msg": "", "data": []}
 
     monkeypatch.setattr(client, "get_private", fake_get)
-    rows = list(client.iter_asset_deposits_withdrawals({}))
+    rows = list(client.iter_deposits({}))
 
-    assert [r["billId"] for r in rows] == ["b1"]
+    assert [r["depId"] for r in rows] == ["d1"]
+
+
+def test_okx_iter_deposits_requires_dep_id_cursor(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    monkeypatch.setattr(
+        client,
+        "get_private",
+        lambda path, params=None: {"code": "0", "data": [{"ccy": "BTC"}]},
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match="Missing OKX depId cursor"):
+        list(client.iter_deposits({}))
+
+
+def test_okx_iter_withdrawals_yields_data(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    page = {"code": "0", "msg": "", "data": [{"ccy": "BTC", "wdId": "w1"}]}
+    calls = {"n": 0}
+
+    def fake_get(path, params=None):
+        calls["n"] += 1
+        # First call returns one row; subsequent calls return an empty page to
+        # terminate the pagination loop (end of history reached).
+        return page if calls["n"] == 1 else {"code": "0", "msg": "", "data": []}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_withdrawals({}))
+
+    assert [r["wdId"] for r in rows] == ["w1"]
+
+
+def test_okx_iter_withdrawals_requires_wd_id_cursor(monkeypatch):
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    monkeypatch.setattr(
+        client,
+        "get_private",
+        lambda path, params=None: {"code": "0", "data": [{"ccy": "BTC"}]},
+    )
+
+    with pytest.raises(CryptoExchangeAPIError, match="Missing OKX wdId cursor"):
+        list(client.iter_withdrawals({}))
 
 
 @pytest.mark.django_db(transaction=True)
@@ -572,3 +622,326 @@ async def test_bybit_api_get_transactions_merges_streams_and_tracks_failures(
     assert events[0].provider_event_id == "e1"
     # The deposit endpoint failure was recorded, not raised.
     assert any("403" in msg for _, msg in api.partial_failures)
+
+
+# --- Bug #4: ByBit 7-day window chunking -------------------------------------
+#
+# ByBit's /v5/execution/list and /v5/account/transaction-log reject windows
+# over 7 days. _chunked_bybit_windows splits a too-wide window into
+# consecutive <=7-day sub-windows (oldest first) so the merged stream stays
+# time-sorted; deposits/withdrawals endpoints are unaffected.
+
+
+_SEVEN_DAYS_MS = 7 * 86400 * 1000
+
+
+def test_chunked_bybit_windows_short_span_yields_original_once():
+    start = 1_700_000_000_000
+    params = {"category": "spot", "startTime": start, "endTime": start + 5 * 86_400_000}
+
+    windows = list(_chunked_bybit_windows(params))
+
+    assert windows == [params]
+    # Original params dict is yielded as-is (no mutation, no string coercion).
+    assert windows[0]["startTime"] == start
+    assert windows[0]["endTime"] == start + 5 * 86_400_000
+
+
+def test_chunked_bybit_windows_eight_day_span_yields_two_chronological_windows():
+    start = 1_700_000_000_000
+    end = start + 8 * 86_400_000  # 8 days -> 7 + 1
+    params = {"category": "spot", "startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params))
+
+    assert len(windows) == 2
+    # First window is a full 7 days; second is the remaining 1 day, clamped.
+    assert windows[0] == {"category": "spot", "startTime": str(start), "endTime": str(start + _SEVEN_DAYS_MS)}
+    assert windows[1] == {"category": "spot", "startTime": str(start + _SEVEN_DAYS_MS), "endTime": str(end)}
+    # Chronological order, contiguous (next start == prev end).
+    assert windows[0]["endTime"] == windows[1]["startTime"]
+    # Last chunk clamped to the original end.
+    assert windows[-1]["endTime"] == str(end)
+
+
+def test_chunked_bybit_windows_twenty_one_day_span_yields_three_seven_day_windows():
+    start = 1_700_000_000_000
+    end = start + 21 * 86_400_000  # exactly 3 chunks of 7 days
+    params = {"category": "spot", "startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params))
+
+    assert len(windows) == 3
+    for w in windows:
+        assert int(w["endTime"]) - int(w["startTime"]) == _SEVEN_DAYS_MS
+    # Contiguous and ordered.
+    assert windows[0]["startTime"] == str(start)
+    assert windows[0]["endTime"] == windows[1]["startTime"]
+    assert windows[1]["endTime"] == windows[2]["startTime"]
+    assert windows[2]["endTime"] == str(end)
+
+
+def test_chunked_bybit_windows_missing_start_time_yields_params_once():
+    params = {"category": "spot", "endTime": 1_700_000_000_000}
+
+    windows = list(_chunked_bybit_windows(params))
+
+    assert windows == [params]
+
+
+def test_chunked_bybit_windows_handles_string_and_int_epoch_values():
+    start = 1_700_000_000_000
+    end = start + 10 * 86_400_000  # > 7 days
+
+    # Strings (the form ByBit sends on the wire).
+    str_windows = list(_chunked_bybit_windows({"startTime": str(start), "endTime": str(end)}))
+    # Ints (the form _crypto_exchange_date_params produces).
+    int_windows = list(_chunked_bybit_windows({"startTime": start, "endTime": end}))
+
+    # Both produce the same chunk boundaries regardless of input type.
+    assert [(w["startTime"], w["endTime"]) for w in str_windows] == (
+        [(w["startTime"], w["endTime"]) for w in int_windows]
+    )
+    # Output bounds are always strings.
+    for w in str_windows + int_windows:
+        assert isinstance(w["startTime"], str)
+        assert isinstance(w["endTime"], str)
+
+
+def test_chunked_bybit_windows_unparseable_values_yields_params_once():
+    params = {"startTime": "not-a-number", "endTime": 1_700_000_000_000}
+
+    windows = list(_chunked_bybit_windows(params))
+
+    assert windows == [params]
+
+
+def test_iter_executions_with_wide_window_calls_get_private_once_per_chunk(monkeypatch):
+    """A 30-day window must fan out into one get_private call per <=7-day chunk."""
+    client = BybitClient(api_key="k", api_secret="s")
+    calls = []
+
+    def fake_get_private(path, params):
+        calls.append((path, dict(params)))
+        # Empty page terminates the pagination loop within each chunk.
+        return {"retCode": 0, "result": {"list": [], "nextPageCursor": ""}}
+
+    monkeypatch.setattr(client, "get_private", fake_get_private)
+
+    # Use a recent start (within the 729-day history floor) so iter_executions'
+    # max_history_days=729 clamp leaves the window intact and this test stays
+    # focused on the 7-day chunking fan-out, not the clamp behavior.
+    start = int(time.time() * 1000) - 100 * 86_400_000  # 100 days ago
+    end = start + 30 * 86_400_000  # 30 days -> 5 chunks (7+7+7+7+2)
+    rows = list(client.iter_executions({"category": "spot", "startTime": start, "endTime": end}))
+
+    assert rows == []
+    # 30 days splits into ceil(30/7) = 5 windows.
+    assert len(calls) == 5
+    assert all(path == "/v5/execution/list" for path, _ in calls)
+    # Each call's window must be <= 7 days.
+    for _, params in calls:
+        span = int(params["endTime"]) - int(params["startTime"])
+        assert span <= _SEVEN_DAYS_MS
+    # Windows are chronological and contiguous.
+    starts = [int(p["startTime"]) for _, p in calls]
+    ends = [int(p["endTime"]) for _, p in calls]
+    assert starts == sorted(starts)
+    for i in range(len(calls) - 1):
+        assert ends[i] == starts[i + 1]
+    # First window starts at the original start; last window ends at the original end.
+    assert starts[0] == start
+    assert ends[-1] == end
+
+
+# --- ByBit 30-day window chunking (deposits/withdrawals) ---------------------
+#
+# ByBit's /v5/asset/deposit/query-record and /v5/asset/withdraw/query-record
+# reject windows over 30 days. _chunked_bybit_windows(params, max_days=30)
+# splits a too-wide window into consecutive <=30-day sub-windows (oldest first).
+
+_THIRTY_DAYS_MS = 30 * 86400 * 1000
+
+
+def test_chunked_bybit_windows_thirty_day_span_yields_original_once():
+    """A span of exactly max_days (30) must NOT chunk — it fits in one window."""
+    start = 1_700_000_000_000
+    end = start + 30 * 86_400_000  # exactly 30 days
+    params = {"startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_days=30))
+
+    assert windows == [params]
+
+
+def test_chunked_bybit_windows_thirty_day_max_yields_two_for_thirty_one_days():
+    """A 31-day span (one day over the 30-day cap) chunks into 30 + 1."""
+    start = 1_700_000_000_000
+    end = start + 31 * 86_400_000  # 31 days -> 30 + 1
+    params = {"startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_days=30))
+
+    assert len(windows) == 2
+    assert windows[0] == {"startTime": str(start), "endTime": str(start + _THIRTY_DAYS_MS)}
+    assert windows[1] == {"startTime": str(start + _THIRTY_DAYS_MS), "endTime": str(end)}
+    # Contiguous and clamped to the original end.
+    assert windows[0]["endTime"] == windows[1]["startTime"]
+    assert windows[-1]["endTime"] == str(end)
+
+
+def test_chunked_bybit_windows_thirty_day_max_yields_two_for_sixty_days():
+    """A 60-day span chunks into exactly two 30-day windows."""
+    start = 1_700_000_000_000
+    end = start + 60 * 86_400_000  # 60 days -> 30 + 30
+    params = {"startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_days=30))
+
+    assert len(windows) == 2
+    for w in windows:
+        assert int(w["endTime"]) - int(w["startTime"]) == _THIRTY_DAYS_MS
+    # Contiguous, ordered, exact endpoints.
+    assert windows[0]["startTime"] == str(start)
+    assert windows[0]["endTime"] == windows[1]["startTime"]
+    assert windows[1]["endTime"] == str(end)
+
+
+def test_iter_deposits_with_wide_window_calls_get_private_once_per_chunk(monkeypatch):
+    """A 60-day deposit window must fan out into one get_private call per <=30-day chunk."""
+    client = BybitClient(api_key="k", api_secret="s")
+    calls = []
+
+    def fake_get(path, params):
+        calls.append((path, dict(params)))
+        # Empty page terminates the pagination loop within each chunk.
+        return {"retCode": 0, "retMsg": "OK", "result": {"rows": [], "nextPageCursor": ""}}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+
+    start = 1_700_000_000_000
+    end = start + 60 * 86_400_000  # 60 days -> 2 chunks (30 + 30)
+    rows = list(client.iter_deposits({"startTime": start, "endTime": end}))
+
+    assert rows == []
+    # 60 days splits into ceil(60/30) = 2 windows.
+    assert len(calls) == 2
+    assert all(path == "/v5/asset/deposit/query-record" for path, _ in calls)
+    # Each call's window must be <= 30 days.
+    for _, params in calls:
+        span = int(params["endTime"]) - int(params["startTime"])
+        assert span <= _THIRTY_DAYS_MS
+    # Windows are chronological and contiguous.
+    starts = [int(p["startTime"]) for _, p in calls]
+    ends = [int(p["endTime"]) for _, p in calls]
+    assert starts == sorted(starts)
+    for i in range(len(calls) - 1):
+        assert ends[i] == starts[i + 1]
+    # First window starts at the original start; last window ends at the original end.
+    assert starts[0] == start
+    assert ends[-1] == end
+
+
+# --- ByBit 2-year history clamp (max_history_days) ---------------------------
+#
+# ByBit's /v5/execution/list and /v5/account/transaction-log reject queries
+# older than ~730 days ("Can't query order earlier than 2 years"). Passing
+# max_history_days=729 clamps startTime to no earlier than ~729 days ago so an
+# over-long requested window silently truncates to available history instead of
+# erroring. Deposits/withdrawals have NO such limit and must keep the default
+# (None) so pre-2-year history is preserved.
+
+_MS_PER_DAY = 86400 * 1000
+_MS_PER_SEC = 1000
+
+
+def test_chunked_bybit_windows_clamps_start_older_than_2_years():
+    """A start >730 days ago is clamped to ~729 days ago (the safe floor)."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    floor_ms = now_ms - 729 * _MS_PER_DAY
+    far_start = now_ms - 800 * _MS_PER_DAY  # well beyond 729-day floor
+    end = now_ms + _MS_PER_DAY  # end is recent so the whole window isn't old
+    params = {"category": "spot", "startTime": far_start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_history_days=729))
+
+    assert len(windows) >= 1
+    clamped_start = int(windows[0]["startTime"])
+    # Within a 60-second tolerance to absorb time.time() drift between the
+    # helper's call and the test's expected-floor computation.
+    assert abs(clamped_start - floor_ms) <= 60 * _MS_PER_SEC
+    # End is preserved.
+    assert windows[-1]["endTime"] == str(end)
+
+
+def test_chunked_bybit_windows_no_clamp_when_start_within_history():
+    """A start only 100 days ago must NOT be clamped (within the 729-day window)."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    start = now_ms - 100 * _MS_PER_DAY  # well within 729 days
+    params = {"category": "spot", "startTime": start, "endTime": now_ms}
+
+    windows = list(_chunked_bybit_windows(params, max_history_days=729))
+
+    assert len(windows) >= 1
+    assert int(windows[0]["startTime"]) == start  # unchanged
+
+
+def test_chunked_bybit_windows_yields_nothing_when_whole_window_too_old():
+    """If both start and end are older than 729 days, the window is empty."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    end = now_ms - 800 * _MS_PER_DAY  # end is itself beyond the floor
+    start = end - 10 * _MS_PER_DAY
+    params = {"category": "spot", "startTime": start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params, max_history_days=729))
+
+    assert windows == []
+
+
+def test_chunked_bybit_windows_no_clamp_when_max_history_days_none():
+    """With max_history_days=None (deposits/withdrawals) very-old starts are preserved."""
+    now_ms = int(time.time() * _MS_PER_SEC)
+    far_start = now_ms - 1000 * _MS_PER_DAY  # well beyond 730 days
+    end = far_start + 5 * _MS_PER_DAY  # short span, no chunking expected
+    params = {"startTime": far_start, "endTime": end}
+
+    windows = list(_chunked_bybit_windows(params))  # default max_history_days=None
+
+    # Original params yielded verbatim — no clamping, no string coercion.
+    assert windows == [params]
+
+
+# --- Bug #5: OKX option settlements filter to type=3 -------------------------
+
+
+def test_okx_iter_option_settlements_yields_only_type_3_rows(monkeypatch):
+    """bills-archive returns settlement rows (type=3) AND premium rows (type=2).
+
+    Premiums are already imported via iter_option_fills (fills-history), so
+    only type=3 rows must be yielded here to avoid double-counting.
+    """
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    calls = {"n": 0}
+
+    def fake_get(path, params=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {
+                "code": "0",
+                "data": [
+                    # Settlement row — must be yielded.
+                    {"billId": "settle-1", "type": "3", "subType": "172", "instId": "BTC-USD-260101-80000-C"},
+                    # Premium trade row — must be filtered out (arrives via fills-history).
+                    {"billId": "premium-1", "type": "2", "subType": "2", "execType": "T",
+                     "ordId": "ord-1", "fillPx": "100", "fillIdxPx": "70000",
+                     "instId": "BTC-USD-260101-80000-C"},
+                ],
+            }
+        # Empty page terminates pagination.
+        return {"code": "0", "data": []}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_option_settlements({}))
+
+    assert [r["billId"] for r in rows] == ["settle-1"]
+    assert all(str(r["type"]) == "3" for r in rows)
