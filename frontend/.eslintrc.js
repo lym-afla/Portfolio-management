@@ -5,6 +5,13 @@ module.exports = {
       browser: true,
       es2021: true
     },
+    globals: {
+      // Vue 3 <script setup> compiler macros — globally available, not imported.
+      defineProps: 'readonly',
+      defineEmits: 'readonly',
+      defineExpose: 'readonly',
+      defineOptions: 'readonly'
+    },
     extends: [
       'plugin:vue/vue3-essential',
       'eslint:recommended',
