@@ -396,7 +396,16 @@ def _calculate_open_table_output_for_api(
             position["entry_price"] = calculate_buy_in_price(
                 asset, end_date, user_id, currency_used, selected_account_ids
             )
-        position["entry_value"] = position["entry_price"] * position["current_position"]
+        # entry_price can be None for positions built entirely from
+        # deposits/transfers/rewards (no Buy transactions to derive a cost
+        # basis from -- common for crypto assets). Treat entry_value as None
+        # in that case rather than crashing on None * Decimal. Downstream
+        # ratio checks use truthiness (`if position["entry_value"]`) so None
+        # and 0 both fall through to the "N/R" sentinel.
+        if position["entry_price"] is None:
+            position["entry_value"] = None
+        else:
+            position["entry_value"] = position["entry_price"] * position["current_position"]
 
         if "current_value" in categories:
             # Use percentage of par for bonds without currency effect
@@ -436,7 +445,7 @@ def _calculate_open_table_output_for_api(
 
         position["price_change_percentage"] = (
             (position["realized_gl"] + position["unrealized_gl"]) / position["entry_value"]
-            if position["entry_value"] > 0
+            if position["entry_value"]
             else "N/R"
         )
 
@@ -446,7 +455,7 @@ def _calculate_open_table_output_for_api(
             )
             position["capital_distribution_percentage"] = (
                 position["capital_distribution"] / position["entry_value"]
-                if position["entry_value"] > 0
+                if position["entry_value"]
                 else "N/R"
             )
         else:
@@ -458,7 +467,7 @@ def _calculate_open_table_output_for_api(
             )
             position["commission_percentage"] = (
                 position["commission"] / position["entry_value"]
-                if position["entry_value"] > 0
+                if position["entry_value"]
                 else "N/R"
             )
         else:
@@ -472,7 +481,7 @@ def _calculate_open_table_output_for_api(
         )
         position["total_return_percentage"] = (
             position["total_return_amount"] / position["entry_value"]
-            if position["entry_value"] > 0
+            if position["entry_value"]
             else "N/R"
         )
 
@@ -541,7 +550,12 @@ def _calculate_open_table_output_for_api(
                 else:
                     addition = Decimal(0)
 
-            portfolio_open_totals[key] = portfolio_open_totals.get(key, Decimal(0)) + addition
+            # entry_value may be None (no cost basis, e.g. crypto held from
+            # rewards/deposits only). Such a position contributes nothing to
+            # the portfolio entry-value total, so coerce None -> 0 here.
+            portfolio_open_totals[key] = portfolio_open_totals.get(key, Decimal(0)) + (
+                addition if addition is not None else Decimal(0)
+            )
 
         open_positions.append(position)
 
