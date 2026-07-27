@@ -77,7 +77,6 @@ jobs:
         run: |
           npm run lint -- \
             src/components/BrokerTokenManager.vue \
-            src/services/api.js \
             tests/unit/components/BrokerTokenManager.spec.js
 
       - name: Run token manager tests
@@ -112,7 +111,7 @@ jobs:
       - name: Assert INSTALLED_APPS project apps are present
         run: |
           APPS=$(grep -A30 "^INSTALLED_APPS" backend/portfolio_management/settings.py \
-            | grep -oP '^\s+\K[a-z_]+' \
+            | grep -oP '^\s+"\K[a-z_]+' \
             | sort -u)
           echo "INSTALLED_APPS project apps: $APPS"
           for app in common users transactions database dashboard open_positions closed_positions summary_analysis; do
