@@ -6,6 +6,7 @@ for display in tables, including calculations for NAV, IRR, and cash balances.
 """
 
 from datetime import datetime
+from decimal import Decimal
 
 from django.db import models
 from django.db.models import Q, Sum
@@ -120,7 +121,9 @@ def _get_accounts_data(user, accounts, effective_current_date, currency_target):
             )["Total NAV"],
             "cash": {
                 currency: currency_format(
-                    account_balance(account, effective_current_date)[currency],
+                    account_balance(account, effective_current_date).get(
+                        currency, Decimal(0)
+                    ),
                     currency,
                     digits=0,
                 )
