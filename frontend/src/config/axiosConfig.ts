@@ -144,10 +144,53 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
+// URL path of the refresh endpoint — a 401 here means the refresh token itself
+// is expired/invalid. This must be handled before the retry/queue logic below,
+// otherwise the refresh request re-enters the interceptor, hits `if (isRefreshing)`,
+// and deadlocks on `failedQueue` forever (never reaching the /login redirect).
+const REFRESH_TOKEN_URL = '/users/api/refresh-token/'
+
+// Clears all auth state and redirects to /login. Used when authentication is
+// unrecoverable (e.g. refresh token expired).
+const forceLogout = (): void => {
+  localStorage.removeItem('accessToken')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('effective_current_date')
+  try {
+    const authStore = useAuthStore()
+    authStore.clearTokens()
+    authStore.setUser(null)
+  } catch (e) {
+    logger.warn('Axios', 'Could not clear auth store during force-logout:', e)
+  }
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+
+    // Guard against request-setup errors where `config` is undefined.
+    if (!originalRequest || !originalRequest.url) {
+      return Promise.reject(error)
+    }
+
+    // Terminal auth failure: the refresh-token request itself returned 401.
+    // The refresh token is expired/invalid; retrying or queueing would deadlock.
+    if (
+      error.response?.status === 401 &&
+      originalRequest.url.includes(REFRESH_TOKEN_URL)
+    ) {
+      logger.error(
+        'Axios',
+        'Refresh token rejected (expired/invalid); forcing logout.'
+      )
+      forceLogout()
+      return Promise.reject(error)
+    }
 
     // Handle Tinkoff API errors
     if (originalRequest.url.includes('tinkoff-tokens')) {
@@ -209,9 +252,7 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(originalRequest)
       } catch (refreshError) {
         processQueue(refreshError, null)
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        window.location.href = '/login'
+        forceLogout()
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false
