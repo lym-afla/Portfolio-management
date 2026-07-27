@@ -650,25 +650,40 @@ async def get_broker_api(broker: Brokers) -> Optional[BrokerAPI]:
             lambda: broker.okx_tokens.filter(is_active=True).exists()
         )()
 
-        if has_tinkoff_token:
-            return TinkoffAPI()
-        elif has_bybit_token:
+        # Crypto tokens are typed (BybitApiToken/OKXApiToken), so check them
+        # first. This avoids a latent bug where a broker row with BOTH a
+        # Tinkoff token and an OKX/Bybit token would always pick Tinkoff.
+        if has_bybit_token:
             return BybitAPI()
         elif has_okx_token:
             return OKXAPI()
+        elif has_tinkoff_token:
+            return TinkoffAPI()
         elif broker.name == "Interactive Brokers":
             # Add similar check for IB when implemented
             return InteractiveBrokersAPI()
         else:
-            if has_tinkoff_token:
-                logger.warning(
-                    f"{broker.name} found but no API tokens configured for user: "
-                    f"{broker.investor.id}"
-                )
-            else:
-                logger.warning(f"No API implementation found for broker: {broker.name}")
+            logger.warning(f"No API implementation found for broker: {broker.name}")
             return None
 
     except Exception as e:
         logger.error(f"Error initializing broker API for {broker.name}: {str(e)}")
         return None
+
+
+async def is_crypto_broker(broker: Brokers) -> bool:
+    """Return True if the broker has an active ByBit or OKX API token.
+
+    Used to branch the import UX: crypto brokers use a unified account model
+    and skip the Tinkoff-style account-matching modal.
+    """
+    try:
+        has_bybit = await database_sync_to_async(
+            lambda: broker.bybit_tokens.filter(is_active=True).exists()
+        )()
+        has_okx = await database_sync_to_async(
+            lambda: broker.okx_tokens.filter(is_active=True).exists()
+        )()
+        return bool(has_bybit or has_okx)
+    except Exception:
+        return False

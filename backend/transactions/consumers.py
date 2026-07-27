@@ -18,6 +18,7 @@ from django.forms import model_to_dict
 
 from common.models import Accounts, Assets, Brokers
 from core.formatting_utils import format_table_data
+from services.broker_api import is_crypto_broker
 from services.importer import (
     fx_transaction_exists,
     get_security,
@@ -453,6 +454,51 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             # Get broker instance
             broker = await database_sync_to_async(Brokers.objects.get)(id=broker_id)
 
+            # Crypto exchanges (OKX/ByBit) use a unified-account model: there
+            # is nothing on the exchange side to "discover and match" the way
+            # Tinkoff has multiple sub-accounts, and the DB Accounts row was
+            # already created during token setup. Calling the Tinkoff matcher
+            # here would also wrongly surface T-Bank accounts for a crypto
+            # broker. So skip the modal and import directly from existing rows.
+            if await is_crypto_broker(broker):
+                logger.info(
+                    f"Skipping account-matching modal for crypto broker "
+                    f"{broker.name} (id={broker_id})"
+                )
+
+                db_accounts = await database_sync_to_async(list)(
+                    Accounts.objects.filter(broker=broker, is_active=True)
+                )
+
+                if not db_accounts:
+                    logger.warning(
+                        f"Crypto broker {broker.name} (id={broker_id}) has no "
+                        f"active DB accounts; cannot start import."
+                    )
+                    await self.send_error(
+                        "No active account found for this broker. "
+                        "Please create an account for the broker first."
+                    )
+                    return
+
+                # Synthesize one self-mapping per DB account. The key name
+                # `tinkoff_account_id` is misleading for crypto but is the
+                # contract process_account_matches reads (it writes the value
+                # to Accounts.native_id). Preserve an existing native_id so the
+                # write is a no-op; otherwise fall back to str(account.id) so a
+                # stable value is set.
+                pairs = [
+                    {
+                        "tinkoff_account_id": acc.native_id or str(acc.id),
+                        "db_account_id": acc.id,
+                    }
+                    for acc in db_accounts
+                ]
+
+                await self.process_account_matches(broker_id, pairs)
+                return
+
+            # Tinkoff / other brokers: run the original account-matching flow.
             # Get matched and unmatched accounts
             (
                 matched_pairs,
