@@ -663,6 +663,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
             "skippedTransactions": 0,
             "duplicateTransactions": 0,
             "importErrors": 0,
+            "warnings": [],
         }
         results = {}
         security_cache = defaultdict(lambda: None)
@@ -1017,7 +1018,14 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                             f"Failed to save transaction: {error_msg}"
                         )
                 elif update.get("status") == "processing_complete":
-                    # Backend finished processing - stats are tracked here, not from backend
+                    # Backend finished processing - stats are tracked here, not from backend.
+                    # Surface per-endpoint partial failures (e.g. OKX bills-archive
+                    # rejecting a 4-year window) as non-blocking warnings to the user.
+                    partial_failures = update.get("partial_failures") or []
+                    if partial_failures:
+                        import_results["warnings"] = (
+                            import_results.get("warnings", []) + partial_failures
+                        )
                     logger.debug("[process_import] Backend processing complete")
                 elif update.get("status") == "complete":
                     # Legacy handling - kept for file imports
@@ -1068,6 +1076,7 @@ class TransactionConsumer(AsyncWebsocketConsumer):
                         + self.save_error_count
                         + import_results.get("importErrors", 0)
                     ),
+                    "warnings": import_results.get("warnings", []),
                 }
 
             logger.debug(f"Final import results: {results}")

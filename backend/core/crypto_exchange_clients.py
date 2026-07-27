@@ -24,6 +24,63 @@ def _encoded_query(params: Dict[str, Any]) -> str:
 _BYBIT_MAX_WINDOW_MS = 7 * 86400 * 1000
 
 
+def _within_window(row_ts, begin, end):
+    """Return True if ``row_ts`` falls within the inclusive ``[begin, end]`` window.
+
+    OKX's ``/api/v5/asset/deposit-history`` and ``/api/v5/asset/withdrawal-history``
+    silently ignore the ``begin``/``end`` query params and return most-recent-N
+    rows regardless, so callers must filter the rows they get back. ``row_ts``,
+    ``begin`` and ``end`` are ms-epoch values that may arrive as either strings
+    or ints (OKX echoes them as strings on the wire; our helpers sometimes pass
+    ints) — parse with ``int()``. If ``begin``/``end`` is ``None``, that side
+    of the bound is treated as open (so a missing window yields everything,
+    preserving the pre-filter behavior).
+    """
+    if row_ts is None:
+        return True
+    try:
+        ts = int(row_ts)
+    except (TypeError, ValueError):
+        return True
+    if begin is not None:
+        try:
+            if ts < int(begin):
+                return False
+        except (TypeError, ValueError):
+            pass
+    if end is not None:
+        try:
+            if ts > int(end):
+                return False
+        except (TypeError, ValueError):
+            pass
+    return True
+
+
+def _older_than_begin(row_ts, begin):
+    """Return True if ``row_ts`` is strictly older than ``begin`` (ms epoch).
+
+    Used for the early-exit optimization in OKX deposit/withdrawal iteration:
+    OKX returns those endpoints newest-first (largest ``depId``/``wdId`` first,
+    with ``ts`` monotonically decreasing across pages), so once a row's ``ts``
+    falls before ``begin`` every subsequent row is also outside the window and
+    we can stop paginating entirely. ``begin`` of ``None`` means "no lower
+    bound" so this returns False (never early-exit). Strings and ints are both
+    accepted via ``int()``.
+
+    WARNING: this relies on OKX's newest-first ordering. A future regression
+    where OKX returns oldest-first would cause this early-exit to drop data
+    silently. The client-side ``_within_window`` filter is the source of
+    truth; this is purely a pagination optimization.
+    """
+    if begin is None or row_ts is None:
+        return False
+    try:
+        return int(row_ts) < int(begin)
+    except (TypeError, ValueError):
+        return False
+
+
 def _chunked_bybit_windows(params, max_days=7, max_history_days=None):
     """Yield successive param dicts with startTime/endTime chunked to <=max_days days.
 
@@ -343,6 +400,12 @@ class OKXClient:
     def iter_deposits(self, params=None):
         after = None
         params = params or {}
+        # OKX silently ignores begin/end on /api/v5/asset/deposit-history and
+        # returns most-recent-N rows regardless. Filter client-side using the
+        # requested window, and stop early once we've scrolled past `begin`
+        # (rows arrive newest-first; see _older_than_begin).
+        begin = params.get("begin")
+        end = params.get("end")
         while True:
             page_params = dict(params)
             if after:
@@ -353,7 +416,12 @@ class OKXClient:
             if rows is None:
                 raise CryptoExchangeAPIError(f"Malformed OKX deposit response: {data}")
             for row in rows:
-                yield row
+                row_ts = row.get("ts")
+                if _older_than_begin(row_ts, begin):
+                    # Newest-first ordering: every later row is also too old.
+                    return
+                if _within_window(row_ts, begin, end):
+                    yield row
 
             if not rows:
                 break
@@ -366,6 +434,12 @@ class OKXClient:
     def iter_withdrawals(self, params=None):
         after = None
         params = params or {}
+        # OKX silently ignores begin/end on /api/v5/asset/withdrawal-history
+        # and returns most-recent-N rows regardless. Filter client-side using
+        # the requested window, and stop early once we've scrolled past
+        # `begin` (rows arrive newest-first; see _older_than_begin).
+        begin = params.get("begin")
+        end = params.get("end")
         while True:
             page_params = dict(params)
             if after:
@@ -376,7 +450,12 @@ class OKXClient:
             if rows is None:
                 raise CryptoExchangeAPIError(f"Malformed OKX withdrawal response: {data}")
             for row in rows:
-                yield row
+                row_ts = row.get("ts")
+                if _older_than_begin(row_ts, begin):
+                    # Newest-first ordering: every later row is also too old.
+                    return
+                if _within_window(row_ts, begin, end):
+                    yield row
 
             if not rows:
                 break

@@ -15,6 +15,8 @@ from core.crypto_exchange_clients import (
     CryptoExchangeAPIError,
     OKXClient,
     _chunked_bybit_windows,
+    _older_than_begin,
+    _within_window,
 )
 from users.models import BybitApiToken, OKXApiToken
 
@@ -945,3 +947,224 @@ def test_okx_iter_option_settlements_yields_only_type_3_rows(monkeypatch):
 
     assert [r["billId"] for r in rows] == ["settle-1"]
     assert all(str(r["type"]) == "3" for r in rows)
+
+
+# --- OKX deposit/withdrawal client-side date filter --------------------------
+#
+# OKX's /api/v5/asset/deposit-history and /api/v5/asset/withdrawal-history
+# silently ignore the begin/end query params and return most-recent-N rows.
+# iter_deposits / iter_withdrawals now filter client-side: yield only rows
+# whose `ts` falls within [begin, end], and early-exit once a row's `ts`
+# drops below `begin` (OKX returns rows newest-first).
+
+
+def test_within_window_returns_true_when_no_bounds_supplied():
+    """Missing begin/end means an open window — everything passes."""
+    assert _within_window("1700000000000", None, None) is True
+    assert _within_window(1700000000000, None, None) is True
+    assert _within_window(None, None, None) is True
+
+
+def test_within_window_accepts_string_and_int_inputs():
+    """OKX echoes ts/begin/end as strings on the wire; helpers may pass ints."""
+    begin = 1_700_000_000_000
+    end = 1_700_000_010_000
+    inside = 1_700_000_005_000
+
+    # String row_ts with string bounds, string row_ts with int bounds,
+    # int row_ts with string bounds, all-int inputs — all must agree.
+    assert _within_window(str(inside), str(begin), str(end)) is True
+    assert _within_window(str(inside), begin, end) is True
+    assert _within_window(inside, str(begin), str(end)) is True
+    assert _within_window(inside, begin, end) is True
+
+
+def test_within_window_inclusive_bounds():
+    """begin and end are inclusive — exact-boundary rows pass."""
+    begin = 1_700_000_000_000
+    end = 1_700_000_010_000
+
+    assert _within_window(begin, begin, end) is True
+    assert _within_window(end, begin, end) is True
+    assert _within_window(begin - 1, begin, end) is False
+    assert _within_window(end + 1, begin, end) is False
+
+
+def test_within_window_only_begin_supplied():
+    """end=None means open upper bound."""
+    begin = 1_700_000_000_000
+    assert _within_window(begin, begin, None) is True
+    assert _within_window(begin + 10_000_000, begin, None) is True
+    assert _within_window(begin - 1, begin, None) is False
+
+
+def test_within_window_only_end_supplied():
+    """begin=None means open lower bound."""
+    end = 1_700_000_010_000
+    assert _within_window(end, None, end) is True
+    assert _within_window(end - 10_000_000, None, end) is True
+    assert _within_window(end + 1, None, end) is False
+
+
+def test_within_window_unparseable_row_ts_yields_true():
+    """A row missing/unparseable ts cannot be filtered out conservatively."""
+    assert _within_window("not-a-number", "1700000000000", "17000000001000") is True
+
+
+def test_older_than_begin_returns_false_when_begin_missing():
+    """No begin means no early-exit (we never want to drop data)."""
+    assert _older_than_begin("1700000000000", None) is False
+    assert _older_than_begin(None, "1700000000000") is False
+
+
+def test_older_than_begin_accepts_string_and_int():
+    begin = 1_700_000_000_000
+
+    assert _older_than_begin(begin - 1, begin) is True
+    assert _older_than_begin(str(begin - 1), str(begin)) is True
+    assert _older_than_begin(begin, begin) is False  # boundary: NOT older
+    assert _older_than_begin(begin + 1, begin) is False
+
+
+def test_okx_iter_deposits_filters_rows_to_requested_window(monkeypatch):
+    """Rows outside [begin, end] are skipped; rows inside are yielded."""
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    begin = 1_700_000_000_000
+    end = 1_700_000_010_000
+    # Newest-first: outside-above, inside, inside, outside-below. The
+    # outside-below row triggers early-exit so pagination stops there.
+    page = {
+        "code": "0",
+        "data": [
+            {"depId": "above", "ts": str(end + 5_000)},  # after window -> skip
+            {"depId": "in-1", "ts": str(end - 1_000)},  # inside -> yield
+            {"depId": "in-2", "ts": str(begin + 1_000)},  # inside -> yield
+            {"depId": "below", "ts": str(begin - 5_000)},  # before begin -> early-exit
+        ],
+    }
+
+    def fake_get(path, params=None):
+        return page
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_deposits({"begin": begin, "end": end}))
+
+    assert [r["depId"] for r in rows] == ["in-1", "in-2"]
+
+
+def test_okx_iter_deposits_early_exit_stops_pagination(monkeypatch):
+    """A row older than `begin` terminates iteration entirely.
+
+    OKX returns rows newest-first across pages, so once one row is too old
+    every later row is too. We must NOT fetch the next page.
+    """
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    begin = 1_700_000_000_000
+    calls = {"n": 0}
+    pages = [
+        # Page 1: one row older than begin triggers early-exit.
+        {"code": "0", "data": [{"depId": "too-old", "ts": str(begin - 1)}]},
+        # Page 2 (must never be fetched): a row inside the window that would
+        # be wrongly yielded if early-exit didn't fire.
+        {"code": "0", "data": [{"depId": "would-be-yielded", "ts": str(begin + 1)}]},
+    ]
+
+    def fake_get(path, params=None):
+        calls["n"] += 1
+        return pages[min(calls["n"] - 1, len(pages) - 1)]
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_deposits({"begin": begin}))
+
+    assert rows == []
+    assert calls["n"] == 1  # pagination stopped after the first page
+
+
+def test_okx_iter_deposits_without_window_yields_everything(monkeypatch):
+    """Missing begin/end preserves the pre-filter behavior (yield all rows)."""
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    calls = {"n": 0}
+
+    def fake_get(path, params=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"code": "0", "data": [{"depId": "d1", "ts": "1"}]}
+        return {"code": "0", "data": []}
+
+    monkeypatch.setattr(client, "get_private", fake_get)
+    rows = list(client.iter_deposits({}))
+
+    assert [r["depId"] for r in rows] == ["d1"]
+
+
+def test_okx_iter_withdrawals_filters_rows_to_requested_window(monkeypatch):
+    """Same client-side filter applies to withdrawals (wdId cursor)."""
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    begin = 1_700_000_000_000
+    end = 1_700_000_010_000
+    page = {
+        "code": "0",
+        "data": [
+            {"wdId": "above", "ts": str(end + 5_000)},
+            {"wdId": "in-1", "ts": str(end - 1_000)},
+            {"wdId": "below", "ts": str(begin - 5_000)},  # early-exit
+        ],
+    }
+
+    monkeypatch.setattr(client, "get_private", lambda path, params=None: page)
+    rows = list(client.iter_withdrawals({"begin": begin, "end": end}))
+
+    assert [r["wdId"] for r in rows] == ["in-1"]
+
+
+def test_okx_iter_deposits_accepts_string_window_bounds(monkeypatch):
+    """Bounds arrive from OKX as strings on the wire — int() tolerance."""
+    client = OKXClient(api_key="k", api_secret="s", passphrase="p")
+    begin = 1_700_000_000_000
+    end = 1_700_000_010_000
+    page = {
+        "code": "0",
+        "data": [
+            {"depId": "in", "ts": str(begin + 1_000)},
+            {"depId": "below", "ts": str(begin - 1_000)},  # early-exit
+        ],
+    }
+
+    monkeypatch.setattr(client, "get_private", lambda path, params=None: page)
+    rows = list(client.iter_deposits({"begin": str(begin), "end": str(end)}))
+
+    assert [r["depId"] for r in rows] == ["in"]
+
+
+# --- partial_failures surfacing --------------------------------------------
+
+
+def test_format_partial_failures_extracts_endpoint_and_error(user):
+    """_format_partial_failures converts broker_api.partial_failures tuples
+    into a JSON-serializable list of dicts for the frontend."""
+    from transactions.views import _format_partial_failures
+
+    class FakeBrokerAPI:
+        def __init__(self, failures):
+            self.partial_failures = failures
+
+    broker_api = FakeBrokerAPI(
+        [("spot_fills", "OKX HTTP 500: simulated 500"), ("deposits", "OKX HTTP 403")]
+    )
+    result = _format_partial_failures(broker_api)
+
+    assert result == [
+        {"endpoint": "spot_fills", "error": "OKX HTTP 500: simulated 500"},
+        {"endpoint": "deposits", "error": "OKX HTTP 403"},
+    ]
+
+
+def test_format_partial_failures_handles_missing_attribute():
+    """Brokers without partial_failures (e.g. Tinkoff) yield []."""
+    from transactions.views import _format_partial_failures
+
+    class TinkoffLikeAPI:
+        pass
+
+    assert _format_partial_failures(TinkoffLikeAPI()) == []
+    assert _format_partial_failures(None) == []
