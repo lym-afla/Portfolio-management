@@ -211,8 +211,8 @@ class TestBondRedemptionGainLoss:
         ``get_rate("EUR", "USD")`` returns x.
         """
         # 1.1 USD per EUR at the buy date, 1.2 USD per EUR at the redemption date
-        FX.objects.create(date=date(2023, 1, 1), USDEUR=Decimal("1.1"))
-        FX.objects.create(date=date(2023, 6, 1), USDEUR=Decimal("1.2"))
+        FX.objects.create(date=date(2023, 1, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.1"))
+        FX.objects.create(date=date(2023, 6, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.2"))
 
         bond = _make_bond(user, currency="EUR", isin="EUBONDTEST1", name="EUR Bond")
         _make_bond_metadata(
@@ -314,8 +314,8 @@ class TestBondSellGainLoss:
 
     def test_bond_sell_with_fx_conversion(self, user, account):
         """EUR bond sold, reported in USD: explicit non-zero FX effect."""
-        FX.objects.create(date=date(2023, 1, 1), USDEUR=Decimal("1.1"))
-        FX.objects.create(date=date(2023, 6, 1), USDEUR=Decimal("1.2"))
+        FX.objects.create(date=date(2023, 1, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.1"))
+        FX.objects.create(date=date(2023, 6, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.2"))
 
         bond = _make_bond(
             user, currency="EUR", isin="EUBONDTEST2", name="EUR Bond Sell"

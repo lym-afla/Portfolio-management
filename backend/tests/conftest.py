@@ -358,12 +358,20 @@ def fx_rates_usd_eur(user):
     rates = []
     base_date = date(2023, 1, 1)
 
+    def _add_pair(current_date, rate):
+        fx = FX.objects.create(
+            date=current_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=rate,
+        )
+        fx.investors.add(user)
+        rates.append(fx)
+
     for i in range(10):  # Reduced from 365 to 10 for performance
         current_date = base_date + timedelta(days=i * 30)  # Monthly data
         rate = Decimal("1.3") + (Decimal("0.02") * (i % 5) / 5)  # Some variation
-        fx = FX.objects.create(date=current_date, USDEUR=rate)
-        fx.investors.add(user)
-        rates.append(fx)
+        _add_pair(current_date, rate)
 
     # Ensure we have the specific dates needed by tests
     test_dates = [
@@ -380,9 +388,7 @@ def fx_rates_usd_eur(user):
         # Check if date already exists from the loop
         if not any(r.date == test_date for r in rates):
             test_rate = Decimal("1.25") + (Decimal("0.01") * test_dates.index(test_date))
-            test_fx = FX.objects.create(date=test_date, USDEUR=test_rate)
-            test_fx.investors.add(user)
-            rates.append(test_fx)
+            _add_pair(test_date, test_rate)
 
     return rates
 
@@ -393,21 +399,35 @@ def fx_rates_multi_currency(multi_currency_user):
     rates = []
     base_date = date(2023, 1, 1)
 
+    # Long-format convention: from_currency / to_currency / rate stores
+    # "from_currency per 1 to_currency" (quote-per-base).
+    pairs = (
+        ("USD", "EUR", Decimal("1.1")),    # 1.1 USD per 1 EUR
+        ("USD", "GBP", Decimal("1.22")),   # 1.22 USD per 1 GBP
+        ("CHF", "GBP", Decimal("1.14")),   # 1.14 CHF per 1 GBP
+        ("RUB", "USD", Decimal("75")),     # 75 RUB per 1 USD
+        ("PLN", "USD", Decimal("4")),      # 4 PLN per 1 USD
+    )
+    deltas = {
+        ("USD", "EUR"): Decimal("0.10"),
+        ("USD", "GBP"): Decimal("0.03"),
+        ("CHF", "GBP"): Decimal("0.02"),
+        ("RUB", "USD"): Decimal("5"),
+        ("PLN", "USD"): Decimal("0.3"),
+    }
+
     for i in range(10):  # Reduced from 365 to 10 for performance
         current_date = base_date + timedelta(days=i * 30)  # Monthly data
-
-        # Create FX rates with realistic variations
-        # Using correct convention: CUR1CUR2 = number of CUR1 per 1 CUR2
-        fx = FX.objects.create(
-            date=current_date,
-            USDEUR=Decimal("1.1") + (Decimal("0.10") * (i % 5) / 5),  # 1.1 USD per 1 EUR
-            USDGBP=Decimal("1.22") + (Decimal("0.03") * (i % 5) / 5),  # 1.22 USD per 1 GBP
-            CHFGBP=Decimal("1.14") + (Decimal("0.02") * (i % 5) / 5),  # 1.14 CHF per 1 GBP
-            RUBUSD=Decimal("75") + (Decimal("5") * (i % 5) / 5),  # 75 RUB per 1 USD
-            PLNUSD=Decimal("4") + (Decimal("0.3") * (i % 5) / 5),  # 4 PLN per 1 USD
-        )
-        fx.investors.add(multi_currency_user)
-        rates.append(fx)
+        for src, tgt, base in pairs:
+            rate = base + (deltas[(src, tgt)] * (i % 5) / 5)
+            fx = FX.objects.create(
+                date=current_date,
+                from_currency=src,
+                to_currency=tgt,
+                rate=rate,
+            )
+            fx.investors.add(multi_currency_user)
+            rates.append(fx)
 
     return rates
 
@@ -581,15 +601,22 @@ def fx_rates(user):
 
     for i in range(5):  # Reduced from 10 to 5 for performance
         current_date = base_date + timedelta(days=i)
-        rate = Decimal("0.92") + (Decimal("0.01") * (i % 3) / 3)  # Small variation
-        fx = FX.objects.create(
-            date=current_date,
-            USDEUR=rate,
-            USDGBP=Decimal("0.82") + (Decimal("0.01") * (i % 3) / 3),
-            CHFGBP=Decimal("0.88") + (Decimal("0.01") * (i % 3) / 3),
-        )
-        fx.investors.add(user)
-        rates.append(fx)
+        usd_eur = Decimal("0.92") + (Decimal("0.01") * (i % 3) / 3)  # Small variation
+        usd_gbp = Decimal("0.82") + (Decimal("0.01") * (i % 3) / 3)
+        chf_gbp = Decimal("0.88") + (Decimal("0.01") * (i % 3) / 3)
+        for src, tgt, rate in (
+            ("USD", "EUR", usd_eur),
+            ("USD", "GBP", usd_gbp),
+            ("CHF", "GBP", chf_gbp),
+        ):
+            fx = FX.objects.create(
+                date=current_date,
+                from_currency=src,
+                to_currency=tgt,
+                rate=rate,
+            )
+            fx.investors.add(user)
+            rates.append(fx)
 
     return rates
 

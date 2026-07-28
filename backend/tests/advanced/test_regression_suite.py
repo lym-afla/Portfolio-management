@@ -487,12 +487,9 @@ class TestAPIRegression:
             required_fields = [
                 "id",
                 "date",
-                "USDEUR",
-                "USDGBP",
-                "CHFGBP",
-                "RUBUSD",
-                "PLNUSD",
-                "CNYUSD",
+                "from_currency",
+                "to_currency",
+                "rate",
             ]
 
             for field in required_fields:

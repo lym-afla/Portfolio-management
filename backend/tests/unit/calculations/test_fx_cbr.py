@@ -273,8 +273,11 @@ class TestFXUpdateRouting:
         assert rub_calls, "CBR should have been called for the RUBUSD pair"
         assert not yahoo_rub_calls, "Yahoo must not be called for any RUB pair"
 
-        fx_row = FX.objects.get(date=date(2024, 6, 3))
-        assert fx_row.RUBUSD == Decimal("90.1234")
+        # Long-format storage: the RUB/USD pair is stored as its own row.
+        fx_row = FX.objects.get(
+            date=date(2024, 6, 3), from_currency="RUB", to_currency="USD"
+        )
+        assert fx_row.rate == Decimal("90.1234")
 
     def test_non_rub_pair_routes_to_yahoo(self, user):
         """Non-RUB pairs must still be fetched from Yahoo Finance."""
@@ -304,8 +307,10 @@ class TestFXUpdateRouting:
         ]
         assert non_rub_yahoo_calls, "Non-RUB pairs should still be fetched via Yahoo"
 
-        fx_row = FX.objects.get(date=date(2024, 6, 3))
-        assert fx_row.USDEUR == Decimal("1.100000")
+        fx_row = FX.objects.get(
+            date=date(2024, 6, 3), from_currency="USD", to_currency="EUR"
+        )
+        assert fx_row.rate == Decimal("1.100000")
 
 
 # --- Regression: stored RUBUSD must keep the same numeric meaning ----------
@@ -317,8 +322,14 @@ class TestRUBUSDGetRateRegression:
     """Protected-logic guard: a known RUBUSD must produce a stable get_rate result."""
 
     def test_stored_rubusd_drives_expected_rub_to_usd_rate(self, user):
-        """Golden fixture: RUBUSD=90.5000 should make get_rate('RUB','USD') ≈ 1/90.5."""
-        fx = FX.objects.create(date=date(2024, 6, 3), RUBUSD=Decimal("90.5000"))
+        """Golden fixture: RUB/USD=90.5000 should make get_rate('RUB','USD') = 1/90.5."""
+        # Long-format: from=RUB, to=USD, rate=90.5 means "90.5 RUB per 1 USD".
+        fx = FX.objects.create(
+            date=date(2024, 6, 3),
+            from_currency="RUB",
+            to_currency="USD",
+            rate=Decimal("90.5000"),
+        )
         fx.investors.add(user)
 
         result = fx_get_rate("RUB", "USD", date(2024, 6, 3), investor=user)

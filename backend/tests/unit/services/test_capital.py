@@ -91,7 +91,7 @@ def crypto_asset_capital(user):
 @pytest.fixture
 def rub_usd_fx(user):
     """A single RUBUSD FX row (75 RUB per 1 USD)."""
-    fx = FX.objects.create(date=date(2024, 6, 1), RUBUSD=Decimal("75"))
+    fx = FX.objects.create(date=date(2024, 6, 1), from_currency="RUB", to_currency="USD", rate=Decimal("75"))
     fx.investors.add(user)
     return fx
 

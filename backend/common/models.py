@@ -53,34 +53,20 @@ class FXManager(models.Manager):
 class FX(models.Model):
     """FX rate storage.
 
-    The model is mid-migration from a wide schema (named pair columns like
-    ``USDEUR``, ``USDGBP`` ...) to a generic long-format schema
-    (``from_currency`` / ``to_currency`` / ``rate``). Both sets of fields
-    coexist temporarily so Task 2 can run a data migration; the named columns
-    are dropped in Task 3.
-
-    Long-format storage convention: ``rate`` stores "from_currency per 1
-    to_currency" (quote-per-base). E.g. from="USD", to="EUR", rate=1.09 means
-    "1.09 USD per EUR". ``get_rate`` inverts/divides as needed to return the
-    "multiply source to get target" multiplier.
+    Long-format schema: one row per (date, currency pair) with a single
+    ``rate`` column. Long-format storage convention: ``rate`` stores
+    "from_currency per 1 to_currency" (quote-per-base). E.g. from="USD",
+    to="EUR", rate=1.09 means "1.09 USD per EUR". ``get_rate`` inverts/divides
+    as needed to return the "multiply source to get target" multiplier.
     """
 
     id = models.AutoField(primary_key=True)
-    # Long-format fields (new schema). Nullable for now so the data migration
-    # in Task 2 can populate them before the old columns are dropped in Task 3.
     from_currency = models.CharField(max_length=3, null=True, blank=True)
     to_currency = models.CharField(max_length=3, null=True, blank=True)
     rate = models.DecimalField(max_digits=20, decimal_places=10, null=True, blank=True)
     # NOTE: ``date`` is intentionally NOT unique — multiple pairs share a date.
     date = models.DateField()
     investors = models.ManyToManyField(CustomUser, related_name="fx_rates")
-    # Old named-pair columns — kept until Task 3 drops them post-data-migration.
-    USDEUR = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    USDGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    CHFGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    RUBUSD = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
-    PLNUSD = models.DecimalField(max_digits=9, decimal_places=5, null=True, blank=True)
-    CNYUSD = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
 
     objects = FXManager()
 

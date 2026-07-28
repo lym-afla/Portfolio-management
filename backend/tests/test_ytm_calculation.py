@@ -145,7 +145,7 @@ class YTMCalculationTestCase(TestCase):
     def test_ytm_calculation_with_different_currencies(self):
         """Test YTM calculation with currency conversion."""
         # Create FX rates for RUB-USD conversion
-        FX.objects.create(date=datetime.date(2022, 1, 1), RUBUSD=Decimal("75"))
+        FX.objects.create(date=datetime.date(2022, 1, 1), from_currency="RUB", to_currency="USD", rate=Decimal("75"))
 
         # Create a bond in RUB
         rub_bond = Assets.objects.create(

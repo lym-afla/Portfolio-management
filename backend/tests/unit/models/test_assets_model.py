@@ -361,9 +361,9 @@ class TestAssetsModel:
         # end_date = datetime(2023, 7, 22).date()
 
         # Add FX rates for USD/EUR
-        FX.objects.create(date=datetime(2023, 1, 1).date(), USDEUR=Decimal("1.1"))
-        FX.objects.create(date=datetime(2023, 3, 1).date(), USDEUR=Decimal("1.15"))
-        FX.objects.create(date=datetime(2023, 5, 1).date(), USDEUR=Decimal("1.25"))
+        FX.objects.create(date=datetime(2023, 1, 1).date(), from_currency="USD", to_currency="EUR", rate=Decimal("1.1"))
+        FX.objects.create(date=datetime(2023, 3, 1).date(), from_currency="USD", to_currency="EUR", rate=Decimal("1.15"))
+        FX.objects.create(date=datetime(2023, 5, 1).date(), from_currency="USD", to_currency="EUR", rate=Decimal("1.25"))
 
         test_dates = [
             (datetime(2023, 1, 1).date(), Decimal("1.818182")),
@@ -455,8 +455,8 @@ class TestAssetsModel:
         )
 
         # Create FX rates
-        FX.objects.create(date=date(2022, 1, 1), USDEUR=Decimal("1.1"))
-        FX.objects.create(date=date(2022, 6, 1), USDEUR=Decimal("1.2"))
+        FX.objects.create(date=date(2022, 1, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.1"))
+        FX.objects.create(date=date(2022, 6, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.2"))
 
         result = realized_gain_loss(asset, date(2022, 12, 31), user, currency="EUR")
         expected_gain = (
@@ -477,10 +477,10 @@ class TestAssetsModel:
             price=Decimal("100"),
             currency="USD",
         )
-        FX.objects.create(date=date(2022, 1, 1), RUBUSD=Decimal("35"))
+        FX.objects.create(date=date(2022, 1, 1), from_currency="RUB", to_currency="USD", rate=Decimal("35"))
 
         asset.prices.create(date=date(2022, 2, 1), price=Decimal("110"))
-        FX.objects.create(date=date(2022, 2, 1), RUBUSD=Decimal("42"))
+        FX.objects.create(date=date(2022, 2, 1), from_currency="RUB", to_currency="USD", rate=Decimal("42"))
 
         Transactions.objects.create(
             investor=user,
@@ -492,10 +492,10 @@ class TestAssetsModel:
             price=Decimal("120"),
             currency="USD",
         )
-        FX.objects.create(date=date(2022, 6, 1), RUBUSD=Decimal("47"))
+        FX.objects.create(date=date(2022, 6, 1), from_currency="RUB", to_currency="USD", rate=Decimal("47"))
 
         asset.prices.create(date=date(2022, 12, 31), price=Decimal("145"))
-        FX.objects.create(date=date(2022, 12, 31), RUBUSD=Decimal("62"))
+        FX.objects.create(date=date(2022, 12, 31), from_currency="RUB", to_currency="USD", rate=Decimal("62"))
 
         result = realized_gain_loss(asset, date(2022, 12, 31), user, currency="RUB")
         expected_gain = (Decimal("120") * Decimal("47") - Decimal("100") * Decimal("35")) * Decimal(
@@ -591,8 +591,8 @@ class TestAssetsModel:
         asset.prices.create(date=date(2022, 12, 31), price=Decimal("120"))
 
         # Create FX rates
-        FX.objects.create(date=date(2022, 1, 1), USDEUR=Decimal("1.15"))
-        FX.objects.create(date=date(2022, 12, 31), USDEUR=Decimal("1.25"))
+        FX.objects.create(date=date(2022, 1, 1), from_currency="USD", to_currency="EUR", rate=Decimal("1.15"))
+        FX.objects.create(date=date(2022, 12, 31), from_currency="USD", to_currency="EUR", rate=Decimal("1.25"))
 
         result = unrealized_gain_loss(asset, date(2022, 12, 31), user, currency="EUR")
         expected_gain = (
@@ -601,7 +601,7 @@ class TestAssetsModel:
         assert result["total"] == pytest.approx(expected_gain, rel=Decimal("1e-2"))
 
         asset.prices.create(date=date(2022, 1, 15), price=Decimal("110"))
-        FX.objects.create(date=date(2022, 1, 15), USDEUR=Decimal("1.05"))
+        FX.objects.create(date=date(2022, 1, 15), from_currency="USD", to_currency="EUR", rate=Decimal("1.05"))
 
         result = unrealized_gain_loss(asset, 
             date(2022, 12, 31), user, currency="EUR", start_date=date(2022, 3, 10)
@@ -785,18 +785,18 @@ class TestRealizedGainLoss:
         caplog.set_level(logging.DEBUG)
 
         self.create_transaction(date(2010, 9, 3), TRANSACTION_TYPE_BUY, "270", "18.09")
-        FX.objects.create(date=date(2010, 9, 3), CHFGBP=Decimal("1.5592"))
+        FX.objects.create(date=date(2010, 9, 3), from_currency="CHF", to_currency="GBP", rate=Decimal("1.5592"))
         self.create_transaction(date(2010, 9, 4), TRANSACTION_TYPE_BUY, "90", "0")
-        FX.objects.create(date=date(2010, 9, 4), CHFGBP=Decimal("1.5723"))
+        FX.objects.create(date=date(2010, 9, 4), from_currency="CHF", to_currency="GBP", rate=Decimal("1.5723"))
 
         self.asset.prices.create(date=date(2010, 12, 31), price=Decimal("15.35"))
-        FX.objects.create(date=date(2010, 12, 31), CHFGBP=Decimal("1.4575"))
+        FX.objects.create(date=date(2010, 12, 31), from_currency="CHF", to_currency="GBP", rate=Decimal("1.4575"))
 
         self.asset.prices.create(date=date(2012, 12, 31), price=Decimal("14.27"))
-        FX.objects.create(date=date(2012, 12, 31), CHFGBP=Decimal("1.4849"))
+        FX.objects.create(date=date(2012, 12, 31), from_currency="CHF", to_currency="GBP", rate=Decimal("1.4849"))
 
         self.create_transaction(date(2013, 3, 1), TRANSACTION_TYPE_SELL, "-47", "14.84")
-        FX.objects.create(date=date(2013, 3, 1), CHFGBP=Decimal("1.4279"))
+        FX.objects.create(date=date(2013, 3, 1), from_currency="CHF", to_currency="GBP", rate=Decimal("1.4279"))
 
         result = realized_gain_loss(self.asset, 
             date(2013, 12, 31), self.user, currency="GBP", start_date=date(2013, 1, 1)

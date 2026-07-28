@@ -282,12 +282,9 @@ class FXSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "date",
-            "USDEUR",
-            "USDGBP",
-            "CHFGBP",
-            "RUBUSD",
-            "PLNUSD",
-            "CNYUSD",
+            "from_currency",
+            "to_currency",
+            "rate",
         ]
         read_only_fields = ["id"]  # Remove 'investor' from read_only_fields
 
