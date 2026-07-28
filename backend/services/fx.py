@@ -23,6 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal, DecimalException
 import networkx as nx
 import requests
 import yfinance as yf
+from django.core.cache import cache
 from django.db import models
 from django.db.models import F, Q
 
@@ -32,6 +33,84 @@ from django.db.models import F, Q
 from common.models import FX
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Currency graph cache
+# ---------------------------------------------------------------------------
+#
+# ``get_rate`` builds a ``networkx.Graph`` of currency pairs from the ``FX``
+# table on every call. With ~35 call sites across the calc layer, a single page
+# load may call ``get_rate`` dozens of times, each rebuilding the graph from a
+# fresh DB query. This cache stores the built graph keyed by ``(date, investor)`'
+# so the DB query + graph construction happen at most once per page load.
+#
+# Invalidation: a version counter. The cache key embeds the current version
+# (``fx_graph:v<version>:<date>:<investor>``); ``_invalidate_fx_graph_cache``
+# just increments the version, which makes every existing key unreachable (so
+# they age out via the TTL rather than being enumerated and deleted). The
+# version-counter approach is portable across cache backends — locmem doesn't
+# support pattern deletion and Redis ``scan``-based delete is not available
+# through Django's cache API. The counter is wired to ``FX`` ``post_save`` /
+# ``post_delete`` signals (see ``common/signals.py``).
+#
+# Trade-off (FXManager.bulk_create): the manager override in ``common.models``
+# saves rows one-by-one for batches <= 50 (firing ``post_save`` per row and so
+# invalidating the cache), but falls back to native ``bulk_create`` for larger
+# batches which emits no signals and leaves the cache stale until the next
+# save/delete of a single row or until the 1h TTL expires. Large bulk loads are
+# a rare ops path; if they become hot, call ``_invalidate_fx_graph_cache()``
+# explicitly after the load.
+
+_GRAPH_CACHE_PREFIX = "fx_graph"
+_GRAPH_CACHE_TIMEOUT = 3600  # 1 hour
+
+
+def _graph_cache_key(date_as_of, investor):
+    """Cache key for the currency graph for ``(date_as_of, investor)``.
+
+    Embeds the current invalidation version so incrementing the version makes
+    every previously-written key unreachable.
+    """
+    version = cache.get(f"{_GRAPH_CACHE_PREFIX}:version") or 0
+    investor_id = investor.id if investor is not None else "all"
+    return f"{_GRAPH_CACHE_PREFIX}:v{version}:{date_as_of.isoformat()}:{investor_id}"
+
+
+def _get_graph(date_as_of, investor):
+    """Build (or fetch from cache) the FX currency graph for a date + investor.
+
+    The graph is undirected, built from distinct (from_currency, to_currency)
+    pairs that exist for the investor (or for anyone when ``investor`` is
+    ``None``). Cached per ``(date, investor)`` so repeated ``get_rate`` calls
+    within a page load don't re-query the DB.
+    """
+    key = _graph_cache_key(date_as_of, investor)
+    G = cache.get(key)
+    if G is not None:
+        return G
+    G = nx.Graph()
+    qs = FX.objects.values("from_currency", "to_currency").distinct()
+    if investor is not None:
+        qs = qs.filter(investors=investor)
+    for row in qs:
+        src, dst = row["from_currency"], row["to_currency"]
+        if not src or not dst:
+            continue
+        G.add_edge(src, dst)
+    cache.set(key, G, _GRAPH_CACHE_TIMEOUT)
+    return G
+
+
+def _invalidate_fx_graph_cache(sender=None, instance=None, **kwargs):
+    """Invalidate every FX currency graph cache entry.
+
+    Connected to ``FX.post_save`` / ``post_delete`` (see ``common/signals.py``).
+    Increments the version counter embedded in cache keys, which makes all
+    existing graph entries unreachable; they then age out via the TTL.
+    """
+    version = (cache.get(f"{_GRAPH_CACHE_PREFIX}:version") or 0) + 1
+    cache.set(f"{_GRAPH_CACHE_PREFIX}:version", version)
 
 
 # ---------------------------------------------------------------------------
@@ -122,15 +201,8 @@ def get_rate(source, target, date_as_of, investor=None):
 
         # Build undirected graph of currencies from the long-format rows that
         # exist for this investor (or for anyone when no investor is given).
-        pair_qs = FX.objects.filter(**investor_filter).values(
-            "from_currency", "to_currency"
-        ).distinct()
-        G = nx.Graph()
-        for row in pair_qs:
-            src, dst = row["from_currency"], row["to_currency"]
-            if not src or not dst:
-                continue
-            G.add_edge(src, dst)
+        # Cached per (date, investor); invalidated via FX post_save/post_delete.
+        G = _get_graph(date_as_of, investor)
 
         if source not in G.nodes:
             raise ValueError("No FX rate found")
