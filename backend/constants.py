@@ -11,6 +11,20 @@ CURRENCY_CHOICES = (
     ("CNY", "¥"),
 )
 
+# Fiat-only choices — for fields that should never accept stablecoins
+# (bonds, coupons, annual performance are always fiat-denominated).
+FIAT_CURRENCY_CHOICES = CURRENCY_CHOICES
+
+# Stablecoins pegged to USD at 1.0 (see services.fx.STABLECOIN_PEGS).
+STABLECOIN_CHOICES = (
+    ("USDT", "₮"),
+    ("USDC", "$"),
+)
+
+# All currency choices (fiat + stablecoins) — for fields that can hold
+# stablecoins (assets, transactions, FX, user default).
+ALL_CURRENCY_CHOICES = CURRENCY_CHOICES + STABLECOIN_CHOICES
+
 FREQUENCY_CHOICES = [
     ("D", "Daily"),
     ("W", "Weekly"),

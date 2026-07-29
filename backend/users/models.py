@@ -13,7 +13,7 @@ from django.db import models
 from django.forms import ValidationError
 from t_tech.invest import Client, RequestError
 
-from constants import ACCOUNT_TYPE_CHOICES, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
+from constants import ACCOUNT_TYPE_CHOICES, ALL_CURRENCY_CHOICES, CURRENCY_CHOICES, NAV_BARCHART_CHOICES
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class CustomUser(AbstractUser):
     """Custom user model."""
 
     default_currency = models.CharField(
-        max_length=3, choices=CURRENCY_CHOICES, default="USD", blank=True, null=True
+        max_length=4, choices=ALL_CURRENCY_CHOICES, default="USD", blank=True, null=True
     )
     use_default_currency_where_relevant = models.BooleanField(default=False)
     chart_frequency = models.CharField(max_length=1, default="M")
