@@ -7,9 +7,12 @@ import pytest
 from common.models import Accounts, Assets, Brokers, OptionMetadata, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
+    TRANSACTION_TYPE_CASH_IN,
+    TRANSACTION_TYPE_CASH_OUT,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+    TRANSACTION_TYPE_INTEREST_INCOME,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 from services.crypto_exchange import (
@@ -255,19 +258,23 @@ def test_auto_imported_btc_price_rolls_back_when_event_validation_fails(user, cr
 
 
 @pytest.mark.django_db
-def test_stablecoin_transfer_import_creates_crypto_asset_without_cash_balance(user, crypto_account):
+def test_stablecoin_deposit_import_creates_cash_in_without_crypto_asset(user, crypto_account):
+    # Phase 4: a standalone USDT deposit is re-routed to a Cash in transaction
+    # in the USDT currency, rather than a Crypto transfer against a CRYPTO:USDT
+    # asset with no cost basis or cash balance.
     event = _crypto_event(
-        provider_event_id="transfer-usdt-in",
-        group_id="transfer-usdt-in",
-        category="transfer",
+        provider_event_id="deposit-usdt-in",
+        group_id="deposit-usdt-in",
+        category="deposit",
         raw_type="deposit",
         legs=[
             {
                 "asset": "USDT",
-                "quantity": Decimal("250.123456789"),
+                "quantity": Decimal("500"),
                 "price": Decimal("1"),
                 "price_asset": "USDT",
-                "role": "transfer",
+                "role": "base",
+                "instrument": "coin",
             }
         ],
         fee=None,
@@ -275,12 +282,178 @@ def test_stablecoin_transfer_import_creates_crypto_asset_without_cash_balance(us
 
     created = persist_crypto_exchange_event(event, user, crypto_account)
 
-    usdt = Assets.objects.get(ISIN="CRYPTO:USDT", currency="USD")
+    assert len(created) == 1
     tx = created[0]
-    assert tx.security == usdt
+    assert tx.type == TRANSACTION_TYPE_CASH_IN
+    assert tx.currency == "USDT"
+    assert tx.security is None
+    assert tx.price is None
+    assert tx.quantity is None
+    assert tx.cash_flow == Decimal("500.00")
+    # The stablecoin is the user's cash, so it now contributes to the USDT
+    # balance rather than disappearing into a zero-cash crypto transfer.
+    assert total_cash_flow(tx) == Decimal("500.00")
+    assert account_balance(crypto_account, date(2026, 1, 1)) == {"USDT": Decimal("500.00")}
+    # No CRYPTO:USDT asset row is created for standalone stablecoin events.
+    assert not Assets.objects.filter(ISIN="CRYPTO:USDT", currency="USD").exists()
+    # Idempotency: re-importing the same event does not duplicate the row.
+    assert persist_crypto_exchange_event(event, user, crypto_account) == []
+
+
+@pytest.mark.django_db
+def test_stablecoin_withdrawal_import_creates_cash_out(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="withdrawal-usdt-out",
+        group_id="withdrawal-usdt-out",
+        category="withdrawal",
+        raw_type="withdrawal",
+        legs=[
+            {
+                "asset": "USDT",
+                "quantity": Decimal("-250"),
+                "price": Decimal("1"),
+                "price_asset": "USDT",
+                "role": "base",
+                "instrument": "coin",
+            }
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == TRANSACTION_TYPE_CASH_OUT
+    assert tx.currency == "USDT"
+    assert tx.security is None
+    assert tx.price is None
+    assert tx.quantity is None
+    # Withdrawals are outbound: cash_flow is the negative quantity.
+    assert tx.cash_flow == Decimal("-250.00")
+    assert total_cash_flow(tx) == Decimal("-250.00")
+    assert account_balance(crypto_account, date(2026, 1, 1)) == {"USDT": Decimal("-250.00")}
+    assert not Assets.objects.filter(ISIN="CRYPTO:USDT", currency="USD").exists()
+
+
+@pytest.mark.django_db
+def test_stablecoin_reward_import_creates_interest_income(user, crypto_account):
+    event = _crypto_event(
+        provider_event_id="reward-usdt-earn",
+        group_id="reward-usdt-earn",
+        category="reward",
+        raw_type="earn",
+        legs=[
+            {
+                "asset": "USDT",
+                "quantity": Decimal("1.25"),
+                "price": Decimal("1"),
+                "price_asset": "USDT",
+                "role": "base",
+                "instrument": "coin",
+            }
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == TRANSACTION_TYPE_INTEREST_INCOME
+    assert tx.currency == "USDT"
+    assert tx.security is None
+    assert tx.price is None
+    assert tx.quantity is None
+    # Rewards are inbound accruals: positive cash_flow.
+    assert tx.cash_flow == Decimal("1.25")
+    assert total_cash_flow(tx) == Decimal("1.25")
+    assert account_balance(crypto_account, date(2026, 1, 1)) == {"USDT": Decimal("1.25")}
+    assert not Assets.objects.filter(ISIN="CRYPTO:USDT", currency="USD").exists()
+
+
+@pytest.mark.django_db
+def test_non_stablecoin_deposit_still_uses_crypto_resolver(user, crypto_account):
+    # Regression guard: a non-stablecoin (BTC) deposit must keep the existing
+    # behavior (Crypto transfer in against the CRYPTO:BTC asset, USD-priced).
+    event = _crypto_event(
+        provider_event_id="deposit-btc-in",
+        group_id="deposit-btc-in",
+        category="deposit",
+        raw_type="deposit",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("0.05"),
+                "price": Decimal("1"),
+                "price_asset": "BTC",
+                "role": "base",
+                "instrument": "coin",
+            }
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert len(created) == 1
+    tx = created[0]
     assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+    assert tx.currency == "USD"
+    btc = Assets.objects.get(ISIN="CRYPTO:BTC", currency="USD")
+    assert tx.security == btc
+    assert tx.quantity == Decimal("0.050000000")
+    # Deposits have no external cash impact; cash_flow stays zero.
+    assert total_cash_flow(tx) == Decimal("0")
+
+
+@pytest.mark.django_db
+def test_spot_trade_stablecoin_quote_leg_is_not_rerouted_to_cash(user, crypto_account):
+    # Regression guard: in a BTC/USDT spot trade, the USDT quote leg must stay
+    # as a Crypto trade leg against the CRYPTO:USDT asset. It must NOT be
+    # re-routed to a cash transaction (only standalone stablecoin events are).
+    created = persist_crypto_exchange_event(_crypto_event(), user, crypto_account)
+
+    assert len(created) == 2
+    usdt = Assets.objects.get(ISIN="CRYPTO:USDT", currency="USD")
+    usdt_tx = Transactions.objects.get(security=usdt)
+    assert usdt_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+    assert usdt_tx.currency == "USD"
+    # The spot trade contributes no cash balance (trade leg, not cash).
+    assert account_balance(crypto_account, date(2026, 1, 1)) == {}
+
+
+@pytest.mark.django_db
+def test_stablecoin_internal_transfer_still_uses_crypto_transfer(user, crypto_account):
+    # Internal stablecoin ``transfer`` events are NOT external cash movements,
+    # so they keep the existing crypto-transfer treatment (not re-routed to
+    # Cash in/out).
+    event = _crypto_event(
+        provider_event_id="transfer-usdt-internal",
+        group_id="transfer-usdt-internal",
+        category="transfer",
+        raw_type="transfer",
+        legs=[
+            {
+                "asset": "USDT",
+                "quantity": Decimal("250.123456789"),
+                "price": Decimal("1"),
+                "price_asset": "USDT",
+                "role": "transfer",
+                "instrument": "coin",
+            }
+        ],
+        fee=None,
+    )
+
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+    usdt = Assets.objects.get(ISIN="CRYPTO:USDT", currency="USD")
+    assert tx.security == usdt
     assert tx.quantity == Decimal("250.123456789")
-    assert tx.price == Decimal("1.000000000")
     assert total_cash_flow(tx) == Decimal("0")
     assert account_balance(crypto_account, date(2026, 1, 1)) == {}
 
@@ -413,13 +586,17 @@ def _deposit_event(**overrides):
 
 
 @pytest.mark.django_db
-def test_persist_deposit_creates_transfer_in_row(user, crypto_account):
+def test_persist_stablecoin_deposit_creates_cash_in_row(user, crypto_account):
+    # Phase 4: a standalone USDT deposit now becomes a Cash in row (not a
+    # Crypto transfer in), in the USDT currency, with cash_flow set.
     created = persist_crypto_exchange_event(_deposit_event(), user, crypto_account)
 
     assert len(created) == 1
     tx = created[0]
-    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
-    assert tx.quantity == Decimal("500")
+    assert tx.type == TRANSACTION_TYPE_CASH_IN
+    assert tx.currency == "USDT"
+    assert tx.security is None
+    assert tx.cash_flow == Decimal("500.00")
     assert persist_crypto_exchange_event(_deposit_event(), user, crypto_account) == []
 
 
@@ -506,6 +683,8 @@ def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
     # Regression: a real normalizer output must round-trip through persistence
     # without crashing. Closes the seam between normalization and persistence so
     # a None-price default in _single_leg can never silently break deposits.
+    # Phase 4: a USDT deposit normalizes to a stablecoin leg that persistence
+    # re-routes to a Cash in row (currency=USDT, cash_flow set).
     from services.crypto_exchange import normalize_bybit_deposit
 
     event = normalize_bybit_deposit(
@@ -520,6 +699,7 @@ def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
     created = persist_crypto_exchange_event(event, user, crypto_account)
 
     assert len(created) == 1
-    assert created[0].type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
-    assert created[0].quantity == Decimal("500")
-    assert created[0].price == Decimal("1")
+    assert created[0].type == TRANSACTION_TYPE_CASH_IN
+    assert created[0].currency == "USDT"
+    assert created[0].security is None
+    assert created[0].cash_flow == Decimal("500.00")
