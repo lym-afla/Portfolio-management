@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Union
 from babel.numbers import get_currency_symbol
 from django.core.paginator import Page
 
-from constants import CURRENCY_CHOICES
+from constants import ALL_CURRENCY_CHOICES
 
 NOT_RELEVANT = "N/R"
 
@@ -151,8 +151,8 @@ def currency_format(
         # If the symbol is the same as the currency code,
         # it means the currency was not recognized by Babel
         if symbol == currency.upper():
-            # Fall back to CURRENCY_CHOICES
-            symbol = dict(CURRENCY_CHOICES).get(currency.upper(), currency.upper())
+            # Fall back to ALL_CURRENCY_CHOICES
+            symbol = dict(ALL_CURRENCY_CHOICES).get(currency.upper(), currency.upper())
 
     # If no value is provided, return only the symbol
     if value is None:

@@ -144,9 +144,10 @@ class TestFXGraphCache:
         g_user = _get_graph(REF_DATE, user)
         g_other = _get_graph(REF_DATE, other)
 
-        # Each graph contains only its own investor's pairs.
-        assert set(g_user.nodes) == {"USD", "EUR"}
-        assert set(g_other.nodes) == {"RUB", "USD"}
+        # Each graph contains its own investor's pairs PLUS the universal
+        # stablecoin peg edges (USD—USDT, USD—USDC) which are always present.
+        assert set(g_user.nodes) == {"USD", "EUR", "USDT", "USDC"}
+        assert set(g_other.nodes) == {"RUB", "USD", "USDT", "USDC"}
 
     def test_different_dates_have_separate_caches(self, user):
         """Two different dates produce distinct cache entries."""

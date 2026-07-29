@@ -10,6 +10,7 @@ from constants import (
     ACCOUNT_TYPE_ALL,
     ACCOUNT_TYPE_CHOICES,
     ASSET_TYPE_CHOICES,
+    ALL_CURRENCY_CHOICES,
     CURRENCY_CHOICES,
     DATA_SOURCE_CHOICES,
     EXPOSURE_CHOICES,
@@ -146,7 +147,7 @@ class Assets(models.Model):
     ISIN = models.CharField(max_length=12)
     name = models.CharField(max_length=70, null=False)
     ticker = models.CharField(max_length=10, null=True, blank=True)
-    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default="USD", null=False)
+    currency = models.CharField(max_length=4, choices=ALL_CURRENCY_CHOICES, default="USD", null=False)
     exposure = models.TextField(null=False, choices=EXPOSURE_CHOICES, default="Equity")
     restricted = models.BooleanField(default=False, null=False)
     comment = models.TextField(null=True, blank=True)
@@ -224,7 +225,7 @@ class Transactions(models.Model):
         blank=True,
     )
     currency = models.CharField(
-        max_length=3, choices=CURRENCY_CHOICES, default="USD", null=False, blank=False
+        max_length=4, choices=ALL_CURRENCY_CHOICES, default="USD", null=False, blank=False
     )
     type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES, null=False)
     date = NaiveDateTimeField(db_index=True, null=False)
@@ -427,14 +428,14 @@ class FXTransaction(models.Model):
     )
     account = models.ForeignKey(Accounts, on_delete=models.CASCADE, related_name="fx_transactions")
     date = NaiveDateTimeField(null=False)
-    from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
-    to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, null=False)
+    from_currency = models.CharField(max_length=4, choices=ALL_CURRENCY_CHOICES, null=False)
+    to_currency = models.CharField(max_length=4, choices=ALL_CURRENCY_CHOICES, null=False)
     from_amount = models.DecimalField(max_digits=20, decimal_places=9, null=False)
     to_amount = models.DecimalField(max_digits=20, decimal_places=9, null=False)
     exchange_rate = models.DecimalField(max_digits=15, decimal_places=9, null=False, blank=True)
     commission = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
     commission_currency = models.CharField(
-        max_length=3, choices=CURRENCY_CHOICES, null=True, blank=True
+        max_length=4, choices=ALL_CURRENCY_CHOICES, null=True, blank=True
     )
     comment = models.TextField(null=True, blank=True)
     import_provider = models.CharField(max_length=20, null=True, blank=True, db_index=True)
