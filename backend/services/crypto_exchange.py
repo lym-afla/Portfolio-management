@@ -14,17 +14,30 @@ from django.db import IntegrityError, transaction
 from common.models import Assets, OptionMetadata, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
+    TRANSACTION_TYPE_CASH_IN,
+    TRANSACTION_TYPE_CASH_OUT,
     TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    TRANSACTION_TYPE_INTEREST_INCOME,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 from services.asset_resolver import resolve_or_create_asset
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 STABLECOINS = {"USDT", "USDC", "USD"}
+# Stablecoin tickers that represent the user's own cash. Note that "USD" is
+# intentionally excluded: it is already a fiat currency tracked as cash by other
+# paths. Standalone events in USDT/USDC are re-routed to cash transactions
+# (Cash in / Cash out / Interest income) rather than crypto-transfer rows that
+# carry no cost basis or cash balance.
+STABLECOIN_CURRENCIES = {"USDT", "USDC"}
+# Event categories whose standalone stablecoin legs are re-routed to cash
+# transactions. "trade" is excluded (spot-trade quote legs stay as trade legs);
+# "transfer" is excluded (internal stablecoin moves stay as crypto transfers).
+STABLECOIN_CASH_CATEGORIES = {"deposit", "withdrawal", "reward"}
 SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES = {"InternalTransfer", "Transfer"}
 SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES = {"1", "128", "129"}
 OPTION_SETTLEMENT_COINS = {"USD", "USDT", "USDC"}
@@ -308,6 +321,34 @@ def _transaction_type_for_event(event, quantity):
     return TRANSACTION_TYPE_CRYPTO_TRADE_IN if quantity > 0 else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
 
 
+def _is_stablecoin_cash_leg(event, leg):
+    """Return True for a standalone stablecoin leg that must be re-routed to cash.
+
+    A leg qualifies when its asset is a real stablecoin (USDT/USDC — NOT USD,
+    which is already fiat cash) AND the event is not a trade (so spot-trade
+    quote legs stay as trade legs) AND the event category is one of the
+    external cash-movement categories (deposit/withdrawal/reward). Internal
+    stablecoin ``transfer`` events keep their existing crypto-transfer
+    treatment.
+    """
+    category = (event.category or "").lower()
+    if category not in STABLECOIN_CASH_CATEGORIES:
+        return False
+    if leg.get("instrument") == "option":
+        return False
+    return str(leg.get("asset", "")).upper() in STABLECOIN_CURRENCIES
+
+
+def _cash_tx_type_for_category(category):
+    category = (category or "").lower()
+    if category == "deposit":
+        return TRANSACTION_TYPE_CASH_IN
+    if category == "withdrawal":
+        return TRANSACTION_TYPE_CASH_OUT
+    # reward / earn accruals land in interest income.
+    return TRANSACTION_TYPE_INTEREST_INCOME
+
+
 def persist_crypto_exchange_event(event, user, account):
     created = []
     event_time = _event_datetime(event)
@@ -321,6 +362,14 @@ def persist_crypto_exchange_event(event, user, account):
 
             quantity = _leg_quantity(leg)
             if quantity == 0:
+                continue
+
+            # Standalone stablecoin legs are cash: their value IS the quantity
+            # (pegged 1:1 to USD), so no fiat price is resolved and no crypto
+            # asset row is created. Trade legs and non-stablecoin legs follow
+            # the existing priced-asset path.
+            if _is_stablecoin_cash_leg(event, leg):
+                leg_records.append((index, leg, quantity, None))
                 continue
 
             price = _leg_fiat_price(leg, user, event_time)
@@ -342,31 +391,53 @@ def persist_crypto_exchange_event(event, user, account):
             ).exists():
                 continue
 
-            if leg.get("instrument") == "option":
-                asset = resolve_crypto_option_asset(parse_option_symbol(leg["asset"]), user)
+            if _is_stablecoin_cash_leg(event, leg):
+                # Cash movement in the stablecoin's own currency. The signed
+                # quantity (deposits/rewards positive, withdrawals negative)
+                # becomes the cash_flow; security and price are not applicable.
+                tx_type = _cash_tx_type_for_category(event.category)
+                tx_kwargs = dict(
+                    investor=user,
+                    account=account,
+                    security=None,
+                    currency=str(leg["asset"]).upper(),
+                    type=tx_type,
+                    date=event_time,
+                    quantity=None,
+                    price=None,
+                    cash_flow=_normalize_model_decimal(Transactions, "cash_flow", quantity),
+                    comment=_event_comment(event, leg),
+                    import_provider=event.provider,
+                    import_account_id=import_account_id,
+                    import_event_id=event_id,
+                    import_group_id=event.group_id,
+                    import_event_type=event.category,
+                )
             else:
-                asset = resolve_crypto_asset(leg["asset"], user)
-            tx_type = _transaction_type_for_event(event, quantity)
+                if leg.get("instrument") == "option":
+                    asset = resolve_crypto_option_asset(parse_option_symbol(leg["asset"]), user)
+                else:
+                    asset = resolve_crypto_asset(leg["asset"], user)
+                tx_type = _transaction_type_for_event(event, quantity)
+                tx_kwargs = dict(
+                    investor=user,
+                    account=account,
+                    security=asset,
+                    currency="USD",
+                    type=tx_type,
+                    date=event_time,
+                    quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
+                    price=_normalize_model_decimal(Transactions, "price", price),
+                    comment=_event_comment(event, leg),
+                    import_provider=event.provider,
+                    import_account_id=import_account_id,
+                    import_event_id=event_id,
+                    import_group_id=event.group_id,
+                    import_event_type=event.category,
+                )
             try:
                 with transaction.atomic():
-                    created.append(
-                        Transactions.objects.create(
-                            investor=user,
-                            account=account,
-                            security=asset,
-                            currency="USD",
-                            type=tx_type,
-                            date=event_time,
-                            quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
-                            price=_normalize_model_decimal(Transactions, "price", price),
-                            comment=_event_comment(event, leg),
-                            import_provider=event.provider,
-                            import_account_id=import_account_id,
-                            import_event_id=event_id,
-                            import_group_id=event.group_id,
-                            import_event_type=event.category,
-                        )
-                    )
+                    created.append(Transactions.objects.create(**tx_kwargs))
             except IntegrityError:
                 continue
     return created
