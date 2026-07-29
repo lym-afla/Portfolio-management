@@ -119,32 +119,35 @@ def transactions(user, account):
 
 @pytest.fixture
 def fx_rates(user):
-    """Create test FX rates."""
+    """Create test FX rates (long-format: one row per date/pair)."""
     # Create FX rates covering both historical transaction dates (2022)
     # and the current date used in tests.
+    rates = (
+        ("USDEUR", Decimal("1.15")),
+        ("USDGBP", Decimal("1.25")),
+        ("CHFGBP", Decimal("0.85")),
+        ("RUBUSD", Decimal("65")),
+        ("PLNUSD", Decimal("4")),
+        ("CNYUSD", Decimal("7")),
+    )
+
+    def _emit(on_date):
+        for col, value in rates:
+            from_cur, to_cur = col[:3], col[3:]
+            fx = FX.objects.create(
+                date=on_date,
+                from_currency=from_cur,
+                to_currency=to_cur,
+                rate=value,
+            )
+            fx.investors.add(user)
+
     start_date = date(2022, 1, 1)
-    fx = FX.objects.create(date=start_date)
-    fx.investors.add(user)
-    fx.USDEUR = Decimal("1.15")
-    fx.USDGBP = Decimal("1.25")
-    fx.CHFGBP = Decimal("0.85")
-    fx.RUBUSD = Decimal("65")
-    fx.PLNUSD = Decimal("4")
-    fx.CNYUSD = Decimal("7")
-    fx.save()
+    _emit(start_date)
 
     # Also create a recent FX rate for tests using current_date
     current_date = datetime.now().date()
-    fx_recent = FX.objects.create(date=current_date)
-    fx_recent.investors.add(user)
-    fx_recent.USDEUR = Decimal("1.15")
-    fx_recent.USDGBP = Decimal("1.25")
-    fx_recent.CHFGBP = Decimal("0.85")
-    fx_recent.RUBUSD = Decimal("65")
-    fx_recent.PLNUSD = Decimal("4")
-    fx_recent.CNYUSD = Decimal("7")
-    fx_recent.save()
-    # current_date += timedelta(days=1)
+    _emit(current_date)
 
 
 def get_sse_asgi_app():

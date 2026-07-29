@@ -492,13 +492,18 @@ class TestMultiAssetWorkflows:
         )
         gbp_asset.investors.add(user)
 
-        # Create FX rate data
-        fx_data = FX.objects.create(
-            date=date(2023, 6, 15),
-            USDEUR=Decimal("1.09"),
-            USDGBP=Decimal("1.22"),
-        )
-        fx_data.investors.add(user)
+        # Create FX rate data (long-format: one row per pair per date)
+        for from_cur, to_cur, rate_value in (
+            ("USD", "EUR", Decimal("1.09")),
+            ("USD", "GBP", Decimal("1.22")),
+        ):
+            fx_data = FX.objects.create(
+                date=date(2023, 6, 15),
+                from_currency=from_cur,
+                to_currency=to_cur,
+                rate=rate_value,
+            )
+            fx_data.investors.add(user)
 
         # Multi-currency investments
         investments = [

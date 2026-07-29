@@ -36,8 +36,8 @@ class BondACICalculationTests(TestCase):
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
         # Create FX rates (RUBUSD = RUB per 1 USD: 75, 80)
-        FX.objects.create(date=date(2024, 1, 1), RUBUSD=Decimal("75"))
-        FX.objects.create(date=date(2024, 6, 1), RUBUSD=Decimal("80"))
+        FX.objects.create(date=date(2024, 1, 1), from_currency="RUB", to_currency="USD", rate=Decimal("75"))
+        FX.objects.create(date=date(2024, 6, 1), from_currency="RUB", to_currency="USD", rate=Decimal("80"))
 
         # Create a bond
         self.bond = Assets.objects.create(
@@ -175,7 +175,7 @@ class CapitalDistributionTests(TestCase):
         self.user = User.objects.create_user(username="testuser", email="test@test.com")
 
         # Create FX rates (RUBUSD = RUB per 1 USD: 75)
-        FX.objects.create(date=date(2024, 1, 1), RUBUSD=Decimal("75"))
+        FX.objects.create(date=date(2024, 1, 1), from_currency="RUB", to_currency="USD", rate=Decimal("75"))
 
         # Create a bond
         self.bond = Assets.objects.create(

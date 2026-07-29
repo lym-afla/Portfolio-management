@@ -34,11 +34,13 @@ class TestFXRateModelIntegration:
 
         # Test retrieval of a specific rate
         test_date = date(2023, 1, 1)
-        fx_obj = FX.objects.filter(date=test_date).first()
+        fx_obj = FX.objects.filter(
+            date=test_date, from_currency="USD", to_currency="EUR"
+        ).first()
         assert fx_obj is not None
-        assert fx_obj.USDEUR is not None
-        assert isinstance(fx_obj.USDEUR, Decimal)
-        assert fx_obj.USDEUR > 0
+        assert fx_obj.rate is not None
+        assert isinstance(fx_obj.rate, Decimal)
+        assert fx_obj.rate > 0
 
     def test_fx_rate_investor_relationship(self, user, fx_rates):
         """Test FX rate investor relationship."""
@@ -133,13 +135,17 @@ class TestFXRateCalculationIntegration:
 
         fx_obj = FX.objects.create(
             date=test_date,
-            USDEUR=high_precision_rate,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=high_precision_rate,
         )
         fx_obj.investors.add(fx_rates[0].investors.first())  # Add investor from existing rates
 
         # Verify rate is stored with proper precision
-        retrieved_fx = FX.objects.get(date=test_date)
-        assert retrieved_fx.USDEUR == high_precision_rate
+        retrieved_fx = FX.objects.get(
+            date=test_date, from_currency="USD", to_currency="EUR"
+        )
+        assert retrieved_fx.rate == high_precision_rate
 
     def test_fx_rate_error_handling(self, fx_rates):
         """Test FX rate error handling."""
@@ -230,15 +236,17 @@ class TestTransactionFXIntegration:
         # Create FX rate manually to avoid factory faker issues
         fx_rate = FX.objects.create(
             date=date.today(),
-            USDEUR=Decimal("0.92"),
-            USDGBP=Decimal("0.82"),
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("0.92"),
         )
         fx_rate.investors.add(user)
 
         # Verify creation
         assert fx_rate.id is not None
-        assert fx_rate.USDEUR is not None
-        assert fx_rate.USDGBP is not None
+        assert fx_rate.from_currency == "USD"
+        assert fx_rate.to_currency == "EUR"
+        assert fx_rate.rate == Decimal("0.92")
         assert user in fx_rate.investors.all()
 
 

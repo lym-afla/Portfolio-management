@@ -19,7 +19,7 @@ from django.utils.formats import date_format
 
 from common.models import FX, Assets, Transactions
 from constants import CURRENCY_CHOICES
-from services.fx import update_fx_rate as fx_update_fx_rate
+from services.fx import FX_PAIRS, update_fx_rate as fx_update_fx_rate
 from services.annual_performance import (
     get_years_count,
     save_or_update_annual_broker_performance,
@@ -824,19 +824,19 @@ class FXImportConsumer(AsyncHttpConsumer):
         """
         dates_to_update = []
         for d in transaction_dates:
-            fx_instance = FX.objects.filter(date=d).first()
-            if import_option in ["missing", "both"] and (
-                not fx_instance or user not in fx_instance.investors.all()
-            ):
-                dates_to_update.append(d)
-            elif (
-                import_option in ["incomplete", "both"]
-                and fx_instance
-                and any(
-                    getattr(fx_instance, field) is None
-                    for field in ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD"]
+            # Long-format: a date may have multiple FX rows (one per pair).
+            # Consider only rows linked to this user when deciding coverage.
+            user_pairs = set(
+                FX.objects.filter(date=d, investors=user).values_list(
+                    "from_currency", "to_currency"
                 )
-            ):
+            )
+            expected_pairs = {(src, tgt) for src, tgt in FX_PAIRS}
+            missing_pairs = expected_pairs - user_pairs
+
+            if import_option in ["missing", "both"] and not user_pairs:
+                dates_to_update.append(d)
+            elif import_option in ["incomplete", "both"] and user_pairs and missing_pairs:
                 dates_to_update.append(d)
         return dates_to_update
 
@@ -851,17 +851,30 @@ class FXImportConsumer(AsyncHttpConsumer):
         Returns:
             tuple: (status_message, count_field) tuple.
         """
-        fx_instance = FX.objects.filter(date=date).first()
-        if not fx_instance:
+        user_pairs = set(
+            FX.objects.filter(date=date, investors=user).values_list(
+                "from_currency", "to_currency"
+            )
+        )
+        expected_pairs = {(src, tgt) for src, tgt in FX_PAIRS}
+        missing_pairs = expected_pairs - user_pairs
+
+        # Any FX row on this date, regardless of investor?
+        any_row_on_date = FX.objects.filter(date=date).exists()
+
+        if not any_row_on_date:
             fx_update_fx_rate(date, user)
             return "Added", "missing_filled"
-        elif user not in fx_instance.investors.all():
-            fx_instance.investors.add(user)
+        elif not user_pairs:
+            # Rows exist for this date but none are linked to this user.
+            # Link the user to existing rows, then fill any missing pairs.
+            for existing in FX.objects.filter(date=date):
+                existing.investors.add(user)
+            if missing_pairs:
+                fx_update_fx_rate(date, user)
             return "Linked existing", "existing_linked"
-        elif any(
-            getattr(fx_instance, field) is None
-            for field in ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"]
-        ):
+        elif missing_pairs:
+            # Date has some pairs for this user but is missing expected ones.
             fx_update_fx_rate(date, user)
             return "Updated", "incomplete_updated"
         else:

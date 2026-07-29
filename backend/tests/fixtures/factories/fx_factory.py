@@ -2,6 +2,11 @@
 Factory classes for creating FX rate test data.
 
 Provides realistic FX rate scenarios for various testing scenarios.
+
+All FX rate data is produced in the long-format schema
+(``from_currency`` / ``to_currency`` / ``rate``). Storage convention is
+quote-per-base: a row ``from=X, to=Y, rate=r`` stores "r units of X per 1 unit
+of Y" (r X/Y).
 """
 
 from datetime import date, timedelta
@@ -13,8 +18,20 @@ from factory import fuzzy
 from common.models import FX, FXTransaction
 
 
+# Long-format currency pairs and the realistic base rate for each. Each pair is
+# (from_currency, to_currency, base_rate) where the base_rate is "from per 1 to"
+# following the quote-per-base convention.
+_LONG_PAIRS = (
+    ("USD", "EUR", Decimal("0.92")),  # 0.92 USD per 1 EUR
+    ("USD", "GBP", Decimal("0.82")),  # 0.82 USD per 1 GBP
+    ("CHF", "GBP", Decimal("0.88")),  # 0.88 CHF per 1 GBP
+    ("RUB", "USD", Decimal("0.013")),  # 0.013 RUB per 1 USD
+    ("PLN", "USD", Decimal("0.25")),  # 0.25 PLN per 1 USD
+)
+
+
 class FXRateFactory(factory.django.DjangoModelFactory):
-    """Factory for creating FX rate records."""
+    """Factory for creating a single long-format FX rate row."""
 
     class Meta:
         """Meta class for FXRateFactory."""
@@ -22,41 +39,25 @@ class FXRateFactory(factory.django.DjangoModelFactory):
         model = FX
 
     date = fuzzy.FuzzyDate(date(2020, 1, 1), date.today())
+    from_currency = "USD"
+    to_currency = "EUR"
 
     @factory.lazy_attribute
-    def USDEUR(self):
-        """USD to EUR exchange rate."""
+    def rate(self):
+        """A realistic exchange rate for the USD->EUR pair by default."""
         return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.8, max_value=1.2)
-
-    @factory.lazy_attribute
-    def USDGBP(self):
-        """USD to GBP exchange rate."""
-        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.7, max_value=1.0)
-
-    @factory.lazy_attribute
-    def CHFGBP(self):
-        """CHF to GBP exchange rate."""
-        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.8, max_value=1.0)
-
-    @factory.lazy_attribute
-    def RUBUSD(self):
-        """RUB to USD exchange rate."""
-        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.01, max_value=0.02)
-
-    @factory.lazy_attribute
-    def PLNUSD(self):
-        """PLN to USD exchange rate."""
-        return self.faker.pydecimal(left_digits=1, right_digits=6, min_value=0.2, max_value=0.3)
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
-        """Override create to handle required investor."""
+        """Override create to handle required investor (M2M)."""
         investor = kwargs.pop("investor", None)
-
         if not investor:
             raise ValueError("FXRateFactory requires investor")
 
-        return model_class.objects.create(investor=investor, **kwargs)
+        fx = model_class.objects.create(**kwargs)
+        if investor is not None:
+            fx.investors.add(investor)
+        return fx
 
 
 class FXTransactionFactory(factory.django.DjangoModelFactory):
@@ -172,46 +173,36 @@ class EURToUSDTransactionFactory(FXTransactionFactory):
 
 # Batch creation utilities
 def create_fx_rate_history(investor, start_date=None, days=365):
-    """Create a comprehensive FX rate history."""
+    """Create a comprehensive FX rate history (one long-format row per pair/day)."""
     if start_date is None:
         start_date = date(2023, 1, 1)
 
     rates = []
-    base_rates = {
-        "USDEUR": Decimal("0.92"),
-        "USDGBP": Decimal("0.82"),
-        "CHFGBP": Decimal("0.88"),
-        "RUBUSD": Decimal("0.013"),
-        "PLNUSD": Decimal("0.25"),
-    }
-
     for i in range(days):
         current_date = start_date + timedelta(days=i)
-
-        # Create rates with realistic daily variations
-        rate_data = {"investor": investor, "date": current_date}
-
-        for pair, base_rate in base_rates.items():
-            # Add small daily variations
-            variation = Decimal(str(0.001 * (i % 30) / 30))  # Small cyclical variation
+        for from_curr, to_curr, base_rate in _LONG_PAIRS:
+            # Small cyclical variation plus random noise.
+            variation = Decimal(str(0.001 * (i % 30) / 30))
             current_rate = base_rate + (base_rate * variation)
-
-            # Add some random noise
             noise = Decimal(
                 str(factory.Faker("pyfloat", min_value=-0.002, max_value=0.002).generate())
             )
             current_rate = current_rate * (Decimal("1") + noise)
 
-            rate_data[pair] = max(current_rate, Decimal("0.001"))  # Ensure positive rates
-
-        fx_rate = FXRateFactory.create(**rate_data)
-        rates.append(fx_rate)
+            fx = FXRateFactory.create(
+                investor=investor,
+                date=current_date,
+                from_currency=from_curr,
+                to_currency=to_curr,
+                rate=max(current_rate, Decimal("0.001")),
+            )
+            rates.append(fx)
 
     return rates
 
 
 def create_cross_currency_rates(investor, currency_pairs, start_date=None, days=365):
-    """Create FX rates for specific currency pairs."""
+    """Create FX rates for specific currency pairs (long-format)."""
     if start_date is None:
         start_date = date(2023, 1, 1)
 
@@ -220,10 +211,8 @@ def create_cross_currency_rates(investor, currency_pairs, start_date=None, days=
     for i in range(days):
         current_date = start_date + timedelta(days=i)
 
-        rate_data = {"investor": investor, "date": current_date}
-
         for from_curr, to_curr in currency_pairs:
-            # Generate realistic exchange rates
+            # Generate realistic exchange rates.
             if (from_curr, to_curr) == ("USD", "EUR"):
                 base_rate = Decimal("0.92")
             elif (from_curr, to_curr) == ("EUR", "USD"):
@@ -239,14 +228,14 @@ def create_cross_currency_rates(investor, currency_pairs, start_date=None, days=
             variation = Decimal(str(0.01 * (i % 60) / 60))  # Cyclical variation
             current_rate = base_rate + (base_rate * variation)
 
-            # Create field name
-            field_name = f"{from_curr}{to_curr}"
-            if hasattr(FX, field_name):
-                rate_data[field_name] = max(current_rate, Decimal("0.001"))
-
-        if len(rate_data) > 2:  # More than just investor and date
-            fx_rate = FXRateFactory.create(**rate_data)
-            rates.append(fx_rate)
+            fx = FXRateFactory.create(
+                investor=investor,
+                date=current_date,
+                from_currency=from_curr,
+                to_currency=to_curr,
+                rate=max(current_rate, Decimal("0.001")),
+            )
+            rates.append(fx)
 
     return rates
 
@@ -305,21 +294,19 @@ def create_volatility_scenario(investor, start_date=None, days=90):
 
     rates = []
 
+    volatility_pairs = (
+        ("USD", "EUR", Decimal("0.92")),
+        ("USD", "GBP", Decimal("0.82")),
+        ("RUB", "USD", Decimal("0.013")),
+    )
+
     for i in range(days):
         current_date = start_date + timedelta(days=i)
 
         # Simulate high volatility with larger variations
         volatility_factor = Decimal("0.05")  # 5% daily volatility
 
-        base_rates = {
-            "USDEUR": Decimal("0.92"),
-            "USDGBP": Decimal("0.82"),
-            "RUBUSD": Decimal("0.013"),
-        }
-
-        rate_data = {"investor": investor, "date": current_date}
-
-        for pair, base_rate in base_rates.items():
+        for from_curr, to_curr, base_rate in volatility_pairs:
             # High volatility variations
             variation = volatility_factor * (i % 10 - 5) / 5  # +/- volatility
             current_rate = base_rate + (base_rate * variation)
@@ -329,9 +316,13 @@ def create_volatility_scenario(investor, start_date=None, days=90):
                 spike = Decimal("0.02") * (1 if i % 40 == 0 else -1)
                 current_rate = current_rate + (base_rate * spike)
 
-            rate_data[pair] = max(current_rate, Decimal("0.001"))
-
-        fx_rate = FXRateFactory.create(**rate_data)
-        rates.append(fx_rate)
+            fx = FXRateFactory.create(
+                investor=investor,
+                date=current_date,
+                from_currency=from_curr,
+                to_currency=to_curr,
+                rate=max(current_rate, Decimal("0.001")),
+            )
+            rates.append(fx)
 
     return rates

@@ -517,53 +517,74 @@ class TestFXModelConstraints:
         )
 
     def test_fx_unique_date_investor(self):
-        """Test that FX rates must be unique per date and investor."""
+        """Test that FX rate pairs must be unique per (date, from, to)."""
         test_date = date(2023, 6, 15)
 
         # Create first FX record
-        fx1 = FX.objects.create(date=test_date, USDEUR=Decimal("1.09"))
+        fx1 = FX.objects.create(
+            date=test_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("1.09"),
+        )
         fx1.investors.add(self.user)
         assert fx1.date == test_date
 
-        # Try to create second FX record for same date and investor
+        # Try to create second FX record for the same (date, from, to) pair
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                fx2 = FX.objects.create(date=test_date, USDEUR=Decimal("1.10"))
+                fx2 = FX.objects.create(
+                    date=test_date,
+                    from_currency="USD",
+                    to_currency="EUR",
+                    rate=Decimal("1.10"),
+                )
                 fx2.investors.add(self.user)
 
-    def test_fx_different_investors_same_date(self):
-        """Test that different investors can have FX rates for same date."""
-        # user2 = CustomUser.objects.create_user(
-        #     username="fx_user2", email="fx2@example.com", password="testpass123"
-        # )
+    def test_fx_different_pairs_same_date(self):
+        """Test that different currency pairs can share a date."""
         test_date = date(2023, 6, 15)
 
-        # Create FX records for different users on same date
-        fx1 = FX.objects.create(date=test_date, USDEUR=Decimal("1.09"))
+        # Multiple pairs on the same date is valid in the long-format schema.
+        fx1 = FX.objects.create(
+            date=test_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("1.09"),
+        )
         fx2 = FX.objects.create(
-            date=test_date + timedelta(days=1),  # Different date to avoid uniqueness conflict
-            USDEUR=Decimal("1.10"),  # Different rate
+            date=test_date,
+            from_currency="USD",
+            to_currency="GBP",
+            rate=Decimal("1.22"),
         )
 
         assert fx1.id != fx2.id
-        assert fx1.date != fx2.date  # Different dates to avoid uniqueness conflict
+        assert fx1.date == fx2.date  # Same date is now allowed
 
     def test_fx_rate_decimal_precision(self):
         """Test FX rate decimal precision constraints."""
-        # Test valid precision
+        # Test valid precision (long-format rate is max_digits=20, decimal_places=10)
         fx = FX.objects.create(
             date=date(2023, 6, 15),
-            USDEUR=Decimal("1.123456"),  # 6 decimal places
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("1.123456"),  # 6 decimal places
         )
         fx.investors.add(self.user)
-        assert fx.USDEUR == Decimal("1.123456")
+        assert fx.rate == Decimal("1.123456")
 
-        # Test higher precision (should be rounded or handled)
+        # Test higher precision (within the 10dp field definition)
         high_precision = Decimal("1.123456789012345")
         try:
-            fx_high = FX.objects.create(date=date(2023, 6, 16), USDEUR=high_precision)
-            # Should be rounded appropriately
-            assert fx_high.USDEUR is not None
+            fx_high = FX.objects.create(
+                date=date(2023, 6, 16),
+                from_currency="USD",
+                to_currency="EUR",
+                rate=high_precision,
+            )
+            # Should be rounded appropriately to the field's decimal_places.
+            assert fx_high.rate is not None
         except (ValidationError, IntegrityError):
             # Or should raise validation error
             pass
@@ -573,46 +594,56 @@ class TestFXModelConstraints:
         # Negative rates are allowed at database level (validation would be at app level)
         fx = FX.objects.create(
             date=date(2023, 6, 15),
-            USDEUR=Decimal("-1.09"),  # Negative rate
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("-1.09"),  # Negative rate
         )
         fx.investors.add(self.user)
-        assert fx.USDEUR == Decimal("-1.09")
+        assert fx.rate == Decimal("-1.09")
 
-    def test_fx_primary_key_date_investor(self):
-        """Test that date and investor form composite primary key."""
+    def test_fx_rate_lookup_by_date_pair(self):
+        """Test that a rate can be retrieved by (date, from_currency, to_currency)."""
         test_date = date(2023, 6, 15)
 
-        fx = FX.objects.create(date=test_date, USDEUR=Decimal("1.09"))
+        fx = FX.objects.create(
+            date=test_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("1.09"),
+        )
 
-        # Verify the composite primary key works
-        retrieved_fx = FX.objects.get(date=test_date)
+        # Verify the pair-qualified lookup works
+        retrieved_fx = FX.objects.get(
+            date=test_date, from_currency="USD", to_currency="EUR"
+        )
         assert retrieved_fx == fx
 
     def test_fx_rate_field_constraints(self):
-        """Test FX rate field constraints."""
+        """Test FX rate field constraints (rate is nullable for legacy rows)."""
         fx = FX.objects.create(
             date=date(2023, 6, 15),
-            USDEUR=Decimal("0.92"),
-            USDGBP=Decimal("0.82"),
-            CHFGBP=Decimal("0.88"),
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("0.92"),
         )
         fx.investors.add(self.user)
 
-        # Test that all fields are accessible
-        assert fx.USDEUR == Decimal("0.92")
-        assert fx.USDGBP == Decimal("0.82")
-        assert fx.CHFGBP == Decimal("0.88")
+        # Test that the long-format fields are accessible
+        assert fx.from_currency == "USD"
+        assert fx.to_currency == "EUR"
+        assert fx.rate == Decimal("0.92")
 
-        # Test that null values are allowed for some fields
-        fx_nulls = FX.objects.create(
+        # Test that null values are allowed for the rate (legacy rows).
+        fx_null = FX.objects.create(
             date=date(2023, 6, 16),
-            USDEUR=Decimal("0.93"),
-            # Other fields should be nullable
+            from_currency=None,
+            to_currency=None,
+            rate=None,
         )
-        fx_nulls.investors.add(self.user)
-        assert fx_nulls.USDEUR == Decimal("0.93")
-        assert fx_nulls.USDGBP is None
-        assert fx_nulls.CHFGBP is None
+        fx_null.investors.add(self.user)
+        assert fx_null.from_currency is None
+        assert fx_null.to_currency is None
+        assert fx_null.rate is None
 
 
 @pytest.mark.integration

@@ -456,7 +456,9 @@ class TestFXEdgeCases:
         )
         test_date = date.today()
         # Create FX rate with zero value directly (bypass factory to avoid faker issues)
-        fx = FX.objects.create(date=test_date, USDEUR=Decimal("0"))
+        fx = FX.objects.create(
+            date=test_date, from_currency="USD", to_currency="EUR", rate=Decimal("0")
+        )
         fx.investors.add(user)
         # Note: Zero rate will cause division by zero in get_rate, so it should raise ValueError
         with pytest.raises(ValueError, match="No FX rate found"):
@@ -469,7 +471,9 @@ class TestFXEdgeCases:
         )
         test_date = date.today()
         # Create FX rate with negative value directly (bypass factory to avoid faker issues)
-        fx = FX.objects.create(date=test_date, USDEUR=Decimal("-1.0"))
+        fx = FX.objects.create(
+            date=test_date, from_currency="USD", to_currency="EUR", rate=Decimal("-1.0")
+        )
         fx.investors.add(user)
         # Negative rate will cause issues in calculation (division by negative in final inversion)
         # The system may allow it through but it's an edge case - test that it handles it
@@ -488,7 +492,12 @@ class TestFXEdgeCases:
         )
         test_date = date.today()
         # Create FX rate with very small value directly (bypass factory to avoid faker issues)
-        fx = FX.objects.create(date=test_date, USDEUR=Decimal("0.000001"))
+        fx = FX.objects.create(
+            date=test_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("0.000001"),
+        )
         fx.investors.add(user)
         rate = fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
         # The rate will be inverted (1/0.000001 = 1000000) due to how get_rate works
@@ -500,10 +509,14 @@ class TestFXEdgeCases:
             username=f"testuser_large_{id(object())}", password="12345"
         )
         test_date = date.today()
-        # Create FX rate with very large value
-        # (within field constraints: max_digits=8, decimal_places=6)
-        # So max value is 99.999999
-        fx = FX.objects.create(date=test_date, USDEUR=Decimal("99.999999"))
+        # Create FX rate with very large value. Long-format rate has
+        # max_digits=20, decimal_places=10, so 99.999999 fits comfortably.
+        fx = FX.objects.create(
+            date=test_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("99.999999"),
+        )
         fx.investors.add(user)
         rate = fx_get_rate("USD", "EUR", test_date, investor=user)["FX"]
         # The rate will be inverted (1/99.999999 ≈ 0.01) due to how get_rate works
@@ -517,9 +530,9 @@ class TestFXEdgeCases:
         # Use the first date from the fixture to ensure it exists
         test_date = fx_rates[0].date
 
-        # The fx_rates fixture creates USDEUR rates
+        # The fx_rates fixture creates USD/EUR long-format rows.
         # For EUR to USD, the system should be able to calculate the inverse automatically
-        # by using the same USDEUR field but in reverse direction
+        # by using the same USD/EUR row but in reverse direction.
 
         original_amount = Decimal("1000.00")
 
@@ -581,14 +594,27 @@ class TestDatabaseEdgeCases:
         )
         test_date = date.today()
 
-        # Create first FX rate directly (bypass factory to avoid faker issues)
-        fx1 = FX.objects.create(date=test_date, USDEUR=Decimal("0.85"))
+        # Create first FX rate directly (bypass factory to avoid faker issues).
+        # The unique constraint is now (date, from_currency, to_currency) —
+        # multiple pairs can share a date, but the same pair cannot repeat.
+        fx1 = FX.objects.create(
+            date=test_date,
+            from_currency="USD",
+            to_currency="EUR",
+            rate=Decimal("0.85"),
+        )
         fx1.investors.add(user)
 
-        # Try to create duplicate - this should violate unique constraint on date
+        # Try to create a duplicate pair on the same date - this should violate
+        # the unique_fx_date_pair constraint.
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                fx2 = FX.objects.create(date=test_date, USDEUR=Decimal("0.86"))
+                fx2 = FX.objects.create(
+                    date=test_date,
+                    from_currency="USD",
+                    to_currency="EUR",
+                    rate=Decimal("0.86"),
+                )
                 fx2.investors.add(user)
 
     def test_database_connection_timeout(self):

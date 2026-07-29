@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -22,7 +22,7 @@ from services.corporate_actions import (
     CorporateActionError,
     execute_merger,
 )
-from services.fx import get_rate as fx_get_rate
+from services.fx import FX_PAIRS, get_rate as fx_get_rate
 from services.positions import position
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
@@ -762,18 +762,15 @@ class FXViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(
                 Q(date__icontains=search)
-                | Q(USDEUR__icontains=search)
-                | Q(USDGBP__icontains=search)
-                | Q(CHFGBP__icontains=search)
-                | Q(RUBUSD__icontains=search)
-                | Q(PLNUSD__icontains=search)
-                | Q(CNYUSD__icontains=search)
+                | Q(from_currency__icontains=search)
+                | Q(to_currency__icontains=search)
+                | Q(rate__icontains=search)
             )
 
         # Convert queryset to list of dictionaries
         fx_data = list(
             queryset.values(
-                "id", "date", "USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"
+                "id", "date", "from_currency", "to_currency", "rate"
             )
         )
 
@@ -793,7 +790,7 @@ class FXViewSet(viewsets.ModelViewSet):
             "count": pagination_info["total_items"],
             "current_page": pagination_info["current_page"],
             "total_pages": pagination_info["total_pages"],
-            "currencies": ["USDEUR", "USDGBP", "CHFGBP", "RUBUSD", "PLNUSD", "CNYUSD"],
+            "currencies": ["USD/EUR", "USD/GBP", "CHF/GBP", "RUB/USD", "PLN/USD", "CNY/USD"],
         }
 
         return Response(response_data)
@@ -811,38 +808,20 @@ class FXViewSet(viewsets.ModelViewSet):
                         "required": True,
                     },
                     {
-                        "name": "USDEUR",
-                        "label": "USD/EUR",
-                        "type": "number",
+                        "name": "from_currency",
+                        "label": "From currency",
+                        "type": "text",
                         "required": True,
                     },
                     {
-                        "name": "USDGBP",
-                        "label": "USD/GBP",
-                        "type": "number",
+                        "name": "to_currency",
+                        "label": "To currency",
+                        "type": "text",
                         "required": True,
                     },
                     {
-                        "name": "CHFGBP",
-                        "label": "CHF/GBP",
-                        "type": "number",
-                        "required": True,
-                    },
-                    {
-                        "name": "RUBUSD",
-                        "label": "RUB/USD",
-                        "type": "number",
-                        "required": True,
-                    },
-                    {
-                        "name": "PLNUSD",
-                        "label": "PLN/USD",
-                        "type": "number",
-                        "required": True,
-                    },
-                    {
-                        "name": "CNYUSD",
-                        "label": "CNY/USD",
+                        "name": "rate",
+                        "label": "Rate (from per 1 to)",
                         "type": "number",
                         "required": True,
                     },
@@ -852,22 +831,35 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["GET"])
     def import_stats(self, request):
-        """Get import stats."""
+        """Get import stats.
+
+        In the long-format schema each FX row is a single (date, currency pair),
+        so "missing" means a transaction date with no FX row at all and
+        "incomplete" means a date that has some FX rows but is missing one or
+        more of the expected pairs.
+        """
         user = request.user
         transaction_dates = Transactions.objects.filter(investor=user).values("date").distinct()
         total_dates = transaction_dates.count()
 
         fx_instances = FX.objects.filter(investors=user, date__in=transaction_dates.values("date"))
-        missing_instances = total_dates - fx_instances.count()
 
-        incomplete_instances = fx_instances.filter(
-            Q(USDEUR__isnull=True)
-            | Q(USDGBP__isnull=True)
-            | Q(CHFGBP__isnull=True)
-            | Q(RUBUSD__isnull=True)
-            | Q(PLNUSD__isnull=True)
-            | Q(CNYUSD__isnull=True)
-        ).count()
+        # Distinct transaction dates that have at least one FX row linked to the user.
+        dates_with_fx = set(
+            fx_instances.values_list("date", flat=True).distinct()
+        )
+        all_transaction_dates = {d["date"] for d in transaction_dates}
+        missing_instances = len(all_transaction_dates - dates_with_fx)
+
+        # A date is "incomplete" if it has FX rows but covers fewer distinct
+        # currency pairs than the expected set.
+        expected_pair_count = len(FX_PAIRS)
+        pair_counts = fx_instances.values("date").annotate(
+            pair_count=Count("id")
+        )
+        incomplete_instances = sum(
+            1 for entry in pair_counts if entry["pair_count"] < expected_pair_count
+        )
 
         stats = {
             "total_dates": total_dates,

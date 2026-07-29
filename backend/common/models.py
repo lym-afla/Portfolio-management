@@ -28,23 +28,58 @@ logger = logging.getLogger(__name__)
 
 
 # Table with FX data
+class FXManager(models.Manager):
+    """Manager that emits post_save on bulk_create so cache invalidation fires.
+
+    Django's default bulk_create skips signals, which would leave the FX graph
+    cache stale after a bulk insert. This override creates rows individually
+    when the batch is small (the common case for FX) and falls back to native
+    bulk_create for large batches where per-row signals are impractical.
+    """
+
+    def bulk_create(self, objs, batch_size=None, ignore_conflicts=False):
+        objs_list = list(objs)
+        if len(objs_list) <= 50:
+            created = []
+            for obj in objs_list:
+                obj.save()
+                created.append(obj)
+            return created
+        return super().bulk_create(
+            objs_list, batch_size=batch_size, ignore_conflicts=ignore_conflicts
+        )
+
+
 class FX(models.Model):
-    """FX model."""
+    """FX rate storage.
+
+    Long-format schema: one row per (date, currency pair) with a single
+    ``rate`` column. Long-format storage convention: ``rate`` stores
+    "from_currency per 1 to_currency" (quote-per-base). E.g. from="USD",
+    to="EUR", rate=1.09 means "1.09 USD per EUR". ``get_rate`` inverts/divides
+    as needed to return the "multiply source to get target" multiplier.
+    """
 
     id = models.AutoField(primary_key=True)
-    date = models.DateField(unique=True)
+    from_currency = models.CharField(max_length=3, null=True, blank=True)
+    to_currency = models.CharField(max_length=3, null=True, blank=True)
+    rate = models.DecimalField(max_digits=20, decimal_places=10, null=True, blank=True)
+    # NOTE: ``date`` is intentionally NOT unique — multiple pairs share a date.
+    date = models.DateField()
     investors = models.ManyToManyField(CustomUser, related_name="fx_rates")
-    USDEUR = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    USDGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    CHFGBP = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    RUBUSD = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
-    PLNUSD = models.DecimalField(max_digits=9, decimal_places=5, null=True, blank=True)
-    CNYUSD = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+
+    objects = FXManager()
 
     class Meta:
         """Meta class for the FX model."""
 
         ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["date", "from_currency", "to_currency"],
+                name="unique_fx_date_pair",
+            ),
+        ]
 
 
 # Brokers

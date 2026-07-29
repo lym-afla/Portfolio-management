@@ -23,8 +23,9 @@ from decimal import ROUND_HALF_UP, Decimal, DecimalException
 import networkx as nx
 import requests
 import yfinance as yf
+from django.core.cache import cache
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Q
 
 # ``services.fx`` is imported lazily (only when callers need an FX rate), so by
 # the time this runs ``common.models`` is fully loaded and ``FX`` is importable
@@ -32,6 +33,84 @@ from django.db.models import F
 from common.models import FX
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Currency graph cache
+# ---------------------------------------------------------------------------
+#
+# ``get_rate`` builds a ``networkx.Graph`` of currency pairs from the ``FX``
+# table on every call. With ~35 call sites across the calc layer, a single page
+# load may call ``get_rate`` dozens of times, each rebuilding the graph from a
+# fresh DB query. This cache stores the built graph keyed by ``(date, investor)`'
+# so the DB query + graph construction happen at most once per page load.
+#
+# Invalidation: a version counter. The cache key embeds the current version
+# (``fx_graph:v<version>:<date>:<investor>``); ``_invalidate_fx_graph_cache``
+# just increments the version, which makes every existing key unreachable (so
+# they age out via the TTL rather than being enumerated and deleted). The
+# version-counter approach is portable across cache backends — locmem doesn't
+# support pattern deletion and Redis ``scan``-based delete is not available
+# through Django's cache API. The counter is wired to ``FX`` ``post_save`` /
+# ``post_delete`` signals (see ``common/signals.py``).
+#
+# Trade-off (FXManager.bulk_create): the manager override in ``common.models``
+# saves rows one-by-one for batches <= 50 (firing ``post_save`` per row and so
+# invalidating the cache), but falls back to native ``bulk_create`` for larger
+# batches which emits no signals and leaves the cache stale until the next
+# save/delete of a single row or until the 1h TTL expires. Large bulk loads are
+# a rare ops path; if they become hot, call ``_invalidate_fx_graph_cache()``
+# explicitly after the load.
+
+_GRAPH_CACHE_PREFIX = "fx_graph"
+_GRAPH_CACHE_TIMEOUT = 3600  # 1 hour
+
+
+def _graph_cache_key(date_as_of, investor):
+    """Cache key for the currency graph for ``(date_as_of, investor)``.
+
+    Embeds the current invalidation version so incrementing the version makes
+    every previously-written key unreachable.
+    """
+    version = cache.get(f"{_GRAPH_CACHE_PREFIX}:version") or 0
+    investor_id = investor.id if investor is not None else "all"
+    return f"{_GRAPH_CACHE_PREFIX}:v{version}:{date_as_of.isoformat()}:{investor_id}"
+
+
+def _get_graph(date_as_of, investor):
+    """Build (or fetch from cache) the FX currency graph for a date + investor.
+
+    The graph is undirected, built from distinct (from_currency, to_currency)
+    pairs that exist for the investor (or for anyone when ``investor`` is
+    ``None``). Cached per ``(date, investor)`` so repeated ``get_rate`` calls
+    within a page load don't re-query the DB.
+    """
+    key = _graph_cache_key(date_as_of, investor)
+    G = cache.get(key)
+    if G is not None:
+        return G
+    G = nx.Graph()
+    qs = FX.objects.values("from_currency", "to_currency").distinct()
+    if investor is not None:
+        qs = qs.filter(investors=investor)
+    for row in qs:
+        src, dst = row["from_currency"], row["to_currency"]
+        if not src or not dst:
+            continue
+        G.add_edge(src, dst)
+    cache.set(key, G, _GRAPH_CACHE_TIMEOUT)
+    return G
+
+
+def _invalidate_fx_graph_cache(sender=None, instance=None, **kwargs):
+    """Invalidate every FX currency graph cache entry.
+
+    Connected to ``FX.post_save`` / ``post_delete`` (see ``common/signals.py``).
+    Increments the version counter embedded in cache keys, which makes all
+    existing graph entries unreachable; they then age out via the TTL.
+    """
+    version = (cache.get(f"{_GRAPH_CACHE_PREFIX}:version") or 0) + 1
+    cache.set(f"{_GRAPH_CACHE_PREFIX}:version", version)
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +126,13 @@ def get_rate(source, target, date_as_of, investor=None):
     - conversions: number of conversions needed from source to target
     - dates_async: whether the dates are asynchronous
     - dates: the dates used to get the FX rate
+
+    Storage convention (quote-per-base): a long-format row
+    ``from_currency=X, to_currency=Y, rate=r`` stores "r units of X per 1 unit of
+    Y" (r X/Y). To turn that into the "multiply source -> target" multiplier we
+    walk the shortest path hop by hop and, for each hop, divide when the stored
+    row is oriented the same way as the hop (``from_currency == hop_source``) and
+    multiply when it is oriented the opposite way.
 
     Args:
         source: Source currency code (e.g., 'USD')
@@ -88,70 +174,48 @@ def get_rate(source, target, date_as_of, investor=None):
             "dates": [],
         }
 
-    # Get all existing pairs from the database
-    available_pairs = []
     try:
-        # Get all field names that represent FX pairs
-        pairs_list = [
-            field.name
-            for field in FX._meta.get_fields()
-            if field.name not in ["date", "id", "investors"]
-        ]
-
-        # Check if we have any data at all
-        if not pairs_list:
-            raise ValueError("No FX rate found")
+        investor_filter = {"investors": investor} if investor is not None else {}
 
         # Check if we have any data for the given investor
         if investor is not None:
-            has_investor_data = FX.objects.filter(investors=investor).exists()
-            if not has_investor_data:
+            if not FX.objects.filter(investors=investor).exists():
                 raise ValueError("No FX rate found")
 
         # Check date range - don't allow dates too far from available data
-        earliest_date = FX.objects.filter(
-            **({"investors": investor} if investor is not None else {})
-        ).aggregate(min_date=models.Min("date"))["min_date"]
-
-        latest_date = FX.objects.filter(
-            **({"investors": investor} if investor is not None else {})
-        ).aggregate(max_date=models.Max("date"))["max_date"]
+        earliest_date = FX.objects.filter(**investor_filter).aggregate(
+            min_date=models.Min("date")
+        )["min_date"]
+        latest_date = FX.objects.filter(**investor_filter).aggregate(
+            max_date=models.Max("date")
+        )["max_date"]
 
         if earliest_date is None or latest_date is None:
             raise ValueError("No FX rate found")
 
-        # Don't allow dates more than 5 years before earliest data or 1 year after latest data
+        # Don't allow dates more than 5 years before or 1 year after available data
         if date_as_of < earliest_date - timedelta(days=5 * 365):
             raise ValueError("No FX rate found")
-
         if date_as_of > latest_date + timedelta(days=365):
             raise ValueError("No FX rate found")
 
-        # Create undirected graph with currencies
-        G = nx.Graph()
-        for entry in pairs_list:
-            # Extract currency pair from field name (first 3 and last 3 characters)
-            if len(entry) >= 6:  # Ensure field name is long enough for a pair
-                source_curr = entry[:3]
-                target_curr = entry[3:6]
-                G.add_nodes_from([source_curr, target_curr])
-                G.add_edge(source_curr, target_curr)
+        # Build undirected graph of currencies from the long-format rows that
+        # exist for this investor (or for anyone when no investor is given).
+        # Cached per (date, investor); invalidated via FX post_save/post_delete.
+        G = _get_graph(date_as_of, investor)
 
-        # Check if both currencies exist in our graph
         if source not in G.nodes:
             raise ValueError("No FX rate found")
-
         if target not in G.nodes:
             raise ValueError("No FX rate found")
 
-        # Finding shortest path for cross-currency conversion
         try:
-            cross_currency = nx.shortest_path(G, source, target, method="bellman-ford")
+            path = nx.shortest_path(G, source, target, method="bellman-ford")
         except nx.NetworkXNoPath:
             raise ValueError("No FX rate found")
 
-        available_pairs = pairs_list
-
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Error setting up FX rate calculation: {e}")
         raise ValueError("No FX rate found")
@@ -160,71 +224,53 @@ def get_rate(source, target, date_as_of, investor=None):
     dates_async = False
     dates_list = []
 
-    # Calculate FX rate along the conversion path
-    for i in range(1, len(cross_currency)):
-        i_source = cross_currency[i - 1]
-        i_target = cross_currency[i]
+    # Walk the path hop-by-hop, multiplying or dividing based on row orientation.
+    for i in range(1, len(path)):
+        hop_source = path[i - 1]
+        hop_target = path[i]
 
-        # Find the appropriate field for this currency pair
-        field_name = None
-        multiplier = Decimal("1")
-
-        for element in available_pairs:
-            if i_source in element and i_target in element:
-                if element.find(i_source) == 0:
-                    field_name = f"{i_source}{i_target}"
-                    multiplier = Decimal("1")
-                else:
-                    field_name = f"{i_target}{i_source}"
-                    multiplier = Decimal("-1")
-                break
-
-        if field_name is None:
-            raise ValueError("No FX rate found")
-
-        # Build filter for database query
-        filter_kwargs = {f"{field_name}__isnull": False}
-        if investor is not None:
-            filter_kwargs["investors"] = investor
-
-        # Try to find FX rate on or before the requested date
-        fx_call = (
-            FX.objects.filter(date__lte=date_as_of, **filter_kwargs)
-            .values("date", quote=F(field_name))
-            .order_by("-date")
-            .first()
+        base_qs = FX.objects.filter(
+            Q(from_currency=hop_source, to_currency=hop_target)
+            | Q(from_currency=hop_target, to_currency=hop_source),
+            rate__isnull=False,
+            **investor_filter,
         )
 
-        # If not found before date, try after the date
-        if fx_call is None or fx_call["quote"] is None:
-            fx_call = (
-                FX.objects.filter(date__gte=date_as_of, **filter_kwargs)
-                .values("date", quote=F(field_name))
-                .order_by("date")
-                .first()
-            )
+        # Try the most recent rate on or before the requested date first.
+        row = base_qs.filter(date__lte=date_as_of).order_by("-date").first()
 
-            # If still not found, we have no data for this period
-            if fx_call is None or fx_call["quote"] is None:
-                raise ValueError("No FX rate found")
+        # Fall back to the closest future rate if there is no past rate.
+        if row is None:
+            row = base_qs.filter(date__gte=date_as_of).order_by("date").first()
 
-        quote = Decimal(str(fx_call["quote"]))
-        if multiplier == Decimal("1"):
-            fx_rate *= quote
-        else:
-            fx_rate /= quote
-        dates_list.append(fx_call["date"])
-        dates_async = (dates_list[0] != fx_call["date"]) or dates_async
+        if row is None:
+            raise ValueError("No FX rate found")
 
-    # The target is to multiply when using, not divide
+        # Quote-per-base: rate = "from_currency per 1 to_currency".
+        # If the row is oriented the same way as the hop we DIVIDE (we need the
+        # reciprocal "target per source"); if it is reversed we MULTIPLY.
+        try:
+            if row.from_currency == hop_source:
+                fx_rate /= row.rate
+            else:
+                fx_rate *= row.rate
+        except (ZeroDivisionError, DecimalException):
+            # A zero stored rate makes the conversion undefined.
+            raise ValueError("No FX rate found")
+
+        dates_async = (dates_list and dates_list[0] != row.date) or dates_async
+        dates_list.append(row.date)
+
+    # Round to 6 dp to match the precision the previous wide-column
+    # implementation produced via ``round(Decimal(1/fx_rate), 6)``.
     try:
-        final_fx_rate = round(Decimal(1 / fx_rate), 6)
-    except (ZeroDivisionError, DecimalException):
+        fx_rate = fx_rate.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    except DecimalException:
         raise ValueError("No FX rate found")
 
     return {
-        "FX": final_fx_rate,
-        "conversions": len(cross_currency) - 1,
+        "FX": fx_rate,
+        "conversions": len(path) - 1,
         "dates_async": dates_async,
         "dates": dates_list,
     }
@@ -235,57 +281,77 @@ def get_rate(source, target, date_as_of, investor=None):
 # ---------------------------------------------------------------------------
 
 
+# Currency pairs to populate when ``update_fx_rate`` runs. The first element of
+# each pair is the ``from_currency`` (quote), the second is the ``to_currency``
+# (base), matching the quote-per-base storage convention. This is the long-format
+# equivalent of the old named columns USDEUR, USDGBP, CHFGBP, RUBUSD, PLNUSD,
+# CNYUSD.
+FX_PAIRS = (
+    ("USD", "EUR"),
+    ("USD", "GBP"),
+    ("CHF", "GBP"),
+    ("RUB", "USD"),
+    ("PLN", "USD"),
+    ("CNY", "USD"),
+)
+
+
 def update_fx_rate(date, investor):
-    """Update FX rate for a given date and investor."""
-    # Get FX model variables, except 'date', 'id' and 'investors'
-    fx_variables = [
-        field
-        for field in FX._meta.get_fields()
-        if field.name not in ["date", "id", "investors"]
-    ]
+    """Update FX rate for a given date and investor.
 
-    # Extract source and target currencies
-    currency_pairs = [(field.name[:3], field.name[3:]) for field in fx_variables]
+    For each currency pair in :data:`FX_PAIRS` that does not already have a
+    long-format row on ``date`` linked to ``investor``, fetch the rate (CBR for
+    RUB pairs, Yahoo otherwise) and create the row.
+    """
+    for source, target in FX_PAIRS:
+        # Skip pairs we already have a rate for on this date for this investor.
+        already = FX.objects.filter(
+            date=date,
+            from_currency=source,
+            to_currency=target,
+            investors=investor,
+            rate__isnull=False,
+        ).exists()
+        if already:
+            continue
 
-    # Create or get the fx_instance once before the loop
-    fx_instance, _ = FX.objects.get_or_create(date=date)
-    fx_instance.investors.add(investor)
+        use_cbr = "RUB" in (source, target)
+        fetcher = update_FX_from_CBR if use_cbr else update_FX_from_Yahoo
+        source_name = "CBR" if use_cbr else "Yahoo Finance"
+        try:
+            rate_data = fetcher(source, target, date)
+        except CBRRateLimitError as exc:
+            logger.error(
+                "%s%s for %s NOT updated: CBR is rate-limiting us (%s). "
+                "The stored value was left untouched - please retry later.",
+                source,
+                target,
+                date,
+                exc,
+            )
+            continue
+        except Exception:
+            logger.warning(
+                "%s%s for %s was NOT updated (%s source failed)",
+                source,
+                target,
+                date,
+                source_name,
+            )
+            continue
 
-    for source, target in currency_pairs:
-        # Check if an FX rate exists for the date and currency pair
-        existing_rate = getattr(fx_instance, f"{source}{target}", None)
+        if rate_data is None:
+            continue
 
-        if existing_rate is None:
-            # RUB pairs use the Central Bank of Russia; all others use Yahoo.
-            use_cbr = "RUB" in (source, target)
-            fetcher = update_FX_from_CBR if use_cbr else update_FX_from_Yahoo
-            source_name = "CBR" if use_cbr else "Yahoo Finance"
-            try:
-                rate_data = fetcher(source, target, date)
-                if rate_data is not None:
-                    setattr(fx_instance, f"{source}{target}", rate_data["exchange_rate"])
-            except CBRRateLimitError as exc:
-                logger.error(
-                    "%s%s for %s NOT updated: CBR is rate-limiting us (%s). "
-                    "The stored value was left untouched - please retry later.",
-                    source,
-                    target,
-                    date,
-                    exc,
-                )
-                continue
-            except Exception:
-                logger.warning(
-                    "%s%s for %s was NOT updated (%s source failed)",
-                    source,
-                    target,
-                    date,
-                    source_name,
-                )
-                continue
-
-    # Save the fx_instance once after updating all currency pairs.
-    fx_instance.save()
+        row, _ = FX.objects.get_or_create(
+            date=date,
+            from_currency=source,
+            to_currency=target,
+            defaults={"rate": rate_data["exchange_rate"]},
+        )
+        row.rate = rate_data["exchange_rate"]
+        row.save()
+        row.investors.add(investor)
 
 
 # ---------------------------------------------------------------------------

@@ -59,7 +59,10 @@ class TestFXRateCalculation:
 
         # Find the expected rate from our fixture data
         expected_fx = FX.objects.filter(
-            date=test_date, investors=user, USDEUR__isnull=False
+            date=test_date,
+            investors=user,
+            from_currency="USD",
+            to_currency="EUR",
         ).first()
 
         assert expected_fx is not None

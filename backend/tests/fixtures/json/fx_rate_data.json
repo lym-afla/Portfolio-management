@@ -1,15 +1,17 @@
 {
   "description": "Sample FX rate data for testing currency conversion functionality",
-  "version": "1.0",
+  "version": "1.1",
   "created": "2023-10-18",
-  "base_currency": "USD",
+  "schema_note": "Long-format FX storage: each row is (date, from_currency, to_currency, rate) where rate = 'from_currency per 1 to_currency' (quote-per-base). For example from=USD, to=EUR, rate=0.92 means 0.92 USD per 1 EUR.",
   "date_range": {
     "start": "2023-01-01",
     "end": "2023-12-31"
   },
   "fx_rates": {
-    "USDEUR": {
-      "description": "USD to EUR exchange rate",
+    "USD/EUR": {
+      "from_currency": "USD",
+      "to_currency": "EUR",
+      "description": "0.92 USD per 1 EUR",
       "base_rate": 0.92,
       "volatility": 0.02,
       "trend": 0.001,
@@ -40,8 +42,10 @@
         {"date": "2023-12-15", "rate": 0.8500}
       ]
     },
-    "USDGBP": {
-      "description": "USD to GBP exchange rate",
+    "USD/GBP": {
+      "from_currency": "USD",
+      "to_currency": "GBP",
+      "description": "0.82 USD per 1 GBP",
       "base_rate": 0.82,
       "volatility": 0.025,
       "trend": 0.0005,
@@ -72,8 +76,10 @@
         {"date": "2023-12-15", "rate": 0.7520}
       ]
     },
-    "CHFGBP": {
-      "description": "CHF to GBP exchange rate",
+    "CHF/GBP": {
+      "from_currency": "CHF",
+      "to_currency": "GBP",
+      "description": "0.88 CHF per 1 GBP",
       "base_rate": 0.88,
       "volatility": 0.015,
       "trend": 0.0002,
@@ -104,8 +110,10 @@
         {"date": "2023-12-15", "rate": 0.8455}
       ]
     },
-    "RUBUSD": {
-      "description": "RUB to USD exchange rate",
+    "RUB/USD": {
+      "from_currency": "RUB",
+      "to_currency": "USD",
+      "description": "0.013 RUB per 1 USD (i.e. ~76 RUB per USD when read as RUB-per-USD)",
       "base_rate": 0.013,
       "volatility": 0.1,
       "trend": 0.0,
@@ -136,8 +144,10 @@
         {"date": "2023-12-15", "rate": 0.0072}
       ]
     },
-    "PLNUSD": {
-      "description": "PLN to USD exchange rate",
+    "PLN/USD": {
+      "from_currency": "PLN",
+      "to_currency": "USD",
+      "description": "0.25 PLN per 1 USD",
       "base_rate": 0.25,
       "volatility": 0.05,
       "trend": 0.001,

@@ -153,8 +153,10 @@ class YTMCalculationTestCase(TestCase):
             rate_date = datetime.date(2023, 1, 1) + datetime.timedelta(days=days_offset)
             fx_rate, created = FX.objects.get_or_create(
                 date=rate_date,
+                from_currency="RUB",
+                to_currency="USD",
                 defaults={
-                    "RUBUSD": Decimal("0.0125"),  # 1 RUB = 0.0125 USD (example rate)
+                    "rate": Decimal("0.0125"),  # stored as RUB-per-USD quote-per-base
                 },
             )
             fx_rate.investors.add(self.user)
