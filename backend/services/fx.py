@@ -65,6 +65,15 @@ logger = logging.getLogger(__name__)
 _GRAPH_CACHE_PREFIX = "fx_graph"
 _GRAPH_CACHE_TIMEOUT = 3600  # 1 hour
 
+# Stablecoins pegged to USD at 1.0. These are universal currency-system
+# constants (not per-investor data), so the graph always includes their edges
+# and the per-hop rate lookup exempts them from the investor filter.
+STABLECOIN_PEGS = {
+    ("USD", "USDT"),
+    ("USD", "USDC"),
+}
+STABLECOIN_CURRENCIES = {"USDT", "USDC"}
+
 
 def _graph_cache_key(date_as_of, investor):
     """Cache key for the currency graph for ``(date_as_of, investor)``.
@@ -97,6 +106,10 @@ def _get_graph(date_as_of, investor):
         src, dst = row["from_currency"], row["to_currency"]
         if not src or not dst:
             continue
+        G.add_edge(src, dst)
+    # Stablecoin pegs are universal — always present in the graph regardless
+    # of which investor's data we're looking at.
+    for src, dst in STABLECOIN_PEGS:
         G.add_edge(src, dst)
     cache.set(key, G, _GRAPH_CACHE_TIMEOUT)
     return G
@@ -174,6 +187,18 @@ def get_rate(source, target, date_as_of, investor=None):
             "dates": [],
         }
 
+    # Stablecoin peg short-circuit: USD↔USDT and USD↔USDC are always 1.0,
+    # regardless of date or investor. This avoids the date-range sanity check
+    # rejecting peg-only queries in fresh test DBs, and skips graph resolution
+    # for what is a universal constant.
+    if {source, target} <= {"USD", "USDT", "USDC"} and source != target:
+        return {
+            "FX": Decimal("1.000000"),
+            "conversions": 1,
+            "dates_async": False,
+            "dates": [],
+        }
+
     try:
         investor_filter = {"investors": investor} if investor is not None else {}
 
@@ -229,12 +254,22 @@ def get_rate(source, target, date_as_of, investor=None):
         hop_source = path[i - 1]
         hop_target = path[i]
 
-        base_qs = FX.objects.filter(
-            Q(from_currency=hop_source, to_currency=hop_target)
-            | Q(from_currency=hop_target, to_currency=hop_source),
-            rate__isnull=False,
-            **investor_filter,
+        # Build the query for this hop's rate. Stablecoin-peg rows are
+        # universal (no investor link), so they must be findable even when
+        # an investor filter is active. We OR two conditions: the investor's
+        # own rows for this pair, OR any row for a stablecoin-peg pair.
+        pair_q = Q(from_currency=hop_source, to_currency=hop_target) | Q(
+            from_currency=hop_target, to_currency=hop_source
         )
+        is_peg_hop = (
+            (hop_source, hop_target) in STABLECOIN_PEGS
+            or (hop_target, hop_source) in STABLECOIN_PEGS
+        )
+        if is_peg_hop:
+            # Peg rows have no investor link — query without the investor filter.
+            base_qs = FX.objects.filter(pair_q, rate__isnull=False)
+        else:
+            base_qs = FX.objects.filter(pair_q, rate__isnull=False, **investor_filter)
 
         # Try the most recent rate on or before the requested date first.
         row = base_qs.filter(date__lte=date_as_of).order_by("-date").first()
