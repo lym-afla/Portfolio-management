@@ -204,7 +204,12 @@ def test_migration_is_idempotent(user):
 
 @pytest.mark.django_db
 def test_migration_noop_on_empty_table():
-    """The migration is a no-op when there are no FX rows."""
-    assert FX.objects.count() == 0
+    """The migration is a no-op when there are no wide-column FX rows.
+
+    Note: migration 0093 (stablecoin peg) seeds 2 global FX rows on a fresh
+    DB, so the table is not truly empty — but the wide→long migration only
+    copies from named-pair columns (which no longer exist), so it's a no-op.
+    """
+    count_before = FX.objects.count()
     migrate_wide_to_long(_apps_shim(), schema_editor=None)
-    assert FX.objects.count() == 0
+    assert FX.objects.count() == count_before
