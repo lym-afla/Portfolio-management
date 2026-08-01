@@ -471,7 +471,7 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
     assert len(events) == 1
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "okx"
-    assert events[0].legs[0]["quantity"] == Decimal("-0.2001")
+    assert events[0].legs[0]["quantity"] == Decimal("-0.2")
 
 
 def test_bybit_iter_deposits_paginates_and_yields_rows(monkeypatch):

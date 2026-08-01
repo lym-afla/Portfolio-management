@@ -24,6 +24,9 @@ from services.transactions import total_cash_flow
 
 
 def _crypto_event(**overrides):
+    # Mirrors what _spot_legs now emits for a BTC/USDT spot trade: a SINGLE
+    # base leg (USDT is cash, not a separate asset) carrying the actual fill
+    # quantity/price and a cash_flow of the total USDT spent/received.
     data = {
         "provider": "bybit",
         "provider_event_id": "exec-1",
@@ -36,16 +39,10 @@ def _crypto_event(**overrides):
                 "asset": "BTC",
                 "quantity": Decimal("0.1"),
                 "price": Decimal("60000"),
-                "price_asset": "USDT",
+                "price_asset": "USD",
                 "role": "base",
-            },
-            {
-                "asset": "USDT",
-                "quantity": Decimal("-6003"),
-                "price": Decimal("1"),
-                "price_asset": "USDT",
-                "role": "quote",
-            },
+                "cash_flow": Decimal("-6003"),
+            }
         ],
         "fee": {"asset": "USDT", "quantity": Decimal("-3"), "is_rebate": False},
     }
@@ -63,35 +60,31 @@ def crypto_account(user):
 def test_persist_crypto_trade_event_creates_linked_asset_legs(user, crypto_account):
     created = persist_crypto_exchange_event(_crypto_event(), user, crypto_account)
 
-    assert len(created) == 2
+    # Stablecoin-quote spot trades now persist as ONE transaction (the base
+    # asset) with cash_flow set, instead of a separate USDT quote leg.
+    assert len(created) == 1
     assert persist_crypto_exchange_event(_crypto_event(), user, crypto_account) == []
-    assert Transactions.objects.filter(import_group_id="order-1").count() == 2
+    assert Transactions.objects.filter(import_group_id="order-1").count() == 1
 
     btc = Assets.objects.get(ISIN="CRYPTO:BTC", currency="USD")
-    usdt = Assets.objects.get(ISIN="CRYPTO:USDT", currency="USD")
     assert btc.type == ASSET_TYPE_CRYPTO
     assert btc.ticker == "BTC"
     assert btc.exposure == "Commodity"
     assert user in btc.investors.all()
-    assert usdt.type == ASSET_TYPE_CRYPTO
-    assert usdt.exposure == "FX"
-    assert user in usdt.investors.all()
+    # No CRYPTO:USDT asset row is created for a stablecoin-quote spot trade.
+    assert not Assets.objects.filter(ISIN="CRYPTO:USDT", currency="USD").exists()
 
     btc_tx = Transactions.objects.get(security=btc)
-    usdt_tx = Transactions.objects.get(security=usdt)
     assert btc_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
     assert btc_tx.quantity == Decimal("0.100000000")
     assert btc_tx.price == Decimal("60000.000000000")
     assert btc_tx.currency == "USD"
+    assert btc_tx.cash_flow == Decimal("-6003.00")
     assert btc_tx.import_provider == "bybit"
     assert btc_tx.import_account_id == "bybit-main"
     assert btc_tx.import_event_id == "exec-1:0"
     assert btc_tx.import_group_id == "order-1"
     assert btc_tx.import_event_type == "trade"
-    assert usdt_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_OUT
-    assert usdt_tx.quantity == Decimal("-6003.000000000")
-    assert usdt_tx.price == Decimal("1.000000000")
-    assert usdt_tx.import_event_id == "exec-1:1"
 
 
 @pytest.mark.django_db
@@ -408,19 +401,20 @@ def test_non_stablecoin_deposit_still_uses_crypto_resolver(user, crypto_account)
 
 
 @pytest.mark.django_db
-def test_spot_trade_stablecoin_quote_leg_is_not_rerouted_to_cash(user, crypto_account):
-    # Regression guard: in a BTC/USDT spot trade, the USDT quote leg must stay
-    # as a Crypto trade leg against the CRYPTO:USDT asset. It must NOT be
-    # re-routed to a cash transaction (only standalone stablecoin events are).
+def test_spot_trade_stablecoin_quote_carries_cash_flow_on_base_leg(user, crypto_account):
+    # Regression guard: a BTC/USDT spot trade no longer emits a separate USDT
+    # quote leg. Instead the single BTC base leg carries the total USDT
+    # spent/received in its cash_flow, and no CRYPTO:USDT asset or standalone
+    # cash transaction is created.
     created = persist_crypto_exchange_event(_crypto_event(), user, crypto_account)
 
-    assert len(created) == 2
-    usdt = Assets.objects.get(ISIN="CRYPTO:USDT", currency="USD")
-    usdt_tx = Transactions.objects.get(security=usdt)
-    assert usdt_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_OUT
-    assert usdt_tx.currency == "USD"
-    # The spot trade contributes no cash balance (trade leg, not cash).
-    assert account_balance(crypto_account, date(2026, 1, 1)) == {}
+    assert len(created) == 1
+    assert not Assets.objects.filter(ISIN="CRYPTO:USDT", currency="USD").exists()
+    btc_tx = created[0]
+    assert btc_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
+    assert btc_tx.security.ticker == "BTC"
+    # The USDT movement rides on the base leg as cash_flow, not a second row.
+    assert btc_tx.cash_flow == Decimal("-6003.00")
 
 
 @pytest.mark.django_db
@@ -486,7 +480,8 @@ def test_resolved_crypto_asset_identifier_fits_model_field_for_long_symbols(user
 def test_fee_info_appears_in_comments_without_extra_rows(user, crypto_account):
     persist_crypto_exchange_event(_crypto_event(), user, crypto_account)
 
-    assert Transactions.objects.filter(import_group_id="order-1").count() == 2
+    # One transaction (single base leg); fee metadata still lands in its comment.
+    assert Transactions.objects.filter(import_group_id="order-1").count() == 1
     comments = list(
         Transactions.objects.filter(import_group_id="order-1").values_list("comment", flat=True)
     )
@@ -505,15 +500,9 @@ def test_fee_role_leg_is_not_persisted_as_position_change(user, crypto_account):
                 "asset": "ETH",
                 "quantity": Decimal("2"),
                 "price": Decimal("3000"),
-                "price_asset": "USDT",
+                "price_asset": "USD",
                 "role": "base",
-            },
-            {
-                "asset": "USDT",
-                "quantity": Decimal("-6000"),
-                "price": Decimal("1"),
-                "price_asset": "USDT",
-                "role": "quote",
+                "cash_flow": Decimal("-6000"),
             },
             {
                 "asset": "BNB",
@@ -528,7 +517,8 @@ def test_fee_role_leg_is_not_persisted_as_position_change(user, crypto_account):
 
     persist_crypto_exchange_event(event, user, crypto_account)
 
-    assert Transactions.objects.filter(import_group_id="order-third-fee").count() == 2
+    # The fee-role BNB leg is skipped; only the single ETH base leg persists.
+    assert Transactions.objects.filter(import_group_id="order-third-fee").count() == 1
     assert not Assets.objects.filter(name="BNB").exists()
     comments = list(
         Transactions.objects.filter(import_group_id="order-third-fee").values_list(
