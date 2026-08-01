@@ -1,0 +1,544 @@
+"""Tests for the OKX Trading History CSV import parser.
+
+Covers:
+- The CSV-to-payload adapter (``build_okx_csv_events``): spot trade pairing
+  (two bill rows -> one event), option fill mapping, option settlement
+  (expiration) mapping, and transfer skipping.
+- Timezone conversion (UTC+3 wall-clock -> UTC ms-epoch).
+- The full async parser (``parse_okx_trading_csv``) against a temp CSV fixture,
+  verifying events persist via ``persist_crypto_exchange_event`` with
+  ``import_provider="okx_csv"`` and dedup on re-import.
+
+All monetary values use ``Decimal``.
+"""
+
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+import pandas as pd
+import pytest
+from channels.db import database_sync_to_async
+
+from common.models import Accounts, Brokers, Transactions
+from services.importer import (
+    OKX_CSV_IMPORT_PROVIDER,
+    _okx_time_to_utc_ms,
+    _parse_okx_csv_tz_offset,
+    build_okx_csv_events,
+    parse_okx_trading_csv,
+)
+
+
+# ---------------------------------------------------------------------------
+# CSV fixtures
+# ---------------------------------------------------------------------------
+
+OKX_CSV_HEADER = (
+    "\ufeffUID:652654290649420911,"
+    "\ufeffAccount Type:Main,"
+    "\ufeffTime Zone:UTC+3\n"
+)
+OKX_CSV_COLUMNS = (
+    "\ufeffid,Order id,Time,Trade Type,Symbol,Action,Amount,Trading Unit,"
+    "Filled Price,PnL,Fee,Fee Unit,Position Change,Position Balance,"
+    "Balance Change,Balance,Balance Unit\n"
+)
+
+
+def _write_okx_csv(path, rows):
+    """Write an OKX Trading History CSV with the BOM-prefixed metadata + columns.
+
+    ``rows`` is a list of dicts whose keys match the OKX column names. Missing
+    keys are emitted as empty fields. The leading BOM on each ``id`` mirrors the
+    real export.
+    """
+    columns = [
+        "id", "Order id", "Time", "Trade Type", "Symbol", "Action", "Amount",
+        "Trading Unit", "Filled Price", "PnL", "Fee", "Fee Unit",
+        "Position Change", "Position Balance", "Balance Change", "Balance",
+        "Balance Unit",
+    ]
+    lines = [OKX_CSV_HEADER, OKX_CSV_COLUMNS]
+    for row in rows:
+        cells = []
+        for col in columns:
+            value = row.get(col, "")
+            if col == "id" and value:
+                value = f"\ufeff{value}"
+            cells.append(str(value))
+        lines.append(",".join(cells) + "\n")
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.writelines(lines)
+
+
+def _spot_buy_pair():
+    """A BTC-USDT BUY order: two bill rows sharing one Order id.
+
+    Base leg (Balance Unit=BTC, Action=Buy) carries the fill; quote leg
+    (Balance Unit=USDT, Action=Sell) carries the fee. Mirrors the real export
+    shape exactly (both rows have Trading Unit=BTC).
+    """
+    return [
+        {
+            "id": "3603866656859267073",
+            "Order id": "3603866124417540096",
+            "Time": "2026-05-27 21:19:55",
+            "Trade Type": "Spot",
+            "Symbol": "BTC-USDT",
+            "Action": "Sell",
+            "Amount": "5002.162499",
+            "Trading Unit": "BTC",
+            "Filled Price": "74837.4",
+            "PnL": "0.0",
+            "Fee": "0.000000",
+            "Fee Unit": "USDT",
+            "Position Change": "0.000000",
+            "Position Balance": "0.000000",
+            "Balance Change": "-5002.162499",
+            "Balance": "0.000000",
+            "Balance Unit": "USDT",
+        },
+        {
+            "id": "3603866656859267072",
+            "Order id": "3603866124417540096",
+            "Time": "2026-05-27 21:19:55",
+            "Trade Type": "Spot",
+            "Symbol": "BTC-USDT",
+            "Action": "Buy",
+            "Amount": "0.066840",
+            "Trading Unit": "BTC",
+            "Filled Price": "74837.4",
+            "PnL": "0.0",
+            "Fee": "-0.000067",
+            "Fee Unit": "BTC",
+            "Position Change": "0.000000",
+            "Position Balance": "0.000000",
+            "Balance Change": "0.066774",
+            "Balance": "0.000000",
+            "Balance Unit": "BTC",
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Timezone parsing / conversion
+# ---------------------------------------------------------------------------
+
+
+def test_parse_tz_offset_extracts_utc_plus_3():
+    offset = _parse_okx_csv_tz_offset(OKX_CSV_HEADER)
+
+    assert offset == timedelta(hours=3)
+
+
+def test_parse_tz_offset_defaults_to_utc_when_missing():
+    assert _parse_okx_csv_tz_offset("UID:123,Account Type:Main\n") == timedelta(0)
+
+
+def test_okx_time_to_utc_ms_converts_utc_plus_3_to_utc_epoch():
+    # 21:19:55 UTC+3 == 18:19:55 UTC on 2026-05-27.
+    offset = timedelta(hours=3)
+    ms = _okx_time_to_utc_ms("2026-05-27 21:19:55", offset)
+
+    expected_dt = datetime(2026, 5, 27, 18, 19, 55, tzinfo=timezone.utc)
+    assert ms == int(expected_dt.timestamp() * 1000)
+    # Round-trip: the converted instant is 3h earlier than the wall clock.
+    assert datetime.fromtimestamp(ms / 1000, tz=timezone.utc) == expected_dt
+
+
+def test_okx_time_to_utc_ms_negative_offset():
+    # UTC-5 wall clock should ADD 5h to reach UTC.
+    ms = _okx_time_to_utc_ms("2026-01-02 00:00:00", timedelta(hours=-5))
+    expected_dt = datetime(2026, 1, 2, 5, 0, 0, tzinfo=timezone.utc)
+
+    assert ms == int(expected_dt.timestamp() * 1000)
+
+
+# ---------------------------------------------------------------------------
+# build_okx_csv_events: adapter
+# ---------------------------------------------------------------------------
+
+
+def _df_from_rows(rows):
+    df = pd.DataFrame(rows, columns=[
+        "id", "Order id", "Time", "Trade Type", "Symbol", "Action", "Amount",
+        "Trading Unit", "Filled Price", "PnL", "Fee", "Fee Unit",
+        "Position Change", "Position Balance", "Balance Change", "Balance",
+        "Balance Unit",
+    ])
+    df.columns = [c.lstrip("\ufeff").strip() for c in df.columns]
+    return df
+
+
+def test_spot_pair_collapses_two_rows_into_one_event():
+    df = _df_from_rows(_spot_buy_pair())
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert skipped == []
+    assert len(events) == 1
+    payload, source_id = events[0]
+    assert payload["__kind"] == "spot"
+    # Base leg drives the payload (Balance Unit=BTC row, Action=Buy).
+    assert payload["instId"] == "BTC-USDT"
+    assert payload["side"] == "buy"
+    assert payload["fillSz"] == "0.066840"
+    assert payload["fillPx"] == "74837.4"
+    assert payload["tradeId"] == "3603866656859267072"
+    assert payload["ordId"] == "3603866124417540096"
+    # Fee sourced from the fee-bearing leg (BTC leg, -0.000067).
+    assert payload["fee"] == "-0.000067"
+    assert payload["feeCcy"] == "BTC"
+    # source_id is the base leg's id.
+    assert source_id == "3603866656859267072"
+    # Timestamp converted from UTC+3 to UTC ms-epoch.
+    expected_dt = datetime(2026, 5, 27, 18, 19, 55, tzinfo=timezone.utc)
+    assert payload["fillTime"] == str(int(expected_dt.timestamp() * 1000))
+
+
+def test_spot_sell_order_base_leg_action_is_sell():
+    """A SELL order's base leg carries Action=Sell (and thus side=sell)."""
+    rows = [
+        # quote leg (USDT received)
+        {
+            "id": "2235363508130193409", "Order id": "2235362236081676288",
+            "Time": "2026-06-08 11:17:31", "Trade Type": "Spot",
+            "Symbol": "TRUMP-USDT", "Action": "Buy", "Amount": "11.255449",
+            "Trading Unit": "TRUMP", "Filled Price": "16.557", "PnL": "0.0",
+            "Fee": "-0.011255", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "11.244193",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+        # base leg (TRUMP given up)
+        {
+            "id": "2235363508130193408", "Order id": "2235362236081676288",
+            "Time": "2026-06-08 11:17:31", "Trade Type": "Spot",
+            "Symbol": "TRUMP-USDT", "Action": "Sell", "Amount": "0.6798",
+            "Trading Unit": "TRUMP", "Filled Price": "16.557", "PnL": "0.0",
+            "Fee": "0.000000", "Fee Unit": "TRUMP", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-0.6798",
+            "Balance": "0.0", "Balance Unit": "TRUMP",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, _ = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert len(events) == 1
+    payload, source_id = events[0]
+    assert payload["side"] == "sell"
+    assert payload["fillSz"] == "0.6798"
+    assert payload["tradeId"] == "2235363508130193408"
+    # Fee comes from the USDT leg.
+    assert payload["fee"] == "-0.011255"
+    assert payload["feeCcy"] == "USDT"
+
+
+def test_spot_order_with_multiple_fills_emits_one_event_per_base_leg():
+    """A single Order id spanning N fills (N base legs + N quote legs) yields N events.
+
+    Mirrors the real export where one order carries many individual fills; each
+    base leg is a distinct trade keyed by its own ``id``.
+    """
+    rows = [
+        # fill 1 - base leg (BTC, carries fee)
+        {
+            "id": "1000000000000000001", "Order id": "9999999999999999999",
+            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT", "Action": "Buy", "Amount": "0.053791",
+            "Trading Unit": "BTC", "Filled Price": "64702.8", "PnL": "0.0",
+            "Fee": "-0.000054", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "0.053737",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        # fill 1 - quote leg (USDT)
+        {
+            "id": "1000000000000000002", "Order id": "9999999999999999999",
+            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT", "Action": "Sell", "Amount": "138.342351",
+            "Trading Unit": "BTC", "Filled Price": "64702.8", "PnL": "0.0",
+            "Fee": "0.000000", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-138.342351",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+        # fill 2 - base leg (BTC, carries fee)
+        {
+            "id": "1000000000000000003", "Order id": "9999999999999999999",
+            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT", "Action": "Buy", "Amount": "0.186056",
+            "Trading Unit": "BTC", "Filled Price": "64702.8", "PnL": "0.0",
+            "Fee": "-0.000186", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "0.185870",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        # fill 2 - quote leg (USDT)
+        {
+            "id": "1000000000000000004", "Order id": "9999999999999999999",
+            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT", "Action": "Sell", "Amount": "2239.278500",
+            "Trading Unit": "BTC", "Filled Price": "64702.8", "PnL": "0.0",
+            "Fee": "0.000000", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-2239.278500",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    # Two base legs -> two events; quote legs are not emitted.
+    assert len(events) == 2
+    assert skipped == []
+    trade_ids = {e[0]["tradeId"] for e in events}
+    assert trade_ids == {"1000000000000000001", "1000000000000000003"}
+    # Each event carries its own base-leg fee.
+    fees = {e[0]["tradeId"]: e[0]["fee"] for e in events}
+    assert fees["1000000000000000001"] == "-0.000054"
+    assert fees["1000000000000000003"] == "-0.000186"
+
+
+def test_convert_symbols_are_skipped():
+    """Crypto-to-crypto conversion trades (``*-CONVERT``) cannot be represented
+    as a base-quote spot fill and are skipped, not persisted as broken events."""
+    rows = [
+        {
+            "id": "2000000000000000001", "Order id": "1888888888888888888",
+            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT-CONVERT", "Action": "Buy", "Amount": "0.5",
+            "Trading Unit": "BTC", "Filled Price": "64000", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "0.5",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        {
+            "id": "2000000000000000002", "Order id": "1888888888888888888",
+            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT-CONVERT", "Action": "Sell", "Amount": "32000",
+            "Trading Unit": "BTC", "Filled Price": "64000", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-32000",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert events == []
+    # The base leg (BTC) of the convert is counted as skipped.
+    assert skipped == ["2000000000000000001"]
+
+
+def test_option_fill_maps_to_option_payload():
+    row = {
+        "id": "3604219617540087810", "Order id": "3604219617506533376",
+        "Time": "2026-05-28 00:15:14", "Trade Type": "Option",
+        "Symbol": "BTC-USD-260605-80000-C", "Action": "Sell", "Amount": "7.0",
+        "Trading Unit": "cont", "Filled Price": "0.002200", "PnL": "0.0",
+        "Fee": "-0.000011", "Fee Unit": "BTC", "Position Change": "0.007162",
+        "Position Balance": "0.0", "Balance Change": "0.007162",
+        "Balance": "0.0", "Balance Unit": "BTC",
+    }
+    df = _df_from_rows([row])
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert skipped == []
+    assert len(events) == 1
+    payload, source_id = events[0]
+    assert payload["__kind"] == "option_fill"
+    assert payload["instId"] == "BTC-USD-260605-80000-C"
+    assert payload["side"] == "sell"
+    assert payload["fillSz"] == "7.0"
+    assert payload["fillPx"] == "0.002200"
+    assert payload["tradeId"] == "3604219617540087810"
+    assert payload["ordId"] == "3604219617506533376"
+    assert payload["fee"] == "-0.000011"
+    assert payload["feeCcy"] == "BTC"
+    assert source_id == "3604219617540087810"
+    # UTC+3 00:15:14 -> UTC 21:15:14 previous day.
+    expected_dt = datetime(2026, 5, 27, 21, 15, 14, tzinfo=timezone.utc)
+    assert payload["fillTime"] == str(int(expected_dt.timestamp() * 1000))
+
+
+def test_option_expiration_maps_to_settlement_payload():
+    row = {
+        "id": "3628711646064058370", "Order id": "0",
+        "Time": "2026-06-05 11:00:34", "Trade Type": "Option",
+        "Symbol": "BTC-USD-260605-80000-C", "Action": "Expired OTM",
+        "Amount": "7.0", "Trading Unit": "cont", "Filled Price": "62703.943334",
+        "PnL": "0.000154", "Fee": "0.000000", "Fee Unit": "BTC",
+        "Position Change": "-0.007162", "Position Balance": "0.0",
+        "Balance Change": "-0.007162", "Balance": "0.0", "Balance Unit": "BTC",
+    }
+    df = _df_from_rows([row])
+    events, _ = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert len(events) == 1
+    payload, source_id = events[0]
+    assert payload["__kind"] == "option_settlement"
+    assert payload["ccy"] == "BTC"
+    assert payload["balChg"] == "-0.007162"
+    assert payload["px"] == "62703.943334"
+    assert payload["billId"] == "3628711646064058370"
+    # ordId is "0" -> normalized to empty so the normalizer falls back to billId.
+    assert payload["ordId"] == ""
+    expected_dt = datetime(2026, 6, 5, 8, 0, 34, tzinfo=timezone.utc)
+    assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
+
+
+def test_transfer_rows_are_skipped_and_not_emitted_as_events():
+    rows = [
+        {
+            "id": "3679092537441165312", "Order id": "3679092536973701120",
+            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer",
+            "Symbol": "", "Action": "Transfer out", "Amount": "0",
+            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
+            "Fee": "0.00000000", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-0.45849457",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        {
+            "id": "3679091815014244352", "Order id": "3679091814748102656",
+            "Time": "2026-06-22 20:04:40", "Trade Type": "Transfer",
+            "Symbol": "", "Action": "Transfer out", "Amount": "0",
+            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
+            "Fee": "0.00000000", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-300.00389139",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert events == []
+    assert len(skipped) == 2
+    assert skipped[0] == "3679092537441165312"
+
+
+def test_mixed_csv_emits_events_and_skips_transfers():
+    """Spot pair + option fill + transfer together in one file."""
+    df = _df_from_rows(_spot_buy_pair() + [
+        {
+            "id": "3604219617540087810", "Order id": "3604219617506533376",
+            "Time": "2026-05-28 00:15:14", "Trade Type": "Option",
+            "Symbol": "BTC-USD-260605-80000-C", "Action": "Sell", "Amount": "7.0",
+            "Trading Unit": "cont", "Filled Price": "0.002200", "PnL": "0.0",
+            "Fee": "-0.000011", "Fee Unit": "BTC", "Position Change": "0.007162",
+            "Position Balance": "0.0", "Balance Change": "0.007162",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        {
+            "id": "3679092537441165312", "Order id": "3679092536973701120",
+            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer",
+            "Symbol": "", "Action": "Transfer out", "Amount": "0",
+            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
+            "Fee": "0.00000000", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-0.45849457",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+    ])
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert len(events) == 2  # one spot, one option fill
+    assert {e[0]["__kind"] for e in events} == {"spot", "option_fill"}
+    assert len(skipped) == 1
+
+
+# ---------------------------------------------------------------------------
+# Full async parser against a temp CSV fixture (DB-backed)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def okx_account(user):
+    broker = Brokers.objects.create(investor=user, name="OKX", country="Crypto")
+    return Accounts.objects.create(broker=broker, name="Unified", native_id="okx-main")
+
+
+async def _drain(async_gen):
+    """Collect every yielded status dict from an async generator into a list."""
+    out = []
+    async for update in async_gen:
+        out.append(update)
+    return out
+
+
+@database_sync_to_async
+def _persisted_txs(user, account):
+    """Return the list of Transactions for the user/account (async-safe read).
+
+    Django forbids synchronous ORM calls inside an async test, so the post-
+    import DB assertions go through ``database_sync_to_async``.
+    """
+    return list(Transactions.objects.filter(investor=user, account=account))
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_persists_spot_trade_with_okx_csv_provider(tmp_path, user, okx_account):
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, _spot_buy_pair())
+
+    updates = await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+
+    statuses = [u.get("status") for u in updates]
+    # Initialization + progress + at least one transaction_saved + complete.
+    assert statuses.count("initialization") >= 1
+    assert "complete" in statuses
+    saved = [u for u in updates if u.get("status") == "transaction_saved"]
+    assert saved, "expected at least one transaction_saved update"
+
+    # Two legs persisted (base BTC + quote USDT) under import_provider=okx_csv.
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 2
+    assert {t.import_provider for t in txs} == {OKX_CSV_IMPORT_PROVIDER}
+    assert {t.import_event_type for t in txs} == {"trade"}
+    # Base leg event id carries the base-leg CSV id.
+    assert any(t.import_event_id == "3603866656859267072:0" for t in txs)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_dedups_on_reimport(tmp_path, user, okx_account):
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, _spot_buy_pair())
+
+    await _drain(parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False))
+    first_count = len(await _persisted_txs(user, okx_account))
+
+    updates = await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+
+    # No new rows created on the second pass.
+    assert len(await _persisted_txs(user, okx_account)) == first_count
+    # The re-import yields duplicate_transaction (not transaction_saved).
+    assert any(u.get("status") == "duplicate_transaction" for u in updates)
+    assert not any(u.get("status") == "transaction_saved" for u in updates)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_counts_transfers_as_skipped(tmp_path, user, okx_account):
+    rows = _spot_buy_pair() + [
+        {
+            "id": "3679092537441165312", "Order id": "3679092536973701120",
+            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer",
+            "Symbol": "", "Action": "Transfer out", "Amount": "0",
+            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
+            "Fee": "0.00000000", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-0.45849457",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+    ]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+
+    updates = await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+    complete = next(u for u in updates if u.get("status") == "complete")
+
+    # 1 spot event + 1 transfer skipped.
+    assert complete["data"]["skippedTransactions"] == 1
+    # Spot trade produced 2 persisted legs.
+    assert complete["data"]["importedTransactions"] == 2
+    assert len(await _persisted_txs(user, okx_account)) == 2

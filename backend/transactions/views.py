@@ -34,6 +34,7 @@ from services.importer import (
     parse_charles_stanley_transactions,
     parse_galaxy_account_cash_flows,
     parse_galaxy_account_security_transactions,
+    parse_okx_trading_csv,
     transaction_exists,
 )
 from core.transactions_utils import get_transactions_table_api
@@ -701,6 +702,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
             elif CHARLES_STANLEY_BROKER in account.broker.name:
                 async for update in parse_charles_stanley_transactions(
                     file_path, "GBP", account_id, user.id, confirm_every
+                ):
+                    yield update
+            elif "OKX" in account.broker.name.upper():
+                # OKX Trading History CSV import. Detected by broker name so the
+                # WebSocket message contract (``is_galaxy``/``galaxy_type``) and
+                # the frontend file-upload flow stay unchanged: the user simply
+                # leaves the Galaxy checkbox unchecked for an OKX account.
+                async for update in parse_okx_trading_csv(
+                    file_path, account_id, user.id, confirm_every
                 ):
                     yield update
             else:
