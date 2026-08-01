@@ -596,6 +596,370 @@ async def parse_charles_stanley_transactions(
     logger.debug("Yielded completion of import process")
 
 
+# =============================================================================
+# OKX Trading History CSV parser
+# =============================================================================
+#
+# Parses the user-exported OKX "Unified Bill History" CSV. The CSV is distinct
+# from the live OKX REST API payloads: each spot trade spans two bill rows
+# (base leg + quote leg, sharing one ``Order id``), options appear as either a
+# single fill row or a single settlement row, and transfers are skipped.
+#
+# The adapter converts each row/pair into the SAME OKX payload dicts the live
+# API normalizers in ``services/crypto_exchange.py`` consume, then persists via
+# ``persist_crypto_exchange_event``. ``import_provider`` is set to ``okx_csv``
+# (not ``okx``) so CSV imports dedup independently of API imports under the
+# ``(investor, account, import_provider, import_account_id, import_event_id)``
+# key.
+
+OKX_CSV_IMPORT_PROVIDER = "okx_csv"
+
+
+def _parse_okx_csv_tz_offset(line_one):
+    """Extract the timezone offset (e.g. ``UTC+3``) from the CSV's metadata line.
+
+    Returns a ``timedelta``. Defaults to ``timedelta(0)`` (UTC) when the field is
+    missing or unparseable so import never hard-fails on an unexpected header.
+    """
+    if not line_one:
+        return timedelta(0)
+    text = line_one[0] if isinstance(line_one, (list, tuple)) else str(line_one)
+    text = text.lstrip("\ufeff").strip()
+    import re
+
+    match = re.search(r"UTC\s*([+-])\s*(\d{1,2})(?::(\d{2}))?", text, re.IGNORECASE)
+    if not match:
+        return timedelta(0)
+    sign = 1 if match.group(1) == "+" else -1
+    hours = int(match.group(2))
+    minutes = int(match.group(3)) if match.group(3) else 0
+    return sign * timedelta(hours=hours, minutes=minutes)
+
+
+def _okx_time_to_utc_ms(time_str, tz_offset):
+    """Convert ``YYYY-MM-DD HH:MM:SS`` in the export's TZ to UTC ms-epoch.
+
+    The OKX export timestamps are wall-clock in the account's display TZ (e.g.
+    ``UTC+3``). To store UTC ms-epoch we parse the wall clock as that TZ, then
+    convert to UTC.
+    """
+    naive = datetime.strptime(str(time_str).strip(), "%Y-%m-%d %H:%M:%S")
+    local = naive.replace(tzinfo=timezone(tz_offset))
+    return int(local.astimezone(timezone.utc).timestamp() * 1000)
+
+
+def _strip_okx_bom(value):
+    """Strip the UTF-8 BOM that OKX prepends to (nearly) every CSV cell."""
+    if value is None:
+        return value
+    if isinstance(value, str):
+        return value.lstrip("\ufeff").strip()
+    return value
+
+
+def _okx_base_currency(symbol):
+    """Return the base currency from an OKX spot/option ``Symbol`` (``BTC-USDT`` -> ``BTC``)."""
+    return str(symbol).split("-")[0]
+
+
+def _normalize_okx_csv_event(payload):
+    """Run the live-API OKX normalizer for ``payload`` and re-tag for CSV import.
+
+    The shared normalizers hardcode ``provider="okx"`` (so API and CSV rows would
+    share a dedup namespace). For CSV imports we override ``provider`` to
+    ``okx_csv`` so a re-import of the same trade via the API does not silently
+    dedup against the CSV row (and vice versa).
+    """
+    from services.crypto_exchange import (
+        normalize_okx_option_fill,
+        normalize_okx_option_settlement,
+        normalize_okx_spot_fill,
+    )
+
+    kind = payload["__kind"]
+    if kind == "spot":
+        event = normalize_okx_spot_fill(payload)
+    elif kind == "option_fill":
+        event = normalize_okx_option_fill(payload)
+    else:
+        event = normalize_okx_option_settlement(payload)
+    event.provider = OKX_CSV_IMPORT_PROVIDER
+    return event
+
+
+def build_okx_csv_events(df, tz_offset):
+    """Adapt a parsed OKX CSV DataFrame into OKX-API-shape event payloads.
+
+    Walks the rows once, grouping spot rows by ``Order id`` (each spot trade is
+    two bill rows: a base leg and a quote leg). Options are single-row events.
+    Transfers are dropped here; the caller reports them as skipped.
+
+    The base/quote split is identified by ``Balance Unit`` (the bill's settled
+    currency): the leg whose ``Balance Unit`` equals the symbol's base currency
+    is the base leg. (The export labels every row's ``Trading Unit`` as the base
+    currency, so ``Trading Unit`` cannot distinguish the legs; ``Balance Unit``
+    can.)
+
+    Yields ``(payload, source_id)`` tuples where ``payload`` carries a private
+    ``__kind`` discriminator consumed by ``_normalize_okx_csv_event``.
+    """
+    spot_groups = {}
+    events = []
+    skipped_transfer_ids = []
+
+    for _, row in df.iterrows():
+        trade_type = str(row.get("Trade Type") or "").strip()
+        action = str(row.get("Action") or "").strip()
+        row_id = _strip_okx_bom(row.get("id"))
+        order_id = _strip_okx_bom(row.get("Order id"))
+        raw_symbol = row.get("Symbol")
+        if raw_symbol is None or (isinstance(raw_symbol, float) and pd.isna(raw_symbol)):
+            symbol_clean = ""
+        else:
+            symbol_clean = _strip_okx_bom(raw_symbol)
+        fill_time = _okx_time_to_utc_ms(row["Time"], tz_offset)
+
+        if trade_type == "Transfer":
+            skipped_transfer_ids.append(row_id)
+            continue
+
+        if trade_type == "Spot":
+            # Defer: collect all rows, then pair base+quote per Order id below.
+            spot_groups.setdefault(order_id, []).append((row, row_id, fill_time, symbol_clean))
+            continue
+
+        if trade_type == "Option":
+            amount = Decimal(str(row["Amount"]))
+            filled_price = Decimal(str(row["Filled Price"]))
+            fee = Decimal(str(row.get("Fee") or "0"))
+            fee_unit = _strip_okx_bom(row.get("Fee Unit")) or "USD"
+
+            if action.lower().startswith("expired"):
+                # Option expiration/settlement. Delivered coin = Balance Unit,
+                # signed delivered amount = Position Change, settlement px =
+                # Filled Price. ``ordId`` is 0/empty for expiries; the
+                # normalizer falls back to billId for the group id.
+                ccy = _strip_okx_bom(row.get("Balance Unit")) or "USD"
+                bal_chg = Decimal(str(row.get("Position Change") or "0"))
+                payload = {
+                    "__kind": "option_settlement",
+                    "ccy": ccy,
+                    "balChg": str(bal_chg),
+                    "px": str(filled_price),
+                    "billId": str(row_id),
+                    "ts": str(fill_time),
+                    "ordId": str(order_id) if order_id and order_id != "0" else "",
+                }
+                events.append((payload, str(row_id)))
+            else:
+                # Option fill (Buy/Sell). Single row.
+                payload = {
+                    "__kind": "option_fill",
+                    "instId": symbol_clean,
+                    "side": action.lower(),
+                    "fillSz": str(amount),
+                    "fillPx": str(filled_price),
+                    "fillTime": str(fill_time),
+                    "tradeId": str(row_id),
+                    "ordId": str(order_id) if order_id and order_id != "0" else "",
+                    "fee": str(fee),
+                    "feeCcy": fee_unit,
+                }
+                events.append((payload, str(row_id)))
+            continue
+
+        logger.debug("Skipping unhandled OKX CSV Trade Type=%s (id=%s)", trade_type, row_id)
+
+    # Emit one spot_fill event per BASE leg. The base leg is the bill row whose
+    # ``Balance Unit`` equals the instrument's base currency (e.g. BTC for
+    # BTC-USDT); the export labels every row's ``Trading Unit`` as the base
+    # currency, so only ``Balance Unit`` reliably distinguishes base from quote.
+    # A single Order id can span many fills (the user's data has one order with
+    # 10 base legs + 10 quote legs = 10 distinct trades), so each base leg
+    # becomes its own event keyed by its own ``id``. Each base leg already
+    # carries its own fee, so no cross-leg fee pairing is required; we only fall
+    # back to a sibling leg's fee if the base leg's fee is blank.
+    for order_id, rows in spot_groups.items():
+        for row, row_id, fill_time, symbol_clean in rows:
+            base_ccy = _okx_base_currency(symbol_clean)
+            if _strip_okx_bom(row.get("Balance Unit")) != base_ccy:
+                continue  # quote leg; the base leg of this fill is emitted separately
+
+            # Skip conversion trades (e.g. ``BTC-USDT-CONVERT``): the shared
+            # spot normalizer splits the instrument into exactly base-quote and
+            # cannot represent a crypto-to-crypto conversion. Counted as skipped.
+            if symbol_clean.count("-") != 1:
+                skipped_transfer_ids.append(row_id)
+                continue
+
+            amount = Decimal(str(row["Amount"]))
+            filled_price = Decimal(str(row["Filled Price"]))
+            side = str(row.get("Action") or "").strip().lower()
+
+            fee = Decimal(str(row.get("Fee") or "0"))
+            fee_unit = _strip_okx_bom(row.get("Fee Unit")) or ""
+            if fee == 0:
+                # Fall back to a sibling leg that carries a non-zero fee.
+                for sib_row, _sib_id, _ft, _sym in rows:
+                    leg_fee = Decimal(str(sib_row.get("Fee") or "0"))
+                    if leg_fee != 0:
+                        fee = leg_fee
+                        fee_unit = _strip_okx_bom(sib_row.get("Fee Unit")) or fee_unit
+                        break
+
+            # feeCcy: prefer the fee-bearing leg's unit; else the symbol's quote
+            # currency; else the base symbol itself (normalizer falls back to quote).
+            if fee_unit:
+                fee_ccy = fee_unit
+            elif "-" in symbol_clean:
+                fee_ccy = symbol_clean.split("-")[-1]
+            else:
+                fee_ccy = symbol_clean
+
+            payload = {
+                "__kind": "spot",
+                "instId": symbol_clean,
+                "side": side,
+                "fillSz": str(amount),
+                "fillPx": str(filled_price),
+                "fillTime": str(fill_time),
+                "tradeId": str(row_id),
+                "ordId": str(order_id),
+                "fee": str(fee),
+                "feeCcy": fee_ccy,
+            }
+            events.append((payload, str(row_id)))
+
+    return events, skipped_transfer_ids
+
+
+async def parse_okx_trading_csv(file_path, account_id, user_id, confirm_every):
+    """Parse an OKX Trading History CSV and persist canonical crypto events.
+
+    Async generator mirroring ``parse_charles_stanley_transactions``: yields
+    ``initialization`` / ``progress`` / ``transaction_saved`` / ``skipped`` /
+    ``complete`` status dicts. Each event is normalized to an OKX-API-shape
+    payload, persisted via ``persist_crypto_exchange_event`` (which dedups on
+    ``import_provider="okx_csv"``), and the result yielded as
+    ``transaction_saved``.
+
+    Args:
+        file_path: Path to the downloaded OKX Trading History CSV.
+        account_id: ID of the target ``Accounts`` row (must belong to an OKX broker).
+        user_id: ID of the owning investor.
+        confirm_every: Unused for crypto events (they persist immediately, like
+            the live API import path); accepted to match the parser signature.
+    """
+    yield {
+        "status": "initialization",
+        "message": "Opening and reading OKX Trading History CSV",
+    }
+
+    try:
+        # Read the metadata line first to recover the export's timezone.
+        with open(file_path, "r", encoding="utf-8-sig", newline="") as fh:
+            first_line = fh.readline()
+        tz_offset = _parse_okx_csv_tz_offset(first_line)
+
+        df = pd.read_csv(file_path, header=1, encoding="utf-8-sig")
+        if df.empty:
+            raise ValueError("The OKX CSV file is empty or could not be read.")
+        # The BOM leaks into column names and cell values; normalize both.
+        df.columns = [str(c).lstrip("\ufeff").strip() for c in df.columns]
+        string_cols = df.select_dtypes(include=["string", "object"]).columns
+        for col in string_cols:
+            df[col] = df[col].map(_strip_okx_bom)
+
+        events, skipped_transfer_ids = build_okx_csv_events(df, tz_offset)
+        total_events = len(events)
+        logger.debug(
+            "OKX CSV read: %d events, %d transfers skipped", total_events, len(skipped_transfer_ids)
+        )
+        yield {
+            "status": "initialization",
+            "message": "OKX CSV read successfully. Preparing for import",
+            "total_to_update": int(total_events),
+        }
+    except Exception as e:
+        error_message = f"Error reading OKX CSV file: {str(e)}"
+        logger.error(error_message)
+        yield {"error": error_message}
+        return
+
+    try:
+        investor = await get_investor(user_id)
+        account = await get_account(account_id)
+        logger.debug("Retrieved investor and OKX account")
+    except Exception as e:
+        logger.error(f"Error getting investor or account: {str(e)}")
+        yield {
+            "error": (
+                f"An unexpected error occurred while getting investor or account: {str(e)}"
+            )
+        }
+        return
+
+    imported = 0
+    duplicate = 0
+    skipped = len(skipped_transfer_ids)
+    import_errors = 0
+
+    from services.crypto_exchange import persist_crypto_exchange_event
+
+    for index, (payload, source_id) in enumerate(events):
+        try:
+            event = _normalize_okx_csv_event(payload)  # re-tagged with okx_csv provider
+            created = await database_sync_to_async(persist_crypto_exchange_event)(
+                event, investor, account
+            )
+
+            progress = min(((index + 1) / total_events) * 100, 100) if total_events else 100
+            yield {
+                "status": "progress",
+                "message": f"Processing OKX event {index + 1} of {total_events}",
+                "progress": progress,
+                "current": index + 1,
+            }
+
+            if created:
+                imported += len(created)
+                yield {
+                    "status": "transaction_saved",
+                    "message": f"Saved {len(created)} OKX transaction legs",
+                    "transaction": {
+                        "import_group_id": event.group_id,
+                        "count": len(created),
+                    },
+                }
+            else:
+                duplicate += 1
+                yield {
+                    "status": "duplicate_transaction",
+                    "message": f"OKX event already imported (id={source_id})",
+                    "transaction": {"import_group_id": event.group_id, "count": 0},
+                }
+        except Exception as e:
+            logger.error(f"Error processing OKX CSV event (id={source_id}): {str(e)}", exc_info=True)
+            import_errors += 1
+            yield {
+                "status": "transaction_error",
+                "message": f"Error processing OKX event (id={source_id}): {str(e)}",
+                "error_detail": str(e),
+            }
+
+    yield {
+        "status": "complete",
+        "data": {
+            "totalTransactions": total_events + skipped,
+            "importedTransactions": imported,
+            "skippedTransactions": skipped,
+            "duplicateTransactions": duplicate,
+            "importErrors": import_errors,
+        },
+    }
+    logger.debug("Yielded completion of OKX CSV import process")
+
+
 def generate_dates_for_price_import(start, end, frequency):
     """Generate a list of dates based on frequency for price import.
 
