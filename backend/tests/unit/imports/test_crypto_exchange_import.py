@@ -40,20 +40,20 @@ def test_normalize_bybit_spot_execution_buy_btc_usdt_with_quote_fee():
     assert event.timestamp_ms == 1767225600000
     assert event.category == "trade"
     assert event.raw_type == "spot_execution"
-    assert _leg_quantities(event) == {
-        "BTC": Decimal("0.1"),
-        "USDT": Decimal("-6003"),
-    }
-    assert event.legs[0]["price"] == Decimal("60030")
+    # Stablecoin-quote spot trades emit a SINGLE base leg (USDT is cash, not a
+    # separate asset): actual fill quantity/price, with cash_flow carrying the
+    # total USDT spent (value + fee).
+    assert _leg_quantities(event) == {"BTC": Decimal("0.1")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["price"] == Decimal("60000")
+    assert event.legs[0]["cash_flow"] == Decimal("-6003")
     assert event.fee == {
         "asset": "USDT",
         "quantity": Decimal("-3"),
         "is_rebate": False,
     }
     assert event.legs[0]["role"] == "base"
-    assert event.legs[0]["price_asset"] == "USDT"
-    assert event.legs[1]["role"] == "quote"
-    assert event.legs[1]["price_asset"] == "USDT"
+    assert event.legs[0]["price_asset"] == "USD"
 
 
 def test_normalize_bybit_spot_execution_sell_with_base_fee():
@@ -72,11 +72,13 @@ def test_normalize_bybit_spot_execution_sell_with_base_fee():
     )
 
     assert event.group_id == "exec-2"
-    assert _leg_quantities(event) == {
-        "BTC": Decimal("-0.2502"),
-        "USDT": Decimal("15250.00"),
-    }
-    assert event.legs[0]["price"] == Decimal("15250.00") / Decimal("0.2502")
+    # Single base leg: quantity is the actual fill (negative for sell), price
+    # is the actual fill price, and cash_flow is total USDT received
+    # (value - fee valued in quote terms).
+    assert _leg_quantities(event) == {"BTC": Decimal("-0.25")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["price"] == Decimal("61000")
+    assert event.legs[0]["cash_flow"] == Decimal("15237.8")
     assert event.fee["asset"] == "BTC"
     assert event.fee["quantity"] == Decimal("-0.0002")
 
@@ -95,10 +97,11 @@ def test_normalize_bybit_spot_execution_treats_negative_fee_as_cost():
         }
     )
 
-    assert _leg_quantities(event) == {
-        "BTC": Decimal("0.1"),
-        "USDT": Decimal("-6003"),
-    }
+    # Negative fee on the exchange side is normalized to a cost (fee_delta is
+    # negated to -abs()), so the buy still pays value + fee in USDT.
+    assert _leg_quantities(event) == {"BTC": Decimal("0.1")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["cash_flow"] == Decimal("-6003")
 
 
 def test_normalize_bybit_spot_execution_keeps_third_asset_fee_in_metadata_only():
@@ -116,11 +119,12 @@ def test_normalize_bybit_spot_execution_keeps_third_asset_fee_in_metadata_only()
     )
 
     assert event.group_id == "exec-3"
-    assert _leg_quantities(event) == {
-        "ETH": Decimal("2"),
-        "USDT": Decimal("-6000"),
-    }
-    assert len(event.legs) == 2
+    # The BNB fee is neither the base nor the quote, so it does not enter the
+    # cash_flow (the total USDT spent is just the trade value); it is kept in
+    # event.fee metadata only.
+    assert _leg_quantities(event) == {"ETH": Decimal("2")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["cash_flow"] == Decimal("-6000")
     assert event.fee["asset"] == "BNB"
     assert event.fee["quantity"] == Decimal("-1")
 
@@ -185,11 +189,12 @@ def test_normalize_okx_spot_fill_sell_btc_usdt_with_negative_base_fee():
     assert event.timestamp_ms == 1767225600000
     assert event.category == "trade"
     assert event.raw_type == "spot_fill"
-    assert _leg_quantities(event) == {
-        "BTC": Decimal("-0.2001"),
-        "USDT": Decimal("14000.0"),
-    }
-    assert event.legs[0]["price"] == Decimal("14000.0") / Decimal("0.2001")
+    # Single base leg: actual fill quantity (negative for sell) and price; the
+    # BTC fee is valued in quote terms and subtracted from the USDT received.
+    assert _leg_quantities(event) == {"BTC": Decimal("-0.2")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["price"] == Decimal("70000")
+    assert event.legs[0]["cash_flow"] == Decimal("13993")
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("-0.0001"),
@@ -213,11 +218,12 @@ def test_normalize_okx_spot_fill_buy_with_quote_fee():
     )
 
     assert event.group_id == "trade-2"
-    assert _leg_quantities(event) == {
-        "BTC": Decimal("0.5"),
-        "USDT": Decimal("-35005.0"),
-    }
-    assert event.legs[0]["price"] == Decimal("70010")
+    # Single base leg: actual fill quantity/price; cash_flow is total USDT
+    # spent (value + fee).
+    assert _leg_quantities(event) == {"BTC": Decimal("0.5")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["price"] == Decimal("70000")
+    assert event.legs[0]["cash_flow"] == Decimal("-35005")
     assert event.fee["asset"] == "USDT"
     assert event.fee["quantity"] == Decimal("-5")
 
@@ -237,11 +243,12 @@ def test_normalize_okx_spot_fill_positive_fee_is_rebate():
         }
     )
 
-    assert _leg_quantities(event) == {
-        "BTC": Decimal("-0.1999"),
-        "USDT": Decimal("14000.0"),
-    }
-    assert event.legs[0]["price"] == Decimal("14000.0") / Decimal("0.1999")
+    # Single base leg: the positive fee is a rebate; it is still valued in
+    # quote terms and subtracted from the USDT received (sell).
+    assert _leg_quantities(event) == {"BTC": Decimal("-0.2")}
+    assert len(event.legs) == 1
+    assert event.legs[0]["price"] == Decimal("70000")
+    assert event.legs[0]["cash_flow"] == Decimal("13993")
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("0.0001"),
