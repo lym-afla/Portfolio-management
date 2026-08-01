@@ -203,6 +203,8 @@ def total_cash_flow(transaction, target_currency=None):
         TRANSACTION_TYPE_BOND_REDEMPTION,
         TRANSACTION_TYPE_BOND_MATURITY,
         TRANSACTION_TYPE_INTEREST_INCOME,
+        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     ]
 
     if transaction.type in cash_flow_types:

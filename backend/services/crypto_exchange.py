@@ -419,6 +419,9 @@ def persist_crypto_exchange_event(event, user, account):
                 else:
                     asset = resolve_crypto_asset(leg["asset"], user)
                 tx_type = _transaction_type_for_event(event, quantity)
+                # Stablecoin-quote spot trades carry a cash_flow (the USDT
+                # spent/received). Write it so the USDT cash balance updates.
+                leg_cash_flow = leg.get("cash_flow")
                 tx_kwargs = dict(
                     investor=user,
                     account=account,
@@ -435,6 +438,10 @@ def persist_crypto_exchange_event(event, user, account):
                     import_group_id=event.group_id,
                     import_event_type=event.category,
                 )
+                if leg_cash_flow is not None:
+                    tx_kwargs["cash_flow"] = _normalize_model_decimal(
+                        Transactions, "cash_flow", leg_cash_flow
+                    )
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
@@ -480,6 +487,42 @@ def _spot_legs(
     fee_delta: Decimal,
     fee_asset: str,
 ) -> List[Dict[str, Any]]:
+    # When the quote currency is a stablecoin (USDT/USDC), emit a SINGLE leg
+    # (the base asset) with cash_flow = total stablecoin spent/received.
+    # This treats the stablecoin as cash (which it is — Phase 4), not as a
+    # separate asset. The price is the actual fill price; the fee is included
+    # in cash_flow but not baked into the price or quantity.
+    if quote.upper() in STABLECOIN_CURRENCIES:
+        value = qty * price
+        # Convert fee to quote-currency terms for the cash_flow total.
+        if fee_asset and fee_asset.upper() == base.upper():
+            fee_in_quote = abs(fee_delta) * price
+        else:
+            fee_in_quote = abs(fee_delta) if fee_asset and fee_asset.upper() == quote.upper() else Decimal("0")
+
+        if side.lower() == "buy":
+            base_quantity = qty
+            # Total USDT leaving: trade value + fee.
+            cash_flow = -(value + fee_in_quote)
+        elif side.lower() == "sell":
+            base_quantity = -qty
+            # Total USDT received: trade value - fee.
+            cash_flow = value - fee_in_quote
+        else:
+            raise ValueError(f"Unsupported spot side: {side}")
+
+        return [
+            {
+                "asset": base,
+                "quantity": base_quantity,
+                "price": price,
+                "price_asset": "USD",
+                "role": "base",
+                "cash_flow": cash_flow,
+            }
+        ]
+
+    # Crypto-crypto pairs (e.g. ETH/BTC): keep the two-leg model.
     value = qty * price
     quote_fee_delta = fee_delta if fee_asset == quote else Decimal("0")
     base_fee_delta = fee_delta if fee_asset == base else Decimal("0")
@@ -750,7 +793,10 @@ def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchange
     symbol = payload["symbol"].upper()
     amount = Decimal(payload["change"])
     settlement_price = Decimal(payload["newWalletBalance"])
-    legs = _single_leg(symbol, amount, symbol)
+    # The settlement price is the underlying's price at expiry — already fiat.
+    # Set price_asset to "USD" so _leg_fiat_price passes it through without
+    # multiplying by the BTC/USD rate again.
+    legs = _single_leg(symbol, amount, "USD")
     legs[0]["price"] = settlement_price
     return CryptoExchangeEvent(
         provider="bybit",
@@ -772,7 +818,10 @@ def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEv
     ccy = payload["ccy"].upper()
     amount = Decimal(payload["balChg"])
     settlement_price = Decimal(payload["px"])
-    legs = _single_leg(ccy, amount, ccy)
+    # The settlement price (px) is the underlying's USD price at expiry —
+    # already fiat. Set price_asset to "USD" so _leg_fiat_price passes it
+    # through without multiplying by the BTC/USD rate again.
+    legs = _single_leg(ccy, amount, "USD")
     legs[0]["price"] = settlement_price
     return CryptoExchangeEvent(
         provider="okx",
