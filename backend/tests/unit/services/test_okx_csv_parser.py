@@ -506,9 +506,11 @@ async def test_full_parser_persists_spot_trade_with_okx_csv_provider(tmp_path, u
     saved = [u for u in updates if u.get("status") == "transaction_saved"]
     assert saved, "expected at least one transaction_saved update"
 
-    # Two legs persisted (base BTC + quote USDT) under import_provider=okx_csv.
+    # ONE leg persisted (BTC base) under import_provider=okx_csv. Stablecoin
+    # (USDT) quote trades emit a single leg with cash_flow (Phase 4): USDT is
+    # treated as cash, not a separate asset leg.
     txs = await _persisted_txs(user, okx_account)
-    assert len(txs) == 2
+    assert len(txs) == 1
     assert {t.import_provider for t in txs} == {OKX_CSV_IMPORT_PROVIDER}
     assert {t.import_event_type for t in txs} == {"trade"}
     # Base leg event id carries the base-leg CSV id.
@@ -537,17 +539,6 @@ async def test_full_parser_dedups_on_reimport(tmp_path, user, okx_account):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason=(
-        "Pre-existing spot quote-leg persistence bug (baseline failure on this "
-        "branch, tracked by Tasks 3/4 of the OKX CSV fixes plan): the spot pair "
-        "only persists 1 of 2 legs, so importedTransactions==2 not 3. The "
-        "transfer leg itself persists correctly (see "
-        "test_full_parser_imports_transfer_only). Remove this xfail once Tasks "
-        "3/4 land."
-    ),
-    strict=True,
-)
 async def test_full_parser_imports_transfers(tmp_path, user, okx_account):
     rows = _spot_buy_pair() + [
         {
@@ -565,11 +556,11 @@ async def test_full_parser_imports_transfers(tmp_path, user, okx_account):
         parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
     )
     complete = next(u for u in updates if u.get("status") == "complete")
-    # 1 spot event (2 legs) + 1 transfer event (1 leg) -> 3 persisted, 0 skipped.
+    # 1 spot event (1 leg) + 1 transfer event (1 leg) -> 2 persisted, 0 skipped.
     assert complete["data"]["skippedTransactions"] == 0
-    assert complete["data"]["importedTransactions"] == 3
+    assert complete["data"]["importedTransactions"] == 2
     txs = await _persisted_txs(user, okx_account)
-    assert len(txs) == 3
+    assert len(txs) == 2
     # The BTC transfer is a Crypto transfer out (quantity negative).
     transfer_tx = next(t for t in txs if t.type == "Crypto transfer out")
     assert transfer_tx.quantity == Decimal("-0.45849457")
