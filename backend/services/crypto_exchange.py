@@ -353,6 +353,7 @@ def persist_crypto_exchange_event(event, user, account):
     created = []
     event_time = _event_datetime(event)
     import_account_id = _account_import_id(account)
+    category = (event.category or "").lower()
     leg_records = []
 
     with transaction.atomic():
@@ -370,6 +371,22 @@ def persist_crypto_exchange_event(event, user, account):
             # the existing priced-asset path.
             if _is_stablecoin_cash_leg(event, leg):
                 leg_records.append((index, leg, quantity, None))
+                continue
+
+            # Transfers/deposits/withdrawals of an asset with no available fiat
+            # price (e.g. a TRUMP transfer where Yahoo has no quote) must not
+            # crash the whole import: persist them unpriced so the quantity
+            # movement is still recorded. Trades are NOT exempt — a trade with
+            # no price is a genuine error (tested above).
+            if category in {"transfer", "deposit", "withdrawal"}:
+                try:
+                    price = _leg_fiat_price(leg, user, event_time)
+                except ValueError:
+                    price = None
+                if price is None:
+                    leg_records.append((index, leg, quantity, None))
+                    continue
+                leg_records.append((index, leg, quantity, price))
                 continue
 
             price = _leg_fiat_price(leg, user, event_time)

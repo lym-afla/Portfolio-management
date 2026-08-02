@@ -749,10 +749,63 @@ def _persist_okx_csv_fx_event(payload, investor, account):
         "import_group_id": payload["billId"],
         "import_event_type": "fx",
     }
+    # Carry the fee through in its native currency (no conversion — issue #30).
+    fee = Decimal(payload.get("fee") or "0")
+    fee_ccy = payload.get("fee_ccy") or ""
+    if fee != 0 and fee_ccy:
+        data["commission"] = fee
+        data["commission_currency"] = fee_ccy
     result = save_single_transaction(data)
     if not result.get("success"):
         raise RuntimeError(f"FX save failed: {result.get('error')}")
     return "created"
+
+
+def _okx_csv_fx_payload_from_rows(order_id, rows):
+    """Build an FX (stablecoin<->stablecoin) payload from a paired set of CSV
+    rows sharing one ``Order id``. The leg with negative ``Balance Change`` is
+    the currency given up (from); the positive leg is received (to). Returns
+    ``(payload, source_id)`` or ``None`` if the rows lack a signed leg pair
+    (malformed). Used by both the -CONVERT path and the normal spot path when
+    both legs settle in stablecoins.
+    """
+    from_row = to_row = None
+    from_rid = to_rid = None
+    fill_time = rows[0][2] if rows else None
+    for r, rid, ft, _sym in rows:
+        bal = Decimal(str(r.get("Balance Change") or "0"))
+        if bal < 0:
+            from_row, from_rid, fill_time = r, rid, ft
+        elif bal > 0:
+            to_row, to_rid, fill_time = r, rid, ft
+    if from_row is None or to_row is None:
+        return None  # malformed — no signed leg pair
+    from_ccy = (from_row.get("Balance Unit") or "").upper()
+    to_ccy = (to_row.get("Balance Unit") or "").upper()
+    from_amount = abs(Decimal(str(from_row.get("Balance Change") or "0")))
+    to_amount = abs(Decimal(str(to_row.get("Balance Change") or "0")))
+    # Capture the fee from whichever leg carries a non-zero Fee/Fee Unit.
+    # The fee is kept in its native currency (not converted) — see issue #30.
+    fee = Decimal("0")
+    fee_ccy = ""
+    for r, _rid, _ft, _sym in rows:
+        leg_fee = Decimal(str(r.get("Fee") or "0"))
+        if leg_fee != 0:
+            fee = leg_fee
+            fee_ccy = (_strip_okx_bom(r.get("Fee Unit")) or "").upper()
+            break
+    payload = {
+        "__kind": "fx",
+        "from_ccy": from_ccy,
+        "to_ccy": to_ccy,
+        "from_amount": str(from_amount),
+        "to_amount": str(to_amount),
+        "ts": str(fill_time),
+        "billId": str(from_rid),
+        "fee": str(fee),
+        "fee_ccy": fee_ccy,
+    }
+    return (payload, str(from_rid))
 
 
 def build_okx_csv_events(df, tz_offset):
@@ -880,6 +933,22 @@ def build_okx_csv_events(df, tz_offset):
     # carries its own fee, so no cross-leg fee pairing is required; we only fall
     # back to a sibling leg's fee if the base leg's fee is blank.
     for order_id, rows in spot_groups.items():
+        # A spot order whose EVERY leg settles in a stablecoin (USDT/USDC) is a
+        # stablecoin<->stablecoin conversion = an FX transaction, regardless of
+        # whether the symbol carries a -CONVERT suffix or the Action is empty.
+        # Route the whole order to one FX event (mirrors the -CONVERT path).
+        all_balance_units = {
+            (_strip_okx_bom(r.get("Balance Unit")) or "").upper() for r, _rid, _ft, _sym in rows
+        }
+        if all_balance_units and all_balance_units.issubset({"USDT", "USDC"}):
+            fx_payload = _okx_csv_fx_payload_from_rows(order_id, rows)
+            if fx_payload is not None:
+                events.append(fx_payload)
+            else:
+                for _r, rid, _ft, _sym in rows:
+                    skipped_transfer_ids.append(rid)
+            continue
+
         for row, row_id, fill_time, symbol_clean in rows:
             base_ccy = _okx_base_currency(symbol_clean)
             if _strip_okx_bom(row.get("Balance Unit")) != base_ccy:
@@ -939,33 +1008,14 @@ def build_okx_csv_events(df, tz_offset):
         # Pair each row; classify by whether BOTH units are stablecoins.
         all_stablecoin = all(u in {"USDT", "USDC"} for u in units)
         if all_stablecoin:
-            # FX: from = negative Balance Change leg, to = positive leg.
-            from_row = to_row = None
-            for r, _rid, _ft, _sym in rows:
-                bal = Decimal(str(r.get("Balance Change") or "0"))
-                if bal < 0:
-                    from_row = r
-                elif bal > 0:
-                    to_row = r
-            if from_row is None or to_row is None:
-                # Malformed convert (no signed legs); skip defensively.
+            # FX (stablecoin<->stablecoin): reuse the shared FX-payload builder.
+            fx = _okx_csv_fx_payload_from_rows(order_id, rows)
+            if fx is not None:
+                events.append(fx)
+            else:
                 for _r, rid, _ft, _sym in rows:
                     skipped_transfer_ids.append(rid)
-                continue
-            from_ccy = (from_row.get("Balance Unit") or "").upper()
-            to_ccy = (to_row.get("Balance Unit") or "").upper()
-            from_amount = abs(Decimal(str(from_row.get("Balance Change") or "0")))
-            to_amount = abs(Decimal(str(to_row.get("Balance Change") or "0")))
-            payload = {
-                "__kind": "fx",
-                "from_ccy": from_ccy,
-                "to_ccy": to_ccy,
-                "from_amount": str(from_amount),
-                "to_amount": str(to_amount),
-                "ts": str(rows[0][2]),
-                "billId": str(rows[0][1]),
-            }
-            events.append((payload, str(rows[0][1])))
+            continue
         else:
             # crypto<->stablecoin: emit a spot payload from the base (crypto) leg.
             base, quote = underlying.split("-")

@@ -330,6 +330,47 @@ def test_usdc_usdt_convert_emits_fx_event():
     assert payload["to_amount"] == "103.208630"
 
 
+def test_usdc_usdt_spot_trade_emits_fx_event():
+    """A normal USDC-USDT spot trade (NO -CONVERT suffix, Action=Buy/Sell) is
+    still a stablecoin<->stablecoin conversion -> FX. Regression for OKX CSV
+    Bug 2: previously only -CONVERT symbols triggered FX routing."""
+    rows = [
+        {  # USDT given up (negative Balance Change)
+            "id": "2173842814334967810", "Order id": "2173842814301413376",
+            "Time": "2025-01-19 14:59:24", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT", "Action": "Sell", "Amount": "100.00997897",
+            "Trading Unit": "USDC", "Filled Price": "1.00220000", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-100.00997897",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+        {  # USDC received (positive Balance Change)
+            "id": "2173842814334967809", "Order id": "2173842814301413376",
+            "Time": "2025-01-19 14:59:24", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT", "Action": "Buy", "Amount": "99.79044000",
+            "Trading Unit": "USDC", "Filled Price": "1.00220000", "PnL": "0.0",
+            "Fee": "-0.09979044", "Fee Unit": "USDC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "99.69064956",
+            "Balance": "0.0", "Balance Unit": "USDC",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert skipped == []
+    assert len(events) == 1
+    payload, _ = events[0]
+    assert payload["__kind"] == "fx"
+    # from = USDT (negative leg), to = USDC (positive leg)
+    assert payload["from_ccy"] == "USDT"
+    assert payload["to_ccy"] == "USDC"
+    assert payload["from_amount"] == "100.00997897"
+    assert payload["to_amount"] == "99.69064956"
+    # Fee captured from the fee-bearing leg (USDC leg), in its native currency.
+    assert payload["fee"] == "-0.09979044"
+    assert payload["fee_ccy"] == "USDC"
+
+
 def test_btc_usdt_convert_emits_spot_event():
     """BTC-USDT-CONVERT (crypto<->stablecoin) is a normal purchase: emits a spot
     payload with side inferred from the base (BTC) leg's Balance Change sign."""

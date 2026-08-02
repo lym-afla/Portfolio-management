@@ -17,6 +17,7 @@ from constants import (
 )
 from services.crypto_exchange import (
     CryptoExchangeEvent,
+    _single_leg,
     persist_crypto_exchange_event,
 )
 from services.accounts import balance as account_balance
@@ -168,6 +169,39 @@ def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account
             persist_crypto_exchange_event(event, user, crypto_account)
 
     assert Transactions.objects.filter(import_group_id="order-missing-price").count() == 0
+
+
+@pytest.mark.django_db
+def test_crypto_asset_transfer_without_price_persists_unpriced(user, crypto_account):
+    """Regression for OKX CSV Bug 1: a non-stablecoin asset transfer (e.g.
+    TRUMP) where no fiat price is available must NOT crash the import. It
+    persists as an unpriced Crypto transfer in/out (price=None) so the quantity
+    movement is still recorded. Only transfers/deposits/withdrawals are exempt;
+    trades (test above) still require a price."""
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv_transfer:trump-1",
+        group_id="trump-transfer",
+        timestamp_ms=1737337200000,  # 2025-01-20
+        category="transfer",
+        raw_type="transfer",
+        legs=_single_leg("TRUMP", Decimal("0.67986040"), "TRUMP"),
+        fee=None,
+    )
+
+    with patch(
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
+        return_value=None,
+        create=True,
+    ):
+        created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    # Persisted as a single unpriced Crypto transfer in leg.
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == "Crypto transfer in"
+    assert tx.quantity == Decimal("0.67986040")
+    assert tx.price is None  # unpriced — no crash
 
 
 @pytest.mark.django_db
