@@ -782,8 +782,13 @@ def _okx_csv_fx_payload_from_rows(order_id, rows):
         return None  # malformed — no signed leg pair
     from_ccy = (from_row.get("Balance Unit") or "").upper()
     to_ccy = (to_row.get("Balance Unit") or "").upper()
-    from_amount = abs(Decimal(str(from_row.get("Balance Change") or "0")))
-    to_amount = abs(Decimal(str(to_row.get("Balance Change") or "0")))
+    # Amounts are GROSS trade fill quantities (the Amount column), NOT Balance
+    # Change (which is net of fee). Using net here double-subtracts the fee,
+    # because get_cash_flow_by_currency applies commission on top of the amounts.
+    # The from/to legs are identified by Balance Change sign (which way the
+    # value moved), but the magnitude comes from Amount.
+    from_amount = abs(Decimal(str(from_row.get("Amount") or "0")))
+    to_amount = abs(Decimal(str(to_row.get("Amount") or "0")))
     # Capture the fee from whichever leg carries a non-zero Fee/Fee Unit.
     # The fee is kept in its native currency (not converted) — see issue #30.
     fee = Decimal("0")

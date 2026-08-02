@@ -364,8 +364,11 @@ def test_usdc_usdt_spot_trade_emits_fx_event():
     # from = USDT (negative leg), to = USDC (positive leg)
     assert payload["from_ccy"] == "USDT"
     assert payload["to_ccy"] == "USDC"
-    assert payload["from_amount"] == "100.00997897"
-    assert payload["to_amount"] == "99.69064956"
+    # Amounts are GROSS (the trade fill quantities from the Amount column),
+    # NOT the Balance Change (which is net of fee). The fee is captured
+    # separately so it isn't double-subtracted by get_cash_flow_by_currency.
+    assert payload["from_amount"] == "100.00997897"  # gross USDT (no fee on this leg)
+    assert payload["to_amount"] == "99.79044000"  # gross USDC (NOT 99.69064956 net)
     # Fee captured from the fee-bearing leg (USDC leg), in its native currency.
     assert payload["fee"] == "-0.09979044"
     assert payload["fee_ccy"] == "USDC"
