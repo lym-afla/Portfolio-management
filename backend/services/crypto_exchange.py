@@ -426,7 +426,7 @@ def persist_crypto_exchange_event(event, user, account):
                     investor=user,
                     account=account,
                     security=asset,
-                    currency="USD",
+                    currency=str(leg.get("quote_currency") or "USD").upper(),
                     type=tx_type,
                     date=event_time,
                     quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
@@ -519,6 +519,7 @@ def _spot_legs(
                 "price_asset": "USD",
                 "role": "base",
                 "cash_flow": cash_flow,
+                "quote_currency": quote.upper(),
             }
         ]
 

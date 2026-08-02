@@ -693,3 +693,35 @@ def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
     assert created[0].currency == "USDT"
     assert created[0].security is None
     assert created[0].cash_flow == Decimal("500.00")
+
+
+@pytest.mark.django_db
+def test_stablecoin_quote_spot_trade_records_currency_as_stablecoin(user, crypto_account):
+    """A BTC-USDT buy must persist currency='USDT' (the actual quote/cash
+    currency), not 'USD'. Regression for OKX CSV issue #3."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:trade-1",
+        group_id="order-1",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("0.001"),
+                "price": Decimal("96058"),
+                "price_asset": "USD",
+                "role": "base",
+                "cash_flow": Decimal("-96.058"),
+                "quote_currency": "USDT",
+            }
+        ],
+        fee={"asset": "BTC", "quantity": Decimal("0"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.currency == "USDT"
