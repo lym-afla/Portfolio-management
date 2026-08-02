@@ -17,6 +17,7 @@ from constants import (
 )
 from services.crypto_exchange import (
     CryptoExchangeEvent,
+    _single_leg,
     persist_crypto_exchange_event,
 )
 from services.accounts import balance as account_balance
@@ -168,6 +169,39 @@ def test_crypto_crypto_pair_requires_quote_asset_fiat_price(user, crypto_account
             persist_crypto_exchange_event(event, user, crypto_account)
 
     assert Transactions.objects.filter(import_group_id="order-missing-price").count() == 0
+
+
+@pytest.mark.django_db
+def test_crypto_asset_transfer_without_price_persists_unpriced(user, crypto_account):
+    """Regression for OKX CSV Bug 1: a non-stablecoin asset transfer (e.g.
+    TRUMP) where no fiat price is available must NOT crash the import. It
+    persists as an unpriced Crypto transfer in/out (price=None) so the quantity
+    movement is still recorded. Only transfers/deposits/withdrawals are exempt;
+    trades (test above) still require a price."""
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv_transfer:trump-1",
+        group_id="trump-transfer",
+        timestamp_ms=1737337200000,  # 2025-01-20
+        category="transfer",
+        raw_type="transfer",
+        legs=_single_leg("TRUMP", Decimal("0.67986040"), "TRUMP"),
+        fee=None,
+    )
+
+    with patch(
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
+        return_value=None,
+        create=True,
+    ):
+        created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    # Persisted as a single unpriced Crypto transfer in leg.
+    assert len(created) == 1
+    tx = created[0]
+    assert tx.type == "Crypto transfer in"
+    assert tx.quantity == Decimal("0.67986040")
+    assert tx.price is None  # unpriced — no crash
 
 
 @pytest.mark.django_db
@@ -693,3 +727,179 @@ def test_persist_deposit_via_normalizer_closes_seam(user, crypto_account):
     assert created[0].currency == "USDT"
     assert created[0].security is None
     assert created[0].cash_flow == Decimal("500.00")
+
+
+@pytest.mark.django_db
+def test_stablecoin_quote_spot_trade_records_currency_as_stablecoin(user, crypto_account):
+    """A BTC-USDT buy must persist currency='USDT' (the actual quote/cash
+    currency), not 'USD'. Regression for OKX CSV issue #3."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:trade-1",
+        group_id="order-1",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("0.001"),
+                "price": Decimal("96058"),
+                "price_asset": "USD",
+                "role": "base",
+                "cash_flow": Decimal("-96.058"),
+                "quote_currency": "USDT",
+            }
+        ],
+        fee={"asset": "BTC", "quantity": Decimal("0"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.currency == "USDT"
+
+
+@pytest.mark.django_db
+def test_stablecoin_quote_spot_buy_uses_crypto_trade_type(user, crypto_account):
+    """Stablecoin-quote spot trades persist as 'Crypto trade in/out' (NOT
+    Buy/Sell). The calc layer (total_cash_flow, realized.py) dispatches on type:
+    Crypto trade in/out uses the persisted cash_flow field (USDT incl. fee),
+    whereas Buy/Sell recomputes -quantity*price + commission and would mix BTC
+    fee units into a USDT cash flow. The display goal is solved on the frontend
+    instead. Regression for OKX issue #4 / final-review C1."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:trade-buy",
+        group_id="order-buy",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[{
+            "asset": "TRUMP", "quantity": Decimal("0.6803"),
+            "price": Decimal("73.209"), "price_asset": "USD", "role": "base",
+            "cash_flow": Decimal("-49.81"), "quote_currency": "USDT",
+        }],
+        fee={"asset": "TRUMP", "quantity": Decimal("-0.0006803"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
+
+
+@pytest.mark.django_db
+def test_crypto_crypto_trade_keeps_crypto_trade_type(user, crypto_account):
+    """Crypto-crypto pairs (two legs, no quote_currency) stay 'Crypto trade
+    in/out'. Confirms the crypto-crypto path is unaffected by the stablecoin
+    type handling (now reverted to Crypto trade in/out for all spot trades)."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id="exec-cc",
+        group_id="order-cc",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_execution",
+        legs=[
+            {"asset": "ETH", "quantity": Decimal("0.1"), "price": Decimal("0.0016"),
+             "price_asset": "BTC", "role": "base"},
+            {"asset": "BTC", "quantity": Decimal("-0.00016"), "price": Decimal("1"),
+             "price_asset": "BTC", "role": "quote"},
+        ],
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    types = {t.type for t in Transactions.objects.filter(investor=user, account=crypto_account)}
+    assert types == {"Crypto trade in", "Crypto trade out"}
+
+
+@pytest.mark.django_db
+def test_stablecoin_quote_spot_trade_records_commission(user, crypto_account):
+    """The CSV Fee must land in the commission field, not be silently dropped.
+    Regression for OKX issue #6."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:trade-fee",
+        group_id="order-fee",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[{
+            "asset": "TRUMP", "quantity": Decimal("0.6803"),
+            "price": Decimal("73.209"), "price_asset": "USD", "role": "base",
+            "cash_flow": Decimal("-49.81"), "quote_currency": "USDT",
+        }],
+        fee={"asset": "TRUMP", "quantity": Decimal("-0.0006803"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.commission == Decimal("-0.0006803")
+
+
+@pytest.mark.django_db
+def test_option_sell_and_otm_expiry_persist_correctly(user, crypto_account):
+    """OKX issue #8: selling a BTC call + OTM expiry. The sell is an option leg
+    (-7 contracts @ 0.0022 BTC premium); the expiry releases collateral
+    (+0.00716211 BTC settlement). Premium must resolve to fiat via BTC/USD."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    # Seed a BTC USD price on/before the sell date so premium fiat-resolves.
+    # NOTE: Assets.investors is M2M (not FK); match the existing fixture pattern
+    # in test_crypto_crypto_pair_uses_quote_asset_fiat_price rather than the
+    # brief's `investor=user` literal (which would fail on the model).
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+    Prices.objects.create(security=btc, date=date(2026, 5, 27), price=Decimal("105000"))
+
+    # Option SELL: -7 contracts @ 0.0022 BTC, fee in BTC.
+    sell_event = CryptoExchangeEvent(
+        provider="okx_csv", provider_event_id="csv:opt-sell",
+        group_id="opt-order", timestamp_ms=1779916514000,  # 2026-05-27 21:15:14 UTC
+        category="trade", raw_type="option_fill",
+        legs=[{
+            "asset": "BTC-USD-260605-80000-C", "quantity": Decimal("-7"),
+            "price": Decimal("0.0022"), "price_asset": "BTC", "role": "base",
+            "instrument": "option",
+        }],
+        fee={"asset": "BTC", "quantity": Decimal("-0.00001078"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(sell_event, user, crypto_account)
+
+    sell_tx = Transactions.objects.get(
+        investor=user, account=crypto_account, type=TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+    )
+    assert sell_tx.quantity == Decimal("-7")
+    # price_asset="BTC" so _leg_fiat_price multiplies 0.0022 * BTC_USD_price
+    # (~105000) to fiat-resolve the BTC-denominated premium. The raw 0.0022
+    # does NOT survive; assert only sign per the brief's verified fact #3.
+    assert sell_tx.price is not None and sell_tx.price > 0
+
+    # OTM EXPIRY: collateral released (+0.00716211 BTC).
+    settle_event = CryptoExchangeEvent(
+        provider="okx_csv", provider_event_id="csv:opt-settle",
+        group_id="opt-order", timestamp_ms=1780646434000,  # 2026-06-05 08:00:34 UTC
+        category="settlement", raw_type="option_delivery",
+        legs=[{
+            "asset": "BTC", "quantity": Decimal("0.00716211"),
+            "price": Decimal("62703.94333408"), "price_asset": "USD", "role": "base",
+        }],
+    )
+    persist_crypto_exchange_event(settle_event, user, crypto_account)
+
+    settle_tx = Transactions.objects.get(
+        investor=user, account=crypto_account, type=TRANSACTION_TYPE_OPTION_SETTLEMENT
+    )
+    # Positive: collateral came back.
+    assert settle_tx.quantity == Decimal("0.00716211")

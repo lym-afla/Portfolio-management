@@ -353,6 +353,7 @@ def persist_crypto_exchange_event(event, user, account):
     created = []
     event_time = _event_datetime(event)
     import_account_id = _account_import_id(account)
+    category = (event.category or "").lower()
     leg_records = []
 
     with transaction.atomic():
@@ -370,6 +371,22 @@ def persist_crypto_exchange_event(event, user, account):
             # the existing priced-asset path.
             if _is_stablecoin_cash_leg(event, leg):
                 leg_records.append((index, leg, quantity, None))
+                continue
+
+            # Transfers/deposits/withdrawals of an asset with no available fiat
+            # price (e.g. a TRUMP transfer where Yahoo has no quote) must not
+            # crash the whole import: persist them unpriced so the quantity
+            # movement is still recorded. Trades are NOT exempt — a trade with
+            # no price is a genuine error (tested above).
+            if category in {"transfer", "deposit", "withdrawal"}:
+                try:
+                    price = _leg_fiat_price(leg, user, event_time)
+                except ValueError:
+                    price = None
+                if price is None:
+                    leg_records.append((index, leg, quantity, None))
+                    continue
+                leg_records.append((index, leg, quantity, price))
                 continue
 
             price = _leg_fiat_price(leg, user, event_time)
@@ -426,7 +443,7 @@ def persist_crypto_exchange_event(event, user, account):
                     investor=user,
                     account=account,
                     security=asset,
-                    currency="USD",
+                    currency=str(leg.get("quote_currency") or "USD").upper(),
                     type=tx_type,
                     date=event_time,
                     quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
@@ -441,6 +458,10 @@ def persist_crypto_exchange_event(event, user, account):
                 if leg_cash_flow is not None:
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
+                    )
+                if event.fee and event.fee.get("quantity") not in (None, 0, Decimal("0")):
+                    tx_kwargs["commission"] = _normalize_model_decimal(
+                        Transactions, "commission", event.fee["quantity"]
                     )
             try:
                 with transaction.atomic():
@@ -519,6 +540,7 @@ def _spot_legs(
                 "price_asset": "USD",
                 "role": "base",
                 "cash_flow": cash_flow,
+                "quote_currency": quote.upper(),
             }
         ]
 

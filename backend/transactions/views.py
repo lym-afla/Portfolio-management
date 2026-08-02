@@ -311,15 +311,26 @@ class TransactionViewSet(viewsets.ModelViewSet):
             }
         )
 
+    def search_keywords_in_file(self, file_path):
+        """Search keywords in an Excel or CSV file.
+
+        :param file_path: The path to the file
+        :return: The content of the file as a lowercased string
+        """
+        if file_path.lower().endswith(".csv"):
+            df = pd.read_csv(file_path, header=1, on_bad_lines="skip")
+        else:
+            df = pd.read_excel(file_path)
+        content = df.to_string().lower()
+        return content
+
     def search_keywords_in_excel(self, file_path):
-        """Search keywords in an Excel file.
+        """Search keywords in an Excel file. (Legacy — delegates to search_keywords_in_file)
 
         :param file_path: The path to the Excel file
         :return: The content of the Excel file
         """
-        df = pd.read_excel(file_path)
-        content = df.to_string().lower()
-        return content
+        return self.search_keywords_in_file(file_path)
 
     def identify_account(self, content, user):
         """Identify the broker account for a given content.
@@ -497,7 +508,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_200_OK,
                 )
 
-            content = self.search_keywords_in_excel(file_path)
+            content = self.search_keywords_in_file(file_path)
             identified_account = self.identify_account(content, request.user)
 
             if identified_account:

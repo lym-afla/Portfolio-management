@@ -294,35 +294,119 @@ def test_spot_order_with_multiple_fills_emits_one_event_per_base_leg():
     assert fees["1000000000000000003"] == "-0.000186"
 
 
-def test_convert_symbols_are_skipped():
-    """Crypto-to-crypto conversion trades (``*-CONVERT``) cannot be represented
-    as a base-quote spot fill and are skipped, not persisted as broken events."""
+def test_usdc_usdt_convert_emits_fx_event():
+    """USDC-USDT-CONVERT (stablecoin<->stablecoin) becomes an FX payload, not a
+    spot trade. Side is inferred from Balance Change sign (empty Action)."""
     rows = [
-        {
-            "id": "2000000000000000001", "Order id": "1888888888888888888",
-            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
-            "Symbol": "BTC-USDT-CONVERT", "Action": "Buy", "Amount": "0.5",
-            "Trading Unit": "BTC", "Filled Price": "64000", "PnL": "0.0",
-            "Fee": "0.0", "Fee Unit": "BTC", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "0.5",
-            "Balance": "0.0", "Balance Unit": "BTC",
+        {  # USDC given up
+            "id": "2602510860429074432", "Order id": "2602510860294856704",
+            "Time": "2025-06-16 11:41:07", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT-CONVERT", "Action": "", "Amount": "103.836812",
+            "Trading Unit": "USDC", "Filled Price": "0.993950", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-103.836812",
+            "Balance": "0.0", "Balance Unit": "USDC",
         },
-        {
-            "id": "2000000000000000002", "Order id": "1888888888888888888",
-            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
-            "Symbol": "BTC-USDT-CONVERT", "Action": "Sell", "Amount": "32000",
-            "Trading Unit": "BTC", "Filled Price": "64000", "PnL": "0.0",
+        {  # USDT received
+            "id": "2602510860429074433", "Order id": "2602510860294856704",
+            "Time": "2025-06-16 11:41:07", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT-CONVERT", "Action": "", "Amount": "103.208630",
+            "Trading Unit": "USDC", "Filled Price": "0.993950", "PnL": "0.0",
             "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "-32000",
+            "Position Balance": "0.0", "Balance Change": "103.208630",
             "Balance": "0.0", "Balance Unit": "USDT",
         },
     ]
     df = _df_from_rows(rows)
     events, skipped = build_okx_csv_events(df, timedelta(hours=3))
 
-    assert events == []
-    # The base leg (BTC) of the convert is counted as skipped.
-    assert skipped == ["2000000000000000001"]
+    assert skipped == []
+    assert len(events) == 1
+    payload, _ = events[0]
+    assert payload["__kind"] == "fx"
+    assert payload["from_ccy"] == "USDC"
+    assert payload["to_ccy"] == "USDT"
+    assert payload["from_amount"] == "103.836812"
+    assert payload["to_amount"] == "103.208630"
+
+
+def test_usdc_usdt_spot_trade_emits_fx_event():
+    """A normal USDC-USDT spot trade (NO -CONVERT suffix, Action=Buy/Sell) is
+    still a stablecoin<->stablecoin conversion -> FX. Regression for OKX CSV
+    Bug 2: previously only -CONVERT symbols triggered FX routing."""
+    rows = [
+        {  # USDT given up (negative Balance Change)
+            "id": "2173842814334967810", "Order id": "2173842814301413376",
+            "Time": "2025-01-19 14:59:24", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT", "Action": "Sell", "Amount": "100.00997897",
+            "Trading Unit": "USDC", "Filled Price": "1.00220000", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-100.00997897",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+        {  # USDC received (positive Balance Change)
+            "id": "2173842814334967809", "Order id": "2173842814301413376",
+            "Time": "2025-01-19 14:59:24", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT", "Action": "Buy", "Amount": "99.79044000",
+            "Trading Unit": "USDC", "Filled Price": "1.00220000", "PnL": "0.0",
+            "Fee": "-0.09979044", "Fee Unit": "USDC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "99.69064956",
+            "Balance": "0.0", "Balance Unit": "USDC",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert skipped == []
+    assert len(events) == 1
+    payload, _ = events[0]
+    assert payload["__kind"] == "fx"
+    # from = USDT (negative leg), to = USDC (positive leg)
+    assert payload["from_ccy"] == "USDT"
+    assert payload["to_ccy"] == "USDC"
+    # Amounts are GROSS (the trade fill quantities from the Amount column),
+    # NOT the Balance Change (which is net of fee). The fee is captured
+    # separately so it isn't double-subtracted by get_cash_flow_by_currency.
+    assert payload["from_amount"] == "100.00997897"  # gross USDT (no fee on this leg)
+    assert payload["to_amount"] == "99.79044000"  # gross USDC (NOT 99.69064956 net)
+    # Fee captured from the fee-bearing leg (USDC leg), in its native currency.
+    assert payload["fee"] == "-0.09979044"
+    assert payload["fee_ccy"] == "USDC"
+
+
+def test_btc_usdt_convert_emits_spot_event():
+    """BTC-USDT-CONVERT (crypto<->stablecoin) is a normal purchase: emits a spot
+    payload with side inferred from the base (BTC) leg's Balance Change sign."""
+    rows = [
+        {  # BTC received (buy)
+            "id": "2893075670726385664", "Order id": "2893075670558613504",
+            "Time": "2025-09-24 17:06:13", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT-CONVERT", "Action": "", "Amount": "0.002839",
+            "Trading Unit": "BTC", "Filled Price": "113345.97", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "0.002839",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        {  # USDT given up
+            "id": "2893075670726385665", "Order id": "2893075670558613504",
+            "Time": "2025-09-24 17:06:13", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT-CONVERT", "Action": "", "Amount": "321.819075",
+            "Trading Unit": "BTC", "Filled Price": "113345.97", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-321.819075",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert skipped == []
+    assert len(events) == 1
+    payload, _ = events[0]
+    assert payload["__kind"] == "spot"
+    assert payload["instId"] == "BTC-USDT"  # CONVERT suffix stripped
+    assert payload["side"] == "buy"  # BTC Balance Change positive
+    assert payload["fillSz"] == "0.002839"
 
 
 def test_option_fill_maps_to_option_payload():
@@ -364,7 +448,7 @@ def test_option_expiration_maps_to_settlement_payload():
         "Amount": "7.0", "Trading Unit": "cont", "Filled Price": "62703.943334",
         "PnL": "0.000154", "Fee": "0.000000", "Fee Unit": "BTC",
         "Position Change": "-0.007162", "Position Balance": "0.0",
-        "Balance Change": "-0.007162", "Balance": "0.0", "Balance Unit": "BTC",
+        "Balance Change": "0.007162", "Balance": "0.0", "Balance Unit": "BTC",
     }
     df = _df_from_rows([row])
     events, _ = build_okx_csv_events(df, timedelta(hours=3))
@@ -373,42 +457,62 @@ def test_option_expiration_maps_to_settlement_payload():
     payload, source_id = events[0]
     assert payload["__kind"] == "option_settlement"
     assert payload["ccy"] == "BTC"
-    assert payload["balChg"] == "-0.007162"
+    # balChg = Balance Change (collateral RELEASED, positive), NOT Position Change.
+    assert payload["balChg"] == "0.007162"
     assert payload["px"] == "62703.943334"
     assert payload["billId"] == "3628711646064058370"
-    # ordId is "0" -> normalized to empty so the normalizer falls back to billId.
     assert payload["ordId"] == ""
     expected_dt = datetime(2026, 6, 5, 8, 0, 34, tzinfo=timezone.utc)
     assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
 
 
-def test_transfer_rows_are_skipped_and_not_emitted_as_events():
+def test_transfer_rows_become_events_not_skipped():
+    """Transfers are now imported: stablecoins route to cash (deposit/withdrawal),
+    non-stablecoins route to crypto transfers. Nothing is skipped."""
     rows = [
+        # non-stablecoin transfer out (BTC)
         {
             "id": "3679092537441165312", "Order id": "3679092536973701120",
-            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer",
-            "Symbol": "", "Action": "Transfer out", "Amount": "0",
-            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
-            "Fee": "0.00000000", "Fee Unit": "BTC", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "-0.45849457",
-            "Balance": "0.0", "Balance Unit": "BTC",
+            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer", "Symbol": "",
+            "Action": "Transfer out", "Amount": "0", "Trading Unit": "cont",
+            "Filled Price": "0.00000000", "PnL": "0.0", "Fee": "0.00000000",
+            "Fee Unit": "BTC", "Position Change": "0.0", "Position Balance": "0.0",
+            "Balance Change": "-0.45849457", "Balance": "0.0", "Balance Unit": "BTC",
         },
+        # stablecoin transfer out (USDT) -> withdrawal
         {
             "id": "3679091815014244352", "Order id": "3679091814748102656",
-            "Time": "2026-06-22 20:04:40", "Trade Type": "Transfer",
-            "Symbol": "", "Action": "Transfer out", "Amount": "0",
-            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
-            "Fee": "0.00000000", "Fee Unit": "USDT", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "-300.00389139",
-            "Balance": "0.0", "Balance Unit": "USDT",
+            "Time": "2026-06-22 20:04:40", "Trade Type": "Transfer", "Symbol": "",
+            "Action": "Transfer out", "Amount": "0", "Trading Unit": "cont",
+            "Filled Price": "0.00000000", "PnL": "0.0", "Fee": "0.00000000",
+            "Fee Unit": "USDT", "Position Change": "0.0", "Position Balance": "0.0",
+            "Balance Change": "-300.00389139", "Balance": "0.0", "Balance Unit": "USDT",
+        },
+        # stablecoin transfer in (USDT) -> deposit
+        {
+            "id": "2173839971167281152", "Order id": "2173839971033657344",
+            "Time": "2025-01-19 14:57:59", "Trade Type": "Transfer", "Symbol": "",
+            "Action": "Transfer in", "Amount": "0", "Trading Unit": "cont",
+            "Filled Price": "0.00000000", "PnL": "0.0", "Fee": "0.00000000",
+            "Fee Unit": "USDT", "Position Change": "0.0", "Position Balance": "0.0",
+            "Balance Change": "357.14000000", "Balance": "357.14", "Balance Unit": "USDT",
         },
     ]
     df = _df_from_rows(rows)
     events, skipped = build_okx_csv_events(df, timedelta(hours=3))
 
-    assert events == []
-    assert len(skipped) == 2
-    assert skipped[0] == "3679092537441165312"
+    assert skipped == []  # nothing skipped anymore
+    assert len(events) == 3
+    kinds = [e[0]["__kind"] for e in events]
+    assert kinds == ["transfer", "transfer", "transfer"]
+    # Stablecoin in -> deposit; stablecoin out -> withdrawal; BTC out -> transfer.
+    cats = [e[0]["category"] for e in events]
+    assert cats == ["transfer", "withdrawal", "deposit"]
+    # Signed amount parsed from Balance Change, not Amount.
+    amts = [e[0]["amount"] for e in events]
+    assert amts == ["-0.45849457", "-300.00389139", "357.14000000"]
+    ccys = [e[0]["ccy"] for e in events]
+    assert ccys == ["BTC", "USDT", "USDT"]
 
 
 def test_mixed_csv_emits_events_and_skips_transfers():
@@ -435,9 +539,9 @@ def test_mixed_csv_emits_events_and_skips_transfers():
     ])
     events, skipped = build_okx_csv_events(df, timedelta(hours=3))
 
-    assert len(events) == 2  # one spot, one option fill
-    assert {e[0]["__kind"] for e in events} == {"spot", "option_fill"}
-    assert len(skipped) == 1
+    assert len(events) == 3  # one spot, one option fill, one transfer
+    assert {e[0]["__kind"] for e in events} == {"spot", "option_fill", "transfer"}
+    assert skipped == []
 
 
 # ---------------------------------------------------------------------------
@@ -486,9 +590,11 @@ async def test_full_parser_persists_spot_trade_with_okx_csv_provider(tmp_path, u
     saved = [u for u in updates if u.get("status") == "transaction_saved"]
     assert saved, "expected at least one transaction_saved update"
 
-    # Two legs persisted (base BTC + quote USDT) under import_provider=okx_csv.
+    # ONE leg persisted (BTC base) under import_provider=okx_csv. Stablecoin
+    # (USDT) quote trades emit a single leg with cash_flow (Phase 4): USDT is
+    # treated as cash, not a separate asset leg.
     txs = await _persisted_txs(user, okx_account)
-    assert len(txs) == 2
+    assert len(txs) == 1
     assert {t.import_provider for t in txs} == {OKX_CSV_IMPORT_PROVIDER}
     assert {t.import_event_type for t in txs} == {"trade"}
     # Base leg event id carries the base-leg CSV id.
@@ -517,28 +623,75 @@ async def test_full_parser_dedups_on_reimport(tmp_path, user, okx_account):
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_full_parser_counts_transfers_as_skipped(tmp_path, user, okx_account):
+async def test_full_parser_imports_transfers(tmp_path, user, okx_account):
     rows = _spot_buy_pair() + [
         {
             "id": "3679092537441165312", "Order id": "3679092536973701120",
-            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer",
-            "Symbol": "", "Action": "Transfer out", "Amount": "0",
-            "Trading Unit": "cont", "Filled Price": "0.00000000", "PnL": "0.0",
-            "Fee": "0.00000000", "Fee Unit": "BTC", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "-0.45849457",
-            "Balance": "0.0", "Balance Unit": "BTC",
+            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer", "Symbol": "",
+            "Action": "Transfer out", "Amount": "0", "Trading Unit": "cont",
+            "Filled Price": "0.00000000", "PnL": "0.0", "Fee": "0.00000000",
+            "Fee Unit": "BTC", "Position Change": "0.0", "Position Balance": "0.0",
+            "Balance Change": "-0.45849457", "Balance": "0.0", "Balance Unit": "BTC",
         },
     ]
     csv_path = tmp_path / "okx.csv"
     _write_okx_csv(csv_path, rows)
-
     updates = await _drain(
         parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
     )
     complete = next(u for u in updates if u.get("status") == "complete")
-
-    # 1 spot event + 1 transfer skipped.
-    assert complete["data"]["skippedTransactions"] == 1
-    # Spot trade produced 2 persisted legs.
+    # 1 spot event (1 leg) + 1 transfer event (1 leg) -> 2 persisted, 0 skipped.
+    assert complete["data"]["skippedTransactions"] == 0
     assert complete["data"]["importedTransactions"] == 2
-    assert len(await _persisted_txs(user, okx_account)) == 2
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 2
+    # The BTC transfer is a Crypto transfer out (quantity negative).
+    transfer_tx = next(t for t in txs if t.type == "Crypto transfer out")
+    assert transfer_tx.quantity == Decimal("-0.45849457")
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_imports_transfer_only(tmp_path, user, okx_account):
+    """Transfer-only CSV: proves the transfer path end-to-end without depending
+    on the spot pair (the spot quote-leg persistence is tracked separately and
+    is unrelated to transfer import). Verifies both the non-stablecoin crypto
+    transfer and the stablecoin cash-routing paths."""
+    rows = [
+        # non-stablecoin transfer out (BTC) -> Crypto transfer out
+        {
+            "id": "3679092537441165312", "Order id": "3679092536973701120",
+            "Time": "2026-06-22 20:05:01", "Trade Type": "Transfer", "Symbol": "",
+            "Action": "Transfer out", "Amount": "0", "Trading Unit": "cont",
+            "Filled Price": "0.00000000", "PnL": "0.0", "Fee": "0.00000000",
+            "Fee Unit": "BTC", "Position Change": "0.0", "Position Balance": "0.0",
+            "Balance Change": "-0.45849457", "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        # stablecoin transfer in (USDT) -> Cash in (deposit)
+        {
+            "id": "2173839971167281152", "Order id": "2173839971033657344",
+            "Time": "2025-01-19 14:57:59", "Trade Type": "Transfer", "Symbol": "",
+            "Action": "Transfer in", "Amount": "0", "Trading Unit": "cont",
+            "Filled Price": "0.00000000", "PnL": "0.0", "Fee": "0.00000000",
+            "Fee Unit": "USDT", "Position Change": "0.0", "Position Balance": "0.0",
+            "Balance Change": "357.14000000", "Balance": "357.14", "Balance Unit": "USDT",
+        },
+    ]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    updates = await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+    complete = next(u for u in updates if u.get("status") == "complete")
+    # 2 transfer events (1 leg each), 0 skipped.
+    assert complete["data"]["skippedTransactions"] == 0
+    assert complete["data"]["importedTransactions"] == 2
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 2
+    # BTC out -> Crypto transfer out (negative quantity).
+    btc_tx = next(t for t in txs if t.type == "Crypto transfer out")
+    assert btc_tx.quantity == Decimal("-0.45849457")
+    # USDT in -> Cash in (stablecoin cash leg: cash_flow positive, currency USDT).
+    usdt_tx = next(t for t in txs if t.type == "Cash in")
+    assert usdt_tx.cash_flow == Decimal("357.14000000")
+    assert usdt_tx.currency == "USDT"
