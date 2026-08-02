@@ -65,6 +65,15 @@ describe('formatQuantity', () => {
       expect(formatQuantity(-0.6803)).toBe('-0.7')
       expect(formatQuantity(-0.00011659)).toBe('-0.0001')
     })
+
+    it('clamps so a sub-1 value never rounds up across the unit boundary', () => {
+      // Regression: 0.99 first-sig-digit rounded to "1.0" -> "1", misrepresenting
+      // a 0.99 holding as a whole unit. The clamp adds decimals until the result
+      // stays < 1 in magnitude.
+      expect(formatQuantity(0.99)).toBe('0.99')
+      expect(formatQuantity(0.9999)).toBe('0.9999')
+      expect(formatQuantity(-0.99)).toBe('-0.99')
+    })
   })
 
   describe('null / empty / non-numeric input -> null', () => {
