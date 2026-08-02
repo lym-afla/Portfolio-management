@@ -671,12 +671,27 @@ def _normalize_okx_csv_event(payload):
     dedup against the CSV row (and vice versa).
     """
     from services.crypto_exchange import (
+        CryptoExchangeEvent,
+        _single_leg,
         normalize_okx_option_fill,
         normalize_okx_option_settlement,
         normalize_okx_spot_fill,
     )
 
     kind = payload["__kind"]
+    if kind == "transfer":
+        ccy = payload["ccy"].upper()
+        amount = Decimal(payload["amount"])
+        category = payload["category"]
+        return CryptoExchangeEvent(
+            provider=OKX_CSV_IMPORT_PROVIDER,
+            provider_event_id=f"csv_transfer:{payload['billId']}",
+            group_id=payload["billId"],
+            timestamp_ms=int(payload["ts"]),
+            category=category,
+            raw_type="transfer",
+            legs=_single_leg(ccy, amount, ccy),
+        )
     if kind == "spot":
         event = normalize_okx_spot_fill(payload)
     elif kind == "option_fill":
@@ -692,7 +707,10 @@ def build_okx_csv_events(df, tz_offset):
 
     Walks the rows once, grouping spot rows by ``Order id`` (each spot trade is
     two bill rows: a base leg and a quote leg). Options are single-row events.
-    Transfers are dropped here; the caller reports them as skipped.
+    Transfers are emitted as ``__kind="transfer"`` payloads: stablecoin
+    (USDT/USDC) legs carry ``category="deposit"``/``"withdrawal"`` (Transfer
+    in/out) so the existing cash-routing re-classifies them as Cash in/out;
+    non-stablecoin legs carry ``category="transfer"`` (Crypto transfer in/out).
 
     The base/quote split is identified by ``Balance Unit`` (the bill's settled
     currency): the leg whose ``Balance Unit`` equals the symbol's base currency
@@ -720,7 +738,26 @@ def build_okx_csv_events(df, tz_offset):
         fill_time = _okx_time_to_utc_ms(row["Time"], tz_offset)
 
         if trade_type == "Transfer":
-            skipped_transfer_ids.append(row_id)
+            balance_unit = (_strip_okx_bom(row.get("Balance Unit")) or "").upper()
+            action = str(row.get("Action") or "").strip().lower()
+            # Transfer rows carry Amount=0; the signed movement is Balance Change.
+            amount = Decimal(str(row.get("Balance Change") or "0"))
+            is_stablecoin = balance_unit in {"USDT", "USDC"}
+            if is_stablecoin:
+                # Stablecoin in -> deposit (Cash in); out -> withdrawal (Cash out).
+                category = "deposit" if "in" in action else "withdrawal"
+            else:
+                # Non-stablecoin (BTC/TRUMP) internal moves stay crypto transfers.
+                category = "transfer"
+            payload = {
+                "__kind": "transfer",
+                "category": category,
+                "ccy": balance_unit,
+                "amount": str(amount),
+                "ts": str(fill_time),
+                "billId": str(row_id),
+            }
+            events.append((payload, str(row_id)))
             continue
 
         if trade_type == "Spot":
