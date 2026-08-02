@@ -725,3 +725,52 @@ def test_stablecoin_quote_spot_trade_records_currency_as_stablecoin(user, crypto
 
     tx = Transactions.objects.get(investor=user, account=crypto_account)
     assert tx.currency == "USDT"
+
+
+@pytest.mark.django_db
+def test_stablecoin_quote_spot_buy_uses_buy_type(user, crypto_account):
+    """Stablecoin-quote spot trades display/behave like cash purchases, so a
+    buy is type='Buy' (not 'Crypto trade in'). Regression for OKX issue #4."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:trade-buy",
+        group_id="order-buy",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[{
+            "asset": "TRUMP", "quantity": Decimal("0.6803"),
+            "price": Decimal("73.209"), "price_asset": "USD", "role": "base",
+            "cash_flow": Decimal("-49.81"), "quote_currency": "USDT",
+        }],
+        fee={"asset": "TRUMP", "quantity": Decimal("-0.0006803"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.type == "Buy"
+
+
+@pytest.mark.django_db
+def test_crypto_crypto_trade_keeps_crypto_trade_type(user, crypto_account):
+    """Crypto-crypto pairs (two legs, no quote_currency) stay 'Crypto trade in/out'."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id="exec-cc",
+        group_id="order-cc",
+        timestamp_ms=1767225600000,
+        category="trade",
+        raw_type="spot_execution",
+        legs=[
+            {"asset": "ETH", "quantity": Decimal("0.1"), "price": Decimal("0.0016"),
+             "price_asset": "BTC", "role": "base"},
+            {"asset": "BTC", "quantity": Decimal("-0.00016"), "price": Decimal("1"),
+             "price_asset": "BTC", "role": "quote"},
+        ],
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    types = {t.type for t in Transactions.objects.filter(investor=user, account=crypto_account)}
+    assert types == {"Crypto trade in", "Crypto trade out"}
