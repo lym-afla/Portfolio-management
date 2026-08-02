@@ -799,3 +799,67 @@ def test_stablecoin_quote_spot_trade_records_commission(user, crypto_account):
     persist_crypto_exchange_event(event, user, crypto_account)
     tx = Transactions.objects.get(investor=user, account=crypto_account)
     assert tx.commission == Decimal("-0.0006803")
+
+
+@pytest.mark.django_db
+def test_option_sell_and_otm_expiry_persist_correctly(user, crypto_account):
+    """OKX issue #8: selling a BTC call + OTM expiry. The sell is an option leg
+    (-7 contracts @ 0.0022 BTC premium); the expiry releases collateral
+    (+0.00716211 BTC settlement). Premium must resolve to fiat via BTC/USD."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    # Seed a BTC USD price on/before the sell date so premium fiat-resolves.
+    # NOTE: Assets.investors is M2M (not FK); match the existing fixture pattern
+    # in test_crypto_crypto_pair_uses_quote_asset_fiat_price rather than the
+    # brief's `investor=user` literal (which would fail on the model).
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC",
+        name="Bitcoin",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+    Prices.objects.create(security=btc, date=date(2026, 5, 27), price=Decimal("105000"))
+
+    # Option SELL: -7 contracts @ 0.0022 BTC, fee in BTC.
+    sell_event = CryptoExchangeEvent(
+        provider="okx_csv", provider_event_id="csv:opt-sell",
+        group_id="opt-order", timestamp_ms=1779916514000,  # 2026-05-27 21:15:14 UTC
+        category="trade", raw_type="option_fill",
+        legs=[{
+            "asset": "BTC-USD-260605-80000-C", "quantity": Decimal("-7"),
+            "price": Decimal("0.0022"), "price_asset": "BTC", "role": "base",
+            "instrument": "option",
+        }],
+        fee={"asset": "BTC", "quantity": Decimal("-0.00001078"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(sell_event, user, crypto_account)
+
+    sell_tx = Transactions.objects.get(
+        investor=user, account=crypto_account, type=TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+    )
+    assert sell_tx.quantity == Decimal("-7")
+    # price_asset="BTC" so _leg_fiat_price multiplies 0.0022 * BTC_USD_price
+    # (~105000) to fiat-resolve the BTC-denominated premium. The raw 0.0022
+    # does NOT survive; assert only sign per the brief's verified fact #3.
+    assert sell_tx.price is not None and sell_tx.price > 0
+
+    # OTM EXPIRY: collateral released (+0.00716211 BTC).
+    settle_event = CryptoExchangeEvent(
+        provider="okx_csv", provider_event_id="csv:opt-settle",
+        group_id="opt-order", timestamp_ms=1780646434000,  # 2026-06-05 08:00:34 UTC
+        category="settlement", raw_type="option_delivery",
+        legs=[{
+            "asset": "BTC", "quantity": Decimal("0.00716211"),
+            "price": Decimal("62703.94333408"), "price_asset": "USD", "role": "base",
+        }],
+    )
+    persist_crypto_exchange_event(settle_event, user, crypto_account)
+
+    settle_tx = Transactions.objects.get(
+        investor=user, account=crypto_account, type=TRANSACTION_TYPE_OPTION_SETTLEMENT
+    )
+    # Positive: collateral came back.
+    assert settle_tx.quantity == Decimal("0.00716211")

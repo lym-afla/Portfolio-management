@@ -832,11 +832,15 @@ def build_okx_csv_events(df, tz_offset):
 
             if action.lower().startswith("expired"):
                 # Option expiration/settlement. Delivered coin = Balance Unit,
-                # signed delivered amount = Position Change, settlement px =
+                # signed delivered amount = Balance Change (the wallet balance
+                # change, i.e. collateral released on OTM expiry is positive;
+                # ITM delivery is negative for the writer), settlement px =
                 # Filled Price. ``ordId`` is 0/empty for expiries; the
                 # normalizer falls back to billId for the group id.
+                # NOTE: Position Change tracks contracts, not coin flow, so it
+                # has the wrong sign/magnitude for the delivered coin amount.
                 ccy = _strip_okx_bom(row.get("Balance Unit")) or "USD"
-                bal_chg = Decimal(str(row.get("Position Change") or "0"))
+                bal_chg = Decimal(str(row.get("Balance Change") or "0"))
                 payload = {
                     "__kind": "option_settlement",
                     "ccy": ccy,

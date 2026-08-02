@@ -404,7 +404,7 @@ def test_option_expiration_maps_to_settlement_payload():
         "Amount": "7.0", "Trading Unit": "cont", "Filled Price": "62703.943334",
         "PnL": "0.000154", "Fee": "0.000000", "Fee Unit": "BTC",
         "Position Change": "-0.007162", "Position Balance": "0.0",
-        "Balance Change": "-0.007162", "Balance": "0.0", "Balance Unit": "BTC",
+        "Balance Change": "0.007162", "Balance": "0.0", "Balance Unit": "BTC",
     }
     df = _df_from_rows([row])
     events, _ = build_okx_csv_events(df, timedelta(hours=3))
@@ -413,10 +413,10 @@ def test_option_expiration_maps_to_settlement_payload():
     payload, source_id = events[0]
     assert payload["__kind"] == "option_settlement"
     assert payload["ccy"] == "BTC"
-    assert payload["balChg"] == "-0.007162"
+    # balChg = Balance Change (collateral RELEASED, positive), NOT Position Change.
+    assert payload["balChg"] == "0.007162"
     assert payload["px"] == "62703.943334"
     assert payload["billId"] == "3628711646064058370"
-    # ordId is "0" -> normalized to empty so the normalizer falls back to billId.
     assert payload["ordId"] == ""
     expected_dt = datetime(2026, 6, 5, 8, 0, 34, tzinfo=timezone.utc)
     assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
