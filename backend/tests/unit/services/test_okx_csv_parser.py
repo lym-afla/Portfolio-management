@@ -294,35 +294,75 @@ def test_spot_order_with_multiple_fills_emits_one_event_per_base_leg():
     assert fees["1000000000000000003"] == "-0.000186"
 
 
-def test_convert_symbols_are_skipped():
-    """Crypto-to-crypto conversion trades (``*-CONVERT``) cannot be represented
-    as a base-quote spot fill and are skipped, not persisted as broken events."""
+def test_usdc_usdt_convert_emits_fx_event():
+    """USDC-USDT-CONVERT (stablecoin<->stablecoin) becomes an FX payload, not a
+    spot trade. Side is inferred from Balance Change sign (empty Action)."""
     rows = [
-        {
-            "id": "2000000000000000001", "Order id": "1888888888888888888",
-            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
-            "Symbol": "BTC-USDT-CONVERT", "Action": "Buy", "Amount": "0.5",
-            "Trading Unit": "BTC", "Filled Price": "64000", "PnL": "0.0",
-            "Fee": "0.0", "Fee Unit": "BTC", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "0.5",
-            "Balance": "0.0", "Balance Unit": "BTC",
+        {  # USDC given up
+            "id": "2602510860429074432", "Order id": "2602510860294856704",
+            "Time": "2025-06-16 11:41:07", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT-CONVERT", "Action": "", "Amount": "103.836812",
+            "Trading Unit": "USDC", "Filled Price": "0.993950", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-103.836812",
+            "Balance": "0.0", "Balance Unit": "USDC",
         },
-        {
-            "id": "2000000000000000002", "Order id": "1888888888888888888",
-            "Time": "2026-06-22 20:03:00", "Trade Type": "Spot",
-            "Symbol": "BTC-USDT-CONVERT", "Action": "Sell", "Amount": "32000",
-            "Trading Unit": "BTC", "Filled Price": "64000", "PnL": "0.0",
+        {  # USDT received
+            "id": "2602510860429074433", "Order id": "2602510860294856704",
+            "Time": "2025-06-16 11:41:07", "Trade Type": "Spot",
+            "Symbol": "USDC-USDT-CONVERT", "Action": "", "Amount": "103.208630",
+            "Trading Unit": "USDC", "Filled Price": "0.993950", "PnL": "0.0",
             "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
-            "Position Balance": "0.0", "Balance Change": "-32000",
+            "Position Balance": "0.0", "Balance Change": "103.208630",
             "Balance": "0.0", "Balance Unit": "USDT",
         },
     ]
     df = _df_from_rows(rows)
     events, skipped = build_okx_csv_events(df, timedelta(hours=3))
 
-    assert events == []
-    # The base leg (BTC) of the convert is counted as skipped.
-    assert skipped == ["2000000000000000001"]
+    assert skipped == []
+    assert len(events) == 1
+    payload, _ = events[0]
+    assert payload["__kind"] == "fx"
+    assert payload["from_ccy"] == "USDC"
+    assert payload["to_ccy"] == "USDT"
+    assert payload["from_amount"] == "103.836812"
+    assert payload["to_amount"] == "103.208630"
+
+
+def test_btc_usdt_convert_emits_spot_event():
+    """BTC-USDT-CONVERT (crypto<->stablecoin) is a normal purchase: emits a spot
+    payload with side inferred from the base (BTC) leg's Balance Change sign."""
+    rows = [
+        {  # BTC received (buy)
+            "id": "2893075670726385664", "Order id": "2893075670558613504",
+            "Time": "2025-09-24 17:06:13", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT-CONVERT", "Action": "", "Amount": "0.002839",
+            "Trading Unit": "BTC", "Filled Price": "113345.97", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "BTC", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "0.002839",
+            "Balance": "0.0", "Balance Unit": "BTC",
+        },
+        {  # USDT given up
+            "id": "2893075670726385665", "Order id": "2893075670558613504",
+            "Time": "2025-09-24 17:06:13", "Trade Type": "Spot",
+            "Symbol": "BTC-USDT-CONVERT", "Action": "", "Amount": "321.819075",
+            "Trading Unit": "BTC", "Filled Price": "113345.97", "PnL": "0.0",
+            "Fee": "0.0", "Fee Unit": "USDT", "Position Change": "0.0",
+            "Position Balance": "0.0", "Balance Change": "-321.819075",
+            "Balance": "0.0", "Balance Unit": "USDT",
+        },
+    ]
+    df = _df_from_rows(rows)
+    events, skipped = build_okx_csv_events(df, timedelta(hours=3))
+
+    assert skipped == []
+    assert len(events) == 1
+    payload, _ = events[0]
+    assert payload["__kind"] == "spot"
+    assert payload["instId"] == "BTC-USDT"  # CONVERT suffix stripped
+    assert payload["side"] == "buy"  # BTC Balance Change positive
+    assert payload["fillSz"] == "0.002839"
 
 
 def test_option_fill_maps_to_option_payload():

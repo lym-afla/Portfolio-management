@@ -702,6 +702,59 @@ def _normalize_okx_csv_event(payload):
     return event
 
 
+def _persist_okx_csv_fx_event(payload, investor, account):
+    """Persist a stablecoin<->stablecoin CONVERT as an FXTransaction.
+
+    Bypasses the crypto-event pipeline (no asset/price resolution) and saves
+    via ``services.transactions.save_single_transaction`` with ``is_fx=True``.
+
+    Returns ``"created"`` if a new FXTransaction was persisted, ``"duplicate"``
+    if one already exists for this event id, or raises on a genuine error.
+    """
+    from common.models import FXTransaction
+    from services.transactions import save_single_transaction
+
+    provider = OKX_CSV_IMPORT_PROVIDER
+    event_id = f"csv_fx:{payload['billId']}"
+    import_account_id = account.native_id or str(account.id)
+
+    # Explicit dedup (mirrors persist_crypto_exchange_event) so duplicates are
+    # distinguishable from real save errors.
+    if FXTransaction.objects.filter(
+        investor=investor,
+        account=account,
+        import_provider=provider,
+        import_account_id=import_account_id,
+        import_event_id=event_id,
+    ).exists():
+        return "duplicate"
+
+    from_amount = Decimal(payload["from_amount"])
+    to_amount = Decimal(payload["to_amount"])
+    rate = from_amount / to_amount if to_amount else Decimal("0")
+    data = {
+        "is_fx": True,
+        "investor": investor,
+        "account": account,
+        "date": datetime.fromtimestamp(int(payload["ts"]) / 1000, tz=timezone.utc).replace(tzinfo=None),
+        "from_currency": payload["from_ccy"],
+        "to_currency": payload["to_ccy"],
+        "from_amount": from_amount,
+        "to_amount": to_amount,
+        "exchange_rate": rate,
+        "comment": f"provider={provider}; group_id={payload['billId']}",
+        "import_provider": provider,
+        "import_account_id": import_account_id,
+        "import_event_id": event_id,
+        "import_group_id": payload["billId"],
+        "import_event_type": "fx",
+    }
+    result = save_single_transaction(data)
+    if not result.get("success"):
+        raise RuntimeError(f"FX save failed: {result.get('error')}")
+    return "created"
+
+
 def build_okx_csv_events(df, tz_offset):
     """Adapt a parsed OKX CSV DataFrame into OKX-API-shape event payloads.
 
@@ -722,6 +775,7 @@ def build_okx_csv_events(df, tz_offset):
     ``__kind`` discriminator consumed by ``_normalize_okx_csv_event``.
     """
     spot_groups = {}
+    convert_groups = {}
     events = []
     skipped_transfer_ids = []
 
@@ -761,6 +815,11 @@ def build_okx_csv_events(df, tz_offset):
             continue
 
         if trade_type == "Spot":
+            if symbol_clean.endswith("-CONVERT"):
+                convert_groups.setdefault(order_id, []).append(
+                    (row, row_id, fill_time, symbol_clean)
+                )
+                continue
             # Defer: collect all rows, then pair base+quote per Order id below.
             spot_groups.setdefault(order_id, []).append((row, row_id, fill_time, symbol_clean))
             continue
@@ -867,6 +926,71 @@ def build_okx_csv_events(df, tz_offset):
             }
             events.append((payload, str(row_id)))
 
+    # CONVERT rows: stablecoin<->stablecoin = FX; crypto<->stablecoin = spot.
+    for order_id, rows in convert_groups.items():
+        # Recompute the underlying symbol (drop the -CONVERT suffix).
+        sample_symbol = rows[0][3]
+        underlying = sample_symbol[: -len("-CONVERT")]  # e.g. BTC-USDT or USDC-USDT
+        units = {(rows[i][0].get("Balance Unit") or "").upper(): i for i in range(len(rows))}
+        # Pair each row; classify by whether BOTH units are stablecoins.
+        all_stablecoin = all(u in {"USDT", "USDC"} for u in units)
+        if all_stablecoin:
+            # FX: from = negative Balance Change leg, to = positive leg.
+            from_row = to_row = None
+            for r, _rid, _ft, _sym in rows:
+                bal = Decimal(str(r.get("Balance Change") or "0"))
+                if bal < 0:
+                    from_row = r
+                elif bal > 0:
+                    to_row = r
+            if from_row is None or to_row is None:
+                # Malformed convert (no signed legs); skip defensively.
+                for _r, rid, _ft, _sym in rows:
+                    skipped_transfer_ids.append(rid)
+                continue
+            from_ccy = (from_row.get("Balance Unit") or "").upper()
+            to_ccy = (to_row.get("Balance Unit") or "").upper()
+            from_amount = abs(Decimal(str(from_row.get("Balance Change") or "0")))
+            to_amount = abs(Decimal(str(to_row.get("Balance Change") or "0")))
+            payload = {
+                "__kind": "fx",
+                "from_ccy": from_ccy,
+                "to_ccy": to_ccy,
+                "from_amount": str(from_amount),
+                "to_amount": str(to_amount),
+                "ts": str(rows[0][2]),
+                "billId": str(rows[0][1]),
+            }
+            events.append((payload, str(rows[0][1])))
+        else:
+            # crypto<->stablecoin: emit a spot payload from the base (crypto) leg.
+            base, quote = underlying.split("-")
+            for r, rid, ft, _sym in rows:
+                unit = (r.get("Balance Unit") or "").upper()
+                if unit != base:
+                    continue
+                bal = Decimal(str(r.get("Balance Change") or "0"))
+                side = "buy" if bal > 0 else "sell"
+                amount = abs(Decimal(str(r.get("Amount") or "0")))
+                filled_price = Decimal(str(r.get("Filled Price") or "0"))
+                fee = Decimal(str(r.get("Fee") or "0"))
+                fee_unit = _strip_okx_bom(r.get("Fee Unit")) or ""
+                fee_ccy = fee_unit if fee_unit else quote
+                payload = {
+                    "__kind": "spot",
+                    "instId": underlying,
+                    "side": side,
+                    "fillSz": str(amount),
+                    "fillPx": str(filled_price),
+                    "fillTime": str(ft),
+                    "tradeId": str(rid),
+                    "ordId": str(order_id),
+                    "fee": str(fee),
+                    "feeCcy": fee_ccy,
+                }
+                events.append((payload, str(rid)))
+                break
+
     return events, skipped_transfer_ids
 
 
@@ -945,6 +1069,33 @@ async def parse_okx_trading_csv(file_path, account_id, user_id, confirm_every):
 
     for index, (payload, source_id) in enumerate(events):
         try:
+            if payload.get("__kind") == "fx":
+                outcome = await database_sync_to_async(_persist_okx_csv_fx_event)(
+                    payload, investor, account
+                )
+                progress = min(((index + 1) / total_events) * 100, 100) if total_events else 100
+                yield {
+                    "status": "progress",
+                    "message": f"Processing OKX event {index + 1} of {total_events}",
+                    "progress": progress,
+                    "current": index + 1,
+                }
+                if outcome == "created":
+                    imported += 1
+                    yield {
+                        "status": "transaction_saved",
+                        "message": "Saved OKX FX conversion",
+                        "transaction": {"import_group_id": payload["billId"], "count": 1},
+                    }
+                else:  # "duplicate"
+                    duplicate += 1
+                    yield {
+                        "status": "duplicate_transaction",
+                        "message": f"OKX FX event already imported (id={source_id})",
+                        "transaction": {"import_group_id": payload["billId"], "count": 0},
+                    }
+                continue
+
             event = _normalize_okx_csv_event(payload)  # re-tagged with okx_csv provider
             created = await database_sync_to_async(persist_crypto_exchange_event)(
                 event, investor, account
