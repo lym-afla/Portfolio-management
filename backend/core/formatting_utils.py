@@ -100,7 +100,10 @@ def format_value(
     ]:
         return format_percentage(value, digits=1)
     elif key in ["current_position", "open_position", "quantity"]:
-        return currency_format(value, currency=None, digits=0)
+        # Adaptive: respect the user's `digits` setting for |value| >= 1, and
+        # for small fractional values expand to the first significant digit so
+        # precision isn't lost (e.g. crypto 0.00011659 -> "0.0001" not "0").
+        return format_quantity_adaptive(value, digits)
     elif key in ["id", "no_of_securities", "no_of_accounts"] or "id" in key:
         return value
     elif key == "exchange_rate":
@@ -168,6 +171,55 @@ def currency_format(
             return f"{symbol}{value:,.{digits}f}"
     except Exception:
         return symbol
+
+
+def format_quantity_adaptive(value: Any, digits: int = 2) -> str:
+    """Format a quantity with adaptive decimal places.
+
+    For |value| >= 1: fixed ``digits`` decimal places (the user's setting).
+    For |value| < 1: show the first significant digit, but never fewer decimal
+    places than ``digits``. If ``digits`` alone would round away all precision
+    (e.g. 0.00011659 at digits=2 -> "0.00"), expand to the first significant
+    digit instead ("0.0001"). Sub-1 values are also clamped so they never
+    round up across the unit boundary (0.99 -> "0.99", never "1").
+
+    Examples (digits=2): 12.94056 -> "12.94"; 0.6803 -> "0.68";
+    0.00011659 -> "0.0001"; 0.99 -> "0.99". At digits=0: 12.94056 -> "13";
+    0.6803 -> "0.7"; 0.99 -> "0.99".
+
+    :param value: Numeric value (Decimal/float/int) or numeric string.
+    :param digits: User's global digits setting (decimal places for |value|>=1).
+    :return: Formatted string. Returns "–" for None/zero/blank.
+    """
+    if value is None or value == "":
+        return "–"
+    try:
+        num = Decimal(str(value))
+    except Exception:
+        return str(value)
+    if num == 0:
+        return "–"
+
+    digits = max(int(digits), 0)
+    abs_num = abs(num)
+
+    if abs_num >= 1:
+        # Fixed digits for values >= 1.
+        return f"{num:,.{digits}f}"
+
+    # |value| < 1: at least `digits` decimals, but expand to the first
+    # significant digit if `digits` would erase all precision.
+    first_sig = 0 if abs_num == 0 else max(0, int((-Decimal(abs_num).log10()).__ceil__()))
+    decimals = max(digits, first_sig)
+    # Cap at 20 to stay sane on absurdly tiny values.
+    decimals = min(decimals, 20)
+    s = f"{num:.{decimals}f}"
+    # Unit-boundary clamp: if rounding carried a sub-1 value up to >= 1,
+    # add decimals until it stays < 1 (0.99 -> "0.99", not "1.00").
+    while abs(Decimal(s)) >= 1 and decimals < 20:
+        decimals += 1
+        s = f"{num:.{decimals}f}"
+    return s
 
 
 def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
