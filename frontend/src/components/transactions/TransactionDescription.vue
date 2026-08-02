@@ -78,11 +78,26 @@
       </template>
 
       <template v-else-if="isCryptoEvent">
-        {{ transaction.type }}
-        {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
-        {{ transaction.security?.ticker || transaction.security?.name }}
-        <template v-if="transaction.price && transaction.price !== '–'">
-          @{{ formatPrice(transaction.price, digits) ?? transaction.price }}
+        <template v-if="isCryptoTrade">
+          {{ transaction.type }}
+          {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
+          @{{ formatPrice(transaction.price, digits) ?? transaction.price }} of
+          <security-link
+            :id="transaction.security?.id"
+            :name="transaction.security?.name"
+          />
+          <commission-display
+            v-if="transaction.commission"
+            :commission="transaction.commission"
+          />
+        </template>
+        <template v-else>
+          {{ transaction.type }}
+          {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
+          {{ transaction.security?.ticker || transaction.security?.name }}
+          <template v-if="transaction.price && transaction.price !== '–'">
+            @{{ formatPrice(transaction.price, digits) ?? transaction.price }}
+          </template>
         </template>
       </template>
 
@@ -177,6 +192,13 @@ const isCryptoEvent = computed(() =>
     'Crypto trade out',
     'Option settlement',
   ].includes(props.transaction.type)
+)
+
+// Crypto trades (in/out) render like a regular Buy/Sell: a security link +
+// commission. Other crypto events (reward/transfer/settlement) keep the
+// simpler "type quantity ticker @price" format.
+const isCryptoTrade = computed(() =>
+  ['Crypto trade in', 'Crypto trade out'].includes(props.transaction.type)
 )
 
 const isRegularTransaction = computed(

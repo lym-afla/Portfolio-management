@@ -14,7 +14,6 @@ from django.db import IntegrityError, transaction
 from common.models import Assets, OptionMetadata, Prices, Transactions
 from constants import (
     ASSET_TYPE_CRYPTO,
-    TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
     TRANSACTION_TYPE_CRYPTO_REWARD,
@@ -24,7 +23,6 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
     TRANSACTION_TYPE_INTEREST_INCOME,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
-    TRANSACTION_TYPE_SELL,
 )
 from services.asset_resolver import resolve_or_create_asset
 
@@ -303,7 +301,7 @@ def _event_comment(event, leg):
     return "; ".join(parts)
 
 
-def _transaction_type_for_event(event, quantity, leg=None):
+def _transaction_type_for_event(event, quantity):
     category = (event.category or "").lower()
     raw_type = (event.raw_type or "").lower()
     if category == "reward":
@@ -320,10 +318,6 @@ def _transaction_type_for_event(event, quantity, leg=None):
             if quantity > 0
             else TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT
         )
-    # Stablecoin-quote spot trades behave like cash purchases (Buy/Sell);
-    # they carry a quote_currency key on the leg (set by _spot_legs).
-    if leg is not None and leg.get("quote_currency"):
-        return TRANSACTION_TYPE_BUY if quantity > 0 else TRANSACTION_TYPE_SELL
     return TRANSACTION_TYPE_CRYPTO_TRADE_IN if quantity > 0 else TRANSACTION_TYPE_CRYPTO_TRADE_OUT
 
 
@@ -424,7 +418,7 @@ def persist_crypto_exchange_event(event, user, account):
                     asset = resolve_crypto_option_asset(parse_option_symbol(leg["asset"]), user)
                 else:
                     asset = resolve_crypto_asset(leg["asset"], user)
-                tx_type = _transaction_type_for_event(event, quantity, leg=leg)
+                tx_type = _transaction_type_for_event(event, quantity)
                 # Stablecoin-quote spot trades carry a cash_flow (the USDT
                 # spent/received). Write it so the USDT cash balance updates.
                 leg_cash_flow = leg.get("cash_flow")

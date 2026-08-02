@@ -728,9 +728,13 @@ def test_stablecoin_quote_spot_trade_records_currency_as_stablecoin(user, crypto
 
 
 @pytest.mark.django_db
-def test_stablecoin_quote_spot_buy_uses_buy_type(user, crypto_account):
-    """Stablecoin-quote spot trades display/behave like cash purchases, so a
-    buy is type='Buy' (not 'Crypto trade in'). Regression for OKX issue #4."""
+def test_stablecoin_quote_spot_buy_uses_crypto_trade_type(user, crypto_account):
+    """Stablecoin-quote spot trades persist as 'Crypto trade in/out' (NOT
+    Buy/Sell). The calc layer (total_cash_flow, realized.py) dispatches on type:
+    Crypto trade in/out uses the persisted cash_flow field (USDT incl. fee),
+    whereas Buy/Sell recomputes -quantity*price + commission and would mix BTC
+    fee units into a USDT cash flow. The display goal is solved on the frontend
+    instead. Regression for OKX issue #4 / final-review C1."""
     from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 
     event = CryptoExchangeEvent(
@@ -749,12 +753,14 @@ def test_stablecoin_quote_spot_buy_uses_buy_type(user, crypto_account):
     )
     persist_crypto_exchange_event(event, user, crypto_account)
     tx = Transactions.objects.get(investor=user, account=crypto_account)
-    assert tx.type == "Buy"
+    assert tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
 
 
 @pytest.mark.django_db
 def test_crypto_crypto_trade_keeps_crypto_trade_type(user, crypto_account):
-    """Crypto-crypto pairs (two legs, no quote_currency) stay 'Crypto trade in/out'."""
+    """Crypto-crypto pairs (two legs, no quote_currency) stay 'Crypto trade
+    in/out'. Confirms the crypto-crypto path is unaffected by the stablecoin
+    type handling (now reverted to Crypto trade in/out for all spot trades)."""
     from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 
     event = CryptoExchangeEvent(
