@@ -448,6 +448,10 @@ def persist_crypto_exchange_event(event, user, account):
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
                     )
+                if event.fee and event.fee.get("quantity") not in (None, 0, Decimal("0")):
+                    tx_kwargs["commission"] = _normalize_model_decimal(
+                        Transactions, "commission", event.fee["quantity"]
+                    )
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
