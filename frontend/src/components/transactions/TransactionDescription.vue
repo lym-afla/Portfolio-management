@@ -72,22 +72,25 @@
 
       <!-- Crypto events -->
       <template v-else-if="transaction.type === 'Crypto reward'">
-        Crypto reward of {{ transaction.quantity }}
+        Crypto reward of
+        {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
         {{ transaction.security?.ticker || transaction.security?.name }}
       </template>
 
       <template v-else-if="isCryptoEvent">
-        {{ transaction.type }} {{ transaction.quantity }}
+        {{ transaction.type }}
+        {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
         {{ transaction.security?.ticker || transaction.security?.name }}
         <template v-if="transaction.price && transaction.price !== '–'">
-          @{{ transaction.price }}
+          @{{ formatPrice(transaction.price, digits) ?? transaction.price }}
         </template>
       </template>
 
       <!-- Regular transaction (Buy/Sell) -->
       <template v-else-if="isRegularTransaction">
         <template v-if="transaction.quantity && transaction.quantity !== '–'">
-          {{ transaction.quantity }} @{{ transaction.price }}
+          {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
+          @{{ formatPrice(transaction.price, digits) ?? transaction.price }}
         </template>
         <template v-else> @ {{ transaction.price }} </template> of
         <security-link
@@ -122,6 +125,8 @@ import { computed } from 'vue'
 import SecurityLink from './SecurityLink.vue'
 import CommissionDisplay from './CommissionDisplay.vue'
 import AciDisplay from './AciDisplay.vue'
+import { formatQuantity, formatPrice } from '@/utils/formatUtils'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   transaction: {
@@ -129,6 +134,12 @@ const props = defineProps({
     required: true,
   },
 })
+
+const authStore = useAuthStore()
+
+// User's global decimal-place preference (UserProfileSerializer.digits).
+// Defaults to 2 when the user profile isn't loaded yet or omits the field.
+const digits = computed(() => authStore.user?.digits ?? 2)
 
 const isBondRedemption = computed(() =>
   ['Bond redemption', 'Bond maturity'].includes(props.transaction.type)
