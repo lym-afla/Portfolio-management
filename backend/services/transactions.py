@@ -245,7 +245,11 @@ def total_cash_flow(transaction, target_currency=None):
         ]
         calculated_cash_flow *= fx_rate
 
-    return round(calculated_cash_flow, 2)
+    # Return full precision — the display layer (format_value with the user's
+    # digits setting) handles presentation rounding. Hardcoding round(..., 2)
+    # here truncated 8dp stablecoin amounts before they reached the serializer
+    # (issue #32) and accumulated rounding error in balance/NAV sums.
+    return calculated_cash_flow
 
 
 # =============================================================================
