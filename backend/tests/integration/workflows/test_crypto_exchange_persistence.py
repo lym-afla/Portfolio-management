@@ -1032,8 +1032,11 @@ def test_spot_legs_buy_base_fee_adjusts_price_for_fee_inclusive_basis():
     assert leg["quantity"] * leg["price"] == Decimal("96.058")
 
 
-def test_spot_legs_buy_quote_fee_adjusts_price_for_fee_inclusive_basis():
-    """A buy with a quote-asset fee also adjusts price so basis includes the fee."""
+def test_spot_legs_buy_quote_fee_keeps_raw_fill_price():
+    """A buy with a QUOTE-ASSET fee keeps the raw fill price — the commission
+    is tracked separately (in cash_flow and the commission field), NOT baked
+    into the cost basis. This keeps realized gain/loss independent of
+    commissions for analytics. Issue #30."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1045,9 +1048,10 @@ def test_spot_legs_buy_quote_fee_adjusts_price_for_fee_inclusive_basis():
     # quantity stays gross (quote-fee doesn't net into qty); cash_flow = value + fee.
     assert leg["quantity"] == Decimal("1")
     assert leg["cash_flow"] == Decimal("-100.5")
-    # Effective price = 100.5 / 1 = 100.5 (raw was 100; fee baked in).
-    assert leg["price"] == Decimal("100.5")
-    assert leg["quantity"] * leg["price"] == Decimal("100.5")
+    # Price stays the RAW fill (100) — the fee is NOT baked into the basis.
+    assert leg["price"] == Decimal("100")
+    # basis = qty * price = 100 (excludes the 0.5 commission), NOT 100.5.
+    assert leg["quantity"] * leg["price"] == Decimal("100")
 
 
 def test_spot_legs_buy_no_fee_keeps_raw_fill_price():

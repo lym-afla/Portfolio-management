@@ -551,13 +551,25 @@ def _spot_legs(
             else:
                 cash_flow = value
 
-        # For BUYS, adjust the stored price to the effective price (incl. fee)
-        # so that quantity * price == cash actually paid. This makes
-        # get_economic_basis (realized.py) include the fee in the cost basis
-        # WITHOUT any calc-layer change. Sells keep the raw fill price (the fee
-        # affects the asset disposed, not the cost basis). Issue #30.
+        # For BUYS with a BASE-ASSET fee, adjust the stored price to the
+        # effective price (incl. fee) so that quantity * price == cash actually
+        # paid. The base-asset fee reduced the units received (netted into
+        # quantity above), so the real per-unit acquisition cost is higher than
+        # the fill price. This makes get_economic_basis (realized.py) include
+        # the fee in the cost basis WITHOUT any calc-layer change.
+        #
+        # QUOTE-ASSET fees are NOT adjusted: the fee is a separate cash expense
+        # in the quote currency, so the cost basis stays the raw fill price and
+        # the commission is tracked separately for analytics (realized gain/loss
+        # reflects market performance only; commission is its own line item).
+        # SELLS are NOT adjusted: the fee affects the asset disposed (quantity),
+        # not the cost basis (which comes from the buy). Issue #30.
         effective_price = price
-        if side.lower() == "buy" and base_quantity != 0:
+        if (
+            side.lower() == "buy"
+            and normalized_fee_asset == base.upper()
+            and base_quantity != 0
+        ):
             effective_price = abs(cash_flow) / base_quantity
 
         return [
