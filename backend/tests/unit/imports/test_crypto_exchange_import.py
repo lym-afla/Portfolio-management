@@ -45,7 +45,9 @@ def test_normalize_bybit_spot_execution_buy_btc_usdt_with_quote_fee():
     # total USDT spent (value + fee).
     assert _leg_quantities(event) == {"BTC": Decimal("0.1")}
     assert len(event.legs) == 1
-    assert event.legs[0]["price"] == Decimal("60000")
+    # Effective price (incl. quote fee): |cash_flow| / qty = 6003 / 0.1 = 60030.
+    # The raw fill was 60000; the fee is baked in so basis = cash paid (#30).
+    assert event.legs[0]["price"] == Decimal("60030")
     assert event.legs[0]["cash_flow"] == Decimal("-6003")
     assert event.fee == {
         "asset": "USDT",
@@ -223,7 +225,9 @@ def test_normalize_okx_spot_fill_buy_with_quote_fee():
     # spent (value + fee).
     assert _leg_quantities(event) == {"BTC": Decimal("0.5")}
     assert len(event.legs) == 1
-    assert event.legs[0]["price"] == Decimal("70000")
+    # Effective price (incl. quote fee): |cash_flow| / qty = 35005 / 0.5 = 70010.
+    # The raw fill was 70000; the fee is baked in so basis = cash paid (#30).
+    assert event.legs[0]["price"] == Decimal("70010")
     assert event.legs[0]["cash_flow"] == Decimal("-35005")
     assert event.fee["asset"] == "USDT"
     assert event.fee["quantity"] == Decimal("-5")

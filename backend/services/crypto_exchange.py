@@ -551,11 +551,20 @@ def _spot_legs(
             else:
                 cash_flow = value
 
+        # For BUYS, adjust the stored price to the effective price (incl. fee)
+        # so that quantity * price == cash actually paid. This makes
+        # get_economic_basis (realized.py) include the fee in the cost basis
+        # WITHOUT any calc-layer change. Sells keep the raw fill price (the fee
+        # affects the asset disposed, not the cost basis). Issue #30.
+        effective_price = price
+        if side.lower() == "buy" and base_quantity != 0:
+            effective_price = abs(cash_flow) / base_quantity
+
         return [
             {
                 "asset": base,
                 "quantity": base_quantity,
-                "price": price,
+                "price": effective_price,
                 "price_asset": "USD",
                 "role": "base",
                 "cash_flow": cash_flow,

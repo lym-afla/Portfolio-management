@@ -1003,3 +1003,132 @@ def test_spot_legs_zero_fee_no_fee_asset_key():
     assert leg["quantity"] == Decimal("0.001")
     assert leg["cash_flow"] == Decimal("-96.058")
     assert leg["fee_asset"] == ""
+
+
+def test_spot_legs_buy_base_fee_adjusts_price_for_fee_inclusive_basis():
+    """A buy with a base-asset fee adjusts the stored price so that
+    quantity * price == cash_paid (the fee is baked into the effective price).
+    This makes get_economic_basis correct without calc-layer changes (#30)."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="buy", base="BTC", quote="USDT",
+        qty=Decimal("0.001"), price=Decimal("96058"),
+        fee_delta=Decimal("-0.00000012"), fee_asset="BTC",
+    )
+    leg = legs[0]
+    # quantity is net (PR #31); cash_flow is pure trade value (PR #31).
+    assert leg["quantity"] == Decimal("0.00099988")
+    assert leg["cash_flow"] == Decimal("-96.058")
+    # Price is the EFFECTIVE price (incl. fee): abs(cash_flow) / base_quantity.
+    # NOTE: the brief listed 96069.528343 (6dp), but Python Decimal division
+    # produces the full-precision non-terminating expansion
+    # 96069.52834340120814497739729. The 6dp value BREAKS the invariant below
+    # (qty*6dp_price = 96.05799999959884 != 96.058), so the exact quotient is
+    # the only value consistent with both the implementation and the invariant.
+    expected_effective_price = Decimal("96.058") / Decimal("0.00099988")
+    assert leg["price"] == expected_effective_price
+    # The invariant: quantity * price == cash actually paid (|cash_flow|).
+    assert leg["quantity"] * leg["price"] == Decimal("96.058")
+
+
+def test_spot_legs_buy_quote_fee_adjusts_price_for_fee_inclusive_basis():
+    """A buy with a quote-asset fee also adjusts price so basis includes the fee."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="buy", base="ETH", quote="USDT",
+        qty=Decimal("1"), price=Decimal("100"),
+        fee_delta=Decimal("-0.5"), fee_asset="USDT",
+    )
+    leg = legs[0]
+    # quantity stays gross (quote-fee doesn't net into qty); cash_flow = value + fee.
+    assert leg["quantity"] == Decimal("1")
+    assert leg["cash_flow"] == Decimal("-100.5")
+    # Effective price = 100.5 / 1 = 100.5 (raw was 100; fee baked in).
+    assert leg["price"] == Decimal("100.5")
+    assert leg["quantity"] * leg["price"] == Decimal("100.5")
+
+
+def test_spot_legs_buy_no_fee_keeps_raw_fill_price():
+    """A buy with no fee keeps the raw fill price (no adjustment needed)."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="buy", base="BTC", quote="USDT",
+        qty=Decimal("0.001"), price=Decimal("96058"),
+        fee_delta=Decimal("0"), fee_asset="",
+    )
+    leg = legs[0]
+    assert leg["price"] == Decimal("96058")  # unchanged
+    assert leg["quantity"] * leg["price"] == Decimal("96.058")
+
+
+def test_spot_legs_sell_does_not_adjust_price():
+    """A sell keeps the raw fill price — the fee affects the asset disposed
+    (quantity), not the cost basis (which comes from the buy). Adjusting the
+    sell price would distort realized-gain-on-disposal."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="sell", base="BTC", quote="USDT",
+        qty=Decimal("0.2"), price=Decimal("70000"),
+        fee_delta=Decimal("-0.0001"), fee_asset="BTC",
+    )
+    leg = legs[0]
+    assert leg["price"] == Decimal("70000")  # raw fill, NOT adjusted
+    assert leg["quantity"] == Decimal("-0.2001")  # net of fee (PR #31)
+
+
+@pytest.mark.django_db
+def test_buy_with_fee_has_fee_inclusive_cost_basis(user, crypto_account):
+    """Proof that get_economic_basis includes the fee: persist a base-fee buy,
+    then call get_economic_basis and assert the basis == cash actually paid
+    (NOT cash_paid minus fee*price). This holds with ZERO calc-layer changes
+    because the stored price is the effective (fee-inclusive) price.
+
+    Note: the price field is a DecimalField(18, 9), so the full-precision
+    effective price 7000/0.0999 = 70070.07007007... is rounded to 9dp on save,
+    making basis = 6999.9999999999930 (within 7e-12 of 7000) rather than
+    exactly 7000. The assertion tolerates this model-rounding artifact but
+    still proves the fee is INCLUDED (basis ≈ 7000, NOT 6993 = 7000 - fee)."""
+    from datetime import datetime, timezone
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+    from services.realized import get_economic_basis
+
+    # BTC-USDT buy: 0.1 @ 70000, fee -0.0001 BTC (base asset).
+    # net qty = 0.0999; cash paid = 0.1*70000 = 7000; effective price = 7000/0.0999.
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:basis-1",
+        group_id="order-basis",
+        timestamp_ms=1769472000000,  # 2026-01-27
+        category="trade",
+        raw_type="spot_fill",
+        legs=[{
+            "asset": "BTC",
+            "quantity": Decimal("0.0999"),  # net of fee
+            "price": Decimal("7000") / Decimal("0.0999"),  # effective price
+            "price_asset": "USD",
+            "role": "base",
+            "cash_flow": Decimal("-7000"),
+            "quote_currency": "USDT",
+            "fee_asset": "BTC",
+        }],
+        fee={"asset": "BTC", "quantity": Decimal("-0.0001"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+
+    btc = Transactions.objects.get(investor=user, account=crypto_account).security
+    basis = get_economic_basis(btc, datetime(2026, 1, 28, tzinfo=timezone.utc), user, "USD")
+    # Basis == cash paid (7000), NOT 7000 - fee*price (which would be 6993).
+    # Tolerate the 9dp price-field rounding artifact (basis is within 7e-12 of 7000).
+    assert abs(basis - Decimal("7000")) < Decimal("0.01"), (
+        f"basis={basis!r}; expected ~7000 (cash paid, fee included), "
+        f"NOT 6993 (cash paid minus fee*price)"
+    )
+    # Hard lower bound: a basis below 6996 would mean the fee was NOT included
+    # (the no-fee-inclusive basis would be 7000 - 0.0001*70000 = 6993).
+    assert basis > Decimal("6996"), (
+        f"basis={basis!r} is too low — the fee is NOT included in the cost basis"
+    )
