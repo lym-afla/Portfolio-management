@@ -245,6 +245,12 @@ class Transactions(models.Model):
     # Sign reflects actual commission cash flow
     # (negative for outflow, positive for inflow)
     commission = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
+    # Currency/asset of the commission (e.g. "BTC" for a BTC-denominated fee on
+    # a BTC-USDT trade). Mirrors FXTransaction.commission_currency. Null when
+    # the commission is in the trade's own currency or absent.
+    commission_currency = models.CharField(
+        max_length=4, choices=ALL_CURRENCY_CHOICES, null=True, blank=True
+    )
     # Accounts for sign of ACI (negative for buy, positive for sell)
     aci = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     # For bond redemptions: tracks the notional amount redeemed per bond

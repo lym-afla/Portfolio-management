@@ -463,6 +463,9 @@ def persist_crypto_exchange_event(event, user, account):
                     tx_kwargs["commission"] = _normalize_model_decimal(
                         Transactions, "commission", event.fee["quantity"]
                     )
+                    fee_ccy = str(leg.get("fee_asset") or event.fee.get("asset") or "").upper()
+                    if fee_ccy:
+                        tx_kwargs["commission_currency"] = fee_ccy
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
@@ -511,26 +514,42 @@ def _spot_legs(
     # When the quote currency is a stablecoin (USDT/USDC), emit a SINGLE leg
     # (the base asset) with cash_flow = total stablecoin spent/received.
     # This treats the stablecoin as cash (which it is — Phase 4), not as a
-    # separate asset. The price is the actual fill price; the fee is included
-    # in cash_flow but not baked into the price or quantity.
+    # separate asset. The price is the actual fill price. Fee handling depends
+    # on fee_asset: a base-asset fee is netted into quantity (issue #30); a
+    # quote-asset fee is folded into cash_flow; see the branches below.
     if quote.upper() in STABLECOIN_CURRENCIES:
         value = qty * price
-        # Convert fee to quote-currency terms for the cash_flow total.
-        if fee_asset and fee_asset.upper() == base.upper():
-            fee_in_quote = abs(fee_delta) * price
-        else:
-            fee_in_quote = abs(fee_delta) if fee_asset and fee_asset.upper() == quote.upper() else Decimal("0")
+        normalized_fee_asset = (fee_asset or "").upper()
 
         if side.lower() == "buy":
             base_quantity = qty
-            # Total USDT leaving: trade value + fee.
-            cash_flow = -(value + fee_in_quote)
         elif side.lower() == "sell":
             base_quantity = -qty
-            # Total USDT received: trade value - fee.
-            cash_flow = value - fee_in_quote
         else:
             raise ValueError(f"Unsupported spot side: {side}")
+
+        if normalized_fee_asset == base.upper():
+            # Base-asset fee: net into the base quantity (the fee is paid in the
+            # asset being bought/sold, so it reduces the holding). cash_flow is
+            # the pure trade value (no fee->quote conversion). Issue #30.
+            base_quantity = base_quantity + fee_delta
+            if side.lower() == "buy":
+                cash_flow = -value
+            else:
+                cash_flow = value
+        elif normalized_fee_asset == quote.upper():
+            # Quote-asset fee: net into cash_flow (unchanged behavior). The fee
+            # is in the cash currency, so it reduces the cash moved.
+            if side.lower() == "buy":
+                cash_flow = -(value + abs(fee_delta))
+            else:
+                cash_flow = value - abs(fee_delta)
+        else:
+            # Third-asset fee (e.g. BNB): not represented (deferred, issue #30).
+            if side.lower() == "buy":
+                cash_flow = -value
+            else:
+                cash_flow = value
 
         return [
             {
@@ -541,6 +560,7 @@ def _spot_legs(
                 "role": "base",
                 "cash_flow": cash_flow,
                 "quote_currency": quote.upper(),
+                "fee_asset": normalized_fee_asset,
             }
         ]
 

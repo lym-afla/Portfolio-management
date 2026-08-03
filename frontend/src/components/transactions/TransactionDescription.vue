@@ -79,7 +79,7 @@
 
       <template v-else-if="isCryptoEvent">
         <template v-if="isCryptoTrade">
-          {{ transaction.type }}
+          {{ displayType }}
           {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
           @{{ formatPrice(transaction.price, digits) ?? transaction.price }} of
           <security-link
@@ -95,7 +95,7 @@
           {{ transaction.type }}
           {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
           {{ transaction.security?.ticker || transaction.security?.name }}
-          <template v-if="transaction.price && transaction.price !== '–'">
+          <template v-if="transaction.price && transaction.price !== '–' && !isCryptoTransfer">
             @{{ formatPrice(transaction.price, digits) ?? transaction.price }}
           </template>
         </template>
@@ -140,7 +140,7 @@ import { computed } from 'vue'
 import SecurityLink from './SecurityLink.vue'
 import CommissionDisplay from './CommissionDisplay.vue'
 import AciDisplay from './AciDisplay.vue'
-import { formatQuantity, formatPrice } from '@/utils/formatUtils'
+import { formatQuantity, formatPrice, displayTransactionType } from '@/utils/formatUtils'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
@@ -199,6 +199,17 @@ const isCryptoEvent = computed(() =>
 // simpler "type quantity ticker @price" format.
 const isCryptoTrade = computed(() =>
   ['Crypto trade in', 'Crypto trade out'].includes(props.transaction.type)
+)
+
+// Map stored crypto-trade types to the conventional Buy/Sell labels for
+// DISPLAY ONLY. The stored type stays 'Crypto trade in/out' for calc-layer
+// correctness (total_cash_flow / realized.py dispatch on type).
+const displayType = computed(() => displayTransactionType(props.transaction.type))
+// Crypto transfers have no meaningful price (they're internal asset moves);
+// suppress the @price display for them. Option settlement keeps its price
+// (the settlement/underlying price is meaningful).
+const isCryptoTransfer = computed(() =>
+  ['Crypto transfer in', 'Crypto transfer out'].includes(props.transaction.type)
 )
 
 const isRegularTransaction = computed(
