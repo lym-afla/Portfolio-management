@@ -511,8 +511,9 @@ def _spot_legs(
     # When the quote currency is a stablecoin (USDT/USDC), emit a SINGLE leg
     # (the base asset) with cash_flow = total stablecoin spent/received.
     # This treats the stablecoin as cash (which it is — Phase 4), not as a
-    # separate asset. The price is the actual fill price; the fee is included
-    # in cash_flow but not baked into the price or quantity.
+    # separate asset. The price is the actual fill price. Fee handling depends
+    # on fee_asset: a base-asset fee is netted into quantity (issue #30); a
+    # quote-asset fee is folded into cash_flow; see the branches below.
     if quote.upper() in STABLECOIN_CURRENCIES:
         value = qty * price
         normalized_fee_asset = (fee_asset or "").upper()
