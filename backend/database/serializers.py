@@ -456,14 +456,18 @@ class TransactionSerializer(serializers.ModelSerializer):
     def get_commission(self, obj):
         """Format commission for display.
 
+        Uses commission_currency (the fee's native asset, e.g. BTC for a
+        BTC-denominated crypto fee) when set; otherwise the trade's currency.
+
         Args:
             obj: Transaction instance.
 
         Returns:
             str: Formatted commission string or None.
         """
+        fee_currency = obj.commission_currency or obj.currency
         return format_value(
-            obj.commission, "commission", obj.currency, self.get_digits()
+            obj.commission, "commission", fee_currency, self.get_digits()
         )
 
     def get_aci(self, obj):

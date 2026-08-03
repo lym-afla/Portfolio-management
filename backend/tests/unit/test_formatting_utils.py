@@ -72,3 +72,20 @@ def test_format_value_quantity_uses_adaptive_formatter():
     assert format_value(Decimal("100"), "quantity", "USD", 2) == "100.00"
     # current_position / open_position share the same adaptive path.
     assert format_value(Decimal("0.6803"), "current_position", "USD", 2) == "0.68"
+
+
+# ---------------------------------------------------------------------------
+# format_value dispatch (the "commission" key renders the currency label)
+#
+# Documents the contract relied on by TransactionSerializer.get_commission and
+# FXTransactionSerializer.get_commission: format_value(value, "commission",
+# currency, digits) renders the currency symbol/label inline (e.g. "BTC0.00",
+# "$1.50"). This lets the serializer pick the fee's native asset
+# (commission_currency) without any frontend change.
+# ---------------------------------------------------------------------------
+
+
+def test_format_value_commission_uses_commission_currency_label():
+    """When commission_currency is set, the commission renders in that asset."""
+    # BTC-denominated fee -> "BTC" label, not the trade's USDT currency.
+    assert format_value(Decimal("-0.00068030"), "commission", "BTC", 2) == "(BTC0.00)"
