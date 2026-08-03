@@ -903,3 +903,71 @@ def test_option_sell_and_otm_expiry_persist_correctly(user, crypto_account):
     )
     # Positive: collateral came back.
     assert settle_tx.quantity == Decimal("0.00716211")
+
+
+def test_spot_legs_nets_base_fee_into_quantity():
+    """_spot_legs stablecoin branch: a base-asset fee is netted into the base
+    quantity; cash_flow is the pure trade value (no fee conversion)."""
+    from services.crypto_exchange import _spot_legs
+
+    # BTC-USDT buy: qty=0.001, price=96058, fee=-0.00000012 BTC (base).
+    legs = _spot_legs(
+        side="buy",
+        base="BTC",
+        quote="USDT",
+        qty=Decimal("0.001"),
+        price=Decimal("96058"),
+        fee_delta=Decimal("-0.00000012"),
+        fee_asset="BTC",
+    )
+    assert len(legs) == 1
+    leg = legs[0]
+    # Net quantity: 0.001 + (-0.00000012) = 0.00099988
+    assert leg["quantity"] == Decimal("0.00099988")
+    # Pure trade value, NO fee conversion: -(0.001 * 96058) = -96.058
+    assert leg["cash_flow"] == Decimal("-96.058")
+    assert leg["quote_currency"] == "USDT"
+    assert leg["fee_asset"] == "BTC"
+
+
+def test_spot_legs_quote_fee_still_folded_into_cash_flow():
+    """_spot_legs stablecoin branch: a quote-asset fee (e.g. USDT fee) is still
+    netted into cash_flow (unchanged behavior). Regression guard."""
+    from services.crypto_exchange import _spot_legs
+
+    # TRUMP-USDT sell: qty=0.6798, price=16.557, fee=-0.01125545 USDT (quote).
+    legs = _spot_legs(
+        side="sell",
+        base="TRUMP",
+        quote="USDT",
+        qty=Decimal("0.6798"),
+        price=Decimal("16.557"),
+        fee_delta=Decimal("-0.01125545"),
+        fee_asset="USDT",
+    )
+    assert len(legs) == 1
+    leg = legs[0]
+    # Quantity is gross (the fee is in quote, not base).
+    assert leg["quantity"] == Decimal("-0.6798")
+    # cash_flow = value - fee = (0.6798 * 16.557) - 0.01125545 = 11.24419315
+    assert leg["cash_flow"] == Decimal("11.24419315")
+    assert leg["fee_asset"] == "USDT"
+
+
+def test_spot_legs_zero_fee_no_fee_asset_key():
+    """_spot_legs stablecoin branch: zero fee -> no fee applied, fee_asset empty."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="buy",
+        base="BTC",
+        quote="USDT",
+        qty=Decimal("0.001"),
+        price=Decimal("96058"),
+        fee_delta=Decimal("0"),
+        fee_asset="",
+    )
+    leg = legs[0]
+    assert leg["quantity"] == Decimal("0.001")
+    assert leg["cash_flow"] == Decimal("-96.058")
+    assert leg["fee_asset"] == ""

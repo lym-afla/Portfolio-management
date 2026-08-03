@@ -72,13 +72,13 @@ def test_normalize_bybit_spot_execution_sell_with_base_fee():
     )
 
     assert event.group_id == "exec-2"
-    # Single base leg: quantity is the actual fill (negative for sell), price
-    # is the actual fill price, and cash_flow is total USDT received
-    # (value - fee valued in quote terms).
-    assert _leg_quantities(event) == {"BTC": Decimal("-0.25")}
+    # Single base leg: the BTC fee is NETTED into the base quantity (issue #30),
+    # so the net holding is -0.25 + (-0.0002) = -0.2502. cash_flow is the PURE
+    # trade value (0.25 * 61000 = 15250); the fee is NOT converted to quote.
+    assert _leg_quantities(event) == {"BTC": Decimal("-0.2502")}
     assert len(event.legs) == 1
     assert event.legs[0]["price"] == Decimal("61000")
-    assert event.legs[0]["cash_flow"] == Decimal("15237.8")
+    assert event.legs[0]["cash_flow"] == Decimal("15250")
     assert event.fee["asset"] == "BTC"
     assert event.fee["quantity"] == Decimal("-0.0002")
 
@@ -189,12 +189,13 @@ def test_normalize_okx_spot_fill_sell_btc_usdt_with_negative_base_fee():
     assert event.timestamp_ms == 1767225600000
     assert event.category == "trade"
     assert event.raw_type == "spot_fill"
-    # Single base leg: actual fill quantity (negative for sell) and price; the
-    # BTC fee is valued in quote terms and subtracted from the USDT received.
-    assert _leg_quantities(event) == {"BTC": Decimal("-0.2")}
+    # Single base leg: the BTC fee is NETTED into the base quantity (issue #30),
+    # so the net holding is -0.2 + (-0.0001) = -0.2001. cash_flow is the PURE
+    # trade value (0.2 * 70000 = 14000); the fee is NOT converted to quote.
+    assert _leg_quantities(event) == {"BTC": Decimal("-0.2001")}
     assert len(event.legs) == 1
     assert event.legs[0]["price"] == Decimal("70000")
-    assert event.legs[0]["cash_flow"] == Decimal("13993")
+    assert event.legs[0]["cash_flow"] == Decimal("14000")
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("-0.0001"),
@@ -243,12 +244,13 @@ def test_normalize_okx_spot_fill_positive_fee_is_rebate():
         }
     )
 
-    # Single base leg: the positive fee is a rebate; it is still valued in
-    # quote terms and subtracted from the USDT received (sell).
-    assert _leg_quantities(event) == {"BTC": Decimal("-0.2")}
+    # Single base leg: the BTC rebate is NETTED into the base quantity (issue
+    # #30), so the net holding is -0.2 + 0.0001 = -0.1999 (you sold 0.2 but got
+    # 0.0001 back). cash_flow is the PURE trade value (0.2 * 70000 = 14000).
+    assert _leg_quantities(event) == {"BTC": Decimal("-0.1999")}
     assert len(event.legs) == 1
     assert event.legs[0]["price"] == Decimal("70000")
-    assert event.legs[0]["cash_flow"] == Decimal("13993")
+    assert event.legs[0]["cash_flow"] == Decimal("14000")
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("0.0001"),

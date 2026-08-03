@@ -515,22 +515,37 @@ def _spot_legs(
     # in cash_flow but not baked into the price or quantity.
     if quote.upper() in STABLECOIN_CURRENCIES:
         value = qty * price
-        # Convert fee to quote-currency terms for the cash_flow total.
-        if fee_asset and fee_asset.upper() == base.upper():
-            fee_in_quote = abs(fee_delta) * price
-        else:
-            fee_in_quote = abs(fee_delta) if fee_asset and fee_asset.upper() == quote.upper() else Decimal("0")
+        normalized_fee_asset = (fee_asset or "").upper()
 
         if side.lower() == "buy":
             base_quantity = qty
-            # Total USDT leaving: trade value + fee.
-            cash_flow = -(value + fee_in_quote)
         elif side.lower() == "sell":
             base_quantity = -qty
-            # Total USDT received: trade value - fee.
-            cash_flow = value - fee_in_quote
         else:
             raise ValueError(f"Unsupported spot side: {side}")
+
+        if normalized_fee_asset == base.upper():
+            # Base-asset fee: net into the base quantity (the fee is paid in the
+            # asset being bought/sold, so it reduces the holding). cash_flow is
+            # the pure trade value (no fee->quote conversion). Issue #30.
+            base_quantity = base_quantity + fee_delta
+            if side.lower() == "buy":
+                cash_flow = -value
+            else:
+                cash_flow = value
+        elif normalized_fee_asset == quote.upper():
+            # Quote-asset fee: net into cash_flow (unchanged behavior). The fee
+            # is in the cash currency, so it reduces the cash moved.
+            if side.lower() == "buy":
+                cash_flow = -(value + abs(fee_delta))
+            else:
+                cash_flow = value - abs(fee_delta)
+        else:
+            # Third-asset fee (e.g. BNB): not represented (deferred, issue #30).
+            if side.lower() == "buy":
+                cash_flow = -value
+            else:
+                cash_flow = value
 
         return [
             {
@@ -541,6 +556,7 @@ def _spot_legs(
                 "role": "base",
                 "cash_flow": cash_flow,
                 "quote_currency": quote.upper(),
+                "fee_asset": normalized_fee_asset,
             }
         ]
 
