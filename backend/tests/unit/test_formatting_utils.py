@@ -79,13 +79,17 @@ def test_format_value_quantity_uses_adaptive_formatter():
 #
 # Documents the contract relied on by TransactionSerializer.get_commission and
 # FXTransactionSerializer.get_commission: format_value(value, "commission",
-# currency, digits) renders the currency symbol/label inline (e.g. "BTC0.00",
-# "$1.50"). This lets the serializer pick the fee's native asset
+# currency, digits) renders the currency symbol/label inline (e.g. "BTC0.0007",
+# "$1.50"). Uses adaptive decimal places so small fees keep their first
+# significant digit. This lets the serializer pick the fee's native asset
 # (commission_currency) without any frontend change.
 # ---------------------------------------------------------------------------
 
 
 def test_format_value_commission_uses_commission_currency_label():
-    """When commission_currency is set, the commission renders in that asset."""
-    # BTC-denominated fee -> "BTC" label, not the trade's USDT currency.
-    assert format_value(Decimal("-0.00068030"), "commission", "BTC", 2) == "(BTC0.00)"
+    """When commission_currency is set, the commission renders in that asset,
+    with adaptive decimals (small fees keep precision)."""
+    # BTC-denominated fee 0.00068030 -> "BTC" label + first significant digit.
+    assert format_value(Decimal("-0.00068030"), "commission", "BTC", 2) == "(BTC0.0007)"
+    # A fee >= 1 uses the digits setting.
+    assert format_value(Decimal("-1.50"), "commission", "USD", 2) == "($1.50)"

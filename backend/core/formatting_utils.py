@@ -11,8 +11,6 @@ from typing import Any, Dict, List, Union
 from babel.numbers import get_currency_symbol
 from django.core.paginator import Page
 
-from constants import ALL_CURRENCY_CHOICES
-
 NOT_RELEVANT = "N/R"
 
 
@@ -124,6 +122,10 @@ def format_value(
         return f"{float(value):.2f}%" if value is not None else None
     elif key == "aci_amount":
         return currency_format(value, currency, digits=2)
+    elif key == "commission":
+        # Adaptive: a small fee (e.g. 0.0006803 TRUMP) keeps its first significant
+        # digit instead of rounding to "0.00" at digits=2.
+        return format_commission_adaptive(value, currency, digits)
     elif isinstance(value, (Decimal, float, int)):
         return currency_format(value, currency, digits)
     else:
@@ -151,11 +153,13 @@ def currency_format(
         # Get the currency symbol using Babel first
         symbol = get_currency_symbol(currency.upper(), locale="en_US")
 
-        # If the symbol is the same as the currency code,
-        # it means the currency was not recognized by Babel
+        # If the symbol is the same as the currency code, Babel did not
+        # recognize it (a crypto/stablecoin code like USDC, USDT, BTC, TRUMP).
+        # Use the code literally rather than the ALL_CURRENCY_CHOICES mapping
+        # (which misleadingly maps USDC->"$" and USDT->"₮"); the code itself is
+        # the clearest label for non-ISO currencies.
         if symbol == currency.upper():
-            # Fall back to ALL_CURRENCY_CHOICES
-            symbol = dict(ALL_CURRENCY_CHOICES).get(currency.upper(), currency.upper())
+            symbol = currency.upper()
 
     # If no value is provided, return only the symbol
     if value is None:
@@ -220,6 +224,34 @@ def format_quantity_adaptive(value: Any, digits: int = 2) -> str:
         decimals += 1
         s = f"{num:.{decimals}f}"
     return s
+
+
+def format_commission_adaptive(value: Any, currency: str, digits: int = 2) -> str:
+    """Format a commission value with adaptive decimal places and a currency label.
+
+    Like ``currency_format`` (parentheses for negative, dash for zero) but uses
+    ``format_quantity_adaptive`` for the number so small fees keep their first
+    significant digit (e.g. a TRUMP fee of 0.0006803 -> "TRUMP0.0007" at digits=2,
+    not "TRUMP0.00").
+
+    :param value: Commission value (Decimal/float/int) or numeric string.
+    :param currency: Currency/asset code for the label (e.g. "BTC", "USDT").
+    :param digits: User's global digits setting.
+    :return: Formatted string, or "–" for None/zero.
+    """
+    if value is None or value == "":
+        return "–"
+    try:
+        num = Decimal(str(value))
+    except Exception:
+        return str(value)
+    if num == 0:
+        return "–"
+    symbol = currency_format(currency=currency)
+    formatted_num = format_quantity_adaptive(num, digits)
+    if num < 0:
+        return f"({symbol}{formatted_num.lstrip('-')})"
+    return f"{symbol}{formatted_num}"
 
 
 def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:

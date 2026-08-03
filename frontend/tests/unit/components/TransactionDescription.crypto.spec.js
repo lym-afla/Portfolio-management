@@ -79,8 +79,10 @@ describe('TransactionDescription crypto events', () => {
     })
 
     const text = wrapper.text()
-    // Type label is shown.
-    expect(text).toContain('Crypto trade in')
+    // Type label is mapped to the conventional 'Buy' for display (the stored
+    // type stays 'Crypto trade in' for calc-layer correctness).
+    expect(text).toContain('Buy')
+    expect(text).not.toContain('Crypto trade in')
     // Quantity formatted via the adaptive rule (sub-1 -> first significant
     // digit only, so 0.6803 -> "0.7"); price >= 1 uses fixed digits=4.
     expect(text).toContain('0.7')
@@ -110,7 +112,9 @@ describe('TransactionDescription crypto events', () => {
     })
 
     const text = wrapper.text()
-    expect(text).toContain('Crypto trade out')
+    // Type label mapped to 'Sell' for display.
+    expect(text).toContain('Sell')
+    expect(text).not.toContain('Crypto trade out')
     expect(text).toContain('@73.2090 of')
     expect(text).toContain('TRUMP')
     // Commission-display renders when commission is set.
@@ -144,5 +148,7 @@ describe('TransactionDescription crypto events', () => {
     expect(text).toContain('USDT')
     // The trade-only " of" separator must NOT appear for transfers.
     expect(text).not.toContain('of Tether')
+    // Transfers have no meaningful price -> suppress @price (finding #6).
+    expect(text).not.toContain('@')
   })
 })
