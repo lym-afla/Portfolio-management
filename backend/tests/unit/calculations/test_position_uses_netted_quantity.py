@@ -11,7 +11,6 @@ from decimal import Decimal
 import pytest
 
 from common.models import Accounts, Brokers, Transactions
-from constants import TRANSACTION_TYPE_CRYPTO_TRADE_IN
 from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 from services.positions import position
 
