@@ -905,6 +905,38 @@ def test_option_sell_and_otm_expiry_persist_correctly(user, crypto_account):
     assert settle_tx.quantity == Decimal("0.00716211")
 
 
+@pytest.mark.django_db
+def test_base_fee_trade_persists_commission_currency(user, crypto_account):
+    """The fee asset is persisted to commission_currency (issue #30) so the
+    frontend can show '|| Fee: BTC0.000000012'."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:ccy-1",
+        group_id="order-ccy",
+        timestamp_ms=1738454400000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("0.00099988"),
+                "price": Decimal("96058"),
+                "price_asset": "USD",
+                "role": "base",
+                "cash_flow": Decimal("-96.058"),
+                "quote_currency": "USDT",
+                "fee_asset": "BTC",
+            }
+        ],
+        fee={"asset": "BTC", "quantity": Decimal("-0.00000012"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.commission_currency == "BTC"
+
+
 def test_spot_legs_nets_base_fee_into_quantity():
     """_spot_legs stablecoin branch: a base-asset fee is netted into the base
     quantity; cash_flow is the pure trade value (no fee conversion)."""

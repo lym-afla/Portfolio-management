@@ -463,6 +463,9 @@ def persist_crypto_exchange_event(event, user, account):
                     tx_kwargs["commission"] = _normalize_model_decimal(
                         Transactions, "commission", event.fee["quantity"]
                     )
+                    fee_ccy = str(leg.get("fee_asset") or event.fee.get("asset") or "").upper()
+                    if fee_ccy:
+                        tx_kwargs["commission_currency"] = fee_ccy
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
