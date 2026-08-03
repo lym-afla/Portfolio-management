@@ -1024,6 +1024,16 @@ def build_okx_csv_events(df, tz_offset):
         else:
             # crypto<->stablecoin: emit a spot payload from the base (crypto) leg.
             base, quote = underlying.split("-")
+            # Find the quote leg's actual Balance Change (the real stablecoin
+            # amount moved). OKX's CONVERT Filled Price is approximate —
+            # base_amount * fillPx != quote_balance_change exactly. Deriving
+            # the price from the actual quote movement ensures cash_flow
+            # (qty * price) matches the real USDT/USDC amount.
+            quote_amount = None
+            for r, _rid, _ft, _sym in rows:
+                if (r.get("Balance Unit") or "").upper() == quote:
+                    quote_amount = abs(Decimal(str(r.get("Balance Change") or "0")))
+                    break
             for r, rid, ft, _sym in rows:
                 unit = (r.get("Balance Unit") or "").upper()
                 if unit != base:
@@ -1031,7 +1041,12 @@ def build_okx_csv_events(df, tz_offset):
                 bal = Decimal(str(r.get("Balance Change") or "0"))
                 side = "buy" if bal > 0 else "sell"
                 amount = abs(Decimal(str(r.get("Amount") or "0")))
-                filled_price = Decimal(str(r.get("Filled Price") or "0"))
+                # Prefer the derived price (actual quote movement / base amount)
+                # over the CSV's approximate Filled Price.
+                if quote_amount and amount:
+                    filled_price = quote_amount / amount
+                else:
+                    filled_price = Decimal(str(r.get("Filled Price") or "0"))
                 fee = Decimal(str(r.get("Fee") or "0"))
                 fee_unit = _strip_okx_bom(r.get("Fee Unit")) or ""
                 fee_ccy = fee_unit if fee_unit else quote
