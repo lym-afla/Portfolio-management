@@ -45,6 +45,9 @@ def test_normalize_bybit_spot_execution_buy_btc_usdt_with_quote_fee():
     # total USDT spent (value + fee).
     assert _leg_quantities(event) == {"BTC": Decimal("0.1")}
     assert len(event.legs) == 1
+    # Quote-asset fee (USDT): price stays the RAW fill (60000). The commission
+    # is tracked separately (cash_flow + commission field), NOT baked into the
+    # cost basis — keeps realized gain/loss independent of commissions (#30).
     assert event.legs[0]["price"] == Decimal("60000")
     assert event.legs[0]["cash_flow"] == Decimal("-6003")
     assert event.fee == {
@@ -223,6 +226,8 @@ def test_normalize_okx_spot_fill_buy_with_quote_fee():
     # spent (value + fee).
     assert _leg_quantities(event) == {"BTC": Decimal("0.5")}
     assert len(event.legs) == 1
+    # Quote-asset fee (USDT): price stays the RAW fill (70000). The commission
+    # is tracked separately, NOT baked into the cost basis (#30).
     assert event.legs[0]["price"] == Decimal("70000")
     assert event.legs[0]["cash_flow"] == Decimal("-35005")
     assert event.fee["asset"] == "USDT"
