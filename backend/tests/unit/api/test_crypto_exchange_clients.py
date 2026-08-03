@@ -471,7 +471,10 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
     assert len(events) == 1
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "okx"
-    assert events[0].legs[0]["quantity"] == Decimal("-0.2")
+    # Base-asset fee (BTC fee on a BTC-USDT sell) is netted into the base
+    # quantity (issue #30): -0.2 + (-0.0001) = -0.2001 (you sold 0.2 AND paid
+    # 0.0001 BTC fee, so net disposal is 0.2001).
+    assert events[0].legs[0]["quantity"] == Decimal("-0.2001")
 
 
 def test_bybit_iter_deposits_paginates_and_yields_rows(monkeypatch):
