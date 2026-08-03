@@ -13,7 +13,7 @@
     <td class="text-start">
       <transaction-description :transaction="transaction" />
     </td>
-    <td class="text-center">{{ transaction.type }}</td>
+    <td class="text-center">{{ displayType }}</td>
 
     <!-- Cash Flow columns (per currency) -->
     <template v-if="showCashFlow">
@@ -76,6 +76,7 @@
 import { computed } from 'vue'
 import TransactionDescription from './TransactionDescription.vue'
 import TransactionCashFlow from './TransactionCashFlow.vue'
+import { displayTransactionType } from '@/utils/formatUtils'
 
 const props = defineProps({
   transaction: {
@@ -116,4 +117,7 @@ const brokerAccountLabel = computed(() => {
   if (props.transaction.account.name) parts.push(props.transaction.account.name)
   return parts.join(' — ')
 })
+
+// Display the type label (crypto trades show 'Buy'/'Sell'; stored type unchanged).
+const displayType = computed(() => displayTransactionType(props.transaction.type))
 </script>

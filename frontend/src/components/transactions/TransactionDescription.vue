@@ -79,7 +79,7 @@
 
       <template v-else-if="isCryptoEvent">
         <template v-if="isCryptoTrade">
-          {{ CRYPTO_TYPE_DISPLAY[transaction.type] || transaction.type }}
+          {{ displayType }}
           {{ formatQuantity(transaction.quantity, digits) ?? transaction.quantity }}
           @{{ formatPrice(transaction.price, digits) ?? transaction.price }} of
           <security-link
@@ -140,7 +140,7 @@ import { computed } from 'vue'
 import SecurityLink from './SecurityLink.vue'
 import CommissionDisplay from './CommissionDisplay.vue'
 import AciDisplay from './AciDisplay.vue'
-import { formatQuantity, formatPrice } from '@/utils/formatUtils'
+import { formatQuantity, formatPrice, displayTransactionType } from '@/utils/formatUtils'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
@@ -204,11 +204,7 @@ const isCryptoTrade = computed(() =>
 // Map stored crypto-trade types to the conventional Buy/Sell labels for
 // DISPLAY ONLY. The stored type stays 'Crypto trade in/out' for calc-layer
 // correctness (total_cash_flow / realized.py dispatch on type).
-const CRYPTO_TYPE_DISPLAY = {
-  'Crypto trade in': 'Buy',
-  'Crypto trade out': 'Sell',
-}
-
+const displayType = computed(() => displayTransactionType(props.transaction.type))
 // Crypto transfers have no meaningful price (they're internal asset moves);
 // suppress the @price display for them. Option settlement keeps its price
 // (the settlement/underlying price is meaningful).

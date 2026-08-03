@@ -72,3 +72,23 @@ export function formatQuantity(value, digits = 2) {
 export function formatPrice(value, digits = 2) {
   return formatQuantity(value, digits)
 }
+
+/**
+ * Map a stored transaction type to its display label.
+ *
+ * Crypto trades ('Crypto trade in/out') display as 'Buy'/'Sell' for
+ * consistency with securities — the stored type stays 'Crypto trade in/out'
+ * because the calc layer (total_cash_flow / realized.py) dispatches on it.
+ * All other types pass through unchanged.
+ *
+ * @param {string} type - stored transaction type
+ * @returns {string} display label
+ */
+export const CRYPTO_TYPE_DISPLAY = {
+  'Crypto trade in': 'Buy',
+  'Crypto trade out': 'Sell',
+}
+
+export function displayTransactionType(type) {
+  return CRYPTO_TYPE_DISPLAY[type] || type
+}
