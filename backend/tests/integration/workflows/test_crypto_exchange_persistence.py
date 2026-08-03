@@ -1136,3 +1136,23 @@ def test_buy_with_fee_has_fee_inclusive_cost_basis(user, crypto_account):
     assert basis > Decimal("6996"), (
         f"basis={basis!r} is too low — the fee is NOT included in the cost basis"
     )
+
+
+@pytest.mark.django_db
+def test_cash_flow_preserves_full_precision(user, crypto_account):
+    """Regression for issue #32: cash_flow must preserve 8dp stablecoin amounts
+    (not truncate to 2dp), so symmetric in/out flows net to exactly zero."""
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:cf-precision",
+        group_id="cf-precision",
+        timestamp_ms=1738454400000,
+        category="deposit",
+        raw_type="transfer",
+        legs=_single_leg("USDT", Decimal("99.69064956"), "USDT"),
+        fee=None,
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    # Full 8dp preserved — NOT truncated to 99.69.
+    assert tx.cash_flow == Decimal("99.69064956")

@@ -241,7 +241,7 @@ class Transactions(models.Model):
         blank=True,
         help_text="Notional/par value per bond at transaction time (for bonds only)",
     )
-    cash_flow = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cash_flow = models.DecimalField(max_digits=16, decimal_places=9, null=True, blank=True)
     # Sign reflects actual commission cash flow
     # (negative for outflow, positive for inflow)
     commission = models.DecimalField(max_digits=15, decimal_places=9, null=True, blank=True)
