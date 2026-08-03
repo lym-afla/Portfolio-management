@@ -80,9 +80,9 @@ class CustomUser(AbstractUser):
     )
     digits = models.IntegerField(
         default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        validators=[MinValueValidator(0), MaxValueValidator(9)],
         error_messages={
-            "max_value": "The value for digits must be less than or equal to 6.",
+            "max_value": "The value for digits must be less than or equal to 9.",
             "min_value": "The value for digits must be greater than or equal to 0.",
         },
     )

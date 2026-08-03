@@ -69,8 +69,8 @@
             label="Number of digits"
             :rules="[
               (v) =>
-                (v >= 0 && v <= 6) ||
-                'The value for digits must be between 0 and 6',
+                (v >= 0 && v <= 9) ||
+                'The value for digits must be between 0 and 9',
             ]"
             :error-messages="fieldErrors.digits"
           />
