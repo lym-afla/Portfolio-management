@@ -1068,6 +1068,25 @@ def test_spot_legs_buy_no_fee_keeps_raw_fill_price():
     assert leg["quantity"] * leg["price"] == Decimal("96.058")
 
 
+def test_spot_legs_quote_cash_amount_overrides_qty_price():
+    """When quote_cash_amount is provided (the CSV's actual quote-leg Balance
+    Change), it replaces qty*price as the cash_flow base. This prevents
+    floating-point-like noise from the multiplication (e.g. 0.06684041 *
+    74837.4 = 5002.162499334 vs the real 5002.16249933). Issue #32."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="buy", base="BTC", quote="USDT",
+        qty=Decimal("0.06684041"), price=Decimal("74837.4"),
+        fee_delta=Decimal("-0.00006684"), fee_asset="BTC",
+        quote_cash_amount=Decimal("5002.16249933"),
+    )
+    leg = legs[0]
+    # cash_flow uses the exact settlement amount, NOT qty*price (which would
+    # be -5002.162499334 with a spurious 9th digit).
+    assert leg["cash_flow"] == Decimal("-5002.16249933")
+
+
 def test_spot_legs_sell_does_not_adjust_price():
     """A sell keeps the raw fill price — the fee affects the asset disposed
     (quantity), not the cost basis (which comes from the buy). Adjusting the

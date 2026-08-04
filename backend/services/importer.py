@@ -990,6 +990,22 @@ def build_okx_csv_events(df, tz_offset):
             else:
                 fee_ccy = symbol_clean
 
+            # Find the matching quote leg's actual Balance Change (the real
+            # stablecoin amount moved). qty*price can produce floating-point-like
+            # noise (e.g. 0.06684041*74837.4 = 5002.162499334 vs the real
+            # 5002.16249933). Passing the exact settlement amount ensures
+            # cash_flow matches the CSV exactly.
+            quote_cash_amount = None
+            quote_ccy = symbol_clean.split("-")[-1] if "-" in symbol_clean else ""
+            if quote_ccy:
+                for sib_row, _sib_id, _ft, _sym in rows:
+                    sib_unit = (_strip_okx_bom(sib_row.get("Balance Unit")) or "").upper()
+                    if sib_unit == quote_ccy.upper():
+                        quote_cash_amount = abs(
+                            Decimal(str(sib_row.get("Balance Change") or "0"))
+                        )
+                        break
+
             payload = {
                 "__kind": "spot",
                 "instId": symbol_clean,
@@ -1002,6 +1018,8 @@ def build_okx_csv_events(df, tz_offset):
                 "fee": str(fee),
                 "feeCcy": fee_ccy,
             }
+            if quote_cash_amount is not None:
+                payload["quoteCashAmount"] = str(quote_cash_amount)
             events.append((payload, str(row_id)))
 
     # CONVERT rows: stablecoin<->stablecoin = FX; crypto<->stablecoin = spot.
@@ -1062,6 +1080,8 @@ def build_okx_csv_events(df, tz_offset):
                     "fee": str(fee),
                     "feeCcy": fee_ccy,
                 }
+                if quote_amount is not None:
+                    payload["quoteCashAmount"] = str(quote_amount)
                 events.append((payload, str(rid)))
                 break
 

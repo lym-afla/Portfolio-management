@@ -510,6 +510,7 @@ def _spot_legs(
     price: Decimal,
     fee_delta: Decimal,
     fee_asset: str,
+    quote_cash_amount: Optional[Decimal] = None,
 ) -> List[Dict[str, Any]]:
     # When the quote currency is a stablecoin (USDT/USDC), emit a SINGLE leg
     # (the base asset) with cash_flow = total stablecoin spent/received.
@@ -518,7 +519,12 @@ def _spot_legs(
     # on fee_asset: a base-asset fee is netted into quantity (issue #30); a
     # quote-asset fee is folded into cash_flow; see the branches below.
     if quote.upper() in STABLECOIN_CURRENCIES:
-        value = qty * price
+        # Prefer the actual quote-currency settlement amount (from the CSV's
+        # quote-leg Balance Change) over the computed qty*price — the product
+        # can produce floating-point-like noise that doesn't match the exchange's
+        # exact settlement (e.g. 0.06684041*74837.4 = 5002.162499334 vs the real
+        # 5002.16249933). Issue #32.
+        value = quote_cash_amount if quote_cash_amount is not None else qty * price
         normalized_fee_asset = (fee_asset or "").upper()
 
         if side.lower() == "buy":
@@ -669,6 +675,8 @@ def normalize_okx_spot_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
     price = Decimal(payload["fillPx"])
     fee_delta = Decimal(payload.get("fee") or "0")
     fee_asset = payload.get("feeCcy") or quote
+    quote_cash_amount_str = payload.get("quoteCashAmount")
+    quote_cash_amount = Decimal(quote_cash_amount_str) if quote_cash_amount_str else None
 
     return CryptoExchangeEvent(
         provider="okx",
@@ -677,7 +685,7 @@ def normalize_okx_spot_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
         timestamp_ms=int(payload["fillTime"]),
         category="trade",
         raw_type="spot_fill",
-        legs=_spot_legs(payload["side"], base, quote, qty, price, fee_delta, fee_asset),
+        legs=_spot_legs(payload["side"], base, quote, qty, price, fee_delta, fee_asset, quote_cash_amount),
         fee={
             "asset": fee_asset,
             "quantity": fee_delta,
