@@ -1262,3 +1262,28 @@ def test_cash_flow_preserves_full_precision(user, crypto_account):
     tx = Transactions.objects.get(investor=user, account=crypto_account)
     # Full 8dp preserved — NOT truncated to 99.69.
     assert tx.cash_flow == Decimal("99.69064956")
+
+
+@pytest.mark.django_db
+def test_unified_model_quote_fee_buy_full_pipeline(user, crypto_account):
+    """End-to-end: quote-fee buy persists with effective price; total_cash_flow
+    reproduces the settlement exactly."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+    from services.transactions import total_cash_flow
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv", provider_event_id="csv:e2e-1", group_id="e2e-1",
+        timestamp_ms=1738454400000, category="trade", raw_type="spot_fill",
+        legs=[{"asset": "ETH", "quantity": Decimal("1"), "price": Decimal("100"),
+               "price_asset": "USD", "role": "base", "quote_currency": "USDT",
+               "fee_asset": "USDT"}],
+        fee={"asset": "USDT", "quantity": Decimal("-0.5"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.cash_flow is None  # not stored on trade rows
+    assert tx.price == Decimal("100")
+    assert tx.quantity == Decimal("1")
+    assert tx.commission == Decimal("-0.5")
+    cf = total_cash_flow(tx)
+    assert cf == Decimal("-100.5")  # -(100*1) + (-0.5)
