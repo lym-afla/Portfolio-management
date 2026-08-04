@@ -513,19 +513,20 @@ def _spot_legs(
     quote_cash_amount: Optional[Decimal] = None,
 ) -> List[Dict[str, Any]]:
     # When the quote currency is a stablecoin (USDT/USDC), emit a SINGLE leg
-    # (the base asset) with cash_flow = total stablecoin spent/received.
-    # This treats the stablecoin as cash (which it is — Phase 4), not as a
-    # separate asset. The price is the actual fill price. Fee handling depends
-    # on fee_asset: a base-asset fee is netted into quantity (issue #30); a
-    # quote-asset fee is folded into cash_flow; see the branches below.
+    # (the base asset) with an effective price so |price * quantity| reproduces
+    # the exact quote-currency settlement for ALL fee types. This treats the
+    # stablecoin as cash (which it is — Phase 4), not as a separate asset.
+    # cash_flow is NOT emitted on the leg — it is computed later from p*q.
+    # Fee handling: a base-asset fee is netted into quantity (issue #30); a
+    # quote-asset fee (same currency) is subtracted from the settlement before
+    # deriving the price, so |p*q| excludes the commission. Issue #32.
     if quote.upper() in STABLECOIN_CURRENCIES:
-        # Prefer the actual quote-currency settlement amount (from the CSV's
-        # quote-leg Balance Change) over the computed qty*price — the product
-        # can produce floating-point-like noise that doesn't match the exchange's
-        # exact settlement (e.g. 0.06684041*74837.4 = 5002.162499334 vs the real
-        # 5002.16249933). Issue #32.
-        value = quote_cash_amount if quote_cash_amount is not None else qty * price
+        # The settlement is the actual quote-currency amount that moved (from
+        # the CSV's quote-leg Balance Change). Prefer it over qty*price (which
+        # produces Decimal noise). Issue #32.
+        settlement = quote_cash_amount if quote_cash_amount is not None else qty * price
         normalized_fee_asset = (fee_asset or "").upper()
+        fee_in_quote = normalized_fee_asset == quote.upper()
 
         if side.lower() == "buy":
             base_quantity = qty
@@ -534,49 +535,23 @@ def _spot_legs(
         else:
             raise ValueError(f"Unsupported spot side: {side}")
 
+        # Net base-asset fee into quantity (PR #31).
         if normalized_fee_asset == base.upper():
-            # Base-asset fee: net into the base quantity (the fee is paid in the
-            # asset being bought/sold, so it reduces the holding). cash_flow is
-            # the pure trade value (no fee->quote conversion). Issue #30.
             base_quantity = base_quantity + fee_delta
-            if side.lower() == "buy":
-                cash_flow = -value
-            else:
-                cash_flow = value
-        elif normalized_fee_asset == quote.upper():
-            # Quote-asset fee: net into cash_flow (unchanged behavior). The fee
-            # is in the cash currency, so it reduces the cash moved.
-            if side.lower() == "buy":
-                cash_flow = -(value + abs(fee_delta))
-            else:
-                cash_flow = value - abs(fee_delta)
-        else:
-            # Third-asset fee (e.g. BNB): not represented (deferred, issue #30).
-            if side.lower() == "buy":
-                cash_flow = -value
-            else:
-                cash_flow = value
 
-        # For BUYS with a BASE-ASSET fee, adjust the stored price to the
-        # effective price (incl. fee) so that quantity * price == cash actually
-        # paid. The base-asset fee reduced the units received (netted into
-        # quantity above), so the real per-unit acquisition cost is higher than
-        # the fill price. This makes get_economic_basis (realized.py) include
-        # the fee in the cost basis WITHOUT any calc-layer change.
-        #
-        # QUOTE-ASSET fees are NOT adjusted: the fee is a separate cash expense
-        # in the quote currency, so the cost basis stays the raw fill price and
-        # the commission is tracked separately for analytics (realized gain/loss
-        # reflects market performance only; commission is its own line item).
-        # SELLS are NOT adjusted: the fee affects the asset disposed (quantity),
-        # not the cost basis (which comes from the buy). Issue #30.
-        effective_price = price
-        if (
-            side.lower() == "buy"
-            and normalized_fee_asset == base.upper()
-            and base_quantity != 0
-        ):
-            effective_price = abs(cash_flow) / base_quantity
+        # Effective price so that |price * quantity| reproduces the settlement.
+        # For quote-fee: subtract commission (same currency) from settlement first.
+        # For base-fee / no-fee / third-asset: commission is different currency
+        # (or zero) — don't subtract; the fee is already in net_qty or absent.
+        if fee_in_quote:
+            priced_settlement = settlement + fee_delta  # fee_delta negative -> reduces
+        else:
+            priced_settlement = settlement
+
+        if base_quantity != 0:
+            effective_price = abs(priced_settlement) / abs(base_quantity)
+        else:
+            effective_price = price
 
         return [
             {
@@ -585,7 +560,6 @@ def _spot_legs(
                 "price": effective_price,
                 "price_asset": "USD",
                 "role": "base",
-                "cash_flow": cash_flow,
                 "quote_currency": quote.upper(),
                 "fee_asset": normalized_fee_asset,
             }
