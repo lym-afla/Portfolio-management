@@ -4,6 +4,22 @@ import django.core.validators
 from django.db import migrations, models
 
 
+def set_crypto_broker_cash_precision(apps, schema_editor):
+    """Set cash_precision=8 for known crypto brokers (OKX, Bybit)."""
+    Brokers = apps.get_model("common", "Brokers")
+    for name in ["OKX", "Bybit"]:
+        updated = Brokers.objects.filter(name__icontains=name).update(cash_precision=8)
+        if updated:
+            print(f"  Set cash_precision=8 for {updated} '{name}' broker(s)")
+
+
+def revert_crypto_broker_cash_precision(apps, schema_editor):
+    """Revert crypto brokers to default=2."""
+    Brokers = apps.get_model("common", "Brokers")
+    for name in ["OKX", "Bybit"]:
+        Brokers.objects.filter(name__icontains=name).update(cash_precision=2)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -16,4 +32,5 @@ class Migration(migrations.Migration):
             name='cash_precision',
             field=models.IntegerField(default=2, help_text='Decimal places the broker uses for cash settlement (e.g. 2 for traditional, 8 for crypto).', validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(9)]),
         ),
+        migrations.RunPython(set_crypto_broker_cash_precision, revert_crypto_broker_cash_precision),
     ]
