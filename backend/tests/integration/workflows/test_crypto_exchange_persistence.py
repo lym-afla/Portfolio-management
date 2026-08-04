@@ -80,7 +80,7 @@ def test_persist_crypto_trade_event_creates_linked_asset_legs(user, crypto_accou
     assert btc_tx.quantity == Decimal("0.100000000")
     assert btc_tx.price == Decimal("60000.000000000")
     assert btc_tx.currency == "USD"
-    assert btc_tx.cash_flow == Decimal("-6003.00")
+    assert btc_tx.cash_flow is None  # trade rows no longer store cash_flow
     assert btc_tx.import_provider == "bybit"
     assert btc_tx.import_account_id == "bybit-main"
     assert btc_tx.import_event_id == "exec-1:0"
@@ -448,7 +448,7 @@ def test_spot_trade_stablecoin_quote_carries_cash_flow_on_base_leg(user, crypto_
     assert btc_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
     assert btc_tx.security.ticker == "BTC"
     # The USDT movement rides on the base leg as cash_flow, not a second row.
-    assert btc_tx.cash_flow == Decimal("-6003.00")
+    assert btc_tx.cash_flow is None  # trade rows no longer store cash_flow
 
 
 @pytest.mark.django_db

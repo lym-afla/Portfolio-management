@@ -455,7 +455,10 @@ def persist_crypto_exchange_event(event, user, account):
                     import_group_id=event.group_id,
                     import_event_type=event.category,
                 )
-                if leg_cash_flow is not None:
+                # Trade legs no longer carry cash_flow (computed from p*q in
+                # total_cash_flow). Only stablecoin cash legs (deposits/
+                # withdrawals/rewards) write cash_flow directly.
+                if leg_cash_flow is not None and category != "trade":
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
                     )
