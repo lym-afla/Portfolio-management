@@ -93,6 +93,42 @@ Concrete numeric assertions for all five cases (quote-fee buy/sell, base-fee buy
 
 ## Testing strategy
 - Unit: `_spot_legs` produces the correct effective price for all five cases.
-- Integration: persist each case, assert `total_cash_flow(tx) == settlement` exactly.
+- Integration: persist each case, assert `total_cash_flow(tx) == settlement` exactly (after broker-precision rounding).
 - Integration: `get_economic_basis` returns correct basis after a base-fee buy.
 - Full suite: no regressions (the crypto-trade branch move in `total_cash_flow` is the risk — regression fixtures cover it).
+
+## Broker cash-precision attribute
+
+### Problem
+`price@9dp × quantity` has a residual gap of up to ~1E-11 vs the exact settlement. When many trades are summed in a cash balance, these residuals accumulate and the balance no longer matches the exchange's reported balance exactly.
+
+### Solution: `cash_precision` on the Brokers model
+Add an `IntegerField(cash_precision)` to `Brokers` — the number of decimal places the broker uses for cash settlement. This is the authoritative rounding applied when computing cash flow from `price × quantity ± commission`.
+
+| Broker type | cash_precision | Rationale |
+|---|---|---|
+| Traditional (Charles Stanley, TBank) | 2 | Cents |
+| Crypto (OKX, Bybit) | 8 | OKX settles to 8dp |
+
+### How it's used
+`total_cash_flow` (and `nav.py`'s `_calculate_cash_flow`) round the computed `-(price × quantity) ± commission` to the transaction's broker's `cash_precision` before returning. This absorbs the price-storage residual exactly:
+```
+cash_flow = round(-(price × quantity) + commission, broker.cash_precision)
+```
+
+For trade rows where commission is in a different currency (base-asset fee):
+```
+cash_flow = round(-(price × quantity), broker.cash_precision)
+```
+
+### Default for existing brokers
+The migration sets `cash_precision=2` as the default (matching traditional brokers). OKX/Bybit brokers are updated to 8 (either in the migration or manually after).
+
+### Component: Brokers model + migration
+- `cash_precision = IntegerField(default=2, validators=[MinValueValidator(0), MaxValueValidator(9)])` on `Brokers`.
+- Migration: `AddField` with default=2. A data migration step sets crypto brokers to 8 (by broker name match or a manual step).
+
+### Component: total_cash_flow / nav.py threading
+- `total_cash_flow(transaction)` looks up the broker's `cash_precision` via `transaction.account.broker.cash_precision` and rounds the result.
+- `nav.py`'s `_calculate_cash_flow` does the same.
+- This replaces the removed `round(..., 2)` (PR #35) with a broker-aware rounding.
