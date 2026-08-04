@@ -47,10 +47,8 @@ def test_normalize_bybit_spot_execution_buy_btc_usdt_with_quote_fee():
     assert _leg_quantities(event) == {"BTC": Decimal("0.1")}
     assert len(event.legs) == 1
     assert "cash_flow" not in event.legs[0]
-    # Quote-fee buy: price = (settlement + commission) / qty. settlement=qty*price
-    # = 6000; priced_settlement = 6000 + (-3) = 5997; price = 5997 / 0.1.
-    assert event.legs[0]["price"] == Decimal("5997") / Decimal("0.1")
-    assert abs(event.legs[0]["price"] * event.legs[0]["quantity"]) == Decimal("5997")
+    # No quote_cash_amount -> settlement = qty*price (principal) -> price = fill.
+    assert event.legs[0]["price"] == Decimal("60000")
     assert event.fee == {
         "asset": "USDT",
         "quantity": Decimal("-3"),
@@ -110,7 +108,8 @@ def test_normalize_bybit_spot_execution_treats_negative_fee_as_cost():
     assert _leg_quantities(event) == {"BTC": Decimal("0.1")}
     assert len(event.legs) == 1
     assert "cash_flow" not in event.legs[0]
-    assert event.legs[0]["price"] == Decimal("5997") / Decimal("0.1")
+    # No quote_cash_amount -> price = fill.
+    assert event.legs[0]["price"] == Decimal("60000")
 
 
 def test_normalize_bybit_spot_execution_keeps_third_asset_fee_in_metadata_only():
@@ -238,10 +237,8 @@ def test_normalize_okx_spot_fill_buy_with_quote_fee():
     assert _leg_quantities(event) == {"BTC": Decimal("0.5")}
     assert len(event.legs) == 1
     assert "cash_flow" not in event.legs[0]
-    # Quote-fee buy: price = (settlement + commission) / qty. settlement=qty*price
-    # = 35000; priced_settlement = 35000 + (-5) = 34995; price = 34995 / 0.5.
-    assert event.legs[0]["price"] == Decimal("34995") / Decimal("0.5")
-    assert abs(event.legs[0]["price"] * event.legs[0]["quantity"]) == Decimal("34995")
+    # No quote_cash_amount -> settlement = qty*price (principal) -> price = fill.
+    assert event.legs[0]["price"] == Decimal("70000")
     assert event.fee["asset"] == "USDT"
     assert event.fee["quantity"] == Decimal("-5")
 

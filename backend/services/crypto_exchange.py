@@ -539,12 +539,19 @@ def _spot_legs(
         if normalized_fee_asset == base.upper():
             base_quantity = base_quantity + fee_delta
 
-        # Effective price so that |price * quantity| reproduces the settlement.
-        # For quote-fee: subtract commission (same currency) from settlement first.
+        # Effective price so that |price * quantity| reproduces the principal
+        # trade value (net of any same-currency commission). For quote-fee when
+        # the actual settlement (incl. fee) is known: adjust to recover the
+        # principal before deriving price. Buy: subtract fee; sell: add fee back.
+        # When quote_cash_amount is NOT provided, settlement = qty*price is
+        # already the principal, so no adjustment needed (price = fill).
         # For base-fee / no-fee / third-asset: commission is different currency
-        # (or zero) — don't subtract; the fee is already in net_qty or absent.
-        if fee_in_quote:
-            priced_settlement = settlement + fee_delta  # fee_delta negative -> reduces
+        # (or zero) — don't adjust; the fee is already in net_qty or absent.
+        if fee_in_quote and quote_cash_amount is not None:
+            if side.lower() == "buy":
+                priced_settlement = settlement + fee_delta
+            else:
+                priced_settlement = settlement - fee_delta
         else:
             priced_settlement = settlement
 

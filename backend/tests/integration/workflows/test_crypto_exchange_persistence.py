@@ -996,8 +996,10 @@ def test_spot_legs_sell_quote_fee():
     )
     leg = legs[0]
     assert leg["quantity"] == Decimal("-0.2")
-    # price = (settlement + commission) / |qty| = (13999.5 + (-0.5)) / 0.2 = 69995
-    assert leg["price"] == Decimal("69995")
+    # Sell: settlement (net received) = 13999.5 = 14000 - 0.5 fee.
+    # Recover principal: settlement - fee_delta = 13999.5 - (-0.5) = 14000.
+    # price = 14000 / 0.2 = 70000 = raw fill.
+    assert leg["price"] == Decimal("70000")
     assert "cash_flow" not in leg
 
 
@@ -1034,10 +1036,10 @@ def test_spot_legs_nets_base_fee_into_quantity():
 
 
 def test_spot_legs_quote_fee_folded_into_effective_price():
-    """_spot_legs stablecoin branch: a quote-asset fee (e.g. USDT fee) is
-    excluded from the effective price (settlement + commission)/qty so that
-    |price*qty| reproduces the net-of-fee trade value; commission enters calc
-    separately. cash_flow is NOT on the leg."""
+    """_spot_legs stablecoin branch: a quote-asset fee (e.g. USDT fee) on a
+    sell without quote_cash_amount. Settlement defaults to qty*price (the
+    principal), so price = fill (no fee adjustment needed — the commission
+    enters calc separately). cash_flow is NOT on the leg."""
     from services.crypto_exchange import _spot_legs
 
     # TRUMP-USDT sell: qty=0.6798, price=16.557, fee=-0.01125545 USDT (quote).
@@ -1055,12 +1057,8 @@ def test_spot_legs_quote_fee_folded_into_effective_price():
     # Quantity is gross (the fee is in quote, not base).
     assert leg["quantity"] == Decimal("-0.6798")
     assert "cash_flow" not in leg
-    # Effective price excludes the commission (same currency, subtracted first):
-    # settlement = qty*price = 11.2566486; priced_settlement = 11.2566486 - 0.01125545.
-    priced_settlement = Decimal("0.6798") * Decimal("16.557") + Decimal("-0.01125545")
-    assert leg["price"] == priced_settlement / Decimal("0.6798")
-    # Invariant: |price * qty| reproduces the net-of-fee settlement.
-    assert abs(leg["price"] * leg["quantity"]) == priced_settlement
+    # No quote_cash_amount -> settlement = qty*price = principal -> price = fill.
+    assert leg["price"] == Decimal("16.557")
     assert leg["fee_asset"] == "USDT"
 
 
@@ -1115,11 +1113,9 @@ def test_spot_legs_buy_base_fee_adjusts_price_for_fee_inclusive_basis():
 
 
 def test_spot_legs_buy_quote_fee_excludes_commission_from_price():
-    """A buy with a QUOTE-ASSET fee uses an effective price that EXCLUDES the
-    commission: price = (settlement + fee_delta) / qty. The commission is a
-    same-currency cost, subtracted from the settlement before deriving the
-    price, so |price*qty| reproduces the net-of-fee trade value and the
-    commission enters calc separately (commission field). Issue #32."""
+    """A buy with a QUOTE-ASSET fee (no quote_cash_amount): settlement defaults
+    to qty*price (the principal), so price = fill (no adjustment needed).
+    The commission enters calc separately via the commission field."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1128,15 +1124,12 @@ def test_spot_legs_buy_quote_fee_excludes_commission_from_price():
         fee_delta=Decimal("-0.5"), fee_asset="USDT",
     )
     leg = legs[0]
-    # quantity stays gross (quote-fee doesn't net into qty); no cash_flow on leg.
     assert leg["quantity"] == Decimal("1")
     assert "cash_flow" not in leg
-    # Effective price EXCLUDES the commission: settlement=100 (qty*price),
-    # priced_settlement = 100 + (-0.5) = 99.5; price = 99.5 / 1.
-    assert leg["price"] == Decimal("99.5")
-    # |price * qty| reproduces the net-of-fee settlement (99.5), NOT the gross
-    # 100 — the 0.5 commission is excluded from the per-unit basis.
-    assert abs(leg["quantity"] * leg["price"]) == Decimal("99.5")
+    # No quote_cash_amount -> settlement = qty*price = principal -> price = fill.
+    assert leg["price"] == Decimal("100")
+    # |price * qty| = principal (100); the 0.5 commission enters calc separately.
+    assert abs(leg["quantity"] * leg["price"]) == Decimal("100")
 
 
 def test_spot_legs_buy_no_fee_keeps_raw_fill_price():
