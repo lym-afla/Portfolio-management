@@ -4,6 +4,7 @@ import logging
 from datetime import date
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from constants import (
@@ -90,6 +91,11 @@ class Brokers(models.Model):
     investor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="brokers")
     name = models.CharField(max_length=30, null=False)
     country = models.CharField(max_length=20)
+    cash_precision = models.IntegerField(
+        default=2,
+        validators=[MinValueValidator(0), MaxValueValidator(9)],
+        help_text="Decimal places the broker uses for cash settlement (e.g. 2 for traditional, 8 for crypto).",
+    )
     comment = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
