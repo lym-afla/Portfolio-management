@@ -22,6 +22,7 @@ from services.crypto_exchange import (
     persist_crypto_exchange_event,
 )
 from services.accounts import balance as account_balance
+from services.positions import position
 from services.transactions import total_cash_flow
 
 
@@ -1388,6 +1389,15 @@ def test_cross_currency_commission_leg_persists_as_separate_row(user, crypto_acc
     # Dedup-safe id suffixed :fee:<index>.
     assert commission_row.import_event_id == "csv:ccy-commission-1:fee:1"
     assert commission_row.import_group_id == "order-ccy-commission"
+
+    # Position reconciliation (review finding #7): the BTC fee row moves the BTC
+    # position, so net BTC = +1 (trade) - 0.001 (commission) = +0.999.
+    from datetime import datetime, timezone
+
+    btc_asset = trade_row.security  # CRYPTO:BTC / USD
+    event_date = datetime(2025, 2, 2, tzinfo=timezone.utc)  # timestamp_ms=1738454400000
+    net_btc = position(btc_asset, event_date, user, account_ids=[crypto_account.id])
+    assert net_btc == Decimal("0.999"), f"net BTC={net_btc!r}; expected 0.999"
 
     # Idempotency: re-importing the same event does not duplicate either row.
     assert persist_crypto_exchange_event(event, user, crypto_account) == []
