@@ -52,6 +52,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
 from services.accounts import balance as account_balance
+from services.crypto import is_crypto
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 from services.positions import position
@@ -170,6 +171,10 @@ def NAV_at_date(
     # Initialize analysis with default structure
     analysis = defaultdict(lambda: defaultdict(Decimal))
     analysis["Total NAV"] = Decimal(0)
+    # Crypto is a first-class NAV class (Cash / Crypto / Securities, spec §4.3).
+    # Initialize unconditionally so the key always appears in the output dict
+    # (callers rely on it existing even for crypto-free portfolios).
+    analysis["Crypto"] = defaultdict(Decimal)
 
     # Initialize breakdown categories even if empty
     if "asset_type" in breakdown:
@@ -205,6 +210,12 @@ def NAV_at_date(
             )
 
             analysis["Total NAV"] += account_value
+
+            # Crypto gets its own bucket; never the securities-side breakdowns.
+            if is_crypto(security):
+                analysis["Crypto"]["__total__"] += account_value
+                analysis["Crypto"][security.name] += account_value
+                continue
 
             if "account" in breakdown:
                 analysis["account"][account.name] += account_value
