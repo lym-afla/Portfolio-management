@@ -773,6 +773,11 @@ def test_normalize_bybit_option_execution_buy_call():
 
 
 def test_normalize_okx_option_fill_sell_put():
+    # FROZEN per spec 2026-08-06 §5.5 (crypto-as-currency foundation): option-fill
+    # behavior is unchanged in the foundation spec. The calculated-premium +
+    # collateral-transfer model lands in sub-project 4 (options accounting). If
+    # this test breaks during foundation work, the spot revert has leaked into
+    # the option path and must be fixed before proceeding.
     event = normalize_okx_option_fill(
         {
             "instId": "BTC-USD-240315-50000-P",
