@@ -407,6 +407,13 @@ def test_btc_usdt_convert_emits_spot_event():
     assert payload["instId"] == "BTC-USDT"  # CONVERT suffix stripped
     assert payload["side"] == "buy"  # BTC Balance Change positive
     assert payload["fillSz"] == "0.002839"
+    # Price is DERIVED from the actual quote movement / base amount
+    # (321.819075 / 0.002839), NOT the CSV's approximate Filled Price
+    # (113345.97).
+    assert Decimal(payload["fillPx"]) == Decimal("321.819075") / Decimal("0.002839")
+    # The actual quote settlement amount is passed directly so cash_flow
+    # uses it instead of the approximate qty*price product.
+    assert payload["quoteCashAmount"] == "321.819075"
 
 
 def test_option_fill_maps_to_option_payload():

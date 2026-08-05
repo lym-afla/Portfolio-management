@@ -80,7 +80,7 @@ def test_persist_crypto_trade_event_creates_linked_asset_legs(user, crypto_accou
     assert btc_tx.quantity == Decimal("0.100000000")
     assert btc_tx.price == Decimal("60000.000000000")
     assert btc_tx.currency == "USD"
-    assert btc_tx.cash_flow == Decimal("-6003.00")
+    assert btc_tx.cash_flow is None  # trade rows no longer store cash_flow
     assert btc_tx.import_provider == "bybit"
     assert btc_tx.import_account_id == "bybit-main"
     assert btc_tx.import_event_id == "exec-1:0"
@@ -448,7 +448,7 @@ def test_spot_trade_stablecoin_quote_carries_cash_flow_on_base_leg(user, crypto_
     assert btc_tx.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
     assert btc_tx.security.ticker == "BTC"
     # The USDT movement rides on the base leg as cash_flow, not a second row.
-    assert btc_tx.cash_flow == Decimal("-6003.00")
+    assert btc_tx.cash_flow is None  # trade rows no longer store cash_flow
 
 
 @pytest.mark.django_db
@@ -937,9 +937,76 @@ def test_base_fee_trade_persists_commission_currency(user, crypto_account):
     assert tx.commission_currency == "BTC"
 
 
+def test_spot_legs_quote_fee_effective_price_excludes_commission():
+    """Quote-fee buy: price = (settlement + commission) / qty. The commission
+    (negative) is subtracted from the settlement before deriving price, so
+    p*q excludes the fee (commission enters calc separately). cash_flow is
+    NOT on the leg (it will be computed by total_cash_flow from p*q later)."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        "buy", "ETH", "USDT", Decimal("1"), Decimal("100"),
+        Decimal("-0.5"), "USDT", quote_cash_amount=Decimal("100.5"),
+    )
+    leg = legs[0]
+    assert leg["quantity"] == Decimal("1")
+    # price = (settlement + commission) / qty = (100.5 + (-0.5)) / 1 = 100.0
+    assert leg["price"] == Decimal("100")
+    assert "cash_flow" not in leg
+
+
+def test_spot_legs_base_fee_effective_price_includes_fee_in_qty():
+    """Base-fee buy: price = settlement / net_qty (commission different currency,
+    not subtracted from settlement). Settlement = gross trade value, fee is
+    already netted into quantity."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        "buy", "BTC", "USDT", Decimal("0.06684041"), Decimal("74837.4"),
+        Decimal("-0.00006684"), "BTC", quote_cash_amount=Decimal("5002.16249933"),
+    )
+    leg = legs[0]
+    # Net quantity: 0.06684041 + (-0.00006684) = 0.06677357
+    assert leg["quantity"] == Decimal("0.06677357")
+    assert "cash_flow" not in leg
+    # price = settlement / net_qty (settlement NOT reduced by fee — different ccy).
+    assert leg["price"] == Decimal("5002.16249933") / Decimal("0.06677357")
+
+
+def test_spot_legs_no_fee_price_is_fill():
+    """No-fee buy: price = settlement / qty = fill price."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        "buy", "BTC", "USDT", Decimal("0.001"), Decimal("96058"),
+        Decimal("0"), "", quote_cash_amount=Decimal("96.058"),
+    )
+    leg = legs[0]
+    assert leg["price"] == Decimal("96058")
+    assert "cash_flow" not in leg
+
+
+def test_spot_legs_sell_quote_fee():
+    """Quote-fee sell: price excludes commission; qty is gross (negative)."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        "sell", "BTC", "USDT", Decimal("0.2"), Decimal("70000"),
+        Decimal("-0.5"), "USDT", quote_cash_amount=Decimal("13999.5"),
+    )
+    leg = legs[0]
+    assert leg["quantity"] == Decimal("-0.2")
+    # Sell: settlement (net received) = 13999.5 = 14000 - 0.5 fee.
+    # Recover principal: settlement - fee_delta = 13999.5 - (-0.5) = 14000.
+    # price = 14000 / 0.2 = 70000 = raw fill.
+    assert leg["price"] == Decimal("70000")
+    assert "cash_flow" not in leg
+
+
 def test_spot_legs_nets_base_fee_into_quantity():
     """_spot_legs stablecoin branch: a base-asset fee is netted into the base
-    quantity; cash_flow is the pure trade value (no fee conversion)."""
+    quantity; the effective price reproduces the gross settlement. cash_flow is
+    NOT on the leg (computed later from p*q)."""
     from services.crypto_exchange import _spot_legs
 
     # BTC-USDT buy: qty=0.001, price=96058, fee=-0.00000012 BTC (base).
@@ -956,15 +1023,23 @@ def test_spot_legs_nets_base_fee_into_quantity():
     leg = legs[0]
     # Net quantity: 0.001 + (-0.00000012) = 0.00099988
     assert leg["quantity"] == Decimal("0.00099988")
-    # Pure trade value, NO fee conversion: -(0.001 * 96058) = -96.058
-    assert leg["cash_flow"] == Decimal("-96.058")
+    # No cash_flow on the leg (computed by total_cash_flow from p*q later).
+    assert "cash_flow" not in leg
+    # Base-fee: effective price = settlement / net_qty. settlement = qty*price
+    # = 96.058 (no fee subtraction — fee is a different currency). So the fee is
+    # baked into the per-unit price via the reduced quantity.
+    assert leg["price"] == Decimal("96.058") / Decimal("0.00099988")
+    # Invariant: |price * net_qty| reproduces the gross settlement (96.058).
+    assert abs(leg["price"] * leg["quantity"]) == Decimal("96.058")
     assert leg["quote_currency"] == "USDT"
     assert leg["fee_asset"] == "BTC"
 
 
-def test_spot_legs_quote_fee_still_folded_into_cash_flow():
-    """_spot_legs stablecoin branch: a quote-asset fee (e.g. USDT fee) is still
-    netted into cash_flow (unchanged behavior). Regression guard."""
+def test_spot_legs_quote_fee_folded_into_effective_price():
+    """_spot_legs stablecoin branch: a quote-asset fee (e.g. USDT fee) on a
+    sell without quote_cash_amount. Settlement defaults to qty*price (the
+    principal), so price = fill (no fee adjustment needed — the commission
+    enters calc separately). cash_flow is NOT on the leg."""
     from services.crypto_exchange import _spot_legs
 
     # TRUMP-USDT sell: qty=0.6798, price=16.557, fee=-0.01125545 USDT (quote).
@@ -981,13 +1056,15 @@ def test_spot_legs_quote_fee_still_folded_into_cash_flow():
     leg = legs[0]
     # Quantity is gross (the fee is in quote, not base).
     assert leg["quantity"] == Decimal("-0.6798")
-    # cash_flow = value - fee = (0.6798 * 16.557) - 0.01125545 = 11.24419315
-    assert leg["cash_flow"] == Decimal("11.24419315")
+    assert "cash_flow" not in leg
+    # No quote_cash_amount -> settlement = qty*price = principal -> price = fill.
+    assert leg["price"] == Decimal("16.557")
     assert leg["fee_asset"] == "USDT"
 
 
 def test_spot_legs_zero_fee_no_fee_asset_key():
-    """_spot_legs stablecoin branch: zero fee -> no fee applied, fee_asset empty."""
+    """_spot_legs stablecoin branch: zero fee -> effective price equals the
+    fill price; cash_flow is NOT on the leg."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1001,14 +1078,17 @@ def test_spot_legs_zero_fee_no_fee_asset_key():
     )
     leg = legs[0]
     assert leg["quantity"] == Decimal("0.001")
-    assert leg["cash_flow"] == Decimal("-96.058")
+    assert "cash_flow" not in leg
+    # No fee: price = settlement / qty = fill price.
+    assert leg["price"] == Decimal("96058")
     assert leg["fee_asset"] == ""
 
 
 def test_spot_legs_buy_base_fee_adjusts_price_for_fee_inclusive_basis():
-    """A buy with a base-asset fee adjusts the stored price so that
-    quantity * price == cash_paid (the fee is baked into the effective price).
-    This makes get_economic_basis correct without calc-layer changes (#30)."""
+    """A buy with a base-asset fee uses an effective price so that
+    |quantity * price| == gross settlement (the fee is baked in via the netted
+    quantity). cash_flow is NOT on the leg. Makes get_economic_basis correct
+    without calc-layer changes (#30)."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1017,26 +1097,25 @@ def test_spot_legs_buy_base_fee_adjusts_price_for_fee_inclusive_basis():
         fee_delta=Decimal("-0.00000012"), fee_asset="BTC",
     )
     leg = legs[0]
-    # quantity is net (PR #31); cash_flow is pure trade value (PR #31).
+    # quantity is net (PR #31); no cash_flow on the leg.
     assert leg["quantity"] == Decimal("0.00099988")
-    assert leg["cash_flow"] == Decimal("-96.058")
-    # Price is the EFFECTIVE price (incl. fee): abs(cash_flow) / base_quantity.
-    # NOTE: the brief listed 96069.528343 (6dp), but Python Decimal division
-    # produces the full-precision non-terminating expansion
-    # 96069.52834340120814497739729. The 6dp value BREAKS the invariant below
-    # (qty*6dp_price = 96.05799999959884 != 96.058), so the exact quotient is
-    # the only value consistent with both the implementation and the invariant.
+    assert "cash_flow" not in leg
+    # Effective price = settlement / net_qty. settlement = qty*price = 96.058
+    # (base fee is a different currency, NOT subtracted).
+    # NOTE: Python Decimal division produces the full-precision non-terminating
+    # expansion 96069.52834340120814497739729. A 6dp rounding BREAKS the
+    # invariant below (qty*6dp_price != 96.058), so the exact quotient is the
+    # only value consistent with both the implementation and the invariant.
     expected_effective_price = Decimal("96.058") / Decimal("0.00099988")
     assert leg["price"] == expected_effective_price
-    # The invariant: quantity * price == cash actually paid (|cash_flow|).
-    assert leg["quantity"] * leg["price"] == Decimal("96.058")
+    # The invariant: |quantity * price| reproduces the gross settlement (96.058).
+    assert abs(leg["quantity"] * leg["price"]) == Decimal("96.058")
 
 
-def test_spot_legs_buy_quote_fee_keeps_raw_fill_price():
-    """A buy with a QUOTE-ASSET fee keeps the raw fill price — the commission
-    is tracked separately (in cash_flow and the commission field), NOT baked
-    into the cost basis. This keeps realized gain/loss independent of
-    commissions for analytics. Issue #30."""
+def test_spot_legs_buy_quote_fee_excludes_commission_from_price():
+    """A buy with a QUOTE-ASSET fee (no quote_cash_amount): settlement defaults
+    to qty*price (the principal), so price = fill (no adjustment needed).
+    The commission enters calc separately via the commission field."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1045,13 +1124,12 @@ def test_spot_legs_buy_quote_fee_keeps_raw_fill_price():
         fee_delta=Decimal("-0.5"), fee_asset="USDT",
     )
     leg = legs[0]
-    # quantity stays gross (quote-fee doesn't net into qty); cash_flow = value + fee.
     assert leg["quantity"] == Decimal("1")
-    assert leg["cash_flow"] == Decimal("-100.5")
-    # Price stays the RAW fill (100) — the fee is NOT baked into the basis.
+    assert "cash_flow" not in leg
+    # No quote_cash_amount -> settlement = qty*price = principal -> price = fill.
     assert leg["price"] == Decimal("100")
-    # basis = qty * price = 100 (excludes the 0.5 commission), NOT 100.5.
-    assert leg["quantity"] * leg["price"] == Decimal("100")
+    # |price * qty| = principal (100); the 0.5 commission enters calc separately.
+    assert abs(leg["quantity"] * leg["price"]) == Decimal("100")
 
 
 def test_spot_legs_buy_no_fee_keeps_raw_fill_price():
@@ -1068,10 +1146,34 @@ def test_spot_legs_buy_no_fee_keeps_raw_fill_price():
     assert leg["quantity"] * leg["price"] == Decimal("96.058")
 
 
-def test_spot_legs_sell_does_not_adjust_price():
-    """A sell keeps the raw fill price — the fee affects the asset disposed
-    (quantity), not the cost basis (which comes from the buy). Adjusting the
-    sell price would distort realized-gain-on-disposal."""
+def test_spot_legs_quote_cash_amount_overrides_qty_price():
+    """When quote_cash_amount is provided (the CSV's actual quote-leg Balance
+    Change), it replaces qty*price as the settlement for the effective price.
+    This prevents floating-point-like noise from the multiplication (e.g.
+    0.06684041 * 74837.4 = 5002.162499334 vs the real 5002.16249933). Issue #32."""
+    from services.crypto_exchange import _spot_legs
+
+    legs = _spot_legs(
+        side="buy", base="BTC", quote="USDT",
+        qty=Decimal("0.06684041"), price=Decimal("74837.4"),
+        fee_delta=Decimal("-0.00006684"), fee_asset="BTC",
+        quote_cash_amount=Decimal("5002.16249933"),
+    )
+    leg = legs[0]
+    assert "cash_flow" not in leg
+    # Net quantity: 0.06684041 + (-0.00006684) = 0.06677357 (base fee netted).
+    assert leg["quantity"] == Decimal("0.06677357")
+    # Effective price = exact settlement / net_qty (NOT qty*price, which would
+    # produce a spurious 9th digit).
+    assert leg["price"] == Decimal("5002.16249933") / Decimal("0.06677357")
+    # Invariant: |price * net_qty| reproduces the exact settlement.
+    assert abs(leg["price"] * leg["quantity"]) == Decimal("5002.16249933")
+
+
+def test_spot_legs_sell_base_fee_uses_effective_price():
+    """A base-asset-fee sell uses an effective price so |price*qty| reproduces
+    the gross settlement (the fee is baked in via the netted quantity, not the
+    per-unit price). cash_flow is NOT on the leg."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1080,8 +1182,12 @@ def test_spot_legs_sell_does_not_adjust_price():
         fee_delta=Decimal("-0.0001"), fee_asset="BTC",
     )
     leg = legs[0]
-    assert leg["price"] == Decimal("70000")  # raw fill, NOT adjusted
+    assert "cash_flow" not in leg
     assert leg["quantity"] == Decimal("-0.2001")  # net of fee (PR #31)
+    # Effective price = settlement / |net_qty| = 14000 / 0.2001.
+    assert leg["price"] == Decimal("14000") / Decimal("0.2001")
+    # Invariant: |price * net_qty| reproduces the gross settlement (14000).
+    assert abs(leg["price"] * leg["quantity"]) == Decimal("14000")
 
 
 @pytest.mark.django_db
@@ -1136,3 +1242,48 @@ def test_buy_with_fee_has_fee_inclusive_cost_basis(user, crypto_account):
     assert basis > Decimal("6996"), (
         f"basis={basis!r} is too low — the fee is NOT included in the cost basis"
     )
+
+
+@pytest.mark.django_db
+def test_cash_flow_preserves_full_precision(user, crypto_account):
+    """Regression for issue #32: cash_flow must preserve 8dp stablecoin amounts
+    (not truncate to 2dp), so symmetric in/out flows net to exactly zero."""
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:cf-precision",
+        group_id="cf-precision",
+        timestamp_ms=1738454400000,
+        category="deposit",
+        raw_type="transfer",
+        legs=_single_leg("USDT", Decimal("99.69064956"), "USDT"),
+        fee=None,
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    # Full 8dp preserved — NOT truncated to 99.69.
+    assert tx.cash_flow == Decimal("99.69064956")
+
+
+@pytest.mark.django_db
+def test_unified_model_quote_fee_buy_full_pipeline(user, crypto_account):
+    """End-to-end: quote-fee buy persists with effective price; total_cash_flow
+    reproduces the settlement exactly."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+    from services.transactions import total_cash_flow
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv", provider_event_id="csv:e2e-1", group_id="e2e-1",
+        timestamp_ms=1738454400000, category="trade", raw_type="spot_fill",
+        legs=[{"asset": "ETH", "quantity": Decimal("1"), "price": Decimal("100"),
+               "price_asset": "USD", "role": "base", "quote_currency": "USDT",
+               "fee_asset": "USDT"}],
+        fee={"asset": "USDT", "quantity": Decimal("-0.5"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+    tx = Transactions.objects.get(investor=user, account=crypto_account)
+    assert tx.cash_flow is None  # not stored on trade rows
+    assert tx.price == Decimal("100")
+    assert tx.quantity == Decimal("1")
+    assert tx.commission == Decimal("-0.5")
+    cf = total_cash_flow(tx)
+    assert cf == Decimal("-100.5")  # -(100*1) + (-0.5)

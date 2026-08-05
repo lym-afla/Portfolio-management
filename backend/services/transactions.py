@@ -48,7 +48,7 @@ graph one-way.
 
 import logging
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 
@@ -203,8 +203,6 @@ def total_cash_flow(transaction, target_currency=None):
         TRANSACTION_TYPE_BOND_REDEMPTION,
         TRANSACTION_TYPE_BOND_MATURITY,
         TRANSACTION_TYPE_INTEREST_INCOME,
-        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
-        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     ]
 
     if transaction.type in cash_flow_types:
@@ -218,9 +216,22 @@ def total_cash_flow(transaction, target_currency=None):
         ):
             calculated_cash_flow = transaction.commission or Decimal(0)
 
-    elif transaction.type in [TRANSACTION_TYPE_BUY, TRANSACTION_TYPE_SELL]:
-        # Calculate from quantity and price
-        if transaction.quantity and transaction.price is not None:
+    elif transaction.type in [
+        TRANSACTION_TYPE_BUY,
+        TRANSACTION_TYPE_SELL,
+        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+    ]:
+        # Crypto option trades carry cash_flow (the underlying settlement in
+        # BTC) because their quantity is in contracts — p*q would be
+        # nonsensical. Only crypto trades (not stock Buy/Sell) use this path,
+        # since stock trades may have a stale cash_flow from legacy imports.
+        if (
+            transaction.type in [TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT]
+            and transaction.cash_flow is not None
+        ):
+            calculated_cash_flow = transaction.cash_flow
+        elif transaction.quantity and transaction.price is not None:
             effective_price = get_price(transaction) or Decimal(0)
 
             # Base cash flow: -quantity * price
@@ -234,9 +245,16 @@ def total_cash_flow(transaction, target_currency=None):
             if transaction.aci:
                 calculated_cash_flow += Decimal(transaction.aci)
 
-            # Subtract commission (always reduces cash)
+            # Add commission unless it's denominated in a different currency.
+            # Quote-fee (commission in trade currency) and the legacy default
+            # (commission_currency unset) both reduce the trade's cash flow.
+            # Base-asset fees (e.g. BTC fee on a USDT trade) are display-only
+            # and excluded so they don't pollute the quote-currency cash flow.
             if transaction.commission:
-                calculated_cash_flow += Decimal(transaction.commission)
+                comm_ccy = (getattr(transaction, "commission_currency", None) or "").upper()
+                trade_ccy = (transaction.currency or "").upper()
+                if not comm_ccy or comm_ccy == trade_ccy:
+                    calculated_cash_flow += Decimal(transaction.commission)
 
     # Convert to target currency if requested
     if target_currency and target_currency != transaction.currency:
@@ -245,7 +263,17 @@ def total_cash_flow(transaction, target_currency=None):
         ]
         calculated_cash_flow *= fx_rate
 
-    return round(calculated_cash_flow, 2)
+    # Round to the broker's cash_precision to absorb price-storage residuals.
+    # Trades now compute from -(price*quantity), and stored prices may carry
+    # tiny floating residuals at the storage precision; the broker's own
+    # settlement is at cash_precision decimals. Cash-event types already at
+    # exact precision are unaffected (rounding is idempotent at their scale).
+    cash_precision = 2
+    if hasattr(transaction, "account") and transaction.account and transaction.account.broker:
+        cash_precision = transaction.account.broker.cash_precision
+    return calculated_cash_flow.quantize(
+        Decimal(1).scaleb(-cash_precision), rounding=ROUND_HALF_UP
+    )
 
 
 # =============================================================================

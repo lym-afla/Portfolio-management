@@ -87,7 +87,7 @@ class TestStablecoinCashMigration:
         assert deposit.type == "Cash in"
         assert deposit.currency == "USDT"
         assert deposit.security is None
-        assert deposit.cash_flow == Decimal("29994.78")
+        assert deposit.cash_flow == Decimal("29994.781592")
         assert deposit.quantity is None
         assert deposit.price is None
         # Idempotency fields preserved
@@ -106,7 +106,7 @@ class TestStablecoinCashMigration:
         assert reward.type == "Interest income"
         assert reward.currency == "USDT"
         assert reward.security is None
-        assert reward.cash_flow == Decimal("1.00")
+        assert reward.cash_flow == Decimal("1.002477")
 
     def test_migration_deletes_orphaned_asset(self, user):
         """CRYPTO:USDT asset is deleted after all its transactions are migrated."""

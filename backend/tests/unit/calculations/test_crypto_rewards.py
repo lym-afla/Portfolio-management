@@ -1219,8 +1219,14 @@ def test_blank_provider_transfer_in_does_not_match_provider_transfer_out(user, c
 
 
 @pytest.mark.django_db
-def test_crypto_trade_cash_flow_for_irr_without_account_cash(user, crypto_account, btc):
-    """Crypto trades expose asset cash flows for IRR but not account cash."""
+def test_crypto_trade_cash_flow_unified_irr_and_account_cash(user, crypto_account, btc):
+    """Under the unified model, crypto trades expose both an IRR asset flow and
+    an account-cash flow of -(price*quantity) (+ commission when in trade ccy).
+
+    trade_in:  -(1 * 100) = -100 USD
+    trade_out: -(-0.5 * 120) = +60 USD
+    net account balance (cash_precision=2) = -40.00 USD
+    """
     trade_in = Transactions.objects.create(
         investor=user,
         account=crypto_account,
@@ -1244,7 +1250,9 @@ def test_crypto_trade_cash_flow_for_irr_without_account_cash(user, crypto_accoun
 
     assert _calculate_cash_flow(trade_in) == Decimal("-100.000000000000000000")
     assert _calculate_cash_flow(trade_out) == Decimal("60.000000000000000000")
-    assert account_balance(crypto_account, datetime(2026, 1, 3).date()) == {}
+    assert account_balance(crypto_account, datetime(2026, 1, 3).date()) == {
+        "USD": Decimal("-40.00")
+    }
 
 
 @pytest.mark.django_db

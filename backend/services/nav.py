@@ -408,7 +408,32 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
         if transaction.quantity is not None and transaction.price is not None:
             # IRR treats crypto trades as asset cash flows: buys are negative,
             # sells are positive, while account cash balances stay unchanged.
-            return -transaction.quantity * transaction.price
+            cf = -transaction.quantity * transaction.price
+            # Add commission unless it's denominated in a different currency,
+            # mirroring services.transactions.total_cash_flow so the IRR and
+            # cash-flow paths stay consistent. Quote-fee (commission in the
+            # trade currency) and the legacy default (commission_currency
+            # unset) both reduce the trade's cash flow; base-asset fees are
+            # display-only and excluded.
+            if transaction.commission:
+                comm_ccy = (
+                    getattr(transaction, "commission_currency", None) or ""
+                ).upper()
+                trade_ccy = (transaction.currency or "").upper()
+                if not comm_ccy or comm_ccy == trade_ccy:
+                    cf += Decimal(transaction.commission)
+            # Round to the broker's cash_precision to absorb price-storage
+            # residuals (matches total_cash_flow's rounding).
+            cash_precision = 2
+            if (
+                hasattr(transaction, "account")
+                and transaction.account
+                and transaction.account.broker
+            ):
+                cash_precision = transaction.account.broker.cash_precision
+            return cf.quantize(
+                Decimal(1).scaleb(-cash_precision), rounding=ROUND_HALF_UP
+            )
         return Decimal(0)
 
     # Get the cash flow using the centralized method
