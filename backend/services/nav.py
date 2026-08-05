@@ -46,6 +46,7 @@ from pyxirr import xirr
 
 from common.models import Accounts, Assets, Transactions
 from constants import (
+    TRANSACTION_TYPE_CRYPTO_COMMISSION,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
@@ -410,6 +411,14 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     if is_reward_transaction(transaction):
         return Decimal(0)
 
+    # Crypto commission rows move the fee asset's POSITION (via quantity), not
+    # cash. The fee's cash effect is already captured on the parent trade row's
+    # -qty*price (+ same-currency commission). Return 0 so these rows don't
+    # pollute the IRR cash flows. (spec §5.3, revert of the cross-currency
+    # commission exclusion.) Mirrors services.transactions.total_cash_flow.
+    if transaction.type == TRANSACTION_TYPE_CRYPTO_COMMISSION:
+        return Decimal(0)
+
     if transaction.type in [
         TRANSACTION_TYPE_CRYPTO_TRADE_IN,
         TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -420,19 +429,13 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
             # IRR treats crypto trades as asset cash flows: buys are negative,
             # sells are positive, while account cash balances stay unchanged.
             cf = -transaction.quantity * transaction.price
-            # Add commission unless it's denominated in a different currency,
-            # mirroring services.transactions.total_cash_flow so the IRR and
-            # cash-flow paths stay consistent. Quote-fee (commission in the
-            # trade currency) and the legacy default (commission_currency
-            # unset) both reduce the trade's cash flow; base-asset fees are
-            # display-only and excluded.
+            # Add commission. Under the reverted model, cross-currency fees
+            # are separate commission rows (Task 6), so any commission on the
+            # trade row is same-currency by construction — the old
+            # comm_ccy == trade_ccy guard is dead code and removed. Mirrors
+            # services.transactions.total_cash_flow (spec §5.3).
             if transaction.commission:
-                comm_ccy = (
-                    getattr(transaction, "commission_currency", None) or ""
-                ).upper()
-                trade_ccy = (transaction.currency or "").upper()
-                if not comm_ccy or comm_ccy == trade_ccy:
-                    cf += Decimal(transaction.commission)
+                cf += Decimal(transaction.commission)
             # Round to the broker's cash_precision to absorb price-storage
             # residuals (matches total_cash_flow's rounding).
             cash_precision = 2
