@@ -222,8 +222,16 @@ def total_cash_flow(transaction, target_currency=None):
         TRANSACTION_TYPE_CRYPTO_TRADE_IN,
         TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     ]:
-        # Calculate from quantity and price
-        if transaction.quantity and transaction.price is not None:
+        # Crypto option trades carry cash_flow (the underlying settlement in
+        # BTC) because their quantity is in contracts — p*q would be
+        # nonsensical. Only crypto trades (not stock Buy/Sell) use this path,
+        # since stock trades may have a stale cash_flow from legacy imports.
+        if (
+            transaction.type in [TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT]
+            and transaction.cash_flow is not None
+        ):
+            calculated_cash_flow = transaction.cash_flow
+        elif transaction.quantity and transaction.price is not None:
             effective_price = get_price(transaction) or Decimal(0)
 
             # Base cash flow: -quantity * price

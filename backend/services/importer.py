@@ -910,7 +910,11 @@ def build_okx_csv_events(df, tz_offset):
                 }
                 events.append((payload, str(row_id)))
             else:
-                # Option fill (Buy/Sell). Single row.
+                # Option fill (Buy/Sell). Single row. Include the actual BTC
+                # balance change (the settlement in the underlying) as cashFlow,
+                # so total_cash_flow reads it directly instead of computing the
+                # nonsensical contracts × underlying_price product. Issue #33.
+                bal_chg = Decimal(str(row.get("Balance Change") or "0"))
                 payload = {
                     "__kind": "option_fill",
                     "instId": symbol_clean,
@@ -922,6 +926,7 @@ def build_okx_csv_events(df, tz_offset):
                     "ordId": str(order_id) if order_id and order_id != "0" else "",
                     "fee": str(fee),
                     "feeCcy": fee_unit,
+                    "cashFlow": str(bal_chg),
                 }
                 events.append((payload, str(row_id)))
             continue
@@ -990,21 +995,29 @@ def build_okx_csv_events(df, tz_offset):
             else:
                 fee_ccy = symbol_clean
 
-            # Find the matching quote leg's actual Balance Change (the real
-            # stablecoin amount moved). qty*price can produce floating-point-like
-            # noise (e.g. 0.06684041*74837.4 = 5002.162499334 vs the real
-            # 5002.16249933). Passing the exact settlement amount ensures
-            # cash_flow matches the CSV exactly.
+            # Derive the per-fill quote settlement amount. For single-fill
+            # orders, use the quote leg's actual Balance Change (the exact CSV
+            # settlement). For multi-fill orders (many base + quote legs sharing
+            # one Order id), each base leg must use its OWN fill value — not the
+            # first quote leg's. We use base_amount × filled_price (the per-fill
+            # trade value) which the exchange computed for this specific fill.
             quote_cash_amount = None
             quote_ccy = symbol_clean.split("-")[-1] if "-" in symbol_clean else ""
             if quote_ccy:
-                for sib_row, _sib_id, _ft, _sym in rows:
-                    sib_unit = (_strip_okx_bom(sib_row.get("Balance Unit")) or "").upper()
-                    if sib_unit == quote_ccy.upper():
-                        quote_cash_amount = abs(
-                            Decimal(str(sib_row.get("Balance Change") or "0"))
-                        )
-                        break
+                # Count how many quote legs exist. If exactly one, use its
+                # Balance Change (the exact settlement). If multiple (multi-fill),
+                # fall back to base_amount × filled_price per-fill.
+                quote_legs = [
+                    r for r, _rid, _ft, _sym in rows
+                    if (_strip_okx_bom(r.get("Balance Unit")) or "").upper() == quote_ccy.upper()
+                ]
+                if len(quote_legs) == 1:
+                    quote_cash_amount = abs(
+                        Decimal(str(quote_legs[0].get("Balance Change") or "0"))
+                    )
+                elif len(quote_legs) > 1:
+                    # Multi-fill: use this fill's own value (amount × price).
+                    quote_cash_amount = amount * filled_price
 
             payload = {
                 "__kind": "spot",

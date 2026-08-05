@@ -456,9 +456,10 @@ def persist_crypto_exchange_event(event, user, account):
                     import_event_type=event.category,
                 )
                 # Trade legs no longer carry cash_flow (computed from p*q in
-                # total_cash_flow). Only stablecoin cash legs (deposits/
-                # withdrawals/rewards) write cash_flow directly.
-                if leg_cash_flow is not None and category != "trade":
+                # total_cash_flow) — EXCEPT option legs, whose quantity is in
+                # contracts (not units), so p*q is nonsensical. Option legs
+                # carry the actual underlying settlement as cash_flow. #33.
+                if leg_cash_flow is not None and (category != "trade" or leg.get("instrument") == "option"):
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
                     )
@@ -834,6 +835,10 @@ def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
                 "price_asset": fee_ccy,
                 "role": "base",
                 "instrument": "option",
+                # The BTC settlement (from the CSV's Balance Change) — persisted
+                # as cash_flow so total_cash_flow reads it directly instead of
+                # computing the nonsensical contracts × underlying_price. #33.
+                "cash_flow": Decimal(payload["cashFlow"]) if payload.get("cashFlow") else None,
             }
         ],
         fee={
