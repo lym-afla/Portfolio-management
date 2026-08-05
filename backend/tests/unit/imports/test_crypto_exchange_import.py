@@ -378,7 +378,21 @@ def test_parse_okx_option_symbol_rejects_malformed(symbol):
         parse_option_symbol(symbol)
 
 
+@pytest.mark.django_db
 def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
+    # Task 8: yahoo_symbol is now read from the Assets row (per-asset), not
+    # from a hardcoded dict. The function needs a Crypto asset with name="BTC"
+    # and yahoo_symbol="BTC-USD" to proceed.
+    from common.models import Assets
+
+    Assets.objects.create(
+        type="Crypto",
+        ISIN="CRYPTO:BTC",
+        name="BTC",
+        currency="USD",
+        yahoo_symbol="BTC-USD",
+    )
+
     history = pd.DataFrame(
         {"Close": [60000.0, 61000.123456]},
         index=pd.to_datetime(["2025-12-31", "2026-01-01"]),
@@ -398,7 +412,18 @@ def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
     assert price == Decimal("61000.123456")
 
 
+@pytest.mark.django_db
 def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
+    from common.models import Assets
+
+    Assets.objects.create(
+        type="Crypto",
+        ISIN="CRYPTO:BTC",
+        name="BTC",
+        currency="USD",
+        yahoo_symbol="BTC-USD",
+    )
+
     history = pd.DataFrame(
         {"Close": [60000.0]},
         index=pd.to_datetime(["2025-12-31"]),
@@ -412,9 +437,34 @@ def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
     assert price is None
 
 
+@pytest.mark.django_db
 def test_fetch_crypto_usd_price_from_yahoo_returns_none_for_unsupported_symbol():
+    # No ETH Assets row exists in this test's DB → the function returns None
+    # without calling yf.Ticker. (Previously: "symbol not in dict"; now:
+    # "no asset row / asset has no yahoo_symbol".)
     with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
         price = fetch_crypto_usd_price_from_yahoo("ETH", date(2026, 1, 1))
+
+    ticker_class.assert_not_called()
+    assert price is None
+
+
+@pytest.mark.django_db
+def test_fetch_crypto_usd_price_from_yahoo_returns_none_when_asset_has_no_yahoo_symbol():
+    # Task 8: a Crypto row that exists but has a blank yahoo_symbol must also
+    # short-circuit to None (e.g. a coin Yahoo can't price).
+    from common.models import Assets
+
+    Assets.objects.create(
+        type="Crypto",
+        ISIN="CRYPTO:NOQUOTE",
+        name="NOQUOTE",
+        currency="USD",
+        yahoo_symbol=None,
+    )
+
+    with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
+        price = fetch_crypto_usd_price_from_yahoo("NOQUOTE", date(2026, 1, 1))
 
     ticker_class.assert_not_called()
     assert price is None

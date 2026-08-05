@@ -96,3 +96,20 @@ def test_crypto_fx_rate_same_currency_is_one(btc_asset, user):
     Prices.objects.create(security=btc_asset, date=date(2026, 1, 1), price=Decimal("60000"))
     rate = crypto_fx_rate("BTC", "USD", date(2026, 1, 1), investor=user)
     assert rate == Decimal("60000")  # BTC->USD = the price itself
+
+
+@pytest.mark.django_db
+def test_resolve_crypto_asset_sets_yahoo_symbol(user):
+    """Task 8: resolve_crypto_asset must set yahoo_symbol="<SYMBOL>-USD" on the
+    Assets row for every coin it creates (or backfills the value on an existing
+    row whose yahoo_symbol is blank, via resolve_or_create_asset's silent-mode
+    empty-field fill)."""
+    from services.crypto_exchange import resolve_crypto_asset
+
+    for symbol, expected_yahoo in [
+        ("BTC", "BTC-USD"),
+        ("ETH", "ETH-USD"),
+        ("TRUMP", "TRUMP-USD"),
+    ]:
+        asset = resolve_crypto_asset(symbol, user)
+        assert asset.yahoo_symbol == expected_yahoo, f"{symbol} -> {asset.yahoo_symbol}"

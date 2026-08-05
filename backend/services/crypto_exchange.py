@@ -42,7 +42,6 @@ STABLECOIN_CASH_CATEGORIES = {"deposit", "withdrawal", "reward"}
 SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES = {"InternalTransfer", "Transfer"}
 SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES = {"1", "128", "129"}
 OPTION_SETTLEMENT_COINS = {"USD", "USDT", "USDC"}
-YAHOO_USD_PRICE_SYMBOLS = {"BTC": "BTC-USD"}
 logger = logging.getLogger(__name__)
 
 MONTH_NUMBERS = {
@@ -111,6 +110,7 @@ def resolve_crypto_asset(symbol, user):
             "name": normalized_symbol,
             "ticker": normalized_symbol[:10],
             "exposure": "FX" if normalized_symbol in STABLECOINS else "Commodity",
+            "yahoo_symbol": f"{normalized_symbol}-USD",
         },
         mode="silent",
     )
@@ -211,10 +211,16 @@ def _quote_asset_fiat_price(price_asset, user, event_date):
 
 
 def fetch_crypto_usd_price_from_yahoo(symbol, price_date):
-    """Fetch a USD crypto close price from Yahoo Finance for import-time valuation."""
-    yahoo_symbol = YAHOO_USD_PRICE_SYMBOLS.get(str(symbol).upper())
-    if yahoo_symbol is None:
+    """Fetch a USD crypto close price from Yahoo Finance for import-time valuation.
+
+    Reads the coin's ``yahoo_symbol`` (e.g. ``"BTC-USD"``) from its ``Assets``
+    row. Coins without a ``yahoo_symbol`` return ``None`` (unpriced).
+    """
+    normalized = str(symbol).upper()
+    asset = Assets.objects.filter(type="Crypto", name=normalized).first()
+    if asset is None or not asset.yahoo_symbol:
         return None
+    yahoo_symbol = asset.yahoo_symbol
 
     start_date = price_date - timedelta(days=6)
     end_date = price_date + timedelta(days=1)
