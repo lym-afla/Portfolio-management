@@ -16,6 +16,7 @@ from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
+    TRANSACTION_TYPE_CRYPTO_COMMISSION,
     TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -357,8 +358,18 @@ def persist_crypto_exchange_event(event, user, account):
     leg_records = []
 
     with transaction.atomic():
+        # Commission legs (cross-currency fees emitted by _spot_legs with
+        # role="commission") are collected separately and persisted as their own
+        # Crypto commission rows after the main loop. They must NOT enter the
+        # main leg_records path (which would price them as trade legs).
+        commission_records = []
         for index, leg in enumerate(event.legs):
             if leg.get("role") == "fee":
+                continue
+            if leg.get("role") == "commission":
+                if _leg_quantity(leg) == 0:
+                    continue
+                commission_records.append((index, leg))
                 continue
 
             quantity = _leg_quantity(leg)
@@ -470,6 +481,49 @@ def persist_crypto_exchange_event(event, user, account):
                     fee_ccy = str(leg.get("fee_asset") or event.fee.get("asset") or "").upper()
                     if fee_ccy:
                         tx_kwargs["commission_currency"] = fee_ccy
+            try:
+                with transaction.atomic():
+                    created.append(Transactions.objects.create(**tx_kwargs))
+            except IntegrityError:
+                continue
+
+        # Commission legs (cross-currency fees) become their own Transactions
+        # rows of type ``Crypto commission`` that move the fee asset's quantity,
+        # so the position layer sums them (e.g. BTC position = +1 from the trade
+        # leg − 0.001 from the commission leg = +0.999). The dedup-safe
+        # import_event_id is suffixed ``:fee:<index>`` so re-imports don't
+        # duplicate the row. The row IS the commission; it has no commission of
+        # its own, so ``commission``/``commission_currency`` are deliberately
+        # NOT set here (spec §5.3, finding-3 concern).
+        for index, leg in commission_records:
+            fee_event_id = f"{event.provider_event_id}:fee:{index}"
+            if Transactions.objects.filter(
+                investor=user,
+                account=account,
+                import_provider=event.provider,
+                import_account_id=import_account_id,
+                import_event_id=fee_event_id,
+            ).exists():
+                continue
+            fee_asset_symbol = str(leg["asset"]).upper()
+            fee_asset = resolve_crypto_asset(fee_asset_symbol, user)
+            fee_quantity = _leg_quantity(leg)
+            tx_kwargs = dict(
+                investor=user,
+                account=account,
+                security=fee_asset,
+                currency=fee_asset_symbol,
+                type=TRANSACTION_TYPE_CRYPTO_COMMISSION,
+                date=event_time,
+                quantity=_normalize_model_decimal(Transactions, "quantity", fee_quantity),
+                price=None,
+                comment=_event_comment(event, leg),
+                import_provider=event.provider,
+                import_account_id=import_account_id,
+                import_event_id=fee_event_id,
+                import_group_id=event.group_id,
+                import_event_type=event.category,
+            )
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
