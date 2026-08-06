@@ -4,8 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from common.models import Assets, Prices
-from common.models import FX
+from common.models import Assets, FX, Prices
 from services.crypto import (
     crypto_fx_rate,
     crypto_usd_price,

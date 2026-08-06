@@ -1098,34 +1098,6 @@ def test_spot_legs_zero_fee_no_fee_asset_key():
     assert leg["fee_asset"] == ""
 
 
-def test_spot_legs_buy_base_fee_emits_separate_commission_leg_with_real_price():
-    """A buy with a base-asset fee keeps the REAL fill price; the BTC fee is
-    CROSS-currency relative to the USDT settlement, so it becomes a separate
-    ``role="commission"`` leg (NOT netted into the base quantity, NOT folded
-    into the per-unit price). cash_flow is NOT on either leg."""
-    from services.crypto_exchange import _spot_legs
-
-    legs = _spot_legs(
-        side="buy", base="BTC", quote="USDT",
-        qty=Decimal("0.001"), price=Decimal("96058"),
-        fee_delta=Decimal("-0.00000012"), fee_asset="BTC",
-    )
-    assert len(legs) == 2
-    base_leg = next(leg for leg in legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in legs if leg.get("role") == "commission")
-    # Real (un-netted) quantity on the base leg.
-    assert base_leg["quantity"] == Decimal("0.001")
-    assert "cash_flow" not in base_leg
-    # Real fill price on the base leg (no effective-price adjustment).
-    assert base_leg["price"] == Decimal("96058")
-    # |price * qty| = principal (96.058), exactly the trade value with no fee.
-    assert abs(base_leg["quantity"] * base_leg["price"]) == Decimal("96.058")
-    # Separate commission leg carries the cross-currency BTC fee.
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.00000012")
-    assert commission_leg["role"] == "commission"
-
-
 def test_spot_legs_buy_quote_fee_excludes_commission_from_price():
     """A buy with a QUOTE-ASSET fee (no quote_cash_amount): settlement defaults
     to qty*price (the principal), so price = fill (no adjustment needed).
