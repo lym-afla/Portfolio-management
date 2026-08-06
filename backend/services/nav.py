@@ -244,7 +244,22 @@ def NAV_at_date(
     for account in portfolio_accounts:
         broker_balance = account_balance(account, date)
         for currency, balance in broker_balance.items():
-            fx_rate = get_fx_rate(currency, target_currency, date)
+            # Defensive: if a currency in the cash dict has no FX rate
+            # (e.g. an unpriced crypto coin that leaked in, or a currency
+            # with no FX data yet), skip it with a warning rather than
+            # crashing the whole NAV. The balance is still in the dict for
+            # the per-currency breakdown; we just can't convert/total it.
+            try:
+                fx_rate = get_fx_rate(currency, target_currency, date)
+            except ValueError:
+                logger.warning(
+                    "No FX rate for cash currency %s -> %s on %s; "
+                    "skipping from NAV total",
+                    currency,
+                    target_currency,
+                    date,
+                )
+                continue
             converted_balance = balance * fx_rate
             analysis["Total NAV"] += converted_balance
 
