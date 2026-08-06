@@ -216,11 +216,13 @@ def get_rate(source, target, date_as_of, investor=None):
             else:
                 # target is crypto, source is fiat: invert (crypto -> source).
                 fwd = crypto_fx_rate(target, source, date_as_of, investor)
-                fx = (Decimal("1") / fwd).quantize(Decimal("0.000001"))
+                fx = (Decimal("1") / fwd).quantize(
+                    Decimal("0.000001"), rounding=ROUND_HALF_UP
+                )
         except ValueError:
             raise
         return {
-            "FX": fx.quantize(Decimal("0.000001")),
+            "FX": fx.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP),
             "conversions": 2,
             "dates_async": False,
             "dates": [date_as_of],

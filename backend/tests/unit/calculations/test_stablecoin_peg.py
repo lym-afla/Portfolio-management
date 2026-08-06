@@ -4,6 +4,12 @@ The peg is a universal constant: stablecoins are pegged to USD at 1.0,
 seeded as global FX rows (no investor link). The get_rate resolution
 treats them as universal graph edges and exempts them from the per-investor
 filter in the per-hop rate lookup.
+
+Test isolation: the peg rows are normally seeded by migration 0093, but
+other tests in the suite use ``@pytest.mark.django_db(transaction=True)``
+(e.g. test_bond_aci.py), which truncates all tables between tests — wiping
+the migration-seeded rows. To stay independent of run order, this class
+re-seeds the peg rows in an autouse setup if they are missing.
 """
 from datetime import date
 from decimal import Decimal
@@ -13,11 +19,34 @@ import pytest
 from common.models import FX
 from services.fx import get_rate
 
+# The peg date is set well before the earliest transaction so the closest
+# date-on-or-before lookup always finds it (mirrors migration 0093).
+_PEG_DATE = date(2000, 1, 1)
+_PEG_RATE = Decimal("1.0000000000")
+_PEG_PAIRS = [("USD", "USDT"), ("USD", "USDC")]
+
 
 @pytest.mark.django_db
 @pytest.mark.fx
 class TestStablecoinPeg:
     """Pin the stablecoin peg behavior."""
+
+    @pytest.fixture(autouse=True)
+    def _ensure_peg_rows(self):
+        """Re-seed the global peg rows if a prior TransactionTestCase wiped them.
+
+        ``get_or_create`` is idempotent: if migration 0093's rows survive, this
+        is a no-op; if they were truncated, they are restored. Without this,
+        the multi-hop and global-row tests fail depending on suite ordering.
+        """
+        for from_curr, to_curr in _PEG_PAIRS:
+            FX.objects.get_or_create(
+                date=_PEG_DATE,
+                from_currency=from_curr,
+                to_currency=to_curr,
+                defaults={"rate": _PEG_RATE},
+            )
+        yield
 
     def test_usd_to_usdt_is_one(self):
         """USD → USDT returns 1.0 (direct peg)."""
@@ -61,7 +90,8 @@ class TestStablecoinPeg:
         assert result["FX"] == Decimal("1.000000")
 
     def test_peg_rows_are_global(self):
-        """Peg rows exist in the DB (seeded by migration 0093)."""
+        """Peg rows exist in the DB (seeded by migration 0093, re-seeded by the
+        autouse fixture if a prior TransactionTestCase wiped them)."""
         usdt = FX.objects.filter(from_currency="USD", to_currency="USDT").first()
         assert usdt is not None
         assert usdt.rate == Decimal("1.0000000000")
