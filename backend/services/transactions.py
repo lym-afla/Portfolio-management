@@ -60,7 +60,6 @@ from constants import (
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
     TRANSACTION_TYPE_COUPON,
-    TRANSACTION_TYPE_CRYPTO_COMMISSION,
     TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -190,14 +189,6 @@ def total_cash_flow(transaction, target_currency=None):
     if transaction.type == TRANSACTION_TYPE_STOCK_SPLIT:
         return Decimal(0)
 
-    # Crypto commission rows move the fee asset's POSITION (via quantity), not
-    # cash. The fee's cash effect is already captured on the parent trade row's
-    # -qty*price (+ same-currency commission). Return 0 so these rows don't
-    # pollute the cash-balance dict. (spec §5.3, revert of the cross-currency
-    # commission exclusion.)
-    if transaction.type == TRANSACTION_TYPE_CRYPTO_COMMISSION:
-        return Decimal(0)
-
     # Initialize cash flow
     calculated_cash_flow = Decimal(0)
 
@@ -254,13 +245,18 @@ def total_cash_flow(transaction, target_currency=None):
             if transaction.aci:
                 calculated_cash_flow += Decimal(transaction.aci)
 
-            # Add commission. Under the reverted model, cross-currency fees
-            # are separate commission rows (Task 6), so any commission that
-            # remains on the trade row is same-currency by construction — the
-            # old comm_ccy == trade_ccy guard is dead code and removed.
-            # (spec §5.3.)
+            # Add commission. A cross-currency commission (e.g. a BTC fee on a
+            # BTC-USDT trade, where commission_currency="BTC" but the trade's
+            # currency is "USDT") must NOT be folded into the trade's primary-
+            # currency cash flow — it depletes a different currency's balance,
+            # handled by ``services.positions.position``. Only same-currency
+            # commissions (or legacy rows with no commission_currency) are
+            # applied here.
             if transaction.commission:
-                calculated_cash_flow += Decimal(transaction.commission)
+                comm_ccy = (getattr(transaction, "commission_currency", None) or "").upper()
+                trade_ccy = (transaction.currency or "").upper()
+                if not comm_ccy or comm_ccy == trade_ccy:
+                    calculated_cash_flow += Decimal(transaction.commission)
 
     # Convert to target currency if requested
     if target_currency and target_currency != transaction.currency:

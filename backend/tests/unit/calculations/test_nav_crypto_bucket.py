@@ -100,3 +100,59 @@ def test_nav_no_crypto_in_securities_breakdown(crypto_portfolio):
     assert crypto_keys == []
     # And the crypto value lives only in the top-level Crypto bucket.
     assert result["Crypto"]["BTC"] == Decimal("30000")
+
+
+@pytest.mark.django_db
+def test_nav_skips_unpriced_crypto_coin_instead_of_crashing(user):
+    """Issue #5a: an unpriced crypto coin must NOT crash the whole NAV page.
+
+    When a crypto holding's USD value can't be resolved (``calculate_value_at_date``
+    raises ValueError from the unpriced-coin path — e.g. a coin whose currency
+    is a crypto code with no Prices row, so ``fx.get_rate`` invokes
+    ``crypto_fx_rate`` → ``crypto_usd_price`` which raises), ``NAV_at_date``
+    skips the coin with a warning and excludes it from Total NAV rather than
+    raising. Priced coins and cash are still counted.
+
+    The asset is constructed so that valuing it in USD actually exercises the
+    crypto-FX path: its ``currency`` is the coin's own code ("RARE"), so
+    ``price_at_date`` calls ``fx.get_rate("RARE", "USD")`` →
+    ``is_crypto_code("RARE")`` is True → ``crypto_fx_rate`` →
+    ``crypto_usd_price`` raises ValueError (no Prices row). Without the
+    try/except guard in NAV, this crashes the whole page.
+    """
+    broker = Brokers.objects.create(investor=user, name="OKX", country="Crypto", cash_precision=8)
+    account = Accounts.objects.create(broker=broker, name="Unified", native_id="okx-5a")
+
+    # RARE: a crypto holding whose currency is its own coin code (so FX-resolving
+    # its USD value invokes crypto_fx_rate, which raises when unpriced). Brought
+    # in via a Crypto transfer in (cash_flow=0) so it does NOT create a RARE cash
+    # balance key that would separately crash the cash-balance FX loop — this
+    # test isolates the asset-valuation guard.
+    rare = Assets.objects.create(
+        type="Crypto", ISIN="CRYPTO:RARE", name="RARE",
+        currency="RARE", exposure="Commodity", yahoo_symbol=None,
+    )
+    rare.investors.add(user)
+    Transactions.objects.create(
+        investor=user, account=account, security=rare, currency="RARE",
+        type="Crypto transfer in", date=date(2026, 1, 1),
+        quantity=Decimal("10"), price=Decimal("1"),
+    )
+    # 1000 USD cash in, so the portfolio isn't empty after skipping RARE.
+    Transactions.objects.create(
+        investor=user, account=account, security=None, currency="USD",
+        type="Cash in", date=date(2026, 1, 1),
+        quantity=None, price=None, cash_flow=Decimal("1000"),
+    )
+
+    # Must NOT raise — RARE is skipped with a warning.
+    result = NAV_at_date(
+        user.id, (account.id,), date(2026, 1, 1), "USD",
+        breakdown=("asset_type",),
+    )
+    # Total NAV is just the cash (1000); RARE contributed nothing.
+    assert result["Total NAV"] == Decimal("1000")
+    # The Crypto bucket does not carry RARE's value (it was skipped, not valued).
+    assert result["Crypto"].get("RARE", Decimal(0)) == Decimal("0")
+    # Cash still counted on the securities side.
+    assert result["asset_type"]["Cash"] == Decimal("1000")

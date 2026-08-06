@@ -56,12 +56,52 @@ def position(asset, date, investor, account_ids=None):
     Returns:
         Decimal: Total quantity held at ``date``, rounded to 6 dp. Returns
         ``Decimal(0)`` when there are no matching transactions.
+
+    Cross-currency commissions: for a Crypto asset, any commission on another
+    transaction whose ``commission_currency`` matches the asset's name depletes
+    this asset's holding. A BTC fee of ``-0.001`` on a BTC-USDT trade is stored
+    as ``commission=-0.001`` on the USDT trade row; the BTC asset's position
+    must reflect that outflow, so net BTC = ``+1`` (qty) ``+ (-0.001)``
+    (commission) = ``+0.999``. The commission is stored signed (negative for a
+    fee outflow), so the negative value is ADDED to reduce the position.
     """
     query = asset.transactions.filter(date__date__lte=date, investor=investor)
     if account_ids is not None:
         query = query.filter(account_id__in=account_ids)
     total_quantity = query.aggregate(total=Sum("quantity"))["total"]
-    return round(Decimal(total_quantity), 6) if total_quantity else Decimal(0)
+    result = Decimal(total_quantity) if total_quantity else Decimal(0)
+
+    # Cross-currency commissions deplete the fee-currency asset's position.
+    # A BTC fee on a BTC-USDT trade reduces the BTC holding even though the
+    # commission lives on the USDT trade row. Only applies to crypto assets
+    # (type="Crypto") whose name is a commission_currency on other rows.
+    # Lazy import to avoid a circular dependency (common.models imports this
+    # module lazily via the _positions_* bridge helpers).
+    #
+    # Note: the quantity sum above sums ONLY the ``quantity`` field; the
+    # ``commission`` field is independent. Even when a trade row's own security
+    # is this asset (e.g. a BTC-USDT buy with a BTC fee has security=BTC,
+    # quantity=1, commission=-0.001), the commission is NOT in the quantity
+    # sum, so adding it here is correct and not a double-count. Net BTC
+    # = +1 (qty) + (-0.001) (commission) = +0.999.
+    if asset.type == "Crypto":
+        from common.models import Transactions
+
+        comm_query = Transactions.objects.filter(
+            investor=investor,
+            commission_currency=asset.name,
+            date__date__lte=date,
+            commission__isnull=False,
+        )
+        if account_ids is not None:
+            comm_query = comm_query.filter(account_id__in=account_ids)
+        comm_total = comm_query.aggregate(total=Sum("commission"))["total"]
+        if comm_total:
+            # commission is signed (negative for a fee outflow); adding the
+            # negative value reduces the position.
+            result += Decimal(comm_total)
+
+    return round(result, 6)
 
 
 # ---------------------------------------------------------------------------
