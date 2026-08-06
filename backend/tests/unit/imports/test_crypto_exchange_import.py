@@ -75,20 +75,19 @@ def test_normalize_bybit_spot_execution_sell_with_base_fee():
 
     assert event.group_id == "exec-2"
     # BTC fee on a BTC-USDT sell: BTC is the base and USDT is the settlement, so
-    # the BTC fee is CROSS-currency. Under the new real-price model (spec §5.3)
-    # it becomes a separate ``role="commission"`` leg; the base leg keeps the
-    # REAL fill price (61000) and the REAL (un-netted) quantity. cash_flow is
-    # NOT on either leg.
-    assert len(event.legs) == 2
-    base_leg = next(leg for leg in event.legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in event.legs if leg.get("role") == "commission")
+    # the BTC fee is CROSS-currency. Under the embedded multi-currency model the
+    # fee does NOT become a separate leg — it attaches to the trade row's
+    # ``commission``/``commission_currency`` (carried in event.fee); the base
+    # leg keeps the REAL fill price (61000) and the REAL (un-netted) quantity.
+    # cash_flow is NOT on the leg.
+    assert len(event.legs) == 1
+    base_leg = event.legs[0]
     assert base_leg["asset"] == "BTC"
     assert base_leg["quantity"] == Decimal("-0.25")
     assert "cash_flow" not in base_leg
     assert base_leg["price"] == Decimal("61000")
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.0002")
-    assert commission_leg["role"] == "commission"
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
     assert event.fee["asset"] == "BTC"
     assert event.fee["quantity"] == Decimal("-0.0002")
 
@@ -133,22 +132,20 @@ def test_normalize_bybit_spot_execution_third_asset_fee_emits_commission_leg():
 
     assert event.group_id == "exec-3"
     # The BNB fee is neither the base nor the quote, so it is CROSS-currency
-    # relative to the USDT settlement. Under the new real-price model (spec
-    # §5.3) it is NOT dropped — it becomes a separate ``role="commission"`` leg
-    # that moves the BNB quantity. The base leg keeps the REAL fill price and
-    # the REAL (un-netted) quantity. cash_flow is NOT on either leg.
-    assert len(event.legs) == 2
-    base_leg = next(leg for leg in event.legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in event.legs if leg.get("role") == "commission")
+    # relative to the USDT settlement. Under the embedded multi-currency model
+    # it is NOT dropped and does NOT become a separate leg — it attaches to the
+    # trade row's ``commission``/``commission_currency`` (carried in event.fee).
+    # The base leg keeps the REAL fill price and the REAL (un-netted) quantity.
+    # cash_flow is NOT on the leg.
+    assert len(event.legs) == 1
+    base_leg = event.legs[0]
     assert base_leg["asset"] == "ETH"
     assert base_leg["quantity"] == Decimal("2")
     assert "cash_flow" not in base_leg
     # Real fill price on the base leg (not adjusted for the cross-currency fee).
     assert base_leg["price"] == Decimal("3000")
-    # Separate BNB commission leg moving the fee quantity.
-    assert commission_leg["asset"] == "BNB"
-    assert commission_leg["quantity"] == Decimal("-1")
-    assert commission_leg["role"] == "commission"
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
     assert event.fee["asset"] == "BNB"
     assert event.fee["quantity"] == Decimal("-1")
 
@@ -214,20 +211,19 @@ def test_normalize_okx_spot_fill_sell_btc_usdt_with_negative_base_fee():
     assert event.category == "trade"
     assert event.raw_type == "spot_fill"
     # BTC fee on a BTC-USDT sell: BTC is the base and USDT is the settlement, so
-    # the BTC fee is CROSS-currency. Under the new real-price model (spec §5.3)
-    # it becomes a separate ``role="commission"`` leg; the base leg keeps the
-    # REAL fill price (70000) and the REAL (un-netted) quantity. cash_flow is
-    # NOT on either leg.
-    assert len(event.legs) == 2
-    base_leg = next(leg for leg in event.legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in event.legs if leg.get("role") == "commission")
+    # the BTC fee is CROSS-currency. Under the embedded multi-currency model the
+    # fee does NOT become a separate leg — it attaches to the trade row's
+    # ``commission``/``commission_currency`` (carried in event.fee); the base
+    # leg keeps the REAL fill price (70000) and the REAL (un-netted) quantity.
+    # cash_flow is NOT on the leg.
+    assert len(event.legs) == 1
+    base_leg = event.legs[0]
     assert base_leg["asset"] == "BTC"
     assert base_leg["quantity"] == Decimal("-0.2")
     assert "cash_flow" not in base_leg
     assert base_leg["price"] == Decimal("70000")
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.0001")
-    assert commission_leg["role"] == "commission"
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("-0.0001"),
@@ -278,21 +274,21 @@ def test_normalize_okx_spot_fill_positive_fee_is_rebate():
     )
 
     # BTC fee on a BTC-USDT sell: BTC is the base, USDT is the settlement, so a
-    # BTC fee is CROSS-currency. The rebate (+0.0001 BTC) becomes a separate
-    # ``role="commission"`` leg moving the BTC quantity; the base leg keeps the
-    # REAL fill price (70000) and the REAL (un-netted) quantity. cash_flow is
-    # NOT on either leg.
-    assert len(event.legs) == 2
-    base_leg = next(leg for leg in event.legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in event.legs if leg.get("role") == "commission")
+    # BTC fee is CROSS-currency. Under the embedded multi-currency model the
+    # rebate (+0.0001 BTC) does NOT become a separate leg — it attaches to the
+    # trade row's ``commission``/``commission_currency`` (carried in event.fee);
+    # the base leg keeps the REAL fill price (70000) and the REAL (un-netted)
+    # quantity. cash_flow is NOT on the leg.
+    assert len(event.legs) == 1
+    base_leg = event.legs[0]
     assert base_leg["asset"] == "BTC"
     assert base_leg["quantity"] == Decimal("-0.2")
     assert "cash_flow" not in base_leg
     assert base_leg["price"] == Decimal("70000")
-    # The BTC rebate lands in the separate commission leg as a positive BTC delta
-    # (it is a rebate — the trader receives it, hence is_rebate=True).
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("0.0001")
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
+    # The BTC rebate lands in event.fee as a positive BTC delta (it is a rebate
+    # — the trader receives it, hence is_rebate=True).
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("0.0001"),

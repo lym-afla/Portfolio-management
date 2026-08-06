@@ -9,7 +9,6 @@ from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
-    TRANSACTION_TYPE_CRYPTO_COMMISSION,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
@@ -957,30 +956,30 @@ def test_spot_legs_quote_fee_effective_price_excludes_commission():
     assert "cash_flow" not in leg
 
 
-def test_spot_legs_base_fee_emits_separate_commission_leg_with_real_price():
+def test_spot_legs_base_fee_keeps_real_price_no_separate_leg():
     """Base-fee buy with a quote_cash_amount: the BTC fee is CROSS-currency
-    relative to the USDT settlement, so it is NOT netted into the base quantity.
-    The base leg keeps the REAL fill price; the BTC fee becomes a separate
-    ``role="commission"`` leg. quote_cash_amount is no longer used to derive an
-    effective price — the real fillPx is what is stored."""
+    relative to the USDT settlement. Under the embedded model it is NOT netted
+    into the base quantity and does NOT become a separate leg. The base leg
+    keeps the REAL fill price and the REAL (un-netted) quantity; the fee
+    attaches to the trade row's ``commission``/``commission_currency``
+    downstream (and ``position()`` depletes the BTC holding).
+    quote_cash_amount is no longer used to derive an effective price — the real
+    fillPx is what is stored."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
         "buy", "BTC", "USDT", Decimal("0.06684041"), Decimal("74837.4"),
         Decimal("-0.00006684"), "BTC", quote_cash_amount=Decimal("5002.16249933"),
     )
-    assert len(legs) == 2
-    base_leg = next(leg for leg in legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in legs if leg.get("role") == "commission")
+    assert len(legs) == 1
+    base_leg = legs[0]
     assert "cash_flow" not in base_leg
     # Real (un-netted) quantity on the base leg.
     assert base_leg["quantity"] == Decimal("0.06684041")
     # Real fill price on the base leg (not an effective-price derivation).
     assert base_leg["price"] == Decimal("74837.4")
-    # Separate commission leg in the cross-currency fee asset (BTC).
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.00006684")
-    assert commission_leg["role"] == "commission"
+    # No separate commission leg — the fee attaches to the trade row downstream.
+    assert not any(leg.get("role") == "commission" for leg in legs)
 
 
 def test_spot_legs_no_fee_price_is_fill():
@@ -1013,12 +1012,14 @@ def test_spot_legs_sell_quote_fee():
     assert "cash_flow" not in leg
 
 
-def test_spot_legs_base_fee_emits_separate_commission_leg():
+def test_spot_legs_base_fee_keeps_real_price_no_separate_leg_stablecoin():
     """_spot_legs stablecoin branch: a base-asset fee is CROSS-currency relative
-    to the USDT settlement, so it is NOT netted into the base quantity. Instead
-    it becomes a separate ``role="commission"`` leg. The base leg keeps the REAL
-    fill price and the REAL (un-netted) quantity. cash_flow is NOT on either
-    leg (computed later from p*q)."""
+    to the USDT settlement. Under the embedded model it is NOT netted into the
+    base quantity and does NOT become a separate leg. The base leg keeps the
+    REAL fill price and the REAL (un-netted) quantity; the fee attaches to the
+    trade row's ``commission``/``commission_currency`` downstream (and
+    ``position()`` depletes the BTC holding). cash_flow is NOT on the leg
+    (computed later from p*q)."""
     from services.crypto_exchange import _spot_legs
 
     # BTC-USDT buy: qty=0.001, price=96058, fee=-0.00000012 BTC (base).
@@ -1031,9 +1032,8 @@ def test_spot_legs_base_fee_emits_separate_commission_leg():
         fee_delta=Decimal("-0.00000012"),
         fee_asset="BTC",
     )
-    assert len(legs) == 2
-    base_leg = next(leg for leg in legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in legs if leg.get("role") == "commission")
+    assert len(legs) == 1
+    base_leg = legs[0]
     # Real (un-netted) quantity on the base leg.
     assert base_leg["quantity"] == Decimal("0.001")
     assert "cash_flow" not in base_leg
@@ -1043,10 +1043,8 @@ def test_spot_legs_base_fee_emits_separate_commission_leg():
     assert abs(base_leg["price"] * base_leg["quantity"]) == Decimal("96.058")
     assert base_leg["quote_currency"] == "USDT"
     assert base_leg["fee_asset"] == "BTC"
-    # Separate commission leg carries the BTC fee quantity.
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.00000012")
-    assert commission_leg["role"] == "commission"
+    # No separate commission leg — the fee attaches to the trade row downstream.
+    assert not any(leg.get("role") == "commission" for leg in legs)
 
 
 def test_spot_legs_quote_fee_folded_into_effective_price():
@@ -1133,15 +1131,16 @@ def test_spot_legs_buy_no_fee_keeps_raw_fill_price():
 
 
 def test_spot_legs_quote_cash_amount_no_longer_drives_effective_price():
-    """Under the new real-price model (spec §5) the BTC base-asset fee is CROSS-
+    """Under the real-price embedded-fee model the BTC base-asset fee is CROSS-
     currency relative to the USDT settlement, so it is NOT netted into the base
     quantity. The base leg keeps the REAL fill price (fillPx) and the REAL
     quantity; quote_cash_amount is no longer used to derive an effective price.
-    The fee becomes a separate ``role="commission"`` leg.
+    The fee attaches to the trade row's ``commission``/``commission_currency``
+    downstream — it does NOT become a separate leg.
 
     This test covers the same scenario the OLD effective-price test set up (a
     buy with a base-asset fee and a quote_cash_amount) but asserts the NEW
-    real-price + separate-commission-leg behavior."""
+    real-price + embedded-commission behavior."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1150,25 +1149,23 @@ def test_spot_legs_quote_cash_amount_no_longer_drives_effective_price():
         fee_delta=Decimal("-0.00006684"), fee_asset="BTC",
         quote_cash_amount=Decimal("5002.16249933"),
     )
-    assert len(legs) == 2
-    base_leg = next(leg for leg in legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in legs if leg.get("role") == "commission")
+    assert len(legs) == 1
+    base_leg = legs[0]
     assert "cash_flow" not in base_leg
     # Real (un-netted) quantity on the base leg.
     assert base_leg["quantity"] == Decimal("0.06684041")
     # Real fill price on the base leg (not an effective-price derivation).
     assert base_leg["price"] == Decimal("74837.4")
-    # Separate commission leg in the cross-currency fee asset (BTC).
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.00006684")
-    assert commission_leg["role"] == "commission"
+    # No separate commission leg — the fee attaches to the trade row downstream.
+    assert not any(leg.get("role") == "commission" for leg in legs)
 
 
-def test_spot_legs_sell_base_fee_emits_separate_commission_leg():
+def test_spot_legs_sell_base_fee_keeps_real_price_no_separate_leg():
     """A base-asset-fee sell keeps the REAL fill price; the BTC fee is CROSS-
-    currency relative to the USDT settlement, so it becomes a separate
-    ``role="commission"`` leg (NOT netted into the base quantity). cash_flow is
-    NOT on either leg."""
+    currency relative to the USDT settlement. Under the embedded model it does
+    NOT become a separate leg (NOT netted into the base quantity); it attaches
+    to the trade row's ``commission``/``commission_currency`` downstream.
+    cash_flow is NOT on the leg."""
     from services.crypto_exchange import _spot_legs
 
     legs = _spot_legs(
@@ -1176,17 +1173,14 @@ def test_spot_legs_sell_base_fee_emits_separate_commission_leg():
         qty=Decimal("0.2"), price=Decimal("70000"),
         fee_delta=Decimal("-0.0001"), fee_asset="BTC",
     )
-    assert len(legs) == 2
-    base_leg = next(leg for leg in legs if leg.get("role") == "base")
-    commission_leg = next(leg for leg in legs if leg.get("role") == "commission")
+    assert len(legs) == 1
+    base_leg = legs[0]
     assert "cash_flow" not in base_leg
     assert base_leg["quantity"] == Decimal("-0.2")  # real (un-netted) quantity
     # Real fill price on the base leg (no effective-price adjustment).
     assert base_leg["price"] == Decimal("70000")
-    # Separate commission leg carries the cross-currency BTC fee.
-    assert commission_leg["asset"] == "BTC"
-    assert commission_leg["quantity"] == Decimal("-0.0001")
-    assert commission_leg["role"] == "commission"
+    # No separate commission leg — the fee attaches to the trade row downstream.
+    assert not any(leg.get("role") == "commission" for leg in legs)
 
 
 @pytest.mark.django_db
@@ -1289,18 +1283,21 @@ def test_unified_model_quote_fee_buy_full_pipeline(user, crypto_account):
 
 
 @pytest.mark.django_db
-def test_cross_currency_commission_leg_persists_as_separate_row(user, crypto_account):
-    """A cross-currency fee (BTC fee on a BTC-USDT buy) is persisted as a SEPARATE
-    Crypto commission row in addition to the trade row. The commission row:
+def test_cross_currency_fee_embedded_in_trade_row_and_depletes_position(user, crypto_account):
+    """A cross-currency fee (BTC fee on a BTC-USDT buy) is EMBEDDED in the trade
+    row's ``commission``/``commission_currency`` — it does NOT become a separate
+    row. The trade row:
 
-    - has type=TRANSACTION_TYPE_CRYPTO_COMMISSION,
-    - has security=<fee asset>, currency=<fee code>,
-    - has quantity=<fee> (so the position layer reconciles: BTC position =
-      +1 from the trade leg - 0.001 from the commission leg = +0.999),
-    - has commission=None (the row IS the commission; finding-3 concern),
-    - has a dedup-safe import_event_id suffixed ':fee:<index>'.
+    - has type=TRANSACTION_TYPE_CRYPTO_TRADE_IN, currency=USDT,
+    - carries the fee on its ``commission``/``commission_currency`` fields
+      (commission=-0.001, commission_currency=BTC),
+    - keeps the REAL fill price (60000) and the REAL un-netted quantity (1).
 
-    The base trade leg keeps the REAL fill price (not adjusted for the fee)."""
+    The BTC fee depletes the BTC holding via ``position()``: net BTC = +1 (qty)
+    + (-0.001) (commission) = +0.999. ``total_cash_flow`` excludes the cross-
+    currency commission from the USDT cash flow (it would mix BTC units into a
+    USDT amount), so the trade's cash flow is exactly ``-qty*price`` = -60000.
+    """
     from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 
     event = CryptoExchangeEvent(
@@ -1320,50 +1317,41 @@ def test_cross_currency_commission_leg_persists_as_separate_row(user, crypto_acc
                 "quote_currency": "USDT",
                 "fee_asset": "BTC",
             },
-            {
-                "asset": "BTC",
-                "quantity": Decimal("-0.001"),
-                "price": Decimal("1"),
-                "price_asset": "BTC",
-                "role": "commission",
-                "instrument": "coin",
-            },
         ],
         fee={"asset": "BTC", "quantity": Decimal("-0.001"), "is_rebate": False},
     )
     created = persist_crypto_exchange_event(event, user, crypto_account)
 
-    # TWO rows persisted: the trade row + the commission row.
-    assert len(created) == 2
+    # ONE row persisted (the trade row); no separate commission row.
+    assert len(created) == 1
     rows = list(Transactions.objects.filter(investor=user, account=crypto_account))
-    assert len(rows) == 2
+    assert len(rows) == 1
 
-    trade_row = next(r for r in rows if r.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN)
-    commission_row = next(r for r in rows if r.type == TRANSACTION_TYPE_CRYPTO_COMMISSION)
+    trade_row = rows[0]
+    assert trade_row.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN
+    assert trade_row.security == Assets.objects.get(ISIN="CRYPTO:BTC", currency="USD")
 
     # Trade leg keeps the REAL fill price (not adjusted for the cross-currency
     # fee), with the real un-netted quantity.
-    assert trade_row.security == Assets.objects.get(ISIN="CRYPTO:BTC", currency="USD")
     assert trade_row.quantity == Decimal("1.000000000")
     assert trade_row.price == Decimal("60000.000000000")
     assert trade_row.currency == "USDT"
     assert trade_row.import_event_id == "csv:ccy-commission-1:0"
 
-    # Commission row moves the fee asset's quantity; the row IS the commission
-    # so its own commission field is NULL (no commission-of-its-own).
-    assert commission_row.type == TRANSACTION_TYPE_CRYPTO_COMMISSION
-    assert commission_row.security == trade_row.security  # CRYPTO:BTC
-    assert commission_row.currency == "BTC"
-    assert commission_row.quantity == Decimal("-0.001000000")
-    assert commission_row.price is None
-    assert commission_row.commission is None  # finding-3 concern
-    assert commission_row.commission_currency is None  # finding-3 concern
-    # Dedup-safe id suffixed :fee:<index>.
-    assert commission_row.import_event_id == "csv:ccy-commission-1:fee:1"
-    assert commission_row.import_group_id == "order-ccy-commission"
+    # The fee is EMBEDDED in the trade row's commission/commission_currency.
+    assert trade_row.commission == Decimal("-0.001000000")
+    assert trade_row.commission_currency == "BTC"
 
-    # Position reconciliation (review finding #7): the BTC fee row moves the BTC
-    # position, so net BTC = +1 (trade) - 0.001 (commission) = +0.999.
+    # total_cash_flow excludes the cross-currency BTC fee from the USDT cash
+    # flow: it is exactly -qty*price, no wrong-currency contamination.
+    cf = total_cash_flow(trade_row)
+    assert cf == Decimal("-60000.00000000"), (
+        f"total_cash_flow={cf!r}; expected -60000.00000000 (exactly -qty*price, "
+        f"cross-currency BTC fee excluded from USDT cash flow)"
+    )
+
+    # Position reconciliation: the BTC fee depletes the BTC holding via
+    # position(), so net BTC = +1 (trade qty) + (-0.001) (commission) = +0.999.
     from datetime import datetime, timezone
 
     btc_asset = trade_row.security  # CRYPTO:BTC / USD
@@ -1371,24 +1359,23 @@ def test_cross_currency_commission_leg_persists_as_separate_row(user, crypto_acc
     net_btc = position(btc_asset, event_date, user, account_ids=[crypto_account.id])
     assert net_btc == Decimal("0.999"), f"net BTC={net_btc!r}; expected 0.999"
 
-    # Idempotency: re-importing the same event does not duplicate either row.
+    # Idempotency: re-importing the same event does not duplicate the row.
     assert persist_crypto_exchange_event(event, user, crypto_account) == []
     assert (
-        Transactions.objects.filter(import_group_id="order-ccy-commission").count() == 2
+        Transactions.objects.filter(import_group_id="order-ccy-commission").count() == 1
     )
 
 
 @pytest.mark.django_db
-def test_cross_currency_fee_not_double_booked_on_trade_row(user):
-    """Final-review C-1: a cross-currency fee (BTC fee on a BTC-USDT buy) is
-    emitted as its OWN ``role="commission"`` leg by ``_spot_legs`` and persisted
-    as a separate ``Crypto commission`` row that moves the fee asset's quantity.
-    Therefore the fee must NOT also be attached to the trade row's
-    ``commission``/``commission_currency`` — otherwise it is double-booked (once
-    here, once on the commission row) and ``total_cash_flow`` adds a wrong-
-    currency amount (BTC) to a USDT cash flow, yielding ``-60000.001`` instead
-    of ``-60000.00``. The trade row's commission must be NULL when a commission
-    leg was emitted for the event."""
+def test_cross_currency_fee_not_in_trade_cash_flow(user):
+    """Cross-currency fee embedded in the trade row is EXCLUDED from its cash flow.
+
+    A BTC fee on a BTC-USDT buy attaches to the trade row as commission=-0.001,
+    commission_currency=BTC. The trade's own currency is USDT, so
+    ``total_cash_flow`` must NOT fold the BTC commission into the USDT cash flow
+    (it would mix BTC units into a USDT amount, yielding -60000.001 instead of
+    -60000). The fee depletes the BTC position separately via ``position()``.
+    """
     from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 
     # Crypto-native precision (8dp) so the cash_flow assertion matches exactly
@@ -1402,8 +1389,8 @@ def test_cross_currency_fee_not_double_booked_on_trade_row(user):
 
     event = CryptoExchangeEvent(
         provider="okx_csv",
-        provider_event_id="csv:c1-dbl",
-        group_id="order-c1-dbl",
+        provider_event_id="csv:c1-embedded",
+        group_id="order-c1-embedded",
         timestamp_ms=1738454400000,
         category="trade",
         raw_type="spot_fill",
@@ -1417,57 +1404,37 @@ def test_cross_currency_fee_not_double_booked_on_trade_row(user):
                 "quote_currency": "USDT",
                 "fee_asset": "BTC",
             },
-            {
-                "asset": "BTC",
-                "quantity": Decimal("-0.001"),
-                "price": Decimal("1"),
-                "price_asset": "BTC",
-                "role": "commission",
-                "instrument": "coin",
-            },
         ],
         fee={"asset": "BTC", "quantity": Decimal("-0.001"), "is_rebate": False},
     )
     created = persist_crypto_exchange_event(event, user, account)
 
-    # Two rows: the trade row + the separate commission row.
-    assert len(created) == 2
+    # ONE row: the trade row with the fee embedded.
+    assert len(created) == 1
     rows = list(Transactions.objects.filter(investor=user, account=account))
-    assert len(rows) == 2
+    assert len(rows) == 1
 
-    trade_row = next(r for r in rows if r.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN)
-    commission_row = next(r for r in rows if r.type == TRANSACTION_TYPE_CRYPTO_COMMISSION)
+    trade_row = rows[0]
 
-    # The fix: the cross-currency fee is NOT attached to the trade row.
-    assert trade_row.commission is None, (
-        f"trade_row.commission={trade_row.commission!r}; expected None (the fee "
-        f"lives on the separate commission row, not the trade row)"
-    )
-    assert trade_row.commission_currency is None, (
-        f"trade_row.commission_currency={trade_row.commission_currency!r}; "
-        f"expected None"
-    )
+    # The fee is embedded on the trade row (commission + commission_currency).
+    assert trade_row.commission == Decimal("-0.001000000")
+    assert trade_row.commission_currency == "BTC"
 
     # total_cash_flow is exactly -qty*price (no fee contamination): the wrong-
     # currency BTC fee must NOT be added to this USDT cash flow.
     cf = total_cash_flow(trade_row)
     assert cf == Decimal("-60000.00000000"), (
         f"total_cash_flow={cf!r}; expected -60000.00000000 (exactly -qty*price, "
-        f"no fee contamination)"
+        f"no cross-currency fee contamination)"
     )
-
-    # The fee is not lost — it persists on its own commission row.
-    assert commission_row.type == TRANSACTION_TYPE_CRYPTO_COMMISSION
-    assert commission_row.currency == "BTC"
-    assert commission_row.quantity == Decimal("-0.001000000")
 
 
 @pytest.mark.django_db
-def test_same_currency_fee_still_attaches_to_trade_row(user, crypto_account):
-    """Final-review C-1 guard: a SAME-currency fee (USDT fee on a BTC-USDT buy)
-    has NO ``role="commission"`` leg, so the fee MUST still attach to the trade
-    row's ``commission``/``commission_currency``. The C-1 fix must not break the
-    same-currency path."""
+def test_same_currency_fee_attaches_to_trade_row_and_included_in_cash_flow(user, crypto_account):
+    """A SAME-currency fee (USDT fee on a BTC-USDT buy) attaches to the trade
+    row's ``commission``/``commission_currency`` AND is included in the trade's
+    USDT cash flow (``-qty*price + commission``), because the fee currency
+    matches the trade currency."""
     from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 
     event = CryptoExchangeEvent(
@@ -1492,8 +1459,80 @@ def test_same_currency_fee_still_attaches_to_trade_row(user, crypto_account):
     )
     created = persist_crypto_exchange_event(event, user, crypto_account)
 
-    # Only one row — no separate commission leg for a same-currency fee.
+    # Only one row.
     assert len(created) == 1
     trade_row = created[0]
     assert trade_row.commission == Decimal("-10.00000000")
     assert trade_row.commission_currency == "USDT"
+    # Same-currency commission IS included in the trade's cash flow.
+    assert total_cash_flow(trade_row) == Decimal("-60010.00")
+
+
+@pytest.mark.django_db
+def test_crypto_crypto_pair_fee_depletes_quote_asset_via_position_no_double_count(
+    user, crypto_account
+):
+    """Crypto-crypto pair: the fee attaches to the BASE leg's commission and
+    depletes the fee-currency (quote) asset via position() — NO double-count.
+
+    Buy 1 ETH @ 0.016 BTC, fee -0.00001 BTC. Under the embedded model the fee
+    is NOT folded into the BTC quote leg's quantity (both legs carry gross
+    quantities); the fee attaches to the ETH base leg's
+    ``commission``/``commission_currency`` (commission=-0.00001,
+    commission_currency=BTC). ``position(btc)`` then subtracts the commission
+    from the BTC holding: -0.016 (quote qty) + (-0.00001) (commission) =
+    -0.01601. ``position(eth)`` = +1 (base qty, no ETH commission). This proves
+    the fee depletes BTC exactly once (no double-count between quantity folding
+    and commission subtraction).
+    """
+    from datetime import datetime, timezone
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    # Seed a BTC USD price so the crypto-crypto pair resolves fiat prices.
+    btc = Assets.objects.create(
+        type=ASSET_TYPE_CRYPTO,
+        ISIN="CRYPTO:BTC",
+        name="BTC",
+        ticker="BTC",
+        currency="USD",
+        exposure="Commodity",
+    )
+    btc.investors.add(user)
+    Prices.objects.create(security=btc, date=date(2026, 1, 1), price=Decimal("60000"))
+
+    event = CryptoExchangeEvent(
+        provider="bybit",
+        provider_event_id="exec-cc-fee",
+        group_id="order-cc-fee",
+        timestamp_ms=1767225600000,  # 2026-01-01
+        category="trade",
+        raw_type="spot_execution",
+        legs=[
+            {"asset": "ETH", "quantity": Decimal("1"), "price": Decimal("0.016"),
+             "price_asset": "BTC", "role": "base", "fee_asset": "BTC"},
+            {"asset": "BTC", "quantity": Decimal("-0.016"), "price": Decimal("1"),
+             "price_asset": "BTC", "role": "quote"},
+        ],
+        fee={"asset": "BTC", "quantity": Decimal("-0.00001"), "is_rebate": False},
+    )
+    persist_crypto_exchange_event(event, user, crypto_account)
+
+    rows = list(Transactions.objects.filter(investor=user, account=crypto_account))
+    # Two rows: ETH base + BTC quote. The fee is on the ETH base leg only.
+    assert len(rows) == 2
+    eth_row = next(r for r in rows if r.security.name in ("ETH", "Ethereum"))
+    btc_row = next(r for r in rows if r.security == btc)
+    # Fee attaches to the BASE (ETH) leg only — NOT the BTC quote leg.
+    assert eth_row.commission == Decimal("-0.000010000")
+    assert eth_row.commission_currency == "BTC"
+    assert btc_row.commission is None
+
+    event_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # ETH position: +1 (base qty, no ETH commission). The ETH asset is created
+    # by resolve_crypto_asset with name="ETH"; position matches on asset.name.
+    eth_asset = eth_row.security
+    assert position(eth_asset, event_date, user, account_ids=[crypto_account.id]) == Decimal("1")
+    # BTC position: -0.016 (quote qty) + (-0.00001) (commission) = -0.01601.
+    # This proves the fee depletes BTC exactly once (no double-count).
+    net_btc = position(btc, event_date, user, account_ids=[crypto_account.id])
+    assert net_btc == Decimal("-0.01601"), f"net BTC={net_btc!r}; expected -0.01601"

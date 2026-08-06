@@ -16,7 +16,6 @@ from constants import (
     ASSET_TYPE_CRYPTO,
     TRANSACTION_TYPE_CASH_IN,
     TRANSACTION_TYPE_CASH_OUT,
-    TRANSACTION_TYPE_CRYPTO_COMMISSION,
     TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -362,28 +361,14 @@ def persist_crypto_exchange_event(event, user, account):
     import_account_id = _account_import_id(account)
     category = (event.category or "").lower()
     leg_records = []
-    # Cross-currency fees are emitted by ``_spot_legs`` as a separate
-    # ``role="commission"`` leg and persisted below as their own Crypto
-    # commission row that moves the fee asset's quantity. When such a leg
-    # exists, the fee is fully represented by that row and must NOT also be
-    # attached to the trade row — otherwise it is double-booked and
-    # ``total_cash_flow`` would add a wrong-currency amount to the trade's
-    # cash flow. (Final-review C-1.)
-    has_commission_leg = any(leg.get("role") == "commission" for leg in event.legs)
 
     with transaction.atomic():
-        # Commission legs (cross-currency fees emitted by _spot_legs with
-        # role="commission") are collected separately and persisted as their own
-        # Crypto commission rows after the main loop. They must NOT enter the
-        # main leg_records path (which would price them as trade legs).
-        commission_records = []
+        # ``role="fee"`` legs are informational metadata only and are skipped
+        # (the fee attaches to the trade row via ``commission``/
+        # ``commission_currency`` below). All other legs (base/quote/transfer)
+        # enter the priced-leg path.
         for index, leg in enumerate(event.legs):
             if leg.get("role") == "fee":
-                continue
-            if leg.get("role") == "commission":
-                if _leg_quantity(leg) == 0:
-                    continue
-                commission_records.append((index, leg))
                 continue
 
             quantity = _leg_quantity(leg)
@@ -488,15 +473,18 @@ def persist_crypto_exchange_event(event, user, account):
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
                     )
-                # Cross-currency fees are emitted as a separate commission row
-                # below (role="commission" leg); only attach the fee to the
-                # trade row when it's SAME-currency (no separate commission
-                # leg). Otherwise the fee would be double-booked (once here,
-                # once on the commission row) and total_cash_flow would add a
-                # wrong-currency amount to the trade's cash flow. (Final-review
-                # C-1.)
+                # The fee attaches to the BASE leg's ``commission``/
+                # ``commission_currency`` when present, regardless of currency.
+                # Gating on role=="base" ensures a multi-leg crypto-crypto trade
+                # attaches the fee ONCE (on the base leg), not on every leg —
+                # otherwise the fee would be double-booked across rows.
+                # Cross-currency commissions (e.g. a BTC fee on a BTC-USDT
+                # trade) are excluded from the trade's primary cash flow by
+                # ``total_cash_flow`` (the comm_ccy != trade_ccy guard) and
+                # deplete the fee-currency asset's position via
+                # ``services.positions.position``.
                 if (
-                    not has_commission_leg
+                    leg.get("role") == "base"
                     and event.fee
                     and event.fee.get("quantity") not in (None, 0, Decimal("0"))
                 ):
@@ -508,49 +496,6 @@ def persist_crypto_exchange_event(event, user, account):
                     ).upper()
                     if fee_ccy:
                         tx_kwargs["commission_currency"] = fee_ccy
-            try:
-                with transaction.atomic():
-                    created.append(Transactions.objects.create(**tx_kwargs))
-            except IntegrityError:
-                continue
-
-        # Commission legs (cross-currency fees) become their own Transactions
-        # rows of type ``Crypto commission`` that move the fee asset's quantity,
-        # so the position layer sums them (e.g. BTC position = +1 from the trade
-        # leg − 0.001 from the commission leg = +0.999). The dedup-safe
-        # import_event_id is suffixed ``:fee:<index>`` so re-imports don't
-        # duplicate the row. The row IS the commission; it has no commission of
-        # its own, so ``commission``/``commission_currency`` are deliberately
-        # NOT set here (spec §5.3, finding-3 concern).
-        for index, leg in commission_records:
-            fee_event_id = f"{event.provider_event_id}:fee:{index}"
-            if Transactions.objects.filter(
-                investor=user,
-                account=account,
-                import_provider=event.provider,
-                import_account_id=import_account_id,
-                import_event_id=fee_event_id,
-            ).exists():
-                continue
-            fee_asset_symbol = str(leg["asset"]).upper()
-            fee_asset = resolve_crypto_asset(fee_asset_symbol, user)
-            fee_quantity = _leg_quantity(leg)
-            tx_kwargs = dict(
-                investor=user,
-                account=account,
-                security=fee_asset,
-                currency=fee_asset_symbol,
-                type=TRANSACTION_TYPE_CRYPTO_COMMISSION,
-                date=event_time,
-                quantity=_normalize_model_decimal(Transactions, "quantity", fee_quantity),
-                price=None,
-                comment=_event_comment(event, leg),
-                import_provider=event.provider,
-                import_account_id=import_account_id,
-                import_event_id=fee_event_id,
-                import_group_id=event.group_id,
-                import_event_type=event.category,
-            )
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
@@ -597,11 +542,11 @@ def _spot_legs(
     fee_asset: str,
     quote_cash_amount: Optional[Decimal] = None,
 ) -> List[Dict[str, Any]]:
-    """Build the legs for a spot fill under the real-price commission model (spec §5).
+    """Build the legs for a spot fill under the real-price, embedded-fee model.
 
-    The REAL fill price is ALWAYS preserved on the base leg — it is never folded
-    with the fee. Fee handling depends on the fee currency relative to the
-    settlement currency (the quote):
+    The REAL fill price is ALWAYS preserved on the base leg — it is never
+    folded with the fee. Fee handling depends on the fee currency relative to
+    the settlement currency (the quote):
 
     - SAME-currency fee (fee currency == quote): folds into the settlement
       WITHOUT touching the stored price.
@@ -614,19 +559,26 @@ def _spot_legs(
           base leg keeps the real fill price.
     - CROSS-currency fee (fee currency is neither the base nor the quote
       relative to the settlement — e.g. a BTC fee on a BTC-USDT trade, where
-      BTC is the base and USDT is the settlement): emitted as a SEPARATE
-      ``role="commission"`` leg moving the fee asset's quantity. The base leg
-      carries the real fill price and the real (un-netted) quantity.
+      BTC is the base and USDT is the settlement): NO separate leg is emitted.
+      The fee attaches to the trade row's ``commission``/``commission_currency``
+      fields (set by ``persist_crypto_exchange_event`` from ``event.fee``), and
+      ``services.positions.position`` subtracts it from the fee-currency
+      asset's holding. The base leg carries the real fill price and the real
+      (un-netted) quantity.
 
     For stablecoin quotes (USDT/USDC) the trade is a SINGLE base leg (the
     stablecoin is cash, Phase 4). For crypto-crypto pairs it's the two-leg
     base+quote model.
+
+    Fee folding note: fees are NEVER folded into a leg's quantity under the
+    embedded model. Every fee attaches to the trade row's
+    ``commission``/``commission_currency`` (regardless of currency), and
+    ``position()`` is the single source of truth for depletion. Folding a fee
+    into a leg quantity AND subtracting it via ``position()`` would double-
+    count, so the legs carry gross (un-netted) quantities throughout.
     """
     normalized_fee_asset = (fee_asset or "").upper()
-    base_u = base.upper()
     quote_u = quote.upper()
-    fee_in_base = normalized_fee_asset == base_u
-    fee_in_quote = normalized_fee_asset == quote_u
 
     if side.lower() == "buy":
         base_quantity = qty
@@ -640,8 +592,10 @@ def _spot_legs(
         # price is the REAL fill price — a same-currency (quote) fee is NOT
         # folded into the price; it flows through the persisted ``commission``
         # field (added back by ``total_cash_flow``). A base-asset fee here is
-        # cross-currency relative to the USDT settlement and becomes a separate
-        # commission leg below (NOT netted into quantity). Spec §5.5 revert.
+        # cross-currency relative to the USDT settlement; it does NOT become a
+        # separate leg — it attaches to the trade row's ``commission``/
+        # ``commission_currency`` and ``position`` depletes the fee asset.
+        # Spec §5.5 revert.
         legs = [
             {
                 "asset": base,
@@ -653,27 +607,20 @@ def _spot_legs(
                 "fee_asset": normalized_fee_asset,
             }
         ]
-        # For a stablecoin-quote trade the settlement currency is the quote; a
-        # fee in the quote is same-currency, anything else (base or third asset)
-        # is cross-currency and becomes a separate commission leg.
-        same_currency_fee = fee_in_quote
     else:
         # Crypto-crypto pair (e.g. ETH/BTC): two-leg base+quote model, real
-        # prices. The quote is itself a priced asset, so a same-currency
-        # (quote) fee folds into the quote leg's quantity; a base-asset fee is
-        # also same-currency (it nets into the base leg's own quantity); any
-        # third-asset fee is cross-currency and becomes a separate commission
-        # leg below.
+        # prices. The quote is itself a priced asset. Under the embedded model
+        # fees are NEVER folded into a leg's quantity (that would double-count
+        # with ``position()``'s commission subtraction); every fee attaches to
+        # the trade row's ``commission``/``commission_currency`` downstream,
+        # and ``position()`` depletes the fee-currency asset. Both legs carry
+        # gross (un-netted) quantities.
         value = qty * price
-        quote_fee_delta = fee_delta if fee_in_quote else Decimal("0")
-        base_fee_delta = fee_delta if fee_in_base else Decimal("0")
 
         if side.lower() == "buy":
-            quote_quantity = -value + quote_fee_delta
+            quote_quantity = -value
         else:
-            quote_quantity = value + quote_fee_delta
-        # Real fill quantity on the base leg; a base-asset fee nets into it.
-        base_quantity = base_quantity + base_fee_delta
+            quote_quantity = value
 
         legs = [
             {
@@ -691,28 +638,6 @@ def _spot_legs(
                 "role": "quote",
             },
         ]
-        # For a crypto-crypto pair either base- or quote-asset fee is
-        # same-currency (both legs are priced assets); only a third-asset fee
-        # is cross-currency.
-        same_currency_fee = fee_in_base or fee_in_quote
-
-    # Cross-currency fee: emit a separate commission leg (spec §5.3/§5.5).
-    if (
-        fee_delta
-        and fee_delta != 0
-        and not same_currency_fee
-        and normalized_fee_asset
-    ):
-        legs.append(
-            {
-                "asset": normalized_fee_asset,
-                "quantity": fee_delta,
-                "price": Decimal("1"),
-                "price_asset": normalized_fee_asset,
-                "role": "commission",
-                "instrument": "coin",
-            }
-        )
 
     return legs
 

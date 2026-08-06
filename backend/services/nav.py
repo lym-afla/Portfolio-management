@@ -46,7 +46,6 @@ from pyxirr import xirr
 
 from common.models import Accounts, Assets, Transactions
 from constants import (
-    TRANSACTION_TYPE_CRYPTO_COMMISSION,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
@@ -205,10 +204,26 @@ def NAV_at_date(
             if account_position == 0:
                 continue
 
-            # Use calculate_value_at_date for proper bond notional handling
-            account_value = calculate_value_at_date(
-                security, date, user_id, target_currency, [account.id]
-            )
+            # Use calculate_value_at_date for proper bond notional handling.
+            # An unpriced crypto coin (no Prices row and no Yahoo quote — e.g.
+            # TRUMP) raises ValueError from crypto_usd_price via fx.get_rate.
+            # Rather than crashing the whole NAV page (issue #5a), skip the
+            # unpriced coin with a warning: it can't be valued, so it is
+            # excluded from Total NAV until a price is imported.
+            try:
+                account_value = calculate_value_at_date(
+                    security, date, user_id, target_currency, [account.id]
+                )
+            except ValueError:
+                if is_crypto(security):
+                    logger.warning(
+                        "Skipping unpriced crypto coin %s in NAV at %s "
+                        "(no USD price available)",
+                        security.name,
+                        date,
+                    )
+                    continue
+                raise
 
             analysis["Total NAV"] += account_value
 
@@ -229,7 +244,22 @@ def NAV_at_date(
     for account in portfolio_accounts:
         broker_balance = account_balance(account, date)
         for currency, balance in broker_balance.items():
-            fx_rate = get_fx_rate(currency, target_currency, date)
+            # Defensive: if a currency in the cash dict has no FX rate
+            # (e.g. an unpriced crypto coin that leaked in, or a currency
+            # with no FX data yet), skip it with a warning rather than
+            # crashing the whole NAV. The balance is still in the dict for
+            # the per-currency breakdown; we just can't convert/total it.
+            try:
+                fx_rate = get_fx_rate(currency, target_currency, date)
+            except ValueError:
+                logger.warning(
+                    "No FX rate for cash currency %s -> %s on %s; "
+                    "skipping from NAV total",
+                    currency,
+                    target_currency,
+                    date,
+                )
+                continue
             converted_balance = balance * fx_rate
             analysis["Total NAV"] += converted_balance
 
@@ -411,14 +441,6 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
     if is_reward_transaction(transaction):
         return Decimal(0)
 
-    # Crypto commission rows move the fee asset's POSITION (via quantity), not
-    # cash. The fee's cash effect is already captured on the parent trade row's
-    # -qty*price (+ same-currency commission). Return 0 so these rows don't
-    # pollute the IRR cash flows. (spec §5.3, revert of the cross-currency
-    # commission exclusion.) Mirrors services.transactions.total_cash_flow.
-    if transaction.type == TRANSACTION_TYPE_CRYPTO_COMMISSION:
-        return Decimal(0)
-
     if transaction.type in [
         TRANSACTION_TYPE_CRYPTO_TRADE_IN,
         TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -429,13 +451,17 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
             # IRR treats crypto trades as asset cash flows: buys are negative,
             # sells are positive, while account cash balances stay unchanged.
             cf = -transaction.quantity * transaction.price
-            # Add commission. Under the reverted model, cross-currency fees
-            # are separate commission rows (Task 6), so any commission on the
-            # trade row is same-currency by construction — the old
-            # comm_ccy == trade_ccy guard is dead code and removed. Mirrors
-            # services.transactions.total_cash_flow (spec §5.3).
+            # Add commission. A cross-currency commission (e.g. a BTC fee on a
+            # BTC-USDT trade) must NOT be folded into the trade's primary-
+            # currency cash flow — it depletes a different currency's balance,
+            # handled by ``services.positions.position``. Only same-currency
+            # commissions (or legacy rows with no commission_currency) are
+            # applied. Mirrors services.transactions.total_cash_flow.
             if transaction.commission:
-                cf += Decimal(transaction.commission)
+                comm_ccy = (getattr(transaction, "commission_currency", None) or "").upper()
+                trade_ccy = (transaction.currency or "").upper()
+                if not comm_ccy or comm_ccy == trade_ccy:
+                    cf += Decimal(transaction.commission)
             # Round to the broker's cash_precision to absorb price-storage
             # residuals (matches total_cash_flow's rounding).
             cash_precision = 2
