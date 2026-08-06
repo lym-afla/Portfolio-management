@@ -362,6 +362,14 @@ def persist_crypto_exchange_event(event, user, account):
     import_account_id = _account_import_id(account)
     category = (event.category or "").lower()
     leg_records = []
+    # Cross-currency fees are emitted by ``_spot_legs`` as a separate
+    # ``role="commission"`` leg and persisted below as their own Crypto
+    # commission row that moves the fee asset's quantity. When such a leg
+    # exists, the fee is fully represented by that row and must NOT also be
+    # attached to the trade row — otherwise it is double-booked and
+    # ``total_cash_flow`` would add a wrong-currency amount to the trade's
+    # cash flow. (Final-review C-1.)
+    has_commission_leg = any(leg.get("role") == "commission" for leg in event.legs)
 
     with transaction.atomic():
         # Commission legs (cross-currency fees emitted by _spot_legs with
@@ -480,11 +488,24 @@ def persist_crypto_exchange_event(event, user, account):
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
                     )
-                if event.fee and event.fee.get("quantity") not in (None, 0, Decimal("0")):
+                # Cross-currency fees are emitted as a separate commission row
+                # below (role="commission" leg); only attach the fee to the
+                # trade row when it's SAME-currency (no separate commission
+                # leg). Otherwise the fee would be double-booked (once here,
+                # once on the commission row) and total_cash_flow would add a
+                # wrong-currency amount to the trade's cash flow. (Final-review
+                # C-1.)
+                if (
+                    not has_commission_leg
+                    and event.fee
+                    and event.fee.get("quantity") not in (None, 0, Decimal("0"))
+                ):
                     tx_kwargs["commission"] = _normalize_model_decimal(
                         Transactions, "commission", event.fee["quantity"]
                     )
-                    fee_ccy = str(leg.get("fee_asset") or event.fee.get("asset") or "").upper()
+                    fee_ccy = str(
+                        leg.get("fee_asset") or event.fee.get("asset") or ""
+                    ).upper()
                     if fee_ccy:
                         tx_kwargs["commission_currency"] = fee_ccy
             try:

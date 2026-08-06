@@ -1404,3 +1404,124 @@ def test_cross_currency_commission_leg_persists_as_separate_row(user, crypto_acc
     assert (
         Transactions.objects.filter(import_group_id="order-ccy-commission").count() == 2
     )
+
+
+@pytest.mark.django_db
+def test_cross_currency_fee_not_double_booked_on_trade_row(user):
+    """Final-review C-1: a cross-currency fee (BTC fee on a BTC-USDT buy) is
+    emitted as its OWN ``role="commission"`` leg by ``_spot_legs`` and persisted
+    as a separate ``Crypto commission`` row that moves the fee asset's quantity.
+    Therefore the fee must NOT also be attached to the trade row's
+    ``commission``/``commission_currency`` — otherwise it is double-booked (once
+    here, once on the commission row) and ``total_cash_flow`` adds a wrong-
+    currency amount (BTC) to a USDT cash flow, yielding ``-60000.001`` instead
+    of ``-60000.00``. The trade row's commission must be NULL when a commission
+    leg was emitted for the event."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    # Crypto-native precision (8dp) so the cash_flow assertion matches exactly
+    # -qty*price with no fee contamination.
+    broker = Brokers.objects.create(
+        investor=user, name="Bybit-C1", country="Crypto", cash_precision=8
+    )
+    account = Accounts.objects.create(
+        broker=broker, name="Unified-C1", native_id="bybit-c1"
+    )
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:c1-dbl",
+        group_id="order-c1-dbl",
+        timestamp_ms=1738454400000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("1"),
+                "price": Decimal("60000"),
+                "price_asset": "USD",
+                "role": "base",
+                "quote_currency": "USDT",
+                "fee_asset": "BTC",
+            },
+            {
+                "asset": "BTC",
+                "quantity": Decimal("-0.001"),
+                "price": Decimal("1"),
+                "price_asset": "BTC",
+                "role": "commission",
+                "instrument": "coin",
+            },
+        ],
+        fee={"asset": "BTC", "quantity": Decimal("-0.001"), "is_rebate": False},
+    )
+    created = persist_crypto_exchange_event(event, user, account)
+
+    # Two rows: the trade row + the separate commission row.
+    assert len(created) == 2
+    rows = list(Transactions.objects.filter(investor=user, account=account))
+    assert len(rows) == 2
+
+    trade_row = next(r for r in rows if r.type == TRANSACTION_TYPE_CRYPTO_TRADE_IN)
+    commission_row = next(r for r in rows if r.type == TRANSACTION_TYPE_CRYPTO_COMMISSION)
+
+    # The fix: the cross-currency fee is NOT attached to the trade row.
+    assert trade_row.commission is None, (
+        f"trade_row.commission={trade_row.commission!r}; expected None (the fee "
+        f"lives on the separate commission row, not the trade row)"
+    )
+    assert trade_row.commission_currency is None, (
+        f"trade_row.commission_currency={trade_row.commission_currency!r}; "
+        f"expected None"
+    )
+
+    # total_cash_flow is exactly -qty*price (no fee contamination): the wrong-
+    # currency BTC fee must NOT be added to this USDT cash flow.
+    cf = total_cash_flow(trade_row)
+    assert cf == Decimal("-60000.00000000"), (
+        f"total_cash_flow={cf!r}; expected -60000.00000000 (exactly -qty*price, "
+        f"no fee contamination)"
+    )
+
+    # The fee is not lost — it persists on its own commission row.
+    assert commission_row.type == TRANSACTION_TYPE_CRYPTO_COMMISSION
+    assert commission_row.currency == "BTC"
+    assert commission_row.quantity == Decimal("-0.001000000")
+
+
+@pytest.mark.django_db
+def test_same_currency_fee_still_attaches_to_trade_row(user, crypto_account):
+    """Final-review C-1 guard: a SAME-currency fee (USDT fee on a BTC-USDT buy)
+    has NO ``role="commission"`` leg, so the fee MUST still attach to the trade
+    row's ``commission``/``commission_currency``. The C-1 fix must not break the
+    same-currency path."""
+    from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
+
+    event = CryptoExchangeEvent(
+        provider="okx_csv",
+        provider_event_id="csv:c1-same",
+        group_id="order-c1-same",
+        timestamp_ms=1738454400000,
+        category="trade",
+        raw_type="spot_fill",
+        legs=[
+            {
+                "asset": "BTC",
+                "quantity": Decimal("1"),
+                "price": Decimal("60000"),
+                "price_asset": "USD",
+                "role": "base",
+                "quote_currency": "USDT",
+                "fee_asset": "USDT",
+            }
+        ],
+        fee={"asset": "USDT", "quantity": Decimal("-10"), "is_rebate": False},
+    )
+    created = persist_crypto_exchange_event(event, user, crypto_account)
+
+    # Only one row — no separate commission leg for a same-currency fee.
+    assert len(created) == 1
+    trade_row = created[0]
+    assert trade_row.commission == Decimal("-10.00000000")
+    assert trade_row.commission_currency == "USDT"

@@ -12,13 +12,9 @@ chains through the existing fiat FX graph (spec §4.5, decision 2a).
 Numeric safety: ``Decimal`` everywhere. Never ``float``.
 """
 
-import logging
-from datetime import date, datetime
 from decimal import Decimal
 
 from common.models import Assets, Prices
-
-logger = logging.getLogger(__name__)
 
 
 def is_crypto(asset) -> bool:
