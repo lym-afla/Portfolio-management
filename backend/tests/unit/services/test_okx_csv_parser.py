@@ -469,12 +469,16 @@ def test_option_expiration_maps_to_settlement_payload():
     assert len(events) == 1
     payload, source_id = events[0]
     assert payload["__kind"] == "option_settlement"
+    assert payload["instId"] == "BTC-USD-260605-80000-C"
     assert payload["ccy"] == "BTC"
     # balChg = Balance Change (collateral RELEASED, positive), NOT Position Change.
     assert payload["balChg"] == "0.007162"
     assert payload["px"] == "62703.943334"
     assert payload["billId"] == "3628711646064058370"
     assert payload["ordId"] == ""
+    # amount = contracts (fallback for the open-position lookup when the
+    # opening fill was not part of this same import).
+    assert payload["amount"] == "7.0"
     expected_dt = datetime(2026, 6, 5, 8, 0, 34, tzinfo=timezone.utc)
     assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
 
@@ -512,6 +516,95 @@ def test_normalize_okx_option_fill_emits_premium_cash_flow():
     assert leg["cash_flow"] == Decimal("0.000154")  # premium, NOT -0.00701889
     assert leg["collateral"] == Decimal("0.00716211")
     assert event.fee == {"asset": "BTC", "quantity": Decimal("-0.00001078"), "is_rebate": False}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_normalize_okx_option_settlement_otm_closes_short_at_zero(user, okx_account):
+    """OTM settlement: closes the short option at price 0, cash_flow 0."""
+    from services.crypto_exchange import (
+        normalize_okx_option_settlement,
+        resolve_crypto_option_asset,
+    )
+
+    parsed = {
+        "underlying": "BTC", "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("80000"), "option_type": "CALL",
+    }
+    option_asset = resolve_crypto_option_asset(parsed, user)
+    # Open the short first (so the settlement can find a position to close).
+    # The settlement ts below is 2026-06-05 (after this opening); otherwise the
+    # position lookup would find nothing and fall through to the CSV-Amount
+    # fallback, defeating the purpose of this DB-backed test.
+    Transactions.objects.create(
+        investor=user, account=okx_account, security=option_asset,
+        currency="BTC", type="Crypto trade out",
+        date=datetime(2026, 5, 28, 0, 15, 14, tzinfo=timezone.utc),
+        quantity=Decimal("-7"), price=Decimal("0.0022"),
+        cash_flow=Decimal("0.000154"),
+        commission=Decimal("-0.00001078"), commission_currency="BTC",
+    )
+
+    # ts = 2026-06-05 11:40:34 UTC (after the 2026-05-28 opening).
+    payload = {
+        "instId": "BTC-USD-260605-80000-C",     # NEW: symbol now required
+        "ccy": "BTC", "balChg": "0.00716211",
+        "px": "62703.94333408",                 # underlying spot at expiry
+        "billId": "3628711646064058370", "ts": "1780659634000",
+        "ordId": "",
+    }
+    event = normalize_okx_option_settlement(
+        payload, investor=user, account_id=okx_account.id
+    )
+    leg = event.legs[0]
+    # Spot 62703 < strike 80000 -> OTM -> terminal price 0, no payout.
+    assert leg["price"] == Decimal("0")
+    assert leg["instrument"] == "option"
+    assert leg["cash_flow"] == Decimal("0")
+    # closes the -7 short: +7
+    assert leg["quantity"] == Decimal("7")
+    assert leg["price_asset"] == "BTC"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_normalize_okx_option_settlement_itm_closes_at_intrinsic(user, okx_account):
+    """ITM settlement: closes at intrinsic; writer pays payout as negative cash_flow."""
+    from services.crypto_exchange import (
+        normalize_okx_option_settlement,
+        resolve_crypto_option_asset,
+    )
+
+    parsed = {
+        "underlying": "BTC", "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("80000"), "option_type": "CALL",
+    }
+    option_asset = resolve_crypto_option_asset(parsed, user)
+    Transactions.objects.create(
+        investor=user, account=okx_account, security=option_asset,
+        currency="BTC", type="Crypto trade out",
+        date=datetime(2026, 5, 28, 0, 15, 14, tzinfo=timezone.utc),
+        quantity=Decimal("-7"), price=Decimal("0.0022"), cash_flow=Decimal("0.000154"),
+    )
+
+    # ts = 2026-06-05 11:40:34 UTC (after the 2026-05-28 opening).
+    payload = {
+        "instId": "BTC-USD-260605-80000-C",
+        "ccy": "BTC", "balChg": "-0.00411765",   # writer pays
+        "px": "85000",                            # ITM: spot > strike
+        "billId": "itm-bill-1", "ts": "1780659634000", "ordId": "",
+    }
+    event = normalize_okx_option_settlement(
+        payload, investor=user, account_id=okx_account.id
+    )
+    leg = event.legs[0]
+    # intrinsic per contract (BTC) = 0.01 * (85000-80000) / 85000
+    #                            = 50/85000 = 0.000588235... -> 0.00058824 (8 dp)
+    assert leg["price"] == Decimal("0.00058824")
+    # payout = 7 * 50/85000 = 350/85000 = 0.004117647... -> 0.00411765 (8 dp);
+    # writer pays -> cash_flow negative.
+    assert leg["cash_flow"] == Decimal("-0.00411765")
+    assert leg["quantity"] == Decimal("7")  # closes the -7 short
 
 
 @pytest.mark.django_db(transaction=True)

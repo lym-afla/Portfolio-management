@@ -2,6 +2,7 @@
 
 import heapq
 import logging
+import types
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -905,20 +906,69 @@ def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchange
     )
 
 
-def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
-    # Real source is ``/api/v5/account/bills-archive`` filtered to
-    # ``instType=OPTION``. Settlement rows carry the delivered coin in ``ccy``,
-    # the signed delivered amount in ``balChg`` (already signed — passed
-    # through unchanged), and the settlement price in ``px``. There is no
-    # ``settlCcy``/``settlAmt``/``settlPx``.
-    ccy = payload["ccy"].upper()
-    amount = Decimal(payload["balChg"])
-    settlement_price = Decimal(payload["px"])
-    # The settlement price (px) is the underlying's USD price at expiry —
-    # already fiat. Set price_asset to "USD" so _leg_fiat_price passes it
-    # through without multiplying by the BTC/USD rate again.
-    legs = _single_leg(ccy, amount, "USD")
-    legs[0]["price"] = settlement_price
+def normalize_okx_option_settlement(
+    payload: Dict[str, Any], investor=None, account_id=None
+) -> CryptoExchangeEvent:
+    """Build the option-settlement event for an OKX option expiry.
+
+    Emits ONE option leg that CLOSES the open position (short for a writer,
+    long for a buyer) at the terminal price: 0 for OTM, intrinsic per contract
+    for ITM. For an ITM writer, the payout is recorded as negative cash_flow
+    (BTC outflow) so total_cash_flow depletes the BTC crypto bucket (spec §5.3).
+    The collateral release (Balance Change) is NOT a leg — it is recorded in
+    the transaction comment (spec §3.3, §6.3).
+
+    Payout quantization: the per-contract intrinsic stored on the leg's
+    ``price`` (for display) is quantized to 8 dp via ``options.intrinsic_price``;
+    the ``cash_flow`` (payout) is computed from the UN-quantized intrinsic ×
+    contracts and then quantized once, so the 8-dp per-contract rounding does
+    not compound across the close quantity.
+    """
+    symbol = payload["instId"]
+    parsed = parse_option_symbol(symbol)
+    settle_ccy = (payload.get("ccy") or "USD").upper()
+    spot = Decimal(payload["px"])
+    csize = options.contract_size_for_underlying(parsed["underlying"])
+    collateral_release = Decimal(payload["balChg"])
+
+    # Determine the open position direction/size to emit the correct closing sign.
+    contracts, was_short = _lookup_open_contracts(
+        symbol, parsed, investor, account_id, payload
+    )
+
+    # Per-contract intrinsic (BTC), quantized to 8 dp for the leg's display price.
+    # intrinsic_price reads strike_price/option_type via getattr, so wrap the
+    # parsed dict in a SimpleNamespace.
+    parsed_meta = types.SimpleNamespace(
+        strike_price=Decimal(parsed["strike_price"]),
+        option_type=parsed["option_type"],
+    )
+    intrinsic_q = options.intrinsic_price(parsed_meta, spot, csize)  # 0 if OTM
+    is_otm = (intrinsic_q == 0)
+    terminal_price = Decimal(0) if is_otm else intrinsic_q
+
+    # Closing quantity: opposite sign of the open position. A short (-contracts)
+    # is closed by +contracts; a long (+contracts) is closed by -contracts.
+    close_qty = contracts if was_short else -contracts
+
+    # Payout (in settle_ccy): only for ITM. Writer pays (cash_flow negative);
+    # buyer receives (cash_flow positive). OTM -> 0.
+    # Computed from the UN-quantized intrinsic to avoid compounding the 8-dp
+    # rounding of intrinsic_q across close_qty.
+    if is_otm:
+        cash_flow = Decimal(0)
+    else:
+        strike = parsed_meta.strike_price
+        if parsed_meta.option_type == "CALL":
+            usd_intrinsic = csize * max(spot - strike, Decimal(0))
+        else:  # PUT
+            usd_intrinsic = csize * max(strike - spot, Decimal(0))
+        intrinsic_raw = usd_intrinsic / spot if spot != 0 else Decimal(0)
+        payout = (abs(close_qty) * intrinsic_raw).quantize(
+            Decimal("0.00000001"), rounding=ROUND_HALF_UP
+        )
+        cash_flow = -payout if was_short else payout  # writer out / buyer in
+
     return CryptoExchangeEvent(
         provider="okx",
         provider_event_id=payload["billId"],
@@ -926,8 +976,50 @@ def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEv
         timestamp_ms=int(payload["ts"]),
         category="settlement",
         raw_type="option_delivery",
-        legs=legs,
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": close_qty,
+                "price": terminal_price,
+                "price_asset": settle_ccy,
+                "role": "base",
+                "instrument": "option",
+                "cash_flow": cash_flow,
+                "collateral": abs(collateral_release),    # for comment
+                "is_otm": is_otm,
+                "settle_ccy": settle_ccy,
+            }
+        ],
     )
+
+
+def _lookup_open_contracts(symbol, parsed, investor, account_id, payload):
+    """Return (open_contracts_unsigned, was_short) for the option at settlement.
+
+    Queries position() on the option asset. Falls back to the CSV ``Amount``
+    when no open position is found (partial-import scenario) with a warning.
+    """
+    if investor is not None:
+        try:
+            option_asset = resolve_crypto_option_asset(parsed, investor)
+            from services.positions import position as _position
+            open_pos = _position(
+                option_asset,
+                datetime.fromtimestamp(int(payload["ts"]) / 1000, tz=timezone.utc),
+                investor,
+                [account_id] if account_id else None,
+            )
+            if open_pos and open_pos != 0:
+                return abs(Decimal(open_pos)), (open_pos < 0)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("option position lookup failed for %s: %s", symbol, exc)
+    # Fallback: use the CSV Amount (contracts) and assume writer (sell) direction.
+    logger.warning(
+        "No open option position found for %s settlement; falling back to CSV Amount.",
+        symbol,
+    )
+    amount = abs(Decimal(payload.get("amount") or payload.get("balChg") or "0"))
+    return amount, True
 
 
 def parse_option_symbol(symbol: str) -> Dict[str, Any]:
