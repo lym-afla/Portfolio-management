@@ -3,6 +3,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.cache import cache
 from django.db.models import Count, Q
@@ -27,7 +28,6 @@ from services.positions import position
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
-from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
 from services.securities import get_securities_table_api, get_security_detail
@@ -699,6 +699,23 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
             )
 
 
+def format_fx_rate(value, digits: int = 4):
+    """Quantize an FX rate to ``digits`` decimal places (ROUND_HALF_UP).
+
+    Returns ``None`` when the input is missing. Unlike
+    :func:`core.formatting_utils.format_value`, this deliberately produces a
+    plain numeric string with no currency symbol or thousands separator, so the
+    FX table's client-side pivot (keyed on ``"from_currency/to_currency"``)
+    keeps working.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return str(Decimal(str(value)).quantize(Decimal(f"1e-{digits}"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return value
+
+
 class FXViewSet(viewsets.ModelViewSet):
     """FX view set."""
 
@@ -780,17 +797,29 @@ class FXViewSet(viewsets.ModelViewSet):
         # Paginate results
         paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
 
-        # Format the data
-        formatted_fx_data = format_table_data(
-            paginated_fx_data, currency_target=None, number_of_digits=4
-        )  # Assuming USD as base currency and 4 decimal places
+        # Format the data. NB: we intentionally do NOT use ``format_table_data``
+        # here. That helper runs ``format_value`` which, for any key containing
+        # "currency", converts the stored value into a Babel currency *symbol*
+        # (e.g. ``USD`` -> ``$``, ``EUR`` -> ``€``). The FX page pivots these
+        # long-format rows client-side keyed on ``"from_currency/to_currency"``
+        # (e.g. ``"USD/EUR"``), so the frontend must receive the raw ISO codes.
+        # We therefore only stringify the date and quantize the rate.
+        formatted_fx_data = [
+            {
+                "id": row["id"],
+                "date": row["date"].isoformat() if row["date"] else None,
+                "from_currency": row["from_currency"],
+                "to_currency": row["to_currency"],
+                "rate": format_fx_rate(row["rate"]),
+            }
+            for row in paginated_fx_data
+        ]
 
         response_data = {
             "results": formatted_fx_data,
             "count": pagination_info["total_items"],
             "current_page": pagination_info["current_page"],
             "total_pages": pagination_info["total_pages"],
-            "currencies": ["USD/EUR", "USD/GBP", "CHF/GBP", "RUB/USD", "PLN/USD", "CNY/USD"],
         }
 
         return Response(response_data)

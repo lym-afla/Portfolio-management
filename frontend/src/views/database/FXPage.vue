@@ -84,11 +84,11 @@
             <tr>
               <td>{{ item.date }}</td>
               <td
-                v-for="currency in currencies"
-                :key="currency"
+                v-for="pairLabel in currencies"
+                :key="pairLabel"
                 class="text-center"
               >
-                {{ item[currency] }}
+                {{ item[pairLabel]?.rate ?? '—' }}
               </td>
               <td class="text-end">
                 <v-icon small class="mr-2" @click="editItem(item)"
@@ -171,6 +171,7 @@ import { calculateDateRange } from '@/utils/dateRangeUtils'
 import FXDialog from '@/components/dialogs/FXDialog.vue'
 import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import { pivotFxRows, firstPairInRow } from '@/utils/fxPivot'
 import logger from '@/utils/logger'
 
 const appStore = useAppStore()
@@ -196,6 +197,9 @@ const deleteLoading = ref(false)
 const fxData = ref([])
 const totalItems = ref(0)
 const currencies = ref([])
+// Guards against overlapping triggers issuing duplicate `list_fx/` requests.
+const fetchInFlight = ref(false)
+let didInit = false
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const pageCount = computed(() =>
@@ -205,9 +209,9 @@ const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
 const headers = computed(() => [
   { title: 'Date', key: 'date', align: 'start', sortable: true },
-  ...currencies.value.map((currency) => ({
-    title: currency,
-    key: currency,
+  ...currencies.value.map((pairLabel) => ({
+    title: pairLabel,
+    key: pairLabel,
     align: 'center',
     sortable: true,
   })),
@@ -216,8 +220,15 @@ const headers = computed(() => [
 
 const fetchFXData = async () => {
   if (!dateTo.value) return
-
-  console.log('Fetching FX data with:', {
+  // Dedupe: if a previous fetch is still in flight (e.g. triggered by an
+  // overlapping reactivity hook), skip this one rather than firing a second
+  // identical `list_fx/` request.
+  if (fetchInFlight.value) {
+    logger.log('Unknown', 'fetchFXData already in flight, skipping')
+    return
+  }
+  fetchInFlight.value = true
+  logger.log('Unknown', 'Fetching FX data with:', {
     startDate: dateFrom.value,
     endDate: dateTo.value,
     page: currentPage.value,
@@ -236,13 +247,15 @@ const fetchFXData = async () => {
       search: search.value,
     })
     logger.log('Unknown', 'FX data received:', response)
-    fxData.value = response.results
+    const { pivoted, pairLabels } = pivotFxRows(response.results || [])
+    fxData.value = pivoted
+    currencies.value = pairLabels
     totalItems.value = response.count
-    currencies.value = response.currencies
   } catch (error) {
     handleApiError(error)
   } finally {
     tableLoading.value = false
+    fetchInFlight.value = false
   }
 }
 
@@ -277,17 +290,11 @@ const initializeDateRange = async () => {
     dateFrom.value = from
     dateTo.value = to
 
-    console.log('Date range initialized:', {
-      dateFrom: dateFrom.value,
-      dateTo: dateTo.value,
-      dateRange: dateRange.value,
-      effectiveCurrentDate: effectiveCurrentDate.value,
-    })
-
     // Trigger table update after initialization
     await fetchFXData()
   } else {
-    console.error(
+    logger.error(
+      'Unknown',
       'effectiveCurrentDate is still not set after attempting to fetch it'
     )
   }
@@ -301,23 +308,37 @@ const handleDateRangeChange = (newDateRange) => {
   fetchFXData()
 }
 
+// Initialize the date range exactly once. `watchEffect` covers the case where
+// the store is already hydrated (runs immediately on setup); if it isn't,
+// `onMounted` fetches the effective date and drives the init. The `didInit`
+// guard ensures the two never both fire (which previously caused a duplicate
+// `list_fx/` request).
 watchEffect(async () => {
+  if (didInit) return
   if (effectiveCurrentDate.value) {
+    didInit = true
     await initializeDateRange()
     loading.value = false
   }
 })
 
-watch([loading, currentPage, itemsPerPage, sortBy, search], () => {
-  if (!loading.value && dateTo.value) {
+// Re-fetch on genuine user-driven changes only. NOTE: `loading` is
+// intentionally excluded — it flips during init, and having it here caused the
+// watch to re-fire and issue a second, duplicate `list_fx/` POST.
+watch([currentPage, itemsPerPage, sortBy, search], () => {
+  if (loading.value && didInit) return
+  if (dateTo.value) {
     fetchFXData()
   }
 })
 
 onMounted(async () => {
   logger.log('Unknown', 'Mounting FXPage')
+  if (didInit) return
   if (!effectiveCurrentDate.value) {
+    didInit = true
     await initializeDateRange()
+    loading.value = false
   }
 })
 
@@ -332,10 +353,18 @@ const openAddFXDialog = () => {
   showFXDialog.value = true
 }
 
+// A pivoted table row represents several FX records (one per currency pair) for
+// a single date. Edit/delete operate on the *first* pair present in the row
+// (in column order) as a non-regressive default; per-cell editing is a
+// follow-up.
+const firstOfItem = (item) => firstPairInRow(item, currencies.value)
+
 const editItem = async (item) => {
-  logger.log('Unknown', 'Editing item:', item)
+  const first = firstOfItem(item)
+  if (!first) return
+  logger.log('Unknown', 'Editing item:', first)
   try {
-    const fxDetails = await getFXDetails(item.id)
+    const fxDetails = await getFXDetails(first.id)
     editedItem.value = fxDetails
     showFXDialog.value = true
   } catch (error) {
@@ -344,8 +373,10 @@ const editItem = async (item) => {
 }
 
 const deleteItem = async (item) => {
-  logger.log('Unknown', 'Deleting item:', item)
-  itemToDelete.value = item
+  const first = firstOfItem(item)
+  if (!first) return
+  logger.log('Unknown', 'Deleting item:', first)
+  itemToDelete.value = first
   showDeleteDialog.value = true
 }
 
