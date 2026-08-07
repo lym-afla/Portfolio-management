@@ -161,3 +161,4 @@ backend/.coverage
 backend/htmlcov/
 backend/coverage.xml
 .playwright-mcp/
+.worktrees
