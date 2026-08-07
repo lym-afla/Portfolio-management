@@ -471,10 +471,20 @@ def test_okx_api_get_transactions_uses_active_token_and_normalizer(monkeypatch, 
     assert len(events) == 1
     assert isinstance(events[0], CryptoExchangeEvent)
     assert events[0].provider == "okx"
-    # Base-asset fee (BTC fee on a BTC-USDT sell) is netted into the base
-    # quantity (issue #30): -0.2 + (-0.0001) = -0.2001 (you sold 0.2 AND paid
-    # 0.0001 BTC fee, so net disposal is 0.2001).
-    assert events[0].legs[0]["quantity"] == Decimal("-0.2001")
+    # Base-asset fee (BTC fee on a BTC-USDT sell) is CROSS-currency relative to
+    # the USDT settlement. Under the embedded multi-currency model the BTC fee
+    # does NOT become a separate leg — it attaches to the trade row's
+    # ``commission``/``commission_currency`` (carried in event.fee). The base
+    # leg keeps the REAL fill quantity (you sold 0.2) and the REAL fill price;
+    # there is no separate commission leg.
+    assert len(events[0].legs) == 1
+    base_leg = events[0].legs[0]
+    assert base_leg.get("role") == "base"
+    assert base_leg["quantity"] == Decimal("-0.2")
+    assert not any(leg.get("role") == "commission" for leg in events[0].legs)
+    # The BTC fee is carried in event.fee and attaches downstream.
+    assert events[0].fee["asset"] == "BTC"
+    assert events[0].fee["quantity"] == Decimal("-0.0001")
 
 
 def test_bybit_iter_deposits_paginates_and_yields_rows(monkeypatch):

@@ -1,9 +1,18 @@
 """Tests for nav.py _calculate_cash_flow on crypto trades (IRR path).
 
 IRR treats crypto trades as asset cash flows: buys are negative, sells are
-positive. The cash flow must include commission (when denominated in the
-trade's quote currency) and round to the broker's cash_precision, mirroring
-``services.transactions.total_cash_flow`` so the two paths stay consistent.
+positive. The cash flow must include commission and round to the broker's
+cash_precision, mirroring ``services.transactions.total_cash_flow`` so the two
+paths stay consistent.
+
+Under the embedded multi-currency commission model (revert of spec §5.3's
+separate commission row, design doc 2026-08-06), cross-currency fees attach to
+the trade row's ``commission``/``commission_currency``. ``_calculate_cash_flow``
+therefore restores the cross-currency exclusion guard: a commission whose
+currency differs from the trade's currency is NOT folded into the trade's
+primary-currency cash flow (it depletes a different currency's balance, handled
+by ``services.positions.position``). Same-currency commissions (or legacy rows
+with no ``commission_currency``) are still applied.
 """
 
 from datetime import datetime
@@ -43,7 +52,7 @@ def test_nav_crypto_quote_fee_includes_commission(crypto_setup):
 
 @pytest.mark.django_db
 def test_nav_crypto_legacy_null_commission_currency_includes_commission(crypto_setup):
-    """Legacy rows with NULL commission_currency still apply commission (mirrors Task 4)."""
+    """Legacy rows with NULL commission_currency still apply commission (mirrors total_cash_flow)."""
     _, account = crypto_setup
     tx = Transactions.objects.create(
         investor=account.broker.investor, account=account,
@@ -58,20 +67,28 @@ def test_nav_crypto_legacy_null_commission_currency_includes_commission(crypto_s
 
 
 @pytest.mark.django_db
-def test_nav_crypto_base_fee_excludes_commission(crypto_setup):
-    """Base-asset fee (different currency) is display-only, excluded from cash flow."""
+def test_nav_crypto_cross_currency_fee_excluded_from_trade_cash_flow(crypto_setup):
+    """Embedded model: a cross-currency fee is EXCLUDED from the trade's cash flow.
+
+    A BTC fee on a BTC-USDT trade attaches to the trade row as
+    ``commission=-0.00006684``, ``commission_currency="BTC"``. The trade's own
+    currency is USDT, so the IRR cash flow must NOT fold the BTC commission
+    into the USDT cash flow (it would mix BTC units into a USDT amount). The
+    fee depletes the BTC position separately via ``position()``. The trade's
+    IRR cash flow is therefore exactly ``-(price*quantity)``.
+    """
     _, account = crypto_setup
-    net_qty = Decimal("0.06677357")
-    eff_price = Decimal("5002.16249933") / net_qty
+    qty = Decimal("0.06677357")
+    price = Decimal("74837.4")
     tx = Transactions.objects.create(
         investor=account.broker.investor, account=account,
         type=TRANSACTION_TYPE_CRYPTO_TRADE_IN, currency="USDT",
         date=datetime(2026, 1, 1),
-        quantity=net_qty, price=eff_price,
+        quantity=qty, price=price,
         commission=Decimal("-0.00006684"), commission_currency="BTC",
     )
     cf = _calculate_cash_flow(tx)
-    expected = (-(eff_price * net_qty)).quantize(Decimal("0.00000001"))
+    expected = (-(price * qty)).quantize(Decimal("0.00000001"))
     assert cf == expected
 
 

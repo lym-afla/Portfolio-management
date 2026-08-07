@@ -41,7 +41,6 @@ STABLECOIN_CASH_CATEGORIES = {"deposit", "withdrawal", "reward"}
 SKIPPED_BYBIT_INTERNAL_TRANSFER_TYPES = {"InternalTransfer", "Transfer"}
 SKIPPED_OKX_INTERNAL_TRANSFER_SUBTYPES = {"1", "128", "129"}
 OPTION_SETTLEMENT_COINS = {"USD", "USDT", "USDC"}
-YAHOO_USD_PRICE_SYMBOLS = {"BTC": "BTC-USD"}
 logger = logging.getLogger(__name__)
 
 MONTH_NUMBERS = {
@@ -110,6 +109,7 @@ def resolve_crypto_asset(symbol, user):
             "name": normalized_symbol,
             "ticker": normalized_symbol[:10],
             "exposure": "FX" if normalized_symbol in STABLECOINS else "Commodity",
+            "yahoo_symbol": f"{normalized_symbol}-USD",
         },
         mode="silent",
     )
@@ -210,10 +210,16 @@ def _quote_asset_fiat_price(price_asset, user, event_date):
 
 
 def fetch_crypto_usd_price_from_yahoo(symbol, price_date):
-    """Fetch a USD crypto close price from Yahoo Finance for import-time valuation."""
-    yahoo_symbol = YAHOO_USD_PRICE_SYMBOLS.get(str(symbol).upper())
-    if yahoo_symbol is None:
+    """Fetch a USD crypto close price from Yahoo Finance for import-time valuation.
+
+    Reads the coin's ``yahoo_symbol`` (e.g. ``"BTC-USD"``) from its ``Assets``
+    row. Coins without a ``yahoo_symbol`` return ``None`` (unpriced).
+    """
+    normalized = str(symbol).upper()
+    asset = Assets.objects.filter(type="Crypto", name=normalized).first()
+    if asset is None or not asset.yahoo_symbol:
         return None
+    yahoo_symbol = asset.yahoo_symbol
 
     start_date = price_date - timedelta(days=6)
     end_date = price_date + timedelta(days=1)
@@ -357,6 +363,10 @@ def persist_crypto_exchange_event(event, user, account):
     leg_records = []
 
     with transaction.atomic():
+        # ``role="fee"`` legs are informational metadata only and are skipped
+        # (the fee attaches to the trade row via ``commission``/
+        # ``commission_currency`` below). All other legs (base/quote/transfer)
+        # enter the priced-leg path.
         for index, leg in enumerate(event.legs):
             if leg.get("role") == "fee":
                 continue
@@ -463,11 +473,27 @@ def persist_crypto_exchange_event(event, user, account):
                     tx_kwargs["cash_flow"] = _normalize_model_decimal(
                         Transactions, "cash_flow", leg_cash_flow
                     )
-                if event.fee and event.fee.get("quantity") not in (None, 0, Decimal("0")):
+                # The fee attaches to the BASE leg's ``commission``/
+                # ``commission_currency`` when present, regardless of currency.
+                # Gating on role=="base" ensures a multi-leg crypto-crypto trade
+                # attaches the fee ONCE (on the base leg), not on every leg —
+                # otherwise the fee would be double-booked across rows.
+                # Cross-currency commissions (e.g. a BTC fee on a BTC-USDT
+                # trade) are excluded from the trade's primary cash flow by
+                # ``total_cash_flow`` (the comm_ccy != trade_ccy guard) and
+                # deplete the fee-currency asset's position via
+                # ``services.positions.position``.
+                if (
+                    leg.get("role") == "base"
+                    and event.fee
+                    and event.fee.get("quantity") not in (None, 0, Decimal("0"))
+                ):
                     tx_kwargs["commission"] = _normalize_model_decimal(
                         Transactions, "commission", event.fee["quantity"]
                     )
-                    fee_ccy = str(leg.get("fee_asset") or event.fee.get("asset") or "").upper()
+                    fee_ccy = str(
+                        leg.get("fee_asset") or event.fee.get("asset") or ""
+                    ).upper()
                     if fee_ccy:
                         tx_kwargs["commission_currency"] = fee_ccy
             try:
@@ -516,113 +542,102 @@ def _spot_legs(
     fee_asset: str,
     quote_cash_amount: Optional[Decimal] = None,
 ) -> List[Dict[str, Any]]:
-    # When the quote currency is a stablecoin (USDT/USDC), emit a SINGLE leg
-    # (the base asset) with an effective price so |price * quantity| reproduces
-    # the exact quote-currency settlement for ALL fee types. This treats the
-    # stablecoin as cash (which it is — Phase 4), not as a separate asset.
-    # cash_flow is NOT emitted on the leg — it is computed later from p*q.
-    # Fee handling: a base-asset fee is netted into quantity (issue #30); a
-    # quote-asset fee (same currency) is subtracted from the settlement before
-    # deriving the price, so |p*q| excludes the commission. Issue #32.
-    if quote.upper() in STABLECOIN_CURRENCIES:
-        # The settlement is the actual quote-currency amount that moved (from
-        # the CSV's quote-leg Balance Change). Prefer it over qty*price (which
-        # produces Decimal noise). Issue #32.
-        settlement = quote_cash_amount if quote_cash_amount is not None else qty * price
-        normalized_fee_asset = (fee_asset or "").upper()
-        fee_in_quote = normalized_fee_asset == quote.upper()
+    """Build the legs for a spot fill under the real-price, embedded-fee model.
 
-        if side.lower() == "buy":
-            base_quantity = qty
-        elif side.lower() == "sell":
-            base_quantity = -qty
-        else:
-            raise ValueError(f"Unsupported spot side: {side}")
+    The REAL fill price is ALWAYS preserved on the base leg — it is never
+    folded with the fee. Fee handling depends on the fee currency relative to
+    the settlement currency (the quote):
 
-        # Net base-asset fee into quantity (PR #31).
-        if normalized_fee_asset == base.upper():
-            base_quantity = base_quantity + fee_delta
+    - SAME-currency fee (fee currency == quote): folds into the settlement
+      WITHOUT touching the stored price.
+        * Stablecoin-quote trade: the fee lands in the persisted ``commission``
+          field (set by ``persist_crypto_exchange_event`` from ``event.fee``);
+          ``total_cash_flow`` reconstructs the net settlement as
+          ``-qty * price + commission``. The base leg keeps the real fill price.
+        * Crypto-crypto pair: the quote is itself a priced asset, so the
+          same-currency (quote) fee folds into the quote leg's quantity; the
+          base leg keeps the real fill price.
+    - CROSS-currency fee (fee currency is neither the base nor the quote
+      relative to the settlement — e.g. a BTC fee on a BTC-USDT trade, where
+      BTC is the base and USDT is the settlement): NO separate leg is emitted.
+      The fee attaches to the trade row's ``commission``/``commission_currency``
+      fields (set by ``persist_crypto_exchange_event`` from ``event.fee``), and
+      ``services.positions.position`` subtracts it from the fee-currency
+      asset's holding. The base leg carries the real fill price and the real
+      (un-netted) quantity.
 
-        # Effective price so that |price * quantity| reproduces the principal
-        # trade value (net of any same-currency commission). For quote-fee when
-        # the actual settlement (incl. fee) is known: adjust to recover the
-        # principal before deriving price. Buy: subtract fee; sell: add fee back.
-        # When quote_cash_amount is NOT provided, settlement = qty*price is
-        # already the principal, so no adjustment needed (price = fill).
-        # For base-fee / no-fee / third-asset: commission is different currency
-        # (or zero) — don't adjust; the fee is already in net_qty or absent.
-        if fee_in_quote and quote_cash_amount is not None:
-            if side.lower() == "buy":
-                priced_settlement = settlement + fee_delta
-            else:
-                priced_settlement = settlement - fee_delta
-        else:
-            priced_settlement = settlement
+    For stablecoin quotes (USDT/USDC) the trade is a SINGLE base leg (the
+    stablecoin is cash, Phase 4). For crypto-crypto pairs it's the two-leg
+    base+quote model.
 
-        if base_quantity != 0:
-            effective_price = abs(priced_settlement) / abs(base_quantity)
-        else:
-            effective_price = price
+    Fee folding note: fees are NEVER folded into a leg's quantity under the
+    embedded model. Every fee attaches to the trade row's
+    ``commission``/``commission_currency`` (regardless of currency), and
+    ``position()`` is the single source of truth for depletion. Folding a fee
+    into a leg quantity AND subtracting it via ``position()`` would double-
+    count, so the legs carry gross (un-netted) quantities throughout.
+    """
+    normalized_fee_asset = (fee_asset or "").upper()
+    quote_u = quote.upper()
 
-        return [
+    if side.lower() == "buy":
+        base_quantity = qty
+    elif side.lower() == "sell":
+        base_quantity = -qty
+    else:
+        raise ValueError(f"Unsupported spot side: {side}")
+
+    if quote_u in STABLECOIN_CURRENCIES:
+        # Stablecoin-quote: single base leg (stablecoin is cash). The stored
+        # price is the REAL fill price — a same-currency (quote) fee is NOT
+        # folded into the price; it flows through the persisted ``commission``
+        # field (added back by ``total_cash_flow``). A base-asset fee here is
+        # cross-currency relative to the USDT settlement; it does NOT become a
+        # separate leg — it attaches to the trade row's ``commission``/
+        # ``commission_currency`` and ``position`` depletes the fee asset.
+        # Spec §5.5 revert.
+        legs = [
             {
                 "asset": base,
                 "quantity": base_quantity,
-                "price": effective_price,
+                "price": price,
                 "price_asset": "USD",
                 "role": "base",
-                "quote_currency": quote.upper(),
+                "quote_currency": quote_u,
                 "fee_asset": normalized_fee_asset,
             }
         ]
-
-    # Crypto-crypto pairs (e.g. ETH/BTC): keep the two-leg model.
-    value = qty * price
-    quote_fee_delta = fee_delta if fee_asset == quote else Decimal("0")
-    base_fee_delta = fee_delta if fee_asset == base else Decimal("0")
-
-    if side.lower() == "buy":
-        base_quantity = qty + base_fee_delta
-        quote_quantity = -value + quote_fee_delta
-        base_price = abs(quote_quantity / base_quantity) if base_quantity else price
-        legs = [
-            {
-                "asset": base,
-                "quantity": base_quantity,
-                "price": base_price,
-                "price_asset": quote,
-                "role": "base",
-            },
-            {
-                "asset": quote,
-                "quantity": quote_quantity,
-                "price": Decimal("1"),
-                "price_asset": quote,
-                "role": "quote",
-            },
-        ]
-    elif side.lower() == "sell":
-        base_quantity = -qty + base_fee_delta
-        quote_quantity = value + quote_fee_delta
-        base_price = abs(quote_quantity / base_quantity) if base_quantity else price
-        legs = [
-            {
-                "asset": base,
-                "quantity": base_quantity,
-                "price": base_price,
-                "price_asset": quote,
-                "role": "base",
-            },
-            {
-                "asset": quote,
-                "quantity": quote_quantity,
-                "price": Decimal("1"),
-                "price_asset": quote,
-                "role": "quote",
-            },
-        ]
     else:
-        raise ValueError(f"Unsupported spot side: {side}")
+        # Crypto-crypto pair (e.g. ETH/BTC): two-leg base+quote model, real
+        # prices. The quote is itself a priced asset. Under the embedded model
+        # fees are NEVER folded into a leg's quantity (that would double-count
+        # with ``position()``'s commission subtraction); every fee attaches to
+        # the trade row's ``commission``/``commission_currency`` downstream,
+        # and ``position()`` depletes the fee-currency asset. Both legs carry
+        # gross (un-netted) quantities.
+        value = qty * price
+
+        if side.lower() == "buy":
+            quote_quantity = -value
+        else:
+            quote_quantity = value
+
+        legs = [
+            {
+                "asset": base,
+                "quantity": base_quantity,
+                "price": price,
+                "price_asset": quote,
+                "role": "base",
+            },
+            {
+                "asset": quote,
+                "quantity": quote_quantity,
+                "price": Decimal("1"),
+                "price_asset": quote,
+                "role": "quote",
+            },
+        ]
 
     return legs
 

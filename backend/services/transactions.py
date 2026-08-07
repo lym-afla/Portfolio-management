@@ -245,11 +245,13 @@ def total_cash_flow(transaction, target_currency=None):
             if transaction.aci:
                 calculated_cash_flow += Decimal(transaction.aci)
 
-            # Add commission unless it's denominated in a different currency.
-            # Quote-fee (commission in trade currency) and the legacy default
-            # (commission_currency unset) both reduce the trade's cash flow.
-            # Base-asset fees (e.g. BTC fee on a USDT trade) are display-only
-            # and excluded so they don't pollute the quote-currency cash flow.
+            # Add commission. A cross-currency commission (e.g. a BTC fee on a
+            # BTC-USDT trade, where commission_currency="BTC" but the trade's
+            # currency is "USDT") must NOT be folded into the trade's primary-
+            # currency cash flow — it depletes a different currency's balance,
+            # handled by ``services.positions.position``. Only same-currency
+            # commissions (or legacy rows with no commission_currency) are
+            # applied here.
             if transaction.commission:
                 comm_ccy = (getattr(transaction, "commission_currency", None) or "").upper()
                 trade_ccy = (transaction.currency or "").upper()

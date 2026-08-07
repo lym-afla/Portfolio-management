@@ -597,15 +597,22 @@ async def test_full_parser_persists_spot_trade_with_okx_csv_provider(tmp_path, u
     saved = [u for u in updates if u.get("status") == "transaction_saved"]
     assert saved, "expected at least one transaction_saved update"
 
-    # ONE leg persisted (BTC base) under import_provider=okx_csv. Stablecoin
-    # (USDT) quote trades emit a single leg with cash_flow (Phase 4): USDT is
-    # treated as cash, not a separate asset leg.
+    # ONE row persisted under import_provider=okx_csv: the BTC base leg (the
+    # real fill). The CSV's BTC fee on a BTC-USDT trade is CROSS-currency
+    # relative to the USDT settlement; under the embedded multi-currency model
+    # it attaches to the trade row's ``commission``/``commission_currency``
+    # (commission=-0.000067, commission_currency=BTC) — it does NOT become a
+    # separate row.
     txs = await _persisted_txs(user, okx_account)
     assert len(txs) == 1
     assert {t.import_provider for t in txs} == {OKX_CSV_IMPORT_PROVIDER}
     assert {t.import_event_type for t in txs} == {"trade"}
     # Base leg event id carries the base-leg CSV id.
-    assert any(t.import_event_id == "3603866656859267072:0" for t in txs)
+    assert txs[0].import_event_id == "3603866656859267072:0"
+    # The cross-currency BTC fee is embedded on the trade row's commission.
+    assert txs[0].type == "Crypto trade in"
+    assert txs[0].commission == Decimal("-0.000067")
+    assert txs[0].commission_currency == "BTC"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -647,7 +654,9 @@ async def test_full_parser_imports_transfers(tmp_path, user, okx_account):
         parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
     )
     complete = next(u for u in updates if u.get("status") == "complete")
-    # 1 spot event (1 leg) + 1 transfer event (1 leg) -> 2 persisted, 0 skipped.
+    # 1 spot event (BTC base leg only — the BTC fee attaches to the trade row's
+    # commission under the embedded model, no separate commission row) + 1
+    # transfer event (1 leg) -> 2 persisted, 0 skipped.
     assert complete["data"]["skippedTransactions"] == 0
     assert complete["data"]["importedTransactions"] == 2
     txs = await _persisted_txs(user, okx_account)

@@ -199,6 +199,35 @@ def get_rate(source, target, date_as_of, investor=None):
             "dates": [],
         }
 
+    # Crypto branch (spec §4.5): a crypto code (BTC/ETH/...) resolves via its
+    # Prices row, not the FX table. Lazy import avoids a circular load
+    # (services.crypto imports common.models; this module imports common.models).
+    from services.crypto import crypto_fx_rate, is_crypto_code
+
+    src_is_crypto = is_crypto_code(source)
+    tgt_is_crypto = is_crypto_code(target)
+    if src_is_crypto or tgt_is_crypto:
+        # crypto_fx_rate returns the multiply factor for (crypto -> fiat/crypto).
+        # For fiat -> crypto we invert; for crypto -> crypto both sides resolve
+        # through USD inside crypto_fx_rate.
+        try:
+            if src_is_crypto:
+                fx = crypto_fx_rate(source, target, date_as_of, investor)
+            else:
+                # target is crypto, source is fiat: invert (crypto -> source).
+                fwd = crypto_fx_rate(target, source, date_as_of, investor)
+                fx = (Decimal("1") / fwd).quantize(
+                    Decimal("0.000001"), rounding=ROUND_HALF_UP
+                )
+        except ValueError:
+            raise
+        return {
+            "FX": fx.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP),
+            "conversions": 2,
+            "dates_async": False,
+            "dates": [date_as_of],
+        }
+
     try:
         investor_filter = {"investors": investor} if investor is not None else {}
 

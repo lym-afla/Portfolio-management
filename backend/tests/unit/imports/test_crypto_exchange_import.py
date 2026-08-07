@@ -74,16 +74,20 @@ def test_normalize_bybit_spot_execution_sell_with_base_fee():
     )
 
     assert event.group_id == "exec-2"
-    # Single base leg: the BTC fee is NETTED into the base quantity (issue #30),
-    # so the net holding is -0.25 + (-0.0002) = -0.2502. The effective price
-    # reproduces the gross settlement (15250) via the netted quantity; cash_flow
-    # is NOT on the leg.
-    assert _leg_quantities(event) == {"BTC": Decimal("-0.2502")}
+    # BTC fee on a BTC-USDT sell: BTC is the base and USDT is the settlement, so
+    # the BTC fee is CROSS-currency. Under the embedded multi-currency model the
+    # fee does NOT become a separate leg — it attaches to the trade row's
+    # ``commission``/``commission_currency`` (carried in event.fee); the base
+    # leg keeps the REAL fill price (61000) and the REAL (un-netted) quantity.
+    # cash_flow is NOT on the leg.
     assert len(event.legs) == 1
-    assert "cash_flow" not in event.legs[0]
-    # Base-fee sell: price = settlement / |net_qty| = 15250 / 0.2502.
-    assert event.legs[0]["price"] == Decimal("15250") / Decimal("0.2502")
-    assert abs(event.legs[0]["price"] * event.legs[0]["quantity"]) == Decimal("15250")
+    base_leg = event.legs[0]
+    assert base_leg["asset"] == "BTC"
+    assert base_leg["quantity"] == Decimal("-0.25")
+    assert "cash_flow" not in base_leg
+    assert base_leg["price"] == Decimal("61000")
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
     assert event.fee["asset"] == "BTC"
     assert event.fee["quantity"] == Decimal("-0.0002")
 
@@ -112,7 +116,7 @@ def test_normalize_bybit_spot_execution_treats_negative_fee_as_cost():
     assert event.legs[0]["price"] == Decimal("60000")
 
 
-def test_normalize_bybit_spot_execution_keeps_third_asset_fee_in_metadata_only():
+def test_normalize_bybit_spot_execution_third_asset_fee_emits_commission_leg():
     event = normalize_bybit_spot_execution(
         {
             "execId": "exec-3",
@@ -127,14 +131,21 @@ def test_normalize_bybit_spot_execution_keeps_third_asset_fee_in_metadata_only()
     )
 
     assert event.group_id == "exec-3"
-    # The BNB fee is neither the base nor the quote, so it does not enter the
-    # effective price (the settlement is just the trade value); it is kept in
-    # event.fee metadata only. cash_flow is NOT on the leg.
-    assert _leg_quantities(event) == {"ETH": Decimal("2")}
+    # The BNB fee is neither the base nor the quote, so it is CROSS-currency
+    # relative to the USDT settlement. Under the embedded multi-currency model
+    # it is NOT dropped and does NOT become a separate leg — it attaches to the
+    # trade row's ``commission``/``commission_currency`` (carried in event.fee).
+    # The base leg keeps the REAL fill price and the REAL (un-netted) quantity.
+    # cash_flow is NOT on the leg.
     assert len(event.legs) == 1
-    assert "cash_flow" not in event.legs[0]
-    # Third-asset fee: price = settlement / qty = 6000 / 2 = 3000 (raw fill).
-    assert event.legs[0]["price"] == Decimal("3000")
+    base_leg = event.legs[0]
+    assert base_leg["asset"] == "ETH"
+    assert base_leg["quantity"] == Decimal("2")
+    assert "cash_flow" not in base_leg
+    # Real fill price on the base leg (not adjusted for the cross-currency fee).
+    assert base_leg["price"] == Decimal("3000")
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
     assert event.fee["asset"] == "BNB"
     assert event.fee["quantity"] == Decimal("-1")
 
@@ -199,16 +210,20 @@ def test_normalize_okx_spot_fill_sell_btc_usdt_with_negative_base_fee():
     assert event.timestamp_ms == 1767225600000
     assert event.category == "trade"
     assert event.raw_type == "spot_fill"
-    # Single base leg: the BTC fee is NETTED into the base quantity (issue #30),
-    # so the net holding is -0.2 + (-0.0001) = -0.2001. The effective price
-    # reproduces the gross settlement (14000) via the netted quantity; cash_flow
-    # is NOT on the leg.
-    assert _leg_quantities(event) == {"BTC": Decimal("-0.2001")}
+    # BTC fee on a BTC-USDT sell: BTC is the base and USDT is the settlement, so
+    # the BTC fee is CROSS-currency. Under the embedded multi-currency model the
+    # fee does NOT become a separate leg — it attaches to the trade row's
+    # ``commission``/``commission_currency`` (carried in event.fee); the base
+    # leg keeps the REAL fill price (70000) and the REAL (un-netted) quantity.
+    # cash_flow is NOT on the leg.
     assert len(event.legs) == 1
-    assert "cash_flow" not in event.legs[0]
-    # Base-fee sell: price = settlement / |net_qty| = 14000 / 0.2001.
-    assert event.legs[0]["price"] == Decimal("14000") / Decimal("0.2001")
-    assert abs(event.legs[0]["price"] * event.legs[0]["quantity"]) == Decimal("14000")
+    base_leg = event.legs[0]
+    assert base_leg["asset"] == "BTC"
+    assert base_leg["quantity"] == Decimal("-0.2")
+    assert "cash_flow" not in base_leg
+    assert base_leg["price"] == Decimal("70000")
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("-0.0001"),
@@ -258,16 +273,22 @@ def test_normalize_okx_spot_fill_positive_fee_is_rebate():
         }
     )
 
-    # Single base leg: the BTC rebate is NETTED into the base quantity (issue
-    # #30), so the net holding is -0.2 + 0.0001 = -0.1999 (you sold 0.2 but got
-    # 0.0001 back). The effective price reproduces the gross settlement (14000)
-    # via the netted quantity; cash_flow is NOT on the leg.
-    assert _leg_quantities(event) == {"BTC": Decimal("-0.1999")}
+    # BTC fee on a BTC-USDT sell: BTC is the base, USDT is the settlement, so a
+    # BTC fee is CROSS-currency. Under the embedded multi-currency model the
+    # rebate (+0.0001 BTC) does NOT become a separate leg — it attaches to the
+    # trade row's ``commission``/``commission_currency`` (carried in event.fee);
+    # the base leg keeps the REAL fill price (70000) and the REAL (un-netted)
+    # quantity. cash_flow is NOT on the leg.
     assert len(event.legs) == 1
-    assert "cash_flow" not in event.legs[0]
-    # Base-fee sell: price = settlement / |net_qty| = 14000 / 0.1999.
-    assert event.legs[0]["price"] == Decimal("14000") / Decimal("0.1999")
-    assert abs(event.legs[0]["price"] * event.legs[0]["quantity"]) == Decimal("14000")
+    base_leg = event.legs[0]
+    assert base_leg["asset"] == "BTC"
+    assert base_leg["quantity"] == Decimal("-0.2")
+    assert "cash_flow" not in base_leg
+    assert base_leg["price"] == Decimal("70000")
+    assert base_leg.get("role") == "base"
+    assert not any(leg.get("role") == "commission" for leg in event.legs)
+    # The BTC rebate lands in event.fee as a positive BTC delta (it is a rebate
+    # — the trader receives it, hence is_rebate=True).
     assert event.fee == {
         "asset": "BTC",
         "quantity": Decimal("0.0001"),
@@ -353,7 +374,21 @@ def test_parse_okx_option_symbol_rejects_malformed(symbol):
         parse_option_symbol(symbol)
 
 
+@pytest.mark.django_db
 def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
+    # Task 8: yahoo_symbol is now read from the Assets row (per-asset), not
+    # from a hardcoded dict. The function needs a Crypto asset with name="BTC"
+    # and yahoo_symbol="BTC-USD" to proceed.
+    from common.models import Assets
+
+    Assets.objects.create(
+        type="Crypto",
+        ISIN="CRYPTO:BTC",
+        name="BTC",
+        currency="USD",
+        yahoo_symbol="BTC-USD",
+    )
+
     history = pd.DataFrame(
         {"Close": [60000.0, 61000.123456]},
         index=pd.to_datetime(["2025-12-31", "2026-01-01"]),
@@ -373,7 +408,18 @@ def test_fetch_crypto_usd_price_from_yahoo_uses_btc_usd_symbol():
     assert price == Decimal("61000.123456")
 
 
+@pytest.mark.django_db
 def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
+    from common.models import Assets
+
+    Assets.objects.create(
+        type="Crypto",
+        ISIN="CRYPTO:BTC",
+        name="BTC",
+        currency="USD",
+        yahoo_symbol="BTC-USD",
+    )
+
     history = pd.DataFrame(
         {"Close": [60000.0]},
         index=pd.to_datetime(["2025-12-31"]),
@@ -387,9 +433,34 @@ def test_fetch_crypto_usd_price_from_yahoo_rejects_missing_requested_date():
     assert price is None
 
 
+@pytest.mark.django_db
 def test_fetch_crypto_usd_price_from_yahoo_returns_none_for_unsupported_symbol():
+    # No ETH Assets row exists in this test's DB → the function returns None
+    # without calling yf.Ticker. (Previously: "symbol not in dict"; now:
+    # "no asset row / asset has no yahoo_symbol".)
     with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
         price = fetch_crypto_usd_price_from_yahoo("ETH", date(2026, 1, 1))
+
+    ticker_class.assert_not_called()
+    assert price is None
+
+
+@pytest.mark.django_db
+def test_fetch_crypto_usd_price_from_yahoo_returns_none_when_asset_has_no_yahoo_symbol():
+    # Task 8: a Crypto row that exists but has a blank yahoo_symbol must also
+    # short-circuit to None (e.g. a coin Yahoo can't price).
+    from common.models import Assets
+
+    Assets.objects.create(
+        type="Crypto",
+        ISIN="CRYPTO:NOQUOTE",
+        name="NOQUOTE",
+        currency="USD",
+        yahoo_symbol=None,
+    )
+
+    with patch("services.crypto_exchange.yf.Ticker") as ticker_class:
+        price = fetch_crypto_usd_price_from_yahoo("NOQUOTE", date(2026, 1, 1))
 
     ticker_class.assert_not_called()
     assert price is None
@@ -698,6 +769,11 @@ def test_normalize_bybit_option_execution_buy_call():
 
 
 def test_normalize_okx_option_fill_sell_put():
+    # FROZEN per spec 2026-08-06 §5.5 (crypto-as-currency foundation): option-fill
+    # behavior is unchanged in the foundation spec. The calculated-premium +
+    # collateral-transfer model lands in sub-project 4 (options accounting). If
+    # this test breaks during foundation work, the spot revert has leaked into
+    # the option path and must be fixed before proceeding.
     event = normalize_okx_option_fill(
         {
             "instId": "BTC-USD-240315-50000-P",
