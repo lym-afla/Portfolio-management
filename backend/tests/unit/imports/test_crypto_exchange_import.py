@@ -820,8 +820,19 @@ def test_normalize_bybit_option_settlement_exercised():
 
 
 def test_normalize_okx_option_settlement():
-    # Real bills-archive (OPTION-filtered) row: ``ccy`` is the delivered coin,
-    # ``balChg`` the signed delivered amount, ``px`` the settlement price.
+    # Real bills-archive (OPTION-filtered) row: ``ccy`` is the delivered coin
+    # (the settle currency), ``balChg`` the collateral release magnitude,
+    # ``px`` the underlying settlement price.
+    #
+    # This payload is OTM: spot 62703.94 < strike 80000 for a CALL -> terminal
+    # price 0, payout 0. The collateral release (``balChg``) is recorded on
+    # the leg as ``collateral`` for the transaction comment, NOT as a leg of
+    # its own (spec §3.3, §6.3).
+    #
+    # The test calls the normalizer directly with no DB setup, so
+    # ``investor``/``account_id`` default to None and ``_lookup_open_contracts``
+    # falls back to the CSV ``Amount`` (here absent -> ``balChg``), assuming a
+    # writer (sell) direction. The fallback warning is expected.
     event = normalize_okx_option_settlement(
         {
             "billId": "3628711646064058370",
@@ -843,6 +854,22 @@ def test_normalize_okx_option_settlement():
     assert event.provider_event_id == "3628711646064058370"
     assert event.group_id == "okx-opt-order-1"
     assert event.timestamp_ms == 1780646434327
-    assert event.legs[0]["asset"] == "BTC"
-    assert event.legs[0]["quantity"] == Decimal("0.0071621135119712")
-    assert event.legs[0]["price"] == Decimal("62703.9433340777132648")
+
+    # Task 6 normalizer shape: the leg's ``asset`` is the option SYMBOL (not
+    # the delivered coin), ``instrument`` is ``"option"``, and the leg carries
+    # the terminal ``price`` (0 OTM), ``cash_flow`` (payout or 0), and the
+    # collateral release magnitude for the comment.
+    leg = event.legs[0]
+    assert leg["asset"] == "BTC-USD-260605-80000-C"
+    assert leg["instrument"] == "option"
+    # OTM (spot 62703.94 < strike 80000 for a CALL) -> terminal price 0.
+    assert leg["price"] == Decimal("0")
+    assert leg["price_asset"] == "BTC"
+    # OTM -> no payout.
+    assert leg["cash_flow"] == Decimal("0")
+    # Fallback path: no DB, so close_qty = +balChg (writer close sign).
+    assert leg["quantity"] == Decimal("0.0071621135119712")
+    # Collateral release recorded for the comment, not as a separate leg.
+    assert leg["collateral"] == Decimal("0.0071621135119712")
+    assert leg["is_otm"] is True
+    assert leg["settle_ccy"] == "BTC"
