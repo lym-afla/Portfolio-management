@@ -749,6 +749,25 @@ def _persisted_txs(user, account):
     return list(Transactions.objects.filter(investor=user, account=account))
 
 
+@database_sync_to_async
+def _positions_after_cycle(user):
+    """Return ``(btc_position, option_position)`` after the canonical cycle.
+
+    Async-safe wrapper: ``Assets.objects.get`` and ``position()`` are both
+    synchronous ORM operations that Django forbids inside an async test.
+    """
+    from common.models import Assets
+    from services.positions import position as _position
+
+    as_of = datetime(2026, 6, 6, tzinfo=timezone.utc)
+    btc = Assets.objects.get(name="BTC", type="Crypto")
+    opt = Assets.objects.get(type="Option")
+    return (
+        _position(btc, as_of, user),
+        _position(opt, as_of, user),
+    )
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_full_parser_persists_spot_trade_with_okx_csv_provider(tmp_path, user, okx_account):
@@ -911,3 +930,95 @@ async def test_full_parser_option_sell_comment_records_collateral(tmp_path, user
     assert tx.commission == Decimal("-0.00001078")
     assert "Collateral" in (tx.comment or "")
     assert "0.00716211" in (tx.comment or "")
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_option_cycle_net_btc_is_realized_profit(tmp_path, user, okx_account):
+    """Import the full BTC-USD-260605-80000-C cycle (SELL + OTM expiry).
+
+    Capstone end-to-end test for the #33 resolution: the option SELL's premium
+    is recorded as a positive ``cash_flow`` on the option row (not as the net
+    Balance Change, which conflated collateral), and the OTM settlement closes
+    the short at zero payout. The net BTC premium kept (premium - fee =
+    +0.00014322) is realized as NAV through the crypto-bucket routing
+    (services/nav.py option_cash_flows), NOT through ``position(BTC)``.
+
+    Data-model note on ``position(BTC)``:
+        ``position()`` sums ``quantity`` over rows whose ``security`` is the BTC
+        Crypto asset, plus cross-currency commissions whose
+        ``commission_currency == "BTC"``. The option rows have ``security`` =
+        the Option asset (not BTC), and the only BTC-typed field on them is the
+        premium ``cash_flow`` and the ``commission`` fee. So:
+
+          position(BTC) = 0 (no BTC quantity rows)
+                        + (-0.00001078) (the SELL row's BTC commission)
+                        = -0.000011 (rounded to 6 dp)
+
+        The +0.00014322 net premium is NOT in ``position(BTC)`` — it lives in
+        the option row's ``cash_flow`` field, which ``position()`` does not
+        sum. That value surfaces in NAV via the option-cash_flow crypto-bucket
+        routing (services/nav.py:328), and is verified here by summing the
+        option rows' ``cash_flow + commission`` directly. This is the correct
+        data-model behavior (collateral is implicit — no BTC movement row is
+        written; the premium is on the option row by design — spec §3.3, §3.5).
+    """
+    rows = [
+        {
+            "id": "3604219617540087810", "Order id": "3604219617506533376",
+            "Time": "2026-05-28 00:15:14", "Trade Type": "Option",
+            "Symbol": "BTC-USD-260605-80000-C", "Action": "Sell", "Amount": "7",
+            "Trading Unit": "cont", "Filled Price": "0.002200", "PnL": "0",
+            "Fee": "-0.00001078", "Fee Unit": "BTC", "Position Change": "0.00716211",
+            "Position Balance": "0.00716211", "Balance Change": "-0.00701889",
+            "Balance": "0.05975468", "Balance Unit": "BTC",
+        },
+        {
+            "id": "3628711646064058370", "Order id": "0",
+            "Time": "2026-06-05 11:00:34", "Trade Type": "Option",
+            "Symbol": "BTC-USD-260605-80000-C", "Action": "Expired OTM", "Amount": "7",
+            "Trading Unit": "cont", "Filled Price": "62703.94333408", "PnL": "0.000154",
+            "Fee": "0.000000", "Fee Unit": "BTC", "Position Change": "-0.00716211",
+            "Position Balance": "0", "Balance Change": "0.00716211",
+            "Balance": "0.06691680", "Balance Unit": "BTC",
+        },
+    ]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+    txs = await _persisted_txs(user, okx_account)
+    # Two rows: the SELL (Crypto trade out) and the settlement (Option settlement).
+    assert len(txs) == 2
+    sell = next(t for t in txs if t.type == "Crypto trade out")
+    settle = next(t for t in txs if t.type == "Option settlement")
+    assert sell.cash_flow == Decimal("0.000154")     # premium, NOT net BC -0.00701889
+    assert sell.currency == "BTC"
+    assert sell.commission == Decimal("-0.00001078")
+    assert settle.cash_flow == Decimal("0")          # OTM -> no payout
+    assert settle.price == Decimal("0")
+
+    # Net BTC realized profit = premium 0.000154 - fee 0.00001078 = +0.00014322.
+    # Lives on the OPTION rows' cash_flow/commission (summed directly here), NOT
+    # in ``position(BTC)`` (the option rows' security is the Option asset, so
+    # ``position(BTC)`` only sees the BTC commission, not the premium).
+    btc_premium = sum(
+        (t.cash_flow or Decimal(0)) for t in txs if (t.currency or "") == "BTC"
+    )
+    btc_fee = sum(
+        (t.commission or Decimal(0))
+        for t in txs
+        if (t.commission_currency or "") == "BTC"
+    )
+    assert btc_premium + btc_fee == Decimal("0.00014322")
+
+    # ``position(BTC)`` reflects only the BTC-typed commission outflow on the
+    # option SELL row (-0.00001078); there are no BTC quantity rows in this
+    # cycle (the collateral movement is implicit, recorded in the comment, and
+    # the premium lives on the option row's cash_flow which position() does not
+    # sum). See test docstring for the full data-model reasoning.
+    btc_pos, opt_pos = await _positions_after_cycle(user)
+    assert btc_pos == Decimal("-0.000011")  # -0.00001078 rounded to 6 dp
+    # Option position: opened -7 (SELL), closed +7 (settlement) -> 0.
+    assert opt_pos == Decimal("0")
