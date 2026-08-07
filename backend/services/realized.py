@@ -54,6 +54,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
+from services import options
 from services.fx import get_rate as _fx_get_rate
 from services.positions import (
     entry_dates as _positions_entry_dates,
@@ -71,6 +72,27 @@ from services.transactions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _option_contract_size(asset) -> Decimal:
+    """Return the contract size for an option asset, or Decimal(1) otherwise.
+
+    Option paid-entries are recorded in *contract* units but priced in coin
+    per contract, so the cost basis must multiply by ``contract_size`` to
+    express coin notional (e.g. 7 contracts × 0.0022 BTC × 0.01 BTC/contract
+    = 0.000154 BTC). For non-option assets this returns ``Decimal(1)`` so the
+    basis math is a no-op for crypto/stocks/bonds.
+
+    ``OptionMetadata`` is imported lazily to avoid pulling ``common.models``
+    at module load (matches realized.py's lazy-import pattern for circulars).
+    """
+    if not options.is_option_asset(asset):
+        return Decimal(1)
+    from common.models import OptionMetadata
+    meta = OptionMetadata.objects.filter(asset=asset).first()
+    if meta is None or meta.contract_size is None:
+        return Decimal(1)
+    return Decimal(meta.contract_size)
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +463,8 @@ def get_economic_basis(
 
             if _transactions_is_paid_entry_transaction(transaction):
                 if transaction.price is not None:
-                    basis += quantity * transaction.price * fx_rate
+                    csize = _option_contract_size(asset)       # Decimal(1) for non-options
+                    basis += quantity * transaction.price * csize * fx_rate
                 position += quantity
             elif _transactions_is_reward_transaction(transaction):
                 basis += _transactions_reward_value(transaction) * fx_rate
