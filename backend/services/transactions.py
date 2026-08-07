@@ -8,7 +8,7 @@ Classification helpers (pure field checks, ``self -> transaction``):
 - :func:`is_position_increase` — quantity > 0.
 - :func:`is_paid_entry_transaction` — type in {BUY, CRYPTO_TRADE_IN}.
 - :func:`is_reward_transaction` — type == CRYPTO_REWARD.
-- :func:`is_disposal_transaction` — type in {SELL, CRYPTO_TRADE_OUT}.
+- :func:`is_disposal_transaction` — type in {SELL, CRYPTO_TRADE_OUT, OPTION_SETTLEMENT}.
 - :func:`is_neutral_transfer_transaction` — type in {CRYPTO_TRANSFER_IN/OUT}.
 - :func:`reward_value` — abs(quantity) * price for reward transactions.
 
@@ -67,6 +67,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
     TRANSACTION_TYPE_DIVIDEND,
     TRANSACTION_TYPE_INTEREST_INCOME,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
     TRANSACTION_TYPE_SELL,
     TRANSACTION_TYPE_STOCK_SPLIT,
     TRANSACTION_TYPE_TAX,
@@ -97,8 +98,16 @@ def is_reward_transaction(transaction):
 
 
 def is_disposal_transaction(transaction):
-    """Return True when this transaction should realize gain/loss."""
-    return transaction.type in [TRANSACTION_TYPE_SELL, TRANSACTION_TYPE_CRYPTO_TRADE_OUT]
+    """Return True when this transaction should realize gain/loss.
+
+    Option settlement closes an open option position and realizes the gain/loss
+    at expiry (sub-project 4).
+    """
+    return transaction.type in [
+        TRANSACTION_TYPE_SELL,
+        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+        TRANSACTION_TYPE_OPTION_SETTLEMENT,
+    ]
 
 
 def is_neutral_transfer_transaction(transaction):
@@ -203,6 +212,7 @@ def total_cash_flow(transaction, target_currency=None):
         TRANSACTION_TYPE_BOND_REDEMPTION,
         TRANSACTION_TYPE_BOND_MATURITY,
         TRANSACTION_TYPE_INTEREST_INCOME,
+        TRANSACTION_TYPE_OPTION_SETTLEMENT,   # NEW: honor stored cash_flow (payout/0)
     ]
 
     if transaction.type in cash_flow_types:
