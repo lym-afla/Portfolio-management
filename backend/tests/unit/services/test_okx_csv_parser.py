@@ -12,7 +12,7 @@ Covers:
 All monetary values use ``Decimal``.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pandas as pd
@@ -471,6 +471,41 @@ def test_option_expiration_maps_to_settlement_payload():
     assert payload["ordId"] == ""
     expected_dt = datetime(2026, 6, 5, 8, 0, 34, tzinfo=timezone.utc)
     assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_resolve_crypto_option_asset_sets_btc_contract_size(user):
+    """resolve_crypto_option_asset must set contract_size=0.01 for BTC options."""
+    from services.crypto_exchange import resolve_crypto_option_asset
+    from common.models import OptionMetadata
+
+    parsed = {
+        "underlying": "BTC",
+        "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("80000"),
+        "option_type": "CALL",
+    }
+    asset = resolve_crypto_option_asset(parsed, user)
+    meta = OptionMetadata.objects.get(asset=asset)
+    assert meta.contract_size == Decimal("0.01")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_resolve_crypto_option_asset_sets_eth_contract_size(user):
+    from services.crypto_exchange import resolve_crypto_option_asset
+    from common.models import OptionMetadata
+
+    parsed = {
+        "underlying": "ETH",
+        "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("3000"),
+        "option_type": "PUT",
+    }
+    asset = resolve_crypto_option_asset(parsed, user)
+    meta = OptionMetadata.objects.get(asset=asset)
+    assert meta.contract_size == Decimal("0.1")
 
 
 def test_transfer_rows_become_events_not_skipped():

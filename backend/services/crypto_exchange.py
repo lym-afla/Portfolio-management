@@ -24,6 +24,7 @@ from constants import (
     TRANSACTION_TYPE_INTEREST_INCOME,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
+from services import options
 from services.asset_resolver import resolve_or_create_asset
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
@@ -149,7 +150,7 @@ def resolve_crypto_option_asset(parsed_option, user):
             "strike_price": parsed_option["strike_price"],
             "expiration_date": parsed_option["expiration_date"],
             "option_type": parsed_option["option_type"],
-            "contract_size": Decimal("1"),
+            "contract_size": options.contract_size_for_underlying(parsed_option["underlying"]),
         },
     )
     return asset
