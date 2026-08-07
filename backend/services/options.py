@@ -141,3 +141,64 @@ def derive_collateral(
     if collateral < 0:
         collateral = Decimal(0)
     return collateral.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
+
+
+def decompose_option_fill(
+    *,
+    side: str,
+    fill_qty: Decimal,
+    fill_price: Decimal,
+    fee: Decimal,
+    fee_ccy: str,
+    settle_ccy: str,
+    underlying: str,
+    balance_change_signed: Decimal,
+) -> dict:
+    """Decompose an OKX/Bybit option fill into a single option leg's fields.
+
+    Returns a dict ready for the normalizer to assemble into a leg:
+      quantity      = signed contracts (sell -> negative, buy -> positive)
+      price         = real fill price per contract (in settle_ccy)
+      currency      = settle_ccy (from CSV Balance Unit, never defaulted)
+      cash_flow     = signed premium (+ received for sell / - paid for buy)
+      commission    = fee (signed, as-is from CSV)
+      commission_currency = fee_ccy
+      contract_size = per-underlying size
+      collateral    = non-negative magnitude (for the comment, NOT a leg)
+
+    Sign convention (spec §3.3):
+      SELL -> writer RECEIVES premium (cash_flow POSITIVE), qty NEGATIVE.
+      BUY  -> buyer PAYS premium   (cash_flow NEGATIVE), qty POSITIVE.
+
+    Collateral is SELL-only — option writers post collateral, buyers do not.
+    For a BUY this returns ``collateral = Decimal(0)``; ``derive_collateral`` is
+    NOT called for buys (it is meaningful only on the sell-side decomposition
+    ``BC_sell = +premium + fee_signed - collateral``). The collateral is
+    recorded in the transaction's comment by the importer; it does NOT become a
+    position leg (spec §3.3 — avoids NAV step-changes).
+    """
+    csize = contract_size_for_underlying(underlying)
+    qty = Decimal(fill_qty)
+    prem = gross_premium(qty, Decimal(fill_price), csize)
+    is_sell = (side or "").lower() == "sell"
+    signed_qty = -qty if is_sell else qty
+    signed_premium = prem if is_sell else -prem
+    collateral = (
+        derive_collateral(
+            balance_change_signed=Decimal(balance_change_signed),
+            premium=prem,
+            fee_signed=Decimal(fee),
+        )
+        if is_sell
+        else Decimal(0)
+    )
+    return {
+        "quantity": signed_qty,
+        "price": Decimal(fill_price),
+        "currency": str(settle_ccy).upper(),
+        "cash_flow": signed_premium,
+        "commission": Decimal(fee),
+        "commission_currency": str(fee_ccy).upper(),
+        "contract_size": csize,
+        "collateral": collateral,
+    }

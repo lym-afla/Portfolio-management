@@ -115,3 +115,68 @@ class TestDeriveCollateral:
             fee_signed=Decimal("-0.00001078"),
         )
         assert collateral == Decimal("0.00716211")   # matches CSV + settlement release
+
+
+# ---------------------------------------------------------------------------
+# decompose_option_fill
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestDecomposeOptionFill:
+    """decompose_option_fill turns a raw OKX/Bybit option fill into the single
+    option-leg dict the normalizer consumes.
+
+    Sign convention (spec §3.3):
+      SELL -> writer RECEIVES premium (cash_flow POSITIVE), qty NEGATIVE.
+      BUY  -> buyer PAYS premium   (cash_flow NEGATIVE), qty POSITIVE.
+
+    Buyers post NO collateral -> collateral == Decimal(0) for buys. Only sells
+    call derive_collateral (Task 2 finding: derive_collateral is SELL-only).
+    """
+
+    def test_sell_canonical(self):
+        # SELL 7 @ 0.0022 BTC, fee -0.00001078 BTC, BC -0.00701889 BTC, settle BTC.
+        result = options.decompose_option_fill(
+            side="sell",
+            fill_qty=Decimal("7"),
+            fill_price=Decimal("0.0022"),
+            fee=Decimal("-0.00001078"),
+            fee_ccy="BTC",
+            settle_ccy="BTC",
+            underlying="BTC",
+            balance_change_signed=Decimal("-0.00701889"),
+        )
+        assert result["quantity"] == Decimal("-7")          # sell -> negative contracts
+        assert result["price"] == Decimal("0.0022")         # real fill per contract
+        assert result["currency"] == "BTC"                  # from CSV, not defaulted
+        assert result["cash_flow"] == Decimal("0.000154")   # +premium received
+        assert result["commission"] == Decimal("-0.00001078")
+        assert result["commission_currency"] == "BTC"
+        assert result["contract_size"] == Decimal("0.01")
+        assert result["collateral"] == Decimal("0.00716211")
+
+    def test_buy_canonical(self):
+        # BUY mirrors sell: quantity positive, cash_flow negative (premium paid).
+        # Buyer posts NO collateral -> collateral == Decimal(0).
+        # balance_change_signed is internally consistent for a buy with no
+        # collateral: BC_buy = -premium + fee_signed = -(0.000154 + 0.00001078)
+        #            = -0.00016478.
+        result = options.decompose_option_fill(
+            side="buy",
+            fill_qty=Decimal("7"),
+            fill_price=Decimal("0.0022"),
+            fee=Decimal("-0.00001078"),
+            fee_ccy="BTC",
+            settle_ccy="BTC",
+            underlying="BTC",
+            balance_change_signed=Decimal("-0.00016478"),
+        )
+        assert result["quantity"] == Decimal("7")           # buy -> positive contracts
+        assert result["price"] == Decimal("0.0022")
+        assert result["currency"] == "BTC"
+        assert result["cash_flow"] == Decimal("-0.000154")  # premium paid
+        assert result["commission"] == Decimal("-0.00001078")
+        assert result["commission_currency"] == "BTC"
+        assert result["contract_size"] == Decimal("0.01")
+        # BUY posts no collateral — must be exactly zero (NOT a derived value).
+        assert result["collateral"] == Decimal("0")

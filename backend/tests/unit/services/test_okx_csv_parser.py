@@ -473,6 +473,41 @@ def test_option_expiration_maps_to_settlement_payload():
     assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
 
 
+def test_normalize_okx_option_fill_emits_premium_cash_flow():
+    """normalize_okx_option_fill must put the PREMIUM (not net BC) as cash_flow.
+
+    Regression for #33: the option leg's cash_flow used to be the net Balance
+    Change (-0.00701889 BTC, collateral net of premium/fee), which produced
+    nonsensical PnL because it conflated premium with collateral movement.
+    The leg now carries the calculated premium (qty x fillPx x contract_size)
+    and the collateral is recorded separately on the leg (for the comment).
+    """
+    from services.crypto_exchange import normalize_okx_option_fill
+
+    payload = {
+        "instId": "BTC-USD-260605-80000-C",
+        "side": "sell",
+        "fillSz": "7",
+        "fillPx": "0.0022",
+        "fillTime": "1748328914000",
+        "tradeId": "3604219617540087810",
+        "ordId": "3604219617506533376",
+        "fee": "-0.00001078",
+        "feeCcy": "BTC",
+        "balanceUnit": "BTC",                       # NEW: from CSV
+        "cashFlow": "-0.00701889",                  # raw signed BC (normalizer decomposes)
+    }
+    event = normalize_okx_option_fill(payload)
+    leg = event.legs[0]
+    assert leg["quantity"] == Decimal("-7")
+    assert leg["price"] == Decimal("0.0022")
+    assert leg["price_asset"] == "BTC"              # from CSV balanceUnit, not defaulted
+    assert leg["instrument"] == "option"
+    assert leg["cash_flow"] == Decimal("0.000154")  # premium, NOT -0.00701889
+    assert leg["collateral"] == Decimal("0.00716211")
+    assert event.fee == {"asset": "BTC", "quantity": Decimal("-0.00001078"), "is_rebate": False}
+
+
 @pytest.mark.django_db(transaction=True)
 def test_resolve_crypto_option_asset_sets_btc_contract_size(user):
     """resolve_crypto_option_asset must set contract_size=0.01 for BTC options."""

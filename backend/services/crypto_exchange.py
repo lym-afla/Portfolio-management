@@ -831,11 +831,32 @@ def normalize_bybit_option_execution(payload: Dict[str, Any]) -> CryptoExchangeE
 
 
 def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    """Build the option-fill event for an OKX option Buy/Sell.
+
+    Decomposes the raw fill into ONE option leg whose cash_flow is the
+    calculated premium (qty x fillPx x contract_size), NOT the net Balance
+    Change. The collateral is derived from the Balance Change and carried on
+    the leg as ``collateral`` for the persistence layer to record in the
+    transaction comment (it is NOT a position leg — spec §3.3). Resolves #33.
+    """
     symbol = payload["instId"]
-    qty = Decimal(payload["fillSz"])
-    price = Decimal(payload["fillPx"])
-    fee_ccy = payload.get("feeCcy") or "USD"
-    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    settle_ccy = (payload.get("balanceUnit") or payload.get("feeCcy") or "USD").upper()
+    fee_ccy = (payload.get("feeCcy") or settle_ccy).upper()
+    parsed = parse_option_symbol(symbol)
+    underlying = parsed["underlying"]
+    balance_change_signed = Decimal(payload.get("cashFlow") or "0")
+
+    dec = options.decompose_option_fill(
+        side=payload["side"],
+        fill_qty=Decimal(payload["fillSz"]),
+        fill_price=Decimal(payload["fillPx"]),
+        fee=Decimal(payload.get("fee") or "0"),
+        fee_ccy=fee_ccy,
+        settle_ccy=settle_ccy,
+        underlying=underlying,
+        balance_change_signed=balance_change_signed,
+    )
+
     return CryptoExchangeEvent(
         provider="okx",
         provider_event_id=payload["tradeId"],
@@ -846,20 +867,19 @@ def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
         legs=[
             {
                 "asset": symbol,
-                "quantity": signed_qty,
-                "price": price,
-                "price_asset": fee_ccy,
+                "quantity": dec["quantity"],
+                "price": dec["price"],
+                "price_asset": dec["currency"],
                 "role": "base",
                 "instrument": "option",
-                # The BTC settlement (from the CSV's Balance Change) — persisted
-                # as cash_flow so total_cash_flow reads it directly instead of
-                # computing the nonsensical contracts × underlying_price. #33.
-                "cash_flow": Decimal(payload["cashFlow"]) if payload.get("cashFlow") else None,
+                "cash_flow": dec["cash_flow"],
+                "collateral": dec["collateral"],          # for comment only
+                "settle_ccy": dec["currency"],
             }
         ],
         fee={
             "asset": fee_ccy,
-            "quantity": Decimal(payload.get("fee") or "0"),
+            "quantity": dec["commission"],
             "is_rebate": False,
         },
     )
