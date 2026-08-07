@@ -194,3 +194,181 @@ class TestNavOpenShortOption:
         assert option_value == Decimal("0"), (
             f"closed option should contribute 0; got {option_value}"
         )
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+class TestNavOptionPremiumInCryptoBucket:
+    """Task 14: the option row's ``cash_flow`` (premium/payout) routes into
+    the Crypto bucket so an open short option is NAV-neutral.
+
+    Spec §3.5: for each crypto coin C the bucket aggregates ``position(C) ×
+    price`` PLUS the ``cash_flow`` of option rows denominated in C. The option
+    CONTRACT is valued separately as a liability in the Securities-side
+    breakdown (Task 13); the ``cash_flow`` here is the BTC premium received
+    (SELL) / payout paid (ITM settlement). These are SEPARATE contributions —
+    the premium lands in Crypto, the liability lands in asset_type["Option"],
+    and they cancel for an open short marked at entry cost (ΔNAV = 0).
+
+    Why bypass ``account_balance``: that helper rounds each currency's balance
+    to 2dp (accounts.py:109), so a 0.000154 BTC premium rounds to 0.00 and is
+    silently dropped from the cash side. The routing reads the RAW
+    ``Transactions.cash_flow`` to preserve full precision.
+    """
+
+    def test_sell_premium_lands_in_btc_crypto_bucket(self, user, crypto_account):
+        """The option SELL's +0.000154 BTC premium must appear in Crypto/BTC.
+
+        Setup: open short -7 @ 0.0022 (size 0.01), cash_flow = +0.000154 BTC.
+        At BTC-USD = 60000, the premium's USD value is
+        ``0.000154 × 60000 = 9.24`` and must show up as +9.24 in
+        ``analysis["Crypto"]["BTC"]`` and ``analysis["Crypto"]["__total__"]``.
+        """
+        _make_btc_underlying(user, usd_price=Decimal("60000"))
+        opt = _make_option(user)
+
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="BTC",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, 0, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("0.000154"),
+        )
+
+        # No breakdown tuple needed — Crypto is always present (Task 13).
+        nav = NAV_at_date(
+            user.id, (crypto_account.id,), date(2026, 5, 29), "USD",
+        )
+
+        # +0.000154 BTC × 60000 USD/BTC = +9.24 USD in the BTC crypto bucket.
+        assert "Crypto" in nav, f"Crypto bucket missing; got keys {list(nav)}"
+        btc_value = nav["Crypto"].get("BTC", Decimal("0"))
+        assert btc_value == Decimal("9.24"), (
+            f"BTC premium not in Crypto bucket; got {btc_value}, "
+            "expected 9.24 (0.000154 BTC × 60000)"
+        )
+        # __total__ aggregates the BTC premium (no other crypto in this setup).
+        assert nav["Crypto"]["__total__"] == Decimal("9.24"), (
+            f"Crypto __total__ wrong; got {nav['Crypto']['__total__']}, "
+            "expected 9.24"
+        )
+
+    def test_open_short_option_is_nav_neutral(self, user, crypto_account):
+        """Short option open at entry-cost mark: liability + premium = 0.
+
+        The option liability (Task 13, in asset_type["Option"]) is -9.24 USD;
+        the BTC premium routed into Crypto (Task 14) is +9.24 USD. They cancel,
+        so Total NAV = 0 (NAV-neutral open, spec §3.4 table). This is the
+        central invariant: opening a short option does NOT move NAV (modulo
+        the real fee), because the premium received exactly offsets the
+        liability booked at the entry-cost mark.
+        """
+        _make_btc_underlying(user, usd_price=Decimal("60000"))
+        opt = _make_option(user)
+
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="BTC",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, 0, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("0.000154"),
+        )
+
+        nav = NAV_at_date(
+            user.id, (crypto_account.id,), date(2026, 5, 29), "USD",
+            breakdown=("asset_type",),
+        )
+
+        # Liability side: -9.24 (Task 13). Premium side: +9.24 (Task 14).
+        liability = nav["asset_type"].get("Option", Decimal("0"))
+        premium = nav["Crypto"].get("BTC", Decimal("0"))
+        assert liability == Decimal("-9.24"), (
+            f"option liability wrong; got {liability}, expected -9.24"
+        )
+        assert premium == Decimal("9.24"), (
+            f"BTC premium wrong; got {premium}, expected 9.24"
+        )
+        # The two contributions cancel exactly -> NAV-neutral open.
+        assert nav["Total NAV"] == Decimal("0"), (
+            f"open short option should be NAV-neutral (Total NAV = 0); "
+            f"got {nav['Total NAV']} (liability {liability} + premium {premium})"
+        )
+
+    def test_usd_denominated_option_cash_flow_skipped(self, user, crypto_account):
+        """USD-denominated option cash_flows do NOT enter the Crypto bucket.
+
+        Only crypto-coin cash_flows (BTC/ETH) route into Crypto (caveat 4).
+        A USD-denominated option premium (hypothetical) belongs in the fiat
+        cash side, not Crypto. The routing filters by coin-type via an
+        ``Assets(type="Crypto")`` lookup, so "USD" is skipped.
+        """
+        _make_btc_underlying(user, usd_price=Decimal("60000"))
+        opt = _make_option(user)
+
+        # Same short, but the option row's currency is USD (not BTC). The
+        # premium is now USD-denominated and must NOT be routed into Crypto.
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="USD",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, 0, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("15.00"),
+        )
+
+        nav = NAV_at_date(
+            user.id, (crypto_account.id,), date(2026, 5, 29), "USD",
+        )
+
+        # No BTC cash_flow -> Crypto/BTC stays at 0 (no crypto spot position
+        # in this test either).
+        assert nav["Crypto"].get("BTC", Decimal("0")) == Decimal("0"), (
+            f"USD option cash_flow must NOT enter Crypto bucket; "
+            f"got BTC={nav['Crypto'].get('BTC')}"
+        )
+        assert nav["Crypto"]["__total__"] == Decimal("0"), (
+            f"Crypto __total__ should be 0 for USD-only option; "
+            f"got {nav['Crypto']['__total__']}"
+        )
+
+    def test_itm_payout_settlement_routes_into_crypto_bucket(self, user, crypto_account):
+        """ITM settlement payout (writer pays) lands in Crypto as a negative.
+
+        At ITM expiry the writer's settlement row carries a NEGATIVE BTC
+        cash_flow (the intrinsic payout the writer pays). That payout routes
+        into the BTC Crypto bucket just like the premium, with its sign
+        preserved. Spec §5.3 / §3.5: the ITM payout is a BTC-denominated
+        movement of the option row, so it belongs in the BTC bucket.
+        """
+        _make_btc_underlying(user, usd_price=Decimal("60000"))
+        opt = _make_option(user)
+
+        # Open the short.
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="BTC",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, 0, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("0.000154"),
+        )
+        # ITM settlement: +7 contracts (closes position), writer pays a BTC
+        # payout -> cash_flow is negative (e.g. -0.000300 BTC).
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="BTC",
+            type="Option settlement",
+            date=datetime(2026, 6, 5, 11, 0, tzinfo=timezone.utc),
+            quantity=Decimal("7"), price=Decimal("0.000042857"),
+            cash_flow=Decimal("-0.000300"),
+        )
+
+        nav = NAV_at_date(
+            user.id, (crypto_account.id,), date(2026, 6, 6), "USD",
+        )
+
+        # Net BTC cash_flow across the two option rows:
+        #   +0.000154 (premium) + -0.000300 (payout) = -0.000146 BTC
+        # × 60000 = -8.76 USD in the BTC crypto bucket.
+        assert nav["Crypto"].get("BTC", Decimal("0")) == Decimal("-8.76"), (
+            f"ITM payout net of premium should be -8.76 USD in BTC bucket; "
+            f"got {nav['Crypto'].get('BTC')} "
+            f"(expected (0.000154 - 0.000300) × 60000 = -8.76)"
+        )

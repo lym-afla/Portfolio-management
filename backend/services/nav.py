@@ -50,10 +50,11 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 from services import options
 from services.accounts import balance as account_balance
-from services.crypto import is_crypto
+from services.crypto import is_crypto, is_crypto_code
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 from services.positions import position
@@ -300,6 +301,66 @@ def NAV_at_date(
                 for breakdown_type in breakdown:
                     key = getattr(security, item_type[breakdown_type])
                     analysis[breakdown_type][key] += account_value
+
+    # Option premiums/payouts (sub-project 4, spec §3.5): option rows carry
+    # their premium (SELL, positive cash_flow) or payout (ITM settlement,
+    # negative cash_flow for the writer) in the settlement coin. Route the
+    # crypto-denominated ones into the Crypto bucket alongside ``position()``
+    # and BTC fees so opening a short option is NAV-neutral (the premium in
+    # the BTC bucket exactly offsets the option liability booked above at
+    # entry-cost mark — spec §3.4 NAV-neutral table).
+    #
+    # Why read ``Transactions.cash_flow`` directly instead of
+    # ``account_balance``: that helper rounds each currency's balance to 2dp
+    # (services/accounts.py:109), so a 0.000154 BTC premium would round to
+    # 0.00 and be silently dropped. The raw ``cash_flow`` preserves full
+    # precision (Decimal throughout).
+    #
+    # No double-count with the option-liability loop above: that values the
+    # option CONTRACT (the liability, in the Securities-side breakdowns);
+    # this values the option's CASH_FLOW (the premium/payout, in the Crypto
+    # bucket). They are SEPARATE contributions that cancel for an open short
+    # marked at entry cost (the spec's NAV-neutral contract).
+    #
+    # Only crypto-coin cash_flows route here: USD/EUR-denominated option
+    # premiums belong in the fiat cash side, not the Crypto bucket. The
+    # ``Assets(type="Crypto")`` lookup enforces this.
+    option_cash_flows = Transactions.objects.filter(
+        investor=user_id,
+        date__date__lte=date,
+        security__type="Option",
+        cash_flow__isnull=False,
+    ).filter(
+        # Option open/close event types (the importer emits these for crypto
+        # option fills and settlements; constants mirror transactions.py).
+        type__in=[
+            TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+            TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
+            TRANSACTION_TYPE_OPTION_SETTLEMENT,
+        ],
+    )
+    if account_ids:
+        option_cash_flows = option_cash_flows.filter(account_id__in=account_ids)
+    for tx in option_cash_flows:
+        coin = (tx.currency or "").upper().strip()
+        if not is_crypto_code(coin):
+            # Skip fiat-denominated option cash_flows (USD/EUR premium).
+            continue
+        try:
+            coin_to_target = get_fx_rate(coin, target_currency, date)
+        except ValueError:
+            logger.warning(
+                "No FX rate for option cash_flow coin %s -> %s on %s; "
+                "skipping from Crypto bucket",
+                coin, target_currency, date,
+            )
+            continue
+        cf_value = (tx.cash_flow or Decimal(0)) * coin_to_target
+        if cf_value == 0:
+            continue
+        analysis["Crypto"]["__total__"] += cf_value
+        analysis["Crypto"][coin] += cf_value
+        analysis["Total NAV"] += cf_value
 
     # Handle cash balances
     for account in portfolio_accounts:
