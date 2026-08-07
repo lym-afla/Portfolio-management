@@ -58,6 +58,29 @@ def contract_size_for_underlying(coin_code: str) -> Decimal:
     return size
 
 
+def contract_size_for_asset(asset) -> Decimal:
+    """Return the contract size stored on an option asset's OptionMetadata.
+
+    Used by NAV valuation to scale the per-contract mark (coin per contract)
+    to coin-notional when multiplying by the contract-unit position:
+
+        option_value (coin) = position(contracts) × mark(coin/contract) × size
+
+    For non-option assets or options missing OptionMetadata / contract_size,
+    returns ``Decimal(1)`` so callers can apply it unconditionally without
+    special-casing (a no-op for non-options). ``OptionMetadata`` is imported
+    lazily to avoid pulling ``common.models`` at module load.
+    """
+    if not is_option_asset(asset):
+        return Decimal(1)
+    from common.models import OptionMetadata
+
+    meta = OptionMetadata.objects.filter(asset=asset).first()
+    if meta is None or meta.contract_size is None:
+        return Decimal(1)
+    return Decimal(meta.contract_size)
+
+
 def gross_premium(quantity: Decimal, fill_price: Decimal, contract_size: Decimal) -> Decimal:
     """Return the gross option premium = quantity × fill_price × contract_size.
 
@@ -106,13 +129,32 @@ def option_mark_for_nav(option_asset, date, investor=None) -> Optional[Decimal]:
     NAV policy (spec §5.4): a short option is valued at entry cost (premium)
     by default — NAV-neutral at open. If the user has entered a manual option
     price into the Prices table, NAV marks to it instead (on-demand MTM).
-    Returns None when no Prices row exists; the caller falls back to entry cost.
+    Returns None when no manual Prices row exists; the caller falls back to
+    entry cost.
+
+    IMPORTANT: this MUST consult only the ``Prices`` table, NOT the
+    transaction-price fallback that ``price_at_date`` applies for unpriced
+    assets. An option without a manual mark must fall back to entry cost
+    (via ``calculate_buy_in_price``) — using the last fill price as the mark
+    would defeat the manual-MTM/intent (it would coincidentally equal entry
+    cost for a single fill but diverge for averaged/multi-lot positions, and
+    it would re-apply the fill price after the position is closed, etc.).
+
+    ``investor`` is accepted for interface symmetry but not currently used:
+    option marks are per-asset. Retained so a future per-investor mark policy
+    can be added without churning callers.
     """
-    from services.pricing import price_at_date as _price_at_date
-    try:
-        return _price_at_date(option_asset, date, investor=investor)
-    except (ValueError, TypeError):
+    quote = (
+        Prices.objects.filter(security=option_asset, date__lte=date)
+        .order_by("-date")
+        .first()
+    )
+    if quote is None or quote.price is None:
         return None
+    # Return the manual mark's PRICE (a Decimal). The mark stays in the option's
+    # native currency (the settlement coin, e.g. BTC); the NAV loop FX-converts
+    # the resulting coin-notional to target once, after contract_size scaling.
+    return Decimal(quote.price)
 
 
 def derive_collateral(

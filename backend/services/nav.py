@@ -51,6 +51,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
 )
+from services import options
 from services.accounts import balance as account_balance
 from services.crypto import is_crypto
 from services.fx import get_rate as fx_get_rate
@@ -202,6 +203,66 @@ def NAV_at_date(
         for account in portfolio_accounts:
             account_position = position(security, date, user_id, [account.id])
             if account_position == 0:
+                continue
+
+            # Options (sub-project 4, spec §5.4): short options are liabilities
+            # valued at the manual mark (a Prices row on the OPTION asset) if
+            # present, else at entry cost (the per-contract fill price from
+            # ``calculate_buy_in_price``) so opening a short is NAV-neutral
+            # against the BTC premium in the Crypto bucket. Handled BEFORE the
+            # generic ``calculate_value_at_date`` path, which prices an option
+            # at ``position × price`` with no contract_size — that would blow
+            # the premium/liability match 100x (0.0154 BTC vs 0.000154 BTC
+            # premium) and break the spec §3.4 NAV-neutral contract.
+            #
+            # The option does NOT enter the Crypto bucket (it is type="Option",
+            # not "Crypto"); it appears in the Securities-side breakdowns under
+            # its asset_type ("Option") as a negative value (short = liability).
+            if options.is_option_asset(security):
+                mark = options.option_mark_for_nav(security, date, user_id)
+                if mark is None:
+                    # Fall back to entry cost: the average per-contract fill
+                    # price (sell-side for a short, buy-side for a long), in
+                    # the OPTION's native currency (the settlement coin, e.g.
+                    # BTC). We deliberately do NOT pass ``target_currency``:
+                    # the FX conversion to target happens once, below, after
+                    # the contract_size scaling — passing target_currency here
+                    # would FX-convert the mark AND the final coin-notional
+                    # (double conversion, 60000x too large for BTC->USD).
+                    # ``calculate_buy_in_price`` returns None when there are no
+                    # paid-entry transactions; treat that as a 0 mark.
+                    from services.realized import calculate_buy_in_price
+                    try:
+                        mark = calculate_buy_in_price(
+                            security, date, user_id, None, [account.id]
+                        )
+                    except (ValueError, TypeError):
+                        mark = None
+                    if mark is None:
+                        mark = Decimal(0)
+                # option_value (coin) = position(contracts) × mark(coin/contract)
+                #                       × contract_size (coin-per-contract scale).
+                # contract_size is required: the mark is coin-per-contract but
+                # position is in contracts, so the coin-notional needs the size
+                # to match the premium magnitude (spec §3.4 NAV-neutral table).
+                option_value = (
+                    account_position * Decimal(mark)
+                    * options.contract_size_for_asset(security)
+                )
+                # FX-convert the coin-notional to the target currency. The
+                # option's currency is the settlement coin (e.g. "BTC"); for a
+                # crypto coin this chains through crypto_fx_rate (the coin's
+                # USD price) -> target via the fiat FX graph.
+                if security.currency != target_currency:
+                    fx = get_fx_rate(security.currency, target_currency, date)
+                    option_value *= fx
+                analysis["Total NAV"] += option_value
+                if "account" in breakdown:
+                    analysis["account"][account.name] += option_value
+                else:
+                    for breakdown_type in breakdown:
+                        key = getattr(security, item_type[breakdown_type])
+                        analysis[breakdown_type][key] += option_value
                 continue
 
             # Use calculate_value_at_date for proper bond notional handling.
