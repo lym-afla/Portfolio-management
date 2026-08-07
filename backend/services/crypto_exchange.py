@@ -498,6 +498,37 @@ def persist_crypto_exchange_event(event, user, account):
                     ).upper()
                     if fee_ccy:
                         tx_kwargs["commission_currency"] = fee_ccy
+                # Option legs: the premium/payout cash_flow is denominated in
+                # the option's settle currency (e.g. BTC), NOT USD. Override the
+                # default USD so the row's currency matches its cash_flow, and
+                # append the collateral amount to the comment for audit. The
+                # collateral is NOT a position leg (spec §3.3) — it stays
+                # implicitly in the underlying coin's position to avoid NAV
+                # step-changes; recording it here preserves the trail.
+                if leg.get("instrument") == "option" and leg.get("collateral") is not None:
+                    coll_ccy = str(
+                        leg.get("settle_ccy") or leg.get("price_asset") or ""
+                    ).upper()
+                    if coll_ccy:
+                        tx_kwargs["currency"] = coll_ccy
+                    coll = leg["collateral"]
+                    base_comment = tx_kwargs.get("comment") or ""
+                    if event.category == "settlement":
+                        is_otm = leg.get("is_otm", True)
+                        outcome = "Expired OTM" if is_otm else "Expired ITM"
+                        coll_note = (
+                            f"{outcome}. Collateral {coll} {coll_ccy} released (not tracked)."
+                        )
+                    else:
+                        coll_note = (
+                            f"Collateral blocked: {coll} {coll_ccy} "
+                            f"(not tracked — remains in {coll_ccy} position)."
+                        )
+                    tx_kwargs["comment"] = (
+                        f"{base_comment} {coll_note}".strip()
+                        if base_comment
+                        else coll_note
+                    )
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
