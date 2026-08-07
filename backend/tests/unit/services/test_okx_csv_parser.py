@@ -441,6 +441,12 @@ def test_option_fill_maps_to_option_payload():
     assert payload["ordId"] == "3604219617506533376"
     assert payload["fee"] == "-0.000011"
     assert payload["feeCcy"] == "BTC"
+    # NEW: the payload must carry the CSV Balance Unit so the normalizer
+    # resolves currency without defaulting to USD.
+    assert payload["balanceUnit"] == "BTC"
+    # The raw signed Balance Change is passed through; the normalizer decomposes
+    # it into premium (cash_flow) + collateral (comment).
+    assert payload["cashFlow"] == "0.007162"  # this test fixture's Balance Change
     assert source_id == "3604219617540087810"
     # UTC+3 00:15:14 -> UTC 21:15:14 previous day.
     expected_dt = datetime(2026, 5, 27, 21, 15, 14, tzinfo=timezone.utc)

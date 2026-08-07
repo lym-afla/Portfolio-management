@@ -915,6 +915,7 @@ def build_okx_csv_events(df, tz_offset):
                 # so total_cash_flow reads it directly instead of computing the
                 # nonsensical contracts × underlying_price product. Issue #33.
                 bal_chg = Decimal(str(row.get("Balance Change") or "0"))
+                balance_unit = (_strip_okx_bom(row.get("Balance Unit")) or fee_unit).upper()
                 payload = {
                     "__kind": "option_fill",
                     "instId": symbol_clean,
@@ -926,7 +927,8 @@ def build_okx_csv_events(df, tz_offset):
                     "ordId": str(order_id) if order_id and order_id != "0" else "",
                     "fee": str(fee),
                     "feeCcy": fee_unit,
-                    "cashFlow": str(bal_chg),
+                    "balanceUnit": balance_unit,          # NEW: currency source from CSV
+                    "cashFlow": str(bal_chg),              # raw signed BC; normalizer decomposes
                 }
                 events.append((payload, str(row_id)))
             continue
