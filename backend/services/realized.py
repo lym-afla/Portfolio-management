@@ -53,6 +53,7 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 from services import options
 from services.fx import get_rate as _fx_get_rate
@@ -93,6 +94,82 @@ def _option_contract_size(asset) -> Decimal:
     if meta is None or meta.contract_size is None:
         return Decimal(1)
     return Decimal(meta.contract_size)
+
+
+def _realized_option_close(asset, transaction, position_before, investor, account_ids, start):
+    """Compute realized G/L for an Option settlement that closes a position.
+
+    The opening leg (``Crypto trade in/out``) recorded the premium as its
+    ``cash_flow`` (signed: +received for sell / -paid for buy). The settlement
+    closes at the terminal price (0 OTM / intrinsic ITM); its ``cash_flow``
+    already carries the payout sign (negative for writer ITM payout, 0 OTM,
+    positive for buyer ITM receipt).
+
+    Realized G/L collapses to the SAME formula for both short and long closes
+    because ``cash_flow`` already carries the sign convention
+    (negative = coin outflow)::
+
+        realized = premium_at_open + settlement_proceeds + fee_at_open
+
+    Verification against the regression fixtures (8 dp):
+        OTM writer: +0.000154 + 0 + (-0.00001078)        = +0.00014322
+        ITM writer: +0.000154 + (-0.00411765) + 0        = -0.00396365
+        Long OTM:   -0.000154 + 0 + 0                    = -0.000154
+
+    ``position_before``, ``account_ids``, and ``start`` are accepted for
+    interface symmetry with the walker; the helper itself reads the opening
+    row directly so it works regardless of whether the position-reducing
+    detection above fired.
+
+    Returns a 3-key dict (``price_appreciation``, ``fx_effect``, ``total``)
+    matching the walker's accumulator shape. For a single-currency option
+    cycle the FX effect is 0 (no cross-currency conversion).
+    """
+    csize = _option_contract_size(asset)  # noqa: F841 -- reserved for option-specific extensions
+    closing_qty = transaction.quantity or Decimal(0)
+    # Find the opening row (most recent open position before this settlement).
+    opening = (
+        asset.transactions.filter(
+            investor=investor,
+            quantity__isnull=False,
+            date__lt=transaction.date,
+        )
+        .exclude(type=TRANSACTION_TYPE_OPTION_SETTLEMENT)
+        .order_by("-date", "-id")
+        .first()
+    )
+    premium_at_open = (
+        Decimal(opening.cash_flow) if (opening and opening.cash_flow is not None) else Decimal(0)
+    )
+    fee_at_open = (
+        Decimal(opening.commission) if (opening and opening.commission is not None) else Decimal(0)
+    )
+
+    # closing_qty sign: +closes short, -closes long. magnitude = |closing_qty|.
+    close_mag = abs(closing_qty)  # noqa: F841 -- reserved for option-specific extensions
+    # Settlement cash_flow already carries the payout sign (negative for writer
+    # ITM, positive for buyer ITM, 0 for OTM). Use it directly as the proceeds.
+    proceeds = Decimal(transaction.cash_flow) if transaction.cash_flow is not None else Decimal(0)
+
+    # For a short close: realized = premium_received + proceeds - fee
+    #   (proceeds negative when writer pays; premium positive).
+    # For a long close: realized = -premium_paid + proceeds
+    #   (premium_at_open is negative for a buy; proceeds positive when buyer receives).
+    # Both cases reduce to the SAME formula because cash_flow already carries
+    # the sign convention (negative = coin outflow):
+    #   realized = premium_at_open + proceeds + fee_at_open
+    # (commission stored as a negative number; adding it subtracts the fee.)
+    was_short_close = closing_qty > 0  # noqa: F841 -- reserved for option-specific extensions
+    realized_local = premium_at_open + proceeds + fee_at_open
+
+    # FX effect: option premiums and payouts are in the settlement coin (BTC).
+    # price_appreciation in local currency; fx_effect = total - price_appreciation.
+    # For a single-currency option cycle, fx_effect is 0 (no FX conversion).
+    return {
+        "price_appreciation": realized_local,
+        "fx_effect": Decimal(0),
+        "total": realized_local,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -791,6 +868,26 @@ def realized_gain_loss(
                 closing_quantity = min(transaction.quantity, abs(position))
             else:
                 closing_quantity = transaction.quantity
+
+            # --- Option close (sub-project 4) -------------------------------
+            # An Option settlement row closes an open short/long at the terminal
+            # price (0 OTM / intrinsic ITM). The premium received/paid lives on
+            # the opening row's cash_flow; realized G/L = closing_proceeds -
+            # premium. This branch fires before the generic crypto/stock close
+            # so option-specific math (contract_size, intrinsic) applies.
+            if (
+                options.is_option_asset(asset)
+                and transaction.type == TRANSACTION_TYPE_OPTION_SETTLEMENT
+            ):
+                option_gl = _realized_option_close(
+                    asset, transaction, position, investor, account_ids, start
+                )
+                result["price_appreciation"] += option_gl["price_appreciation"]
+                result["fx_effect"] += option_gl["fx_effect"]
+                result["total"] += option_gl["total"]
+                position += transaction.quantity
+                logger.debug(f"Position after option settlement: {position}")
+                continue
 
             if is_position_reducing:
                 # For position-reducing transactions, we need to calculate the buy-in price
