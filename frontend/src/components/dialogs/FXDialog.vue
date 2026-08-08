@@ -27,6 +27,20 @@
               :required="field.required"
               :error-messages="errorMessages[field.name]"
             />
+            <!--
+              Currency code fields (from_currency/to_currency) come from
+              form_structure as type:"text". Render them as text inputs, and
+              lock them when the pair is preset (edit mode, or add-from-cell).
+            -->
+            <v-text-field
+              v-else-if="field.type === 'text'"
+              v-model="form[field.name]"
+              :label="field.label"
+              :required="field.required"
+              :error-messages="errorMessages[field.name]"
+              :disabled="isEdit || presetPair"
+              :maxlength="3"
+            />
           </template>
         </v-form>
         <v-alert v-if="generalError" type="error" class="mt-3">
@@ -34,6 +48,13 @@
         </v-alert>
       </v-card-text>
       <v-card-actions>
+        <v-btn
+          v-if="isEdit"
+          color="red darken-1"
+          text
+          @click="$emit('fx-delete', editItem)"
+          >Delete</v-btn
+        >
         <v-spacer />
         <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
         <v-btn
@@ -56,14 +77,27 @@ import logger from '@/utils/logger'
 const props = defineProps({
   modelValue: Boolean,
   editItem: Object,
+  // Optional prefilled values used when adding from an empty grid cell, e.g.
+  // { date, from_currency, to_currency }. Distinct from `editItem` (which
+  // switches the dialog to edit mode); `prefill` keeps Add mode but seeds the
+  // form so the user only has to type the rate.
+  prefill: {
+    type: Object,
+    default: null,
+  },
 })
-const emit = defineEmits(['update:modelValue', 'fx-added', 'fx-updated'])
+const emit = defineEmits(['update:modelValue', 'fx-added', 'fx-updated', 'fx-delete'])
 
 const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
 const isEdit = computed(() => !!props.editItem)
+// When a pair is preset (edit, or add-from-cell) the currency codes are fixed
+// by the cell the user clicked — keep them read-only to avoid pair drift.
+const presetPair = computed(
+  () => isEdit.value || !!props.prefill?.from_currency
+)
 const form = ref({})
 const formFields = ref([])
 const errorMessages = ref({})
@@ -161,8 +195,20 @@ watch(
       }
     } else {
       initializeForm()
-      // Reset the date field to be editable when adding new FX rate
-      if (formFields.value) {
+      // Add-from-cell: seed the form with the prefilled date/pair so the user
+      // only has to enter the rate. Date is also fixed (it's the cell's date).
+      if (props.prefill) {
+        form.value = { ...form.value, ...props.prefill }
+        if (formFields.value) {
+          const dateField = formFields.value.find(
+            (field) => field.name === 'date'
+          )
+          if (dateField) {
+            dateField.disabled = true
+          }
+        }
+      } else if (formFields.value) {
+        // Plain Add (from the toolbar): date is editable.
         const dateField = formFields.value.find(
           (field) => field.name === 'date'
         )
@@ -180,5 +226,23 @@ watch(
     generalError.value = ''
   },
   { immediate: true }
+)
+
+// React to `prefill` changes too (e.g. the parent sets a prefill without
+// changing editItem). Only applies in Add mode.
+watch(
+  () => props.prefill,
+  (pf) => {
+    if (props.editItem) return
+    initializeForm()
+    if (pf) {
+      form.value = { ...form.value, ...pf }
+      const dateField = formFields.value?.find((f) => f.name === 'date')
+      if (dateField) dateField.disabled = true
+    } else {
+      const dateField = formFields.value?.find((f) => f.name === 'date')
+      if (dateField) dateField.disabled = false
+    }
+  }
 )
 </script>

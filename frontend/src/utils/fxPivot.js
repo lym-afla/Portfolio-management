@@ -30,6 +30,20 @@ export const PAIR_ORDER = [
 export const pairLabelOf = (row) => `${row.from_currency}/${row.to_currency}`
 
 /**
+ * Inverse of {@link pairLabelOf}: split a pair label into `[from, to]`.
+ * Returns `['', '']` for a malformed (slashless) label so callers can destructure
+ * safely. Used by per-cell editing to derive a cell's currency pair.
+ * @param {string} pairLabel e.g. "USD/EUR"
+ * @returns {[string, string]}
+ */
+export const splitPairLabel = (pairLabel) => {
+  const idx = pairLabel.indexOf('/')
+  return idx === -1
+    ? ['', '']
+    : [pairLabel.slice(0, idx), pairLabel.slice(idx + 1)]
+}
+
+/**
  * Compare two pair labels, preserving {@link PAIR_ORDER} for known pairs and
  * sorting unknown ones alphabetically after the known set.
  * @param {string} a

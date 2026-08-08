@@ -86,15 +86,23 @@
               <td
                 v-for="pairLabel in currencies"
                 :key="pairLabel"
-                class="text-center"
+                class="text-center pa-0"
               >
-                {{ item[pairLabel]?.rate ?? '—' }}
-              </td>
-              <td class="text-end">
-                <v-icon small class="mr-2" @click="editItem(item)"
-                  >mdi-pencil</v-icon
+                <!--
+                  Per-cell editing: a filled cell opens the record for editing;
+                  an empty (—) cell opens Add mode with date + pair prefilled.
+                  Each cell maps to exactly one FX record, so there's no row vs.
+                  record ambiguity.
+                -->
+                <v-btn
+                  variant="text"
+                  size="small"
+                  class="cell-btn"
+                  :class="item[pairLabel] ? 'cell-btn--filled' : 'cell-btn--empty'"
+                  @click="onCellClick(item, pairLabel)"
                 >
-                <v-icon small @click="deleteItem(item)">mdi-delete</v-icon>
+                  {{ item[pairLabel]?.rate ?? '—' }}
+                </v-btn>
               </td>
             </tr>
           </template>
@@ -120,12 +128,14 @@
       </v-col>
     </v-row>
 
-    <!-- Add dialog components -->
+    <!-- Add/edit dialog. editItem drives Edit mode; prefill seeds Add-from-cell. -->
     <FXDialog
       v-model="showFXDialog"
       :edit-item="editedItem"
+      :prefill="dialogPrefill"
       @fx-added="fetchFXData"
       @fx-updated="fetchFXData"
+      @fx-delete="onDeleteFromDialog"
     />
     <FXImportDialog
       v-model="showImportDialog"
@@ -171,7 +181,7 @@ import { calculateDateRange } from '@/utils/dateRangeUtils'
 import FXDialog from '@/components/dialogs/FXDialog.vue'
 import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
-import { pivotFxRows, firstPairInRow } from '@/utils/fxPivot'
+import { pivotFxRows, splitPairLabel } from '@/utils/fxPivot'
 import logger from '@/utils/logger'
 
 const appStore = useAppStore()
@@ -215,7 +225,6 @@ const headers = computed(() => [
     align: 'center',
     sortable: true,
   })),
-  { title: 'Actions', key: 'actions', align: 'end', sortable: false },
 ])
 
 const fetchFXData = async () => {
@@ -346,44 +355,60 @@ const showFXDialog = ref(false)
 const showImportDialog = ref(false)
 const showDeleteDialog = ref(false)
 const editedItem = ref(null)
+// Prefill for Add-from-cell: { date, from_currency, to_currency }. Null when
+// the dialog is in plain Add (toolbar) or Edit mode.
+const dialogPrefill = ref(null)
 const itemToDelete = ref(null)
 
 const openAddFXDialog = () => {
   editedItem.value = null
+  dialogPrefill.value = null
   showFXDialog.value = true
 }
 
-// A pivoted table row represents several FX records (one per currency pair) for
-// a single date. Edit/delete operate on the *first* pair present in the row
-// (in column order) as a non-regressive default; per-cell editing is a
-// follow-up.
-const firstOfItem = (item) => firstPairInRow(item, currencies.value)
-
-const editItem = async (item) => {
-  const first = firstOfItem(item)
-  if (!first) return
-  logger.log('Unknown', 'Editing item:', first)
-  try {
-    const fxDetails = await getFXDetails(first.id)
-    editedItem.value = fxDetails
+/**
+ * Per-cell click handler. Each cell maps to exactly one FX record (filled) or
+ * one missing pair to add (empty). We open the shared FXDialog in the right
+ * mode instead of acting on the whole pivoted row.
+ * @param {object} item pivoted row
+ * @param {string} pairLabel e.g. "USD/EUR"
+ */
+const onCellClick = async (item, pairLabel) => {
+  const entry = item?.[pairLabel]
+  const [from_currency, to_currency] = splitPairLabel(pairLabel)
+  if (entry && entry.id != null) {
+    // Filled cell → edit that specific record.
+    logger.log('Unknown', 'Editing FX record:', { date: item.date, pairLabel, id: entry.id })
+    try {
+      const fxDetails = await getFXDetails(entry.id)
+      editedItem.value = fxDetails
+      dialogPrefill.value = null
+      showFXDialog.value = true
+    } catch (error) {
+      handleApiError(error)
+    }
+  } else {
+    // Empty cell (—) → Add that pair for this date, pre-filled.
+    logger.log('Unknown', 'Adding FX pair:', { date: item.date, pairLabel })
+    editedItem.value = null
+    dialogPrefill.value = { date: item.date, from_currency, to_currency }
     showFXDialog.value = true
-  } catch (error) {
-    handleApiError(error)
   }
 }
 
-const deleteItem = async (item) => {
-  const first = firstOfItem(item)
-  if (!first) return
-  logger.log('Unknown', 'Deleting item:', first)
-  itemToDelete.value = first
+// Delete is now triggered from inside FXDialog (the dialog knows the record).
+const onDeleteFromDialog = (record) => {
+  if (!record?.id) return
+  itemToDelete.value = record
   showDeleteDialog.value = true
 }
 
 const confirmDelete = async () => {
+  if (!itemToDelete.value?.id) return
   deleteLoading.value = true
   try {
     await deleteFXRate(itemToDelete.value.id)
+    showFXDialog.value = false
     await fetchFXData()
   } catch (error) {
     handleApiError(error)
@@ -400,3 +425,30 @@ const dateRangeForSelector = computed(() => ({
   dateTo: dateTo.value,
 }))
 </script>
+
+<style scoped>
+/* Per-cell buttons: the whole grid is editable, so each rate is a button.
+   Filled cells read as plain text but reveal an edit affordance on hover;
+   empty (—) cells signal they are addable. */
+.cell-btn {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+}
+
+.cell-btn--filled {
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.cell-btn--empty {
+  color: rgba(0, 0, 0, 0.38);
+  font-style: italic;
+}
+
+.cell-btn--empty:hover {
+  color: rgb(var(--v-theme-primary));
+}
+</style>

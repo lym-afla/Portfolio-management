@@ -3,6 +3,7 @@ import {
   pivotFxRows,
   firstPairInRow,
   pairLabelOf,
+  splitPairLabel,
   comparePairLabels,
   PAIR_ORDER,
 } from '@/utils/fxPivot'
@@ -19,6 +20,23 @@ describe('pairLabelOf', () => {
     expect(pairLabelOf({ from_currency: 'USD', to_currency: 'EUR' })).toBe(
       'USD/EUR'
     )
+  })
+})
+
+describe('splitPairLabel', () => {
+  it('splits a pair label into [from, to]', () => {
+    expect(splitPairLabel('USD/EUR')).toEqual(['USD', 'EUR'])
+    expect(splitPairLabel('CHF/GBP')).toEqual(['CHF', 'GBP'])
+  })
+
+  it('is the inverse of pairLabelOf', () => {
+    const label = pairLabelOf({ from_currency: 'PLN', to_currency: 'USD' })
+    expect(splitPairLabel(label)).toEqual(['PLN', 'USD'])
+  })
+
+  it('returns ["", ""] for a malformed (slashless) label', () => {
+    expect(splitPairLabel('USDEUR')).toEqual(['', ''])
+    expect(splitPairLabel('')).toEqual(['', ''])
   })
 })
 
