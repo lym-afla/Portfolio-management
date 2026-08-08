@@ -193,3 +193,48 @@ class TestUnrealizedOptionGuard:
         assert result["total"] == Decimal("0")
         assert result["price_appreciation"] == Decimal("0")
         assert result["fx_effect"] == Decimal("0")
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+@pytest.mark.gain_loss
+class TestCryptoTransferNeutralityInBasis:
+    """get_economic_basis must treat unmatched crypto transfers as neutral
+    (position move only, no basis carried away) while TRANSFER_DISPOSITION_ENABLED
+    is False — matching the realized_gain_loss walker. Otherwise basis and the
+    walker's position go out of sync, producing a nonsense buy-in (the TRUMP bug:
+    a buy@73 -> neutral transfer-out -> neutral transfer-in -> sell@16 realized
+    as +11.21 instead of a loss)."""
+
+    def test_basis_preserved_across_neutral_transfers(self, user, account):
+        # Buy 1 @ 73.21
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:NEO", name="NEO",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="USD",
+            type="Crypto trade in",
+            date=datetime(2025, 1, 19, tzinfo=timezone.utc),
+            quantity=Decimal("1"), price=Decimal("73.21"),
+        )
+        # Neutral transfer out / in (unmatched, no import_group_id partner in
+        # scope). Currency is USD so the transfer's own FX path is a no-op and
+        # the test exercises the basis-carry logic (the actual TRUMP bug),
+        # not the FX layer.
+        Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="USD",
+            type="Crypto transfer out",
+            date=datetime(2025, 1, 20, tzinfo=timezone.utc),
+            quantity=Decimal("-1"),
+        )
+        Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="USD",
+            type="Crypto transfer in",
+            date=datetime(2025, 2, 9, tzinfo=timezone.utc),
+            quantity=Decimal("1"),
+        )
+        # Basis after the cycle should still reflect the buy (73.21), NOT be
+        # carried away by the transfer-out into carried_basis_by_group.
+        basis = get_economic_basis(coin, datetime(2025, 2, 10, tzinfo=timezone.utc),
+                                   investor=user, account_ids=[account.id], rounded=False)
+        assert basis == Decimal("73.21")

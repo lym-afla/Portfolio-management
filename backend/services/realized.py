@@ -637,39 +637,43 @@ def get_economic_basis(
                     average_basis = Decimal(0)
                     continue
             elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT:
-                transferred_quantity = (
-                    min(abs(quantity), position) if position > 0 else Decimal(0)
-                )
-                transferred_basis = average_basis * transferred_quantity
-                basis -= transferred_basis
-                group_key = transfer_group_key(transaction)
-                add_group_carry(
-                    carried_basis_by_group,
-                    group_key,
-                    transfer_source_key(transaction),
-                    transferred_basis,
-                    transferred_quantity,
-                )
-                position += quantity
-                if position <= 0:
-                    basis = Decimal(0)
-                    average_basis = Decimal(0)
-                    continue
-            elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN:
-                group_key = transfer_group_key(transaction)
-                if group_key:
-                    carried_basis = allocate_group_carry(
+                if TRANSFER_DISPOSITION_ENABLED:
+                    transferred_quantity = (
+                        min(abs(quantity), position) if position > 0 else Decimal(0)
+                    )
+                    transferred_basis = average_basis * transferred_quantity
+                    basis -= transferred_basis
+                    group_key = transfer_group_key(transaction)
+                    add_group_carry(
                         carried_basis_by_group,
                         group_key,
-                        quantity,
+                        transfer_source_key(transaction),
+                        transferred_basis,
+                        transferred_quantity,
                     )
-                    basis += carried_basis
-                    if allow_group_lookup and carried_basis == 0:
-                        basis += lookup_group_transfer_basis(
-                            transaction,
-                            target,
-                            visited_transfer_ids,
+                    position += quantity
+                    if position <= 0:
+                        basis = Decimal(0)
+                        average_basis = Decimal(0)
+                        continue
+                else:
+                    position += quantity
+            elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN:
+                if TRANSFER_DISPOSITION_ENABLED:
+                    group_key = transfer_group_key(transaction)
+                    if group_key:
+                        carried_basis = allocate_group_carry(
+                            carried_basis_by_group,
+                            group_key,
+                            quantity,
                         )
+                        basis += carried_basis
+                        if allow_group_lookup and carried_basis == 0:
+                            basis += lookup_group_transfer_basis(
+                                transaction,
+                                target,
+                                visited_transfer_ids,
+                            )
                 position += quantity
 
             average_basis = basis / position if position else Decimal(0)
