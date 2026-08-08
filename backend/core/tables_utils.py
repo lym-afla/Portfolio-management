@@ -208,7 +208,19 @@ def _calculate_closed_table_output_for_api(
 
             # Calculate realized gain/loss
             if "realized_gl" in categories:
-                position["realized_gl"] = exit_value - entry_value
+                if options.is_option_asset(asset):
+                    # Options: the generic exit-entry formula treats the premium
+                    # as a cost (like buying), but a writer KEEPS the premium at
+                    # OTM. Use the option-aware realized engine instead.
+                    option_gl = realized_gain_loss(
+                        asset, exit_date, user_id,
+                        currency=currency_used,
+                        account_ids=selected_account_ids,
+                        start_date=entry_date,
+                    )
+                    position["realized_gl"] = option_gl["all_time"]["total"]
+                else:
+                    position["realized_gl"] = exit_value - entry_value
             else:
                 position["realized_gl"] = Decimal(0)
 

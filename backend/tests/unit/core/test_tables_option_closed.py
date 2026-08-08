@@ -82,3 +82,10 @@ class TestOptionInClosedPositions:
             f"entry_value should apply contract_size (7 × 0.0022 × 0.01 × 60000 "
             f"= 9.24); got {rows[0]['entry_value']}"
         )
+        # Realized G/L for an OTM writer must be POSITIVE (the writer keeps the
+        # premium), NOT the generic exit-entry formula (0 - 9.24 = -9.24). The
+        # option-aware realized engine computes +premium.
+        assert rows[0]["realized_gl"] > Decimal("0"), (
+            f"OTM writer realized_gl should be positive (keeps premium); "
+            f"got {rows[0]['realized_gl']}"
+        )
