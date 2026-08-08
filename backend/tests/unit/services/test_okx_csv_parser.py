@@ -934,6 +934,31 @@ async def test_full_parser_option_sell_comment_records_collateral(tmp_path, user
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
+async def test_option_sell_row_stores_per_contract_premium_not_fx_converted(tmp_path, user, okx_account):
+    """The option SELL row's price must be the per-contract premium in the settle
+    coin (0.0022 BTC), NOT FX-converted to the underlying USD price (163.55).
+    FX conversion is applied later by value math (NAV/tables) via contract_size."""
+    rows = [{
+        "id": "3604219617540087810", "Order id": "3604219617506533376",
+        "Time": "2026-05-28 00:15:14", "Trade Type": "Option",
+        "Symbol": "BTC-USD-260605-80000-C", "Action": "Sell", "Amount": "7",
+        "Trading Unit": "cont", "Filled Price": "0.002200", "PnL": "0",
+        "Fee": "-0.00001078", "Fee Unit": "BTC", "Position Change": "0.00716211",
+        "Position Balance": "0", "Balance Change": "-0.00701889",
+        "Balance": "0.05975468", "Balance Unit": "BTC",
+    }]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    await _drain(parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False))
+    txs = await _persisted_txs(user, okx_account)
+    sell = next(t for t in txs if t.type == "Crypto trade out")
+    # Per-contract premium in BTC, NOT FX-converted to USD.
+    assert sell.price == Decimal("0.0022")
+    assert sell.currency == "BTC"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
 async def test_full_parser_option_cycle_net_btc_is_realized_profit(tmp_path, user, okx_account):
     """Import the full BTC-USD-260605-80000-C cycle (SELL + OTM expiry).
 

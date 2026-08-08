@@ -883,10 +883,12 @@ def test_option_sell_and_otm_expiry_persist_correctly(user, crypto_account):
         investor=user, account=crypto_account, type=TRANSACTION_TYPE_CRYPTO_TRADE_OUT
     )
     assert sell_tx.quantity == Decimal("-7")
-    # price_asset="BTC" so _leg_fiat_price multiplies 0.0022 * BTC_USD_price
-    # (~105000) to fiat-resolve the BTC-denominated premium. The raw 0.0022
-    # does NOT survive; assert only sign per the brief's verified fact #3.
-    assert sell_tx.price is not None and sell_tx.price > 0
+    # Option legs store the RAW per-contract premium in the settle coin
+    # (0.0022 BTC), NOT the FX-converted USD value. FX conversion +
+    # contract_size are applied by value math (NAV/tables/realized), not at
+    # persistence. (Previously _leg_fiat_price FX-converted 0.0022 x
+    # BTC-USD ~105000 into ~231 USD, which is not the row's price.)
+    assert sell_tx.price == Decimal("0.0022")
 
     # OTM EXPIRY: collateral released (+0.00716211 BTC).
     settle_event = CryptoExchangeEvent(

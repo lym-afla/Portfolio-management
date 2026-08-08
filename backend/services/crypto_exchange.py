@@ -401,7 +401,17 @@ def persist_crypto_exchange_event(event, user, account):
                 leg_records.append((index, leg, quantity, price))
                 continue
 
-            price = _leg_fiat_price(leg, user, event_time)
+            if leg.get("instrument") == "option":
+                # Option legs: store the raw per-contract premium in the
+                # settle coin (e.g. 0.0022 BTC). FX conversion + contract_size
+                # are applied by value math (NAV/tables/realized), not here —
+                # _leg_fiat_price would FX-convert 0.0022 BTC x BTC-USD into
+                # the underlying USD price (~163.55), which is NOT the row's
+                # price. Settlement legs (terminal 0 OTM / intrinsic ITM) are
+                # likewise in settle-coin terms and must not be FX-converted.
+                price = leg.get("price")
+            else:
+                price = _leg_fiat_price(leg, user, event_time)
             if price is None:
                 raise ValueError(
                     "Cannot persist crypto exchange event without fiat-denominated "
