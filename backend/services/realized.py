@@ -53,7 +53,9 @@ from constants import (
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
     TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
+from services import options
 from services.fx import get_rate as _fx_get_rate
 from services.positions import (
     entry_dates as _positions_entry_dates,
@@ -71,6 +73,170 @@ from services.transactions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _cash_precision_for(asset, account_ids=None) -> int:
+    """Resolve the broker's cash_precision for rounding financial outputs.
+
+    Crypto brokers (OKX/Bybit) use 8 dp; fiat brokers use 2 (the model default).
+    Falls back to 2 when account_ids is None/empty or the broker can't be
+    resolved — matching the pre-fix behavior for call sites that don't pass
+    account_ids.
+    """
+    if not account_ids:
+        return 2
+    try:
+        from common.models import Accounts
+        first_account = Accounts.objects.filter(id__in=account_ids).select_related("broker").first()
+        if first_account and first_account.broker_id:
+            return int(first_account.broker.cash_precision)
+    except Exception:
+        pass
+    return 2
+
+
+# Until issue #29's two-account model lands, ALL crypto transfers are neutral
+# (position += quantity, no realized G/L). OKX Funding↔Trading internal moves
+# dominate real data and are indistinguishable from external withdrawals
+# pre-#29. Set True to reactivate the matched-vs-unmatched disposition logic
+# (the _transfer_is_matched helper is retained for that future use).
+TRANSFER_DISPOSITION_ENABLED = False
+
+
+def _option_contract_size(asset) -> Decimal:
+    """Return the contract size for an option asset, or Decimal(1) otherwise.
+
+    Option paid-entries are recorded in *contract* units but priced in coin
+    per contract, so the cost basis must multiply by ``contract_size`` to
+    express coin notional (e.g. 7 contracts × 0.0022 BTC × 0.01 BTC/contract
+    = 0.000154 BTC). For non-option assets this returns ``Decimal(1)`` so the
+    basis math is a no-op for crypto/stocks/bonds.
+
+    ``OptionMetadata`` is imported lazily to avoid pulling ``common.models``
+    at module load (matches realized.py's lazy-import pattern for circulars).
+    """
+    if not options.is_option_asset(asset):
+        return Decimal(1)
+    from common.models import OptionMetadata
+
+    meta = OptionMetadata.objects.filter(asset=asset).first()
+    if meta is None or meta.contract_size is None:
+        return Decimal(1)
+    return Decimal(meta.contract_size)
+
+
+def _realized_option_close(
+    asset, transaction, position_before, investor, account_ids, start
+):
+    """Compute realized G/L for an Option settlement that closes a position.
+
+    The opening leg (``Crypto trade in/out``) recorded the premium on its
+    ``cash_flow`` (signed: +received for sell / -paid for buy). The settlement
+    closes at the terminal price (0 OTM / intrinsic ITM); its ``cash_flow``
+    already carries the payout sign (negative for writer ITM payout, 0 OTM,
+    positive for buyer ITM receipt).
+
+    The single formula ``realized = premium_at_open + settlement_proceeds +
+    fee_at_open`` works for BOTH short and long closes because ``cash_flow``
+    carries the sign convention (negative = coin outflow). ``commission`` is
+    stored as a negative number, so adding ``fee_at_open`` subtracts the fee.
+
+    Verification against the regression fixtures (8 dp):
+        OTM writer: +0.000154 + 0 + (-0.00001078)        = +0.00014322
+        ITM writer: +0.000154 + (-0.00411765) + 0        = -0.00396365
+        Long OTM:   -0.000154 + 0 + 0                    = -0.000154
+
+    ``position_before``, ``account_ids``, and ``start`` are accepted for
+    interface symmetry with the walker; the helper itself reads the opening
+    row directly so it works regardless of whether the position-reducing
+    detection above fired.
+
+    Returns a 3-key dict (``price_appreciation``, ``fx_effect``, ``total``)
+    matching the walker's accumulator shape. For a single-currency option
+    cycle the FX effect is 0 (no cross-currency conversion).
+    """
+    # Find the opening row (most recent open position before this settlement).
+    opening = (
+        asset.transactions.filter(
+            investor=investor,
+            quantity__isnull=False,
+            date__lt=transaction.date,
+        )
+        .exclude(type=TRANSACTION_TYPE_OPTION_SETTLEMENT)
+        .order_by("-date", "-id")
+        .first()
+    )
+    premium_at_open = (
+        Decimal(opening.cash_flow)
+        if (opening and opening.cash_flow is not None)
+        else Decimal(0)
+    )
+    fee_at_open = (
+        Decimal(opening.commission)
+        if (opening and opening.commission is not None)
+        else Decimal(0)
+    )
+    # Settlement cash_flow already carries the payout sign (negative for writer
+    # ITM, positive for buyer ITM, 0 for OTM). Use it directly as the proceeds.
+    proceeds = (
+        Decimal(transaction.cash_flow)
+        if transaction.cash_flow is not None
+        else Decimal(0)
+    )
+
+    realized_local = premium_at_open + proceeds + fee_at_open
+
+    # FX effect: option premiums and payouts are in the settlement coin (BTC).
+    # For a single-currency option cycle, fx_effect is 0 (no FX conversion).
+    return {
+        "price_appreciation": realized_local,
+        "fx_effect": Decimal(0),
+        "total": realized_local,
+    }
+
+
+def _transfer_is_matched(transaction, investor, account_ids=None):
+    """Return True when this transfer has a matching partner leg in-portfolio.
+
+    A transfer is matched when another transfer of the opposite direction
+    exists for the same asset, same ``import_group_id``, same provider, within
+    the investor's account set. Transfers without an ``import_group_id`` are
+    unmatched by definition (no pairing signal) — these are cold-wallet
+    withdrawals, external deposits, or moves to an un-modeled account.
+
+    This is the realized-G/L counterpart to the multi-source discrimination
+    already performed by ``allocate_group_carry`` in ``get_economic_basis``
+    (``len(source_keys) != 1`` -> no basis carry): both enforce that a transfer
+    must have an unambiguous in-portfolio partner to be treated as principal-
+    preserving. The difference is that ``allocate_group_carry`` protects the
+    basis replay, while this helper protects the realized P&L walker so an
+    unmatched transfer flows into the disposal (OUT) or paid-entry (IN) branch.
+    """
+    group_id = getattr(transaction, "import_group_id", None)
+    if not group_id:
+        return False
+    provider = getattr(transaction, "import_provider", None) or ""
+    # Look for the opposite-direction sibling in the same group.
+    # Lazy import: realized.py sits above common.models in the import chain
+    # (see module docstring) so a top-level import would be circular.
+    from common.models import Transactions as _Tx
+
+    target_type = (
+        TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+        if transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT
+        else TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT
+    )
+    qs = _Tx.objects.filter(
+        investor=investor,
+        security_id=transaction.security_id,
+        import_group_id=group_id,
+        type=target_type,
+    )
+    if provider:
+        qs = qs.filter(import_provider=provider)
+    if account_ids is not None:
+        qs = qs.filter(account_id__in=account_ids)
+    return qs.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +309,9 @@ def calculate_buy_in_price(
 
     # Convert start_date to datetime object if it's a date
     if start_date and isinstance(start_date, date):
-        start_date = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=None)
+        start_date = datetime.combine(start_date, datetime.min.time()).replace(
+            tzinfo=None
+        )
     elif start_date and isinstance(start_date, datetime):
         pass
     elif start_date is None:
@@ -153,7 +321,9 @@ def calculate_buy_in_price(
 
     # Convert entry_date to datetime offset-naive object if it's a date
     if entry_date and isinstance(entry_date, date):
-        entry_date = datetime.combine(entry_date, datetime.min.time()).replace(tzinfo=None)
+        entry_date = datetime.combine(entry_date, datetime.min.time()).replace(
+            tzinfo=None
+        )
 
     if start_date and start_date > entry_date:
         # Add artificial transaction at start_date
@@ -231,7 +401,9 @@ def calculate_buy_in_price(
     else:
         is_long_position = True  # Default to long if no transactions
 
-    logger.debug(f"Current position: {current_position}, Is long position: {is_long_position}")
+    logger.debug(
+        f"Current position: {current_position}, Is long position: {is_long_position}"
+    )
 
     # For short positions, find the price at which the short position was established
     if not is_long_position:
@@ -243,7 +415,9 @@ def calculate_buy_in_price(
 
         for transaction in transactions:
             if currency is not None:
-                fx_rate = _fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
+                fx_rate = _fx_get_rate(
+                    transaction.currency, currency, transaction.date
+                )["FX"]
             else:
                 fx_rate = Decimal(1)
 
@@ -275,7 +449,9 @@ def calculate_buy_in_price(
         )
 
         if currency is not None:
-            fx_rate = _fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
+            fx_rate = _fx_get_rate(transaction.currency, currency, transaction.date)[
+                "FX"
+            ]
         else:
             fx_rate = Decimal(1)
         logger.debug(f"FX rate: {fx_rate}")
@@ -300,7 +476,8 @@ def calculate_buy_in_price(
             entry_price = previous_entry_price
         else:
             entry_price = (
-                previous_entry_price * weight_entry_previous + entry_price * weight_current
+                previous_entry_price * weight_entry_previous
+                + entry_price * weight_current
             ) / (weight_entry_previous + weight_current)
 
         quantity_entry += transaction.quantity
@@ -388,7 +565,9 @@ def get_economic_basis(
             return Decimal(0)
 
         allocated_quantity = min(requested_quantity, group_carry["quantity"])
-        allocated_basis = group_carry["basis"] * allocated_quantity / group_carry["quantity"]
+        allocated_basis = (
+            group_carry["basis"] * allocated_quantity / group_carry["quantity"]
+        )
         group_carry["basis"] -= allocated_basis
         group_carry["quantity"] -= allocated_quantity
         if group_carry["quantity"] <= 0:
@@ -441,13 +620,16 @@ def get_economic_basis(
 
             if _transactions_is_paid_entry_transaction(transaction):
                 if transaction.price is not None:
-                    basis += quantity * transaction.price * fx_rate
+                    csize = _option_contract_size(asset)  # Decimal(1) for non-options
+                    basis += quantity * transaction.price * csize * fx_rate
                 position += quantity
             elif _transactions_is_reward_transaction(transaction):
                 basis += _transactions_reward_value(transaction) * fx_rate
                 position += quantity
             elif _transactions_is_disposal_transaction(transaction):
-                disposed_quantity = min(abs(quantity), position) if position > 0 else Decimal(0)
+                disposed_quantity = (
+                    min(abs(quantity), position) if position > 0 else Decimal(0)
+                )
                 basis -= average_basis * disposed_quantity
                 position += quantity
                 if position <= 0:
@@ -482,10 +664,7 @@ def get_economic_basis(
                         quantity,
                     )
                     basis += carried_basis
-                    if (
-                        allow_group_lookup
-                        and carried_basis == 0
-                    ):
+                    if allow_group_lookup and carried_basis == 0:
                         basis += lookup_group_transfer_basis(
                             transaction,
                             target,
@@ -521,7 +700,10 @@ def get_economic_basis(
         )
         if not transfer_outs:
             return Decimal(0)
-        if len({transfer_source_key(transfer_out) for transfer_out in transfer_outs}) != 1:
+        if (
+            len({transfer_source_key(transfer_out) for transfer_out in transfer_outs})
+            != 1
+        ):
             return Decimal(0)
 
         total_transferred_basis = Decimal(0)
@@ -559,29 +741,23 @@ def get_economic_basis(
             return Decimal(0)
 
         first_transfer_out = transfer_outs[0]
-        prior_transfer_in_quantity = (
-            asset.transactions.filter(
-                (
-                    Q(date__gt=first_transfer_out.date)
-                    | (
-                        Q(date=first_transfer_out.date)
-                        & Q(id__gt=first_transfer_out.id)
-                    )
-                ),
-                (
-                    Q(date__lt=transaction.date)
-                    | (Q(date=transaction.date) & Q(id__lt=transaction.id))
-                ),
-                investor=investor,
-                security=asset,
-                import_group_id=transaction.import_group_id,
-                type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
-                quantity__gt=0,
-            )
-            .filter(provider_matches(transaction.import_provider))
-            .aggregate(total=Sum("quantity"))["total"]
-            or Decimal(0)
-        )
+        prior_transfer_in_quantity = asset.transactions.filter(
+            (
+                Q(date__gt=first_transfer_out.date)
+                | (Q(date=first_transfer_out.date) & Q(id__gt=first_transfer_out.id))
+            ),
+            (
+                Q(date__lt=transaction.date)
+                | (Q(date=transaction.date) & Q(id__lt=transaction.id))
+            ),
+            investor=investor,
+            security=asset,
+            import_group_id=transaction.import_group_id,
+            type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+            quantity__gt=0,
+        ).filter(provider_matches(transaction.import_provider)).aggregate(
+            total=Sum("quantity")
+        )["total"] or Decimal(0)
         remaining_quantity = total_transferred_quantity - min(
             prior_transfer_in_quantity,
             total_transferred_quantity,
@@ -597,7 +773,8 @@ def get_economic_basis(
     basis = replay(transactions_until(date_as_of, account_ids), target_currency)
     if not rounded:
         return basis
-    return basis.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    precision = _cash_precision_for(asset, account_ids)
+    return basis.quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP)
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +808,9 @@ def realized_gain_loss(
             "total": Decimal(0),
         }
 
-        transactions = asset.transactions.filter(quantity__isnull=False, investor=investor)
+        transactions = asset.transactions.filter(
+            quantity__isnull=False, investor=investor
+        )
         if isinstance(start, datetime):
             transactions = transactions.filter(date__gte=start)
         else:
@@ -654,7 +833,9 @@ def realized_gain_loss(
             position_query = position_query.filter(date__date__lt=start)
         if account_ids is not None:
             position_query = position_query.filter(account_id__in=account_ids)
-        position = position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
+        position = position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(
+            0
+        )
         logger.debug(f"Starting position at {start}: {position}")
 
         for transaction in transactions:
@@ -676,7 +857,9 @@ def realized_gain_loss(
                 # gain = cash_received - (notional_redeemed * buy_in_price)
                 # Gain is zero only if bought at par and redeemed at par
                 cash_received = transaction.cash_flow or Decimal(0)
-                notional_redeemed_per_bond = getattr(transaction, "notional_change", None)
+                notional_redeemed_per_bond = getattr(
+                    transaction, "notional_change", None
+                )
                 notional_redeemed = notional_redeemed_per_bond * _positions_position(
                     transaction.security, transaction.date, investor, account_ids
                 )
@@ -705,7 +888,9 @@ def realized_gain_loss(
                         and buy_in_price_lcl_currency is not None
                     ):
                         fx_rate_exit = (
-                            _fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
+                            _fx_get_rate(
+                                transaction.currency, currency, transaction.date
+                            )["FX"]
                             if currency
                             else 1
                         )
@@ -716,14 +901,18 @@ def realized_gain_loss(
                         # Price appreciation in local currency (100 = 100% of par = redemption at par) # noqa: E501
                         price_appreciation_lcl = (
                             cash_received
-                            - notional_redeemed * buy_in_price_lcl_currency / Decimal(100)
+                            - notional_redeemed
+                            * buy_in_price_lcl_currency
+                            / Decimal(100)
                         )
                         price_appreciation = price_appreciation_lcl * fx_rate_exit
 
                         # Total G/L in target currency
                         gl_target_currency = (
                             cash_received * fx_rate_exit
-                            - notional_redeemed * buy_in_price_target_currency / Decimal(100)
+                            - notional_redeemed
+                            * buy_in_price_target_currency
+                            / Decimal(100)
                         )
 
                         # FX effect
@@ -750,13 +939,28 @@ def realized_gain_loss(
                 continue
 
             if _transactions_is_neutral_transfer_transaction(transaction):
-                position += transaction.quantity
-                logger.debug(f"Position after neutral transfer: {position}")
-                continue
+                # Pre-#29: all crypto transfers are neutral (internal wallet
+                # moves cannot be distinguished from external flows). When
+                # TRANSFER_DISPOSITION_ENABLED is True (#29), unmatched
+                # transfers fall through to the disposal/entry branches below.
+                if TRANSFER_DISPOSITION_ENABLED and not _transfer_is_matched(
+                    transaction, investor, account_ids
+                ):
+                    logger.debug(
+                        "Unmatched %s for asset %s: treating as disposition/entry.",
+                        transaction.type, getattr(asset, "name", asset),
+                    )
+                    # fall through to is_position_reducing logic below
+                else:
+                    position += transaction.quantity
+                    logger.debug(f"Position after neutral transfer: {position}")
+                    continue
 
             is_position_reducing = (
                 position > 0 and _transactions_is_disposal_transaction(transaction)
-            ) or (position < 0 and _transactions_is_paid_entry_transaction(transaction))
+            ) or (
+                position < 0 and _transactions_is_paid_entry_transaction(transaction)
+            )
 
             # Determine the quantity that is actually closing the position
             # vs opening a new position in the opposite direction
@@ -768,6 +972,28 @@ def realized_gain_loss(
                 closing_quantity = min(transaction.quantity, abs(position))
             else:
                 closing_quantity = transaction.quantity
+
+            # --- Option close (sub-project 4) -------------------------------
+            # An Option settlement row closes an open short/long at the terminal
+            # price (0 OTM / intrinsic ITM). The premium received/paid lives on
+            # the opening row's cash_flow; the settlement row's cash_flow already
+            # carries the signed payout. Realized G/L = premium_at_open +
+            # settlement_proceeds + fee_at_open (cash_flow carries sign). This
+            # branch fires before the generic crypto/stock close so option-specific
+            # math (contract_size, intrinsic) applies.
+            if (
+                options.is_option_asset(asset)
+                and transaction.type == TRANSACTION_TYPE_OPTION_SETTLEMENT
+            ):
+                option_gl = _realized_option_close(
+                    asset, transaction, position, investor, account_ids, start
+                )
+                result["price_appreciation"] += option_gl["price_appreciation"]
+                result["fx_effect"] += option_gl["fx_effect"]
+                result["total"] += option_gl["total"]
+                position += transaction.quantity
+                logger.debug(f"Position after option settlement: {position}")
+                continue
 
             if is_position_reducing:
                 # For position-reducing transactions, we need to calculate the buy-in price
@@ -816,14 +1042,10 @@ def realized_gain_loss(
                         rounded=False,
                     )
                     buy_in_price_target_currency = (
-                        economic_basis_target_currency / position
-                        if position
-                        else None
+                        economic_basis_target_currency / position if position else None
                     )
                     buy_in_price_lcl_currency = (
-                        economic_basis_lcl_currency / position
-                        if position
-                        else None
+                        economic_basis_lcl_currency / position if position else None
                     )
                 elif position > 0:
                     # Closing long position: calculate avg buy price of these shares
@@ -881,7 +1103,9 @@ def realized_gain_loss(
                     and buy_in_price_lcl_currency is not None
                 ):
                     fx_rate_exit = (
-                        _fx_get_rate(transaction.currency, currency, transaction.date)["FX"]
+                        _fx_get_rate(transaction.currency, currency, transaction.date)[
+                            "FX"
+                        ]
                         if currency
                         else 1
                     )
@@ -907,7 +1131,10 @@ def realized_gain_loss(
 
                         gl_target_currency = (
                             notional_at_sell
-                            * (transaction.price * fx_rate_exit - buy_in_price_target_currency)
+                            * (
+                                transaction.price * fx_rate_exit
+                                - buy_in_price_target_currency
+                            )
                             * (-transaction.quantity)
                             / Decimal(100)
                         )
@@ -915,14 +1142,22 @@ def realized_gain_loss(
                         # Standard calculation for non-bonds
                         # Use closing_quantity to only calculate gain/loss on the
                         # portion that actually closes the position (not the portion
-                        # that opens a new one)
+                        # that opens a new one).
+                        # Unmatched transfers carry no fill price (price=None);
+                        # treat proceeds as 0 (a withdrawal receives no cash, a
+                        # deposit adds basis at zero/FMV).
+                        tx_price = (
+                            transaction.price
+                            if transaction.price is not None
+                            else Decimal(0)
+                        )
                         price_appreciation = (
-                            -(transaction.price - buy_in_price_lcl_currency)
+                            -(tx_price - buy_in_price_lcl_currency)
                             * closing_quantity
                             * fx_rate_exit
                         )
                         gl_target_currency = (
-                            -(transaction.price * fx_rate_exit - buy_in_price_target_currency)
+                            -(tx_price * fx_rate_exit - buy_in_price_target_currency)
                             * closing_quantity
                         )
 
@@ -932,7 +1167,9 @@ def realized_gain_loss(
                     result["price_appreciation"] += Decimal(price_appreciation)
                     result["fx_effect"] += Decimal(fx_effect)
 
-                    logger.debug(f"Realized G/L for this transaction: {gl_target_currency}")
+                    logger.debug(
+                        f"Realized G/L for this transaction: {gl_target_currency}"
+                    )
 
             position += transaction.quantity
             logger.debug(f"Position after transaction: {position}")
@@ -955,7 +1192,9 @@ def realized_gain_loss(
 
     # Convert date_as_of to datetime object if it's a date
     if date_as_of and isinstance(date_as_of, date):
-        date_as_of = datetime.combine(date_as_of, datetime.max.time()).replace(tzinfo=None)
+        date_as_of = datetime.combine(date_as_of, datetime.max.time()).replace(
+            tzinfo=None
+        )
     elif date_as_of and isinstance(date_as_of, datetime):
         pass
     elif date_as_of is None:
@@ -965,7 +1204,9 @@ def realized_gain_loss(
 
     # Convert start_date to datetime object if it's a date
     if start_date and isinstance(start_date, date):
-        start_date = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=None)
+        start_date = datetime.combine(start_date, datetime.min.time()).replace(
+            tzinfo=None
+        )
     elif start_date and isinstance(start_date, datetime):
         pass
     elif start_date is None:
@@ -974,8 +1215,12 @@ def realized_gain_loss(
         raise ValueError("Invalid start_date")
 
     # Calculate all-time realized gain/loss
-    exit_dates = _positions_exit_dates(asset, date_as_of, investor, account_ids, start_date)
-    entry_dates = _positions_entry_dates(asset, date_as_of, investor, account_ids, start_date)
+    exit_dates = _positions_exit_dates(
+        asset, date_as_of, investor, account_ids, start_date
+    )
+    entry_dates = _positions_entry_dates(
+        asset, date_as_of, investor, account_ids, start_date
+    )
 
     if start_date is not None and len(entry_dates) == 0:
         entry_dates = [start_date]
@@ -1005,7 +1250,9 @@ def realized_gain_loss(
     # Calculate gain/loss for each position
     for position_start, position_end in adjusted_pairs:
         logger.debug(f"Calculating for position: {position_start} to {position_end}")
-        position_result = calculate_position_gain_loss(position_start, position_end, investor)
+        position_result = calculate_position_gain_loss(
+            position_start, position_end, investor
+        )
         logger.debug(f"Position result: {position_result}")
 
         for key in result["all_time"]:
@@ -1018,10 +1265,14 @@ def realized_gain_loss(
 
         logger.debug(f"Current position result: {result['current_position']}")
 
-    # Round all results to 2 decimal places
+    # Round all results to the broker's cash_precision (8 for crypto, 2 for fiat)
+    precision = _cash_precision_for(asset, account_ids)
     for period in result:
         for component in result[period]:
-            result[period][component] = round(result[period][component], 2)
+            result[period][component] = (
+                Decimal(result[period][component])
+                .quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP)
+            )
 
     return result
 
@@ -1054,6 +1305,21 @@ def unrealized_gain_loss(
             - 'fx_effect': FX effect in reporting currency.
             - 'total': Total unrealized gain/loss in reporting currency.
     """
+    # Options (sub-project 4): unrealized G/L is not meaningful for option
+    # positions because ``get_economic_basis`` is long-only — a written (short)
+    # option zeros its basis on open, so the generic unrealized path would
+    # report the full negative mark as "unrealized loss" rather than the
+    # NAV-neutral 0. Realized G/L at expiry is correct (``_realized_option_close``);
+    # NAV values the liability via the dedicated option-mark branch. A future
+    # sub-project may add true option unrealized G/L; until then, return zeros
+    # so the UI does not display a misleading number.
+    if options.is_option_asset(asset):
+        return {
+            "price_appreciation": Decimal(0),
+            "fx_effect": Decimal(0),
+            "total": Decimal(0),
+        }
+
     unrealized_gain_loss = 0
     price_appreciation = 0
     fx_effect = 0
@@ -1066,12 +1332,16 @@ def unrealized_gain_loss(
         if isinstance(date_as_of, datetime):
             current_position_query = current_position_query.filter(date__lte=date_as_of)
         else:
-            current_position_query = current_position_query.filter(date__date__lte=date_as_of)
+            current_position_query = current_position_query.filter(
+                date__date__lte=date_as_of
+            )
         if account_ids is not None:
-            current_position_query = current_position_query.filter(account_id__in=account_ids)
-        current_position = (
-            current_position_query.aggregate(total=Sum("quantity"))["total"] or Decimal(0)
-        )
+            current_position_query = current_position_query.filter(
+                account_id__in=account_ids
+            )
+        current_position = current_position_query.aggregate(total=Sum("quantity"))[
+            "total"
+        ] or Decimal(0)
     else:
         current_position = _positions_position(asset, date_as_of, investor, account_ids)
 
@@ -1097,7 +1367,9 @@ def unrealized_gain_loss(
         asset, date_as_of, investor, currency, account_ids, start_date
     )
 
-    fx_rate_eop = _fx_get_rate(asset.currency, currency, date_as_of)["FX"] if currency else 1
+    fx_rate_eop = (
+        _fx_get_rate(asset.currency, currency, date_as_of)["FX"] if currency else 1
+    )
 
     if asset.type == ASSET_TYPE_CRYPTO:
         economic_basis_lcl_cur = get_economic_basis(
@@ -1129,7 +1401,9 @@ def unrealized_gain_loss(
         # For bonds: unrealized G/L = notional_at_date * (price_at_date% - buy_in_price%) * position / 100 # noqa: E501
         # For others: unrealized G/L = (current_price - buy_in_price) * position
         if asset.is_bond:
-            notional_lcl = asset.get_effective_notional(date_as_of, investor, account_ids)
+            notional_lcl = asset.get_effective_notional(
+                date_as_of, investor, account_ids
+            )
 
             price_appreciation = (
                 notional_lcl
@@ -1156,8 +1430,9 @@ def unrealized_gain_loss(
 
         fx_effect = unrealized_gain_loss - price_appreciation
 
+    precision = _cash_precision_for(asset, account_ids)
     return {
-        "price_appreciation": round(Decimal(price_appreciation), 2),
-        "fx_effect": round(Decimal(fx_effect), 2),
-        "total": round(Decimal(unrealized_gain_loss), 2),
+        "price_appreciation": Decimal(price_appreciation).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP),
+        "fx_effect": Decimal(fx_effect).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP),
+        "total": Decimal(unrealized_gain_loss).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP),
     }

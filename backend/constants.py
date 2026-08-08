@@ -117,6 +117,7 @@ NAV_BARCHART_CHOICES = (
 )
 
 ASSET_TYPE_CRYPTO = "Crypto"
+ASSET_TYPE_OPTION = "Option"
 
 ASSET_TYPE_CHOICES = (
     ("Stock", "Stock"),

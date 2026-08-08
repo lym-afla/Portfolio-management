@@ -2,6 +2,7 @@
 
 import heapq
 import logging
+import types
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -24,6 +25,7 @@ from constants import (
     TRANSACTION_TYPE_INTEREST_INCOME,
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
+from services import options
 from services.asset_resolver import resolve_or_create_asset
 
 SUPPORTED_QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
@@ -149,7 +151,7 @@ def resolve_crypto_option_asset(parsed_option, user):
             "strike_price": parsed_option["strike_price"],
             "expiration_date": parsed_option["expiration_date"],
             "option_type": parsed_option["option_type"],
-            "contract_size": Decimal("1"),
+            "contract_size": options.contract_size_for_underlying(parsed_option["underlying"]),
         },
     )
     return asset
@@ -453,7 +455,16 @@ def persist_crypto_exchange_event(event, user, account):
                     investor=user,
                     account=account,
                     security=asset,
-                    currency=str(leg.get("quote_currency") or "USD").upper(),
+                    # Transfer legs have no quote_currency and move the coin's
+                    # own balance, so their currency must be the coin (e.g. BTC)
+                    # — otherwise BTC transfers leak into the USD Cash column.
+                    # Spot trades keep quote_currency; option legs are overridden
+                    # by the settle_ccy block below.
+                    currency=(
+                        str(leg.get("price_asset") or leg.get("asset") or "USD").upper()
+                        if tx_type in (TRANSACTION_TYPE_CRYPTO_TRANSFER_IN, TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT)
+                        else str(leg.get("quote_currency") or "USD").upper()
+                    ),
                     type=tx_type,
                     date=event_time,
                     quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
@@ -496,6 +507,37 @@ def persist_crypto_exchange_event(event, user, account):
                     ).upper()
                     if fee_ccy:
                         tx_kwargs["commission_currency"] = fee_ccy
+                # Option legs: the premium/payout cash_flow is denominated in
+                # the option's settle currency (e.g. BTC), NOT USD. Override the
+                # default USD so the row's currency matches its cash_flow, and
+                # append the collateral amount to the comment for audit. The
+                # collateral is NOT a position leg (spec §3.3) — it stays
+                # implicitly in the underlying coin's position to avoid NAV
+                # step-changes; recording it here preserves the trail.
+                if leg.get("instrument") == "option" and leg.get("collateral") is not None:
+                    coll_ccy = str(
+                        leg.get("settle_ccy") or leg.get("price_asset") or ""
+                    ).upper()
+                    if coll_ccy:
+                        tx_kwargs["currency"] = coll_ccy
+                    coll = leg["collateral"]
+                    base_comment = tx_kwargs.get("comment") or ""
+                    if event.category == "settlement":
+                        is_otm = leg.get("is_otm", True)
+                        outcome = "Expired OTM" if is_otm else "Expired ITM"
+                        coll_note = (
+                            f"{outcome}. Collateral {coll} {coll_ccy} released (not tracked)."
+                        )
+                    else:
+                        coll_note = (
+                            f"Collateral blocked: {coll} {coll_ccy} "
+                            f"(not tracked — remains in {coll_ccy} position)."
+                        )
+                    tx_kwargs["comment"] = (
+                        f"{base_comment} {coll_note}".strip()
+                        if base_comment
+                        else coll_note
+                    )
             try:
                 with transaction.atomic():
                     created.append(Transactions.objects.create(**tx_kwargs))
@@ -799,11 +841,54 @@ def normalize_okx_reward(payload: Dict[str, Any]) -> Optional[CryptoExchangeEven
 
 
 def normalize_bybit_option_execution(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    """Build the option-fill event for a Bybit option Buy/Sell.
+
+    Mirrors ``normalize_okx_option_fill`` (Task 4): decomposes the raw fill into
+    ONE option leg whose cash_flow is the calculated premium
+    (qty x execPrice x contract_size), NOT the net wallet change. Collateral is
+    derived from the wallet change and carried on the leg as ``collateral`` for
+    the importer to record in the transaction comment (it is NOT a position leg
+    — spec §3.3).
+
+    Bybit differs from OKX in three ways:
+      - Symbol format is ``_parse_bybit_option_symbol`` (DDMMMYY expiry token).
+      - Fee is ALWAYS emitted as a negative magnitude (``-abs(execFee)``); the
+        raw ``execFee`` from the API is unsigned. ``decompose_option_fill``
+        receives the raw fee verbatim, then the normalizer negates its absolute
+        value for the ``fee`` block (preserving the existing convention).
+      - The /v5/execution/list payload has NO balance-change field (OKX CSV
+        carries ``cashFlow``). With ``balance_change_signed=Decimal(0)``,
+        ``derive_collateral`` for a SELL returns ``max(premium + fee, 0)``;
+        this is comment-only and the Bybit collateral model (margin vs. coin)
+        is documented separately. For a BUY, collateral stays 0.
+    """
     symbol = payload["symbol"]
-    qty = Decimal(payload["execQty"])
-    price = Decimal(payload["execPrice"])
-    fee_currency = payload.get("feeCurrency") or "USD"
-    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    parsed = parse_option_symbol(symbol)
+    underlying = parsed["underlying"]
+    settle_ccy = (
+        payload.get("feeCurrency")
+        or parsed.get("settlement_asset")
+        or underlying
+        or "USD"
+    ).upper()
+    fee_ccy = (payload.get("feeCurrency") or settle_ccy).upper()
+    raw_fee = Decimal(payload.get("execFee") or "0")
+
+    # Bybit's execution payload has no balance-change field, so the collateral
+    # derivation degenerates: pass 0 to derive_collateral (collateral stays
+    # comment-only; the Bybit margin/coin collateral model is documented
+    # separately from this premium-cash_flow decomposition).
+    dec = options.decompose_option_fill(
+        side=payload["side"],
+        fill_qty=Decimal(payload["execQty"]),
+        fill_price=Decimal(payload["execPrice"]),
+        fee=raw_fee,
+        fee_ccy=fee_ccy,
+        settle_ccy=settle_ccy,
+        underlying=underlying,
+        balance_change_signed=Decimal(0),
+    )
+
     return CryptoExchangeEvent(
         provider="bybit",
         provider_event_id=payload["execId"],
@@ -814,27 +899,52 @@ def normalize_bybit_option_execution(payload: Dict[str, Any]) -> CryptoExchangeE
         legs=[
             {
                 "asset": symbol,
-                "quantity": signed_qty,
-                "price": price,
-                "price_asset": fee_currency,
+                "quantity": dec["quantity"],
+                "price": dec["price"],
+                "price_asset": dec["currency"],
                 "role": "base",
                 "instrument": "option",
+                "cash_flow": dec["cash_flow"],
+                "collateral": dec["collateral"],          # for comment only
+                "settle_ccy": dec["currency"],
             }
         ],
         fee={
-            "asset": fee_currency,
-            "quantity": -abs(Decimal(payload.get("execFee") or "0")),
+            "asset": fee_ccy,
+            # Bybit convention: fee is always a non-positive magnitude.
+            "quantity": -abs(dec["commission"]),
             "is_rebate": False,
         },
     )
 
 
 def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
+    """Build the option-fill event for an OKX option Buy/Sell.
+
+    Decomposes the raw fill into ONE option leg whose cash_flow is the
+    calculated premium (qty x fillPx x contract_size), NOT the net Balance
+    Change. The collateral is derived from the Balance Change and carried on
+    the leg as ``collateral`` for the persistence layer to record in the
+    transaction comment (it is NOT a position leg — spec §3.3). Resolves #33.
+    """
     symbol = payload["instId"]
-    qty = Decimal(payload["fillSz"])
-    price = Decimal(payload["fillPx"])
-    fee_ccy = payload.get("feeCcy") or "USD"
-    signed_qty = qty if payload["side"].lower() == "buy" else -qty
+    settle_ccy = (payload.get("balanceUnit") or payload.get("feeCcy") or "USD").upper()
+    fee_ccy = (payload.get("feeCcy") or settle_ccy).upper()
+    parsed = parse_option_symbol(symbol)
+    underlying = parsed["underlying"]
+    balance_change_signed = Decimal(payload.get("cashFlow") or "0")
+
+    dec = options.decompose_option_fill(
+        side=payload["side"],
+        fill_qty=Decimal(payload["fillSz"]),
+        fill_price=Decimal(payload["fillPx"]),
+        fee=Decimal(payload.get("fee") or "0"),
+        fee_ccy=fee_ccy,
+        settle_ccy=settle_ccy,
+        underlying=underlying,
+        balance_change_signed=balance_change_signed,
+    )
+
     return CryptoExchangeEvent(
         provider="okx",
         provider_event_id=payload["tradeId"],
@@ -845,34 +955,100 @@ def normalize_okx_option_fill(payload: Dict[str, Any]) -> CryptoExchangeEvent:
         legs=[
             {
                 "asset": symbol,
-                "quantity": signed_qty,
-                "price": price,
-                "price_asset": fee_ccy,
+                "quantity": dec["quantity"],
+                "price": dec["price"],
+                "price_asset": dec["currency"],
                 "role": "base",
                 "instrument": "option",
-                # The BTC settlement (from the CSV's Balance Change) — persisted
-                # as cash_flow so total_cash_flow reads it directly instead of
-                # computing the nonsensical contracts × underlying_price. #33.
-                "cash_flow": Decimal(payload["cashFlow"]) if payload.get("cashFlow") else None,
+                "cash_flow": dec["cash_flow"],
+                "collateral": dec["collateral"],          # for comment only
+                "settle_ccy": dec["currency"],
             }
         ],
         fee={
             "asset": fee_ccy,
-            "quantity": Decimal(payload.get("fee") or "0"),
+            "quantity": dec["commission"],
             "is_rebate": False,
         },
     )
 
 
-def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
-    symbol = payload["symbol"].upper()
-    amount = Decimal(payload["change"])
-    settlement_price = Decimal(payload["newWalletBalance"])
-    # The settlement price is the underlying's price at expiry — already fiat.
-    # Set price_asset to "USD" so _leg_fiat_price passes it through without
-    # multiplying by the BTC/USD rate again.
-    legs = _single_leg(symbol, amount, "USD")
-    legs[0]["price"] = settlement_price
+def normalize_bybit_option_settlement(
+    payload: Dict[str, Any], investor=None, account_id=None
+) -> CryptoExchangeEvent:
+    """Build the option-settlement event for a Bybit option expiry.
+
+    Mirrors ``normalize_okx_option_settlement`` (Task 6): emits ONE option leg
+    that CLOSES the open position (short for a writer, long for a buyer) at the
+    terminal price: 0 for OTM, intrinsic per contract for ITM. For an ITM
+    writer, the payout is recorded as negative cash_flow (BTC outflow) so
+    total_cash_flow depletes the BTC crypto bucket (spec §5.3). The collateral
+    release (the wallet ``change``) is NOT a leg — it is recorded in the
+    transaction comment (spec §3.3, §6.3).
+
+    Bybit transaction-log (``/v5/account/transaction-log?type=Settlement``)
+    field mapping:
+      - ``symbol``           -> the FULL option symbol (e.g. ``BTC-27JUN26-100000-C``).
+      - ``newWalletBalance`` -> the underlying's spot price at expiry (the
+                                ``px`` analog from OKX bills-archive).
+      - ``change``           -> the signed delivered amount (collateral release
+                                magnitude for a writer close, or the ITM payout
+                                net of fees). Carried on the leg as ``collateral``
+                                (abs) for the comment.
+      - ``transactionTime``  -> the millisecond settlement timestamp.
+      - ``id`` / ``orderLinkId`` -> per-row id / order correlation id.
+
+    Payout quantization: the per-contract intrinsic on the leg's ``price`` (for
+    display) is quantized to 8 dp via ``options.intrinsic_price``; the
+    ``cash_flow`` (payout) is computed from the UN-quantized intrinsic x
+    contracts and then quantized once, so the 8-dp per-contract rounding does
+    not compound across the close quantity.
+    """
+    symbol = payload["symbol"]
+    parsed = parse_option_symbol(symbol)
+    settle_ccy = (parsed.get("settlement_asset") or parsed["underlying"] or "USD").upper()
+    spot = Decimal(payload["newWalletBalance"])
+    csize = options.contract_size_for_underlying(parsed["underlying"])
+    collateral_release = Decimal(payload["change"])
+
+    # Determine the open position direction/size to emit the correct closing sign.
+    contracts, was_short = _lookup_open_contracts(
+        symbol, parsed, investor, account_id, payload
+    )
+
+    # Per-contract intrinsic (in settle_ccy), quantized to 8 dp for the leg's
+    # display price. intrinsic_price reads strike_price/option_type via getattr,
+    # so wrap the parsed dict in a SimpleNamespace.
+    parsed_meta = types.SimpleNamespace(
+        strike_price=Decimal(parsed["strike_price"]),
+        option_type=parsed["option_type"],
+    )
+    intrinsic_q = options.intrinsic_price(parsed_meta, spot, csize)  # 0 if OTM
+    is_otm = (intrinsic_q == 0)
+    terminal_price = Decimal(0) if is_otm else intrinsic_q
+
+    # Closing quantity: opposite sign of the open position. A short (-contracts)
+    # is closed by +contracts; a long (+contracts) is closed by -contracts.
+    close_qty = contracts if was_short else -contracts
+
+    # Payout (in settle_ccy): only for ITM. Writer pays (cash_flow negative);
+    # buyer receives (cash_flow positive). OTM -> 0. Computed from the
+    # UN-quantized intrinsic to avoid compounding the 8-dp rounding of
+    # intrinsic_q across close_qty.
+    if is_otm:
+        cash_flow = Decimal(0)
+    else:
+        strike = parsed_meta.strike_price
+        if parsed_meta.option_type == "CALL":
+            usd_intrinsic = csize * max(spot - strike, Decimal(0))
+        else:  # PUT
+            usd_intrinsic = csize * max(strike - spot, Decimal(0))
+        intrinsic_raw = usd_intrinsic / spot if spot != 0 else Decimal(0)
+        payout = (abs(close_qty) * intrinsic_raw).quantize(
+            Decimal("0.00000001"), rounding=ROUND_HALF_UP
+        )
+        cash_flow = -payout if was_short else payout  # writer out / buyer in
+
     return CryptoExchangeEvent(
         provider="bybit",
         provider_event_id=payload["id"],
@@ -880,24 +1056,86 @@ def normalize_bybit_option_settlement(payload: Dict[str, Any]) -> CryptoExchange
         timestamp_ms=int(payload["transactionTime"]),
         category="settlement",
         raw_type="option_delivery",
-        legs=legs,
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": close_qty,
+                "price": terminal_price,
+                "price_asset": settle_ccy,
+                "role": "base",
+                "instrument": "option",
+                "cash_flow": cash_flow,
+                "collateral": abs(collateral_release),    # for comment
+                "is_otm": is_otm,
+                "settle_ccy": settle_ccy,
+            }
+        ],
     )
 
 
-def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEvent:
-    # Real source is ``/api/v5/account/bills-archive`` filtered to
-    # ``instType=OPTION``. Settlement rows carry the delivered coin in ``ccy``,
-    # the signed delivered amount in ``balChg`` (already signed — passed
-    # through unchanged), and the settlement price in ``px``. There is no
-    # ``settlCcy``/``settlAmt``/``settlPx``.
-    ccy = payload["ccy"].upper()
-    amount = Decimal(payload["balChg"])
-    settlement_price = Decimal(payload["px"])
-    # The settlement price (px) is the underlying's USD price at expiry —
-    # already fiat. Set price_asset to "USD" so _leg_fiat_price passes it
-    # through without multiplying by the BTC/USD rate again.
-    legs = _single_leg(ccy, amount, "USD")
-    legs[0]["price"] = settlement_price
+def normalize_okx_option_settlement(
+    payload: Dict[str, Any], investor=None, account_id=None
+) -> CryptoExchangeEvent:
+    """Build the option-settlement event for an OKX option expiry.
+
+    Emits ONE option leg that CLOSES the open position (short for a writer,
+    long for a buyer) at the terminal price: 0 for OTM, intrinsic per contract
+    for ITM. For an ITM writer, the payout is recorded as negative cash_flow
+    (BTC outflow) so total_cash_flow depletes the BTC crypto bucket (spec §5.3).
+    The collateral release (Balance Change) is NOT a leg — it is recorded in
+    the transaction comment (spec §3.3, §6.3).
+
+    Payout quantization: the per-contract intrinsic stored on the leg's
+    ``price`` (for display) is quantized to 8 dp via ``options.intrinsic_price``;
+    the ``cash_flow`` (payout) is computed from the UN-quantized intrinsic ×
+    contracts and then quantized once, so the 8-dp per-contract rounding does
+    not compound across the close quantity.
+    """
+    symbol = payload["instId"]
+    parsed = parse_option_symbol(symbol)
+    settle_ccy = (payload.get("ccy") or "USD").upper()
+    spot = Decimal(payload["px"])
+    csize = options.contract_size_for_underlying(parsed["underlying"])
+    collateral_release = Decimal(payload["balChg"])
+
+    # Determine the open position direction/size to emit the correct closing sign.
+    contracts, was_short = _lookup_open_contracts(
+        symbol, parsed, investor, account_id, payload
+    )
+
+    # Per-contract intrinsic (BTC), quantized to 8 dp for the leg's display price.
+    # intrinsic_price reads strike_price/option_type via getattr, so wrap the
+    # parsed dict in a SimpleNamespace.
+    parsed_meta = types.SimpleNamespace(
+        strike_price=Decimal(parsed["strike_price"]),
+        option_type=parsed["option_type"],
+    )
+    intrinsic_q = options.intrinsic_price(parsed_meta, spot, csize)  # 0 if OTM
+    is_otm = (intrinsic_q == 0)
+    terminal_price = Decimal(0) if is_otm else intrinsic_q
+
+    # Closing quantity: opposite sign of the open position. A short (-contracts)
+    # is closed by +contracts; a long (+contracts) is closed by -contracts.
+    close_qty = contracts if was_short else -contracts
+
+    # Payout (in settle_ccy): only for ITM. Writer pays (cash_flow negative);
+    # buyer receives (cash_flow positive). OTM -> 0.
+    # Computed from the UN-quantized intrinsic to avoid compounding the 8-dp
+    # rounding of intrinsic_q across close_qty.
+    if is_otm:
+        cash_flow = Decimal(0)
+    else:
+        strike = parsed_meta.strike_price
+        if parsed_meta.option_type == "CALL":
+            usd_intrinsic = csize * max(spot - strike, Decimal(0))
+        else:  # PUT
+            usd_intrinsic = csize * max(strike - spot, Decimal(0))
+        intrinsic_raw = usd_intrinsic / spot if spot != 0 else Decimal(0)
+        payout = (abs(close_qty) * intrinsic_raw).quantize(
+            Decimal("0.00000001"), rounding=ROUND_HALF_UP
+        )
+        cash_flow = -payout if was_short else payout  # writer out / buyer in
+
     return CryptoExchangeEvent(
         provider="okx",
         provider_event_id=payload["billId"],
@@ -905,8 +1143,56 @@ def normalize_okx_option_settlement(payload: Dict[str, Any]) -> CryptoExchangeEv
         timestamp_ms=int(payload["ts"]),
         category="settlement",
         raw_type="option_delivery",
-        legs=legs,
+        legs=[
+            {
+                "asset": symbol,
+                "quantity": close_qty,
+                "price": terminal_price,
+                "price_asset": settle_ccy,
+                "role": "base",
+                "instrument": "option",
+                "cash_flow": cash_flow,
+                "collateral": abs(collateral_release),    # for comment
+                "is_otm": is_otm,
+                "settle_ccy": settle_ccy,
+            }
+        ],
     )
+
+
+def _lookup_open_contracts(symbol, parsed, investor, account_id, payload):
+    """Return (open_contracts_unsigned, was_short) for the option at settlement.
+
+    Queries position() on the option asset. Falls back to the payload's
+    delivered amount (OKX CSV ``amount``/``balChg``; Bybit transaction-log
+    ``change``) when no open position is found (partial-import scenario) with
+    a warning, assuming a writer (sell) direction.
+    """
+    # OKX payloads carry ``ts``; Bybit transaction-log uses ``transactionTime``.
+    ts_str = payload.get("ts") or payload.get("transactionTime") or "0"
+    if investor is not None:
+        try:
+            option_asset = resolve_crypto_option_asset(parsed, investor)
+            from services.positions import position as _position
+            open_pos = _position(
+                option_asset,
+                datetime.fromtimestamp(int(ts_str) / 1000, tz=timezone.utc),
+                investor,
+                [account_id] if account_id else None,
+            )
+            if open_pos and open_pos != 0:
+                return abs(Decimal(open_pos)), (open_pos < 0)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("option position lookup failed for %s: %s", symbol, exc)
+    # Fallback: use the payload's delivered amount and assume writer (sell).
+    logger.warning(
+        "No open option position found for %s settlement; falling back to delivered amount.",
+        symbol,
+    )
+    amount = abs(Decimal(
+        payload.get("amount") or payload.get("balChg") or payload.get("change") or "0"
+    ))
+    return amount, True
 
 
 def parse_option_symbol(symbol: str) -> Dict[str, Any]:

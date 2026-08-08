@@ -182,7 +182,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                entry_value += get_price(transaction) * abs(transaction.quantity) * fx_rate
+                entry_value += (get_price(transaction) or Decimal(0)) * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
             position["entry_value"] = Decimal(entry_value)
@@ -195,7 +195,7 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                exit_value += get_price(transaction) * abs(transaction.quantity) * fx_rate
+                exit_value += (get_price(transaction) or Decimal(0)) * abs(transaction.quantity) * fx_rate
 
             position["exit_value"] = Decimal(exit_value)
 

@@ -12,7 +12,7 @@ Covers:
 All monetary values use ``Decimal``.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pandas as pd
@@ -441,6 +441,12 @@ def test_option_fill_maps_to_option_payload():
     assert payload["ordId"] == "3604219617506533376"
     assert payload["fee"] == "-0.000011"
     assert payload["feeCcy"] == "BTC"
+    # NEW: the payload must carry the CSV Balance Unit so the normalizer
+    # resolves currency without defaulting to USD.
+    assert payload["balanceUnit"] == "BTC"
+    # The raw signed Balance Change is passed through; the normalizer decomposes
+    # it into premium (cash_flow) + collateral (comment).
+    assert payload["cashFlow"] == "0.007162"  # this test fixture's Balance Change
     assert source_id == "3604219617540087810"
     # UTC+3 00:15:14 -> UTC 21:15:14 previous day.
     expected_dt = datetime(2026, 5, 27, 21, 15, 14, tzinfo=timezone.utc)
@@ -463,14 +469,177 @@ def test_option_expiration_maps_to_settlement_payload():
     assert len(events) == 1
     payload, source_id = events[0]
     assert payload["__kind"] == "option_settlement"
+    assert payload["instId"] == "BTC-USD-260605-80000-C"
     assert payload["ccy"] == "BTC"
     # balChg = Balance Change (collateral RELEASED, positive), NOT Position Change.
     assert payload["balChg"] == "0.007162"
     assert payload["px"] == "62703.943334"
     assert payload["billId"] == "3628711646064058370"
     assert payload["ordId"] == ""
+    # amount = contracts (fallback for the open-position lookup when the
+    # opening fill was not part of this same import).
+    assert payload["amount"] == "7.0"
     expected_dt = datetime(2026, 6, 5, 8, 0, 34, tzinfo=timezone.utc)
     assert payload["ts"] == str(int(expected_dt.timestamp() * 1000))
+
+
+def test_normalize_okx_option_fill_emits_premium_cash_flow():
+    """normalize_okx_option_fill must put the PREMIUM (not net BC) as cash_flow.
+
+    Regression for #33: the option leg's cash_flow used to be the net Balance
+    Change (-0.00701889 BTC, collateral net of premium/fee), which produced
+    nonsensical PnL because it conflated premium with collateral movement.
+    The leg now carries the calculated premium (qty x fillPx x contract_size)
+    and the collateral is recorded separately on the leg (for the comment).
+    """
+    from services.crypto_exchange import normalize_okx_option_fill
+
+    payload = {
+        "instId": "BTC-USD-260605-80000-C",
+        "side": "sell",
+        "fillSz": "7",
+        "fillPx": "0.0022",
+        "fillTime": "1748328914000",
+        "tradeId": "3604219617540087810",
+        "ordId": "3604219617506533376",
+        "fee": "-0.00001078",
+        "feeCcy": "BTC",
+        "balanceUnit": "BTC",                       # NEW: from CSV
+        "cashFlow": "-0.00701889",                  # raw signed BC (normalizer decomposes)
+    }
+    event = normalize_okx_option_fill(payload)
+    leg = event.legs[0]
+    assert leg["quantity"] == Decimal("-7")
+    assert leg["price"] == Decimal("0.0022")
+    assert leg["price_asset"] == "BTC"              # from CSV balanceUnit, not defaulted
+    assert leg["instrument"] == "option"
+    assert leg["cash_flow"] == Decimal("0.000154")  # premium, NOT -0.00701889
+    assert leg["collateral"] == Decimal("0.00716211")
+    assert event.fee == {"asset": "BTC", "quantity": Decimal("-0.00001078"), "is_rebate": False}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_normalize_okx_option_settlement_otm_closes_short_at_zero(user, okx_account):
+    """OTM settlement: closes the short option at price 0, cash_flow 0."""
+    from services.crypto_exchange import (
+        normalize_okx_option_settlement,
+        resolve_crypto_option_asset,
+    )
+
+    parsed = {
+        "underlying": "BTC", "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("80000"), "option_type": "CALL",
+    }
+    option_asset = resolve_crypto_option_asset(parsed, user)
+    # Open the short first (so the settlement can find a position to close).
+    # The settlement ts below is 2026-06-05 (after this opening); otherwise the
+    # position lookup would find nothing and fall through to the CSV-Amount
+    # fallback, defeating the purpose of this DB-backed test.
+    Transactions.objects.create(
+        investor=user, account=okx_account, security=option_asset,
+        currency="BTC", type="Crypto trade out",
+        date=datetime(2026, 5, 28, 0, 15, 14, tzinfo=timezone.utc),
+        quantity=Decimal("-7"), price=Decimal("0.0022"),
+        cash_flow=Decimal("0.000154"),
+        commission=Decimal("-0.00001078"), commission_currency="BTC",
+    )
+
+    # ts = 2026-06-05 11:40:34 UTC (after the 2026-05-28 opening).
+    payload = {
+        "instId": "BTC-USD-260605-80000-C",     # NEW: symbol now required
+        "ccy": "BTC", "balChg": "0.00716211",
+        "px": "62703.94333408",                 # underlying spot at expiry
+        "billId": "3628711646064058370", "ts": "1780659634000",
+        "ordId": "",
+    }
+    event = normalize_okx_option_settlement(
+        payload, investor=user, account_id=okx_account.id
+    )
+    leg = event.legs[0]
+    # Spot 62703 < strike 80000 -> OTM -> terminal price 0, no payout.
+    assert leg["price"] == Decimal("0")
+    assert leg["instrument"] == "option"
+    assert leg["cash_flow"] == Decimal("0")
+    # closes the -7 short: +7
+    assert leg["quantity"] == Decimal("7")
+    assert leg["price_asset"] == "BTC"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_normalize_okx_option_settlement_itm_closes_at_intrinsic(user, okx_account):
+    """ITM settlement: closes at intrinsic; writer pays payout as negative cash_flow."""
+    from services.crypto_exchange import (
+        normalize_okx_option_settlement,
+        resolve_crypto_option_asset,
+    )
+
+    parsed = {
+        "underlying": "BTC", "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("80000"), "option_type": "CALL",
+    }
+    option_asset = resolve_crypto_option_asset(parsed, user)
+    Transactions.objects.create(
+        investor=user, account=okx_account, security=option_asset,
+        currency="BTC", type="Crypto trade out",
+        date=datetime(2026, 5, 28, 0, 15, 14, tzinfo=timezone.utc),
+        quantity=Decimal("-7"), price=Decimal("0.0022"), cash_flow=Decimal("0.000154"),
+    )
+
+    # ts = 2026-06-05 11:40:34 UTC (after the 2026-05-28 opening).
+    payload = {
+        "instId": "BTC-USD-260605-80000-C",
+        "ccy": "BTC", "balChg": "-0.00411765",   # writer pays
+        "px": "85000",                            # ITM: spot > strike
+        "billId": "itm-bill-1", "ts": "1780659634000", "ordId": "",
+    }
+    event = normalize_okx_option_settlement(
+        payload, investor=user, account_id=okx_account.id
+    )
+    leg = event.legs[0]
+    # intrinsic per contract (BTC) = 0.01 * (85000-80000) / 85000
+    #                            = 50/85000 = 0.000588235... -> 0.00058824 (8 dp)
+    assert leg["price"] == Decimal("0.00058824")
+    # payout = 7 * 50/85000 = 350/85000 = 0.004117647... -> 0.00411765 (8 dp);
+    # writer pays -> cash_flow negative.
+    assert leg["cash_flow"] == Decimal("-0.00411765")
+    assert leg["quantity"] == Decimal("7")  # closes the -7 short
+
+
+@pytest.mark.django_db(transaction=True)
+def test_resolve_crypto_option_asset_sets_btc_contract_size(user):
+    """resolve_crypto_option_asset must set contract_size=0.01 for BTC options."""
+    from services.crypto_exchange import resolve_crypto_option_asset
+    from common.models import OptionMetadata
+
+    parsed = {
+        "underlying": "BTC",
+        "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("80000"),
+        "option_type": "CALL",
+    }
+    asset = resolve_crypto_option_asset(parsed, user)
+    meta = OptionMetadata.objects.get(asset=asset)
+    assert meta.contract_size == Decimal("0.01")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_resolve_crypto_option_asset_sets_eth_contract_size(user):
+    from services.crypto_exchange import resolve_crypto_option_asset
+    from common.models import OptionMetadata
+
+    parsed = {
+        "underlying": "ETH",
+        "settlement_asset": "USD",
+        "expiration_date": date(2026, 6, 5),
+        "strike_price": Decimal("3000"),
+        "option_type": "PUT",
+    }
+    asset = resolve_crypto_option_asset(parsed, user)
+    meta = OptionMetadata.objects.get(asset=asset)
+    assert meta.contract_size == Decimal("0.1")
 
 
 def test_transfer_rows_become_events_not_skipped():
@@ -578,6 +747,25 @@ def _persisted_txs(user, account):
     import DB assertions go through ``database_sync_to_async``.
     """
     return list(Transactions.objects.filter(investor=user, account=account))
+
+
+@database_sync_to_async
+def _positions_after_cycle(user):
+    """Return ``(btc_position, option_position)`` after the canonical cycle.
+
+    Async-safe wrapper: ``Assets.objects.get`` and ``position()`` are both
+    synchronous ORM operations that Django forbids inside an async test.
+    """
+    from common.models import Assets
+    from services.positions import position as _position
+
+    as_of = datetime(2026, 6, 6, tzinfo=timezone.utc)
+    btc = Assets.objects.get(name="BTC", type="Crypto")
+    opt = Assets.objects.get(type="Option")
+    return (
+        _position(btc, as_of, user),
+        _position(opt, as_of, user),
+    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -711,3 +899,155 @@ async def test_full_parser_imports_transfer_only(tmp_path, user, okx_account):
     usdt_tx = next(t for t in txs if t.type == "Cash in")
     assert usdt_tx.cash_flow == Decimal("357.14000000")
     assert usdt_tx.currency == "USDT"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_option_sell_comment_records_collateral(tmp_path, user, okx_account):
+    """The option SELL row's comment records the collateral amount (not a leg)."""
+    rows = [
+        {
+            "id": "3604219617540087810", "Order id": "3604219617506533376",
+            "Time": "2026-05-28 00:15:14", "Trade Type": "Option",
+            "Symbol": "BTC-USD-260605-80000-C", "Action": "Sell", "Amount": "7",
+            "Trading Unit": "cont", "Filled Price": "0.002200", "PnL": "0",
+            "Fee": "-0.00001078", "Fee Unit": "BTC", "Position Change": "0.00716211",
+            "Position Balance": "0", "Balance Change": "-0.00701889",
+            "Balance": "0.05975468", "Balance Unit": "BTC",
+        },
+    ]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    updates = await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 1
+    tx = txs[0]
+    assert tx.type == "Crypto trade out"
+    assert tx.cash_flow == Decimal("0.000154")           # premium
+    assert tx.currency == "BTC"                           # from CSV
+    assert tx.commission == Decimal("-0.00001078")
+    assert "Collateral" in (tx.comment or "")
+    assert "0.00716211" in (tx.comment or "")
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_full_parser_option_cycle_net_btc_is_realized_profit(tmp_path, user, okx_account):
+    """Import the full BTC-USD-260605-80000-C cycle (SELL + OTM expiry).
+
+    Capstone end-to-end test for the #33 resolution: the option SELL's premium
+    is recorded as a positive ``cash_flow`` on the option row (not as the net
+    Balance Change, which conflated collateral), and the OTM settlement closes
+    the short at zero payout. The net BTC premium kept (premium - fee =
+    +0.00014322) is realized as NAV through the crypto-bucket routing
+    (services/nav.py option_cash_flows), NOT through ``position(BTC)``.
+
+    Data-model note on ``position(BTC)``:
+        ``position()`` sums ``quantity`` over rows whose ``security`` is the BTC
+        Crypto asset, plus cross-currency commissions whose
+        ``commission_currency == "BTC"``. The option rows have ``security`` =
+        the Option asset (not BTC), and the only BTC-typed field on them is the
+        premium ``cash_flow`` and the ``commission`` fee. So:
+
+          position(BTC) = 0 (no BTC quantity rows)
+                        + (-0.00001078) (the SELL row's BTC commission)
+                        = -0.000011 (rounded to 6 dp)
+
+        The +0.00014322 net premium is NOT in ``position(BTC)`` — it lives in
+        the option row's ``cash_flow`` field, which ``position()`` does not
+        sum. That value surfaces in NAV via the option-cash_flow crypto-bucket
+        routing (services/nav.py:328), and is verified here by summing the
+        option rows' ``cash_flow + commission`` directly. This is the correct
+        data-model behavior (collateral is implicit — no BTC movement row is
+        written; the premium is on the option row by design — spec §3.3, §3.5).
+    """
+    rows = [
+        {
+            "id": "3604219617540087810", "Order id": "3604219617506533376",
+            "Time": "2026-05-28 00:15:14", "Trade Type": "Option",
+            "Symbol": "BTC-USD-260605-80000-C", "Action": "Sell", "Amount": "7",
+            "Trading Unit": "cont", "Filled Price": "0.002200", "PnL": "0",
+            "Fee": "-0.00001078", "Fee Unit": "BTC", "Position Change": "0.00716211",
+            "Position Balance": "0.00716211", "Balance Change": "-0.00701889",
+            "Balance": "0.05975468", "Balance Unit": "BTC",
+        },
+        {
+            "id": "3628711646064058370", "Order id": "0",
+            "Time": "2026-06-05 11:00:34", "Trade Type": "Option",
+            "Symbol": "BTC-USD-260605-80000-C", "Action": "Expired OTM", "Amount": "7",
+            "Trading Unit": "cont", "Filled Price": "62703.94333408", "PnL": "0.000154",
+            "Fee": "0.000000", "Fee Unit": "BTC", "Position Change": "-0.00716211",
+            "Position Balance": "0", "Balance Change": "0.00716211",
+            "Balance": "0.06691680", "Balance Unit": "BTC",
+        },
+    ]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    await _drain(
+        parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False)
+    )
+    txs = await _persisted_txs(user, okx_account)
+    # Two rows: the SELL (Crypto trade out) and the settlement (Option settlement).
+    assert len(txs) == 2
+    sell = next(t for t in txs if t.type == "Crypto trade out")
+    settle = next(t for t in txs if t.type == "Option settlement")
+    assert sell.cash_flow == Decimal("0.000154")     # premium, NOT net BC -0.00701889
+    assert sell.currency == "BTC"
+    assert sell.commission == Decimal("-0.00001078")
+    assert settle.cash_flow == Decimal("0")          # OTM -> no payout
+    assert settle.price == Decimal("0")
+
+    # Net BTC realized profit = premium 0.000154 - fee 0.00001078 = +0.00014322.
+    # Lives on the OPTION rows' cash_flow/commission (summed directly here), NOT
+    # in ``position(BTC)`` (the option rows' security is the Option asset, so
+    # ``position(BTC)`` only sees the BTC commission, not the premium).
+    btc_premium = sum(
+        (t.cash_flow or Decimal(0)) for t in txs if (t.currency or "") == "BTC"
+    )
+    btc_fee = sum(
+        (t.commission or Decimal(0))
+        for t in txs
+        if (t.commission_currency or "") == "BTC"
+    )
+    assert btc_premium + btc_fee == Decimal("0.00014322")
+
+    # ``position(BTC)`` reflects only the BTC-typed commission outflow on the
+    # option SELL row (-0.00001078); there are no BTC quantity rows in this
+    # cycle (the collateral movement is implicit, recorded in the comment, and
+    # the premium lives on the option row's cash_flow which position() does not
+    # sum). See test docstring for the full data-model reasoning.
+    btc_pos, opt_pos = await _positions_after_cycle(user)
+    assert btc_pos == Decimal("-0.000011")  # -0.00001078 rounded to 6 dp
+    # Option position: opened -7 (SELL), closed +7 (settlement) -> 0.
+    assert opt_pos == Decimal("0")
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_btc_transfer_row_currency_is_btc_not_usd(tmp_path, user, okx_account):
+    """A non-stablecoin (BTC) transfer row must persist with currency=BTC,
+    not the default USD (which leaks BTC into the Cash flows/balance column)."""
+    rows = [{
+        "id": "111", "Order id": "0", "Time": "2026-06-08 12:00:00",
+        "Trade Type": "Transfer", "Symbol": "", "Action": "Transfer out",
+        "Amount": "0", "Trading Unit": "BTC", "Filled Price": "",
+        "PnL": "0", "Fee": "0", "Fee Unit": "", "Position Change": "-0.02",
+        "Position Balance": "0", "Balance Change": "-0.02", "Balance": "0",
+        "Balance Unit": "BTC",
+    }]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    await _drain(parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False))
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 1
+    tx = txs[0]
+    assert tx.type == "Crypto transfer out"
+    assert tx.currency == "BTC"   # the coin, NOT USD
+    # security is a related FK; read its name via an async-safe lookup (the
+    # ``_persisted_txs`` helper does not ``select_related`` the FK).
+    security_name = await database_sync_to_async(
+        lambda: tx.security.name if tx.security_id else None
+    )()
+    assert security_name == "BTC"
