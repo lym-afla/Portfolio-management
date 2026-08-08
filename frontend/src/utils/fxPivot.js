@@ -74,6 +74,10 @@ export const pivotFxRows = (rows) => {
   const pairSet = new Set()
   for (const row of rows || []) {
     if (!row || !row.date) continue
+    // Defensive guard: skip legacy null/empty currency-pair shell rows even
+    // if they reach the client (the backend also filters them, but this keeps
+    // a stray row from creating a spurious "null/null" column).
+    if (!row.from_currency || !row.to_currency) continue
     const pairLabel = pairLabelOf(row)
     pairSet.add(pairLabel)
     if (!byDate.has(row.date)) {

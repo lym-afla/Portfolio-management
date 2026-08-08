@@ -104,6 +104,23 @@ describe('pivotFxRows', () => {
     expect(pivoted).toHaveLength(1)
     expect(pairLabels).toEqual(['USD/EUR'])
   })
+
+  it('skips null/empty currency-pair rows (legacy shells) so no null/null column appears', () => {
+    const rows = [
+      { id: 1, date: '2026-08-06', from_currency: 'USD', to_currency: 'EUR', rate: '0.92' },
+      // Legacy wide->long shell: null pair + null rate, must be ignored.
+      { id: 2, date: '2026-08-06', from_currency: null, to_currency: null, rate: null },
+      { id: 3, date: '2026-08-05', from_currency: '', to_currency: 'EUR', rate: '0.91' },
+    ]
+    const { pivoted, pairLabels } = pivotFxRows(rows)
+    // Only the one valid row survives.
+    expect(pivoted).toHaveLength(1)
+    expect(pivoted[0].date).toBe('2026-08-06')
+    expect(pairLabels).toEqual(['USD/EUR'])
+    // Crucially, no spurious 'null/null' or '/EUR' column is derived.
+    expect(pairLabels).not.toContain('null/null')
+    expect(pairLabels).not.toContain('/EUR')
+  })
 })
 
 describe('firstPairInRow', () => {

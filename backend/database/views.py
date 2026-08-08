@@ -759,7 +759,15 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def list_fx(self, request):
-        """List FX."""
+        """List FX.
+
+        The grid shows one row per date with one column per currency pair, so
+        we paginate by **distinct date**, not by individual pair records.
+        Paginating per-record would split a date's pairs across pages (a date
+        appears as a half-empty row at the bottom of one page and again at the
+        top of the next). Null/empty currency pairs (legacy wide->long shells)
+        are excluded everywhere.
+        """
         # Extract parameters from request data
         start_date = request.data.get("startDate")
         end_date = request.data.get("endDate")
@@ -768,14 +776,20 @@ class FXViewSet(viewsets.ModelViewSet):
         sort_by = request.data.get("sortBy")
         search = request.data.get("search", "")
 
-        # Filter queryset
-        queryset = self.get_queryset()
+        # Filter queryset, excluding legacy null/empty currency-pair shell rows.
+        queryset = self.get_queryset().exclude(
+            Q(from_currency__isnull=True)
+            | Q(from_currency="")
+            | Q(to_currency__isnull=True)
+            | Q(to_currency="")
+        )
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
 
-        # Apply search
+        # Apply search (before deriving distinct dates, so missing dates are
+        # excluded from the page set too).
         if search:
             queryset = queryset.filter(
                 Q(date__icontains=search)
@@ -784,18 +798,34 @@ class FXViewSet(viewsets.ModelViewSet):
                 | Q(rate__icontains=search)
             )
 
-        # Convert queryset to list of dictionaries
+        # Distinct dates in the filtered set, newest first. Sorting by a pair
+        # field isn't meaningful for a date grid, so we always order by date.
+        date_order = "-date"
+        if sort_by and sort_by.get("key", "").startswith("date"):
+            date_order = "date" if sort_by.get("order") == "asc" else "-date"
+        all_dates = list(
+            queryset.values_list("date", flat=True)
+            .distinct()
+            .order_by(date_order)
+        )
+
+        # Paginate the date list, then fetch all pair rows for this page's
+        # dates so a date's pairs always travel together.
+        total_dates = len(all_dates)
+        total_pages = max(1, (total_dates + items_per_page - 1) // items_per_page)
+        page = min(max(page, 1), total_pages)
+        start = (page - 1) * items_per_page
+        page_dates = all_dates[start : start + items_per_page]
+
         fx_data = list(
-            queryset.values(
+            queryset.filter(date__in=page_dates).values(
                 "id", "date", "from_currency", "to_currency", "rate"
             )
         )
-
-        # Apply sorting
-        fx_data = sort_entries(fx_data, sort_by)
-
-        # Paginate results
-        paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
+        # Stable secondary sort within the page: date (matching date_order),
+        # then pair label, so the frontend pivot preserves a deterministic
+        # column order regardless of DB row order.
+        fx_data = sort_entries(fx_data, {"key": "date", "order": "asc" if date_order == "date" else "desc"})
 
         # Format the data. NB: we intentionally do NOT use ``format_table_data``
         # here. That helper runs ``format_value`` which, for any key containing
@@ -812,14 +842,17 @@ class FXViewSet(viewsets.ModelViewSet):
                 "to_currency": row["to_currency"],
                 "rate": format_fx_rate(row["rate"]),
             }
-            for row in paginated_fx_data
+            for row in fx_data
         ]
 
         response_data = {
             "results": formatted_fx_data,
-            "count": pagination_info["total_items"],
-            "current_page": pagination_info["current_page"],
-            "total_pages": pagination_info["total_pages"],
+            # `count` is the number of *date rows* the grid renders, so the
+            # paginator / "showing X of Y entries" footer matches what the
+            # user sees.
+            "count": total_dates,
+            "current_page": page,
+            "total_pages": total_pages,
         }
 
         return Response(response_data)
