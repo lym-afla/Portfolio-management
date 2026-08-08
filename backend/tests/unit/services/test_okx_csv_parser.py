@@ -1022,3 +1022,32 @@ async def test_full_parser_option_cycle_net_btc_is_realized_profit(tmp_path, use
     assert btc_pos == Decimal("-0.000011")  # -0.00001078 rounded to 6 dp
     # Option position: opened -7 (SELL), closed +7 (settlement) -> 0.
     assert opt_pos == Decimal("0")
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_btc_transfer_row_currency_is_btc_not_usd(tmp_path, user, okx_account):
+    """A non-stablecoin (BTC) transfer row must persist with currency=BTC,
+    not the default USD (which leaks BTC into the Cash flows/balance column)."""
+    rows = [{
+        "id": "111", "Order id": "0", "Time": "2026-06-08 12:00:00",
+        "Trade Type": "Transfer", "Symbol": "", "Action": "Transfer out",
+        "Amount": "0", "Trading Unit": "BTC", "Filled Price": "",
+        "PnL": "0", "Fee": "0", "Fee Unit": "", "Position Change": "-0.02",
+        "Position Balance": "0", "Balance Change": "-0.02", "Balance": "0",
+        "Balance Unit": "BTC",
+    }]
+    csv_path = tmp_path / "okx.csv"
+    _write_okx_csv(csv_path, rows)
+    await _drain(parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False))
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 1
+    tx = txs[0]
+    assert tx.type == "Crypto transfer out"
+    assert tx.currency == "BTC"   # the coin, NOT USD
+    # security is a related FK; read its name via an async-safe lookup (the
+    # ``_persisted_txs`` helper does not ``select_related`` the FK).
+    security_name = await database_sync_to_async(
+        lambda: tx.security.name if tx.security_id else None
+    )()
+    assert security_name == "BTC"

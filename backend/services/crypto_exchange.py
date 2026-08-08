@@ -455,7 +455,16 @@ def persist_crypto_exchange_event(event, user, account):
                     investor=user,
                     account=account,
                     security=asset,
-                    currency=str(leg.get("quote_currency") or "USD").upper(),
+                    # Transfer legs have no quote_currency; use the coin itself
+                    # (leg asset / price_asset) so the row's currency matches its
+                    # quantity currency. Otherwise BTC transfers leak into the
+                    # USD Cash column. Spot trades keep quote_currency.
+                    currency=str(
+                        leg.get("quote_currency")
+                        or leg.get("price_asset")
+                        or leg.get("asset")
+                        or "USD"
+                    ).upper(),
                     type=tx_type,
                     date=event_time,
                     quantity=_normalize_model_decimal(Transactions, "quantity", quantity),
