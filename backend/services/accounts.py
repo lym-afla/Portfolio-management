@@ -29,6 +29,7 @@ import logging
 from decimal import ROUND_HALF_UP, Decimal
 
 from constants import (
+    ASSET_TYPE_OPTION,
     TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -76,6 +77,11 @@ def balance(account, date):
     # Process regular transactions using centralized cash flow calculation
     transactions = account.transactions.filter(date__date__lte=date)
     for transaction in transactions:
+        # Option rows' cash_flow is the premium (an option economic event offset
+        # by the option liability), NOT a cash balance. Exclude them so the BTC
+        # premium doesn't leak into the Cash balances card / cash column.
+        if transaction.security is not None and transaction.security.type == ASSET_TYPE_OPTION:
+            continue
         cash_flow = total_cash_flow(transaction)
         if cash_flow == 0 and transaction.type in [
             TRANSACTION_TYPE_CRYPTO_REWARD,

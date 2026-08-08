@@ -310,23 +310,21 @@ def NAV_at_date(
     # the BTC bucket exactly offsets the option liability booked above at
     # entry-cost mark — spec §3.4 NAV-neutral table).
     #
-    # Populates ONLY ``analysis["Crypto"]`` (for the per-coin breakdown), NOT
-    # ``analysis["Total NAV"]``. The same option cash_flows are already
-    # captured in Total NAV by the cash-balance loop below via
-    # ``account_balance`` — which now rounds to the broker's cash_precision
-    # (8 for crypto, services/accounts.py), so a 0.000154 BTC premium is no
-    # longer dropped to 0.00. Adding them to Total NAV here as well would
-    # double-count the premium (regression caught by
-    # ``test_open_short_option_is_nav_neutral``). The raw ``cash_flow`` is
-    # still read here (not ``account_balance``) so the Crypto-bucket
-    # breakdown shows the full-precision coin value regardless of how the
-    # cash side aggregates it.
+    # Populates BOTH ``analysis["Crypto"]`` (per-coin breakdown) AND
+    # ``analysis["Total NAV"]``. The raw option ``cash_flow`` is the SOLE
+    # path by which the premium reaches Total NAV to cancel the option
+    # liability: ``services.accounts.balance()`` deliberately EXCLUDES
+    # option-security rows (their cash_flow is a premium offset by the
+    # option liability, NOT a cash balance — round-2 Task 3), so the
+    # cash-balance loop below no longer contributes the premium. Reading the
+    # raw ``cash_flow`` here (not ``account_balance``) preserves the full
+    # coin precision that ``balance()``'s per-currency round would collapse.
     #
     # No double-count with the option-liability loop above: that values the
     # option CONTRACT (the liability, in the Securities-side breakdowns);
-    # this values the option's CASH_FLOW (the premium/payout, in the Crypto
-    # bucket). They are SEPARATE contributions that cancel for an open short
-    # marked at entry cost (the spec's NAV-neutral contract).
+    # this values the option's CASH_FLOW (the premium/payout). They are
+    # SEPARATE contributions that cancel for an open short marked at entry
+    # cost (the spec's NAV-neutral contract).
     #
     # Only crypto-coin cash_flows route here: USD/EUR-denominated option
     # premiums belong in the fiat cash side, not the Crypto bucket. The
@@ -364,6 +362,11 @@ def NAV_at_date(
         cf_value = (tx.cash_flow or Decimal(0)) * coin_to_target
         if cf_value == 0:
             continue
+        # Route into Total NAV so the premium cancels the option liability
+        # booked above (balance() now excludes option rows, so this is the
+        # sole path; see comment block above). The per-coin Crypto breakdown
+        # gets the same value for the BTC/ETH bucket display.
+        analysis["Total NAV"] += cf_value
         analysis["Crypto"]["__total__"] += cf_value
         analysis["Crypto"][coin] += cf_value
 
