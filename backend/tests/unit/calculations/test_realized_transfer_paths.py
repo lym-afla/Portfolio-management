@@ -1,12 +1,12 @@
-"""Tests for the crypto transfer-neutrality fix in realized_gain_loss.
+"""Tests for the crypto transfer-neutrality behavior in realized_gain_loss.
 
 Matched transfers (both legs in portfolio, shared import_group_id) are neutral.
-Unmatched transfers realize: OUT -> disposition; IN -> basis event.
-
-These tests document the realized.py:747-755 fix: previously EVERY crypto
-transfer was treated as neutral (position += qty, no G/L), which dropped basis
-silently for one-sided transfers (cold-wallet withdrawals, moves to the
-un-modeled OKX funding account) and corrupted realized P&L / IRR.
+Until issue #29's two-account model lands, ALL crypto transfers are neutral
+(including unmatched one-sided moves), because pre-#29 we cannot distinguish
+OKX Funding↔Trading internal wallet moves from genuine external flows. The
+matched-vs-unmatched disposition distinction (sub-project 4 Task 12) is
+reverted; the `_transfer_is_matched` helper is retained, gated behind
+``TRANSFER_DISPOSITION_ENABLED`` for #29 to reactivate.
 """
 
 from datetime import date, datetime, timezone
@@ -89,38 +89,29 @@ class TestMatchedTransferIsNeutral:
 @pytest.mark.nav
 @pytest.mark.unit
 @pytest.mark.gain_loss
-class TestUnmatchedTransferOutIsDisposition:
-    """An unmatched Crypto transfer out (no in-portfolio partner with the same
-    import_group_id) is a priced disposition: it flows into the disposal branch
-    and realizes G/L at average cost (cold-wallet withdrawal behavior)."""
+class TestUnmatchedTransferIsNeutralUntilTwoAccountModel:
+    """Until issue #29's two-account model lands, ALL crypto transfers are
+    neutral — including unmatched one-sided moves (OKX Funding↔Trading internal
+    transfers, which dominate the user's data and are NOT external withdrawals).
+    The matched-vs-unmatched distinction (Task 12) is reverted because pre-#29
+    we cannot distinguish internal moves from genuine external flows.
+    """
 
-    def test_unmatched_out_realizes_loss_at_zero_proceeds(self, user, account):
+    def test_unmatched_out_is_neutral_no_realized(self, user, account):
         btc = _make_btc(user)
-        # Buy 1 @ 60000 -> average cost basis 60000 per coin.
         Transactions.objects.create(
-            investor=user,
-            account=account,
-            security=btc,
-            currency="USD",
+            investor=user, account=account, security=btc, currency="USD",
             type="Crypto trade in",
             date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            quantity=Decimal("1"),
-            price=Decimal("60000"),
+            quantity=Decimal("1"), price=Decimal("60000"),
         )
-        # Cold-wallet withdrawal: no import_group_id, no matching in.
-        # A withdrawal receives no cash, so the disposition proceeds are 0.
+        # Unmatched transfer out (no import_group_id sibling) — now neutral.
         Transactions.objects.create(
-            investor=user,
-            account=account,
-            security=btc,
-            currency="USD",
+            investor=user, account=account, security=btc, currency="BTC",
             type="Crypto transfer out",
             date=datetime(2026, 2, 1, tzinfo=timezone.utc),
             quantity=Decimal("-0.5"),
         )
         result = realized_gain_loss(btc, date(2026, 3, 1), investor=user)
-        # Disposition of 0.5 BTC at avg cost basis 60000 with proceeds 0
-        # -> loss = (0 - 60000) * 0.5 = -30000 USD.
-        # (price_appreciation = -(tx_price - buy_in_price) * closing_quantity
-        #                       = -(0 - 60000) * (-0.5) = -30000)
-        assert result["all_time"]["total"] == Decimal("-30000")
+        # No realized G/L from the transfer — neutral.
+        assert result["all_time"]["total"] == Decimal("0")

@@ -75,6 +75,14 @@ from services.transactions import (
 logger = logging.getLogger(__name__)
 
 
+# Until issue #29's two-account model lands, ALL crypto transfers are neutral
+# (position += quantity, no realized G/L). OKX Funding↔Trading internal moves
+# dominate real data and are indistinguishable from external withdrawals
+# pre-#29. Set True to reactivate the matched-vs-unmatched disposition logic
+# (the _transfer_is_matched helper is retained for that future use).
+TRANSFER_DISPOSITION_ENABLED = False
+
+
 def _option_contract_size(asset) -> Decimal:
     """Return the contract size for an option asset, or Decimal(1) otherwise.
 
@@ -910,59 +918,32 @@ def realized_gain_loss(
                 continue
 
             if _transactions_is_neutral_transfer_transaction(transaction):
-                if _transfer_is_matched(transaction, investor, account_ids):
-                    position += transaction.quantity
+                # Pre-#29: all crypto transfers are neutral (internal wallet
+                # moves cannot be distinguished from external flows). When
+                # TRANSFER_DISPOSITION_ENABLED is True (#29), unmatched
+                # transfers fall through to the disposal/entry branches below.
+                if TRANSFER_DISPOSITION_ENABLED and not _transfer_is_matched(
+                    transaction, investor, account_ids
+                ):
                     logger.debug(
-                        f"Position after neutral (matched) transfer: {position}"
+                        "Unmatched %s for asset %s: treating as disposition/entry.",
+                        transaction.type, getattr(asset, "name", asset),
                     )
+                    # fall through to is_position_reducing logic below
+                else:
+                    position += transaction.quantity
+                    logger.debug(f"Position after neutral transfer: {position}")
                     continue
-                # Unmatched transfer: NOT neutral. Fall through to the
-                # disposal (OUT) / paid-entry (IN) branches below so gain/loss
-                # is recognized. A cold-wallet withdrawal (OUT, no matching in)
-                # realizes at average cost; an external deposit (IN, no matching
-                # out) adds basis. (Spec §5.5.) This is the realized-G/L
-                # counterpart to allocate_group_carry's len(source_keys) != 1
-                # rule in get_economic_basis.
-                logger.debug(
-                    "Unmatched %s for asset %s: treating as disposition/entry.",
-                    transaction.type,
-                    getattr(asset, "name", asset),
-                )
-
-            # An unmatched transfer is a priced disposition (OUT) or basis
-            # event (IN) — treat it like a disposal/entry for G/L booking.
-            is_unmatched_out = (
-                transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT
-                and not _transfer_is_matched(transaction, investor, account_ids)
-            )
-            is_unmatched_in = (
-                transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
-                and not _transfer_is_matched(transaction, investor, account_ids)
-            )
 
             is_position_reducing = (
-                position > 0
-                and (
-                    _transactions_is_disposal_transaction(transaction)
-                    or is_unmatched_out
-                )
+                position > 0 and _transactions_is_disposal_transaction(transaction)
             ) or (
-                position < 0
-                and (
-                    _transactions_is_paid_entry_transaction(transaction)
-                    or is_unmatched_in
-                )
+                position < 0 and _transactions_is_paid_entry_transaction(transaction)
             )
 
             # Determine the quantity that is actually closing the position
             # vs opening a new position in the opposite direction
-            if is_unmatched_out and position > 0:
-                # Unmatched withdrawal closing long: same as Crypto trade out.
-                closing_quantity = -min(abs(transaction.quantity), position)
-            elif is_unmatched_in and position < 0:
-                # Unmatched external deposit closing short.
-                closing_quantity = min(transaction.quantity, abs(position))
-            elif position > 0 and _transactions_is_disposal_transaction(transaction):
+            if position > 0 and _transactions_is_disposal_transaction(transaction):
                 # Closing long: portion that closes is min(abs(tx.quantity), position)
                 closing_quantity = -min(abs(transaction.quantity), position)
             elif position < 0 and _transactions_is_paid_entry_transaction(transaction):
