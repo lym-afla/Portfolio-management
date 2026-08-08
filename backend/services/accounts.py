@@ -26,7 +26,7 @@ module top level would also pull in ``services.fx``.
 """
 
 import logging
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from constants import (
     TRANSACTION_TYPE_CRYPTO_REWARD,
@@ -105,7 +105,10 @@ def balance(account, date):
             cash_flow = get_cash_flow_by_currency(fx_transaction, currency)
             balance_result[currency] = balance_result.get(currency, Decimal(0)) + cash_flow
 
+    precision = getattr(getattr(account, "broker", None), "cash_precision", 2) or 2
     for key, value in balance_result.items():
-        balance_result[key] = round(Decimal(value), 2)
+        balance_result[key] = Decimal(value).quantize(
+            Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP
+        )
 
     return balance_result

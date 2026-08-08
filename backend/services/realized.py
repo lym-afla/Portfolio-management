@@ -75,6 +75,26 @@ from services.transactions import (
 logger = logging.getLogger(__name__)
 
 
+def _cash_precision_for(asset, account_ids=None) -> int:
+    """Resolve the broker's cash_precision for rounding financial outputs.
+
+    Crypto brokers (OKX/Bybit) use 8 dp; fiat brokers use 2 (the model default).
+    Falls back to 2 when account_ids is None/empty or the broker can't be
+    resolved — matching the pre-fix behavior for call sites that don't pass
+    account_ids.
+    """
+    if not account_ids:
+        return 2
+    try:
+        from common.models import Accounts
+        first_account = Accounts.objects.filter(id__in=account_ids).select_related("broker").first()
+        if first_account and first_account.broker_id:
+            return int(first_account.broker.cash_precision)
+    except Exception:
+        pass
+    return 2
+
+
 # Until issue #29's two-account model lands, ALL crypto transfers are neutral
 # (position += quantity, no realized G/L). OKX Funding↔Trading internal moves
 # dominate real data and are indistinguishable from external withdrawals
@@ -753,7 +773,8 @@ def get_economic_basis(
     basis = replay(transactions_until(date_as_of, account_ids), target_currency)
     if not rounded:
         return basis
-    return basis.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    precision = _cash_precision_for(asset, account_ids)
+    return basis.quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP)
 
 
 # ---------------------------------------------------------------------------
@@ -1244,10 +1265,14 @@ def realized_gain_loss(
 
         logger.debug(f"Current position result: {result['current_position']}")
 
-    # Round all results to 2 decimal places
+    # Round all results to the broker's cash_precision (8 for crypto, 2 for fiat)
+    precision = _cash_precision_for(asset, account_ids)
     for period in result:
         for component in result[period]:
-            result[period][component] = round(result[period][component], 2)
+            result[period][component] = (
+                Decimal(result[period][component])
+                .quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP)
+            )
 
     return result
 
@@ -1405,8 +1430,9 @@ def unrealized_gain_loss(
 
         fx_effect = unrealized_gain_loss - price_appreciation
 
+    precision = _cash_precision_for(asset, account_ids)
     return {
-        "price_appreciation": round(Decimal(price_appreciation), 2),
-        "fx_effect": round(Decimal(fx_effect), 2),
-        "total": round(Decimal(unrealized_gain_loss), 2),
+        "price_appreciation": Decimal(price_appreciation).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP),
+        "fx_effect": Decimal(fx_effect).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP),
+        "total": Decimal(unrealized_gain_loss).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP),
     }

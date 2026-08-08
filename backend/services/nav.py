@@ -310,11 +310,17 @@ def NAV_at_date(
     # the BTC bucket exactly offsets the option liability booked above at
     # entry-cost mark — spec §3.4 NAV-neutral table).
     #
-    # Why read ``Transactions.cash_flow`` directly instead of
-    # ``account_balance``: that helper rounds each currency's balance to 2dp
-    # (services/accounts.py:109), so a 0.000154 BTC premium would round to
-    # 0.00 and be silently dropped. The raw ``cash_flow`` preserves full
-    # precision (Decimal throughout).
+    # Populates ONLY ``analysis["Crypto"]`` (for the per-coin breakdown), NOT
+    # ``analysis["Total NAV"]``. The same option cash_flows are already
+    # captured in Total NAV by the cash-balance loop below via
+    # ``account_balance`` — which now rounds to the broker's cash_precision
+    # (8 for crypto, services/accounts.py), so a 0.000154 BTC premium is no
+    # longer dropped to 0.00. Adding them to Total NAV here as well would
+    # double-count the premium (regression caught by
+    # ``test_open_short_option_is_nav_neutral``). The raw ``cash_flow`` is
+    # still read here (not ``account_balance``) so the Crypto-bucket
+    # breakdown shows the full-precision coin value regardless of how the
+    # cash side aggregates it.
     #
     # No double-count with the option-liability loop above: that values the
     # option CONTRACT (the liability, in the Securities-side breakdowns);
@@ -360,7 +366,6 @@ def NAV_at_date(
             continue
         analysis["Crypto"]["__total__"] += cf_value
         analysis["Crypto"][coin] += cf_value
-        analysis["Total NAV"] += cf_value
 
     # Handle cash balances
     for account in portfolio_accounts:
