@@ -427,7 +427,8 @@ def test_non_stablecoin_deposit_still_uses_crypto_resolver(user, crypto_account)
     assert len(created) == 1
     tx = created[0]
     assert tx.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
-    assert tx.currency == "USD"
+    # Transfer rows carry the coin as currency (not USD) — fixes BTC leaking into the Cash column.
+    assert tx.currency == "BTC"
     btc = Assets.objects.get(ISIN="CRYPTO:BTC", currency="USD")
     assert tx.security == btc
     assert tx.quantity == Decimal("0.050000000")
