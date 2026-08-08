@@ -20,7 +20,7 @@ import logging
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
-from common.models import Assets, Prices
+from common.models import Prices
 from constants import ASSET_TYPE_OPTION
 
 logger = logging.getLogger(__name__)

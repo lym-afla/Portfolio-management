@@ -13,6 +13,7 @@ from services.realized import (
     _realized_option_close,
     get_economic_basis,
     realized_gain_loss,
+    unrealized_gain_loss,
 )
 
 
@@ -163,3 +164,32 @@ class TestLongCallOtmExpiry:
         assert option_gl["total"] == Decimal("-0.000154")
         assert option_gl["price_appreciation"] == Decimal("-0.000154")
         assert option_gl["fx_effect"] == Decimal("0")
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+@pytest.mark.gain_loss
+class TestUnrealizedOptionGuard:
+    """unrealized_gain_loss returns zeros for option assets (sub-project 4).
+
+    The generic path is unreliable for options: ``get_economic_basis`` is
+    long-only, so a written (short) option zeros its basis on open and the
+    unrealized path would report the full negative mark as a loss. NAV values
+    the liability via the dedicated option-mark branch, and realized G/L at
+    expiry is correct — but until a future sub-project adds true option
+    unrealized G/L, the function returns zeros so the UI doesn't mislead.
+    """
+
+    def test_open_short_option_unrealized_is_zero(self, user, account):
+        opt = _make_option(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTC",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, 0, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("0.000154"),
+        )
+        result = unrealized_gain_loss(opt, date(2026, 5, 29), investor=user)
+        assert result["total"] == Decimal("0")
+        assert result["price_appreciation"] == Decimal("0")
+        assert result["fx_effect"] == Decimal("0")

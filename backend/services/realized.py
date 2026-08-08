@@ -1299,6 +1299,21 @@ def unrealized_gain_loss(
             - 'fx_effect': FX effect in reporting currency.
             - 'total': Total unrealized gain/loss in reporting currency.
     """
+    # Options (sub-project 4): unrealized G/L is not meaningful for option
+    # positions because ``get_economic_basis`` is long-only — a written (short)
+    # option zeros its basis on open, so the generic unrealized path would
+    # report the full negative mark as "unrealized loss" rather than the
+    # NAV-neutral 0. Realized G/L at expiry is correct (``_realized_option_close``);
+    # NAV values the liability via the dedicated option-mark branch. A future
+    # sub-project may add true option unrealized G/L; until then, return zeros
+    # so the UI does not display a misleading number.
+    if options.is_option_asset(asset):
+        return {
+            "price_appreciation": Decimal(0),
+            "fx_effect": Decimal(0),
+            "total": Decimal(0),
+        }
+
     unrealized_gain_loss = 0
     price_appreciation = 0
     fx_effect = 0
