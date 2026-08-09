@@ -126,7 +126,8 @@ def _option_contract_size(asset) -> Decimal:
 
 
 def _realized_option_close(
-    asset, transaction, position_before, investor, account_ids, start
+    asset, transaction, position_before, investor, account_ids, start,
+    target_currency=None,
 ):
     """Compute realized G/L for an Option settlement that closes a position.
 
@@ -186,12 +187,21 @@ def _realized_option_close(
 
     realized_local = premium_at_open + proceeds + fee_at_open
 
-    # FX effect: option premiums and payouts are in the settlement coin (BTC).
-    # For a single-currency option cycle, fx_effect is 0 (no FX conversion).
+    # FX-convert to the target currency when requested (e.g. the closed-positions
+    # table requests USD). The realized is computed in the option's settle coin
+    # (BTC); without conversion the table shows $0.00 for a +0.00014322 BTC gain.
+    settle_ccy = (transaction.currency or "").upper()
+    if target_currency and target_currency.upper() != settle_ccy:
+        fx = _fx_get_rate(settle_ccy, target_currency, transaction.date)["FX"]
+        realized_target = realized_local * fx
+        fx_effect = realized_target - realized_local
+    else:
+        realized_target = realized_local
+        fx_effect = Decimal(0)
     return {
         "price_appreciation": realized_local,
-        "fx_effect": Decimal(0),
-        "total": realized_local,
+        "fx_effect": fx_effect,
+        "total": realized_target,
     }
 
 
@@ -990,7 +1000,8 @@ def realized_gain_loss(
                 and transaction.type == TRANSACTION_TYPE_OPTION_SETTLEMENT
             ):
                 option_gl = _realized_option_close(
-                    asset, transaction, position, investor, account_ids, start
+                    asset, transaction, position, investor, account_ids, start,
+                    target_currency=currency,
                 )
                 result["price_appreciation"] += option_gl["price_appreciation"]
                 result["fx_effect"] += option_gl["fx_effect"]

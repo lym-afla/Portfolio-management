@@ -238,3 +238,52 @@ class TestCryptoTransferNeutralityInBasis:
         basis = get_economic_basis(coin, datetime(2025, 2, 10, tzinfo=timezone.utc),
                                    investor=user, account_ids=[account.id], rounded=False)
         assert basis == Decimal("73.21")
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+@pytest.mark.gain_loss
+class TestOptionRealizedFXConversion:
+    """Option realized G/L must FX-convert to the target currency when 'currency'
+    is passed. The option settles in BTC (+0.00014322); when the closed-positions
+    table requests USD, the realized should be in USD (~$8.59 at BTC=60000), not
+    the raw BTC value (which displays as $0.00)."""
+
+    def test_option_realized_converted_to_usd(self, user):
+        from common.models import Accounts, Brokers, Prices
+        # Use a crypto-precision broker (cash_precision=8) so the realized
+        # isn't rounded to 2dp (which would zero the BTC-scale value).
+        broker = Brokers.objects.create(investor=user, name="OKX-FX", country="Crypto", cash_precision=8)
+        crypto_account = Accounts.objects.create(broker=broker, name="Trading")
+        # Pin BTC-USD at 60000 so the FX conversion is deterministic.
+        # Name must be "BTC" so is_crypto_code("BTC") resolves the price.
+        btc = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:BTCFX2", name="BTC",
+            currency="USD", exposure="Commodity", yahoo_symbol="BTC-USD",
+        )
+        btc.investors.add(user)
+        Prices.objects.create(
+            security=btc, date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            price=Decimal("60000"),
+        )
+        opt = _make_option(user)
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="BTC",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"), cash_flow=Decimal("0.000154"),
+        )
+        Transactions.objects.create(
+            investor=user, account=crypto_account, security=opt, currency="BTC",
+            type="Option settlement",
+            date=datetime(2026, 6, 5, tzinfo=timezone.utc),
+            quantity=Decimal("7"), price=Decimal("0"), cash_flow=Decimal("0"),
+        )
+        # Native BTC: +0.000154 (premium only — this fixture has no fee).
+        # In USD at 60000: ~9.24.
+        r_btc = realized_gain_loss(opt, date(2026, 6, 6), investor=user, account_ids=[crypto_account.id])
+        r_usd = realized_gain_loss(opt, date(2026, 6, 6), investor=user, account_ids=[crypto_account.id], currency="USD")
+        assert r_btc["all_time"]["total"] == Decimal("0.000154")
+        # USD-converted should be materially positive (~9.24 = 0.000154 * 60000),
+        # not the raw BTC value (which displays as $0.00).
+        assert r_usd["all_time"]["total"] > Decimal("1")
