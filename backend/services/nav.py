@@ -572,10 +572,20 @@ def _calculate_cash_flow(transaction: Transactions) -> Decimal:
         return Decimal(0)
 
     if transaction.type in [
-        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
-        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
         TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
         TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    ]:
+        # Transfers are neutral internal moves (no economic cash flow). They
+        # must contribute cf=0 to IRR, not -qty*price (which would corrupt
+        # XIRR for assets with transfers — a transfer-out carrying the coin's
+        # spot price contributed a spurious +30.9, turning a -99.97% TRUMP
+        # IRR into +63.7%). Transfers may carry a price (the coin's spot) but
+        # that is not a cash flow.
+        return Decimal(0)
+
+    if transaction.type in [
+        TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+        TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
     ]:
         if transaction.quantity is not None and transaction.price is not None:
             # IRR treats crypto trades as asset cash flows: buys are negative,

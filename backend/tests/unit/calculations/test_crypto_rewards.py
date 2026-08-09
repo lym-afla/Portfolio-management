@@ -1325,7 +1325,13 @@ def test_crypto_trade_cash_flow_unified_irr_and_account_cash(user, crypto_accoun
 def test_external_crypto_transfer_cash_flow_for_irr_without_account_cash(
     user, crypto_account, btc
 ):
-    """External crypto transfers are IRR flows but not account cash."""
+    """Crypto transfers are neutral — cf=0 for IRR (not -qty*price).
+
+    Until issue #29's two-account model lands, all crypto transfers are neutral
+    (no economic cash flow). They may carry a spot price, but that is not a cash
+    flow — pricing transfers as flows corrupted TRUMP's IRR (+63.7% vs the
+    correct -99.97%). Transfers still don't touch account cash either.
+    """
     transfer_in = Transactions.objects.create(
         investor=user,
         account=crypto_account,
@@ -1347,8 +1353,8 @@ def test_external_crypto_transfer_cash_flow_for_irr_without_account_cash(
         price=Decimal("45000.000000000"),
     )
 
-    assert _calculate_cash_flow(transfer_in) == Decimal("-10000.000000000000000000")
-    assert _calculate_cash_flow(transfer_out) == Decimal("4500.000000000000000000")
+    assert _calculate_cash_flow(transfer_in) == Decimal("0")
+    assert _calculate_cash_flow(transfer_out) == Decimal("0")
     assert account_balance(crypto_account, datetime(2026, 1, 3).date()) == {}
 
 
@@ -1356,7 +1362,12 @@ def test_external_crypto_transfer_cash_flow_for_irr_without_account_cash(
 def test_portfolio_irr_includes_external_crypto_transfer_flow(
     monkeypatch, user, crypto_account, btc
 ):
-    """Portfolio IRR treats unpaired crypto transfer-in as an external contribution."""
+    """Portfolio IRR: crypto transfers are neutral (cf=0), not external flows.
+
+    Until #29, transfers contribute nothing to the IRR cash-flow list — only
+    the terminal NAV (cached_nav here) flows through. The transfer row is
+    still iterated (it's in the external-flow type filter) but contributes 0.
+    """
     Transactions.objects.create(
         investor=user,
         account=crypto_account,
@@ -1385,8 +1396,9 @@ def test_portfolio_irr_includes_external_crypto_transfer_flow(
     )
 
     assert result == Decimal("0.1000")
+    # The transfer contributes cf=0 (neutral), so only the terminal NAV flows.
     assert captured["cash_flows"] == [
-        Decimal("-10000.00"),
+        Decimal("0.00"),
         Decimal("11000.00"),
     ]
 
@@ -1454,13 +1466,16 @@ def test_internal_crypto_transfer_is_account_flow_but_portfolio_neutral(
         cached_nav=Decimal("0.00"),
     )
 
+    # Under the neutral policy (TRANSFER_DISPOSITION_ENABLED=False until #29),
+    # crypto transfers contribute cf=0 to IRR at every scope — combined and
+    # per-account. Only the terminal NAV (0.00 here) flows through.
     assert captured[0] == [
-        Decimal("10000.00"),
-        Decimal("-10000.00"),
+        Decimal("0.00"),
+        Decimal("0.00"),
         Decimal("0.00"),
     ]
-    assert captured[1] == [Decimal("10000.00"), Decimal("0.00")]
-    assert captured[2] == [Decimal("-10000.00"), Decimal("0.00")]
+    assert captured[1] == [Decimal("0.00"), Decimal("0.00")]
+    assert captured[2] == [Decimal("0.00"), Decimal("0.00")]
 
 
 @pytest.mark.django_db

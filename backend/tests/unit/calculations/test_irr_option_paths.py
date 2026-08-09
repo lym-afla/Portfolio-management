@@ -174,3 +174,69 @@ class TestIRROptionCycle:
         assert Decimal("0") < irr < MAX_IRR, (
             f"IRR should fall in (0, MAX_IRR) band; got {irr} (MAX_IRR={MAX_IRR})"
         )
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+class TestTransferCashFlowIsZero:
+    """Crypto transfers are neutral — they contribute cf=0 to IRR, not -qty*price.
+
+    Previously _calculate_cash_flow treated transfers like trades (cf = -qty*price),
+    so a transfer-out carrying the coin's spot price (45.503) contributed +30.92
+    to IRR, corrupting the XIRR (TRUMP showed +63.7% when the asset-level IRR is
+    actually -99.97%). Transfers are neutral internal moves — cf=0.
+    """
+
+    def test_transfer_out_cash_flow_is_zero(self, user, account):
+        from common.models import Assets, Transactions
+        from services.nav import _calculate_cash_flow
+        from constants import TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT
+        coin = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:TCZ", name="TCZ",
+            currency="USD", exposure="Commodity",
+        )
+        coin.investors.add(user)
+        tx = Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="TCZ",
+            type=TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+            date=datetime(2025, 1, 19, tzinfo=timezone.utc),
+            quantity=Decimal("-0.679619700"), price=Decimal("45.503"),
+        )
+        assert _calculate_cash_flow(tx) == Decimal("0")
+
+    def test_transfer_in_cash_flow_is_zero(self, user, account):
+        from common.models import Assets, Transactions
+        from services.nav import _calculate_cash_flow
+        from constants import TRANSACTION_TYPE_CRYPTO_TRANSFER_IN
+        coin = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:TCZ2", name="TCZ2",
+            currency="USD", exposure="Commodity",
+        )
+        coin.investors.add(user)
+        tx = Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="TCZ2",
+            type=TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+            date=datetime(2025, 2, 9, tzinfo=timezone.utc),
+            quantity=Decimal("0.679860400"), price=Decimal("45.503"),
+        )
+        assert _calculate_cash_flow(tx) == Decimal("0")
+
+    def test_trade_in_cash_flow_unchanged(self, user, account):
+        # A real trade (buy) still computes cf = -qty*price (rounded to the
+        # broker's cash_precision; the default account fixture is 2dp).
+        from common.models import Assets, Transactions
+        from services.nav import _calculate_cash_flow
+        from constants import TRANSACTION_TYPE_CRYPTO_TRADE_IN
+        coin = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:TCZ3", name="TCZ3",
+            currency="USD", exposure="Commodity",
+        )
+        coin.investors.add(user)
+        tx = Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="USDT",
+            type=TRANSACTION_TYPE_CRYPTO_TRADE_IN,
+            date=datetime(2025, 1, 19, tzinfo=timezone.utc),
+            quantity=Decimal("0.6803"), price=Decimal("73.209"),
+        )
+        # cf = -qty*price = -49.8040827, rounded to 2dp = -49.80.
+        assert _calculate_cash_flow(tx) == Decimal("-49.80")
