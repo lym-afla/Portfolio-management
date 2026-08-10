@@ -25,6 +25,11 @@ STABLECOIN_CHOICES = (
 # stablecoins (assets, transactions, FX, user default).
 ALL_CURRENCY_CHOICES = CURRENCY_CHOICES + STABLECOIN_CHOICES
 
+# Cash currencies (fiat + stablecoins) — codes that represent cash balances,
+# NOT commodity crypto coins (BTC/ETH/TRUMP). Used by balance() and
+# BalanceTracker to decide whether a currency is a cash column.
+CASH_CURRENCIES = {code.upper() for code, _ in ALL_CURRENCY_CHOICES}
+
 FREQUENCY_CHOICES = [
     ("D", "Daily"),
     ("W", "Weekly"),

@@ -8,15 +8,9 @@ as transactions are processed.
 from decimal import Decimal
 from typing import Dict, List
 
-from constants import ALL_CURRENCY_CHOICES
+from constants import CASH_CURRENCIES as _CASH_CURRENCIES
 from core.formatting_utils import currency_format
 from services.transactions import get_cash_flow_by_currency, total_cash_flow
-
-# Cash currencies tracked in the Transactions-page balance columns.
-# Equal to ALL_CURRENCY_CHOICES (fiat codes + stablecoins USDT/USDC).
-# Commodity crypto coins (BTC, ETH, TRUMP) are NOT cash — they are Crypto-class
-# assets valued separately and should not appear as Cash flow/Balance columns.
-_CASH_CURRENCIES = {code.upper() for code, _ in ALL_CURRENCY_CHOICES}
 
 
 class BalanceTracker:
