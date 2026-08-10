@@ -56,6 +56,7 @@ from constants import (
     TRANSACTION_TYPE_OPTION_SETTLEMENT,
 )
 from services import options
+from services.crypto import safe_crypto_fx_rate
 from services.fx import get_rate as _fx_get_rate
 from services.positions import (
     entry_dates as _positions_entry_dates,
@@ -527,6 +528,14 @@ def get_economic_basis(
 
     def transaction_fx_rate(transaction, target):
         if target is not None and transaction.currency != target:
+            # Use safe_crypto_fx_rate for crypto codes (graceful on unpriced);
+            # _fx_get_rate for fiat (strict, never unpriced).
+            from services.crypto import is_crypto_code
+            if is_crypto_code(transaction.currency):
+                rate = safe_crypto_fx_rate(transaction.currency, target, transaction.date)
+                if rate is None:
+                    return Decimal(0)
+                return rate
             return _fx_get_rate(transaction.currency, target, transaction.date)["FX"]
         return Decimal(1)
 
@@ -1117,13 +1126,18 @@ def realized_gain_loss(
                     buy_in_price_target_currency is not None
                     and buy_in_price_lcl_currency is not None
                 ):
-                    fx_rate_exit = (
-                        _fx_get_rate(transaction.currency, currency, transaction.date)[
-                            "FX"
-                        ]
-                        if currency
-                        else 1
-                    )
+                    fx_rate_exit = 1
+                    if currency:
+                        from services.crypto import is_crypto_code
+                        if is_crypto_code(transaction.currency):
+                            fx_exit = safe_crypto_fx_rate(
+                                transaction.currency, currency, transaction.date
+                            )
+                            fx_rate_exit = fx_exit if fx_exit is not None else Decimal(0)
+                        else:
+                            fx_rate_exit = _fx_get_rate(
+                                transaction.currency, currency, transaction.date
+                            )["FX"]
 
                     # For bonds: G/L = notional_at_sell * (sale_price% - buy_in_price%) * quantity_sold # noqa: E501
                     # For others: G/L = (sale_price - buy_in_price) * quantity_sold

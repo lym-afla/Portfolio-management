@@ -287,3 +287,36 @@ class TestOptionRealizedFXConversion:
         # USD-converted should be materially positive (~9.24 = 0.000154 * 60000),
         # not the raw BTC value (which displays as $0.00).
         assert r_usd["all_time"]["total"] > Decimal("1")
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+@pytest.mark.gain_loss
+class TestUnpricedCoinRealizedNoCrash:
+    """A crypto coin with no Prices row (and no trades) must not crash
+    realized_gain_loss. It returns {total: 0} and the position is tracked."""
+
+    def test_unpriced_coin_realized_returns_zero(self, user, account):
+        # A coin with NO Prices row and NO trades -> fully unpriced.
+        # The coin's currency is the coin itself (BTC-style), so the FX path
+        # goes through crypto_fx_rate -> crypto_usd_price -> ValueError.
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:UNP", name="UNP",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="UNP",
+            type="Crypto trade in",
+            date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            quantity=Decimal("1"), price=Decimal("10"),
+        )
+        Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="UNP",
+            type="Crypto trade out",
+            date=datetime(2026, 2, 1, tzinfo=timezone.utc),
+            quantity=Decimal("-1"), price=Decimal("20"),
+        )
+        # This used to crash with ValueError: No USD price for UNP.
+        result = realized_gain_loss(coin, date(2026, 6, 1), investor=user, account_ids=[account.id],
+                                    currency="USD")
+        # Unpriced -> realized skips, returns 0 (not a crash).
+        assert result["all_time"]["total"] == Decimal("0")
