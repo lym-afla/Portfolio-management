@@ -8,8 +8,15 @@ as transactions are processed.
 from decimal import Decimal
 from typing import Dict, List
 
+from constants import ALL_CURRENCY_CHOICES
 from core.formatting_utils import currency_format
 from services.transactions import get_cash_flow_by_currency, total_cash_flow
+
+# Cash currencies tracked in the Transactions-page balance columns.
+# Equal to ALL_CURRENCY_CHOICES (fiat codes + stablecoins USDT/USDC).
+# Commodity crypto coins (BTC, ETH, TRUMP) are NOT cash — they are Crypto-class
+# assets valued separately and should not appear as Cash flow/Balance columns.
+_CASH_CURRENCIES = {code.upper() for code, _ in ALL_CURRENCY_CHOICES}
 
 
 class BalanceTracker:
@@ -68,6 +75,15 @@ class BalanceTracker:
     def _update_regular_transaction(self, transaction) -> None:
         """Update balances for a regular transaction."""
         currency = transaction.currency
+
+        # Only track cash currencies (fiat + stablecoins). Commodity crypto
+        # coins (BTC, TRUMP) are Crypto-class assets, not cash — they should
+        # not appear as columns in the Cash flow/Balance table. We still call
+        # _store_transaction_balances so the transaction's row shows the
+        # current cash balances (without adding a non-cash column).
+        if (currency or "").upper() not in _CASH_CURRENCIES:
+            self._store_transaction_balances(transaction.id)
+            return
 
         # Ensure currency exists in balance tracker
         if currency not in self.balances:
