@@ -54,7 +54,7 @@ from constants import (
 )
 from services import options
 from services.accounts import balance as account_balance
-from services.crypto import is_crypto, is_crypto_code
+from services.crypto import is_crypto, is_crypto_code, safe_crypto_fx_rate
 from services.fx import get_rate as fx_get_rate
 from services.pricing import calculate_value_at_date
 from services.positions import position
@@ -255,7 +255,17 @@ def NAV_at_date(
                 # crypto coin this chains through crypto_fx_rate (the coin's
                 # USD price) -> target via the fiat FX graph.
                 if security.currency != target_currency:
-                    fx = get_fx_rate(security.currency, target_currency, date)
+                    if is_crypto_code(security.currency):
+                        fx = safe_crypto_fx_rate(security.currency, target_currency, date)
+                        if fx is None:
+                            # Unpriced settle coin — skip the option liability.
+                            logger.warning(
+                                "Option %s settle coin %s unpriced at %s — excluded from NAV",
+                                security.name, security.currency, date,
+                            )
+                            continue
+                    else:
+                        fx = get_fx_rate(security.currency, target_currency, date)
                     option_value *= fx
                 analysis["Total NAV"] += option_value
                 if "account" in breakdown:
@@ -443,10 +453,17 @@ def calculate_portfolio_cash(
     for account in portfolio_accounts:
         cash_balance = merge_dictionaries(cash_balance, account_balance(account, date))
 
-    cash = sum(
-        balance * get_fx_rate(currency, target_currency, date)
-        for currency, balance in cash_balance.items()
-    )
+    total = Decimal(0)
+    for currency, balance in cash_balance.items():
+        if is_crypto_code(currency):
+            fx = safe_crypto_fx_rate(currency, target_currency, date)
+            if fx is None:
+                # Unpriced coin — skip it from the portfolio cash total.
+                continue
+        else:
+            fx = get_fx_rate(currency, target_currency, date)
+        total += balance * fx
+    cash = total
 
     return Decimal(cash).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -537,9 +554,17 @@ def IRR(
 
     for transaction in transactions:
         cash_flow = _calculate_cash_flow(transaction)
-        fx_rate = (
-            get_fx_rate(transaction.currency.upper(), currency, transaction.date) if currency else 1
-        )
+        fx_rate = 1
+        if currency:
+            if is_crypto_code(transaction.currency):
+                fx_rate = safe_crypto_fx_rate(
+                    transaction.currency, currency, transaction.date
+                )
+                if fx_rate is None:
+                    # Unpriced coin — skip this transaction's cash flow.
+                    continue
+            else:
+                fx_rate = get_fx_rate(transaction.currency.upper(), currency, transaction.date)
         cash_flows.append(
             Decimal(cash_flow * fx_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         )

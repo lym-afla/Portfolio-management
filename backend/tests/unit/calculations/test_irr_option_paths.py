@@ -178,6 +178,34 @@ class TestIRROptionCycle:
 
 @pytest.mark.nav
 @pytest.mark.unit
+class TestUnpricedCoinIRRNoCrash:
+    """IRR over a portfolio containing an unpriced coin must not crash."""
+
+    def test_irr_with_unpriced_coin_returns_decimal_or_na(self, user):
+        broker = Brokers.objects.create(investor=user, name="OKX-UNP", country="Crypto", cash_precision=8)
+        account = Accounts.objects.create(broker=broker, name="Trading")
+        # Fund the account
+        Transactions.objects.create(
+            investor=user, account=account, security=None, currency="USD",
+            type="Cash in", date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            cash_flow=Decimal("1000"),
+        )
+        # An unpriced coin trade (no Prices row, currency = coin code)
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:UNPIRR", name="UNPIRR",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=coin, currency="UNPIRR",
+            type="Crypto trade in", date=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            quantity=Decimal("1"), price=Decimal("10"),
+        )
+        # IRR must not crash on the unpriced coin.
+        result = IRR(user.id, date(2026, 6, 1), account_ids=[account.id], cached_nav=Decimal("1000"))
+        assert isinstance(result, (Decimal, str))
+
+
+@pytest.mark.nav
+@pytest.mark.unit
 class TestTransferCashFlowIsZero:
     """Crypto transfers are neutral — they contribute cf=0 to IRR, not -qty*price.
 
