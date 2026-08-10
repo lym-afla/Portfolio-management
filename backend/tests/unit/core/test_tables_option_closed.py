@@ -89,3 +89,54 @@ class TestOptionInClosedPositions:
             f"OTM writer realized_gl should be positive (keeps premium); "
             f"got {rows[0]['realized_gl']}"
         )
+
+    def test_itm_option_exit_value_no_double_contract_size(self, user):
+        """ITM settlement exit_value must not double-apply contract_size.
+
+        The settlement price is already size-scaled (from intrinsic_price =
+        contract_size * max(spot-strike,0)/spot). The entry/exit value loops
+        must NOT multiply by contract_size again for settlement rows, otherwise
+        the exit_value is 100x too small (BTC). option_transaction_value handles
+        the distinction correctly.
+        """
+        _make_btc_underlying(user, usd_price=Decimal("60000"))
+        broker = Brokers.objects.create(investor=user, name="OKX-ITM", country="Crypto", cash_precision=8)
+        account = Accounts.objects.create(broker=broker, name="Trading")
+        opt = Assets.objects.create(
+            type="Option", ISIN="CRYPTO:OPT:BTC-ITM-80000-C",
+            name="BTC-ITM-80000-C", currency="BTC", exposure="Derivatives",
+        )
+        opt.investors.add(user)
+        OptionMetadata.objects.create(
+            asset=opt, strike_price=Decimal("80000"), option_type="CALL",
+            expiration_date=date(2026, 6, 5), contract_size=Decimal("0.01"),
+        )
+        # Opening SELL: 7 contracts @ 0.0022 BTC premium
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTC",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"), cash_flow=Decimal("0.000154"),
+        )
+        # ITM settlement: spot 85000 > strike 80000
+        # intrinsic_q = 0.01 * (85000-80000) / 85000 = 0.00058824 (8dp, already size-scaled)
+        # payout = 7 * 0.00058824 = 0.00411765 -> writer pays, cash_flow negative
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTC",
+            type="Option settlement",
+            date=datetime(2026, 6, 5, tzinfo=timezone.utc),
+            quantity=Decimal("7"), price=Decimal("0.00058824"),
+            cash_flow=Decimal("-0.00411765"),
+        )
+        rows, _ = _calculate_closed_table_output_for_api(
+            user.id, [opt], date(2026, 8, 8),
+            ["investment_date", "realized_gl", "exit_date"],
+            False, "USD", [account.id], None,
+        )
+        assert len(rows) == 1
+        # exit_value = intrinsic_q * qty * fx = 0.00058824 * 7 * 60000 = 247.0608
+        # (NOT * contract_size again = 2.470608)
+        assert rows[0]["exit_value"] > Decimal("200"), (
+            f"ITM exit_value should be ~247 (intrinsic * qty * fx, no double "
+            f"contract_size); got {rows[0]['exit_value']}"
+        )

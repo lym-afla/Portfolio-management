@@ -209,3 +209,48 @@ class TestDecomposeOptionFill:
         assert result["contract_size"] == Decimal("0.01")
         # BUY posts no collateral — must be exactly zero (NOT a derived value).
         assert result["collateral"] == Decimal("0")
+
+
+# ---------------------------------------------------------------------------
+# option_transaction_value
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestOptionTransactionValue:
+    """option_transaction_value knows whether a transaction's price is already
+    size-scaled (settlement/intrinsic) or raw per-contract (fill). Settlements
+    must NOT get a second contract_size multiplication (the ITM exit_value bug)."""
+
+    def _tx(self, type_, price, quantity):
+        from common.models import Transactions
+        from datetime import datetime, timezone
+        return Transactions(
+            type=type_, price=Decimal(price), quantity=Decimal(quantity),
+            currency="BTC", date=datetime(2026, 6, 5, tzinfo=timezone.utc),
+        )
+
+    def test_opening_fill_applies_contract_size(self):
+        from constants import TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+        # Opening SELL: price 0.0022 (raw per-contract) x qty 7 x size 0.01 x fx 1
+        tx = self._tx(TRANSACTION_TYPE_CRYPTO_TRADE_OUT, "0.0022", "-7")
+        assert options.option_transaction_value(tx, Decimal("0.01"), Decimal("1")) == Decimal("0.000154")
+
+    def test_settlement_otm_is_zero(self):
+        from constants import TRANSACTION_TYPE_OPTION_SETTLEMENT
+        tx = self._tx(TRANSACTION_TYPE_OPTION_SETTLEMENT, "0", "7")
+        assert options.option_transaction_value(tx, Decimal("0.01"), Decimal("1")) == Decimal("0")
+
+    def test_settlement_itm_no_double_contract_size(self):
+        """Settlement price is ALREADY size-scaled (from intrinsic_price).
+        The helper must NOT multiply by contract_size again."""
+        from constants import TRANSACTION_TYPE_OPTION_SETTLEMENT
+        # intrinsic_q = 0.01 * (85000-80000) / 85000 = 0.00058824 (already scaled)
+        tx = self._tx(TRANSACTION_TYPE_OPTION_SETTLEMENT, "0.00058824", "7")
+        # Correct: 0.00058824 * 7 * 1 = 0.00411768 (NOT * 0.01 again = 0.00004118)
+        assert options.option_transaction_value(tx, Decimal("0.01"), Decimal("1")) == Decimal("0.00411768")
+
+    def test_fx_rate_applied(self):
+        from constants import TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+        tx = self._tx(TRANSACTION_TYPE_CRYPTO_TRADE_OUT, "0.0022", "-7")
+        # 0.0022 * 7 * 0.01 * 60000 = 9.24
+        assert options.option_transaction_value(tx, Decimal("0.01"), Decimal("60000")) == Decimal("9.24")

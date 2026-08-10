@@ -244,3 +244,25 @@ def decompose_option_fill(
         "contract_size": csize,
         "collateral": collateral,
     }
+
+
+def option_transaction_value(transaction, contract_size: Decimal, fx_rate: Decimal) -> Decimal:
+    """Effective value contribution of an option transaction row.
+
+    Opening fills (Crypto trade in/out): the stored price is the raw per-contract
+    premium (e.g. 0.0022 BTC) from decompose_option_fill — NOT size-scaled.
+      value = price * |qty| * contract_size * fx_rate
+    Settlements (Option settlement): the stored price for ITM is the intrinsic
+    per-contract value from intrinsic_price, which ALREADY incorporates
+    contract_size (returns size * max(spot-strike,0)/spot).
+      value = price * |qty| * fx_rate  (no second contract_size)
+    OTM settlements have price 0 -> value 0 regardless.
+    """
+    from constants import TRANSACTION_TYPE_OPTION_SETTLEMENT
+    price = Decimal(transaction.price) if transaction.price is not None else Decimal(0)
+    qty = abs(Decimal(transaction.quantity)) if transaction.quantity is not None else Decimal(0)
+    csize = Decimal(contract_size)
+    fx = Decimal(fx_rate)
+    if transaction.type == TRANSACTION_TYPE_OPTION_SETTLEMENT:
+        return price * qty * fx
+    return price * qty * csize * fx
