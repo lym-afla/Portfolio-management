@@ -105,7 +105,7 @@ DATA_SOURCE_CHOICES = [
     # Add more sources as needed
 ]
 
-TOLERANCE = 1e-7
+TOLERANCE = 1e-9
 
 YTD = "ytd"
 ALL_TIME = "all_time"
