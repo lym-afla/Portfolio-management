@@ -1,17 +1,15 @@
 """Test Charles Stanley import."""
 
-import uuid
 from decimal import Decimal
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
 from channels.db import database_sync_to_async
-from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import connection
 
-from common.models import Accounts, Assets, Brokers, Transactions
+from common.models import Accounts, Brokers, Transactions
 from constants import (
     TRANSACTION_TYPE_BUY,
     TRANSACTION_TYPE_DIVIDEND,
@@ -19,35 +17,31 @@ from constants import (
 )
 from core.import_utils import parse_charles_stanley_transactions
 
+User = get_user_model()
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-async def setup_data():
+def charles_stanley_setup(user, broker, asset):
     """Set up data for Charles Stanley import tests."""
-    User = get_user_model()
-    unique_username = f"testuser_{uuid.uuid4().hex[:8]}"
-    investor = await database_sync_to_async(User.objects.create_user)(
-        username=unique_username, password="12345"
+    # Create a Charles Stanley specific broker
+    cs_broker = Brokers.objects.create(
+        name="Charles Stanley Test", investor=user, country="UK"
     )
-    broker = await database_sync_to_async(Brokers.objects.create)(
-        name="Charles Stanley Test", investor=investor
-    )
-    asset = await database_sync_to_async(Assets.objects.create)(
-        name="Test Asset", type="Stock", currency="GBP"
-    )
-    await database_sync_to_async(asset.investors.add)(investor)
 
     # Create broker account
-    account = await database_sync_to_async(Accounts.objects.create)(
-        broker=broker,
+    account = Accounts.objects.create(
+        broker=cs_broker,
         native_id="TEST001",
         name="Test Account",
         restricted=False,
         is_active=True,
     )
 
-    return investor, broker, asset, account
+    # Use provided asset but ensure it's available to the user
+    asset.investors.add(user)
+
+    return user, cs_broker, asset, account
 
 
 @pytest.fixture(autouse=True)
@@ -57,32 +51,16 @@ def close_db_connection():
     connection.close()
 
 
-@pytest.fixture(autouse=True)
-async def clear_database(django_db_setup, django_db_blocker):
-    """Clear database."""
-    yield
-
-    @database_sync_to_async
-    def clear_db():
-        for model in apps.get_models():
-            model.objects.all().delete()
-        if connection.vendor == "sqlite":
-            with connection.cursor() as cursor:
-                cursor.execute("DELETE FROM sqlite_sequence;")
-
-    await clear_db()
-
-
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
-async def test_parse_charles_stanley_transactions(setup_data):
+async def test_parse_charles_stanley_transactions(charles_stanley_setup):
     """Test parse Charles Stanley transactions."""
-    investor, broker, asset, account = setup_data
+    investor, broker, asset, account = charles_stanley_setup
 
     mock_data = {
         "Date": ["01-Jan-2023"],
         "Description": ["Buy"],
-        "Stock Description": ["Test Asset"],
+        "Stock Description": [asset.name],  # Use actual asset name for matching
         "Price": [100],
         "Debit": [1000],
         "Credit": [0],
@@ -112,9 +90,10 @@ async def test_parse_charles_stanley_transactions(setup_data):
 
 
 @pytest.mark.asyncio
-async def test_skip_existing_transaction(setup_data):
+@pytest.mark.django_db(transaction=True)
+async def test_skip_existing_transaction(charles_stanley_setup):
     """Test skip existing transaction."""
-    investor, broker, asset, account = setup_data
+    investor, broker, asset, account = charles_stanley_setup
 
     # Create an existing transaction with account
     await database_sync_to_async(Transactions.objects.create)(
@@ -131,7 +110,7 @@ async def test_skip_existing_transaction(setup_data):
     mock_data = {
         "Date": ["01-Jan-2023"],
         "Description": ["Buy"],
-        "Stock Description": ["Test Asset"],
+        "Stock Description": [asset.name],  # Use actual asset name for matching
         "Price": [100],
         "Debit": [1000],
         "Credit": [0],
@@ -152,14 +131,15 @@ async def test_skip_existing_transaction(setup_data):
 
 
 @pytest.mark.asyncio
-async def test_different_transaction_types(setup_data):
+@pytest.mark.django_db(transaction=True)
+async def test_different_transaction_types(charles_stanley_setup):
     """Test different transaction types."""
-    investor, broker, asset, account = setup_data
+    investor, broker, asset, account = charles_stanley_setup
 
     mock_data = {
         "Date": ["01-Jan-2023", "02-Jan-2023", "03-Jan-2023"],
         "Description": ["Buy", "Dividend", "Gross interest"],
-        "Stock Description": ["Test Asset", "Test Asset", ""],
+        "Stock Description": [asset.name, asset.name, ""],  # Use actual asset name
         "Price": [100, 0, 0],
         "Debit": [1000, 0, 0],
         "Credit": [0, 50, 25],
@@ -183,14 +163,17 @@ async def test_different_transaction_types(setup_data):
 
 
 @pytest.mark.asyncio
-async def test_security_mapping(setup_data):
+@pytest.mark.django_db(transaction=True)
+async def test_security_mapping(charles_stanley_setup):
     """Test security mapping."""
-    investor, broker, asset, account = setup_data
+    investor, broker, asset, account = charles_stanley_setup
 
     mock_data = {
         "Date": ["01-Jan-2023"],
         "Description": ["Buy"],
-        "Stock Description": ["Unknown Asset"],
+        "Stock Description": [
+            "Unknown Asset"
+        ],  # This should trigger mapping requirement
         "Price": [100],
         "Debit": [1000],
         "Credit": [0],
@@ -204,7 +187,7 @@ async def test_security_mapping(setup_data):
 
         mapping_required = False
         async for item in generator:
-            if item["status"] == "security_mapping":
+            if item.get("status") == "security_mapping":
                 mapping_required = True
                 break
 
@@ -214,6 +197,7 @@ async def test_security_mapping(setup_data):
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_invalid_excel_file():
     """Test invalid Excel file."""
     with pytest.raises(
@@ -228,14 +212,15 @@ async def test_invalid_excel_file():
 
 
 @pytest.mark.asyncio
-async def test_progress_reporting(setup_data):
+@pytest.mark.django_db(transaction=True)
+async def test_progress_reporting(charles_stanley_setup):
     """Test progress reporting."""
-    investor, broker, asset, account = setup_data
+    investor, broker, asset, account = charles_stanley_setup
 
     mock_data = {
         "Date": ["01-Jan-2023"] * 100,
         "Description": ["Buy"] * 100,
-        "Stock Description": ["Test Asset"] * 100,
+        "Stock Description": [asset.name] * 100,  # Use actual asset name
         "Price": [100] * 100,
         "Debit": [1000] * 100,
         "Credit": [0] * 100,
@@ -244,12 +229,12 @@ async def test_progress_reporting(setup_data):
 
     with patch("core.import_utils.read_excel_file", return_value=mock_df):
         generator = parse_charles_stanley_transactions(
-            "dummy.xlsx", "GBP", broker.id, investor.id, confirm_every=False
+            "dummy.xlsx", "GBP", account.id, investor.id, confirm_every=False
         )
 
         progress_updates = []
         async for item in generator:
-            if item["status"] == "progress":
+            if item.get("status") == "progress":
                 progress_updates.append(item)
 
     assert len(progress_updates) > 0

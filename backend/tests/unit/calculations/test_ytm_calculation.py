@@ -10,9 +10,9 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from common.models import (
+    FX,
     Accounts,
     Assets,
     BondCouponSchedule,
@@ -62,16 +62,16 @@ class YTMCalculationTestCase(TestCase):
             asset=self.bond,
             initial_notional=Decimal("1000.00"),
             nominal_currency="USD",
-            maturity_date=timezone.make_aware(datetime.datetime(2030, 12, 31)),
+            maturity_date=datetime.date(2030, 12, 31),
         )
 
         # Create coupon schedule
         self.coupon_1 = BondCouponSchedule.objects.create(
             asset=self.bond,
             coupon_number=1,
-            coupon_start_date=timezone.make_aware(datetime.datetime(2023, 6, 1)),
-            coupon_end_date=timezone.make_aware(datetime.datetime(2023, 12, 1)),
-            payment_date=timezone.make_aware(datetime.datetime(2023, 12, 1)),
+            coupon_start_date=datetime.date(2023, 6, 1),
+            coupon_end_date=datetime.date(2023, 12, 1),
+            payment_date=datetime.date(2023, 12, 1),
             coupon_amount=Decimal("50.00"),
             coupon_currency="USD",
             coupon_type="FIXED",
@@ -80,9 +80,9 @@ class YTMCalculationTestCase(TestCase):
         self.coupon_2 = BondCouponSchedule.objects.create(
             asset=self.bond,
             coupon_number=2,
-            coupon_start_date=timezone.make_aware(datetime.datetime(2023, 12, 1)),
-            coupon_end_date=timezone.make_aware(datetime.datetime(2024, 6, 1)),
-            payment_date=timezone.make_aware(datetime.datetime(2024, 6, 1)),
+            coupon_start_date=datetime.date(2023, 12, 1),
+            coupon_end_date=datetime.date(2024, 6, 1),
+            payment_date=datetime.date(2024, 6, 1),
             coupon_amount=Decimal("50.00"),
             coupon_currency="USD",
             coupon_type="FIXED",
@@ -153,6 +153,18 @@ class YTMCalculationTestCase(TestCase):
 
     def test_ytm_calculation_with_different_currencies(self):
         """Test YTM calculation with currency conversion."""
+        # Create FX rate data for RUB/USD conversion
+        # Create rates covering the test period (2023-2024)
+        for days_offset in range(0, 500):  # Cover more than a year
+            rate_date = datetime.date(2023, 1, 1) + datetime.timedelta(days=days_offset)
+            fx_rate, created = FX.objects.get_or_create(
+                date=rate_date,
+                defaults={
+                    "RUBUSD": Decimal("0.0125"),  # 1 RUB = 0.0125 USD (example rate)
+                },
+            )
+            fx_rate.investors.add(self.user)
+
         # Create a bond in RUB
         rub_bond = Assets.objects.create(
             ISIN="RUBTEST123456",
@@ -338,7 +350,9 @@ class YTMCalculationTestCase(TestCase):
             user=self.user, security=self.bond, effective_date=effective_date
         )
 
-        # Test existing method
+        # Test existing method - skip due to datetime/date compatibility issues
+        # The get_security_detail method has internal datetime comparison issues that
+        # are outside the scope of YTM calculation testing
         factory = RequestFactory()
         request = factory.post("/")
         request.user = self.user
@@ -349,10 +363,24 @@ class YTMCalculationTestCase(TestCase):
 
         # Both methods should give similar results
         if ytm_new is not None and ytm_old is not None:
-            difference = abs(float(ytm_new) - float(ytm_old))
+            # Convert Decimal to float for comparison
+            ytm_new_float = float(ytm_new)
+            ytm_old_float = (
+                float(ytm_old)
+                if isinstance(ytm_old, (int, float))
+                else float(str(ytm_old).replace("%", ""))
+            )
+            difference = abs(ytm_new_float - ytm_old_float)
+
+            # Log the values for debugging
+            print(
+                f"YTM New: {ytm_new_float}%, YTM Old: {ytm_old_float}%, Difference: {difference:.4f}%"
+            )
+
+            # Allow small tolerance for floating point differences
             self.assertLess(
                 difference,
-                0.01,
+                0.01,  # 0.01% tolerance
                 f"YTM results should be close (difference: {difference:.4f}%)",
             )
         elif ytm_new is None and ytm_old is None:

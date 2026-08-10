@@ -1,15 +1,33 @@
-"""Conftest file for pytest."""
+"""Fixed conftest file for pytest - removed broken Asset-Broker relationships."""
 
 from datetime import date, timedelta
 from decimal import Decimal
 
+import factory
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import override_settings
+from rest_framework.test import APIClient
 
-from common.models import FX, Assets, Brokers, FXTransaction, Prices, Transactions
+from common.models import (
+    FX,
+    Accounts,
+    Assets,
+    Brokers,
+    FXTransaction,
+    Prices,
+    Transactions,
+)
 
 CustomUser = get_user_model()
+
+
+def pytest_configure():
+    """Configure global test settings before tests collect/run.
+
+    Set a single Faker locale to avoid provider locale probing and DEBUG logs.
+    """
+    factory.Faker._DEFAULT_LOCALE = "en_GB"
 
 
 @pytest.fixture(autouse=True)
@@ -81,11 +99,41 @@ def restricted_broker(user):
     )
 
 
-# ========== ASSET FIXTURES ==========
+# ========== ACCOUNT FIXTURES ==========
 
 
 @pytest.fixture
-def asset(user, broker):
+def account(broker):
+    """Create a basic test account."""
+    return Accounts.objects.create(
+        broker=broker,
+        name="Test Account",
+    )
+
+
+@pytest.fixture
+def account_uk(broker_uk):
+    """Create a UK-based account."""
+    return Accounts.objects.create(
+        broker=broker_uk,
+        name="UK Account",
+    )
+
+
+@pytest.fixture
+def account_us(broker):
+    """Create a US-based account."""
+    return Accounts.objects.create(
+        broker=broker,
+        name="US Account",
+    )
+
+
+# ========== ASSET FIXTURES (Fixed - removed broker relationships) ==========
+
+
+@pytest.fixture
+def asset(user):
     """Create a basic USD stock asset."""
     asset = Assets.objects.create(
         type="Stock",
@@ -97,12 +145,12 @@ def asset(user, broker):
         yahoo_symbol="TEST",
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
+    # Note: Asset no longer has brokers relationship
     return asset
 
 
 @pytest.fixture
-def asset_eur(user, broker_eu):
+def asset_eur(user):
     """Create a EUR-denominated stock."""
     asset = Assets.objects.create(
         type="Stock",
@@ -114,12 +162,12 @@ def asset_eur(user, broker_eu):
         yahoo_symbol="EURTEST",
     )
     asset.investors.add(user)
-    asset.brokers.add(broker_eu)
+    # Note: Asset no longer has brokers relationship
     return asset
 
 
 @pytest.fixture
-def asset_gbp(user, broker_uk):
+def asset_gbp(user):
     """Create a GBP-denominated stock."""
     asset = Assets.objects.create(
         type="Stock",
@@ -131,12 +179,12 @@ def asset_gbp(user, broker_uk):
         yahoo_symbol="GBPTEST",
     )
     asset.investors.add(user)
-    asset.brokers.add(broker_uk)
+    # Note: Asset no longer has brokers relationship
     return asset
 
 
 @pytest.fixture
-def bond_asset(user, broker):
+def bond_asset(user):
     """Create a USD bond asset."""
     asset = Assets.objects.create(
         type="Bond",
@@ -148,7 +196,7 @@ def bond_asset(user, broker):
         yahoo_symbol="TESTBOND",
     )
     asset.investors.add(user)
-    asset.brokers.add(broker)
+    # Note: Asset no longer has brokers relationship
     return asset
 
 
@@ -160,55 +208,58 @@ def sample_transactions(user, broker, asset):
     """Create a set of sample transactions for testing."""
     transactions = []
 
+    # Create account
+    account = Accounts.objects.create(
+        broker=broker,
+        name="Test Account",
+    )
+
     # Initial purchase
     tx1 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Buy",
         date=date(2023, 1, 15),
         quantity=Decimal("100"),
         price=Decimal("50.00"),
-        cash_flow=Decimal("-5000.00"),
-        commission=Decimal("5.00"),
+        commission=Decimal("-5.00"),
     )
     transactions.append(tx1)
 
     # Additional purchase
     tx2 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Buy",
         date=date(2023, 3, 20),
         quantity=Decimal("50"),
         price=Decimal("55.00"),
-        cash_flow=Decimal("-2750.00"),
-        commission=Decimal("3.00"),
+        commission=Decimal("-3.00"),
     )
     transactions.append(tx2)
 
     # Partial sale
     tx3 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Sell",
         date=date(2023, 6, 10),
         quantity=Decimal("-30"),
         price=Decimal("60.00"),
-        cash_flow=Decimal("1800.00"),
-        commission=Decimal("3.00"),
+        commission=Decimal("-3.00"),
     )
     transactions.append(tx3)
 
     # Dividend
     tx4 = Transactions.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Dividend",
@@ -230,10 +281,16 @@ def multi_currency_transactions(
     """Create multi-currency transactions for FX testing."""
     transactions = []
 
+    # Create account
+    account = Accounts.objects.create(
+        broker=broker,
+        name="Multi-Currency Account",
+    )
+
     # USD asset purchase
     tx1 = Transactions.objects.create(
         investor=multi_currency_user,
-        broker=broker,
+        account=account,
         security=asset,
         currency="USD",
         type="Buy",
@@ -248,7 +305,7 @@ def multi_currency_transactions(
     # EUR asset purchase
     tx2 = Transactions.objects.create(
         investor=multi_currency_user,
-        broker=broker,
+        account=account,
         security=asset_eur,
         currency="EUR",
         type="Buy",
@@ -263,7 +320,7 @@ def multi_currency_transactions(
     # GBP asset purchase
     tx3 = Transactions.objects.create(
         investor=multi_currency_user,
-        broker=broker,
+        account=account,
         security=asset_gbp,
         currency="GBP",
         type="Buy",
@@ -289,8 +346,9 @@ def fx_rates_usd_eur(user):
 
     for i in range(365):  # One year of data
         current_date = base_date + timedelta(days=i)
-        rate = Decimal("0.92") + (Decimal("0.02") * (i % 30) / 30)  # Some variation
-        fx = FX.objects.create(date=current_date, investor=user, USDEUR=rate)
+        rate = Decimal("1.3") + (Decimal("0.02") * (i % 30) / 30)  # Some variation
+        fx = FX.objects.create(date=current_date, USDEUR=rate)
+        fx.investors.add(user)
         rates.append(fx)
 
     return rates
@@ -306,26 +364,32 @@ def fx_rates_multi_currency(multi_currency_user):
         current_date = base_date + timedelta(days=i)
 
         # Create FX rates with realistic variations
+        # Using correct convention: CUR1CUR2 = number of CUR1 per 1 CUR2
         fx = FX.objects.create(
             date=current_date,
-            investor=multi_currency_user,
-            USDEUR=Decimal("0.92") + (Decimal("0.02") * (i % 30) / 30),
-            USDGBP=Decimal("0.82") + (Decimal("0.03") * (i % 30) / 30),
-            CHFGBP=Decimal("0.88") + (Decimal("0.02") * (i % 30) / 30),
-            RUBUSD=Decimal("0.013") + (Decimal("0.001") * (i % 30) / 30),
-            PLNUSD=Decimal("0.25") + (Decimal("0.02") * (i % 30) / 30),
+            USDEUR=Decimal("1.1")
+            + (
+                Decimal("0.10") * (i % 30) / 30
+            ),  # 1.1 USD per 1 EUR (higher volatility)
+            USDGBP=Decimal("1.22")
+            + (Decimal("0.03") * (i % 30) / 30),  # 1.22 USD per 1 GBP
+            CHFGBP=Decimal("1.14")
+            + (Decimal("0.02") * (i % 30) / 30),  # 1.14 CHF per 1 GBP
+            RUBUSD=Decimal("75") + (Decimal("5") * (i % 30) / 30),  # 75 RUB per 1 USD
+            PLNUSD=Decimal("4") + (Decimal("0.3") * (i % 30) / 30),  # 4 PLN per 1 USD
         )
+        fx.investors.add(multi_currency_user)
         rates.append(fx)
 
     return rates
 
 
 @pytest.fixture
-def fx_transaction(user, broker):
+def fx_transaction(user, account):
     """Create a sample FX transaction."""
     return FXTransaction.objects.create(
         investor=user,
-        broker=broker,
+        account=account,
         date=date(2023, 2, 15),
         from_currency="USD",
         to_currency="EUR",
@@ -408,75 +472,6 @@ def price_history_multi_asset(user, asset, asset_eur, asset_gbp):
     return price_data
 
 
-# ========== COMPLEX SCENARIO FIXTURES ==========
-
-
-@pytest.fixture
-def complete_portfolio(
-    user,
-    broker,
-    asset,
-    bond_asset,
-    sample_transactions,
-    price_history,
-    fx_rates_usd_eur,
-):
-    """Create a complete portfolio scenario with multiple asset types."""
-    return {
-        "user": user,
-        "broker": broker,
-        "assets": [asset, bond_asset],
-        "transactions": sample_transactions,
-        "price_history": price_history,
-        "fx_rates": fx_rates_usd_eur,
-    }
-
-
-@pytest.fixture
-def loss_making_portfolio(user, broker):
-    """Create a portfolio that shows losses for testing loss calculations."""
-    # Create an asset that loses value
-    losing_asset = Assets.objects.create(
-        type="Stock",
-        ISIN="LOSS123456789",
-        name="Losing Stock Corp",
-        currency="USD",
-        exposure="Equity",
-    )
-    losing_asset.investors.add(user)
-    losing_asset.brokers.add(broker)
-
-    # Create high buy price transactions
-    tx1 = Transactions.objects.create(
-        investor=user,
-        broker=broker,
-        security=losing_asset,
-        currency="USD",
-        type="Buy",
-        date=date(2023, 1, 15),
-        quantity=Decimal("100"),
-        price=Decimal("100.00"),  # High buy price
-        cash_flow=Decimal("-10000.00"),
-        commission=Decimal("10.00"),
-    )
-
-    # Create current low prices
-    for i in range(30):  # Create recent low prices
-        current_date = date(2023, 2, 1) + timedelta(days=i)
-        Prices.objects.create(
-            date=current_date,
-            security=losing_asset,
-            price=Decimal("30.00"),  # Low current price
-        )
-
-    return {
-        "asset": losing_asset,
-        "transactions": [tx1],
-        "buy_price": Decimal("100.00"),
-        "current_price": Decimal("30.00"),
-    }
-
-
 # ========== UTILITY FIXTURES ==========
 
 
@@ -508,27 +503,64 @@ def decimal_values():
     }
 
 
-@pytest.fixture
-def currency_pairs():
-    """Provide common currency pairs for FX testing."""
-    return {
-        "direct": [("USD", "EUR"), ("USD", "GBP"), ("EUR", "GBP")],
-        "cross": [("USD", "JPY"), ("EUR", "JPY"), ("GBP", "JPY")],
-        "exotic": [("USD", "RUB"), ("EUR", "PLN"), ("GBP", "CHF")],
-    }
+# ========== API FIXTURES ==========
 
 
-# Legacy fixtures for backward compatibility
 @pytest.fixture
-def asset_basic(user, broker):
-    """Legacy fixture name - create a basic USD stock asset."""
-    asset = Assets.objects.create(
-        type="Stock",
-        ISIN="TEST123456789",
-        name="Test Stock",
-        currency="USD",
-        exposure="Equity",
+def api_client():
+    """Create an API client."""
+    return APIClient()
+
+
+@pytest.fixture
+def admin_client(admin_user):
+    """Create an authenticated API client for admin user."""
+    client = APIClient()
+    client.force_authenticate(user=admin_user)
+    return client
+
+
+@pytest.fixture
+def authenticated_client(user):
+    """Create an authenticated API client."""
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
+
+
+# ========== FX FIXTURES ==========
+
+
+@pytest.fixture
+def fx_rates(user):
+    """Create a set of basic FX rates for testing."""
+    rates = []
+    base_date = date(2023, 1, 1)
+
+    for i in range(10):  # Create 10 days of FX data
+        current_date = base_date + timedelta(days=i)
+        rate = Decimal("0.92") + (Decimal("0.01") * (i % 5) / 5)  # Small variation
+        fx = FX.objects.create(
+            date=current_date,
+            USDEUR=rate,
+            USDGBP=Decimal("0.82") + (Decimal("0.01") * (i % 5) / 5),
+            CHFGBP=Decimal("0.88") + (Decimal("0.01") * (i % 5) / 5),
+        )
+        fx.investors.add(user)
+        rates.append(fx)
+
+    return rates
+
+
+@pytest.fixture
+def multi_currency_portfolio(multi_currency_user, broker):
+    """Create a multi-currency portfolio for testing."""
+    from common.models import Accounts
+
+    # Create account
+    account = Accounts.objects.create(
+        broker=broker,
+        name="Multi-Currency Account",
     )
-    asset.investors.add(user)
-    asset.brokers.add(broker)
-    return asset
+
+    return account

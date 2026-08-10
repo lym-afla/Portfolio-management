@@ -10,7 +10,7 @@ from decimal import Decimal
 import factory
 from factory import fuzzy
 
-from common.models import Assets, Brokers, Transactions
+from common.models import Accounts, Assets, Transactions
 from users.models import CustomUser
 
 
@@ -27,87 +27,27 @@ class TransactionFactory(factory.django.DjangoModelFactory):
         ["Buy", "Sell", "Dividend", "Interest", "Corporate Action"]
     )
     date = fuzzy.FuzzyDate(date(2020, 1, 1), date.today())
-    # quantity = fuzzy.FuzzyDecimal(-1000, 1000, 6)
-    # price = fuzzy.FuzzyDecimal(1, 1000, 6)
-    # cash_flow = fuzzy.FuzzyDecimal(-100000, 100000, 2)
-    # commission = fuzzy.FuzzyDecimal(0, 100, 2)
     comment = factory.Faker("text", max_nb_chars=200)
 
-    @factory.lazy_attribute
-    def quantity(self):
-        """Generate quantity based on transaction type."""
-        if self.type in ["Dividend", "Interest"]:
-            return None
-        return self.faker.pydecimal(
-            left_digits=6, right_digits=6, min_value=-1000, max_value=1000
-        )
-
-    @factory.lazy_attribute
-    def price(self):
-        """Generate price based on transaction type."""
-        if self.type in ["Dividend", "Interest"]:
-            return None
-        return self.faker.pydecimal(
-            left_digits=3, right_digits=6, min_value=1, max_value=1000
-        )
-
-    @factory.lazy_attribute
-    def cash_flow(self):
-        """Generate realistic cash flow based on transaction details."""
-        if self.type == "Buy":
-            # Cash outflow for buys
-            if self.quantity and self.price:
-                amount = -(abs(self.quantity) * self.price)
-                if self.commission:
-                    amount -= self.commission
-                return amount
-            return self.faker.pydecimal(
-                left_digits=6, right_digits=2, min_value=-100000, max_value=-100
-            )
-        elif self.type == "Sell":
-            # Cash inflow for sells
-            if self.quantity and self.price:
-                amount = abs(self.quantity) * self.price
-                if self.commission:
-                    amount -= self.commission
-                return amount
-            return self.faker.pydecimal(
-                left_digits=6, right_digits=2, min_value=100, max_value=100000
-            )
-        elif self.type in ["Dividend", "Interest"]:
-            # Positive cash flow for dividends and interest
-            return self.faker.pydecimal(
-                left_digits=4, right_digits=2, min_value=10, max_value=10000
-            )
-        else:
-            # Corporate actions can have various cash flows
-            return self.faker.pydecimal(
-                left_digits=6, right_digits=2, min_value=-10000, max_value=10000
-            )
-
-    @factory.lazy_attribute
-    def commission(self):
-        """Generate commission based on transaction type."""
-        if self.type in ["Dividend", "Interest"]:
-            return None
-        return self.faker.pydecimal(
-            left_digits=2, right_digits=2, min_value=0, max_value=100
-        )
+    quantity = fuzzy.FuzzyDecimal(-1000, 1000, 6)
+    price = fuzzy.FuzzyDecimal(1, 1000, 6)
+    cash_flow = None  # Will be None for Buy/Sell, generated for Dividend/Interest
+    commission = fuzzy.FuzzyDecimal(0, -100, -2)
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
         """Override create to handle required relationships."""
         investor = kwargs.pop("investor", None)
-        broker = kwargs.pop("broker", None)
+        account = kwargs.pop("account", None)
         security = kwargs.pop("security", None)
 
-        if not all([investor, broker, security]):
+        if not all([investor, account, security]):
             raise ValueError(
-                "TransactionFactory requires investor, broker, and security"
+                "TransactionFactory requires investor, account, and security"
             )
 
         return model_class.objects.create(
-            investor=investor, broker=broker, security=security, **kwargs
+            investor=investor, account=account, security=security, **kwargs
         )
 
 
@@ -115,50 +55,16 @@ class BuyTransactionFactory(TransactionFactory):
     """Factory for creating buy transactions."""
 
     type = "Buy"
-
-    @factory.lazy_attribute
-    def quantity(self):
-        """Positive quantity for buys."""
-        return self.faker.pydecimal(
-            left_digits=6, right_digits=6, min_value=1, max_value=1000
-        )
-
-    @factory.lazy_attribute
-    def cash_flow(self):
-        """Negative cash flow for buys."""
-        if self.quantity and self.price:
-            amount = -(self.quantity * self.price)
-            if self.commission:
-                amount -= self.commission
-            return amount
-        return self.faker.pydecimal(
-            left_digits=6, right_digits=2, min_value=-100000, max_value=-100
-        )
+    cash_flow = None  # Auto-calculated from price × quantity
+    quantity = fuzzy.FuzzyDecimal(1, 1000, 6)  # Positive quantity for buys
 
 
 class SellTransactionFactory(TransactionFactory):
     """Factory for creating sell transactions."""
 
     type = "Sell"
-
-    @factory.lazy_attribute
-    def quantity(self):
-        """Negative quantity for sells."""
-        return -self.faker.pydecimal(
-            left_digits=6, right_digits=6, min_value=1, max_value=1000
-        )
-
-    @factory.lazy_attribute
-    def cash_flow(self):
-        """Positive cash flow for sells."""
-        if self.quantity and self.price:
-            amount = abs(self.quantity) * self.price
-            if self.commission:
-                amount -= self.commission
-            return amount
-        return self.faker.pydecimal(
-            left_digits=6, right_digits=2, min_value=100, max_value=100000
-        )
+    cash_flow = None  # Auto-calculated from price × quantity
+    quantity = fuzzy.FuzzyDecimal(-1000, -1, 6)  # Negative quantity for sells
 
 
 class DividendTransactionFactory(TransactionFactory):
@@ -168,52 +74,28 @@ class DividendTransactionFactory(TransactionFactory):
     quantity = None
     price = None
     commission = None
-
-    @factory.lazy_attribute
-    def cash_flow(self):
-        """Positive cash flow for dividends."""
-        return self.faker.pydecimal(
-            left_digits=4, right_digits=2, min_value=10, max_value=10000
-        )
-
-    @factory.lazy_attribute
-    def comment(self):
-        """Realistic dividend comments."""
-        return f"Dividend payment - {self.faker.date_between(date(2023, 1, 1), date(2023, 12, 31))}"  # noqa: E501
+    cash_flow = fuzzy.FuzzyDecimal(10, 10000, 2)  # Positive cash flow for dividends
+    comment = factory.Faker("sentence", nb_words=4)
 
 
 class LargeBuyTransactionFactory(BuyTransactionFactory):
     """Factory for creating large buy transactions."""
 
-    @factory.lazy_attribute
-    def quantity(self):
-        """Large quantity for institutional trades."""
-        return self.faker.pydecimal(
-            left_digits=6, right_digits=6, min_value=1000, max_value=100000
-        )
-
-    @factory.lazy_attribute
-    def price(self):
-        """Lower price for large quantities."""
-        return self.faker.pydecimal(
-            left_digits=2, right_digits=6, min_value=1, max_value=100
-        )
+    quantity = fuzzy.FuzzyDecimal(
+        1000, 100000, 6
+    )  # Large quantity for institutional trades
+    price = fuzzy.FuzzyDecimal(1, 100, 6)  # Lower price for large quantities
 
 
 class SmallBuyTransactionFactory(BuyTransactionFactory):
     """Factory for creating small buy transactions."""
 
-    @factory.lazy_attribute
-    def quantity(self):
-        """Small quantity for retail trades."""
-        return self.faker.pydecimal(
-            left_digits=3, right_digits=6, min_value=1, max_value=1000
-        )
+    quantity = fuzzy.FuzzyDecimal(1, 100, 6)  # Small quantity for retail trades
 
 
 # Batch creation utilities
 def create_buy_sell_sequence(
-    investor: CustomUser, broker: Brokers, security: Assets, num_pairs=3
+    investor: CustomUser, account: Accounts, security: Assets, num_pairs=3
 ) -> list[Transactions]:
     """Create a sequence of buy-sell transaction pairs."""
     transactions = []
@@ -224,7 +106,7 @@ def create_buy_sell_sequence(
         buy_date = base_date + timedelta(days=i * 30)
         buy_tx = BuyTransactionFactory.create(
             investor=investor,
-            broker=broker,
+            account=account,
             security=security,
             date=buy_date,
             quantity=Decimal("100") + (i * 50),
@@ -237,7 +119,7 @@ def create_buy_sell_sequence(
         sell_quantity = -(Decimal("100") + (i * 50)) * Decimal("0.3")  # Sell 30%
         sell_tx = SellTransactionFactory.create(
             investor=investor,
-            broker=broker,
+            account=account,
             security=security,
             date=sell_date,
             quantity=sell_quantity,
@@ -249,7 +131,7 @@ def create_buy_sell_sequence(
 
 
 def create_dividend_schedule(
-    investor, broker, security, num_dividends=4
+    investor, account, security, num_dividends=4
 ) -> list[Transactions]:
     """Create a schedule of dividend payments."""
     transactions = []
@@ -259,7 +141,7 @@ def create_dividend_schedule(
         dividend_date = base_date + timedelta(days=i * 90)  # Quarterly dividends
         dividend_tx = DividendTransactionFactory.create(
             investor=investor,
-            broker=broker,
+            account=account,
             security=security,
             date=dividend_date,
             cash_flow=Decimal("50") + (i * 5),  # Growing dividends
@@ -270,7 +152,7 @@ def create_dividend_schedule(
 
 
 def create_dollar_cost_averaging(
-    investor, broker, security, months=12, amount=None
+    investor, account, security, months=12, amount=None
 ) -> list[Transactions]:
     """Create a dollar cost averaging strategy."""
     if amount is None:
@@ -288,13 +170,12 @@ def create_dollar_cost_averaging(
 
         tx = BuyTransactionFactory.create(
             investor=investor,
-            broker=broker,
+            account=account,
             security=security,
             date=investment_date,
             quantity=quantity,
             price=price,
-            cash_flow=-amount,
-            commission=Decimal("5"),
+            commission=Decimal("-5"),
         )
         transactions.append(tx)
 
@@ -302,7 +183,7 @@ def create_dollar_cost_averaging(
 
 
 def create_portfolio_transactions(
-    investor, broker, assets, transactions_per_asset=5
+    investor, account, assets, transactions_per_asset=5
 ) -> list[Transactions]:
     """Create transactions for multiple assets."""
     all_transactions = []
@@ -313,21 +194,21 @@ def create_portfolio_transactions(
             if i < transactions_per_asset * 0.6:  # 60% buys
                 tx = BuyTransactionFactory.create(
                     investor=investor,
-                    broker=broker,
+                    account=account,
                     security=asset,
                     date=date(2023, 1, 1) + timedelta(days=i * 45),
                 )
             elif i < transactions_per_asset * 0.8:  # 20% sells
                 tx = SellTransactionFactory.create(
                     investor=investor,
-                    broker=broker,
+                    account=account,
                     security=asset,
                     date=date(2023, 1, 1) + timedelta(days=i * 45),
                 )
             else:  # 20% dividends
                 tx = DividendTransactionFactory.create(
                     investor=investor,
-                    broker=broker,
+                    account=account,
                     security=asset,
                     date=date(2023, 1, 1) + timedelta(days=i * 45),
                 )
@@ -337,46 +218,43 @@ def create_portfolio_transactions(
     return all_transactions
 
 
-def create_tax_loss_harvesting(investor, broker, security) -> list[Transactions]:
+def create_tax_loss_harvesting(investor, account, security) -> list[Transactions]:
     """Create transactions for tax loss harvesting scenario."""
     transactions = []
 
     # Initial purchase at high price
     initial_buy = BuyTransactionFactory.create(
         investor=investor,
-        broker=broker,
+        account=account,
         security=security,
         date=date(2023, 1, 15),
         quantity=Decimal("100"),
         price=Decimal("100"),
-        cash_flow=Decimal("-10000"),
-        commission=Decimal("10"),
+        commission=Decimal("-10"),
     )
     transactions.append(initial_buy)
 
     # Price drops, sell for loss
     loss_sale = SellTransactionFactory.create(
         investor=investor,
-        broker=broker,
+        account=account,
         security=security,
         date=date(2023, 6, 15),
         quantity=Decimal("-100"),
         price=Decimal("70"),
-        cash_flow=Decimal("6990"),
-        commission=Decimal("10"),
+        commission=Decimal("-10"),
     )
     transactions.append(loss_sale)
 
     # Wait 30 days (wash sale rule) and buy back
     repurchase = BuyTransactionFactory.create(
         investor=investor,
-        broker=broker,
+        account=account,
         security=security,
         date=date(2023, 7, 15),
         quantity=Decimal("100"),
         price=Decimal("72"),
-        cash_flow=Decimal("-7200"),
-        commission=Decimal("10"),
+        commission=Decimal("-10"),
     )
     transactions.append(repurchase)
 

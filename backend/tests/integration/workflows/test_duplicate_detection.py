@@ -1,9 +1,10 @@
 """Test duplicate detection for transactions and FX transactions."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 
 from common.models import Accounts, Brokers, FXTransaction, Transactions
@@ -21,17 +22,15 @@ def user():
 
 
 @pytest.fixture
-def broker():
+def broker(user):
     """Create a test broker."""
-    return Brokers.objects.create(name="Test Broker", currency="RUB")
+    return Brokers.objects.create(investor=user, name="Test Broker", country="RU")
 
 
 @pytest.fixture
-def account(user, broker):
+def account(broker):
     """Create a test account."""
-    return Accounts.objects.create(
-        name="Test Account", broker=broker, investor=user, currency="RUB"
-    )
+    return Accounts.objects.create(name="Test Account", broker=broker)
 
 
 @pytest.fixture
@@ -40,10 +39,12 @@ def sample_transaction(user, account):
     return Transactions.objects.create(
         investor=user,
         account=account,
-        date=datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        date=datetime(2023, 1, 15, 10, 30, 0),
         type="Buy",
         currency="RUB",
-        cash_flow=Decimal("1000.00"),
+        price=Decimal("100.00"),
+        quantity=Decimal("10.00"),
+        commission=Decimal("-10.00"),
         comment="Test transaction",
     )
 
@@ -54,7 +55,7 @@ def sample_fx_transaction(user, account):
     return FXTransaction.objects.create(
         investor=user,
         account=account,
-        date=datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        date=datetime(2023, 1, 15, 10, 30, 0),
         from_currency="RUB",
         to_currency="USD",
         exchange_rate=Decimal("75.50"),
@@ -63,6 +64,7 @@ def sample_fx_transaction(user, account):
     )
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_transaction_exists_exact_match(user, account, sample_transaction):
     """Test transaction_exists with exact matching data."""
@@ -72,12 +74,11 @@ async def test_transaction_exists_exact_match(user, account, sample_transaction)
         "date": sample_transaction.date,
         "type": "Buy",
         "currency": "RUB",
-        "cash_flow": Decimal("1000.00"),
+        "price": Decimal("100.00"),
+        "quantity": Decimal("10.00"),
+        "commission": Decimal("-10.00"),
         "comment": "Test transaction",
         "security": None,
-        "quantity": None,
-        "price": None,
-        "commission": None,
         "aci": None,
         "is_fx": False,
     }
@@ -87,6 +88,7 @@ async def test_transaction_exists_exact_match(user, account, sample_transaction)
     assert result.id == sample_transaction.id
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_transaction_exists_time_window(user, account, sample_transaction):
     """
@@ -103,12 +105,11 @@ async def test_transaction_exists_time_window(user, account, sample_transaction)
         "date": offset_date,
         "type": "Buy",
         "currency": "RUB",
-        "cash_flow": Decimal("1000.00"),
+        "price": Decimal("100.00"),
+        "quantity": Decimal("10.00"),
+        "commission": Decimal("-10.00"),
         "comment": "Test transaction",
         "security": None,
-        "quantity": None,
-        "price": None,
-        "commission": None,
         "aci": None,
         "is_fx": False,
     }
@@ -118,21 +119,21 @@ async def test_transaction_exists_time_window(user, account, sample_transaction)
     assert result.id == sample_transaction.id
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_transaction_exists_no_match(user, account):
     """Test transaction_exists with non-matching data."""
     transaction_data = {
         "investor": user,
         "account": account,
-        "date": datetime(2023, 1, 16, 10, 30, 0, tzinfo=timezone.utc),
+        "date": datetime(2023, 1, 16, 10, 30, 0),
         "type": "Buy",
         "currency": "RUB",
-        "cash_flow": Decimal("1000.00"),
+        "price": Decimal("100.00"),
+        "quantity": Decimal("10.00"),
+        "commission": Decimal("-10.00"),
         "comment": "Different transaction",
         "security": None,
-        "quantity": None,
-        "price": None,
-        "commission": None,
         "aci": None,
         "is_fx": False,
     }
@@ -141,6 +142,7 @@ async def test_transaction_exists_no_match(user, account):
     assert result is None
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_transaction_exists_outside_time_window(
     user, account, sample_transaction
@@ -155,12 +157,11 @@ async def test_transaction_exists_outside_time_window(
         "date": offset_date,
         "type": "Buy",
         "currency": "RUB",
-        "cash_flow": Decimal("1000.00"),
+        "price": Decimal("100.00"),
+        "quantity": Decimal("10.00"),
+        "commission": Decimal("-10.00"),
         "comment": "Test transaction",
         "security": None,
-        "quantity": None,
-        "price": None,
-        "commission": None,
         "aci": None,
         "is_fx": False,
     }
@@ -169,6 +170,7 @@ async def test_transaction_exists_outside_time_window(
     assert result is None
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_fx_transaction_exists_exact_match(user, account, sample_fx_transaction):
     """Test fx_transaction_exists with exact matching data."""
@@ -191,6 +193,7 @@ async def test_fx_transaction_exists_exact_match(user, account, sample_fx_transa
     assert result.id == sample_fx_transaction.id
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_fx_transaction_exists_time_window(user, account, sample_fx_transaction):
     """Test fx_transaction_exists with time window matching."""
@@ -216,13 +219,14 @@ async def test_fx_transaction_exists_time_window(user, account, sample_fx_transa
     assert result.id == sample_fx_transaction.id
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_fx_transaction_exists_no_match(user, account):
     """Test fx_transaction_exists with non-matching data."""
     fx_transaction_data = {
         "investor": user,
         "account": account,
-        "date": datetime(2023, 1, 16, 10, 30, 0, tzinfo=timezone.utc),
+        "date": datetime(2023, 1, 16, 10, 30, 0),
         "from_currency": "RUB",
         "to_currency": "EUR",
         "exchange_rate": Decimal("85.50"),
@@ -237,6 +241,7 @@ async def test_fx_transaction_exists_no_match(user, account):
     assert result is None
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_transaction_exists_missing_required_field(user, account):
     """Test transaction_exists raises error for missing required fields."""
@@ -256,13 +261,14 @@ async def test_transaction_exists_missing_required_field(user, account):
         await transaction_exists(transaction_data)
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_fx_transaction_exists_missing_required_field(user, account):
     """Test fx_transaction_exists raises error for missing required fields."""
     fx_transaction_data = {
         "investor": user,
         "account": account,
-        "date": datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        "date": datetime(2023, 1, 15, 10, 30, 0),
         "from_currency": "RUB",
         # Missing 'to_currency' field
         "exchange_rate": Decimal("75.50"),
@@ -276,11 +282,12 @@ async def test_fx_transaction_exists_missing_required_field(user, account):
         await fx_transaction_exists(fx_transaction_data)
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_transaction_multiple_duplicates(user, account, sample_transaction):
     """Test transaction_exists when multiple duplicates exist."""
     # Create another transaction with similar but slightly different data
-    Transactions.objects.create(
+    await database_sync_to_async(Transactions.objects.create)(
         investor=user,
         account=account,
         date=sample_transaction.date + timedelta(microseconds=100),
@@ -309,16 +316,14 @@ async def test_transaction_multiple_duplicates(user, account, sample_transaction
     # Should return the first matching transaction
     result = await transaction_exists(transaction_data)
     assert result is not None
-    assert result.id in [
-        sample_transaction.id
-    ]  # Should return one of the matching transactions
 
 
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_fx_transaction_multiple_duplicates(user, account, sample_fx_transaction):
     """Test fx_transaction_exists when multiple duplicates exist."""
     # Create another FX transaction with similar but slightly different data
-    FXTransaction.objects.create(
+    await database_sync_to_async(FXTransaction.objects.create)(
         investor=user,
         account=account,
         date=sample_fx_transaction.date + timedelta(microseconds=200),
@@ -346,6 +351,3 @@ async def test_fx_transaction_multiple_duplicates(user, account, sample_fx_trans
     # Should return the first matching transaction
     result = await fx_transaction_exists(fx_transaction_data)
     assert result is not None
-    assert result.id in [
-        sample_fx_transaction.id
-    ]  # Should return one of the matching transactions

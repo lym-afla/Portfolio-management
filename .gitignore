@@ -74,4 +74,8 @@ backend/db.sqlite3 (backup)
 db.sqlite3 (backup)
 backend/temp_files
 backend/secrets.json
+backend/.coverage
+backend/htmlcov/
+backend/coverage.xml
+
 portfolio_management/temp_files/

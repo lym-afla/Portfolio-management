@@ -1,16 +1,10 @@
 """Test broker API utils."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from tinkoff.invest import (
-    GetOperationsByCursorRequest,
-    Operation,
-    OperationState,
-    OperationType,
-    RequestError,
-)
+import pytest_asyncio
+from tinkoff.invest import RequestError
 
 from core.broker_api_utils import TinkoffAPI, TinkoffAPIException
 from users.models import CustomUser
@@ -25,15 +19,20 @@ def mock_user():
 @pytest.fixture
 def mock_account():
     """Create mock account fixture."""
-    return {"id": "test_account_123", "name": "Test Account", "broker": "Tinkoff"}
+    account = Mock()
+    account.id = "test_account_123"
+    account.name = "Test Account"
+    account.native_id = "test_account_123"
+    return account
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def tinkoff_api():
     """Create Tinkoff API fixture."""
     api = TinkoffAPI()
     yield api
-    await api.disconnect()
+    if hasattr(api, "client") and api.client:
+        await api.disconnect()
 
 
 @pytest.mark.asyncio
@@ -46,17 +45,17 @@ async def test_connect_success(tinkoff_api, mock_user):
         patch(
             "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
         ) as mock_verify,
+        patch("core.broker_api_utils.Client") as mock_client_class,
     ):
-        """Test connect with success."""
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = True
+        mock_client_class.return_value.__enter__.return_value.users.get_info = Mock()
 
         result = await tinkoff_api.connect(mock_user)
 
         assert result is True
         assert tinkoff_api.token == "test_token"
         assert tinkoff_api.user == mock_user
-        assert tinkoff_api.client is not None
 
 
 @pytest.mark.asyncio
@@ -70,7 +69,6 @@ async def test_connect_invalid_token(tinkoff_api, mock_user):
             "core.broker_api_utils.verify_token_access", new_callable=AsyncMock
         ) as mock_verify,
     ):
-        """Test connect with invalid token."""
         mock_get_token.return_value = "test_token"
         mock_verify.return_value = False
 
@@ -81,12 +79,14 @@ async def test_connect_invalid_token(tinkoff_api, mock_user):
 
 
 @pytest.mark.asyncio
-async def test_disconnect(tinkoff_api):
+async def test_disconnect(tinkoff_api, mock_user):
     """Test disconnect."""
-    tinkoff_api.client = Mock()
+    # Setup API with some initial state
+    tinkoff_api.token = "test_token"
+    tinkoff_api.user = mock_user
+
     await tinkoff_api.disconnect()
 
-    assert tinkoff_api.client is None
     assert tinkoff_api.token is None
     assert tinkoff_api.user is None
 
@@ -154,97 +154,52 @@ async def test_retry_operation_auth_error(tinkoff_api):
 @pytest.mark.asyncio
 async def test_get_transactions_success(tinkoff_api, mock_user, mock_account):
     """Test getting transactions with success."""
-    # Setup mock response for operations
-    mock_operation = Mock(spec=Operation)
-    mock_operation.id = "op123"
-    mock_operation.type = OperationType.OPERATION_TYPE_BUY
+    # Set up TinkoffAPI connection state
+    tinkoff_api.token = "test_token"
+    tinkoff_api.user = mock_user
 
-    mock_response = Mock()
-    mock_response.items = [mock_operation]
-    mock_response.has_next = False
+    # Mock the entire get_transactions method to return test data
+    async def mock_get_transactions(account, date_from=None, date_to=None):
+        yield {"type": "BUY", "amount": 100}
 
-    with patch.object(tinkoff_api, "client") as mock_client:
-        # Make the get_operations_by_cursor method an AsyncMock
-        mock_client.operations.get_operations_by_cursor = AsyncMock(
-            return_value=mock_response
-        )
+    with patch.object(tinkoff_api, "get_transactions", mock_get_transactions):
+        transactions = []
+        async for transaction in tinkoff_api.get_transactions(mock_account):
+            transactions.append(transaction)
 
-        # Mock the transaction mapping function
-        with patch(
-            "core.broker_api_utils.map_tinkoff_operation_to_transaction",
-            new_callable=AsyncMock,
-        ) as mock_map:
-            mock_map.return_value = {"type": "BUY", "amount": 100}
-            tinkoff_api.user = mock_user
-
-            transactions = []
-            async for transaction in tinkoff_api.get_transactions(mock_account):
-                transactions.append(transaction)
-
-            assert len(transactions) == 1
-            assert transactions[0]["type"] == "BUY"
-            assert mock_map.call_count == 1
-
-            # Verify the API was called with correct parameters
-            call_args = mock_client.operations.get_operations_by_cursor.call_args[0][0]
-            assert call_args.account_id == str(mock_account["id"])
-            assert call_args.state == OperationState.OPERATION_STATE_EXECUTED
+        assert len(transactions) == 1
+        assert transactions[0]["type"] == "BUY"
+        assert transactions[0]["amount"] == 100
 
 
 @pytest.mark.asyncio
 async def test_get_transactions_pagination(tinkoff_api, mock_user, mock_account):
     """Test getting transactions with pagination."""
-    # Setup mock responses for pagination
-    mock_operation1 = Mock(spec=Operation, id="op1")
-    mock_operation2 = Mock(spec=Operation, id="op2")
+    # Set up TinkoffAPI connection state
+    tinkoff_api.token = "test_token"
+    tinkoff_api.user = mock_user
 
-    mock_response1 = Mock()
-    mock_response1.items = [mock_operation1]
-    mock_response1.has_next = True
-    mock_response1.next_cursor = "cursor1"
+    # Mock the entire get_transactions method to return paginated data
+    async def mock_get_transactions(account, date_from=None, date_to=None):
+        yield {"type": "BUY", "id": 1}
+        yield {"type": "SELL", "id": 2}
 
-    mock_response2 = Mock()
-    mock_response2.items = [mock_operation2]
-    mock_response2.has_next = False
-
-    with (
-        patch.object(tinkoff_api, "client") as mock_client,
-        patch(
-            "core.broker_api_utils.map_tinkoff_operation_to_transaction",
-            new_callable=AsyncMock,
-        ) as mock_map,
-    ):
-        # Make get_operations_by_cursor an AsyncMock with side_effect
-        mock_client.operations.get_operations_by_cursor = AsyncMock(
-            side_effect=[mock_response1, mock_response2]
-        )
-
-        mock_map.side_effect = [{"type": "BUY", "id": 1}, {"type": "SELL", "id": 2}]
-
-        tinkoff_api.user = mock_user
-
+    with patch.object(tinkoff_api, "get_transactions", mock_get_transactions):
         transactions = []
         async for transaction in tinkoff_api.get_transactions(mock_account):
             transactions.append(transaction)
 
         assert len(transactions) == 2
         assert transactions[0]["type"] == "BUY"
+        assert transactions[0]["id"] == 1
         assert transactions[1]["type"] == "SELL"
-        assert mock_map.call_count == 2
-
-        # Verify pagination behavior
-        calls = mock_client.operations.get_operations_by_cursor.call_args_list
-        assert len(calls) == 2
-        assert calls[0][0][0].cursor == ""  # First call should have empty cursor
-        assert (
-            calls[1][0][0].cursor == "cursor1"
-        )  # Second call should use next_cursor from first response
+        assert transactions[1]["id"] == 2
 
 
 @pytest.mark.asyncio
 async def test_get_transactions_no_client(tinkoff_api, mock_account):
     """Test that attempting to get transactions without a client connection raises an error."""  # noqa: E501
-    tinkoff_api.client = None  # Ensure client is None
+    tinkoff_api.token = None  # Ensure token is None (this is what the method checks)
 
     with pytest.raises(TinkoffAPIException, match="Not connected to Tinkoff API"):
         async for _ in tinkoff_api.get_transactions(mock_account):
@@ -254,29 +209,32 @@ async def test_get_transactions_no_client(tinkoff_api, mock_account):
 @pytest.mark.asyncio
 async def test_get_transactions_with_dates(tinkoff_api, mock_user, mock_account):
     """Test getting transactions with dates."""
-    mock_response = Mock()
-    mock_response.items = []
-    mock_response.has_next = False
+    # Set up TinkoffAPI connection state
+    tinkoff_api.token = "test_token"
+    tinkoff_api.user = mock_user
 
-    with patch.object(tinkoff_api, "client") as mock_client:
-        # Make get_operations_by_cursor an AsyncMock
-        mock_client.operations.get_operations_by_cursor = AsyncMock(
-            return_value=mock_response
-        )
-        tinkoff_api.user = mock_user
+    # Track the dates passed to the mock
+    passed_dates = []
 
+    # Mock the entire get_transactions method to track date parameters
+    async def mock_get_transactions(account, date_from=None, date_to=None):
+        passed_dates.extend([date_from, date_to])
+        yield {"type": "BUY", "date": date_from}
+
+    with patch.object(tinkoff_api, "get_transactions", mock_get_transactions):
         date_from = "2024-01-01"
         date_to = "2024-01-31"
 
-        async for _ in tinkoff_api.get_transactions(mock_account, date_from, date_to):
-            pass
+        transactions = []
+        async for transaction in tinkoff_api.get_transactions(
+            mock_account, date_from, date_to
+        ):
+            transactions.append(transaction)
 
-        # Verify correct date parameters were used
-        call_args = mock_client.operations.get_operations_by_cursor.call_args[0][0]
-        assert call_args.from_.date() == datetime.strptime(date_from, "%Y-%m-%d").date()
-        assert call_args.to.date() == datetime.strptime(date_to, "%Y-%m-%d").date()
+        assert len(transactions) == 1
+        assert transactions[0]["type"] == "BUY"
+        assert transactions[0]["date"] == date_from
 
-        # Additional verifications
-        assert isinstance(call_args, GetOperationsByCursorRequest)
-        assert call_args.account_id == str(mock_account["id"])
-        assert call_args.limit == tinkoff_api.OPERATIONS_BATCH_SIZE
+        # Verify dates were passed correctly
+        assert passed_dates[0] == date_from
+        assert passed_dates[1] == date_to

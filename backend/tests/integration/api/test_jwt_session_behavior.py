@@ -5,6 +5,7 @@ import os
 import sys
 
 import django
+import pytest
 from django.test import Client
 
 from users.models import CustomUser
@@ -19,6 +20,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portfolio_management.settings")
 django.setup()
 
 
+@pytest.mark.django_db
 def test_jwt_authenticated_session():
     """Test session behavior when using JWT authentication like frontend."""
     print("=== Testing JWT Authenticated Session Behavior ===")
@@ -94,6 +96,7 @@ def test_jwt_authenticated_session():
     print(f"Test {'PASSED' if effective_date == '2021-04-04' else 'FAILED'}")
 
 
+@pytest.mark.django_db
 def test_unauthenticated_session_behavior():
     """Test session behavior with unauthenticated requests (original problem)."""
     print("\n=== Testing Unauthenticated Session Behavior ===")

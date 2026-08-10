@@ -21,9 +21,10 @@ class AssetsBuyInPriceTestCase(TestCase):
         )
 
         # Create a broker and broker account
-        self.broker = Brokers.objects.create(name="Test Broker", country="US")
+        self.broker = Brokers.objects.create(
+            investor=self.user, name="Test Broker", country="US"
+        )
         self.account = Accounts.objects.create(
-            investor=self.user,
             broker=self.broker,
             name="Test Account",
             native_id="test_123",
@@ -122,9 +123,10 @@ class AssetsBuyInPriceTestCase(TestCase):
 
     def test_calculate_buy_in_price_with_broker_filter(self):
         """Test with broker filter."""
-        another_broker = Brokers.objects.create(name="Another Broker", country="US")
+        another_broker = Brokers.objects.create(
+            investor=self.user, name="Another Broker", country="US"
+        )
         another_account = Accounts.objects.create(
-            investor=self.user,
             broker=another_broker,
             name="Another Account",
             native_id="another_123",

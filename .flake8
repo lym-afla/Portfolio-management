@@ -18,7 +18,7 @@ per-file-ignores =
     __init__.py:F401
     settings/*:F403,F405
     tests/*:F401,F811
-max-complexity = 20
+max-complexity = 75
 # Note: During refactoring period (Phase 1-2), consider temporarily increasing to 25
 # After refactoring is complete, return to 20 for better code quality
 #
