@@ -1,0 +1,998 @@
+"""Database views."""
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
+
+from django.core.cache import cache
+from django.db.models import Count, Q
+from django.db.models.functions import Lower
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from rest_framework import status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import NotFound
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
+from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
+from services.corporate_actions import (
+    CorporateActionError,
+    execute_merger,
+)
+from services.fx import FX_PAIRS, get_rate as fx_get_rate
+from services.positions import position
+from core.accounts_utils import get_accounts_table_api
+from core.brokers_utils import get_brokers_table_api
+from core.date_utils import get_start_date
+from core.pagination_utils import paginate_table
+from core.price_utils import get_prices_table_api
+from services.securities import get_securities_table_api, get_security_detail
+from services.asset_resolver import AssetConflict, resolve_or_create_asset
+from core.sorting_utils import sort_entries
+from core.user_utils import format_account_display
+
+from .serializers import (
+    AccountPerformanceSerializer,
+    AccountSerializer,
+    BrokerSerializer,
+    FXRateSerializer,
+    FXSerializer,
+    PriceImportSerializer,
+    PriceSerializer,
+    SecuritySerializer,
+    TransactionSerializer,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@api_view(["GET"])
+def api_get_asset_types(request):
+    """Get asset types."""
+    asset_types = [{"value": value, "text": text} for value, text in ASSET_TYPE_CHOICES]
+    return Response(asset_types)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_get_securities(request):
+    """Get securities."""
+    user = request.user
+    asset_types = request.GET.get("asset_types", "").split(",")
+    account_id = request.GET.get("account_id", None)
+
+    securities = Assets.objects.filter(investors=user)
+
+    if asset_types and asset_types != [""]:
+        securities = securities.filter(type__in=asset_types)
+
+    if account_id:
+        account = get_object_or_404(Accounts, id=account_id, broker__investor=user)
+        securities = securities.filter(transactions__account=account)
+
+    securities = securities.order_by(Lower("name")).values("id", "name", "type").distinct()
+    return Response(list(securities))
+
+
+@api_view(["GET"])
+def api_get_security_detail(request, security_id):
+    """Get security detail."""
+    account_id = request.GET.get("account_id")
+    account_id = int(account_id) if account_id else None
+    return Response(get_security_detail(request, security_id, account_id=account_id))
+
+
+@api_view(["GET"])
+def api_get_security_price_history(request, security_id):
+    """Get security price history."""
+    try:
+        security = Assets.objects.get(id=security_id)
+        period = request.GET.get("period", "1Y")
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
+        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d")
+
+        start_date = get_start_date(effective_current_date, period)
+
+        print(f"Start date for {security.name} is {start_date}")
+
+        prices = Prices.objects.filter(
+            security=security, date__lte=effective_current_date
+        ).order_by("date")
+
+        if start_date:
+            prices = prices.filter(date__gte=start_date)
+
+        price_history = [
+            {"date": price.date.strftime("%Y-%m-%d"), "price": float(price.price)}
+            for price in prices
+        ]
+        return JsonResponse(price_history, safe=False)
+    except Assets.DoesNotExist:
+        return JsonResponse({"error": "Security not found"}, status=404)
+
+
+@api_view(["GET"])
+def api_get_security_position_history(request, security_id):
+    """Get security position history."""
+    try:
+        security = Assets.objects.get(id=security_id, investors=request.user)
+        period = request.GET.get("period", "1Y")
+        account_id = request.GET.get("account_id")
+        account_ids = [int(account_id)] if account_id else None
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
+        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d")
+
+        start_date = get_start_date(effective_current_date, period)
+
+        transactions = Transactions.objects.filter(
+            security=security,
+            investor=request.user,
+            date__date__lte=effective_current_date,
+            quantity__isnull=False,
+        ).order_by("date")
+
+        if account_ids:
+            transactions = transactions.filter(account_id__in=account_ids)
+
+        if start_date:
+            transactions = transactions.filter(date__date__gt=start_date)
+            current_position = position(
+                security, start_date, request.user, account_ids=account_ids
+            )
+            position_history = [{"date": start_date, "position": current_position}]
+        else:
+            current_position = 0
+            position_history = []
+
+        logger.info(
+            f"Current position for {security.name} " f"as of {start_date} is {current_position}"
+        )
+        for transaction in transactions:
+            if transaction.type == "Buy":
+                current_position += transaction.quantity
+            elif transaction.type == "Sell":
+                current_position += transaction.quantity
+            position_history.append(
+                {
+                    "date": transaction.date.strftime("%Y-%m-%d"),
+                    "position": current_position,
+                }
+            )
+
+        return JsonResponse(position_history, safe=False)
+    except Assets.DoesNotExist:
+        return JsonResponse({"error": "Security not found"}, status=404)
+
+
+@api_view(["GET"])
+def api_get_security_transactions(request, security_id):
+    """Get security transactions."""
+    try:
+        # Use JWT middleware instead of session
+        effective_current_date_str = getattr(
+            request,
+            "effective_current_date",
+            datetime.now(timezone.utc).date().isoformat(),
+        )
+        effective_current_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d")
+        period = request.GET.get("period", "1Y")
+        start_date = get_start_date(effective_current_date, period)
+        account_id = request.GET.get("account_id")
+
+        transactions = Transactions.objects.filter(
+            security__id=security_id,
+            investor=request.user,
+            date__date__lte=effective_current_date,
+        ).order_by("date")
+
+        if account_id:
+            transactions = transactions.filter(account_id=int(account_id))
+
+        if start_date:
+            transactions = transactions.filter(date__gt=start_date)
+
+        # Pagination
+        page = int(request.GET.get("page", 1))
+        items_per_page = int(request.GET.get("itemsPerPage", 10))
+
+        paginated_transactions, pagination_data = paginate_table(transactions, page, items_per_page)
+        logger.info(f"Paginated transactions for {security_id}: {paginated_transactions}")
+
+        # Serialize the transactions
+        serializer = TransactionSerializer(
+            paginated_transactions, many=True, context={"digits": request.user.digits}
+        )
+        serialized_transactions = serializer.data
+
+        return Response(
+            {
+                "transactions": serialized_transactions,
+                "total_items": pagination_data["total_items"],
+                "current_page": pagination_data["current_page"],
+                "total_pages": pagination_data["total_pages"],
+            }
+        )
+    except Assets.DoesNotExist:
+        return Response({"error": "Security not found"}, status=404)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_get_prices_table(request):
+    """Get prices table."""
+    return Response(get_prices_table_api(request))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_get_securities_table(request):
+    """Get securities table."""
+    return Response(get_securities_table_api(request))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_security_form_structure(request):
+    """Get security form structure, generated from SecuritySerializer fields.
+
+    The ``type`` strings map to the widget-style names the frontend
+    (SecurityFormDialog.vue) switches on: ``textinput``, ``numberinput``,
+    ``dateinput``, ``checkbox``, ``select``, ``textarea``, ``url``.
+    """
+    # DRF field class -> widget-style name expected by the frontend
+    field_type_map = {
+        "CharField": "textinput",
+        "DecimalField": "numberinput",
+        "IntegerField": "numberinput",
+        "FloatField": "numberinput",
+        "BooleanField": "checkbox",
+        "ChoiceField": "select",
+        "MultipleChoiceField": "selectmultiple",
+        "DateField": "dateinput",
+        "DateTimeField": "dateinput",
+        "URLField": "url",
+    }
+    serializer = SecuritySerializer()
+    structure = {"fields": []}
+
+    for field_name, field in serializer.fields.items():
+        drf_class_name = field.__class__.__name__
+        field_data = {
+            "name": field_name,
+            "label": field.label or field_name,
+            "type": field_type_map.get(drf_class_name, "textinput"),
+            "required": field.required,
+            "choices": None,
+            "initial": field.initial,
+            "help_text": getattr(field, "help_text", ""),
+        }
+
+        if hasattr(field, "choices"):
+            choices_iter = (
+                field.choices.items()
+                if hasattr(field.choices, "items")
+                else field.choices
+            )
+            field_data["choices"] = [
+                {"value": value, "text": text} for value, text in choices_iter
+            ]
+
+        if field_name == "type":
+            field_data["choices"] = [
+                {"value": choice[0], "text": choice[0]}
+                for choice in Assets._meta.get_field("type").choices
+                if choice[0]
+            ]
+
+        if field_name == "data_source":
+            field_data["choices"] = [{"value": "", "text": "None"}] + [
+                {"value": choice[0], "text": choice[1]} for choice in DATA_SOURCE_CHOICES
+            ]
+
+        structure["fields"].append(field_data)
+
+    return Response(structure)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_create_security(request):
+    """Create security via resolve_or_create_asset (interactive mode).
+
+    The serializer validates input; the helper owns the lookup→link→create
+    flow so the view can read the full ResolveResult (created/linked) for the
+    response without a serializer side-channel.
+    """
+    serializer = SecuritySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # `confirm` is a write-only serializer field; pull it from validated_data
+    # before constructing submitted_fields so it isn't treated as an Asset column.
+    confirm = serializer.validated_data.get("confirm", False) is True
+    submitted_fields = {
+        k: v for k, v in serializer.validated_data.items() if k != "confirm"
+    }
+    try:
+        result = resolve_or_create_asset(
+            user=request.user,
+            isin=submitted_fields["ISIN"],
+            currency=submitted_fields["currency"],
+            submitted_fields=submitted_fields,
+            mode="interactive",
+            confirm=confirm,
+        )
+    except AssetConflict as e:
+        return Response(
+            {
+                "success": False,
+                "conflict": True,
+                "existing_asset": {
+                    "id": e.asset.id,
+                    "name": e.asset.name,
+                    "ISIN": e.asset.ISIN,
+                    "currency": e.asset.currency,
+                },
+                "field_diff": e.field_diff,
+                "fillable": e.fillable,
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Security created successfully",
+            "id": result.asset.id,
+            "name": result.asset.name,
+            "created": result.created,
+            "linked": result.linked,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_get_security_details_for_editing(request, security_id):
+    """Get security details for editing."""
+    security = get_object_or_404(Assets, id=security_id, investors=request.user)
+
+    result = {
+        "id": security.id,
+        "name": security.name,
+        "ISIN": security.ISIN,
+        "type": security.type,
+        "currency": security.currency,
+        "exposure": security.exposure,
+        "restricted": security.restricted,
+        "data_source": security.data_source,
+        "yahoo_symbol": security.yahoo_symbol,
+        "update_link": security.update_link,
+        "tbank_instrument_uid": security.tbank_instrument_uid,
+        "comment": security.comment,
+        "ticker": security.ticker,
+    }
+
+    # Add bond metadata if this is a bond
+    if security.type == "Bond":
+        try:
+            bond_meta = security.bondmetadata_metadata
+            result.update(
+                {
+                    "initial_notional": (
+                        str(bond_meta.initial_notional) if bond_meta.initial_notional else None
+                    ),
+                    "nominal_currency": bond_meta.nominal_currency,
+                    "issue_date": (
+                        bond_meta.issue_date.isoformat() if bond_meta.issue_date else None
+                    ),
+                    "maturity_date": (
+                        bond_meta.maturity_date.isoformat() if bond_meta.maturity_date else None
+                    ),
+                    "coupon_rate": (str(bond_meta.coupon_rate) if bond_meta.coupon_rate else None),
+                    "coupon_frequency": bond_meta.coupon_frequency,
+                    "is_amortizing": bond_meta.is_amortizing,
+                    "bond_type": bond_meta.bond_type,
+                    "credit_rating": bond_meta.credit_rating,
+                }
+            )
+        except Exception:
+            # No bond metadata exists yet
+            pass
+
+    return Response(result)
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def api_update_security(request, security_id):
+    """Update security via SecuritySerializer."""
+    security = get_object_or_404(Assets, id=security_id, investors=request.user)
+    serializer = SecuritySerializer(security, data=request.data, partial=True)
+    if serializer.is_valid():
+        security = serializer.save(user=request.user)
+        logger.debug(f"Security updated. {security}")
+        return Response(
+            {
+                "success": True,
+                "message": "Security updated successfully",
+                "id": security.id,
+                "name": security.name,
+            }
+        )
+    return Response(
+        {"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def api_delete_security(request, security_id):
+    """Delete security."""
+    try:
+        security = Assets.objects.get(id=security_id, investors=request.user)
+    except Assets.DoesNotExist:
+        return Response({"error": "Security not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    security.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_add_price(request):
+    """Add price."""
+    serializer = PriceSerializer(data=request.data, investor=request.user)
+    if serializer.is_valid():
+        price = serializer.save()
+        return Response(
+            {"success": True, "message": "Price added successfully", "id": price.id},
+            status=status.HTTP_201_CREATED,
+        )
+    return Response(
+        {"success": False, "errors": serializer.errors},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def api_delete_price(request, price_id):
+    """Delete price."""
+    try:
+        price = Prices.objects.get(id=price_id)
+    except Prices.DoesNotExist:
+        return Response({"message": "Price not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        price.delete()
+        return Response({"message": "Price deleted successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def api_get_price_details(request, price_id):
+    """Get price details."""
+    price = get_object_or_404(Prices, id=price_id, security__investors=request.user)
+    """Get price details."""
+    return Response(
+        {
+            "id": price.id,
+            "date": price.date.isoformat(),
+            "security": price.security.id,
+            "price": str(price.price),  # Convert Decimal to string to preserve precision
+        }
+    )
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def api_update_price(request, price_id):
+    """Update price."""
+    price = get_object_or_404(Prices, id=price_id, security__investors=request.user)
+    """Update price."""
+    serializer = PriceSerializer(instance=price, data=request.data, investor=request.user)
+    if serializer.is_valid():
+        """Update price."""
+        updated_price = serializer.save()
+        return Response(
+            {
+                "id": updated_price.id,
+                "date": updated_price.date.isoformat(),
+                "security__name": updated_price.security.name,
+                "security__type": updated_price.security.type,
+                "security__currency": updated_price.security.currency,
+                "price": str(updated_price.price),
+            }
+        )
+    return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PriceImportView(APIView):
+    """Price import view."""
+
+    def get(self, request):
+        """Get price import."""
+        user = request.user
+        securities = Assets.objects.filter(investors=user)
+        accounts = Accounts.objects.filter(broker__investor=user).select_related("broker")
+
+        serializer = PriceImportSerializer()
+        frequency_choices = dict(serializer.fields["frequency"].choices)
+
+        return Response(
+            {
+                "securities": [{"id": s.id, "name": s.name} for s in securities],
+                "accounts": [{"id": a.id, "name": format_account_display(a)} for a in accounts],
+                "frequency_choices": [
+                    {"value": k, "text": v} for k, v in frequency_choices.items()
+                ],
+            }
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def api_create_merger(request):
+    """Create a merger/reorganization between two securities.
+
+    A merger is a corporate action applied to the security itself, so it is
+    executed against every account where the investor currently holds the old
+    security. One MergerRecord is created for the event, and per-account
+    MERGER_OUT (and, if applicable, MERGER_IN) transactions are created.
+
+    Request body:
+        old_security_id (int): ID of the old security being merged out.
+        new_security_id (int, optional): ID of the new security. Omit for all-cash mergers.
+        merger_date (str): Date of the merger (YYYY-MM-DD).
+        conversion_ratio (str, optional): New shares per old share. Required for all-stock/hybrid.
+        cash_per_share (str, optional): Cash per old share. Required for all-cash/hybrid.
+
+    The business logic lives in :func:`services.corporate_actions.execute_merger`;
+    this view is a thin orchestrator that parses the request and shapes the
+    response.
+    """
+    try:
+        result = execute_merger(
+            user=request.user,
+            old_security_id=request.data.get("old_security_id"),
+            new_security_id=request.data.get("new_security_id"),
+            merger_date=request.data.get("merger_date"),
+            conversion_ratio=request.data.get("conversion_ratio"),
+            cash_per_share=request.data.get("cash_per_share", "0"),
+        )
+    except CorporateActionError as exc:
+        return Response({"error": exc.message}, status=exc.status_code)
+    return Response(result, status=status.HTTP_201_CREATED)
+
+
+class AccountViewSet(viewsets.ModelViewSet):
+    """Account view set."""
+
+    serializer_class = AccountSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Get queryset."""
+        return Accounts.objects.filter(broker__investor=self.request.user).order_by("name")
+
+    def perform_create(self, serializer):
+        """Perform create."""
+        serializer.save()
+
+    def list(self, request, *args, **kwargs):
+        """List accounts."""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["POST"])
+    def list_accounts(self, request, *args, **kwargs):
+        """List accounts."""
+        return Response(get_accounts_table_api(request))
+
+    @action(detail=False, methods=["GET"])
+    def form_structure(self, request):
+        """Get form structure."""
+        return Response(
+            {
+                "fields": [
+                    {
+                        "name": "name",
+                        "label": "Name",
+                        "type": "textinput",
+                        "required": True,
+                    },
+                    {
+                        "name": "broker",
+                        "label": "Broker",
+                        "type": "select",
+                        "required": True,
+                        "choices": [
+                            {"value": broker.id, "text": broker.name}
+                            for broker in Brokers.objects.filter(investor=request.user)
+                        ],
+                    },
+                    {
+                        "name": "restricted",
+                        "label": "Restricted",
+                        "type": "checkbox",
+                        "required": False,
+                    },
+                    {
+                        "name": "comment",
+                        "label": "Comment",
+                        "type": "textarea",
+                        "required": False,
+                    },
+                ]
+            }
+        )
+
+
+class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
+    """Update account performance view set."""
+
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """List account performance."""
+        serializer = AccountPerformanceSerializer(investor=request.user)
+        form_data = serializer.get_form_data()
+        return Response(form_data)
+
+    @action(detail=False, methods=["post"])
+    def validate(self, request):
+        """Validate the input data."""
+        serializer = AccountPerformanceSerializer(data=request.data, investor=request.user)
+        if not serializer.is_valid():
+            return Response(
+                {"valid": False, "type": "validation", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({"valid": True})
+
+    @action(detail=False, methods=["post"])
+    def start(self, request):
+        """Start update process."""
+        serializer = AccountPerformanceSerializer(data=request.data, investor=request.user)
+        if not serializer.is_valid():
+            return Response(
+                {"valid": False, "type": "validation", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # Use validated_data which includes parsed selection data
+            update_data = {"user_id": request.user.id, **serializer.validated_data}
+
+            session_id = str(uuid.uuid4())
+            cache.set(f"account_performance_update_{session_id}", update_data, timeout=3600)
+
+            return Response({"session_id": session_id, "message": "Update process started"})
+
+        except Exception as e:
+            return Response(
+                {"valid": False, "type": "error", "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+def format_fx_rate(value, digits: int = 4):
+    """Quantize an FX rate to ``digits`` decimal places (ROUND_HALF_UP).
+
+    Returns ``None`` when the input is missing. Unlike
+    :func:`core.formatting_utils.format_value`, this deliberately produces a
+    plain numeric string with no currency symbol or thousands separator, so the
+    FX table's client-side pivot (keyed on ``"from_currency/to_currency"``)
+    keeps working.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return str(Decimal(str(value)).quantize(Decimal(f"1e-{digits}"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return value
+
+
+class FXViewSet(viewsets.ModelViewSet):
+    """FX view set."""
+
+    serializer_class = FXSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = "id"  # Use 'id' instead of 'date' for lookups
+
+    def get_queryset(self):
+        """Get queryset."""
+        return FX.objects.filter(investors=self.request.user).order_by("-date")
+
+    def perform_create(self, serializer):
+        """Perform create."""
+        instance = serializer.save()
+        instance.investors.add(self.request.user)
+
+    def get_object(self):
+        """Get FX object."""
+        fx_id = self.kwargs.get("id")
+        try:
+            return FX.objects.filter(investors=self.request.user).get(id=fx_id)
+        except FX.DoesNotExist:
+            raise NotFound(f"FX rate with id {fx_id} not found.")
+
+    @action(detail=False, methods=["POST"])
+    def get_rate(self, request):
+        """Get FX rate."""
+        serializer = FXRateSerializer(data=request.data)
+        if serializer.is_valid():
+            source = serializer.validated_data["source"]
+            target = serializer.validated_data["target"]
+            date = serializer.validated_data["date"]
+
+            try:
+                rate = fx_get_rate(source, target, date, self.request.user)
+                return Response(rate)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["POST"])
+    def list_fx(self, request):
+        """List FX.
+
+        The grid shows one row per date with one column per currency pair, so
+        we paginate by **distinct date**, not by individual pair records.
+        Paginating per-record would split a date's pairs across pages (a date
+        appears as a half-empty row at the bottom of one page and again at the
+        top of the next). Null/empty currency pairs (legacy wide->long shells)
+        are excluded everywhere.
+        """
+        # Extract parameters from request data
+        start_date = request.data.get("startDate")
+        end_date = request.data.get("endDate")
+        page = int(request.data.get("page", 1))
+        items_per_page = int(request.data.get("itemsPerPage", 10))
+        sort_by = request.data.get("sortBy")
+        search = request.data.get("search", "")
+
+        # Filter queryset, excluding legacy null/empty currency-pair shell rows.
+        queryset = self.get_queryset().exclude(
+            Q(from_currency__isnull=True)
+            | Q(from_currency="")
+            | Q(to_currency__isnull=True)
+            | Q(to_currency="")
+        )
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+
+        # Apply search (before deriving distinct dates, so missing dates are
+        # excluded from the page set too).
+        if search:
+            queryset = queryset.filter(
+                Q(date__icontains=search)
+                | Q(from_currency__icontains=search)
+                | Q(to_currency__icontains=search)
+                | Q(rate__icontains=search)
+            )
+
+        # Distinct dates in the filtered set, newest first. Sorting by a pair
+        # field isn't meaningful for a date grid, so we always order by date.
+        date_order = "-date"
+        if sort_by and sort_by.get("key", "").startswith("date"):
+            date_order = "date" if sort_by.get("order") == "asc" else "-date"
+        all_dates = list(
+            queryset.values_list("date", flat=True)
+            .distinct()
+            .order_by(date_order)
+        )
+
+        # Paginate the date list, then fetch all pair rows for this page's
+        # dates so a date's pairs always travel together.
+        total_dates = len(all_dates)
+        total_pages = max(1, (total_dates + items_per_page - 1) // items_per_page)
+        page = min(max(page, 1), total_pages)
+        start = (page - 1) * items_per_page
+        page_dates = all_dates[start : start + items_per_page]
+
+        fx_data = list(
+            queryset.filter(date__in=page_dates).values(
+                "id", "date", "from_currency", "to_currency", "rate"
+            )
+        )
+        # Stable secondary sort within the page: date (matching date_order),
+        # then pair label, so the frontend pivot preserves a deterministic
+        # column order regardless of DB row order.
+        fx_data = sort_entries(fx_data, {"key": "date", "order": "asc" if date_order == "date" else "desc"})
+
+        # Format the data. NB: we intentionally do NOT use ``format_table_data``
+        # here. That helper runs ``format_value`` which, for any key containing
+        # "currency", converts the stored value into a Babel currency *symbol*
+        # (e.g. ``USD`` -> ``$``, ``EUR`` -> ``€``). The FX page pivots these
+        # long-format rows client-side keyed on ``"from_currency/to_currency"``
+        # (e.g. ``"USD/EUR"``), so the frontend must receive the raw ISO codes.
+        # We therefore only stringify the date and quantize the rate.
+        formatted_fx_data = [
+            {
+                "id": row["id"],
+                "date": row["date"].isoformat() if row["date"] else None,
+                "from_currency": row["from_currency"],
+                "to_currency": row["to_currency"],
+                "rate": format_fx_rate(row["rate"]),
+            }
+            for row in fx_data
+        ]
+
+        response_data = {
+            "results": formatted_fx_data,
+            # `count` is the number of *date rows* the grid renders, so the
+            # paginator / "showing X of Y entries" footer matches what the
+            # user sees.
+            "count": total_dates,
+            "current_page": page,
+            "total_pages": total_pages,
+        }
+
+        return Response(response_data)
+
+    @action(detail=False, methods=["GET"])
+    def form_structure(self, request):
+        """Get form structure."""
+        return Response(
+            {
+                "fields": [
+                    {
+                        "name": "date",
+                        "label": "Date",
+                        "type": "datepicker",
+                        "required": True,
+                    },
+                    {
+                        "name": "from_currency",
+                        "label": "From currency",
+                        "type": "text",
+                        "required": True,
+                    },
+                    {
+                        "name": "to_currency",
+                        "label": "To currency",
+                        "type": "text",
+                        "required": True,
+                    },
+                    {
+                        "name": "rate",
+                        "label": "Rate (from per 1 to)",
+                        "type": "number",
+                        "required": True,
+                    },
+                ]
+            }
+        )
+
+    @action(detail=False, methods=["GET"])
+    def import_stats(self, request):
+        """Get import stats.
+
+        In the long-format schema each FX row is a single (date, currency pair),
+        so "missing" means a transaction date with no FX row at all and
+        "incomplete" means a date that has some FX rows but is missing one or
+        more of the expected pairs.
+        """
+        user = request.user
+        transaction_dates = Transactions.objects.filter(investor=user).values("date").distinct()
+        total_dates = transaction_dates.count()
+
+        fx_instances = FX.objects.filter(investors=user, date__in=transaction_dates.values("date"))
+
+        # Distinct transaction dates that have at least one FX row linked to the user.
+        dates_with_fx = set(
+            fx_instances.values_list("date", flat=True).distinct()
+        )
+        all_transaction_dates = {d["date"] for d in transaction_dates}
+        missing_instances = len(all_transaction_dates - dates_with_fx)
+
+        # A date is "incomplete" if it has FX rows but covers fewer distinct
+        # currency pairs than the expected set.
+        expected_pair_count = len(FX_PAIRS)
+        pair_counts = fx_instances.values("date").annotate(
+            pair_count=Count("id")
+        )
+        incomplete_instances = sum(
+            1 for entry in pair_counts if entry["pair_count"] < expected_pair_count
+        )
+
+        stats = {
+            "total_dates": total_dates,
+            "missing_instances": missing_instances,
+            "incomplete_instances": incomplete_instances,
+        }
+        logger.info(f"FX import stats for user {user.id}: {stats}")
+        return Response(stats)
+
+    @action(detail=False, methods=["POST"])
+    def cancel_import(self, request):
+        """Cancel import."""
+        user = request.user
+        import_id = f"fx_import_{user.id}"
+        cache.delete(import_id)  # This will cause the import to stop
+        return JsonResponse({"status": "Import cancelled"})
+
+
+class BrokerViewSet(viewsets.ModelViewSet):
+    """Broker view set."""
+
+    serializer_class = BrokerSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Get queryset."""
+        queryset = Brokers.objects.filter(investor=self.request.user)
+
+        # Add filter for brokers with active tokens if requested
+        if self.request.query_params.get("with_active_tokens"):
+            queryset = queryset.filter(
+                Q(tinkoff_tokens__is_active=True)
+                | Q(bybit_tokens__is_active=True)
+                | Q(okx_tokens__is_active=True)
+            ).distinct()
+
+        return queryset.order_by("name")
+
+    def perform_create(self, serializer):
+        """Perform create."""
+        serializer.save(investor=self.request.user)
+
+    @action(detail=False, methods=["POST"])
+    def list_brokers(self, request):
+        """List brokers."""
+        return Response(get_brokers_table_api(request))
+
+    @action(detail=False, methods=["GET"])
+    def form_structure(self, request):
+        """Get form structure."""
+        return Response(
+            {
+                "fields": [
+                    {
+                        "name": "name",
+                        "label": "Name",
+                        "type": "textinput",
+                        "required": True,
+                    },
+                    {
+                        "name": "country",
+                        "label": "Country",
+                        "type": "textinput",
+                        "required": True,
+                    },
+                    {
+                        "name": "comment",
+                        "label": "Comment",
+                        "type": "textarea",
+                        "required": False,
+                    },
+                ]
+            }
+        )

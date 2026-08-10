@@ -1,0 +1,386 @@
+{
+  "description": "Sample transaction data for testing portfolio management functionality",
+  "version": "1.0",
+  "created": "2023-10-18",
+  "scenarios": {
+    "basic_portfolio": {
+      "description": "A simple portfolio with buy/sell transactions",
+      "transactions": [
+        {
+          "id": 1,
+          "type": "Buy",
+          "date": "2023-01-15",
+          "security": "AAPL",
+          "quantity": 100,
+          "price": 150.00,
+          "currency": "USD",
+          "cash_flow": -15000.00,
+          "commission": 5.00,
+          "comment": "Initial Apple stock purchase"
+        },
+        {
+          "id": 2,
+          "type": "Buy",
+          "date": "2023-02-20",
+          "security": "MSFT",
+          "quantity": 50,
+          "price": 250.00,
+          "currency": "USD",
+          "cash_flow": -12500.00,
+          "commission": 3.00,
+          "comment": "Microsoft stock purchase"
+        },
+        {
+          "id": 3,
+          "type": "Sell",
+          "date": "2023-06-10",
+          "security": "AAPL",
+          "quantity": -30,
+          "price": 170.00,
+          "currency": "USD",
+          "cash_flow": 5100.00,
+          "commission": 3.00,
+          "comment": "Partial Apple stock sale"
+        },
+        {
+          "id": 4,
+          "type": "Dividend",
+          "date": "2023-03-15",
+          "security": "AAPL",
+          "quantity": null,
+          "price": null,
+          "currency": "USD",
+          "cash_flow": 96.00,
+          "commission": null,
+          "comment": "Apple dividend payment"
+        },
+        {
+          "id": 5,
+          "type": "Dividend",
+          "date": "2023-03-10",
+          "security": "MSFT",
+          "quantity": null,
+          "price": null,
+          "currency": "USD",
+          "cash_flow": 68.00,
+          "commission": null,
+          "comment": "Microsoft dividend payment"
+        }
+      ]
+    },
+    "multi_currency_portfolio": {
+      "description": "Portfolio with transactions in multiple currencies",
+      "transactions": [
+        {
+          "id": 101,
+          "type": "Buy",
+          "date": "2023-01-15",
+          "security": "US_STOCK",
+          "quantity": 100,
+          "price": 100.00,
+          "currency": "USD",
+          "cash_flow": -10000.00,
+          "commission": 5.00,
+          "comment": "US stock purchase"
+        },
+        {
+          "id": 102,
+          "type": "Buy",
+          "date": "2023-02-15",
+          "security": "EU_STOCK",
+          "quantity": 200,
+          "price": 80.00,
+          "currency": "EUR",
+          "cash_flow": -16000.00,
+          "commission": 8.00,
+          "comment": "European stock purchase"
+        },
+        {
+          "id": 103,
+          "type": "Buy",
+          "date": "2023-03-15",
+          "security": "UK_STOCK",
+          "quantity": 150,
+          "price": 70.00,
+          "currency": "GBP",
+          "cash_flow": -10500.00,
+          "commission": 7.00,
+          "comment": "UK stock purchase"
+        },
+        {
+          "id": 104,
+          "type": "Dividend",
+          "date": "2023-03-31",
+          "security": "US_STOCK",
+          "quantity": null,
+          "price": null,
+          "currency": "USD",
+          "cash_flow": 200.00,
+          "commission": null,
+          "comment": "US stock dividend"
+        },
+        {
+          "id": 105,
+          "type": "Dividend",
+          "date": "2023-04-30",
+          "security": "EU_STOCK",
+          "quantity": null,
+          "price": null,
+          "currency": "EUR",
+          "cash_flow": 320.00,
+          "commission": null,
+          "comment": "EU stock dividend"
+        }
+      ]
+    },
+    "bond_portfolio": {
+      "description": "Portfolio focused on fixed income securities",
+      "transactions": [
+        {
+          "id": 201,
+          "type": "Buy",
+          "date": "2023-01-10",
+          "security": "US_TREASURY_2025",
+          "quantity": 10000,
+          "price": 98.50,
+          "currency": "USD",
+          "cash_flow": -9850.00,
+          "commission": 10.00,
+          "comment": "US Treasury bond purchase"
+        },
+        {
+          "id": 202,
+          "type": "Buy",
+          "date": "2023-01-20",
+          "security": "CORP_BOND_2026",
+          "quantity": 5000,
+          "price": 102.25,
+          "currency": "USD",
+          "cash_flow": -5112.50,
+          "commission": 15.00,
+          "comment": "Corporate bond purchase"
+        },
+        {
+          "id": 203,
+          "type": "Interest",
+          "date": "2023-07-10",
+          "security": "US_TREASURY_2025",
+          "quantity": null,
+          "price": null,
+          "currency": "USD",
+          "cash_flow": 250.00,
+          "commission": null,
+          "comment": "Semi-annual interest payment"
+        },
+        {
+          "id": 204,
+          "type": "Interest",
+          "date": "2023-08-20",
+          "security": "CORP_BOND_2026",
+          "quantity": null,
+          "price": null,
+          "currency": "USD",
+          "cash_flow": 187.50,
+          "commission": null,
+          "comment": "Semi-annual interest payment"
+        }
+      ]
+    },
+    "tax_loss_harvesting": {
+      "description": "Tax loss harvesting scenario with wash sale rule",
+      "transactions": [
+        {
+          "id": 301,
+          "type": "Buy",
+          "date": "2023-01-15",
+          "security": "LOSING_STOCK",
+          "quantity": 100,
+          "price": 100.00,
+          "currency": "USD",
+          "cash_flow": -10000.00,
+          "commission": 10.00,
+          "comment": "Initial purchase at high price"
+        },
+        {
+          "id": 302,
+          "type": "Sell",
+          "date": "2023-06-15",
+          "security": "LOSING_STOCK",
+          "quantity": -100,
+          "price": 70.00,
+          "currency": "USD",
+          "cash_flow": 6990.00,
+          "commission": 10.00,
+          "comment": "Sell at loss for tax harvesting"
+        },
+        {
+          "id": 303,
+          "type": "Buy",
+          "date": "2023-07-15",
+          "security": "LOSING_STOCK",
+          "quantity": 100,
+          "price": 72.00,
+          "currency": "USD",
+          "cash_flow": -7200.00,
+          "commission": 10.00,
+          "comment": "Repurchase after wash sale period"
+        }
+      ]
+    },
+    "dollar_cost_averaging": {
+      "description": "Dollar cost averaging strategy over 12 months",
+      "transactions": [
+        {
+          "id": 401,
+          "type": "Buy",
+          "date": "2023-01-15",
+          "security": "INDEX_FUND",
+          "quantity": 20.00,
+          "price": 50.00,
+          "currency": "USD",
+          "cash_flow": -1000.00,
+          "commission": 5.00,
+          "comment": "Monthly investment #1"
+        },
+        {
+          "id": 402,
+          "type": "Buy",
+          "date": "2023-02-15",
+          "security": "INDEX_FUND",
+          "quantity": 18.87,
+          "price": 53.00,
+          "currency": "USD",
+          "cash_flow": -1000.00,
+          "commission": 5.00,
+          "comment": "Monthly investment #2"
+        },
+        {
+          "id": 403,
+          "type": "Buy",
+          "date": "2023-03-15",
+          "security": "INDEX_FUND",
+          "quantity": 22.22,
+          "price": 45.00,
+          "currency": "USD",
+          "cash_flow": -1000.00,
+          "commission": 5.00,
+          "comment": "Monthly investment #3"
+        },
+        {
+          "id": 404,
+          "type": "Buy",
+          "date": "2023-04-15",
+          "security": "INDEX_FUND",
+          "quantity": 19.61,
+          "price": 51.00,
+          "currency": "USD",
+          "cash_flow": -1000.00,
+          "commission": 5.00,
+          "comment": "Monthly investment #4"
+        },
+        {
+          "id": 405,
+          "type": "Buy",
+          "date": "2023-05-15",
+          "security": "INDEX_FUND",
+          "quantity": 17.86,
+          "price": 56.00,
+          "currency": "USD",
+          "cash_flow": -1000.00,
+          "commission": 5.00,
+          "comment": "Monthly investment #5"
+        },
+        {
+          "id": 406,
+          "type": "Buy",
+          "date": "2023-06-15",
+          "security": "INDEX_FUND",
+          "quantity": 16.67,
+          "price": 60.00,
+          "currency": "USD",
+          "cash_flow": -1000.00,
+          "commission": 5.00,
+          "comment": "Monthly investment #6"
+        }
+      ]
+    },
+    "corporate_actions": {
+      "description": "Corporate action scenarios including splits and mergers",
+      "transactions": [
+        {
+          "id": 501,
+          "type": "Buy",
+          "date": "2023-01-15",
+          "security": "STOCK_BEFORE_SPLIT",
+          "quantity": 100,
+          "price": 200.00,
+          "currency": "USD",
+          "cash_flow": -20000.00,
+          "commission": 10.00,
+          "comment": "Pre-split purchase"
+        },
+        {
+          "id": 502,
+          "type": "Corporate Action",
+          "date": "2023-02-01",
+          "security": "STOCK_BEFORE_SPLIT",
+          "quantity": 100,
+          "price": 100.00,
+          "currency": "USD",
+          "cash_flow": 0.00,
+          "commission": null,
+          "comment": "2:1 stock split"
+        },
+        {
+          "id": 503,
+          "type": "Sell",
+          "date": "2023-03-15",
+          "security": "STOCK_BEFORE_SPLIT",
+          "quantity": -50,
+          "price": 110.00,
+          "currency": "USD",
+          "cash_flow": 5500.00,
+          "commission": 5.00,
+          "comment": "Post-split partial sale"
+        }
+      ]
+    }
+  },
+  "fx_transactions": {
+    "currency_conversions": [
+      {
+        "id": 1001,
+        "date": "2023-02-15",
+        "from_currency": "USD",
+        "to_currency": "EUR",
+        "from_amount": 10000.00,
+        "to_amount": 9200.00,
+        "exchange_rate": 0.92,
+        "commission": 20.00,
+        "comment": "Currency conversion for EU investment"
+      },
+      {
+        "id": 1002,
+        "date": "2023-03-15",
+        "from_currency": "EUR",
+        "to_currency": "USD",
+        "from_amount": 5000.00,
+        "to_amount": 5450.00,
+        "exchange_rate": 1.09,
+        "commission": 15.00,
+        "comment": "Convert EUR back to USD"
+      },
+      {
+        "id": 1003,
+        "date": "2023-04-15",
+        "from_currency": "USD",
+        "to_currency": "GBP",
+        "from_amount": 8000.00,
+        "to_amount": 6560.00,
+        "exchange_rate": 0.82,
+        "commission": 18.00,
+        "comment": "Currency conversion for UK investment"
+      }
+    ]
+  }
+}

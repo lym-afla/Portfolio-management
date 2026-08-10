@@ -1,0 +1,24 @@
+name: Performance Benchmarks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled until benchmark scripts are restored
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Explain disabled workflow
+        run: |
+          echo "Automatic performance benchmarks are disabled."
+          echo "The previous workflow referenced scripts that are not present in the repository:"
+          echo "- scripts/monitor_performance.py"
+          echo "- scripts/alert_performance_issues.py"
+          echo "- scripts/profile_memory_usage.py"
+          echo "- scripts/generate_performance_report.py"
+          echo "- scripts/check_performance_regressions.py"
+          echo "Restore benchmark scripts under the current repo layout before re-enabling this workflow."

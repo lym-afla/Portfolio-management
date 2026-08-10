@@ -1,0 +1,329 @@
+"""Utility functions for formatting data for display.
+
+This module provides functions to format currency, dates, percentages,
+and other data types for display in tables and API responses.
+"""
+
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Dict, List, Union
+
+from babel.numbers import get_currency_symbol
+from django.core.paginator import Page
+
+NOT_RELEVANT = "N/R"
+
+
+def format_table_data(
+    data: Union[List[Dict[str, Any]], Dict[str, Any], Page],
+    currency_target: str,
+    number_of_digits: int,
+) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Format table data based on the input type.
+
+    :param data: Input data to be formatted
+    :param currency_target: Target currency for formatting
+    :param number_of_digits: Number of digits for rounding
+    :return: Formatted data
+    """
+    if isinstance(data, list):
+        return [
+            {
+                k: format_value(
+                    v,
+                    k,
+                    currency_target,
+                    number_of_digits,
+                    position.get("instrument_type", None),
+                )
+                for k, v in position.items()
+            }
+            for position in data
+        ]
+    elif isinstance(data, dict):
+        return {
+            k: format_value(
+                v,
+                k,
+                currency_target,
+                number_of_digits,
+                data.get("instrument_type", None),
+            )
+            for k, v in data.items()
+        }
+    elif isinstance(data, Page):
+        return [
+            {
+                k: format_value(
+                    v,
+                    k,
+                    currency_target,
+                    number_of_digits,
+                    position.get("instrument_type", None),
+                )
+                for k, v in position.items()
+            }
+            for position in data.object_list
+        ]
+
+
+def format_value(
+    value: Any, key: str, currency: str, digits: int, instrument_type: str = None
+) -> Any:
+    """
+    Format a single value based on its key and type.
+
+    :param value: Value to be formatted
+    :param key: Key associated with the value
+    :param currency: Currency for formatting
+    :param digits: Number of digits for rounding
+    :param instrument_type: Type of instrument
+    :return: Formatted value
+    """
+    if value == NOT_RELEVANT:
+        return value
+    if isinstance(value, dict):
+        return {k: format_value(v, k, currency, digits) for k, v in value.items()}
+    if "currency" in key:
+        return currency_format(value=None, currency=value)
+    if "date" in key or key == "first_investment":
+        if isinstance(value, (date, datetime)):
+            return value.strftime("%d-%b-%y")
+        else:
+            return value
+    elif any(term in key for term in ["percentage", "share", "irr"]) or key in [
+        "total_return",
+        "total_return_percentage",
+    ]:
+        return format_percentage(value, digits=1)
+    elif key in ["current_position", "open_position", "quantity"]:
+        # Adaptive: respect the user's `digits` setting for |value| >= 1, and
+        # for small fractional values expand to the first significant digit so
+        # precision isn't lost (e.g. crypto 0.00011659 -> "0.0001" not "0").
+        return format_quantity_adaptive(value, digits)
+    elif key in ["id", "no_of_securities", "no_of_accounts"] or "id" in key:
+        return value
+    elif key == "exchange_rate":
+        return currency_format(value, currency=None, digits=4)
+    elif (
+        key in ["entry_price", "current_price", "buy_in_price", "current_price_pct"]
+        and instrument_type
+        and instrument_type.lower() == "bond"
+    ):
+        # Bond prices are stored as percentages (100 = 100%), format them as such
+        return format_bond_price(value, 2)
+    # Bond-specific formatting rules
+    elif key in ["coupon_frequency", "is_amortizing", "aci_days", "total_days"]:
+        # Coupon frequency is a number (times per year), not currency
+        return value if value is not None else None
+    elif key in ["coupon_rate", "ytm"]:
+        # Coupon rate as percentage
+        return f"{float(value):.2f}%" if value is not None else None
+    elif key == "aci_amount":
+        return currency_format(value, currency, digits=2)
+    elif key == "commission":
+        # Adaptive: a small fee (e.g. 0.0006803 TRUMP) keeps its first significant
+        # digit instead of rounding to "0.00" at digits=2.
+        return format_commission_adaptive(value, currency, digits)
+    elif isinstance(value, (Decimal, float, int)):
+        return currency_format(value, currency, digits)
+    else:
+        return value
+
+
+def currency_format(
+    value: Union[Decimal, float, int, None] = None,
+    currency: str = None,
+    digits: int = 2,
+) -> str:
+    """
+    Format value as currency or return currency symbol.
+
+    If only currency is provided, return the currency symbol.
+
+    :param value: Value to be formatted
+    :param currency: Currency code
+    :param digits: Number of digits for rounding
+    :return: Formatted currency string or symbol
+    """
+    if currency is None:
+        symbol = ""
+    else:
+        # Get the currency symbol using Babel first
+        symbol = get_currency_symbol(currency.upper(), locale="en_US")
+
+        # If the symbol is the same as the currency code, Babel did not
+        # recognize it (a crypto/stablecoin code like USDC, USDT, BTC, TRUMP).
+        # Use the code literally rather than the ALL_CURRENCY_CHOICES mapping
+        # (which misleadingly maps USDC->"$" and USDT->"₮"); the code itself is
+        # the clearest label for non-ISO currencies.
+        if symbol == currency.upper():
+            symbol = currency.upper()
+
+    # If no value is provided, return only the symbol
+    if value is None:
+        return symbol
+
+    try:
+        value = Decimal(value)
+        if value < 0:
+            return f"({symbol}{abs(value):,.{digits}f})"
+        elif value == 0:
+            return "–"
+        else:
+            return f"{symbol}{value:,.{digits}f}"
+    except Exception:
+        return symbol
+
+
+def format_quantity_adaptive(value: Any, digits: int = 2) -> str:
+    """Format a quantity with adaptive decimal places.
+
+    For |value| >= 1: fixed ``digits`` decimal places (the user's setting).
+    For |value| < 1: show the first significant digit, but never fewer decimal
+    places than ``digits``. If ``digits`` alone would round away all precision
+    (e.g. 0.00011659 at digits=2 -> "0.00"), expand to the first significant
+    digit instead ("0.0001"). Sub-1 values are also clamped so they never
+    round up across the unit boundary (0.99 -> "0.99", never "1").
+
+    Examples (digits=2): 12.94056 -> "12.94"; 0.6803 -> "0.68";
+    0.00011659 -> "0.0001"; 0.99 -> "0.99". At digits=0: 12.94056 -> "13";
+    0.6803 -> "0.7"; 0.99 -> "0.99".
+
+    :param value: Numeric value (Decimal/float/int) or numeric string.
+    :param digits: User's global digits setting (decimal places for |value|>=1).
+    :return: Formatted string. Returns "–" for None/zero/blank.
+    """
+    if value is None or value == "":
+        return "–"
+    try:
+        num = Decimal(str(value))
+    except Exception:
+        return str(value)
+    if num == 0:
+        return "–"
+
+    digits = max(int(digits), 0)
+    abs_num = abs(num)
+
+    if abs_num >= 1:
+        # Fixed digits for values >= 1.
+        return f"{num:,.{digits}f}"
+
+    # |value| < 1: at least `digits` decimals, but expand to the first
+    # significant digit if `digits` would erase all precision.
+    first_sig = 0 if abs_num == 0 else max(0, int((-Decimal(abs_num).log10()).__ceil__()))
+    decimals = max(digits, first_sig)
+    # Cap at 20 to stay sane on absurdly tiny values.
+    decimals = min(decimals, 20)
+    s = f"{num:.{decimals}f}"
+    # Unit-boundary clamp: if rounding carried a sub-1 value up to >= 1,
+    # add decimals until it stays < 1 (0.99 -> "0.99", not "1.00").
+    while abs(Decimal(s)) >= 1 and decimals < 20:
+        decimals += 1
+        s = f"{num:.{decimals}f}"
+    return s
+
+
+def format_commission_adaptive(value: Any, currency: str, digits: int = 2) -> str:
+    """Format a commission value with adaptive decimal places and a currency label.
+
+    Like ``currency_format`` (parentheses for negative, dash for zero) but uses
+    ``format_quantity_adaptive`` for the number so small fees keep their first
+    significant digit (e.g. a TRUMP fee of 0.0006803 -> "TRUMP0.0007" at digits=2,
+    not "TRUMP0.00").
+
+    :param value: Commission value (Decimal/float/int) or numeric string.
+    :param currency: Currency/asset code for the label (e.g. "BTC", "USDT").
+    :param digits: User's global digits setting.
+    :return: Formatted string, or "–" for None/zero.
+    """
+    if value is None or value == "":
+        return "–"
+    try:
+        num = Decimal(str(value))
+    except Exception:
+        return str(value)
+    if num == 0:
+        return "–"
+    symbol = currency_format(currency=currency)
+    formatted_num = format_quantity_adaptive(num, digits)
+    if num < 0:
+        return f"({symbol}{formatted_num.lstrip('-')})"
+    return f"{symbol}{formatted_num}"
+
+
+def format_percentage(value: Union[float, int, None], digits: int = 0) -> str:
+    """
+    Format a value as a percentage.
+
+    :param value: Value to be formatted as percentage (expects decimal: 1.0 = 100%)
+    :param digits: Number of digits for rounding
+    :return: Formatted percentage string
+    """
+    if value is None:
+        return "NA"
+
+    try:
+        if value < 0:
+            return f"({float(-value * 100):.{int(digits)}f}%)"
+        elif value == 0:
+            return "–"
+        else:
+            return f"{float(value * 100):.{int(digits)}f}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def format_bond_price(value: Union[Decimal, float, int, None], digits: int = 2) -> str:
+    """
+    Format a bond price as a percentage.
+
+    Bond prices are stored as actual percentages (100 = 100%), not decimals.
+
+    :param value: Bond price value (100 = 100%)
+    :param digits: Number of digits for rounding
+    :return: Formatted percentage string
+    """
+    if value is None:
+        return "NA"
+
+    try:
+        value = Decimal(value)
+        if value < 0:
+            return f"({abs(value):.{digits}f}%)"
+        elif value == 0:
+            return "–"
+        else:
+            return f"{value:.{digits}f}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def currency_format_dict_values(data, currency, digits):
+    """Recursively format all Decimal values in a dictionary to currency format.
+
+    Args:
+        data: Dictionary containing values to format.
+        currency: Currency code for formatting.
+        digits: Number of decimal places.
+
+    Returns:
+        dict: Dictionary with formatted values.
+    """
+    formatted_data = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            # Recursively format nested dictionaries
+            formatted_data[key] = currency_format_dict_values(value, currency, digits)
+        elif isinstance(value, Decimal):
+            if "percentage" in str(key):
+                formatted_data[key] = format_percentage(value, 1)
+            else:
+                # Apply the currency_format function to Decimal values
+                formatted_data[key] = currency_format(value, currency, digits)
+        else:
+            # Copy other values as is
+            formatted_data[key] = value
+    return formatted_data
