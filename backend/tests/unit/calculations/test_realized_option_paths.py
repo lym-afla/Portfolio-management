@@ -217,24 +217,27 @@ class TestCryptoTransferNeutralityInBasis:
             date=datetime(2025, 1, 19, tzinfo=timezone.utc),
             quantity=Decimal("1"), price=Decimal("73.21"),
         )
-        # Neutral transfer out / in (unmatched, no import_group_id partner in
-        # scope). Currency is USD so the transfer's own FX path is a no-op and
-        # the test exercises the basis-carry logic (the actual TRUMP bug),
-        # not the FX layer.
+        # Matched transfer out / in (both legs share import_group_id) — the
+        # post-#29 reality now that both OKX accounts are modeled. The OUT
+        # debits basis into the group; the IN reclaims it, so basis is
+        # preserved across the cycle (the TRUMP-bug invariant). Currency is
+        # USD so the transfer's own FX path is a no-op.
         Transactions.objects.create(
             investor=user, account=account, security=coin, currency="USD",
             type="Crypto transfer out",
             date=datetime(2025, 1, 20, tzinfo=timezone.utc),
             quantity=Decimal("-1"),
+            import_group_id="trump-cycle", import_provider="okx_csv",
         )
         Transactions.objects.create(
             investor=user, account=account, security=coin, currency="USD",
             type="Crypto transfer in",
             date=datetime(2025, 2, 9, tzinfo=timezone.utc),
             quantity=Decimal("1"),
+            import_group_id="trump-cycle", import_provider="okx_csv",
         )
-        # Basis after the cycle should still reflect the buy (73.21), NOT be
-        # carried away by the transfer-out into carried_basis_by_group.
+        # Basis after the cycle still reflects the buy (73.21): the OUT
+        # carried it into the group and the matched IN reclaimed it.
         basis = get_economic_basis(coin, datetime(2025, 2, 10, tzinfo=timezone.utc),
                                    investor=user, account_ids=[account.id], rounded=False)
         assert basis == Decimal("73.21")
