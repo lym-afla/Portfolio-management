@@ -28,12 +28,14 @@ from constants import (
 from services.broker_api import BrokerAPIException, TinkoffAPIException, get_broker_api
 from services.crypto_exchange import CryptoExchangeEvent, persist_crypto_exchange_event
 from services.importer import (
+    _okx_csv_is_funding_schema,
     fx_transaction_exists,
     get_account,
     get_broker,
     parse_charles_stanley_transactions,
     parse_galaxy_account_cash_flows,
     parse_galaxy_account_security_transactions,
+    parse_okx_funding_csv,
     parse_okx_trading_csv,
     transaction_exists,
 )
@@ -716,13 +718,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 ):
                     yield update
             elif "OKX" in account.broker.name.upper():
-                # OKX Trading History CSV import. Detected by broker name so the
-                # WebSocket message contract (``is_galaxy``/``galaxy_type``) and
-                # the frontend file-upload flow stay unchanged: the user simply
-                # leaves the Galaxy checkbox unchecked for an OKX account.
-                async for update in parse_okx_trading_csv(
-                    file_path, account_id, user.id, confirm_every
-                ):
+                # Route to the Funding or Trading parser by CSV schema. The
+                # user uploads via the same modal and selects the target
+                # account (OKX Funding or OKX Trading); the schema detector
+                # picks the correct parser (#29 two-account model).
+                parser = (
+                    parse_okx_funding_csv
+                    if _okx_csv_is_funding_schema(file_path)
+                    else parse_okx_trading_csv
+                )
+                async for update in parser(file_path, account_id, user.id, confirm_every):
                     yield update
             else:
                 yield {

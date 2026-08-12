@@ -636,6 +636,23 @@ def _parse_okx_csv_tz_offset(line_one):
     return sign * timedelta(hours=hours, minutes=minutes)
 
 
+def _okx_csv_is_funding_schema(file_path):
+    """Return True when the CSV header matches the Funding History schema.
+
+    Detection keys on the Funding-only columns (``Before Balance`` /
+    ``After Balance``) being present and the Trading-only column
+    (``Trade Type``) being absent. Robust to the BOM OKX prepends.
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8-sig", newline="") as fh:
+            fh.readline()  # metadata line (UID/Time Zone)
+            header_line = fh.readline()
+    except OSError:
+        return False
+    header = {str(c).lstrip("\ufeff").strip().lower() for c in header_line.split(",")}
+    return "before balance" in header and "after balance" in header and "trade type" not in header
+
+
 def _okx_time_to_utc_ms(time_str, tz_offset):
     """Convert ``YYYY-MM-DD HH:MM:SS`` in the export's TZ to UTC ms-epoch.
 
