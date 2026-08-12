@@ -706,7 +706,7 @@ def _normalize_okx_csv_event(payload, investor=None, account_id=None):
         return CryptoExchangeEvent(
             provider=OKX_CSV_IMPORT_PROVIDER,
             provider_event_id=f"csv_transfer:{payload['billId']}",
-            group_id=payload["billId"],
+            group_id=payload.get("group_id") or payload["billId"],
             timestamp_ms=int(payload["ts"]),
             category=category,
             raw_type="transfer",
@@ -883,6 +883,13 @@ def build_okx_csv_events(df, tz_offset):
             else:
                 # Non-stablecoin (BTC/TRUMP) internal moves stay crypto transfers.
                 category = "transfer"
+            # Non-stablecoin legs get a synthesized group id so they pair with
+            # the funding CSV's From/To unified trading account leg (#29).
+            group_id = (
+                _okx_internal_transfer_group_id(balance_unit, amount, fill_time)
+                if category == "transfer"
+                else None
+            )
             payload = {
                 "__kind": "transfer",
                 "category": category,
@@ -890,6 +897,7 @@ def build_okx_csv_events(df, tz_offset):
                 "amount": str(amount),
                 "ts": str(fill_time),
                 "billId": str(row_id),
+                "group_id": group_id,
             }
             events.append((payload, str(row_id)))
             continue
