@@ -1076,3 +1076,47 @@ async def test_btc_transfer_row_currency_is_btc_not_usd(tmp_path, user, okx_acco
         lambda: tx.security.name if tx.security_id else None
     )()
     assert security_name == "BTC"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_trading_transfer_row_carries_synthesized_group_id(tmp_path, user, okx_account):
+    """A non-stablecoin Transfer row stamps okx_xfer:* on import_group_id.
+
+    The synthesized key lets the trading-CSV leg pair with the funding CSV's
+    ``From/To unified trading account`` leg (#29). The billId stays on
+    ``import_event_id`` so dedup is unchanged.
+    """
+    # One BTC Transfer out row (trading -> funding).
+    rows = [{
+        "id": "770000000001",
+        "Order id": "",
+        "Time": "2026-06-22 20:05:02",
+        "Trade Type": "Transfer",
+        "Symbol": "BTC-USDT",
+        "Action": "Transfer out",
+        "Amount": "0.45849457",
+        "Trading Unit": "BTC",
+        "Filled Price": "",
+        "PnL": "",
+        "Fee": "",
+        "Fee Unit": "",
+        "Position Change": "",
+        "Position Balance": "",
+        "Balance Change": "-0.45849457",
+        "Balance": "",
+        "Balance Unit": "BTC",
+    }]
+    csv_path = tmp_path / "trading.csv"
+    _write_okx_csv(csv_path, rows)
+
+    await _drain(parse_okx_trading_csv(str(csv_path), okx_account.id, user.id, confirm_every=False))
+
+    txs = await _persisted_txs(user, okx_account)
+    assert len(txs) == 1
+    tx = txs[0]
+    assert tx.type == "Crypto transfer out"
+    # 2026-06-22 20:05:02 UTC+3 == 17:05:02 UTC == epoch 1782147902.
+    assert tx.import_group_id == "okx_xfer:btc:0.45849457:1782147902"
+    # Dedup key still carries the billId (with the single-leg ``:0`` suffix).
+    assert tx.import_event_id == "csv_transfer:770000000001:0"
