@@ -70,6 +70,7 @@ from services.transactions import (
     is_neutral_transfer_transaction as _transactions_is_neutral_transfer_transaction,
     is_paid_entry_transaction as _transactions_is_paid_entry_transaction,
     is_reward_transaction as _transactions_is_reward_transaction,
+    is_unconditionally_neutral_transfer as _transactions_is_unconditionally_neutral_transfer,
     reward_value as _transactions_reward_value,
 )
 
@@ -965,9 +966,14 @@ def realized_gain_loss(
                 # Pre-#29: all crypto transfers are neutral (internal wallet
                 # moves cannot be distinguished from external flows). When
                 # TRANSFER_DISPOSITION_ENABLED is True (#29), unmatched
-                # transfers fall through to the disposal/entry branches below.
-                if TRANSFER_DISPOSITION_ENABLED and not _transfer_is_matched(
-                    transaction, investor, account_ids
+                # transfers fall through to the disposal/entry branches below
+                # — UNLESS it is an unconditionally-neutral book move (Simple
+                # Earn subscribe/redeem, stake/unstake): those are principal-
+                # only and must never realize, regardless of the flag.
+                if (
+                    TRANSFER_DISPOSITION_ENABLED
+                    and not _transactions_is_unconditionally_neutral_transfer(transaction)
+                    and not _transfer_is_matched(transaction, investor, account_ids)
                 ):
                     logger.debug(
                         "Unmatched %s for asset %s: treating as disposition/entry.",
