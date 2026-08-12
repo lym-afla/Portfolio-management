@@ -108,6 +108,13 @@ async def test_full_funding_parser_persists_each_type(tmp_path, user, funding_ac
     assert len(txs) == 5
     by_event = {t.import_event_type for t in txs}
     assert by_event == {"okx_earn_yield", "okx_internal_transfer", "okx_earn_subscription", "okx_external_deposit", "okx_c2c_order"}
+    # Lock the §4.2 funding Type -> Transaction.type mapping per row.
+    by_type = {t.import_event_type: t.type for t in txs}
+    assert by_type["okx_internal_transfer"] == "Crypto transfer in"   # BTC, From unified trading account
+    assert by_type["okx_earn_subscription"] == "Crypto transfer out"  # BTC, Stake
+    assert by_type["okx_earn_yield"] == "Interest income"             # USDT, Deposit yield (stablecoin reward)
+    assert by_type["okx_external_deposit"] == "Cash in"               # USDT, external Deposit (stablecoin)
+    assert by_type["okx_c2c_order"] == "Cash out"                     # USDT -400, Place an order
     # The internal-transfer BTC leg carries the synthesized group.
     btc_xfer = [t for t in txs if t.import_event_type == "okx_internal_transfer"][0]
     assert btc_xfer.type == "Crypto transfer in"

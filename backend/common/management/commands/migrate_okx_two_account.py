@@ -34,7 +34,7 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         try:
-            broker = Brokers.objects.get(name=broker_name)
+            broker = Brokers.objects.get(name__iexact=broker_name)
         except Brokers.DoesNotExist:
             self.stdout.write(self.style.ERROR(f"Broker {broker_name!r} not found."))
             return
