@@ -657,7 +657,10 @@ def get_economic_basis(
                     average_basis = Decimal(0)
                     continue
             elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT:
-                if TRANSFER_DISPOSITION_ENABLED:
+                if (
+                    TRANSFER_DISPOSITION_ENABLED
+                    and not _transactions_is_unconditionally_neutral_transfer(transaction)
+                ):
                     transferred_quantity = (
                         min(abs(quantity), position) if position > 0 else Decimal(0)
                     )
@@ -679,7 +682,10 @@ def get_economic_basis(
                 else:
                     position += quantity
             elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN:
-                if TRANSFER_DISPOSITION_ENABLED:
+                if (
+                    TRANSFER_DISPOSITION_ENABLED
+                    and not _transactions_is_unconditionally_neutral_transfer(transaction)
+                ):
                     group_key = transfer_group_key(transaction)
                     if group_key:
                         carried_basis = allocate_group_carry(
