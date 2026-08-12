@@ -118,6 +118,31 @@ def is_neutral_transfer_transaction(transaction):
     ]
 
 
+# import_event_type tokens that mark a crypto transfer as a principal-only
+# internal book move (Simple Earn subscribe/redeem, stake/unstake). These
+# are unconditionally neutral: they never fall through to disposition,
+# regardless of TRANSFER_DISPOSITION_ENABLED, because the round-trip nets
+# to zero and only the (separately-recognized) Deposit yield is income.
+# See sub-project 5a / issue #29.
+UNCONDITIONALLY_NEUTRAL_TRANSFER_TOKENS = frozenset(
+    {
+        "okx_earn_subscription",
+        "okx_earn_redemption",
+    }
+)
+
+
+def is_unconditionally_neutral_transfer(transaction):
+    """True when a crypto transfer is a principal-only book move that must
+    never realize, independent of ``TRANSFER_DISPOSITION_ENABLED``."""
+    if transaction.type not in (
+        TRANSACTION_TYPE_CRYPTO_TRANSFER_IN,
+        TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT,
+    ):
+        return False
+    return (transaction.import_event_type or "") in UNCONDITIONALLY_NEUTRAL_TRANSFER_TOKENS
+
+
 def reward_value(transaction):
     """Return event-date reward value without creating account cash."""
     if (
