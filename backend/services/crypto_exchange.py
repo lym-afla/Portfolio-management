@@ -71,6 +71,7 @@ class CryptoExchangeEvent:
     raw_type: str
     legs: List[Dict[str, Any]]
     fee: Optional[Dict[str, Any]] = None
+    event_type: Optional[str] = None
 
 
 def _merge_sorted_events(*iterables):
@@ -450,7 +451,7 @@ def persist_crypto_exchange_event(event, user, account):
                     import_account_id=import_account_id,
                     import_event_id=event_id,
                     import_group_id=event.group_id,
-                    import_event_type=event.category,
+                    import_event_type=event.event_type or event.category,
                 )
             else:
                 if leg.get("instrument") == "option":
@@ -484,7 +485,7 @@ def persist_crypto_exchange_event(event, user, account):
                     import_account_id=import_account_id,
                     import_event_id=event_id,
                     import_group_id=event.group_id,
-                    import_event_type=event.category,
+                    import_event_type=event.event_type or event.category,
                 )
                 # Trade legs no longer carry cash_flow (computed from p*q in
                 # total_cash_flow) — EXCEPT option legs, whose quantity is in
