@@ -141,10 +141,13 @@ Timestamp-skew fallback: if real data shows the two legs differ by a few seconds
 
 ### 4.4 Realized-engine changes
 
-Two surgical edits activate the machinery:
+Three surgical edits activate the machinery (the discriminator must gate BOTH the realized walker and the basis replay — see edit 1b):
 
-1. **Neutrality discriminator** — applied at the realized walker's fall-through gate (`services/realized.py:964-980`). Add a predicate `is_unconditionally_neutral_transfer(transaction)` that returns `True` for crypto-transfer rows tagged with an earn `import_event_type` (`okx_earn_subscription`, `okx_earn_redemption`). The gate becomes: *"if the transfer is unconditionally-neutral, OR it is a (conditionally-neutral) transfer that is matched (or the flag is off), take the neutral branch; otherwise fall through to disposition."* Effect: earn-tagged crypto legs never fall through, regardless of `TRANSFER_DISPOSITION_ENABLED`; internal-transfer rows (`okx_internal_transfer`) remain governed by the flag and `_transfer_is_matched`. (The existing `is_neutral_transfer_transaction` in `services/transactions.py:113-118` already returns `True` for both crypto-transfer types, so it alone cannot express this — the new predicate is the discriminator.)
-2. **Flag flip** (`services/realized.py:104`). Set `TRANSFER_DISPOSITION_ENABLED = True`. With pairing + earn-exemption in place, the only transfers subject to disposition are genuine external crypto flows — exactly #29's intent.
+1a. **Neutrality discriminator — realized walker gate** (`services/realized.py:964-980`). Add a predicate `is_unconditionally_neutral_transfer(transaction)` that returns `True` for crypto-transfer rows tagged with an earn `import_event_type` (`okx_earn_subscription`, `okx_earn_redemption`). The gate becomes: *"if the transfer is unconditionally-neutral, OR it is a (conditionally-neutral) transfer that is matched (or the flag is off), take the neutral branch; otherwise fall through to disposition."* Effect: earn-tagged crypto legs never fall through, regardless of `TRANSFER_DISPOSITION_ENABLED`; internal-transfer rows (`okx_internal_transfer`) remain governed by the flag and `_transfer_is_matched`.
+
+1b. **Neutrality discriminator — `get_economic_basis` transfer branches** (`services/realized.py:658-696`). The same `is_unconditionally_neutral_transfer` guard MUST also gate the `CRYPTO_TRANSFER_OUT` and `CRYPTO_TRANSFER_IN` branches inside `get_economic_basis` (the basis-replay path). Without it, an earn subscribe→redeem round trip collapses basis: the OUT debits basis into a `carried_basis_by_group` bucket (keyed by the subscription's group_id) that the redemption's *different* group_id never reclaims — so half the basis vanishes. With the guard, both earn legs take the neutral `position += quantity` branch and the original basis is preserved across the round trip. *(Refinement discovered during Task 6 implementation — the original spec draft named only the walker gate; the basis-replay gate is equally load-bearing.)*
+
+2. **Flag flip** (`services/realized.py:105`). Set `TRANSFER_DISPOSITION_ENABLED = True`. With pairing + earn-exemption (at both gates) in place, the only transfers subject to disposition are genuine external crypto flows — exactly #29's intent.
 
 ### 4.5 Cross-account basis carry — integration risk
 
