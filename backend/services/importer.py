@@ -735,11 +735,12 @@ def _okx_funding_row_to_payload(row, tz_offset):
     else:
         return None  # unhandled Type — caller skips
 
-    # Internal crypto transfers pair with the trading CSV leg via the
-    # synthesized key; everything else gets a unique (row-scoped) group id.
+    # Internal CRYPTO transfers pair with the trading CSV leg via the
+    # synthesized key; stablecoin legs map to Cash in/out (no carry
+    # machinery) and get a unique row-scoped id, mirroring the trading parser.
     group_id = (
         _okx_internal_transfer_group_id(ccy, amount, ts)
-        if event_type == "okx_internal_transfer"
+        if event_type == "okx_internal_transfer" and not is_stablecoin
         else row_id
     )
     return {
