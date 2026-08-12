@@ -678,6 +678,82 @@ def _okx_base_currency(symbol):
     return str(symbol).split("-")[0]
 
 
+def _okx_funding_row_to_payload(row, tz_offset):
+    """Map one Funding History CSV row to an event payload, or None to skip.
+
+    Funding History schema: id, Time, Type, Amount, Before Balance,
+    After Balance, Symbol. ``Amount`` is signed (IN positive, OUT negative).
+    """
+    row_type = _strip_okx_bom(row.get("Type")) or ""
+    rtype = row_type.strip().lower()
+    ccy = (_strip_okx_bom(row.get("Symbol")) or "").upper()
+    amount = Decimal(str(row.get("Amount") or "0"))
+    ts = _okx_time_to_utc_ms(_strip_okx_bom(row.get("Time")), tz_offset)
+    row_id = str(_strip_okx_bom(row.get("id")) or "")
+    is_stablecoin = ccy in {"USDT", "USDC"}
+
+    if rtype == "from unified trading account":
+        category = "deposit" if is_stablecoin else "transfer"   # IN to funding
+        event_type = "okx_internal_transfer"
+    elif rtype == "to unified trading account":
+        category = "withdrawal" if is_stablecoin else "transfer"  # OUT of funding
+        event_type = "okx_internal_transfer"
+    elif rtype in {"stake", "simple earn subscription"}:
+        category = "withdrawal" if is_stablecoin else "transfer"  # OUT to earn
+        event_type = "okx_earn_subscription"
+    elif rtype in {"simple earn redemption", "unstake"}:
+        category = "deposit" if is_stablecoin else "transfer"     # IN from earn
+        event_type = "okx_earn_redemption"
+    elif rtype == "deposit yield":
+        category = "reward"
+        event_type = "okx_earn_yield"
+    elif rtype == "deposit":
+        # External on-chain deposit into funding.
+        category = "deposit" if is_stablecoin else "transfer"
+        event_type = "okx_external_deposit"
+    elif rtype in {"place an order", "cancel an order", "fulfill an order"}:
+        # C2C order lifecycle: sign-based cash (lock/unlock/fulfill).
+        category = "deposit" if amount > 0 else "withdrawal"
+        event_type = "okx_c2c_order"
+    else:
+        return None  # unhandled Type — caller skips
+
+    # Internal crypto transfers pair with the trading CSV leg via the
+    # synthesized key; everything else gets a unique (row-scoped) group id.
+    group_id = (
+        _okx_internal_transfer_group_id(ccy, amount, ts)
+        if event_type == "okx_internal_transfer"
+        else row_id
+    )
+    return {
+        "__kind": "funding",
+        "category": category,
+        "event_type": event_type,
+        "ccy": ccy,
+        "amount": str(amount),
+        "ts": str(ts),
+        "billId": row_id,
+        "group_id": group_id,
+    }
+
+
+def _build_okx_funding_events(df, tz_offset):
+    """Map a Funding History CSV DataFrame into event payloads.
+
+    Returns ``(events, skipped_ids)`` mirroring ``build_okx_csv_events``.
+    """
+    events = []
+    skipped_ids = []
+    for _, row in df.iterrows():
+        row_id = str(_strip_okx_bom(row.get("id")) or "")
+        payload = _okx_funding_row_to_payload(row, tz_offset)
+        if payload is None:
+            skipped_ids.append(row_id)
+            continue
+        events.append((payload, row_id))
+    return events, skipped_ids
+
+
 def _normalize_okx_csv_event(payload, investor=None, account_id=None):
     """Run the live-API OKX normalizer for ``payload`` and re-tag for CSV import.
 
@@ -722,6 +798,26 @@ def _normalize_okx_csv_event(payload, investor=None, account_id=None):
         )
     event.provider = OKX_CSV_IMPORT_PROVIDER
     return event
+
+
+def _normalize_okx_funding_event(payload):
+    """Build a CryptoExchangeEvent from a funding-history payload."""
+    from services.crypto_exchange import CryptoExchangeEvent, _single_leg
+
+    if payload.get("__kind") != "funding":
+        return None
+    ccy = payload["ccy"].upper()
+    amount = Decimal(payload["amount"])
+    return CryptoExchangeEvent(
+        provider=OKX_CSV_IMPORT_PROVIDER,
+        provider_event_id=f"csv_fund:{payload['billId']}",
+        group_id=payload.get("group_id") or payload["billId"],
+        timestamp_ms=int(payload["ts"]),
+        category=payload["category"],
+        raw_type="funding",
+        event_type=payload["event_type"],
+        legs=_single_leg(ccy, amount, ccy),
+    )
 
 
 def _persist_okx_csv_fx_event(payload, investor, account):
@@ -1289,6 +1385,88 @@ async def parse_okx_trading_csv(file_path, account_id, user_id, confirm_every):
         },
     }
     logger.debug("Yielded completion of OKX CSV import process")
+
+
+async def parse_okx_funding_csv(file_path, account_id, user_id, confirm_every):
+    """Parse an OKX Funding History CSV and persist canonical crypto events.
+
+    Async generator mirroring ``parse_okx_trading_csv``. Routes every funding
+    ``Type`` to the user-selected OKX Funding account. Internal transfers
+    carry a synthesized ``import_group_id`` so they pair with the trading
+    CSV's ``Transfer in/out`` legs (#29 two-account model).
+    """
+    yield {"status": "initialization", "message": "Opening and reading OKX Funding History CSV"}
+
+    try:
+        with open(file_path, "r", encoding="utf-8-sig", newline="") as fh:
+            first_line = fh.readline()
+        tz_offset = _parse_okx_csv_tz_offset(first_line)
+
+        df = pd.read_csv(file_path, header=1, encoding="utf-8-sig")
+        if df.empty:
+            raise ValueError("The OKX Funding CSV file is empty or could not be read.")
+        df.columns = [str(c).lstrip("\ufeff").strip() for c in df.columns]
+        string_cols = df.select_dtypes(include=["string", "object"]).columns
+        for col in string_cols:
+            df[col] = df[col].map(_strip_okx_bom)
+
+        events, skipped_ids = _build_okx_funding_events(df, tz_offset)
+        total_events = len(events)
+    except Exception as exc:
+        logger.exception("Failed to read OKX Funding CSV: %s", exc)
+        yield {"status": "critical_error", "message": f"Failed to read CSV: {exc}"}
+        return
+
+    yield {"status": "initialization", "data": {"total_to_update": total_events}}
+
+    try:
+        investor = await get_investor(user_id)
+        account = await get_account(account_id)
+        logger.debug("Retrieved investor and OKX Funding account")
+    except Exception as exc:
+        yield {"status": "critical_error", "message": f"Account/investor lookup failed: {exc}"}
+        return
+
+    imported = 0
+    duplicate = 0
+    skipped = len(skipped_ids)
+    import_errors = 0
+
+    from services.crypto_exchange import persist_crypto_exchange_event
+
+    for index, (payload, row_id) in enumerate(events):
+        try:
+            event = _normalize_okx_funding_event(payload)
+            created = await database_sync_to_async(persist_crypto_exchange_event)(
+                event, investor, account
+            )
+        except Exception as exc:
+            logger.exception("Failed to persist OKX funding event %s: %s", row_id, exc)
+            import_errors += 1
+            yield {"status": "error", "message": f"Failed row {row_id}: {exc}", "transaction_id": row_id}
+            continue
+
+        if created:
+            imported += len(created)
+            yield {"status": "transaction_saved", "transaction_id": row_id, "data": {"event": payload}}
+        else:
+            duplicate += 1
+            yield {"status": "duplicate_transaction", "transaction_id": row_id}
+
+        if confirm_every and (index + 1) % confirm_every == 0:
+            yield {"status": "progress", "data": {"current": index + 1, "total": total_events}}
+
+    yield {
+        "status": "complete",
+        "data": {
+            "totalTransactions": total_events + skipped,
+            "importedTransactions": imported,
+            "skippedTransactions": skipped,
+            "duplicateTransactions": duplicate,
+            "importErrors": import_errors,
+        },
+    }
+    logger.debug("Yielded completion of OKX Funding CSV import process")
 
 
 def generate_dates_for_price_import(start, end, frequency):
