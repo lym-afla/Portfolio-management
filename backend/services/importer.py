@@ -657,6 +657,22 @@ def _strip_okx_bom(value):
     return value
 
 
+def _okx_internal_transfer_group_id(ccy, amount, timestamp_ms):
+    """Synthesize a deterministic group id pairing the two legs of an OKX
+    internal funding<->trading transfer.
+
+    Both the funding CSV (``Type = From/To unified trading account``) and the
+    trading CSV (``Trade Type = Transfer``) stamp this same key, so the
+    existing matched-transfer machinery (``_transfer_is_matched`` /
+    ``allocate_group_carry``) pairs the legs without any cross-file
+    coordination. OKX records both legs at the same instant, so epoch-second
+    granularity aligns them; abs(amount) makes the key sign-invariant so an
+    OUT leg and its IN leg compute the identical string.
+    """
+    canonical_amount = str(abs(Decimal(str(amount))).normalize())
+    return f"okx_xfer:{str(ccy).lower()}:{canonical_amount}:{int(timestamp_ms) // 1000}"
+
+
 def _okx_base_currency(symbol):
     """Return the base currency from an OKX spot/option ``Symbol`` (``BTC-USDT`` -> ``BTC``)."""
     return str(symbol).split("-")[0]
