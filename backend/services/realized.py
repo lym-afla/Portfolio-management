@@ -97,12 +97,13 @@ def _cash_precision_for(asset, account_ids=None) -> int:
     return 2
 
 
-# Until issue #29's two-account model lands, ALL crypto transfers are neutral
-# (position += quantity, no realized G/L). OKX Funding↔Trading internal moves
-# dominate real data and are indistinguishable from external withdrawals
-# pre-#29. Set True to reactivate the matched-vs-unmatched disposition logic
-# (the _transfer_is_matched helper is retained for that future use).
-TRANSFER_DISPOSITION_ENABLED = False
+# Matched crypto transfers (both legs in-portfolio, paired via
+# import_group_id) stay neutral and carry basis cross-account. Unmatched
+# transfers (genuine external flows) realize gain/loss. Earn book-moves
+# (okx_earn_subscription / okx_earn_redemption) are exempted by
+# is_unconditionally_neutral_transfer and stay neutral regardless.
+# Activated by sub-project 5a / issue #29 (two-account model).
+TRANSFER_DISPOSITION_ENABLED = True
 
 
 def _option_contract_size(asset) -> Decimal:
