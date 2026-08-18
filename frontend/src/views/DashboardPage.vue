@@ -66,6 +66,17 @@
 
       <v-row>
         <v-col cols="12">
+          <v-alert v-if="error.navChart" type="error" class="mb-2">
+            {{ error.navChart }}
+            <v-btn
+              color="error"
+              variant="outlined"
+              class="ml-2"
+              @click="fetchNAVChartData(navChartInitialParams, true)"
+            >
+              Retry
+            </v-btn>
+          </v-alert>
           <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
           <NAVChart
             v-else
@@ -75,9 +86,6 @@
             :effectiveCurrentDate="effectiveCurrentDate"
             @update-params="fetchNAVChartData"
           />
-          <v-alert v-if="error.navChart" type="error" class="mt-2">{{
-            error.navChart
-          }}</v-alert>
         </v-col>
       </v-row>
     </template>
