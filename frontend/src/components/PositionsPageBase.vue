@@ -11,7 +11,7 @@
         <v-skeleton-loader v-if="initialLoading" type="table" />
         <v-data-table
           v-else
-          :headers="headers"
+          :headers="visibleHeaders"
           :items="positions"
           :loading="tableLoading"
           :search="search"
@@ -22,8 +22,6 @@
           @update:sort-by="handleSortChange"
           :server-items-length="totalItems"
           :items-length="totalItems"
-          must-sort
-          disable-sort
         >
           <template v-for="(_, name) in $slots" #[name]="slotData">
             <slot :name="name" v-bind="slotData" />
@@ -65,6 +63,31 @@
                 />
               </v-col>
               <v-spacer />
+              <v-menu close-on-content-click>
+                <template #activator="{ props: menuProps }">
+                  <v-btn
+                    v-bind="menuProps"
+                    icon="mdi-table-column"
+                    density="compact"
+                    variant="text"
+                    aria-label="Show or hide columns"
+                  />
+                </template>
+                <v-list density="compact" max-height="360px">
+                  <v-list-item
+                    v-for="leaf in allLeaves"
+                    :key="leaf.key"
+                    density="compact"
+                  >
+                    <v-checkbox-btn
+                      :model-value="visibleKeys.has(String(leaf.key))"
+                      :label="leaf.title"
+                      hide-details
+                      @update:model-value="toggleColumn(String(leaf.key))"
+                    />
+                  </v-list-item>
+                </v-list>
+              </v-menu>
               <v-col cols="12" sm="3" md="3" lg="2">
                 <v-select
                   v-model="itemsPerPage"
@@ -125,6 +148,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { getYearOptions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
+import { flattenHeaders } from '@/config/positionsHeaders'
 import logger from '@/utils/logger'
 
 // A column header may group children (parent header) or be a leaf column.
@@ -171,6 +195,7 @@ interface Props {
   fetchPositions: (params: FetchPositionsParams) => Promise<FetchPositionsResponse>
   headers: TableHeader[]
   pageTitle: string
+  defaultVisibleKeys?: string[] | null
 }
 
 const props = defineProps<Props>()
@@ -205,9 +230,58 @@ const pageCount = computed(() =>
 )
 
 const flattenedHeaders = computed<TableHeader[]>(() => {
-  return props.headers.flatMap((header) =>
+  return visibleHeaders.value.flatMap((header) =>
     header.children ? header.children : [header]
   )
+})
+
+// Column visibility: all leaf columns of the unfiltered headers, plus the
+// currently visible subset (component-local for now — not persisted).
+const allLeaves = computed<TableHeader[]>(() =>
+  flattenHeaders(props.headers as TableHeader[])
+)
+
+const visibleKeys = ref<Set<string>>(
+  new Set(
+    props.defaultVisibleKeys ??
+      allLeaves.value.map((l) => String(l.key))
+  )
+)
+
+watch(
+  allLeaves,
+  (leaves) => {
+    if (!props.defaultVisibleKeys) {
+      visibleKeys.value = new Set(leaves.map((l) => String(l.key)))
+    }
+  },
+  { immediate: true }
+)
+
+const toggleColumn = (key: string) => {
+  const next = new Set(visibleKeys.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  visibleKeys.value = next
+}
+
+const visibleHeaders = computed<TableHeader[]>(() => {
+  const allowed = visibleKeys.value
+  return props.headers
+    .map((h) =>
+      h.children
+        ? {
+            ...h,
+            children: h.children.filter((c) => allowed.has(String(c.key))),
+          }
+        : h
+    )
+    .filter((h) =>
+      h.children ? h.children.length > 0 : allowed.has(String(h.key))
+    )
 })
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
@@ -218,15 +292,6 @@ const error = computed(() => appStore.error)
 const fetchData = async () => {
   tableLoading.value = true
   try {
-    console.log('[PositionsPageBase] fetchData called with:', {
-      // timespan: timespan.value,
-      dateFrom: dateFrom.value,
-      dateTo: dateTo.value,
-      currentPage: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      search: search.value,
-      sortBy: sortBy.value,
-    })
     const data = await props.fetchPositions({
       // timespan: timespan.value,
       dateFrom: dateFrom.value,
@@ -245,16 +310,6 @@ const fetchData = async () => {
   } finally {
     tableLoading.value = false
     initialLoading.value = false
-    logger.log(
-      'Unknown',
-      '[PositionsPageBase] Current appStore state:',
-      {
-        loading: appStore.loading,
-        error: appStore.error,
-        effectiveCurrentDate: appStore.effectiveCurrentDate,
-        dataRefreshTrigger: appStore.dataRefreshTrigger,
-      }
-    )
   }
 }
 
