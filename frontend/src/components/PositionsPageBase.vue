@@ -135,6 +135,10 @@
                   </slot>
                 </td>
               </tr>
+              <!-- Extra footer rows (e.g. Cash / TOTAL on the Open page).
+                   Receives the flattened *visible* leaf headers so callers can
+                   compute cell spans at render time — never a literal colspan. -->
+              <slot name="tfoot-extra" :flattened-headers="flattenedHeaders" />
             </tfoot>
           </template>
         </v-data-table>

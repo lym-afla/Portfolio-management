@@ -1,7 +1,8 @@
 <template>
   <PositionsPageBase
     :fetch-positions="fetchOpenPositions"
-    :headers="headers"
+    :headers="openPositionsHeaders"
+    :default-visible-keys="openDefaultVisibleKeys"
     page-title="Open Positions"
   >
     <template #above-table>
@@ -24,57 +25,6 @@
       </v-card>
     </template>
 
-    <template #header>
-      <thead>
-        <tr>
-          <th
-            v-for="header in headers"
-            :key="header.key"
-            :colspan="getColspan(header)"
-            :rowspan="getRowspan(header, 0)"
-            :class="['text-' + header.align]"
-          >
-            {{ header.title }}
-          </th>
-        </tr>
-        <tr>
-          <template v-for="header in headers" :key="`level1-${header.key}`">
-            <template v-if="header.children">
-              <th
-                v-for="child in header.children"
-                :key="child.key"
-                :colspan="getColspan(child)"
-                :rowspan="getRowspan(child, 1)"
-                :class="['text-' + child.align]"
-              >
-                {{ child.title }}
-              </th>
-            </template>
-          </template>
-        </tr>
-        <tr>
-          <template v-for="header in headers" :key="`level2-${header.key}`">
-            <template v-if="header.children">
-              <template
-                v-for="child in header.children"
-                :key="`level2-child-${child.key}`"
-              >
-                <template v-if="child.children">
-                  <th
-                    v-for="grandchild in child.children"
-                    :key="grandchild.key"
-                    :class="['text-' + grandchild.align]"
-                  >
-                    {{ grandchild.title }}
-                  </th>
-                </template>
-              </template>
-            </template>
-          </template>
-        </tr>
-      </thead>
-    </template>
-
     <template
       v-for="key in percentageColumns"
       :key="key"
@@ -95,243 +45,63 @@
       </router-link>
     </template>
 
-    <template #tfoot>
-      <tfoot v-if="totals">
-        <tr class="font-weight-bold">
-          <template v-for="header in flattenedHeaders" :key="header.key">
-            <template v-if="header.key !== 'name'">
-              <td v-if="header.key === 'type'" colspan="2">Total for assets</td>
-              <td
-                v-else-if="totals[header.key] === undefined"
-                class="text-center"
-              />
-              <td
-                v-else-if="
-                  percentageColumns.includes(header.key) && header.key !== 'irr'
-                "
-                class="text-center font-italic font-weight-bold"
-              >
-                {{ totals[header.key] }}
-              </td>
-              <td
-                v-else-if="
-                  totals[header.key] !== undefined && header.key !== 'irr'
-                "
-                class="text-center"
-              >
-                {{ totals[header.key] }}
-              </td>
-              <td v-else />
-            </template>
-          </template>
-        </tr>
+    <template #tfoot-type>Total for assets</template>
 
-        <tr>
-          <td colspan="2">Cash</td>
-          <td colspan="6" />
-          <td class="text-center">{{ totals.cash }}</td>
-          <td class="text-center font-italic">
-            {{ totals.cash_share_of_portfolio }}
-          </td>
-          <td colspan="10" />
-        </tr>
-
-        <tr class="font-weight-bold">
-          <td colspan="2">TOTAL</td>
-          <td colspan="6" />
-          <td class="text-center">{{ totals.total_nav }}</td>
-          <td colspan="10" />
-          <td class="text-center font-italic">{{ totals.irr }}</td>
-        </tr>
-      </tfoot>
+    <!-- Cash / TOTAL footer rows: one cell per *visible* leaf column, so the
+         rows stay aligned with the table at every column-toggle combination
+         without any hardcoded colspan. -->
+    <template #tfoot-extra="{ flattenedHeaders: flatHeaders }">
+      <tr>
+        <td
+          v-for="header in flatHeaders"
+          :key="`cash-${header.key}`"
+          class="text-end"
+        >
+          <span v-if="header.key === 'type'" class="text-start">Cash</span>
+          <template v-else-if="header.key === 'current_value'">{{
+            totals.cash
+          }}</template>
+          <span
+            v-else-if="header.key === 'share_of_portfolio'"
+            class="font-italic"
+            >{{ totals.cash_share_of_portfolio }}</span
+          >
+        </td>
+      </tr>
+      <tr class="font-weight-bold">
+        <td
+          v-for="header in flatHeaders"
+          :key="`total-${header.key}`"
+          class="text-end"
+        >
+          <span v-if="header.key === 'type'" class="text-start">TOTAL</span>
+          <template v-else-if="header.key === 'current_value'">{{
+            totals.total_nav
+          }}</template>
+          <span v-else-if="header.key === 'irr'" class="font-italic">{{
+            totals.irr
+          }}</span>
+        </td>
+      </tr>
     </template>
   </PositionsPageBase>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getOpenPositions } from '@/services/api'
+import {
+  openPositionsHeaders,
+  openPercentageColumns,
+  openDefaultVisibleKeys,
+} from '@/config/positionsHeaders'
 
 const totals = ref({})
 const cashBalances = ref({})
 const cashBalancesLoading = ref(true)
 
-const headers = ref([
-  { title: 'Type', key: 'type', align: 'start', sortable: true },
-  { title: 'Name', key: 'name', align: 'start', sortable: true },
-  { title: 'Currency', key: 'currency', align: 'center', sortable: true },
-  {
-    title: 'Position',
-    key: 'current_position',
-    align: 'center',
-    sortable: true,
-  },
-  {
-    title: 'Entry',
-    key: 'entry',
-    align: 'center',
-    sortable: false,
-    rowspan: 1,
-    colspan: 3,
-    children: [
-      {
-        title: 'Date',
-        key: 'investment_date',
-        align: 'center',
-        sortable: true,
-        rowspan: 2,
-      },
-      {
-        title: 'Price',
-        key: 'entry_price',
-        align: 'center',
-        sortable: true,
-        rowspan: 2,
-      },
-      {
-        title: 'Value',
-        key: 'entry_value',
-        align: 'center',
-        sortable: true,
-        rowspan: 2,
-      },
-    ],
-  },
-  {
-    title: 'Current',
-    key: 'current',
-    align: 'center',
-    sortable: false,
-    children: [
-      {
-        title: 'Price',
-        key: 'current_price',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Value',
-        key: 'current_value',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Share',
-        key: 'share_of_portfolio',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Gain/Loss',
-        key: 'gain_loss',
-        align: 'center',
-        sortable: false,
-        children: [
-          {
-            title: 'Realized',
-            key: 'realized_gl',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: 'Unrealized',
-            key: 'unrealized_gl',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: '%',
-            key: 'price_change_percentage',
-            align: 'center',
-            class: 'font-italic',
-            sortable: true,
-          },
-        ],
-      },
-      {
-        title: 'Capital Distribution',
-        key: 'capital_distribution',
-        align: 'center',
-        sortable: false,
-        children: [
-          {
-            title: 'Amount',
-            key: 'capital_distribution',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: '%',
-            key: 'capital_distribution_percentage',
-            align: 'center',
-            class: 'font-italic',
-            sortable: true,
-          },
-        ],
-      },
-      {
-        title: 'Commission',
-        key: 'commission',
-        align: 'center',
-        sortable: false,
-        children: [
-          {
-            title: 'Amount',
-            key: 'commission',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: '%',
-            key: 'commission_percentage',
-            align: 'center',
-            class: 'font-italic',
-            sortable: true,
-          },
-        ],
-      },
-      {
-        title: 'Total Return',
-        key: 'total',
-        align: 'center',
-        sortable: false,
-        children: [
-          {
-            title: 'Amount',
-            key: 'total_return_amount',
-            align: 'center',
-            sortable: true,
-          },
-          {
-            title: '%',
-            key: 'total_return_percentage',
-            align: 'center',
-            class: 'font-italic',
-            sortable: true,
-          },
-          {
-            title: 'IRR',
-            key: 'irr',
-            align: 'center',
-            class: 'font-italic',
-            sortable: true,
-          },
-        ],
-      },
-    ],
-  },
-])
-
-const percentageColumns = [
-  'share_of_portfolio',
-  'price_change_percentage',
-  'capital_distribution_percentage',
-  'commission_percentage',
-  'total_return_percentage',
-  'irr',
-  'all_assets_share_of_portfolio_percentage',
-]
+const percentageColumns = openPercentageColumns
 
 const fetchOpenPositions = async ({
   dateFrom,
@@ -341,14 +111,6 @@ const fetchOpenPositions = async ({
   search,
   sortBy,
 }) => {
-  console.log('[OpenPositionsPage] fetchOpenPositions called with:', {
-    dateFrom,
-    dateTo,
-    page,
-    itemsPerPage,
-    search,
-    sortBy,
-  })
   cashBalancesLoading.value = true
   try {
     const data = await getOpenPositions(
@@ -369,30 +131,6 @@ const fetchOpenPositions = async ({
   } finally {
     cashBalancesLoading.value = false
   }
-}
-
-const flattenHeaders = (headers) => {
-  return headers.flatMap((header) => {
-    if (header.children) {
-      return flattenHeaders(header.children)
-    }
-    return header
-  })
-}
-
-const flattenedHeaders = computed(() => {
-  return flattenHeaders(headers.value)
-})
-
-const getColspan = (header) => {
-  if (!header.children) return 1
-  return header.children.reduce((acc, child) => acc + getColspan(child), 0)
-}
-
-const getRowspan = (header, level) => {
-  if (!header.children) return 3 - level
-  if (level === 1 && !header.children[0].children) return 1
-  return 1
 }
 </script>
 

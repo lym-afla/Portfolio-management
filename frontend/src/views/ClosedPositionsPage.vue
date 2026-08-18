@@ -1,16 +1,9 @@
 <template>
   <PositionsPageBase
     :fetch-positions="fetchClosedPositions"
-    :headers="headers"
+    :headers="closedPositionsHeaders"
     page-title="Closed Positions"
   >
-    <template #header="{ header }">
-      <span>{{ header.value }} T {{ header.sortable }}</span>
-      <v-icon v-if="header.sortable" size="small" class="ml-1">{{
-        getSortIcon(header.key)
-      }}</v-icon>
-    </template>
-
     <template
       v-for="key in percentageColumns"
       :key="key"
@@ -31,177 +24,29 @@
       </router-link>
     </template>
 
-    <template #tfoot>
-      <tfoot>
-        <tr class="font-weight-bold">
-          <td
-            v-for="header in flattenedHeaders"
-            :key="header.key"
-            :class="[
-              'text-' + header.align,
-              header.key === 'type' ? 'start' : '',
-            ]"
-          >
-            <template v-if="header.key === 'type'"> TOTAL </template>
-            <template v-else-if="percentageColumns.includes(header.key)">
-              <span class="font-italic">{{ totals[header.key] }}</span>
-            </template>
-            <template v-else>
-              {{ totals[header.key] }}
-            </template>
-          </td>
-        </tr>
-      </tfoot>
+    <template #tfoot-type>TOTAL</template>
+    <template
+      v-for="key in percentageColumns"
+      :key="`tfoot-${key}`"
+      #[`tfoot-${key}`]
+    >
+      <span class="font-italic">{{ totals[key] }}</span>
     </template>
   </PositionsPageBase>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getClosedPositions } from '@/services/api'
+import {
+  closedPositionsHeaders,
+  closedPercentageColumns,
+} from '@/config/positionsHeaders'
 
 const totals = ref({})
 
-const headers = ref([
-  { title: 'Type', key: 'type', align: 'start', sortable: false },
-  { title: 'Name', key: 'name', align: 'start', sortable: true },
-  { title: 'Currency', key: 'currency', align: 'center', sortable: true },
-  {
-    title: 'Entry',
-    key: 'entry',
-    align: 'center',
-    sortable: false,
-    children: [
-      {
-        title: 'Date',
-        key: 'investment_date',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: 'Value',
-        key: 'entry_value',
-        align: 'center',
-        sortable: true,
-      },
-    ],
-  },
-  {
-    title: 'Exit',
-    key: 'exit',
-    align: 'center',
-    sortable: false,
-    children: [
-      { title: 'Date', key: 'exit_date', align: 'center', sortable: true },
-      {
-        title: 'Value',
-        key: 'exit_value',
-        align: 'center',
-        sortable: true,
-      },
-    ],
-  },
-  {
-    title: 'Realized gain/(loss)',
-    key: 'realized',
-    align: 'center',
-    sortable: false,
-    children: [
-      {
-        title: 'Amount',
-        key: 'realized_gl',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: '%',
-        key: 'price_change_percentage',
-        align: 'center',
-        class: 'font-italic',
-        sortable: true,
-      },
-    ],
-  },
-  {
-    title: 'Capital distribution',
-    key: 'capital',
-    align: 'center',
-    sortable: false,
-    children: [
-      {
-        title: 'Amount',
-        key: 'capital_distribution',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: '%',
-        key: 'capital_distribution_percentage',
-        align: 'center',
-        class: 'font-italic',
-        sortable: true,
-      },
-    ],
-  },
-  {
-    title: 'Commission',
-    key: 'commission',
-    align: 'center',
-    sortable: false,
-    children: [
-      {
-        title: 'Amount',
-        key: 'commission',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: '%',
-        key: 'commission_percentage',
-        align: 'center',
-        class: 'font-italic',
-        sortable: true,
-      },
-    ],
-  },
-  {
-    title: 'Total return',
-    key: 'total',
-    align: 'center',
-    sortable: false,
-    children: [
-      {
-        title: 'Amount',
-        key: 'total_return_amount',
-        align: 'center',
-        sortable: true,
-      },
-      {
-        title: '%',
-        key: 'total_return_percentage',
-        align: 'center',
-        class: 'font-italic',
-        sortable: true,
-      },
-      {
-        title: 'IRR',
-        key: 'irr',
-        align: 'center',
-        class: 'font-italic',
-        sortable: true,
-      },
-    ],
-  },
-])
-
-const percentageColumns = [
-  'price_change_percentage',
-  'capital_distribution_percentage',
-  'commission_percentage',
-  'total_return_percentage',
-  'irr',
-]
+const percentageColumns = closedPercentageColumns
 
 const fetchClosedPositions = async ({
   dateFrom,
@@ -211,14 +56,6 @@ const fetchClosedPositions = async ({
   search,
   sortBy,
 }) => {
-  console.log('[ClosedPositionsPage] fetchClosedPositions called with:', {
-    dateFrom,
-    dateTo,
-    page,
-    itemsPerPage,
-    search,
-    sortBy,
-  })
   const data = await getClosedPositions(
     dateFrom,
     dateTo,
@@ -230,13 +67,8 @@ const fetchClosedPositions = async ({
   totals.value = data.portfolio_closed_totals
   return {
     positions: data.portfolio_closed,
+    totals: data.portfolio_closed_totals,
     total_items: data.total_items,
   }
 }
-
-const flattenedHeaders = computed(() => {
-  return headers.value.flatMap((header) =>
-    header.children ? header.children : header
-  )
-})
 </script>
