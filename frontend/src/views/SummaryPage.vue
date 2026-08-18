@@ -537,7 +537,7 @@ watch(
 .v-data-table :deep(th),
 .v-data-table :deep(td) {
   padding: 8px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 /* Remove highlight from table headings */
@@ -547,7 +547,7 @@ watch(
 }
 
 .highlight-column {
-  background-color: rgba(0, 0, 0, 0.03);
+  background-color: rgba(var(--v-theme-on-surface), 0.03);
 }
 
 .no-wrap {
@@ -567,7 +567,7 @@ watch(
 .total-row {
   font-weight: bold;
   background-color: #e0e0e0;
-  border-top: 2px solid rgba(0, 0, 0, 0.12);
+  border-top: 2px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 /* Add vertical lines between year groups in the main part of the first table */
@@ -617,7 +617,7 @@ watch(
 
 /* Highlight YTD and All-time columns in the header */
 .account-performance-table :deep(thead th.highlight-column) {
-  background-color: rgba(0, 0, 0, 0.03);
+  background-color: rgba(var(--v-theme-on-surface), 0.03);
 }
 
 /* Make specific columns italic */

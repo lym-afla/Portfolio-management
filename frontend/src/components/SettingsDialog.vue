@@ -174,15 +174,10 @@ const saveSettings = async () => {
     }
 
     logger.log('Unknown', '[SettingsDialog] Sending formData:', formData)
-    console.log('[AuthDebugger] 🔄 Updating dashboard settings...')
 
     const response = await updateDashboardSettings(formData)
     if (response.success) {
       logger.log('Unknown', 'Settings updated successfully:', response)
-      console.log(
-        '[AuthDebugger] ✅ Settings updated successfully, new table_date:',
-        response.table_date
-      )
 
       // Update store with new currency
       const selectedCurrencyOption = currencyChoices.value.find(

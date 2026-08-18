@@ -31,7 +31,6 @@ const refreshToken = async (newEffectiveDate: string | null = null): Promise<unk
 
   try {
     logger.log('AuthDebugger', 'Sending refresh token request...')
-    console.log('[AuthDebugger] 🔄 Refreshing token...')
 
     const requestData: { refresh: string; effective_current_date?: string } = { refresh: refreshToken }
 
@@ -41,9 +40,6 @@ const refreshToken = async (newEffectiveDate: string | null = null): Promise<unk
       logger.log(
         'AuthDebugger',
         `Updating effective_current_date to: ${newEffectiveDate}`
-      )
-      console.log(
-        `[AuthDebugger] 📅 Updating effective_date to: ${newEffectiveDate}`
       )
     }
 
@@ -63,13 +59,9 @@ const refreshToken = async (newEffectiveDate: string | null = null): Promise<unk
         'AuthDebugger',
         `Stored effective_current_date: ${effective_current_date}`
       )
-      console.log(
-        `[AuthDebugger] 📅 Stored effective_date: ${effective_current_date}`
-      )
     }
 
     logger.log('AuthDebugger', 'Token refreshed successfully')
-    console.log('[AuthDebugger] ✅ Token refreshed successfully')
 
     // Update Pinia auth store with new tokens. useAuthStore() is callable
     // outside a component as long as Pinia is active (it is, once main.js
@@ -268,9 +260,6 @@ export const refreshTokenWithEffectiveDate = async (newEffectiveDate) => {
   logger.log(
     'AuthDebugger',
     `Force refreshing token with new effective_date: ${newEffectiveDate}`
-  )
-  console.log(
-    `[AuthDebugger] 🔄 Force refreshing token with effective_date: ${newEffectiveDate}`
   )
 
   try {

@@ -39,7 +39,7 @@
         </v-window-item>
       </v-window>
 
-      <v-alert v-if="!hasData" type="info" variant="tonal" density="compact" class="ma-4"
+      <v-alert v-if="!hasData" type="info" variant="tonal" density="compact"
         text="No data for the selected account and period. Adjust the date range or select another account." />
     </v-card-text>
   </v-card>
@@ -153,7 +153,7 @@ onMounted(async () => {
 }
 
 .v-table :deep(th) {
-  font-weight: bold !important;
+  font-weight: bold;
 }
 
 .v-table :deep(td),

@@ -217,14 +217,6 @@ const headers = computed(() => [
 const fetchFXData = async () => {
   if (!dateTo.value) return
 
-  console.log('Fetching FX data with:', {
-    startDate: dateFrom.value,
-    endDate: dateTo.value,
-    page: currentPage.value,
-    itemsPerPage: itemsPerPage.value,
-    sortBy: sortBy.value[0] || {},
-    search: search.value,
-  })
   tableLoading.value = true
   try {
     const response = await getFXData({
@@ -277,12 +269,6 @@ const initializeDateRange = async () => {
     dateFrom.value = from
     dateTo.value = to
 
-    console.log('Date range initialized:', {
-      dateFrom: dateFrom.value,
-      dateTo: dateTo.value,
-      dateRange: dateRange.value,
-      effectiveCurrentDate: effectiveCurrentDate.value,
-    })
 
     // Trigger table update after initialization
     await fetchFXData()

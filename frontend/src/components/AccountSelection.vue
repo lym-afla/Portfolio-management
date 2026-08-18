@@ -113,12 +113,6 @@ const handleAccountChange = async (newValue) => {
     id: newValue.id,
   })
 
-  // Log the updated store state after the dispatch completes
-  console.log(
-    '[handleAccountChange] appStore.accountSelection:',
-    appStore.accountSelection
-  )
-
   // // Update data for the new account
   // await updateDataForAccount(newValue)
 }
@@ -179,8 +173,8 @@ onMounted(() => {
 .arrow-btn {
   width: var(--select-height);
   height: var(--select-height);
-  min-width: 0 !important;
-  padding: 0 !important;
+  min-width: 0;
+  padding: 0;
 }
 
 .account-select {
@@ -192,10 +186,10 @@ onMounted(() => {
 }
 
 :deep(.v-field__input) {
-  min-height: var(--select-height) !important;
+  min-height: var(--select-height);
 }
 
 :deep(.v-field__outline) {
-  --v-field-border-width: 1px !important;
+  --v-field-border-width: 1px;
 }
 </style>

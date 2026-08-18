@@ -755,7 +755,7 @@ const priceChartData = computed(() => {
       {
         label: 'Price',
         data: chartData,
-        borderColor: colorPalette[0] || 'rgba(75, 192, 192, 1)',
+        borderColor: colorPalette[0],
         tension: 0.1,
       },
     ],
@@ -787,7 +787,7 @@ const positionChartData = computed(() => {
       {
         label: 'Position',
         data: chartData,
-        borderColor: colorPalette[1] || 'rgba(153, 102, 255, 1)',
+        borderColor: colorPalette[1],
         tension: 0.1,
       },
     ],

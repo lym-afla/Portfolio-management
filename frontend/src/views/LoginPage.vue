@@ -61,14 +61,6 @@ const handleLogin = async (credentials: LoginCredentials) => {
 
   try {
     const result = await authStore.login(credentials)
-    console.log(
-      '[LoginPage.vue] Token set in the store:',
-      authStore.accessToken
-    )
-    console.log(
-      '[LoginPage.vue] Token from localStorage:',
-      localStorage.getItem('accessToken')
-    )
     if (result.success) {
       logger.log('Unknown', 'Login successful from LoginPage.vue')
       router.push('/profile')

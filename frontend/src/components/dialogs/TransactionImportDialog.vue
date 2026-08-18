@@ -1216,10 +1216,6 @@ const dialog = ref(props.modelValue)
     })
 
     watch(isConnected, (newValue) => {
-      console.log(
-        'WebSocket connection status:',
-        newValue ? 'connected' : 'disconnected'
-      )
     })
 
     onUnmounted(() => {
@@ -1685,7 +1681,7 @@ const dialog = ref(props.modelValue)
 }
 
 .v-list-item {
-  min-height: 32px !important;
+  min-height: 32px;
 }
 
 .text-wrap {

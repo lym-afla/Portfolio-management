@@ -598,9 +598,7 @@ const chartData = computed(() => {
         return {
           label: securityName,
           data: data,
-          borderColor:
-            colorPalette[index % colorPalette.length] ||
-            'rgba(75, 192, 192, 1)',
+          borderColor: colorPalette[index % colorPalette.length],
           tension: 0.1,
         }
       }

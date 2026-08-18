@@ -497,7 +497,7 @@ onUnmounted(() => {
    without reading the group row. The class is injected via headerProps
    (see withGroupStartClasses) — Vuetify 3.12 emits no divider class. */
 .nowrap-table :deep(th.group-start) {
-  border-left: 1px solid rgba(0, 0, 0, 0.12);
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
 .rows-per-page-select {

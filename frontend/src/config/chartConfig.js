@@ -71,7 +71,7 @@ export const getChartOptions = async (currency) => {
           font: { family: fontFamily, size: 12 },
           formatter: (value, ctx) => {
             const data = ctx.chart.data.datasets[0].data
-            const sum = data.reduce((a, b) => a + b, 0)
+            const sum = data.reduce((a, b) => a + b, 0) || 1
             return `${(value).toLocaleString(undefined, { maximumFractionDigits: 1 })} (${((value * 100) / sum).toFixed(1)}%)`
           },
         },

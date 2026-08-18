@@ -136,6 +136,6 @@ const fetchOpenPositions = async ({
 
 <style scoped>
 .v-card-title {
-  font-size: 1rem !important;
+  font-size: 1rem;
 }
 </style>

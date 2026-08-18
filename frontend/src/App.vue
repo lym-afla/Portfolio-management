@@ -137,7 +137,7 @@ body {
 }
 
 .v-data-table th.v-data-table__th {
-  vertical-align: bottom !important;
+  vertical-align: bottom;
   padding-bottom: 8px !important;
 }
 
