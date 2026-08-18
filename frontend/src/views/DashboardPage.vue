@@ -15,9 +15,17 @@
             :currency="userCurrency"
             class="h-100"
           />
-          <v-alert v-else type="error" class="h-100">{{
-            error.summary
-          }}</v-alert>
+          <v-alert v-else type="error" class="h-100">
+            {{ error.summary }}
+            <v-btn
+              color="error"
+              variant="outlined"
+              class="ml-2"
+              @click="fetchSummaryData"
+            >
+              Retry
+            </v-btn>
+          </v-alert>
         </v-col>
         <v-col cols="12" md="9">
           <v-row class="equal-height-row h-100">
@@ -40,9 +48,17 @@
                 :totalNAV="totalNAV"
                 class="h-100"
               />
-              <v-alert v-else type="error" class="h-100">{{
-                error.breakdownCharts
-              }}</v-alert>
+              <v-alert v-else type="error" class="h-100">
+                {{ error.breakdownCharts }}
+                <v-btn
+                  color="error"
+                  variant="outlined"
+                  class="ml-2"
+                  @click="fetchBreakdownData"
+                >
+                  Retry
+                </v-btn>
+              </v-alert>
             </v-col>
           </v-row>
         </v-col>
@@ -60,7 +76,17 @@
             "
             @refresh-data="fetchSummaryOverTimeData"
           />
-          <v-alert v-else type="error">{{ error.summaryOverTime }}</v-alert>
+          <v-alert v-else type="error">
+            {{ error.summaryOverTime }}
+            <v-btn
+              color="error"
+              variant="outlined"
+              class="ml-2"
+              @click="fetchSummaryOverTimeData"
+            >
+              Retry
+            </v-btn>
+          </v-alert>
         </v-col>
       </v-row>
 
