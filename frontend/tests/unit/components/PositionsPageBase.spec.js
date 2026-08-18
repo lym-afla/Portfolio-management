@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
@@ -98,5 +99,60 @@ describe('PositionsPageBase', () => {
     await flushPromises()
     const btn = wrapper.find('button[aria-label="Show or hide columns"]')
     expect(btn.exists()).toBe(true)
+  })
+
+  it('marks group header boundaries with a group-start class', async () => {
+    const { wrapper } = makeWrapper()
+    await flushPromises()
+    // The Entry group header and its first leaf should both carry the class.
+    const marked = wrapper.findAll('th.group-start')
+    expect(marked.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('right-aligns footer totals via text-<align> classes', async () => {
+    const { wrapper } = makeWrapper()
+    await flushPromises()
+    const foot = wrapper.find('tfoot')
+    expect(foot.exists()).toBe(true)
+    expect(foot.find('td.text-end').exists()).toBe(true)
+    expect(foot.find('td.end').exists()).toBe(false)
+  })
+})
+
+describe('PositionsPageBase sticky-column and divider CSS (source assertions)', () => {
+  // The compiled component does not carry its scoped style block, so the
+  // sticky/divider CSS is asserted against the SFC source directly.
+  const src = readFileSync('src/components/PositionsPageBase.vue', 'utf-8')
+
+  it('sticks the first two identity columns with opaque backgrounds', () => {
+    expect(src).toContain('position: sticky')
+    expect(src).toContain('left: 0')
+    expect(src).toContain('left: 90px')
+    expect(src).toContain('rgb(var(--v-theme-surface))')
+  })
+
+  it('scopes sticky cells to body/footer cells and the first header row', () => {
+    // Row 2 of a grouped header must not become sticky.
+    expect(src).toContain('tbody td:nth-child(1)')
+    expect(src).toContain('tfoot td:nth-child(1)')
+    expect(src).toContain('thead tr:first-child th:nth-child(1)')
+  })
+
+  it('separates groups with a vertical rule via th.group-start', () => {
+    expect(src).toContain('th.group-start')
+    expect(src).toMatch(/th\.group-start[^}]*border-left/)
+  })
+
+  it('no longer relies on the non-existent Vuetify divider class', () => {
+    expect(src).not.toContain('v-data-table-column--divider')
+  })
+})
+
+describe('App.vue global td white-space cleanup (source assertion)', () => {
+  const src = readFileSync('src/App.vue', 'utf-8')
+
+  it('does not force wrapping/hyphenation on table cells globally', () => {
+    expect(src).not.toContain('hyphens: auto')
+    expect(src).not.toMatch(/\.v-data-table td\s*\{/)
   })
 })

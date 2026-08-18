@@ -128,7 +128,7 @@
                 <td
                   v-for="header in flattenedHeaders"
                   :key="header.key"
-                  :class="header.align"
+                  :class="header.align ? 'text-' + header.align : ''"
                 >
                   <slot :name="`tfoot-${header.key}`" :header="header">
                     {{ totals[header.key] }}
@@ -272,9 +272,29 @@ const toggleColumn = (key: string) => {
   visibleKeys.value = next
 }
 
+// Vuetify 3.12 emits no divider class of its own for grouped headers, so we
+// inject a `group-start` class (via headerProps, which merge onto the <th>)
+// on every top-level group header and on its first leaf, giving a vertical
+// rule between top-level groups in both header rows.
+const withGroupStartClasses = (headers: TableHeader[]): TableHeader[] =>
+  headers.map((h) => {
+    if (!h.children) return h
+    const children = h.children.map((c, i) => {
+      if (i !== 0) return c
+      const props = (c.headerProps ?? {}) as Record<string, unknown>
+      return { ...c, headerProps: { ...props, class: 'group-start' } }
+    })
+    const props = (h.headerProps ?? {}) as Record<string, unknown>
+    return {
+      ...h,
+      children,
+      headerProps: { ...props, class: 'group-start' },
+    }
+  })
+
 const visibleHeaders = computed<TableHeader[]>(() => {
   const allowed = visibleKeys.value
-  return props.headers
+  const filtered = props.headers
     .map((h) =>
       h.children
         ? {
@@ -286,6 +306,7 @@ const visibleHeaders = computed<TableHeader[]>(() => {
     .filter((h) =>
       h.children ? h.children.length > 0 : allowed.has(String(h.key))
     )
+  return withGroupStartClasses(filtered)
 })
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
@@ -389,10 +410,45 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
-.nowrap-table :deep(td) {
+.nowrap-table :deep(td),
+.nowrap-table :deep(th) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sticky identity columns: Type sticks at 0, Name after it. Scoped to
+   body/footer cells and the FIRST header row only — in a grouped two-row
+   header, row 2 leaves are children of other groups and must not stick.
+   Widths are fixed so the left offset is stable. */
+.nowrap-table :deep(tbody td:nth-child(1)),
+.nowrap-table :deep(tfoot td:nth-child(1)),
+.nowrap-table :deep(thead tr:first-child th:nth-child(1)) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: rgb(var(--v-theme-surface));
+  min-width: 90px;
+}
+.nowrap-table :deep(tbody td:nth-child(2)),
+.nowrap-table :deep(tfoot td:nth-child(2)),
+.nowrap-table :deep(thead tr:first-child th:nth-child(2)) {
+  position: sticky;
+  left: 90px;
+  z-index: 2;
+  background: rgb(var(--v-theme-surface));
+  min-width: 160px;
+}
+.nowrap-table :deep(thead tr:first-child th:nth-child(-n+2)) {
+  z-index: 3; /* leaf header row above sticky body cells */
+}
+
+/* Group separation: vertical rules between top-level groups survive
+   without reading the group row. The class is injected via headerProps
+   (see withGroupStartClasses) — Vuetify 3.12 emits no divider class. */
+.nowrap-table :deep(th.group-start) {
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .rows-per-page-select {

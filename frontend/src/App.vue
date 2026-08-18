@@ -142,13 +142,6 @@ body {
 .v-data-table th.v-data-table__th {
   vertical-align: bottom !important;
   padding-bottom: 8px !important;
-  white-space: normal;
-  hyphens: auto;
-}
-
-.v-data-table td {
-  white-space: normal;
-  hyphens: auto;
 }
 
 .v-dialog {
