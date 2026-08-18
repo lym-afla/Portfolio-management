@@ -1,9 +1,25 @@
 import { nextTick } from 'vue'
+import { palette } from '@/theme'
 
 const getFontFamily = () =>
   getComputedStyle(document.documentElement)
     .getPropertyValue('--system-font')
     .trim()
+
+export const colorPalette = [
+  palette.primary, // #0F4C81
+  palette.secondary, // #5C6B7A
+  palette.success, // #1E7F4F
+  palette.warning, // #9A6700
+  palette.info, // #0B5FA5
+  '#7A4E2D',
+  '#607D8B',
+  '#8E4585',
+  '#00838F',
+  palette.error, // #B3261E
+  '#6D4C41',
+  '#9E9D24',
+]
 
 export const getChartOptions = async (currency) => {
   await nextTick()
@@ -36,44 +52,31 @@ export const getChartOptions = async (currency) => {
     //     },
     //   },
     // },
-    pieChartOptions: {
+    barChartOptions: {
       responsive: true,
       maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { ticks: { font: axisFont } },
+        y: { grid: { display: false }, ticks: { font: axisFont } },
+      },
       plugins: {
-        legend: {
-          display: false, // Hide the legend
-        },
-        tooltip: {
-          enabled: false, // Disable tooltips as we'll use data labels
-        },
+        legend: { display: false },
+        tooltip: { enabled: true },
         datalabels: {
-          color: '#000000', // Use black for better visibility outside the chart
-          font: {
-            family: fontFamily,
-            size: 14,
-          },
-          formatter: (value, ctx) => {
-            let sum = 0
-            let dataArr = ctx.chart.data.datasets[0].data
-            dataArr.map((data) => {
-              sum += data
-            })
-            let percentage = ((value * 100) / sum).toFixed(0) + '%'
-            return ctx.chart.data.labels[ctx.dataIndex] + ' ' + percentage
-          },
           anchor: 'end',
           align: 'end',
-          offset: 8, // Move labels slightly away from the pie
+          offset: 4,
+          color: '#1A1C1E',
+          font: { family: fontFamily, size: 12 },
+          formatter: (value, ctx) => {
+            const data = ctx.chart.data.datasets[0].data
+            const sum = data.reduce((a, b) => a + b, 0)
+            return `${(value).toLocaleString(undefined, { maximumFractionDigits: 1 })} (${((value * 100) / sum).toFixed(1)}%)`
+          },
         },
       },
-      layout: {
-        padding: {
-          top: 50,
-          bottom: 50,
-          left: 50, // Increase left padding to make room for labels
-          right: 50, // Increase right padding to make room for labels
-        },
-      },
+      layout: { padding: { right: 80 } },
     },
     navChartOptions: {
       responsive: true,
@@ -181,7 +184,7 @@ export const getChartOptions = async (currency) => {
 
             return context.datasetIndex === labelIndex ? sum.toFixed(1) : null
           },
-          color: () => 'black', // Use black for all labels
+          color: () => '#1A1C1E',
           offset: (context) => {
             const datasets = context.chart.data.datasets.filter(
               (ds) => ds.type === 'bar'
@@ -215,19 +218,5 @@ export const getChartOptions = async (currency) => {
         },
       },
     },
-    colorPalette: [
-      '#1976D2', // primary (blue)
-      '#4CAF50', // success (green)
-      '#FF9800', // warning (orange)
-      '#F44336', // error (red)
-      '#9C27B0', // purple
-      '#00BCD4', // cyan
-      '#795548', // brown
-      '#607D8B', // blue-grey
-      '#E91E63', // pink
-      '#3F51B5', // indigo
-      '#009688', // teal
-      '#FFC107', // amber
-    ],
   }
 }

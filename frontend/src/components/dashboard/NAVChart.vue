@@ -50,7 +50,7 @@
 import { ref, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import StackedBarLineChart from '@/components/charts/StackedBarLineChart.vue'
-import { getChartOptions } from '@/config/chartConfig'
+import { getChartOptions, colorPalette } from '@/config/chartConfig'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 // import { calculateDateRange } from '@/utils/dateRangeUtils'
 
@@ -169,7 +169,7 @@ const chartDataComputed = computed(() => {
     }
   }
 
-  const { colorPalette } = chartOptions.value
+  const chartPalette = colorPalette
 
   return {
     labels: props.chartData.labels,
@@ -177,11 +177,11 @@ const chartDataComputed = computed(() => {
       ...dataset,
       backgroundColor:
         dataset.type === 'bar'
-          ? colorPalette[index % colorPalette.length]
+          ? chartPalette[index % chartPalette.length]
           : dataset.backgroundColor,
       borderColor:
         dataset.type === 'line'
-          ? colorPalette[index % colorPalette.length]
+          ? chartPalette[index % chartPalette.length]
           : undefined,
       order: dataset.type === 'line' ? 0 : index + 1,
       yAxisID: dataset.type === 'line' ? 'y1' : 'y',

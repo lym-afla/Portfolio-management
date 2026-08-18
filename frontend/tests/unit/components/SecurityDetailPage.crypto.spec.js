@@ -35,6 +35,7 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/config/chartConfig', () => ({
   getChartOptions: vi.fn(),
+  colorPalette: ['#0F4C81', '#5C6B7A', '#1E7F4F', '#9A6700', '#0B5FA5'],
 }))
 
 vi.mock('@/utils/logger', () => ({

@@ -302,7 +302,7 @@ import { useTableSettings } from '@/composables/useTableSettings'
 import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
-import { getChartOptions } from '@/config/chartConfig'
+import { getChartOptions, colorPalette } from '@/config/chartConfig'
 import logger from '@/utils/logger'
 import {
   subDays,
@@ -599,9 +599,8 @@ const chartData = computed(() => {
           label: securityName,
           data: data,
           borderColor:
-            chartOptions.value?.colorPalette?.[
-              index % (chartOptions.value?.colorPalette?.length || 1)
-            ] || 'rgba(75, 192, 192, 1)',
+            colorPalette[index % colorPalette.length] ||
+            'rgba(75, 192, 192, 1)',
           tension: 0.1,
         }
       }
