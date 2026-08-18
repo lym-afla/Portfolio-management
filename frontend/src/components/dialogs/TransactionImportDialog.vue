@@ -1215,9 +1215,6 @@ const dialog = ref(props.modelValue)
       }
     })
 
-    watch(isConnected, (newValue) => {
-    })
-
     onUnmounted(() => {
       // Ensure intentional disconnect on unmount
       disconnect()

@@ -164,7 +164,7 @@ onMounted(() => {
 .custom-subheader {
   font-weight: bold;
   font-size: 1.1em;
-  color: #000000;
+  color: rgb(var(--v-theme-on-surface));
   padding-top: 12px;
   padding-bottom: 12px;
   background-color: #f5f5f5;
