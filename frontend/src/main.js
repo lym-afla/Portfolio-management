@@ -13,6 +13,7 @@ import logger from './utils/logger'
 import './utils/authDebugConsole'
 import authDebug from './utils/authDebug'
 import './utils/axiosDebug'
+import { createAppTheme } from './theme'
 
 const vuetify = createVuetify({
   components,
@@ -20,17 +21,7 @@ const vuetify = createVuetify({
   icons: {
     defaultSet: 'mdi',
   },
-  theme: {
-    defaultTheme: 'light',
-    themes: {
-      light: {
-        dark: false,
-        variables: {
-          fontFamily: 'var(--system-font)',
-        },
-      },
-    },
-  },
+  theme: createAppTheme(),
 })
 
 // Initialize logger
