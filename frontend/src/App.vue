@@ -26,7 +26,7 @@
           </v-container>
         </v-app-bar>
 
-        <v-main :style="{ paddingTop: mainPadding }">
+        <v-main>
           <v-container fluid class="pa-4">
             <router-view @update-page-title="updatePageTitle" />
           </v-container>
@@ -96,10 +96,6 @@ const handleLogout = async () => {
 const updatePageTitle = (title: string) => {
   pageTitle.value = title
 }
-
-const mainPadding = computed(() => {
-  return (route.meta.paddingTop as string) || '140px' // Default padding
-})
 
 onMounted(() => {
   layoutLoading.value = false
