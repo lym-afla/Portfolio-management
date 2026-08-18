@@ -22,8 +22,10 @@ export const openPositionsHeaders = [
     children: [
       { title: 'Price', key: 'current_price', align: 'end', sortable: true },
       { title: 'Value', key: 'current_value', align: 'end', sortable: true },
-      { title: 'Share %', key: 'share_of_portfolio', align: 'end', sortable: true, class: 'font-italic' },
-      { title: 'Price Δ %', key: 'price_change_percentage', align: 'end', sortable: true, class: 'font-italic' },
+      { title: 'Share %', key: 'share_of_portfolio', align: 'end', sortable: true, class: 'font-italic',
+        description: "Current market value of the position as a share of the portfolio's total NAV." },
+      { title: 'Price Δ %', key: 'price_change_percentage', align: 'end', sortable: true, class: 'font-italic',
+        description: 'Change between entry price and current price, in percent.' },
       { title: 'Realized G/L', key: 'realized_gl', align: 'end', sortable: true },
       { title: 'Unrealized G/L', key: 'unrealized_gl', align: 'end', sortable: true },
       { title: 'Cap. Distr.', key: 'capital_distribution', align: 'end', sortable: true },
@@ -31,8 +33,10 @@ export const openPositionsHeaders = [
       { title: 'Commission', key: 'commission', align: 'end', sortable: true },
       { title: 'Commission %', key: 'commission_percentage', align: 'end', sortable: true, class: 'font-italic' },
       { title: 'Total Return', key: 'total_return_amount', align: 'end', sortable: true },
-      { title: 'Total Return %', key: 'total_return_percentage', align: 'end', sortable: true, class: 'font-italic' },
-      { title: 'IRR', key: 'irr', align: 'end', sortable: true, class: 'font-italic' },
+      { title: 'Total Return %', key: 'total_return_percentage', align: 'end', sortable: true, class: 'font-italic',
+        description: 'Total return incl. capital distributions and after commissions, relative to entry value.' },
+      { title: 'IRR', key: 'irr', align: 'end', sortable: true, class: 'font-italic',
+        description: 'Money-weighted internal rate of return since the position was opened.' },
     ],
   },
 ]
@@ -98,8 +102,10 @@ export const closedPositionsHeaders = [
     sortable: false,
     children: [
       { title: 'Amount', key: 'total_return_amount', align: 'end', sortable: true },
-      { title: '%', key: 'total_return_percentage', align: 'end', sortable: true, class: 'font-italic' },
-      { title: 'IRR', key: 'irr', align: 'end', sortable: true, class: 'font-italic' },
+      { title: '%', key: 'total_return_percentage', align: 'end', sortable: true, class: 'font-italic',
+        description: 'Total return incl. capital distributions and after commissions, relative to entry value.' },
+      { title: 'IRR', key: 'irr', align: 'end', sortable: true, class: 'font-italic',
+        description: 'Money-weighted internal rate of return since the position was opened.' },
     ],
   },
 ]

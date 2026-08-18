@@ -39,7 +39,8 @@
         </v-window-item>
       </v-window>
 
-      <div v-if="!hasData" class="text-center pa-4">No data available</div>
+      <v-alert v-if="!hasData" type="info" variant="tonal" density="compact" class="ma-4"
+        text="No data for the selected account and period. Adjust the date range or select another account." />
     </v-card-text>
   </v-card>
 </template>

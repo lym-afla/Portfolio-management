@@ -6,6 +6,7 @@ import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { createPinia } from 'pinia'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
+import { useAppStore } from '@/stores/app'
 
 vi.mock('@/services/api', () => ({
   getEffectiveCurrentDate: vi.fn().mockResolvedValue({
@@ -116,6 +117,70 @@ describe('PositionsPageBase', () => {
     expect(foot.exists()).toBe(true)
     expect(foot.find('td.text-end').exists()).toBe(true)
     expect(foot.find('td.end').exists()).toBe(false)
+  })
+
+  it('renders a glossary tooltip on a described header column and keeps the sort icon', async () => {
+    const described = [
+      { title: 'Type', key: 'type', align: 'start', sortable: true },
+      {
+        title: 'IRR', key: 'irr', align: 'end', sortable: true,
+        description: 'Money-weighted internal rate of return.',
+      },
+    ]
+    const { wrapper } = makeWrapper({ headers: described })
+    await flushPromises()
+
+    // Vuetify 3.12 exposes per-column `header.<key>` slots; custom props
+    // (description) are spread directly onto `column`. The tooltip must be
+    // attached to the described column only.
+    const tooltips = wrapper.findAllComponents({ name: 'VTooltip' })
+    expect(tooltips).toHaveLength(1)
+    expect(tooltips[0].props('text')).toBe(
+      'Money-weighted internal rate of return.'
+    )
+    // Sort affordance preserved: the described th is still sortable and its
+    // content row still carries the sort icon class.
+    const th = tooltips[0].element.closest('th')
+    expect(th.className).toContain('v-data-table__th--sortable')
+    expect(th.querySelector('.v-data-table-header__sort-icon')).not.toBeNull()
+    expect(th.textContent).toContain('IRR')
+  })
+
+  it('shows the import empty state when there are no items and no search', async () => {
+    const fetchPositions = vi.fn().mockResolvedValue({
+      positions: [],
+      totals: {},
+      total_items: 0,
+    })
+    const wrapper = mount(PositionsPageBase, {
+      global: {
+        plugins: [vuetify, createPinia()],
+        stubs: { RouterLink: { template: '<a><slot /></a>' } },
+      },
+      props: { fetchPositions, headers, pageTitle: 'Test' },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No positions yet')
+    expect(wrapper.text()).toContain('import transactions')
+    expect(wrapper.text()).not.toContain('No positions match your search')
+  })
+
+  it('shows the filtered-out empty state when search yields no items', async () => {
+    const fetchPositions = vi
+      .fn()
+      .mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
+    // `search` lives in the app store (debounced setter), so seed the store
+    // instead of driving the input.
+    const pinia = createPinia()
+    const appStore = useAppStore(pinia)
+    appStore.tableSettings.search = 'nomatch'
+    const wrapper = mount(PositionsPageBase, {
+      global: { plugins: [vuetify, pinia] },
+      props: { fetchPositions, headers, pageTitle: 'Test' },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No positions match your search')
+    expect(wrapper.text()).not.toContain('No positions yet')
   })
 })
 

@@ -39,7 +39,7 @@ describe('NAVChart', () => {
     })
     const alert = wrapper.find('v-alert, .v-alert')
     expect(alert.exists()).toBe(true)
-    expect(alert.attributes('text')).toBe('No data available')
+    expect(alert.attributes('text')).toBe('No data for the selected account and period. Adjust the date range or select another account.')
     expect(wrapper.find('.chart-wrapper').exists()).toBe(false)
   })
 

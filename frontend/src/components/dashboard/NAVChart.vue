@@ -42,7 +42,8 @@
           <v-progress-circular indeterminate color="primary" size="64" />
         </div>
       </div>
-      <v-alert v-else type="info" text="No data available" />
+      <v-alert v-else type="info" variant="tonal" density="compact"
+        text="No data for the selected account and period. Adjust the date range or select another account." />
     </v-card-text>
   </v-card>
 </template>

@@ -27,6 +27,46 @@
             <slot :name="name" v-bind="slotData" />
           </template>
 
+          <!-- Glossary tooltips: Vuetify 3.12 only offers per-column
+               `header.<key>` slots (no generic #header). Slot payload:
+               { column, selectAll, isSorted, toggleSort, sortBy, getSortIcon, ... }
+               Custom header props (e.g. `description`) are spread directly onto
+               `column` by useHeaders, so column.description is available.
+               We re-render Vuetify's own content div + sort icon so clicking
+               the <th> (whose onClick Vuetify keeps) still sorts. -->
+          <template
+            v-for="h in describedHeaderSlots"
+            :key="h.key"
+            #[h.slotName]="{ column, getSortIcon }"
+          >
+            <div class="v-data-table-header__content">
+              <v-tooltip :text="column.description" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <span v-bind="tooltipProps">{{ column.title }}</span>
+                </template>
+              </v-tooltip>
+              <v-icon
+                v-if="column.sortable"
+                class="v-data-table-header__sort-icon"
+                :icon="getSortIcon(column)"
+              />
+            </div>
+          </template>
+
+          <!-- Distinct empty states: truly empty vs filtered out. -->
+          <template #no-data>
+            <div v-if="totalItems === 0 && !search" class="text-center pa-4">
+              No positions yet —
+              <router-link :to="{ name: 'Transactions' }">
+                import transactions
+              </router-link>
+              to get started.
+            </div>
+            <div v-else class="text-center pa-4">
+              No positions match your search.
+            </div>
+          </template>
+
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b">
               <v-col cols="12" sm="3" md="2" lg="2">
@@ -291,6 +331,15 @@ const withGroupStartClasses = (headers: TableHeader[]): TableHeader[] =>
       headerProps: { ...props, class: 'group-start' },
     }
   })
+
+// Vuetify 3.12 has no generic #header slot — only per-column
+// `header.<key>` slots. Build the dynamic slot names for leaves that carry a
+// glossary `description`.
+const describedHeaderSlots = computed(() =>
+  flattenedHeaders.value
+    .filter((h) => h.description)
+    .map((h) => ({ key: String(h.key), slotName: `header.${h.key}` }))
+)
 
 const visibleHeaders = computed<TableHeader[]>(() => {
   const allowed = visibleKeys.value
