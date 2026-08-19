@@ -12,9 +12,13 @@ chains through the existing fiat FX graph (spec §4.5, decision 2a).
 Numeric safety: ``Decimal`` everywhere. Never ``float``.
 """
 
+import logging
 from decimal import Decimal
+from typing import Optional
 
 from common.models import Assets, Prices
+
+logger = logging.getLogger(__name__)
 
 
 def is_crypto(asset) -> bool:
@@ -77,3 +81,77 @@ def crypto_fx_rate(code: str, target: str, date_as_of, investor=None) -> Decimal
 
     usd_to_target = fx_get_rate("USD", target, date_as_of, investor)["FX"]
     return (usd_price * usd_to_target).quantize(Decimal("0.000001"))
+
+
+def crypto_usd_price_with_fallback(code: str, date_as_of, investor=None) -> Optional[Decimal]:
+    """Resolve a coin's USD price, falling back to the last transaction price.
+
+    Tier 1: latest ``Prices`` row on/before ``date_as_of`` (the live market
+    price) — via ``crypto_usd_price``.
+    Tier 2: the asset's most recent ``Crypto trade in/out`` price (as USD),
+    if that trade's currency is USD/USDT/USDC, or convertible via FX.
+    Tier 3: ``None`` (unpriced — caller skips with warning).
+    """
+    # Tier 1
+    try:
+        return crypto_usd_price(code, date_as_of, investor)
+    except ValueError:
+        pass
+    # Tier 2: last transaction price
+    from common.models import Transactions
+    from constants import TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT
+    asset = Assets.objects.filter(type="Crypto", name=str(code).upper().strip()).first()
+    if asset is None:
+        return None
+    last_trade = (
+        Transactions.objects.filter(
+            security=asset, investor=investor,
+            type__in=[TRANSACTION_TYPE_CRYPTO_TRADE_IN, TRANSACTION_TYPE_CRYPTO_TRADE_OUT],
+            price__isnull=False,
+            date__date__lte=date_as_of,
+        ).order_by("-date", "-id").first()
+    )
+    if last_trade is None or last_trade.price in (None, 0):
+        return None
+    if (last_trade.currency or "").upper() in ("USD", "USDT", "USDC"):
+        return Decimal(last_trade.price)
+    try:
+        from services.fx import get_rate
+        return Decimal(last_trade.price) * get_rate(last_trade.currency, "USD", last_trade.date)["FX"]
+    except ValueError:
+        return None
+
+
+def safe_crypto_fx_rate(code: str, target: str, date_as_of, investor=None) -> Optional[Decimal]:
+    """Like ``crypto_fx_rate``, but returns ``None`` (with a warning) when the
+    coin is unpriced (both market and last-trade fallbacks miss), instead of
+    raising ``ValueError``.
+
+    Callers that need graceful degradation (realized/IRR/tables) use this;
+    strict callers (NAV spot-crypto, which has its own try/except) keep
+    ``crypto_fx_rate``.
+    """
+    code = (code or "").upper().strip()
+    target = (target or "").upper().strip()
+    if code == target:
+        return Decimal("1")
+    try:
+        return crypto_fx_rate(code, target, date_as_of, investor)
+    except ValueError:
+        usd_price = crypto_usd_price_with_fallback(code, date_as_of, investor)
+        if usd_price is None:
+            logger.warning(
+                "No USD price for %s on or before %s (market + last-trade) — skipping",
+                code, date_as_of,
+            )
+            return None
+        logger.info("Using last-trade price for %s as of %s", code, date_as_of)
+        if target == "USD":
+            return usd_price
+        try:
+            from services.fx import get_rate
+            return (usd_price * get_rate("USD", target, date_as_of)["FX"]).quantize(
+                Decimal("0.000001")
+            )
+        except ValueError:
+            return None

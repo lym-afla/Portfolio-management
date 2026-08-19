@@ -112,3 +112,89 @@ def test_resolve_crypto_asset_sets_yahoo_symbol(user):
     ]:
         asset = resolve_crypto_asset(symbol, user)
         assert asset.yahoo_symbol == expected_yahoo, f"{symbol} -> {asset.yahoo_symbol}"
+
+
+@pytest.mark.django_db
+class TestCryptoUsdPriceWithFallback:
+    """Three-tier price resolver: market price -> last-trade price -> None."""
+
+    def test_tier1_market_price(self, user):
+        """When a Prices row exists, return it (tier 1)."""
+        from datetime import datetime, timezone
+        from common.models import Transactions
+        from services.crypto import crypto_usd_price_with_fallback
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:FB1", name="FB1",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        Prices.objects.create(security=coin, date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                              price=Decimal("100"))
+        result = crypto_usd_price_with_fallback("FB1", date(2026, 6, 1), investor=user)
+        assert result == Decimal("100")
+
+    def test_tier2_last_trade_price(self, user):
+        """When no Prices row but a trade exists, return last-trade price."""
+        from datetime import datetime, timezone
+        from common.models import Accounts, Brokers, Transactions
+        from services.crypto import crypto_usd_price_with_fallback
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:FB2", name="FB2",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        broker = Brokers.objects.create(investor=user, name="FB2B", country="X")
+        acct = Accounts.objects.create(broker=broker, name="A")
+        Transactions.objects.create(
+            investor=user, account=acct, security=coin, currency="USDT",
+            type="Crypto trade out",
+            date=datetime(2026, 1, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-1"), price=Decimal("16.557"),
+        )
+        result = crypto_usd_price_with_fallback("FB2", date(2026, 6, 1), investor=user)
+        assert result == Decimal("16.557")
+
+    def test_tier3_none_when_no_price_no_trade(self, user):
+        """When no Prices row AND no trade, return None."""
+        from services.crypto import crypto_usd_price_with_fallback
+        Assets.objects.create(type="Crypto", ISIN="CRYPTO:FB3", name="FB3",
+                              currency="USD", exposure="Commodity").investors.add(user)
+        result = crypto_usd_price_with_fallback("FB3", date(2026, 6, 1), investor=user)
+        assert result is None
+
+
+@pytest.mark.django_db
+class TestSafeCryptoFxRate:
+    """safe_crypto_fx_rate returns None+warning instead of raising."""
+
+    def test_priced_returns_rate(self, user):
+        from datetime import datetime, timezone
+        from services.crypto import safe_crypto_fx_rate
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:SF1", name="SF1",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        Prices.objects.create(security=coin, date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                              price=Decimal("50000"))
+        result = safe_crypto_fx_rate("SF1", "USD", date(2026, 6, 1), investor=user)
+        assert result == Decimal("50000")
+
+    def test_unpriced_no_trade_returns_none(self, user):
+        from services.crypto import safe_crypto_fx_rate
+        Assets.objects.create(type="Crypto", ISIN="CRYPTO:SF2", name="SF2",
+                              currency="USD", exposure="Commodity").investors.add(user)
+        result = safe_crypto_fx_rate("SF2", "USD", date(2026, 6, 1), investor=user)
+        assert result is None
+
+    def test_unpriced_with_trade_returns_last_trade(self, user):
+        from datetime import datetime, timezone
+        from common.models import Accounts, Brokers, Transactions
+        from services.crypto import safe_crypto_fx_rate
+        coin = Assets.objects.create(type="Crypto", ISIN="CRYPTO:SF3", name="SF3",
+                                     currency="USD", exposure="Commodity")
+        coin.investors.add(user)
+        broker = Brokers.objects.create(investor=user, name="SF3B", country="X")
+        acct = Accounts.objects.create(broker=broker, name="A")
+        Transactions.objects.create(
+            investor=user, account=acct, security=coin, currency="USDT",
+            type="Crypto trade out",
+            date=datetime(2026, 1, 15, tzinfo=timezone.utc),
+            quantity=Decimal("-1"), price=Decimal("42"),
+        )
+        result = safe_crypto_fx_rate("SF3", "USD", date(2026, 6, 1), investor=user)
+        assert result == Decimal("42")

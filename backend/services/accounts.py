@@ -26,9 +26,11 @@ module top level would also pull in ``services.fx``.
 """
 
 import logging
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from constants import (
+    ASSET_TYPE_OPTION,
+    CASH_CURRENCIES,
     TRANSACTION_TYPE_CRYPTO_REWARD,
     TRANSACTION_TYPE_CRYPTO_TRADE_IN,
     TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -76,6 +78,16 @@ def balance(account, date):
     # Process regular transactions using centralized cash flow calculation
     transactions = account.transactions.filter(date__date__lte=date)
     for transaction in transactions:
+        # Coin-settled option premiums (BTC) are Crypto-bucket movements
+        # (offset by the option liability), NOT cash — exclude them so they
+        # don't leak into the Cash balances card. Fiat/stablecoin-settled
+        # premiums (USD/EUR/USDT) ARE cash movements — include them.
+        if (
+            transaction.security is not None
+            and transaction.security.type == ASSET_TYPE_OPTION
+            and (transaction.currency or "").upper() not in CASH_CURRENCIES
+        ):
+            continue
         cash_flow = total_cash_flow(transaction)
         if cash_flow == 0 and transaction.type in [
             TRANSACTION_TYPE_CRYPTO_REWARD,
@@ -105,7 +117,10 @@ def balance(account, date):
             cash_flow = get_cash_flow_by_currency(fx_transaction, currency)
             balance_result[currency] = balance_result.get(currency, Decimal(0)) + cash_flow
 
+    precision = getattr(getattr(account, "broker", None), "cash_precision", 2) or 2
     for key, value in balance_result.items():
-        balance_result[key] = round(Decimal(value), 2)
+        balance_result[key] = Decimal(value).quantize(
+            Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP
+        )
 
     return balance_result

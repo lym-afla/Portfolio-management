@@ -662,13 +662,17 @@ def _okx_base_currency(symbol):
     return str(symbol).split("-")[0]
 
 
-def _normalize_okx_csv_event(payload):
+def _normalize_okx_csv_event(payload, investor=None, account_id=None):
     """Run the live-API OKX normalizer for ``payload`` and re-tag for CSV import.
 
     The shared normalizers hardcode ``provider="okx"`` (so API and CSV rows would
     share a dedup namespace). For CSV imports we override ``provider`` to
     ``okx_csv`` so a re-import of the same trade via the API does not silently
     dedup against the CSV row (and vice versa).
+
+    ``investor`` / ``account_id`` are threaded through to the option-settlement
+    normalizer so it can look up the open option position at expiry to determine
+    the close direction and size.
     """
     from services.crypto_exchange import (
         CryptoExchangeEvent,
@@ -697,7 +701,9 @@ def _normalize_okx_csv_event(payload):
     elif kind == "option_fill":
         event = normalize_okx_option_fill(payload)
     else:
-        event = normalize_okx_option_settlement(payload)
+        event = normalize_okx_option_settlement(
+            payload, investor=investor, account_id=account_id
+        )
     event.provider = OKX_CSV_IMPORT_PROVIDER
     return event
 
@@ -901,12 +907,14 @@ def build_okx_csv_events(df, tz_offset):
                 bal_chg = Decimal(str(row.get("Balance Change") or "0"))
                 payload = {
                     "__kind": "option_settlement",
+                    "instId": symbol_clean,        # NEW: option symbol for asset resolution
                     "ccy": ccy,
                     "balChg": str(bal_chg),
                     "px": str(filled_price),
                     "billId": str(row_id),
                     "ts": str(fill_time),
                     "ordId": str(order_id) if order_id and order_id != "0" else "",
+                    "amount": str(amount),          # NEW: contracts (fallback for _lookup)
                 }
                 events.append((payload, str(row_id)))
             else:
@@ -915,6 +923,7 @@ def build_okx_csv_events(df, tz_offset):
                 # so total_cash_flow reads it directly instead of computing the
                 # nonsensical contracts × underlying_price product. Issue #33.
                 bal_chg = Decimal(str(row.get("Balance Change") or "0"))
+                balance_unit = (_strip_okx_bom(row.get("Balance Unit")) or fee_unit).upper()
                 payload = {
                     "__kind": "option_fill",
                     "instId": symbol_clean,
@@ -926,7 +935,8 @@ def build_okx_csv_events(df, tz_offset):
                     "ordId": str(order_id) if order_id and order_id != "0" else "",
                     "fee": str(fee),
                     "feeCcy": fee_unit,
-                    "cashFlow": str(bal_chg),
+                    "balanceUnit": balance_unit,          # NEW: currency source from CSV
+                    "cashFlow": str(bal_chg),              # raw signed BC; normalizer decomposes
                 }
                 events.append((payload, str(row_id)))
             continue
@@ -1203,7 +1213,9 @@ async def parse_okx_trading_csv(file_path, account_id, user_id, confirm_every):
                     }
                 continue
 
-            event = _normalize_okx_csv_event(payload)  # re-tagged with okx_csv provider
+            event = _normalize_okx_csv_event(
+                payload, investor=user_id, account_id=account_id
+            )  # re-tagged with okx_csv provider
             created = await database_sync_to_async(persist_crypto_exchange_event)(
                 event, investor, account
             )

@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from core.formatting_utils import currency_format
+from services import options
 from services.nav import IRR, NAV_at_date, calculate_portfolio_cash, get_fx_rate
 from services.capital import get_capital_distribution, get_commission
 from services.pricing import calculate_value_at_date, price_at_date
@@ -99,6 +100,12 @@ def _calculate_closed_table_output_for_api(
     portfolio_closed_totals = {}
 
     for asset in portfolio:
+        # Option contract size scales the per-contract fill price (coin per
+        # contract) to coin-notional when multiplied by the contract-unit
+        # position. ``Decimal(1)`` for non-options, so this is a no-op for
+        # stocks/bonds/crypto. Resolved once per asset (not per-transaction):
+        # it is metadata on the asset, constant across the value loops below.
+        contract_size = options.contract_size_for_asset(asset)
         exit_dates = list(
             _positions_exit_dates(asset, end_date, user_id, selected_account_ids, start_date)
         )
@@ -182,7 +189,10 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                entry_value += get_price(transaction) * abs(transaction.quantity) * fx_rate
+                if options.is_option_asset(asset):
+                    entry_value += options.option_transaction_value(transaction, contract_size, fx_rate)
+                else:
+                    entry_value += (get_price(transaction) or Decimal(0)) * abs(transaction.quantity) * fx_rate
                 entry_quantity += abs(transaction.quantity)
 
             position["entry_value"] = Decimal(entry_value)
@@ -195,13 +205,28 @@ def _calculate_closed_table_output_for_api(
                     if currency_used
                     else 1
                 )
-                exit_value += get_price(transaction) * abs(transaction.quantity) * fx_rate
+                if options.is_option_asset(asset):
+                    exit_value += options.option_transaction_value(transaction, contract_size, fx_rate)
+                else:
+                    exit_value += (get_price(transaction) or Decimal(0)) * abs(transaction.quantity) * fx_rate
 
             position["exit_value"] = Decimal(exit_value)
 
             # Calculate realized gain/loss
             if "realized_gl" in categories:
-                position["realized_gl"] = exit_value - entry_value
+                if options.is_option_asset(asset):
+                    # Options: the generic exit-entry formula treats the premium
+                    # as a cost (like buying), but a writer KEEPS the premium at
+                    # OTM. Use the option-aware realized engine instead.
+                    option_gl = realized_gain_loss(
+                        asset, exit_date, user_id,
+                        currency=currency_used,
+                        account_ids=selected_account_ids,
+                        start_date=entry_date,
+                    )
+                    position["realized_gl"] = option_gl["all_time"]["total"]
+                else:
+                    position["realized_gl"] = exit_value - entry_value
             else:
                 position["realized_gl"] = Decimal(0)
 
