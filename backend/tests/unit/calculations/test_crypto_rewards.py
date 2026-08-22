@@ -112,9 +112,9 @@ def test_crypto_reward_does_not_distort_paid_entry_price(user, crypto_account, b
 def test_crypto_transfer_out_reduces_economic_basis_for_remaining_lots(
     user, crypto_account, btc
 ):
-    """Transfer out is basis-neutral: it moves position but leaves paid+reward
-    basis unchanged (TRANSFER_DISPOSITION_ENABLED is False). Buy 1@100 + reward
-    0.1@200 => basis 120; the transfer-out of 0.25 does not debit it."""
+    """Post-#29 (flag True): an UNMATCHED transfer-out debits its pro-rata basis
+    from the remaining lots. Buy 1@100 + reward 0.1@200 => basis 120; the
+    unmatched transfer-out of 0.25 debits 0.25*avg(109.09)=27.27 -> 92.73."""
     Transactions.objects.create(
         investor=user,
         account=crypto_account,
@@ -146,9 +146,11 @@ def test_crypto_transfer_out_reduces_economic_basis_for_remaining_lots(
         price=Decimal("150.000000000"),
     )
 
+    # Post-#29 (flag True): the unmatched transfer-out debits its pro-rata
+    # basis (0.25 * 120/1.1 = 27.27) from the remaining lots -> 92.73.
     assert get_economic_basis(
         btc, datetime(2026, 1, 4).date(), user, "USD", [crypto_account.id]
-    ) == Decimal("120.00")
+    ) == Decimal("92.73")
 
 
 @pytest.mark.django_db
@@ -557,10 +559,9 @@ def test_crypto_realized_gain_uses_unrounded_economic_basis(user, crypto_account
 
 @pytest.mark.django_db
 def test_grouped_internal_transfer_carries_economic_basis(user, crypto_account, btc):
-    """Grouped internal transfers are basis-neutral while
-    TRANSFER_DISPOSITION_ENABLED is False: the transfer-out does not debit the
-    source's basis (stays 100) and the transfer-in does not credit the
-    destination's basis (stays 0). The portfolio total (100) is preserved."""
+    """Post-#29 (flag True): a matched internal transfer carries basis across
+    accounts — source debits 0.4*100=40 (-> 60), destination reclaims 40; the
+    portfolio total (100) is preserved."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
         name="Funding",
@@ -600,6 +601,8 @@ def test_grouped_internal_transfer_carries_economic_basis(user, crypto_account, 
         import_group_id=transfer_group,
     )
 
+    # Post-#29 (flag True): matched carry moves 0.4 * 100 = 40 from source to
+    # destination; portfolio total is conserved at 100.
     assert get_economic_basis(
         btc,
         datetime(2026, 1, 3).date(),
@@ -609,18 +612,17 @@ def test_grouped_internal_transfer_carries_economic_basis(user, crypto_account, 
     ) == Decimal("100.00")
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [crypto_account.id]
-    ) == Decimal("100.00")
+    ) == Decimal("60.00")
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
-    ) == Decimal("0.00")
+    ) == Decimal("40.00")
 
 
 @pytest.mark.django_db
 def test_chained_grouped_transfers_preserve_economic_basis(user, crypto_account, btc):
-    """Chained internal transfers are basis-neutral while
-    TRANSFER_DISPOSITION_ENABLED is False: neither leg carries basis between
-    accounts, so the destination accounts (which have no paid entries of their
-    own) keep basis 0 and the portfolio total stays 100."""
+    """Post-#29 (flag True): chained matched transfers carry basis hop by hop
+    — crypto_account 60, account_b 15 (40 in, 25 onward), account_c 25; the
+    portfolio total stays 100."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
         name="Funding",
@@ -690,6 +692,8 @@ def test_chained_grouped_transfers_preserve_economic_basis(user, crypto_account,
         import_provider="bybit",
     )
 
+    # Post-#29 (flag True): the chain carries 40 (0.4*100) into account_b,
+    # then 25 (0.25*100) onward into account_c; total conserved at 100.
     assert get_economic_basis(
         btc,
         datetime(2026, 1, 4).date(),
@@ -699,18 +703,17 @@ def test_chained_grouped_transfers_preserve_economic_basis(user, crypto_account,
     ) == Decimal("100.00")
     assert get_economic_basis(
         btc, datetime(2026, 1, 4).date(), user, "USD", [account_b.id]
-    ) == Decimal("0.00")
+    ) == Decimal("15.00")
     assert get_economic_basis(
         btc, datetime(2026, 1, 4).date(), user, "USD", [account_c.id]
-    ) == Decimal("0.00")
+    ) == Decimal("25.00")
 
 
 @pytest.mark.django_db
 def test_grouped_transfer_preserves_sub_micro_crypto_basis(user, crypto_account, btc):
-    """While TRANSFER_DISPOSITION_ENABLED is False, transfers are basis-neutral,
-    so the destination account (no paid entry of its own) keeps basis 0 even for
-    sub-micro coin quantities. The 9-decimal precision path is still exercised
-    by the transfer's position math; the group-carry allocation is gated off."""
+    """Post-#29 (flag True): a matched transfer carries the full sub-micro
+    lot's basis (50) to the destination. The 9-decimal precision path is
+    exercised through the group-carry allocation."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
         name="Funding",
@@ -750,19 +753,20 @@ def test_grouped_transfer_preserves_sub_micro_crypto_basis(user, crypto_account,
         import_group_id=transfer_group,
     )
 
+    # Post-#29 (flag True): the full 0.0000005 lot (basis 50) carries to the
+    # destination.
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
-    ) == Decimal("0.00")
+    ) == Decimal("50.00")
 
 
 @pytest.mark.django_db
 def test_grouped_transfer_basis_ignores_other_asset_transactions(
     user, crypto_account, btc
 ):
-    """While TRANSFER_DISPOSITION_ENABLED is False, transfers are basis-neutral,
-    so the destination account keeps basis 0 regardless of other assets'
-    transactions in the same account. The other-asset scoping of the (gated-off)
-    group lookup is not exercised until #29 reactivates it."""
+    """Post-#29 (flag True): a matched transfer carries 0.4*100=40 to the
+    destination; other assets' transactions in the same account do not
+    interfere (per-asset scoping of the group lookup)."""
     eth = Assets.objects.create(
         type=ASSET_TYPE_CRYPTO,
         ISIN="CRYPTO:ETH",
@@ -822,9 +826,12 @@ def test_grouped_transfer_basis_ignores_other_asset_transactions(
         import_group_id=transfer_group,
     )
 
+    # Post-#29 (flag True): 0.4 BTC @ avg 100 = 40 carries to the destination;
+    # the ETH transactions in the same account do not interfere (per-asset
+    # scoping).
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
-    ) == Decimal("0.00")
+    ) == Decimal("40.00")
 
 
 @pytest.mark.django_db
@@ -989,10 +996,9 @@ def test_grouped_transfer_basis_requires_unambiguous_source_account(
 def test_split_grouped_transfer_allocates_basis_proportionally(
     user, crypto_account, btc
 ):
-    """While TRANSFER_DISPOSITION_ENABLED is False, split transfer-ins carry no
-    basis into their destination accounts (no paid entries of their own), so
-    each keeps basis 0 and the combined destination scope is 0. The proportional
-    group-carry allocation is gated off until #29."""
+    """Post-#29 (flag True): a split transfer-in (one OUT -> two INs) allocates
+    carried basis proportionally — 50 to each destination (0.5 of the 100
+    carried)."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
         name="Funding",
@@ -1056,25 +1062,26 @@ def test_split_grouped_transfer_allocates_basis_proportionally(
         import_account_id="bybit-earn",
     )
 
+    # Post-#29 (flag True): the 1.0 BTC @ 100 carries 100 basis to the two
+    # destination accounts, split proportionally (0.5 each -> 50 each).
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
-    ) == Decimal("0.00")
+    ) == Decimal("50.00")
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_c.id]
-    ) == Decimal("0.00")
+    ) == Decimal("50.00")
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id, account_c.id]
-    ) == Decimal("0.00")
+    ) == Decimal("100.00")
 
 
 @pytest.mark.django_db
 def test_split_grouped_transfer_outs_from_same_source_allocate_basis(
     user, crypto_account, btc
 ):
-    """While TRANSFER_DISPOSITION_ENABLED is False, multiple same-source
-    transfer-outs do not fund the destination transfer-ins' basis: the
-    destination accounts keep basis 0 (no paid entries of their own). The
-    same-source allocation logic is gated off until #29."""
+    """Post-#29 (flag True): multiple same-source transfer-outs (single-source
+    guard passes) fund the destination transfer-ins — 30 (0.3@100) + 79.41
+    (0.5@avg 158.82) = 109.41 carried, split 54.71 to each destination."""
     account_b = Accounts.objects.create(
         broker=crypto_account.broker,
         name="Funding",
@@ -1163,15 +1170,18 @@ def test_split_grouped_transfer_outs_from_same_source_allocate_basis(
         import_account_id="bybit-earn",
     )
 
+    # Post-#29 (flag True): both OUTs share one source (single-source guard
+    # passes), so basis carries to the destinations. Source debits 30 (0.3@100)
+    # + 79.41 (0.5 @ avg 158.82) = 109.41; split 0.4/0.4 -> 54.71 each.
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id]
-    ) == Decimal("0.00")
+    ) == Decimal("54.71")
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_c.id]
-    ) == Decimal("0.00")
+    ) == Decimal("54.71")
     assert get_economic_basis(
         btc, datetime(2026, 1, 3).date(), user, "USD", [account_b.id, account_c.id]
-    ) == Decimal("0.00")
+    ) == Decimal("109.41")
 
 
 @pytest.mark.django_db

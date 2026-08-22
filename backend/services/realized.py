@@ -70,6 +70,7 @@ from services.transactions import (
     is_neutral_transfer_transaction as _transactions_is_neutral_transfer_transaction,
     is_paid_entry_transaction as _transactions_is_paid_entry_transaction,
     is_reward_transaction as _transactions_is_reward_transaction,
+    is_unconditionally_neutral_transfer as _transactions_is_unconditionally_neutral_transfer,
     reward_value as _transactions_reward_value,
 )
 
@@ -96,12 +97,13 @@ def _cash_precision_for(asset, account_ids=None) -> int:
     return 2
 
 
-# Until issue #29's two-account model lands, ALL crypto transfers are neutral
-# (position += quantity, no realized G/L). OKX Funding↔Trading internal moves
-# dominate real data and are indistinguishable from external withdrawals
-# pre-#29. Set True to reactivate the matched-vs-unmatched disposition logic
-# (the _transfer_is_matched helper is retained for that future use).
-TRANSFER_DISPOSITION_ENABLED = False
+# Matched crypto transfers (both legs in-portfolio, paired via
+# import_group_id) stay neutral and carry basis cross-account. Unmatched
+# transfers (genuine external flows) realize gain/loss. Earn book-moves
+# (okx_earn_subscription / okx_earn_redemption) are exempted by
+# is_unconditionally_neutral_transfer and stay neutral regardless.
+# Activated by sub-project 5a / issue #29 (two-account model).
+TRANSFER_DISPOSITION_ENABLED = True
 
 
 def _option_contract_size(asset) -> Decimal:
@@ -656,7 +658,10 @@ def get_economic_basis(
                     average_basis = Decimal(0)
                     continue
             elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_OUT:
-                if TRANSFER_DISPOSITION_ENABLED:
+                if (
+                    TRANSFER_DISPOSITION_ENABLED
+                    and not _transactions_is_unconditionally_neutral_transfer(transaction)
+                ):
                     transferred_quantity = (
                         min(abs(quantity), position) if position > 0 else Decimal(0)
                     )
@@ -678,7 +683,10 @@ def get_economic_basis(
                 else:
                     position += quantity
             elif transaction.type == TRANSACTION_TYPE_CRYPTO_TRANSFER_IN:
-                if TRANSFER_DISPOSITION_ENABLED:
+                if (
+                    TRANSFER_DISPOSITION_ENABLED
+                    and not _transactions_is_unconditionally_neutral_transfer(transaction)
+                ):
                     group_key = transfer_group_key(transaction)
                     if group_key:
                         carried_basis = allocate_group_carry(
@@ -965,9 +973,14 @@ def realized_gain_loss(
                 # Pre-#29: all crypto transfers are neutral (internal wallet
                 # moves cannot be distinguished from external flows). When
                 # TRANSFER_DISPOSITION_ENABLED is True (#29), unmatched
-                # transfers fall through to the disposal/entry branches below.
-                if TRANSFER_DISPOSITION_ENABLED and not _transfer_is_matched(
-                    transaction, investor, account_ids
+                # transfers fall through to the disposal/entry branches below
+                # — UNLESS it is an unconditionally-neutral book move (Simple
+                # Earn subscribe/redeem, stake/unstake): those are principal-
+                # only and must never realize, regardless of the flag.
+                if (
+                    TRANSFER_DISPOSITION_ENABLED
+                    and not _transactions_is_unconditionally_neutral_transfer(transaction)
+                    and not _transfer_is_matched(transaction, investor, account_ids)
                 ):
                     logger.debug(
                         "Unmatched %s for asset %s: treating as disposition/entry.",
