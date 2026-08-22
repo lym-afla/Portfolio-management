@@ -1116,7 +1116,9 @@ async def test_trading_transfer_row_carries_synthesized_group_id(tmp_path, user,
     assert len(txs) == 1
     tx = txs[0]
     assert tx.type == "Crypto transfer out"
-    # 2026-06-22 20:05:02 UTC+3 == 17:05:02 UTC == epoch 1782147902.
-    assert tx.import_group_id == "okx_xfer:btc:0.45849457:1782147902"
+    # 2026-06-22 20:05:02 UTC+3 == 17:05:02 UTC == epoch 1782147902; the key
+    # quantizes the amount to 6dp (0.45849457 -> 0.458495) and buckets the
+    # timestamp to the minute (1782147902 // 60 = 29702465).
+    assert tx.import_group_id == "okx_xfer:btc:0.458495:29702465"
     # Dedup key still carries the billId (with the single-leg ``:0`` suffix).
     assert tx.import_event_id == "csv_transfer:770000000001:0"

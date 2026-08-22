@@ -12,6 +12,7 @@ from operator import attrgetter
 from django.db.models import Q
 
 from common.models import Accounts, FXTransaction, Transactions
+from constants import CASH_CURRENCIES
 from database.serializers import FXTransactionSerializer, TransactionSerializer
 from services.accounts import balance as account_balance, get_currencies
 
@@ -124,10 +125,14 @@ def _calculate_transactions_table_output(
     - FXTransactionSerializer for FX transactions
     - BalanceTracker for balance management
     """
-    # Get all currencies used in the accounts
+    # Get all currencies used in the accounts, filtered to CASH currencies.
+    # Commodity crypto coins (BTC/TRUMP) are not cash — they must not appear
+    # as columns in the Cash flow/Balance table even when option/transfer rows
+    # use them as their currency.
     currencies = set()
     for account in Accounts.objects.filter(broker__investor=user, id__in=selected_account_ids):
         currencies.update(get_currencies(account))
+    currencies = {c for c in currencies if (c or "").upper() in CASH_CURRENCIES}
 
     # Initialize balance tracker
     balance_tracker = BalanceTracker(number_of_digits=number_of_digits)
