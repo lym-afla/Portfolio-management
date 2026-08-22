@@ -43,7 +43,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import StringIO
 from typing import Dict, List, Tuple
 
@@ -682,12 +682,23 @@ def _okx_internal_transfer_group_id(ccy, amount, timestamp_ms):
     trading CSV (``Trade Type = Transfer``) stamp this same key, so the
     existing matched-transfer machinery (``_transfer_is_matched`` /
     ``allocate_group_carry``) pairs the legs without any cross-file
-    coordination. OKX records both legs at the same instant, so epoch-second
-    granularity aligns them; abs(amount) makes the key sign-invariant so an
-    OUT leg and its IN leg compute the identical string.
+    coordination.
+
+    Two real-data realities the key must absorb (observed in live exports):
+      1. OKX stamps the funding leg up to a second AFTER the trading leg, so
+         epoch-second granularity does NOT align them — bucket to the minute.
+      2. The two CSVs round amounts differently (trading 7dp vs funding full
+         precision, e.g. 0.6798604 vs 0.67986039864375), so the amount is
+         quantized to 6dp before stringifying.
+    abs(amount) makes the key sign-invariant so an OUT leg and its IN leg
+    compute the identical string.
     """
-    canonical_amount = str(abs(Decimal(str(amount))).normalize())
-    return f"okx_xfer:{str(ccy).lower()}:{canonical_amount}:{int(timestamp_ms) // 1000}"
+    canonical_amount = str(
+        abs(Decimal(str(amount)))
+        .quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        .normalize()
+    )
+    return f"okx_xfer:{str(ccy).lower()}:{canonical_amount}:{int(timestamp_ms) // 60000}"
 
 
 def _okx_base_currency(symbol):
