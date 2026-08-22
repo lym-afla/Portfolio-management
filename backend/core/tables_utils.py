@@ -305,8 +305,13 @@ def _calculate_closed_table_output_for_api(
                 }
             ):
                 if key in position:
+                    value = position[key]
+                    if isinstance(value, str):
+                        # "N/R" placeholders (percentage of a zero entry
+                        # value) are display markers, not summable amounts.
+                        continue
                     portfolio_closed_totals[key] = (
-                        portfolio_closed_totals.get(key, Decimal(0)) + position[key]
+                        portfolio_closed_totals.get(key, Decimal(0)) + value
                     )
 
     # Calculate percentage totals

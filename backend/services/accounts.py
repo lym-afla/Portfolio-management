@@ -51,10 +51,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_currencies(account):
-    """Get currencies for this account."""
+    """Get the cash currencies (fiat + stablecoins) used in this account.
+
+    Crypto coins appear as ``Transactions.currency`` on transfer legs (by
+    design — currency=coin keeps transfers out of the USD cash columns), so
+    a raw distinct would list BTC/TRUMP as cash columns on the Transaction
+    page. Filter to the model's cash universe, mirroring BalanceTracker's
+    ``CASH_CURRENCIES``.
+    """
     currencies = set()
     for transaction in account.transactions.all():
-        currencies.add(transaction.currency)
+        if (transaction.currency or "").upper() in CASH_CURRENCIES:
+            currencies.add(transaction.currency)
     return currencies
 
 
