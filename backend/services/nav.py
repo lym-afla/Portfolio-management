@@ -320,33 +320,23 @@ def NAV_at_date(
     # the BTC bucket exactly offsets the option liability booked above at
     # entry-cost mark — spec §3.4 NAV-neutral table).
     #
-    # Populates BOTH ``analysis["Crypto"]`` (per-coin breakdown) AND
-    # ``analysis["Total NAV"]``. The raw option ``cash_flow`` is the SOLE
-    # path by which the premium reaches Total NAV to cancel the option
-    # liability: ``services.accounts.balance()`` deliberately EXCLUDES
-    # option-security rows (their cash_flow is a premium offset by the
-    # option liability, NOT a cash balance — round-2 Task 3), so the
-    # cash-balance loop below no longer contributes the premium. Reading the
-    # raw ``cash_flow`` here (not ``account_balance``) preserves the full
-    # coin precision that ``balance()``'s per-currency round would collapse.
-    #
-    # No double-count with the option-liability loop above: that values the
-    # option CONTRACT (the liability, in the Securities-side breakdowns);
-    # this values the option's CASH_FLOW (the premium/payout). They are
-    # SEPARATE contributions that cancel for an open short marked at entry
-    # cost (the spec's NAV-neutral contract).
-    #
-    # Only crypto-coin cash_flows route here: USD/EUR-denominated option
-    # premiums belong in the fiat cash side, not the Crypto bucket. The
-    # ``Assets(type="Crypto")`` lookup enforces this.
+    # NOTE: ``services.positions.position()`` now INCLUDES the coin-settled
+    # option cash_flows (verified against the OKX CSV running balance:
+    # buys - fees - transfers + premium ~= 0), so for any coin with its own
+    # transactions the main crypto loop above already carries the premium
+    # (position x price). This routing loop therefore handles ONLY coins the
+    # main loop did not cover — a coin whose sole movement is the option
+    # premium (no own transactions) never enters the portfolio queryset.
+    # Skipping covered coins avoids the double-count.
+    covered_crypto_names = {
+        security.name for security in portfolio if is_crypto(security)
+    }
     option_cash_flows = Transactions.objects.filter(
         investor=user_id,
         date__date__lte=date,
         security__type="Option",
         cash_flow__isnull=False,
     ).filter(
-        # Option open/close event types (the importer emits these for crypto
-        # option fills and settlements; constants mirror transactions.py).
         type__in=[
             TRANSACTION_TYPE_CRYPTO_TRADE_IN,
             TRANSACTION_TYPE_CRYPTO_TRADE_OUT,
@@ -360,6 +350,11 @@ def NAV_at_date(
         if not is_crypto_code(coin):
             # Skip fiat-denominated option cash_flows (USD/EUR premium).
             continue
+        if coin in covered_crypto_names:
+            # The main crypto loop already carries this coin's premium via
+            # position() (which includes option cash_flows). Skip to avoid
+            # double-counting.
+            continue
         try:
             coin_to_target = get_fx_rate(coin, target_currency, date)
         except ValueError:
@@ -372,10 +367,6 @@ def NAV_at_date(
         cf_value = (tx.cash_flow or Decimal(0)) * coin_to_target
         if cf_value == 0:
             continue
-        # Route into Total NAV so the premium cancels the option liability
-        # booked above (balance() now excludes option rows, so this is the
-        # sole path; see comment block above). The per-coin Crypto breakdown
-        # gets the same value for the BTC/ETH bucket display.
         analysis["Total NAV"] += cf_value
         analysis["Crypto"]["__total__"] += cf_value
         analysis["Crypto"][coin] += cf_value

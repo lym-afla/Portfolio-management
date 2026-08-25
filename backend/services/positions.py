@@ -101,6 +101,26 @@ def position(asset, date, investor, account_ids=None):
             # negative value reduces the position.
             result += Decimal(comm_total)
 
+        # Coin-settled option premiums/payouts are real coin-balance movements.
+        # The option row's cash_flow carries the signed premium (+received on
+        # SELL, -paid on BUY) or payout (-writer ITM payment, +buyer receipt).
+        # The exchange's coin balance includes them (verified against the OKX
+        # CSV running-balance: buys - fees - transfers + premium ~= 0), so the
+        # coin's position must too. Without this the BTC position after a
+        # written-option cycle lands on -fee-dust instead of ~0.
+        opt_query = Transactions.objects.filter(
+            investor=investor,
+            currency=asset.name,
+            date__date__lte=date,
+            cash_flow__isnull=False,
+            security__type="Option",
+        )
+        if account_ids is not None:
+            opt_query = opt_query.filter(account_id__in=account_ids)
+        opt_total = opt_query.aggregate(total=Sum("cash_flow"))["total"]
+        if opt_total:
+            result += Decimal(opt_total)
+
     return round(result, 6)
 
 
