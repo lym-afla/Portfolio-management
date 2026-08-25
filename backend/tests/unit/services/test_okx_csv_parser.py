@@ -1044,7 +1044,10 @@ async def test_full_parser_option_cycle_net_btc_is_realized_profit(tmp_path, use
     # the premium lives on the option row's cash_flow which position() does not
     # sum). See test docstring for the full data-model reasoning.
     btc_pos, opt_pos = await _positions_after_cycle(user)
-    assert btc_pos == Decimal("-0.000011")  # -0.00001078 rounded to 6 dp
+    # position() now includes the coin-settled option premium (CSV
+    # reconciliation: the exchange balance includes it): -0.00001078 fee
+    # + 0.000154 premium = 0.00014322 -> 0.000143 at 6dp.
+    assert btc_pos == Decimal("0.000143")
     # Option position: opened -7 (SELL), closed +7 (settlement) -> 0.
     assert opt_pos == Decimal("0")
 

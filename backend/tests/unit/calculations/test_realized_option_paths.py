@@ -323,3 +323,87 @@ class TestUnpricedCoinRealizedNoCrash:
                                     currency="USD")
         # Unpriced -> realized skips, returns 0 (not a crash).
         assert result["all_time"]["total"] == Decimal("0")
+
+
+@pytest.mark.nav
+@pytest.mark.unit
+class TestCoinPositionIncludesOptionPremium:
+    """position() must include coin-settled option cash_flows.
+
+    Verified against the OKX CSV running balance: buys - fees - transfers
+    + premium ~= 0 (dust). Without the premium term the BTC position after
+    a written-option cycle lands on -fee-dust instead of ~0.
+    """
+
+    def test_position_includes_premium_and_payout(self, user, account):
+        from common.models import Assets
+        from services.positions import position
+        # A BTC asset with one buy and one BTC fee (cross-currency commission
+        # on the option row) plus the option premium cycle.
+        btc = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:BTCPOSP", name="BTCPOSP",
+            currency="USD", exposure="Commodity",
+        )
+        btc.investors.add(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=btc, currency="USDT",
+            type="Crypto trade in",
+            date=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            quantity=Decimal("0.000680"), price=Decimal("60000"),
+        )
+        opt = _make_option(user)
+        # SELL: premium +0.000154 received; fee -0.00001078 BTC.
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTCPOSP",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("0.000154"),
+            commission=Decimal("-0.00001078"), commission_currency="BTCPOSP",
+        )
+        # OTM settlement: no payout (cash_flow 0).
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTCPOSP",
+            type="Option settlement",
+            date=datetime(2026, 6, 5, tzinfo=timezone.utc),
+            quantity=Decimal("7"), price=Decimal("0"), cash_flow=Decimal("0"),
+        )
+        # Effective position = qty (0.000680) + commission (-0.00001078)
+        # + premium (+0.000154) = 0.00082322 -> 0.000823 at position()'s 6dp.
+        pos = position(btc, date(2026, 6, 6), user, [account.id])
+        assert pos == Decimal("0.000823")
+
+    def test_full_cycle_reconciles_to_csv_dust(self, user, account):
+        """The canonical CSV reconciliation: buys - fees - transfers + premium
+        rounds to ~0, so the coin drops out of open positions."""
+        from common.models import Assets
+        from services.positions import position
+        btc = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:BTCDUST", name="BTCDUST",
+            currency="USD", exposure="Commodity",
+        )
+        btc.investors.add(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=btc, currency="USDT",
+            type="Crypto trade in",
+            date=datetime(2026, 5, 27, tzinfo=timezone.utc),
+            quantity=Decimal("0.000461890"), price=Decimal("60000"),
+            commission=Decimal("-0.000615900"), commission_currency="BTCDUST",
+        )
+        opt = _make_option(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTCDUST",
+            type="Crypto trade out",
+            date=datetime(2026, 5, 28, tzinfo=timezone.utc),
+            quantity=Decimal("-7"), price=Decimal("0.0022"),
+            cash_flow=Decimal("0.000154"),
+        )
+        Transactions.objects.create(
+            investor=user, account=account, security=opt, currency="BTCDUST",
+            type="Option settlement",
+            date=datetime(2026, 6, 5, tzinfo=timezone.utc),
+            quantity=Decimal("7"), price=Decimal("0"), cash_flow=Decimal("0"),
+        )
+        pos = position(btc, date(2026, 6, 6), user, [account.id])
+        # 0.000461890 - 0.000615900 + 0.000154 = 0.000000 (CSV dust) -> 0 at 6dp.
+        assert pos == Decimal("0")
