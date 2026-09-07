@@ -4,7 +4,7 @@ Owns the price-lookup, valuation, and split-adjustment logic that previously
 lived on the ``Assets`` model:
 
 - :func:`price_at_date` returns the latest ``Prices`` row on or before a date,
-  falling back to the last transaction's price, and optionally FX-converting.
+  falling back to the last priced transaction, and optionally FX-converting.
 - :func:`calculate_value_at_date` returns ``position * price`` (bonds use
   ``position * price * notional / 100``).
 - :func:`get_cumulative_split_factor` multiplies ``adjustment_factor`` over
@@ -64,16 +64,18 @@ def price_at_date(asset, price_date, currency=None):
     # Use date directly for query (now using naive datetime objects)
     quote = asset.prices.filter(date__lte=price_date).order_by("-date").first()
     if quote is None:
-        # If no quote is found, take the price from the last transaction
+        # Quantity-only movements have no price. Use the last priced transaction
+        # so an unpriced reward/transfer cannot replace a usable fallback quote.
         last_transaction = (
-            asset.transactions.filter(date__date__lte=price_date, quantity__isnull=False)
+            asset.transactions.filter(
+                date__date__lte=price_date, quantity__isnull=False, price__isnull=False
+            )
             .order_by("-date")
             .first()
         )
         if last_transaction:
             logger.debug(
-                f"Using last transaction price for {asset.name} "
-                f"as of {last_transaction.date}"
+                f"Using last transaction price for {asset.name} " f"as of {last_transaction.date}"
             )
             quote = type(
                 "obj",

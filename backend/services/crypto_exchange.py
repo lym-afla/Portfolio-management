@@ -386,19 +386,25 @@ def persist_crypto_exchange_event(event, user, account):
                 leg_records.append((index, leg, quantity, None))
                 continue
 
-            # Transfers/deposits/withdrawals of an asset with no available fiat
-            # price (e.g. a TRUMP transfer where Yahoo has no quote) must not
-            # crash the whole import: persist them unpriced so the quantity
-            # movement is still recorded. Trades are NOT exempt — a trade with
-            # no price is a genuine error (tested above).
+            # Transfers/deposits/withdrawals are position moves, not priced
+            # events: persist them unpriced (quantity only). Pairing a fiat
+            # price with currency=coin double-multiplies in value math
+            # (price x get_fx_rate(coin->USD)); valuation happens at calc
+            # time via the Prices table / three-tier resolver. Trades are
+            # NOT exempt — a trade with no price is a genuine error.
             if category in {"transfer", "deposit", "withdrawal"}:
+                leg_records.append((index, leg, quantity, None))
+                continue
+
+            # Rewards with no available fiat price (e.g. a BABY yield where
+            # Yahoo has no quote) must not crash the row either: persist
+            # unpriced so the income quantity is still recorded; valuation
+            # recovers once a Prices row exists.
+            if category == "reward":
                 try:
                     price = _leg_fiat_price(leg, user, event_time)
                 except ValueError:
                     price = None
-                if price is None:
-                    leg_records.append((index, leg, quantity, None))
-                    continue
                 leg_records.append((index, leg, quantity, price))
                 continue
 
