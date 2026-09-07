@@ -140,3 +140,44 @@ class TestOptionInClosedPositions:
             f"ITM exit_value should be ~247 (intrinsic * qty * fx, no double "
             f"contract_size); got {rows[0]['exit_value']}"
         )
+
+
+@pytest.mark.django_db
+class TestUnpricedTransferCycleInClosedPositions:
+    """A funding From-unified->Stake cycle nets the position to zero with
+    unpriced legs (entry_value=0), making the percentage fields the string
+    "N/R". The totals accumulator must skip string placeholders instead of
+    raising TypeError (Decimal + "N/R")."""
+
+    def test_unpriced_transfer_cycle_does_not_crash_totals(self, user):
+        broker = Brokers.objects.create(investor=user, name="OKX", country="Crypto", cash_precision=8)
+        account = Accounts.objects.create(broker=broker, name="Funding")
+        btc = Assets.objects.create(
+            type="Crypto", ISIN="CRYPTO:BTC", name="BTC",
+            currency="USD", exposure="Commodity",
+        )
+        btc.investors.add(user)
+        Transactions.objects.create(
+            investor=user, account=account, security=btc, currency="BTC",
+            type="Crypto transfer in", date=datetime(2026, 6, 22, 17, 5, 2),
+            quantity=Decimal("0.45849457"), price=None,
+            import_provider="okx_csv", import_event_type="okx_internal_transfer",
+            import_group_id="okx_xfer:btc:0.45849457:1782147902",
+        )
+        Transactions.objects.create(
+            investor=user, account=account, security=btc, currency="BTC",
+            type="Crypto transfer out", date=datetime(2026, 6, 22, 17, 5, 3),
+            quantity=Decimal("-0.45849457"), price=None,
+            import_provider="okx_csv", import_event_type="okx_earn_subscription",
+        )
+        rows, totals = _calculate_closed_table_output_for_api(
+            user_id=user.id, portfolio=[btc], end_date=date(2026, 8, 22),
+            categories=["entry_value", "current_value", "realized_gl",
+                        "capital_distribution", "commission"],
+            use_default_currency=True, currency_target=None,
+            selected_account_ids=[account.id], start_date=None,
+        )
+        assert len(rows) == 1
+        assert rows[0]["entry_value"] == Decimal("0")
+        assert rows[0]["price_change_percentage"] == "N/R"
+        assert totals["entry_value"] == Decimal("0")
