@@ -200,3 +200,33 @@ async def test_transfer_legs_persist_without_fiat_price(tmp_path, user, funding_
         # time via the Prices table / three-tier resolver.
         assert tx.price is None
         assert tx.currency == "BTC"  # coin denomination (balance-leak guard)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_unpriced_reward_import_keeps_nav_available(tmp_path, user, funding_account, monkeypatch):
+    """An open reward holding without a quote must not crash portfolio valuation."""
+    from datetime import date
+
+    from services.nav import NAV_at_date
+
+    monkeypatch.setattr("services.crypto_exchange.fetch_crypto_usd_price_from_yahoo", lambda *_: None)
+    csv_path = tmp_path / "unpriced_reward.csv"
+    _write_funding_csv(csv_path, [{
+        "id": "30", "Time": "2026-07-30 08:51:04", "Type": "Deposit yield",
+        "Amount": "2.20448012", "Before Balance": "0",
+        "After Balance": "2.20448012", "Symbol": "BABY",
+    }])
+    updates = await _drain(parse_okx_funding_csv(
+        str(csv_path), funding_account.id, user.id, confirm_every=False,
+    ))
+    assert not [update for update in updates if update.get("status") == "error"]
+    txs = await _txs(user, funding_account)
+    assert len(txs) == 1
+    assert txs[0].quantity == Decimal("2.20448012")
+    assert txs[0].price is None
+
+    nav = await database_sync_to_async(NAV_at_date)(
+        user.id, [funding_account.id], date(2026, 7, 31), "USD",
+    )
+    assert nav["Total NAV"] == Decimal("0")
