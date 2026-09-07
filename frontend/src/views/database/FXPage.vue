@@ -84,17 +84,25 @@
             <tr>
               <td>{{ item.date }}</td>
               <td
-                v-for="currency in currencies"
-                :key="currency"
-                class="text-center"
+                v-for="pairLabel in currencies"
+                :key="pairLabel"
+                class="text-center pa-0"
               >
-                {{ item[currency] }}
-              </td>
-              <td class="text-end">
-                <v-icon small class="mr-2" @click="editItem(item)"
-                  >mdi-pencil</v-icon
+                <!--
+                  Per-cell editing: a filled cell opens the record for editing;
+                  an empty (—) cell opens Add mode with date + pair prefilled.
+                  Each cell maps to exactly one FX record, so there's no row vs.
+                  record ambiguity.
+                -->
+                <v-btn
+                  variant="text"
+                  size="small"
+                  class="cell-btn"
+                  :class="item[pairLabel] ? 'cell-btn--filled' : 'cell-btn--empty'"
+                  @click="onCellClick(item, pairLabel)"
                 >
-                <v-icon small @click="deleteItem(item)">mdi-delete</v-icon>
+                  {{ item[pairLabel]?.rate ?? '—' }}
+                </v-btn>
               </td>
             </tr>
           </template>
@@ -120,12 +128,14 @@
       </v-col>
     </v-row>
 
-    <!-- Add dialog components -->
+    <!-- Add/edit dialog. editItem drives Edit mode; prefill seeds Add-from-cell. -->
     <FXDialog
       v-model="showFXDialog"
       :edit-item="editedItem"
+      :prefill="dialogPrefill"
       @fx-added="fetchFXData"
       @fx-updated="fetchFXData"
+      @fx-delete="onDeleteFromDialog"
     />
     <FXImportDialog
       v-model="showImportDialog"
@@ -171,6 +181,7 @@ import { calculateDateRange } from '@/utils/dateRangeUtils'
 import FXDialog from '@/components/dialogs/FXDialog.vue'
 import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import { pivotFxRows, splitPairLabel } from '@/utils/fxPivot'
 import logger from '@/utils/logger'
 
 const appStore = useAppStore()
@@ -196,6 +207,9 @@ const deleteLoading = ref(false)
 const fxData = ref([])
 const totalItems = ref(0)
 const currencies = ref([])
+// Guards against overlapping triggers issuing duplicate `list_fx/` requests.
+const fetchInFlight = ref(false)
+let didInit = false
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const pageCount = computed(() =>
@@ -205,18 +219,24 @@ const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
 
 const headers = computed(() => [
   { title: 'Date', key: 'date', align: 'start', sortable: true },
-  ...currencies.value.map((currency) => ({
-    title: currency,
-    key: currency,
+  ...currencies.value.map((pairLabel) => ({
+    title: pairLabel,
+    key: pairLabel,
     align: 'center',
     sortable: true,
   })),
-  { title: 'Actions', key: 'actions', align: 'end', sortable: false },
 ])
 
 const fetchFXData = async () => {
   if (!dateTo.value) return
-
+  // Dedupe: if a previous fetch is still in flight (e.g. triggered by an
+  // overlapping reactivity hook), skip this one rather than firing a second
+  // identical `list_fx/` request.
+  if (fetchInFlight.value) {
+    logger.log('Unknown', 'fetchFXData already in flight, skipping')
+    return
+  }
+  fetchInFlight.value = true
   tableLoading.value = true
   try {
     const response = await getFXData({
@@ -228,13 +248,15 @@ const fetchFXData = async () => {
       search: search.value,
     })
     logger.log('Unknown', 'FX data received:', response)
-    fxData.value = response.results
+    const { pivoted, pairLabels } = pivotFxRows(response.results || [])
+    fxData.value = pivoted
+    currencies.value = pairLabels
     totalItems.value = response.count
-    currencies.value = response.currencies
   } catch (error) {
     handleApiError(error)
   } finally {
     tableLoading.value = false
+    fetchInFlight.value = false
   }
 }
 
@@ -269,11 +291,11 @@ const initializeDateRange = async () => {
     dateFrom.value = from
     dateTo.value = to
 
-
     // Trigger table update after initialization
     await fetchFXData()
   } else {
-    console.error(
+    logger.error(
+      'Unknown',
       'effectiveCurrentDate is still not set after attempting to fetch it'
     )
   }
@@ -287,23 +309,37 @@ const handleDateRangeChange = (newDateRange) => {
   fetchFXData()
 }
 
+// Initialize the date range exactly once. `watchEffect` covers the case where
+// the store is already hydrated (runs immediately on setup); if it isn't,
+// `onMounted` fetches the effective date and drives the init. The `didInit`
+// guard ensures the two never both fire (which previously caused a duplicate
+// `list_fx/` request).
 watchEffect(async () => {
+  if (didInit) return
   if (effectiveCurrentDate.value) {
+    didInit = true
     await initializeDateRange()
     loading.value = false
   }
 })
 
-watch([loading, currentPage, itemsPerPage, sortBy, search], () => {
-  if (!loading.value && dateTo.value) {
+// Re-fetch on genuine user-driven changes only. NOTE: `loading` is
+// intentionally excluded — it flips during init, and having it here caused the
+// watch to re-fire and issue a second, duplicate `list_fx/` POST.
+watch([currentPage, itemsPerPage, sortBy, search], () => {
+  if (loading.value && didInit) return
+  if (dateTo.value) {
     fetchFXData()
   }
 })
 
 onMounted(async () => {
   logger.log('Unknown', 'Mounting FXPage')
+  if (didInit) return
   if (!effectiveCurrentDate.value) {
+    didInit = true
     await initializeDateRange()
+    loading.value = false
   }
 })
 
@@ -311,34 +347,60 @@ const showFXDialog = ref(false)
 const showImportDialog = ref(false)
 const showDeleteDialog = ref(false)
 const editedItem = ref(null)
+// Prefill for Add-from-cell: { date, from_currency, to_currency }. Null when
+// the dialog is in plain Add (toolbar) or Edit mode.
+const dialogPrefill = ref(null)
 const itemToDelete = ref(null)
 
 const openAddFXDialog = () => {
   editedItem.value = null
+  dialogPrefill.value = null
   showFXDialog.value = true
 }
 
-const editItem = async (item) => {
-  logger.log('Unknown', 'Editing item:', item)
-  try {
-    const fxDetails = await getFXDetails(item.id)
-    editedItem.value = fxDetails
+/**
+ * Per-cell click handler. Each cell maps to exactly one FX record (filled) or
+ * one missing pair to add (empty). We open the shared FXDialog in the right
+ * mode instead of acting on the whole pivoted row.
+ * @param {object} item pivoted row
+ * @param {string} pairLabel e.g. "USD/EUR"
+ */
+const onCellClick = async (item, pairLabel) => {
+  const entry = item?.[pairLabel]
+  const [from_currency, to_currency] = splitPairLabel(pairLabel)
+  if (entry && entry.id != null) {
+    // Filled cell → edit that specific record.
+    logger.log('Unknown', 'Editing FX record:', { date: item.date, pairLabel, id: entry.id })
+    try {
+      const fxDetails = await getFXDetails(entry.id)
+      editedItem.value = fxDetails
+      dialogPrefill.value = null
+      showFXDialog.value = true
+    } catch (error) {
+      handleApiError(error)
+    }
+  } else {
+    // Empty cell (—) → Add that pair for this date, pre-filled.
+    logger.log('Unknown', 'Adding FX pair:', { date: item.date, pairLabel })
+    editedItem.value = null
+    dialogPrefill.value = { date: item.date, from_currency, to_currency }
     showFXDialog.value = true
-  } catch (error) {
-    handleApiError(error)
   }
 }
 
-const deleteItem = async (item) => {
-  logger.log('Unknown', 'Deleting item:', item)
-  itemToDelete.value = item
+// Delete is now triggered from inside FXDialog (the dialog knows the record).
+const onDeleteFromDialog = (record) => {
+  if (!record?.id) return
+  itemToDelete.value = record
   showDeleteDialog.value = true
 }
 
 const confirmDelete = async () => {
+  if (!itemToDelete.value?.id) return
   deleteLoading.value = true
   try {
     await deleteFXRate(itemToDelete.value.id)
+    showFXDialog.value = false
     await fetchFXData()
   } catch (error) {
     handleApiError(error)
@@ -355,3 +417,30 @@ const dateRangeForSelector = computed(() => ({
   dateTo: dateTo.value,
 }))
 </script>
+
+<style scoped>
+/* Per-cell buttons: the whole grid is editable, so each rate is a button.
+   Filled cells read as plain text but reveal an edit affordance on hover;
+   empty (—) cells signal they are addable. */
+.cell-btn {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+}
+
+.cell-btn--filled {
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.cell-btn--empty {
+  color: rgba(0, 0, 0, 0.38);
+  font-style: italic;
+}
+
+.cell-btn--empty:hover {
+  color: rgb(var(--v-theme-primary));
+}
+</style>

@@ -3,6 +3,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.cache import cache
 from django.db.models import Count, Q
@@ -27,7 +28,6 @@ from services.positions import position
 from core.accounts_utils import get_accounts_table_api
 from core.brokers_utils import get_brokers_table_api
 from core.date_utils import get_start_date
-from core.formatting_utils import format_table_data
 from core.pagination_utils import paginate_table
 from core.price_utils import get_prices_table_api
 from services.securities import get_securities_table_api, get_security_detail
@@ -699,6 +699,23 @@ class UpdateAccountPerformanceViewSet(viewsets.ViewSet):
             )
 
 
+def format_fx_rate(value, digits: int = 4):
+    """Quantize an FX rate to ``digits`` decimal places (ROUND_HALF_UP).
+
+    Returns ``None`` when the input is missing. Unlike
+    :func:`core.formatting_utils.format_value`, this deliberately produces a
+    plain numeric string with no currency symbol or thousands separator, so the
+    FX table's client-side pivot (keyed on ``"from_currency/to_currency"``)
+    keeps working.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return str(Decimal(str(value)).quantize(Decimal(f"1e-{digits}"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return value
+
+
 class FXViewSet(viewsets.ModelViewSet):
     """FX view set."""
 
@@ -742,7 +759,15 @@ class FXViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["POST"])
     def list_fx(self, request):
-        """List FX."""
+        """List FX.
+
+        The grid shows one row per date with one column per currency pair, so
+        we paginate by **distinct date**, not by individual pair records.
+        Paginating per-record would split a date's pairs across pages (a date
+        appears as a half-empty row at the bottom of one page and again at the
+        top of the next). Null/empty currency pairs (legacy wide->long shells)
+        are excluded everywhere.
+        """
         # Extract parameters from request data
         start_date = request.data.get("startDate")
         end_date = request.data.get("endDate")
@@ -751,14 +776,20 @@ class FXViewSet(viewsets.ModelViewSet):
         sort_by = request.data.get("sortBy")
         search = request.data.get("search", "")
 
-        # Filter queryset
-        queryset = self.get_queryset()
+        # Filter queryset, excluding legacy null/empty currency-pair shell rows.
+        queryset = self.get_queryset().exclude(
+            Q(from_currency__isnull=True)
+            | Q(from_currency="")
+            | Q(to_currency__isnull=True)
+            | Q(to_currency="")
+        )
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
         if end_date:
             queryset = queryset.filter(date__lte=end_date)
 
-        # Apply search
+        # Apply search (before deriving distinct dates, so missing dates are
+        # excluded from the page set too).
         if search:
             queryset = queryset.filter(
                 Q(date__icontains=search)
@@ -767,30 +798,61 @@ class FXViewSet(viewsets.ModelViewSet):
                 | Q(rate__icontains=search)
             )
 
-        # Convert queryset to list of dictionaries
+        # Distinct dates in the filtered set, newest first. Sorting by a pair
+        # field isn't meaningful for a date grid, so we always order by date.
+        date_order = "-date"
+        if sort_by and sort_by.get("key", "").startswith("date"):
+            date_order = "date" if sort_by.get("order") == "asc" else "-date"
+        all_dates = list(
+            queryset.values_list("date", flat=True)
+            .distinct()
+            .order_by(date_order)
+        )
+
+        # Paginate the date list, then fetch all pair rows for this page's
+        # dates so a date's pairs always travel together.
+        total_dates = len(all_dates)
+        total_pages = max(1, (total_dates + items_per_page - 1) // items_per_page)
+        page = min(max(page, 1), total_pages)
+        start = (page - 1) * items_per_page
+        page_dates = all_dates[start : start + items_per_page]
+
         fx_data = list(
-            queryset.values(
+            queryset.filter(date__in=page_dates).values(
                 "id", "date", "from_currency", "to_currency", "rate"
             )
         )
+        # Stable secondary sort within the page: date (matching date_order),
+        # then pair label, so the frontend pivot preserves a deterministic
+        # column order regardless of DB row order.
+        fx_data = sort_entries(fx_data, {"key": "date", "order": "asc" if date_order == "date" else "desc"})
 
-        # Apply sorting
-        fx_data = sort_entries(fx_data, sort_by)
-
-        # Paginate results
-        paginated_fx_data, pagination_info = paginate_table(fx_data, page, items_per_page)
-
-        # Format the data
-        formatted_fx_data = format_table_data(
-            paginated_fx_data, currency_target=None, number_of_digits=4
-        )  # Assuming USD as base currency and 4 decimal places
+        # Format the data. NB: we intentionally do NOT use ``format_table_data``
+        # here. That helper runs ``format_value`` which, for any key containing
+        # "currency", converts the stored value into a Babel currency *symbol*
+        # (e.g. ``USD`` -> ``$``, ``EUR`` -> ``€``). The FX page pivots these
+        # long-format rows client-side keyed on ``"from_currency/to_currency"``
+        # (e.g. ``"USD/EUR"``), so the frontend must receive the raw ISO codes.
+        # We therefore only stringify the date and quantize the rate.
+        formatted_fx_data = [
+            {
+                "id": row["id"],
+                "date": row["date"].isoformat() if row["date"] else None,
+                "from_currency": row["from_currency"],
+                "to_currency": row["to_currency"],
+                "rate": format_fx_rate(row["rate"]),
+            }
+            for row in fx_data
+        ]
 
         response_data = {
             "results": formatted_fx_data,
-            "count": pagination_info["total_items"],
-            "current_page": pagination_info["current_page"],
-            "total_pages": pagination_info["total_pages"],
-            "currencies": ["USD/EUR", "USD/GBP", "CHF/GBP", "RUB/USD", "PLN/USD", "CNY/USD"],
+            # `count` is the number of *date rows* the grid renders, so the
+            # paginator / "showing X of Y entries" footer matches what the
+            # user sees.
+            "count": total_dates,
+            "current_page": page,
+            "total_pages": total_pages,
         }
 
         return Response(response_data)

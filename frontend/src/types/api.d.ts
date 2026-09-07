@@ -328,7 +328,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Create security via SecuritySerializer. */
+        /**
+         * @description Create security via resolve_or_create_asset (interactive mode).
+         *
+         *     The serializer validates input; the helper owns the lookup→link→create
+         *     flow so the view can read the full ResolveResult (created/linked) for the
+         *     response without a serializer side-channel.
+         */
         post: operations["database_api_create_security_create"];
         delete?: never;
         options?: never;
@@ -466,7 +472,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Get import stats. */
+        /**
+         * @description Get import stats.
+         *
+         *     In the long-format schema each FX row is a single (date, currency pair),
+         *     so "missing" means a transaction date with no FX row at all and
+         *     "incomplete" means a date that has some FX rows but is missing one or
+         *     more of the expected pairs.
+         */
         get: operations["database_api_fx_import_stats_retrieve"];
         put?: never;
         post?: never;
@@ -1854,9 +1867,11 @@ export interface components {
          *     * `RUB` - ₽
          *     * `CHF` - Fr
          *     * `CNY` - ¥
+         *     * `USDT` - ₮
+         *     * `USDC` - $
          * @enum {string}
          */
-        CommissionCurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY";
+        CommissionCurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY" | "USDT" | "USDC";
         /**
          * @description * `USD` - $
          *     * `EUR` - €
@@ -1864,9 +1879,11 @@ export interface components {
          *     * `RUB` - ₽
          *     * `CHF` - Fr
          *     * `CNY` - ¥
+         *     * `USDT` - ₮
+         *     * `USDC` - $
          * @enum {string}
          */
-        CurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY";
+        CurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY" | "USDT" | "USDC";
         /** @description Custom JWT token serializer that includes effective_current_date in the token payload. */
         CustomTokenObtainPair: {
             username: string;
@@ -1888,18 +1905,10 @@ export interface components {
             readonly id: number;
             /** Format: date */
             date: string;
+            from_currency?: string | null;
+            to_currency?: string | null;
             /** Format: decimal */
-            USDEUR?: string | null;
-            /** Format: decimal */
-            USDGBP?: string | null;
-            /** Format: decimal */
-            CHFGBP?: string | null;
-            /** Format: decimal */
-            RUBUSD?: string | null;
-            /** Format: decimal */
-            PLNUSD?: string | null;
-            /** Format: decimal */
-            CNYUSD?: string | null;
+            rate?: string | null;
         };
         /** @description Serializer for FX transaction form validation and creation. */
         FXTransactionForm: {
@@ -1927,9 +1936,11 @@ export interface components {
          *     * `RUB` - ₽
          *     * `CHF` - Fr
          *     * `CNY` - ¥
+         *     * `USDT` - ₮
+         *     * `USDC` - $
          * @enum {string}
          */
-        FromCurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY";
+        FromCurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY" | "USDT" | "USDC";
         /** @description Serializer for Interactive Brokers API token management. */
         InteractiveBrokersApiToken: {
             readonly id: number;
@@ -2004,18 +2015,10 @@ export interface components {
             readonly id?: number;
             /** Format: date */
             date?: string;
+            from_currency?: string | null;
+            to_currency?: string | null;
             /** Format: decimal */
-            USDEUR?: string | null;
-            /** Format: decimal */
-            USDGBP?: string | null;
-            /** Format: decimal */
-            CHFGBP?: string | null;
-            /** Format: decimal */
-            RUBUSD?: string | null;
-            /** Format: decimal */
-            PLNUSD?: string | null;
-            /** Format: decimal */
-            CNYUSD?: string | null;
+            rate?: string | null;
         };
         /** @description Serializer for FX transaction form validation and creation. */
         PatchedFXTransactionForm: {
@@ -2143,9 +2146,11 @@ export interface components {
          *     * `RUB` - ₽
          *     * `CHF` - Fr
          *     * `CNY` - ¥
+         *     * `USDT` - ₮
+         *     * `USDC` - $
          * @enum {string}
          */
-        ToCurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY";
+        ToCurrencyEnum: "USD" | "EUR" | "GBP" | "RUB" | "CHF" | "CNY" | "USDT" | "USDC";
         TokenRefresh: {
             readonly access: string;
             refresh: string;

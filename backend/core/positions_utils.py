@@ -198,6 +198,20 @@ def _filter_assets(
     # Get all assets that match our base criteria
     assets = list(base_query)
 
+    # Crypto assets: the raw quantity annotation misses cross-currency
+    # commissions and coin-settled option premiums/payouts that the
+    # effective position includes (verified against the OKX CSV running
+    # balance). Re-derive via position() so dust positions (e.g. BTC after
+    # a written-option cycle: buys - fees - transfers + premium ~= 0) drop
+    # out of Open instead of showing a phantom residual.
+    from services.crypto import is_crypto
+    from services.positions import position as _position
+    for asset in assets:
+        if is_crypto(asset):
+            asset.total_quantity = _position(
+                asset, end_date, user, selected_account_ids
+            )
+
     # DB SUM can produce floating-point artifacts (e.g. -7e-15 instead of 0),
     # so treat near-zero as zero. Threshold derived from the quantity field's
     # decimal_places so it stays in sync if DB precision changes.

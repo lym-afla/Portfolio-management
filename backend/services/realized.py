@@ -639,6 +639,17 @@ def get_economic_basis(
             quantity = transaction.quantity or Decimal(0)
             fx_rate = transaction_fx_rate(transaction, target)
 
+            if _transactions_is_unconditionally_neutral_transfer(transaction):
+                # Earn subscribe/redeem book-moves: skip entirely in the basis
+                # replay. Their basis round-trips through the paired internal
+                # transfers (funding<->trading groups): the subscription's
+                # coins leave via the funding account the same instant the
+                # internal-IN lands, and the redemption's coins come back via
+                # the next internal pair. Letting them move position without
+                # basis dilutes the running average and corrupts the buy-in
+                # of the subsequent disposal (the TRUMP -13.63-vs--38.49 bug).
+                continue
+
             if _transactions_is_paid_entry_transaction(transaction):
                 if transaction.price is not None:
                     csize = _option_contract_size(asset)  # Decimal(1) for non-options
@@ -722,8 +733,10 @@ def get_economic_basis(
             quantity__lt=0,
         ).filter(
             provider_matches(transaction.import_provider),
-            Q(date__lt=transaction.date)
-            | (Q(date=transaction.date) & Q(id__lt=transaction.id)),
+            # Same-date partner OUTs sort AFTER their IN in the real OKX
+            # import (the funding-side leg trails the trading-side leg by
+            # id), so do not require id__lt on the same-date arm.
+            Q(date__lt=transaction.date) | Q(date=transaction.date),
         )
 
         transfer_outs = list(
@@ -747,7 +760,11 @@ def get_economic_basis(
                 return Decimal(0)
 
             source_basis, source_position = replay(
-                transactions_before(transfer_out),
+                # Exclude the querying transfer-IN from the source-state
+                # sub-replay: for a same-account pair it would otherwise be
+                # included (earlier id) and zero-basis-dilute the very state
+                # we are resolving.
+                transactions_before(transfer_out).exclude(id=transaction.id),
                 target,
                 allow_group_lookup=True,
                 visited_transfer_ids=visited_ids,

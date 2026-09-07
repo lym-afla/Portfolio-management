@@ -1044,7 +1044,10 @@ async def test_full_parser_option_cycle_net_btc_is_realized_profit(tmp_path, use
     # the premium lives on the option row's cash_flow which position() does not
     # sum). See test docstring for the full data-model reasoning.
     btc_pos, opt_pos = await _positions_after_cycle(user)
-    assert btc_pos == Decimal("-0.000011")  # -0.00001078 rounded to 6 dp
+    # position() now includes the coin-settled option premium (CSV
+    # reconciliation: the exchange balance includes it): -0.00001078 fee
+    # + 0.000154 premium = 0.00014322 -> 0.000143 at 6dp.
+    assert btc_pos == Decimal("0.000143")
     # Option position: opened -7 (SELL), closed +7 (settlement) -> 0.
     assert opt_pos == Decimal("0")
 
@@ -1116,7 +1119,9 @@ async def test_trading_transfer_row_carries_synthesized_group_id(tmp_path, user,
     assert len(txs) == 1
     tx = txs[0]
     assert tx.type == "Crypto transfer out"
-    # 2026-06-22 20:05:02 UTC+3 == 17:05:02 UTC == epoch 1782147902.
-    assert tx.import_group_id == "okx_xfer:btc:0.45849457:1782147902"
+    # 2026-06-22 20:05:02 UTC+3 == 17:05:02 UTC == epoch 1782147902; the key
+    # quantizes the amount to 6dp (0.45849457 -> 0.458495) and buckets the
+    # timestamp to the minute (1782147902 // 60 = 29702465).
+    assert tx.import_group_id == "okx_xfer:btc:0.458495:29702465"
     # Dedup key still carries the billId (with the single-leg ``:0`` suffix).
     assert tx.import_event_id == "csv_transfer:770000000001:0"
