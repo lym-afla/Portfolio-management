@@ -33,13 +33,13 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: LoginPage,
-    meta: { requiresAuth: false, paddingTop: '0px' },
+    meta: { requiresAuth: false },
   },
   {
     path: '/register',
     name: 'Register',
     component: RegisterPage,
-    meta: { requiresAuth: false, paddingTop: '0px' },
+    meta: { requiresAuth: false },
   },
   {
     path: '/dashboard',
@@ -68,7 +68,7 @@ const routes = [
   {
     path: '/profile',
     component: ProfileLayout,
-    meta: { requiresAuth: true, paddingTop: '50px' },
+    meta: { requiresAuth: true },
     children: [
       {
         path: '',
@@ -91,7 +91,7 @@ const routes = [
     path: '/database',
     name: 'Database',
     component: DatabasePage,
-    meta: { requiresAuth: true, paddingTop: '70px' },
+    meta: { requiresAuth: true },
     children: [
       {
         path: 'brokers',
@@ -124,13 +124,13 @@ const routes = [
     path: '/database/securities/:id',
     name: 'SecurityDetail',
     component: SecurityDetailPage,
-    meta: { requiresAuth: true, paddingTop: '70px' },
+    meta: { requiresAuth: true },
   },
   {
     path: '/summary',
     name: 'Summary',
     component: SummaryPage,
-    meta: { requiresAuth: true, paddingTop: '70px' },
+    meta: { requiresAuth: true },
   },
   // Development-only debug route
   ...(import.meta.env.DEV && AuthDebugPanel

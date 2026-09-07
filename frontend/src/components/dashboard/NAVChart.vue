@@ -15,13 +15,14 @@
           <v-btn-toggle
             v-model="selectedFrequency"
             mandatory
+            aria-label="Chart frequency"
             @update:model-value="updateParams"
           >
-            <v-btn value="D">D</v-btn>
-            <v-btn value="W">W</v-btn>
-            <v-btn value="M">M</v-btn>
-            <v-btn value="Q">Q</v-btn>
-            <v-btn value="Y">Y</v-btn>
+            <v-btn value="D" title="Day">Day</v-btn>
+            <v-btn value="W" title="Week">Week</v-btn>
+            <v-btn value="M" title="Month">Month</v-btn>
+            <v-btn value="Q" title="Quarter">Quarter</v-btn>
+            <v-btn value="Y" title="Year">Year</v-btn>
           </v-btn-toggle>
         </v-col>
         <v-col cols="12" sm="4">
@@ -31,7 +32,7 @@
           />
         </v-col>
       </v-row>
-      <div class="chart-wrapper" v-if="!isEmptyData">
+      <div class="chart-wrapper" v-if="!hasNoData">
         <StackedBarLineChart
           v-if="!loading && chartDataComputed && chartOptionsComputed"
           :chart-data="chartDataComputed"
@@ -41,7 +42,8 @@
           <v-progress-circular indeterminate color="primary" size="64" />
         </div>
       </div>
-      <v-alert v-else type="info" text="No data available" />
+      <v-alert v-else type="info" variant="tonal" density="compact"
+        text="No data for the selected account and period. Adjust the date range or select another account." />
     </v-card-text>
   </v-card>
 </template>
@@ -50,7 +52,7 @@
 import { ref, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import StackedBarLineChart from '@/components/charts/StackedBarLineChart.vue'
-import { getChartOptions } from '@/config/chartConfig'
+import { getChartOptions, colorPalette } from '@/config/chartConfig'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 // import { calculateDateRange } from '@/utils/dateRangeUtils'
 
@@ -117,33 +119,16 @@ function handleDateRangeChange(newDateRange) {
   updateParams()
 }
 
-// Add isEmptyData computed property
-const isEmptyData = computed(() => {
-  // Case 1: Explicit empty flag
-  if (props.chartData?.empty === true) {
-    return true
-  }
-
-  // Case 2: No datasets or labels
-  if (
-    !props.chartData?.datasets?.length ||
-    !props.chartData?.labels?.length
-  ) {
-    return true
-  }
-
-  // Case 3: Check if all data points are empty/zero/N/A
-  const hasValidData = props.chartData.datasets.some((dataset) => {
-    return dataset.data.some((value) => {
-      if (typeof value === 'number') {
-        return value !== 0
-      }
-      return value !== 'N/A'
-    })
-  })
-
-  return !hasValidData
-})
+// "No data" means the series carry no points at all. An all-zero portfolio
+// is data, not an absence of data.
+const hasNoData = computed(
+  () =>
+    !props.chartData ||
+    !props.chartData.datasets ||
+    props.chartData.datasets.every(
+      (dataset) => !dataset.data || dataset.data.length === 0
+    )
+)
 
 // Initialize chart options
 const initChartOptions = async () => {
@@ -169,7 +154,7 @@ const chartDataComputed = computed(() => {
     }
   }
 
-  const { colorPalette } = chartOptions.value
+  const chartPalette = colorPalette
 
   return {
     labels: props.chartData.labels,
@@ -177,11 +162,11 @@ const chartDataComputed = computed(() => {
       ...dataset,
       backgroundColor:
         dataset.type === 'bar'
-          ? colorPalette[index % colorPalette.length]
+          ? chartPalette[index % chartPalette.length]
           : dataset.backgroundColor,
       borderColor:
         dataset.type === 'line'
-          ? colorPalette[index % colorPalette.length]
+          ? chartPalette[index % chartPalette.length]
           : undefined,
       order: dataset.type === 'line' ? 0 : index + 1,
       yAxisID: dataset.type === 'line' ? 'y1' : 'y',

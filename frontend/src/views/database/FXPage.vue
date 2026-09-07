@@ -237,14 +237,6 @@ const fetchFXData = async () => {
     return
   }
   fetchInFlight.value = true
-  logger.log('Unknown', 'Fetching FX data with:', {
-    startDate: dateFrom.value,
-    endDate: dateTo.value,
-    page: currentPage.value,
-    itemsPerPage: itemsPerPage.value,
-    sortBy: sortBy.value[0] || {},
-    search: search.value,
-  })
   tableLoading.value = true
   try {
     const response = await getFXData({

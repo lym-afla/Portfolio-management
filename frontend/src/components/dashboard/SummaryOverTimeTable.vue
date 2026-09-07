@@ -57,9 +57,8 @@
   <v-card v-else>
     <v-card-title>Summary Over Time</v-card-title>
     <v-card-text>
-      <v-alert type="info">
-        No data available for the selected account.
-      </v-alert>
+      <v-alert type="info" variant="tonal" density="compact"
+        text="No data for the selected account and period. Adjust the date range or select another account." />
       <v-btn @click="showUpdateDialog" color="primary" class="mt-4"
         >Update Account Performance</v-btn
       >
@@ -214,6 +213,6 @@ onUnmounted(() => {
 
 <style scoped>
 .highlight {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: rgba(var(--v-theme-primary), 0.08);
 }
 </style>

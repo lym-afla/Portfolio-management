@@ -117,10 +117,6 @@ const authStore = useAuthStore()
 // Get user data from store
 const userInfo = computed(() => {
   const user = authStore.user
-  console.log(
-    `[ProfilePage][${componentId}] Computing userInfo, user exists:`,
-    !!user
-  )
   if (!user) return {}
   return {
     username: user.username,
@@ -229,14 +225,8 @@ const closeChangePasswordDialog = () => {
 
 const fetchProfile = async () => {
   if (!authStore.user) {
-    console.log(
-      `[ProfilePage][${componentId}] No user data, fetching profile...`
-    )
     await authStore.fetchUserData()
   } else {
-    console.log(
-      `[ProfilePage][${componentId}] User data exists, skipping fetch`
-    )
   }
 }
 

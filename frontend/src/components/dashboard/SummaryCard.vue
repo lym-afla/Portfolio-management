@@ -28,7 +28,6 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 
 const props = defineProps({
@@ -42,23 +41,17 @@ const props = defineProps({
   },
 })
 
-const authStore = useAuthStore()
 const appStore = useAppStore()
 
 function formatKey(key) {
   return key
-    .replace('_', ' ')
+    .replaceAll('_', ' ')
     .replace(/^./, (str) => str.toUpperCase())
-    .replace('Irr', 'IRR')
+    .replace(/irr/gi, 'IRR')
+    .replace(/nav/gi, 'NAV')
 }
 
 const formatAccountSelection = computed(() => {
-  console.log(
-    '[SummaryCard]',
-    appStore.accountSelection,
-    appStore.selectedCurrency,
-    authStore.user
-  )
   const selection = appStore.accountSelection
   if (selection.type === 'all') {
     return 'All Accounts'
@@ -75,34 +68,17 @@ const formatAccountSelection = computed(() => {
 
 <style scoped>
 .summary-card {
-  background-color: #f8f9fa !important;
-  border-left: 4px solid var(--v-primary-base) !important;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
-  padding-bottom: 10px;
+  border: 1px solid rgb(var(--v-theme-surface-variant, 226, 230, 235));
+  box-shadow: none;
 }
 
 .summary-card .v-card-title {
-  color: var(--v-primary-base);
-  font-size: 1.5rem !important;
-  padding-top: 16px;
-  padding-bottom: 16px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 1.25rem;
 }
 
 .text-subtitle-2 {
-  color: rgba(0, 0, 0, 0.6);
+  color: rgb(var(--v-theme-secondary));
   font-size: 0.875rem;
-}
-
-.summary-card .v-table {
-  background-color: transparent !important;
-}
-
-.summary-card .v-table th {
-  font-weight: bold !important;
-  font-size: 1.1rem;
-}
-
-.summary-card .v-table td {
-  font-size: 1.05rem;
 }
 </style>

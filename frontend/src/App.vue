@@ -26,7 +26,7 @@
           </v-container>
         </v-app-bar>
 
-        <v-main :style="{ paddingTop: mainPadding }">
+        <v-main>
           <v-container fluid class="pa-4">
             <router-view @update-page-title="updatePageTitle" />
           </v-container>
@@ -39,10 +39,10 @@
       </template>
     </template>
 
-    <!-- Global Error Snackbar -->
+    <!-- Global Error Snackbar: persists until dismissed (WCAG 2.2.1 timing) -->
     <v-snackbar
       v-model="errorSnackbar"
-      :timeout="5000"
+      :timeout="snackbarTimeout('error')"
       color="error"
       top
       multi-line
@@ -65,6 +65,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
+import { snackbarTimeout } from '@/utils/snackbarTimeout'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -95,10 +96,6 @@ const handleLogout = async () => {
 const updatePageTitle = (title: string) => {
   pageTitle.value = title
 }
-
-const mainPadding = computed(() => {
-  return (route.meta.paddingTop as string) || '140px' // Default padding
-})
 
 onMounted(() => {
   layoutLoading.value = false
@@ -140,15 +137,8 @@ body {
 }
 
 .v-data-table th.v-data-table__th {
-  vertical-align: bottom !important;
+  vertical-align: bottom;
   padding-bottom: 8px !important;
-  white-space: normal;
-  hyphens: auto;
-}
-
-.v-data-table td {
-  white-space: normal;
-  hyphens: auto;
 }
 
 .v-dialog {

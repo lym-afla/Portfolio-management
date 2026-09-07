@@ -228,10 +228,6 @@ async function submitForm() {
 
   try {
     const dataToSend = prepareFormData()
-    console.log(
-      '[UpdateAccountPerformanceDialog] Submitting formData:',
-      dataToSend
-    )
 
     // First validate
     const validateResponse = await axiosInstance.post(

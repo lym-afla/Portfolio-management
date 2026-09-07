@@ -336,14 +336,6 @@ export const getOpenPositions = async (
   search = '',
   sortBy: SortBy = {}
 ): Promise<PaginatedTableResponse> => {
-  console.log('[api.js] getOpenPositions called with:', {
-    dateFrom,
-    dateTo,
-    page,
-    itemsPerPage,
-    search,
-    sortBy,
-  })
   try {
     const response = await axiosInstance.post(
       '/open_positions/api/get_open_positions_table/',
@@ -383,14 +375,6 @@ export const getClosedPositions = async (
         sortBy, // This will be a single object or an empty object
       }
     )
-    console.log('API request payload:', {
-      dateFrom,
-      dateTo,
-      page,
-      itemsPerPage,
-      search,
-      sortBy,
-    })
     logger.log('Unknown', 'API response:', response.data)
     if (
       response.data &&
@@ -620,12 +604,6 @@ export const getNAVChartData = async (
   dateTo: string
 ): Promise<ApiRecord> => {
   try {
-    console.log('API request params for NAV chart:', {
-      breakdown: breakdown,
-      frequency: frequency,
-      dateFrom: dateFrom,
-      dateTo: dateTo,
-    })
     const response = await axiosInstance.get(
       '/dashboard/api/get-nav-chart-data/',
       {
@@ -1163,14 +1141,6 @@ export const getTransactions = async (
   search = '',
   sortBy: SortBy = {}
 ): Promise<PaginatedTableResponse> => {
-  console.log('API request payload for transactions:', {
-    dateFrom,
-    dateTo,
-    page,
-    itemsPerPage,
-    search,
-    sortBy,
-  })
   try {
     const response = await axiosInstance.post(
       '/transactions/api/get_transactions_table/',

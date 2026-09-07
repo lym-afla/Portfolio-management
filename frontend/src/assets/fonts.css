@@ -10,3 +10,8 @@ body,
 .v-application * {
   font-family: var(--system-font) !important;
 }
+
+/* All app numerals align by digit position (tables, cards, charts). */
+body {
+  font-variant-numeric: tabular-nums;
+}

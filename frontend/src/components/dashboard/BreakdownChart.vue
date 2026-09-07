@@ -3,14 +3,14 @@
     <v-card-title>{{ title }}</v-card-title>
     <v-card-text class="pa-0 flex-grow-1 d-flex flex-column">
       <v-tabs v-model="tab" v-if="hasData">
-        <v-tab value="chart">Pie Chart</v-tab>
+        <v-tab value="chart">Chart</v-tab>
         <v-tab value="table">Table</v-tab>
       </v-tabs>
 
       <v-window v-model="tab" class="flex-grow-1" v-if="hasData">
         <v-window-item value="chart">
           <div class="chart-container">
-            <Pie :data="chartData" :options="pieChartOptions" />
+            <Bar :data="chartData" :options="barChartOptions" />
           </div>
         </v-window-item>
 
@@ -39,31 +39,34 @@
         </v-window-item>
       </v-window>
 
-      <div v-if="!hasData" class="text-center pa-4">No data available</div>
+      <v-alert v-if="!hasData" type="info" variant="tonal" density="compact"
+        text="No data for the selected account and period. Adjust the date range or select another account." />
     </v-card-text>
   </v-card>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Pie } from 'vue-chartjs'
+import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   Title,
   Tooltip,
   Legend,
-  ArcElement,
+  BarElement,
   CategoryScale,
+  LinearScale,
 } from 'chart.js'
 import ChartDataLabels from 'chartjs-plugin-datalabels'
-import { getChartOptions } from '@/config/chartConfig'
+import { getChartOptions, colorPalette } from '@/config/chartConfig'
 
 ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  ArcElement,
+  BarElement,
   CategoryScale,
+  LinearScale,
   ChartDataLabels
 )
 
@@ -86,8 +89,7 @@ const props = defineProps({
 })
 
 const tab = ref('chart')
-const pieChartOptions = ref({})
-const colorPalette = ref([])
+const barChartOptions = ref({})
 
 const hasData = computed(() => {
   return (
@@ -95,6 +97,8 @@ const hasData = computed(() => {
   )
 })
 
+// Sort descending, then reverse so the biggest bar renders at the top
+// (Chart.js y-axis places the first label at the top).
 const sortedData = computed(() => {
   if (!hasData.value) return []
   return Object.entries(props.data.data)
@@ -113,6 +117,7 @@ const sortedData = computed(() => {
         parseFloat(b.value.replace(/[^0-9.-]+/g, '')) -
         parseFloat(a.value.replace(/[^0-9.-]+/g, ''))
     )
+    .reverse()
 })
 
 const chartData = computed(() => {
@@ -125,28 +130,21 @@ const chartData = computed(() => {
         data: sortedData.value.map((item) =>
           parseFloat(item.value.replace(/[^0-9.-]+/g, ''))
         ),
-        backgroundColor: colorPalette.value.slice(
-          0,
-          sortedData.value.length
-        ),
+        backgroundColor: colorPalette.slice(0, sortedData.value.length),
       },
     ],
   }
 })
 
 onMounted(async () => {
-  const { pieChartOptions: options, colorPalette: palette } =
-    await getChartOptions()
-  pieChartOptions.value = options
-  colorPalette.value = palette
+  const { barChartOptions: options } = await getChartOptions()
+  barChartOptions.value = options
 })
 </script>
 <style scoped>
 .chart-container {
   position: relative;
   width: 100%;
-  max-width: 300px; /* Adjust this value as needed */
-  margin: 0 auto;
 }
 
 .v-window-item {
@@ -155,7 +153,7 @@ onMounted(async () => {
 }
 
 .v-table :deep(th) {
-  font-weight: bold !important;
+  font-weight: bold;
 }
 
 .v-table :deep(td),
