@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 
 import { startFixtureServer } from './fixture-server.mjs'
+import {
+  cleanupBrowserHarness,
+  runBrowserHarnessLifecycle,
+} from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
 import { routes, viewports } from './routes.mjs'
 
@@ -167,7 +171,8 @@ async function main() {
   const sessions = new Map()
   const routeFailures = []
 
-  try {
+  await runBrowserHarnessLifecycle({
+    run: async () => {
     process.env.VITE_API_URL = fixtureServer.origin
     await log({ fixtureOrigin: fixtureServer.origin, status: 'building fixture-bound app' })
     await build({
@@ -244,23 +249,23 @@ async function main() {
     if (fixtureServer.unmatchedRequests.length > 0 || routeFailures.length > 0) {
       process.exitCode = 1
     }
-  } finally {
-    for (const [session, initScript] of sessions) {
-      try {
-        await runAgentBrowser({
-          args: ['close'],
-          context: `${session} close`,
-          initScript,
-          log,
-          session,
-        })
-      } catch (error) {
-        await log({ context: `${session} close`, error: error.message })
-      }
-    }
-    await appServer?.close()
-    await fixtureServer.close()
-  }
+    },
+    cleanup: () =>
+      cleanupBrowserHarness({
+        sessions,
+        closeSession: (session, initScript) =>
+          runAgentBrowser({
+            args: ['close'],
+            context: `${session} close`,
+            initScript,
+            log,
+            session,
+          }),
+        closeAppServer: appServer ? () => appServer.close() : undefined,
+        closeFixtureServer: () => fixtureServer.close(),
+        recordError: log,
+      }),
+  })
 }
 
 await main()

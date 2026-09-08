@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
+import {
+  cleanupBrowserHarness,
+  runBrowserHarnessLifecycle,
+} from '../../../tests/browser/lifecycle.mjs'
 import { parseCliResult } from '../../../tests/browser/protocol.mjs'
 import { resolveFixture } from '../../../tests/browser/fixtures.mjs'
 import { routes, viewports } from '../../../tests/browser/routes.mjs'
@@ -21,6 +25,101 @@ describe('browser protocol', () => {
         'route probe',
       ),
     ).toThrow('route probe: browser unavailable')
+  })
+})
+
+describe('browser lifecycle', () => {
+  it('rejects a failed session close after attempting every later cleanup', async () => {
+    const calls: string[] = []
+    const closeFailure = new Error('first session stayed open')
+
+    await expect(
+      runBrowserHarnessLifecycle({
+        run: async () => undefined,
+        cleanup: () =>
+          cleanupBrowserHarness({
+            sessions: new Map([
+              ['first', undefined],
+              ['second', 'auth-init.js'],
+            ]),
+            closeSession: async (session: string) => {
+              calls.push(`session:${session}`)
+              if (session === 'first') {
+                throw closeFailure
+              }
+            },
+            closeAppServer: async () => {
+              calls.push('app-server')
+            },
+            closeFixtureServer: async () => {
+              calls.push('fixture-server')
+            },
+            recordError: async () => {
+              calls.push('record-error')
+            },
+          }),
+      })
+    ).rejects.toMatchObject({
+      errors: [expect.objectContaining({ cause: closeFailure })],
+    })
+
+    expect(calls).toEqual([
+      'session:first',
+      'record-error',
+      'session:second',
+      'app-server',
+      'fixture-server',
+    ])
+  })
+
+  it('keeps normal cleanup green', async () => {
+    const calls: string[] = []
+
+    await expect(
+      runBrowserHarnessLifecycle({
+        run: async () => calls.push('run'),
+        cleanup: () =>
+          cleanupBrowserHarness({
+            sessions: new Map([['only', undefined]]),
+            closeSession: async (session: string) => {
+              calls.push(`session:${session}`)
+            },
+            closeAppServer: async () => {
+              calls.push('app-server')
+            },
+            closeFixtureServer: async () => {
+              calls.push('fixture-server')
+            },
+            recordError: async () => undefined,
+          }),
+      })
+    ).resolves.toBeUndefined()
+
+    expect(calls).toEqual([
+      'run',
+      'session:only',
+      'app-server',
+      'fixture-server',
+    ])
+  })
+
+  it('preserves the original run failure when cleanup also fails', async () => {
+    const runFailure = new Error('route assertion failed')
+    const cleanupFailure = new Error('session close failed')
+
+    const result = runBrowserHarnessLifecycle({
+      run: async () => {
+        throw runFailure
+      },
+      cleanup: async () => {
+        throw cleanupFailure
+      },
+    })
+
+    await expect(result).rejects.toMatchObject({
+      cause: runFailure,
+      errors: [runFailure, cleanupFailure],
+    })
   })
 })
 
