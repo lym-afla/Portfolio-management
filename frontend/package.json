@@ -2,15 +2,20 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24.20.0 <25"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint src/",
+    "lint": "node scripts/check-lint-baseline.mjs && node scripts/check-lint-scope.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "format": "prettier --write \"src/**/*.{js,vue,json,css,scss}\"",
-    "type-check": "vue-tsc --noEmit"
+    "test:browser": "node tests/browser/run-smoke.mjs",
+    "format": "prettier --write \"src/**/*.{js,ts,vue,json,css,scss}\"",
+    "type-check": "vue-tsc --noEmit",
+    "type-check:reliability": "vue-tsc --noEmit -p tsconfig.reliability.json"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -32,21 +37,25 @@
     "yup": "^1.4.0"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
-    "esl": "^11.2.1",
-    "eslint": "^7.32.0",
-    "eslint-config-prettier": "^10.1.1",
-    "eslint-plugin-vue": "^8.0.3",
+    "agent-browser": "0.36.0",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.11.0",
+    "globals": "17.12.0",
     "jsdom": "^29.1.1",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.3.3",
     "resize-observer-polyfill": "^1.5.1",
     "typescript": "^5.9.3",
+    "typescript-eslint": "8.70.0",
     "vite": "^8.1.4",
     "vite-plugin-vuetify": "^2.1.3",
     "vitest": "^4.1.10",
+    "vue-eslint-parser": "10.4.1",
     "vue-tsc": "^3.3.7"
   }
 }

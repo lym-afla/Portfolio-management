@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "checkJs": false,
+    "composite": false
+  },
+  "include": [
+    "src/types/portfolioContext.ts",
+    "src/stores/portfolioContext.ts",
+    "src/composables/useLatestRequest.ts",
+    "src/services/contracts/**/*.ts",
+    "src/services/transport/**/*.ts",
+    "tests/unit/helpers/**/*.ts",
+    "tests/unit/harness/**/*.ts",
+    "tests/unit/composables/**/*.ts",
+    "tests/unit/services/**/*.ts",
+    "env.d.ts"
+  ],
+  "references": []
+}

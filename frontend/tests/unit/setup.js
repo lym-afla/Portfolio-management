@@ -1,4 +1,20 @@
 import { config } from '@vue/test-utils'
+import { beforeEach } from 'vitest'
+
+import { createMemoryStorage } from './helpers/memoryStorage'
+
+beforeEach(() => {
+  Object.defineProperties(globalThis, {
+    localStorage: {
+      configurable: true,
+      value: createMemoryStorage(),
+    },
+    sessionStorage: {
+      configurable: true,
+      value: createMemoryStorage(),
+    },
+  })
+})
 
 // Mock Vuetify
 const vuetify = {

@@ -40,15 +40,8 @@ jobs:
       - name: Check migrations are committed
         run: uv run python manage.py makemigrations --check --dry-run
 
-      - name: Run focused backend tests
-        run: |
-          uv run python -m pytest \
-            tests/integration/workflows/test_crypto_exchange_persistence.py \
-            tests/unit/imports/test_crypto_exchange_import.py \
-            tests/unit/api/test_crypto_exchange_clients.py \
-            tests/integration/api/test_crypto_token_api.py \
-            -q \
-            --no-cov
+      - name: Run complete backend test suite
+        run: uv run python -m pytest
 
   frontend-checks:
     name: Frontend checks
@@ -64,18 +57,41 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: frontend/.node-version
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run lint for edited frontend files
-        run: |
-          npm run lint -- \
-            src/components/BrokerTokenManager.vue \
-            tests/unit/components/BrokerTokenManager.spec.js
+      - name: Run complete frontend unit suite
+        run: npm run test:unit
 
-      - name: Run token manager tests
-        run: npm run test:unit -- BrokerTokenManager.spec.js
+      - name: Run Vue and TypeScript lint gates
+        run: npm run lint
+
+      - name: Run global type check
+        run: npm run type-check
+
+      - name: Run strict reliability type check
+        run: npm run type-check:reliability
+
+      - name: Build production frontend
+        run: npm run build
+
+      - name: Install browser runtime
+        run: npm exec agent-browser -- install --with-deps
+
+      - name: Run browser route matrix
+        run: npm run test:browser
+
+      - name: Upload browser logs and failed screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-pr
+          path: |
+            frontend/tests/browser/artifacts/browser.log
+            frontend/tests/browser/artifacts/summary.json
+            frontend/tests/browser/artifacts/screenshots/
+          if-no-files-found: warn
