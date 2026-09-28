@@ -4,6 +4,8 @@ Date: 2026-08-18
 Source: `$impeccable critique` run (snapshot: `.impeccable/critique/2026-08-18T05-52-23Z__frontend-src.md`, score 14/40)
 User decisions: tables & grouped headers first; keep two-row grouped headers; all issues in scope; flatten the 3rd header level; structural/layout critique welcome, not just cosmetics.
 
+> **8 September follow-up:** The user now explicitly requests pie charts for the dashboard's Asset Type, Asset Class and Currency allocations, superseding this historical specification's horizontal-bar recommendation. They also requested a fresh grouped-table review. See [focused analysis and proposed hybrid table views](../../audits/2026-09-08-grouped-tables-and-allocation-pies.md) and the updated September implementation plans. The original decisions below remain as historical context; preserve data/financial invariants, not a two-row-everywhere constraint.
+
 ## Problem
 
 The frontend is stock Vuetify with no design system: no palette or type scale in `main.js`, system-ui everywhere, no `tabular-nums` in a numeric app, a Vuetify 2 CSS variable (`--v-primary-base`) referenced in Vuetify 3 (silently broken accents), debug markup rendered into production headers, center-aligned numbers, three divergent table-header systems across sibling pages, sorting affordances that do nothing, and pies without tooltips as the primary breakdown visualization.
