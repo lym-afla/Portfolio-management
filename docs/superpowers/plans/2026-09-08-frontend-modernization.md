@@ -10,7 +10,7 @@
 
 **Spec:** [Accepted frontend audit](../../audits/2026-09-08-frontend-audit.md). The user accepted its findings and requested this plan. Preserve the established table choices in [18 August table design](../specs/2026-08-18-tables-visual-redesign-design.md).
 
-**Status:** Implementation started on `codex/frontend-modernization` from current main `197b8df7`, following the user's execution request. R1 runtime/verification work is implemented and reviewed in `1b6d803c` and `c32c33e0`; R8 typed transport is next. Later milestones remain planned. The original audit was taken at `a25f1882`; implementation rechecks current source before each task. No merge or deployment is authorized by this status.
+**Status:** Implementation started on `codex/frontend-modernization` from current main `197b8df7`, following the user's execution request. R1 runtime/verification work is implemented and reviewed in `1b6d803c` and `c32c33e0`; R8 typed transport is implemented and reviewed in `92228fd8` and `e2153d1f`. R2 layout is next. Later milestones remain planned. The original audit was taken at `a25f1882`; implementation rechecks current source before each task. No merge or deployment is authorized by this status.
 
 **Focused follow-up:** [Grouped tables and allocation pies](../../audits/2026-09-08-grouped-tables-and-allocation-pies.md) records the user's subsequent request. Three solid allocation pies are now an explicit requirement, superseding the August bar-chart decision. The hybrid table presentation is the recommended design for the existing D3/D4 pilot: a compact single-row Overview, comparison presets, and a two-row grouped Full ledger. This recommendation is not an implemented or separately approved visual result.
 
@@ -116,7 +116,7 @@ flowchart LR
 ### First reviewable batch
 
 - [x] R1: establish the supported runtime and trustworthy test gates.
-- [ ] R8: introduce the typed transport/context seam needed by the new state coordinator; retain legacy exports.
+- [x] R8: introduce the typed transport/context seam needed by the new state coordinator; retain legacy exports.
 - [ ] R2: fix header/content separation with a real-browser regression.
 - [ ] R3–R6: correct account context, dates, request ordering and retry recovery.
 - [ ] F1 and F2: prepare the two financial fixes and their numeric evidence as separate PRs.
