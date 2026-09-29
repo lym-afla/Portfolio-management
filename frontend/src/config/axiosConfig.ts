@@ -4,7 +4,16 @@ import { useAuthStore } from '@/stores/auth'
 
 const axiosInstance = axios.create({ baseURL: import.meta.env.VITE_API_URL })
 const REFRESH_TOKEN_URL = '/users/api/refresh-token/'
-let refreshQueue: Promise<string> | null = null
+interface RefreshQueue {
+  readonly epoch: number
+  readonly operation: Promise<string>
+}
+let refreshQueue: RefreshQueue | null = null
+export const getAuthSessionEpoch = (): number => useAuthStore().sessionEpoch
+function assertSession(epoch: number): void {
+  if (getAuthSessionEpoch() !== epoch)
+    throw new Error('Authentication session ended')
+}
 
 function forceLogout(): void {
   localStorage.removeItem('accessToken')
@@ -16,11 +25,14 @@ function forceLogout(): void {
   if (typeof window !== 'undefined' && window.location.pathname !== '/login')
     window.location.href = '/login'
 }
-async function rotateToken(date: string | null): Promise<string> {
+async function rotateToken(
+  date: string | null,
+  generation: number
+): Promise<string> {
+  assertSession(generation)
   const refresh = localStorage.getItem('refreshToken')
   if (!refresh) throw new Error('No refresh token available')
   const auth = useAuthStore()
-  const generation = auth.sessionEpoch
   const data: { refresh: string; effective_current_date?: string } = { refresh }
   if (date) data.effective_current_date = date
   const config: AxiosRequestConfig & { _authEpoch: number } = {
@@ -46,43 +58,48 @@ async function rotateToken(date: string | null): Promise<string> {
     )
   return tokens.access
 }
-/** One rotation queue for expired tokens and explicit effective-date changes. */
+/** One rotation queue per auth epoch; a new session never waits for the old one. */
 export function refreshSessionToken(
-  date: string | null = null
+  date: string | null = null,
+  originatingEpoch: number = getAuthSessionEpoch()
 ): Promise<string> {
-  if (!refreshQueue || date !== null) {
-    const previous = refreshQueue
-    const generation = useAuthStore().sessionEpoch
-    const rotate = () => {
-      if (useAuthStore().sessionEpoch !== generation)
-        throw new Error('Authentication session ended')
-      return rotateToken(date)
-    }
-    const operation = previous ? previous.then(rotate) : rotate()
-    refreshQueue = operation
-    // Rejections do not poison future retries, and cleanup has no unhandled rejection.
-    const clear = () => {
-      if (refreshQueue === operation) refreshQueue = null
-    }
-    operation.then(clear, clear)
+  if (getAuthSessionEpoch() !== originatingEpoch)
+    return Promise.reject(new Error('Authentication session ended'))
+  const ownedQueue =
+    refreshQueue?.epoch === originatingEpoch ? refreshQueue : null
+  if (ownedQueue && date === null) return waitForRefreshQueue(ownedQueue)
+
+  const rotate = () => rotateToken(date, originatingEpoch)
+  const operation = ownedQueue ? ownedQueue.operation.then(rotate) : rotate()
+  const next: RefreshQueue = { epoch: originatingEpoch, operation }
+  refreshQueue = next
+  // An old epoch's settlement cannot detach a newer session's in-flight queue.
+  const clear = () => {
+    if (refreshQueue === next) refreshQueue = null
   }
-  return waitForRefreshQueue(refreshQueue)
+  operation.then(clear, clear)
+  return waitForRefreshQueue(next)
 }
-async function waitForRefreshQueue(
-  operation: Promise<string>
-): Promise<string> {
-  let current = operation
-  let token = await current
-  // A date update queued during the 401 refresh must finish before replaying reads.
-  while (refreshQueue && refreshQueue !== current) {
+async function waitForRefreshQueue(queue: RefreshQueue): Promise<string> {
+  let current = queue
+  let token = await current.operation
+  assertSession(queue.epoch)
+  // Same-session date updates must finish before retrying waiting financial reads.
+  while (
+    refreshQueue &&
+    refreshQueue.epoch === queue.epoch &&
+    refreshQueue !== current
+  ) {
     current = refreshQueue
-    token = await current
+    token = await current.operation
+    assertSession(queue.epoch)
   }
   return token
 }
 axiosInstance.interceptors.request.use((config) => {
   const sessionConfig = config as typeof config & { _authEpoch?: number }
-  sessionConfig._authEpoch ??= useAuthStore().sessionEpoch
+  sessionConfig._authEpoch ??= getAuthSessionEpoch()
+  assertSession(sessionConfig._authEpoch)
   const token = localStorage.getItem('accessToken')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
@@ -118,6 +135,8 @@ axiosInstance.interceptors.response.use(
     return Promise.reject(error)
   }
 )
-export const refreshTokenWithEffectiveDate = (date: string): Promise<string> =>
-  refreshSessionToken(date)
+export const refreshTokenWithEffectiveDate = (
+  date: string,
+  originatingEpoch: number = getAuthSessionEpoch()
+): Promise<string> => refreshSessionToken(date, originatingEpoch)
 export default axiosInstance

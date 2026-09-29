@@ -1,7 +1,12 @@
 import { ApiError, toApiError } from './errors'
-import type { AxiosInstance } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 
-export interface RequestOptions { signal?: AbortSignal }
+export interface RequestOptions { signal?: AbortSignal; sessionEpoch?: number }
+function requestConfig(options?: RequestOptions): (AxiosRequestConfig & { _authEpoch?: number }) | undefined {
+  if (!options?.signal && options?.sessionEpoch === undefined) return undefined
+  return { ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.sessionEpoch !== undefined ? { _authEpoch: options.sessionEpoch } : {}) }
+}
 
 let readGuard: (() => boolean) | null = null
 export function configurePortfolioReadGuard(guard: (() => boolean) | null): void { readGuard = guard }
@@ -18,10 +23,10 @@ export function getApiTransport(): AxiosInstance {
 }
 
 export async function apiGet(url: string, options?: RequestOptions): Promise<unknown> {
-  try { assertReadReady(url); return (await (options?.signal ? getApiTransport().get(url, { signal: options.signal }) : getApiTransport().get(url))).data }
+  try { assertReadReady(url); return (await (requestConfig(options) ? getApiTransport().get(url, requestConfig(options)) : getApiTransport().get(url))).data }
   catch (error) { throw toApiError(error) }
 }
 export async function apiPost(url: string, body: unknown, options?: RequestOptions): Promise<unknown> {
-  try { assertReadReady(url); return (await (options?.signal ? getApiTransport().post(url, body, { signal: options.signal }) : getApiTransport().post(url, body))).data }
+  try { assertReadReady(url); return (await (requestConfig(options) ? getApiTransport().post(url, body, requestConfig(options)) : getApiTransport().post(url, body))).data }
   catch (error) { throw toApiError(error) }
 }

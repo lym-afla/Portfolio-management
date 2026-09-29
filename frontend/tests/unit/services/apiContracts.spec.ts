@@ -6,8 +6,9 @@ import { decodeOpenPositions, decodeClosedPositions, getOpenPositions } from '@/
 import { decodeDashboardSummary } from '@/services/api/dashboard'
 import { decodeTransactions, getTransactions } from '@/services/api/transactions'
 import { decodeFxTable, decodeAccountsTable, decodeBrokersTable, decodePricesTable, decodeSecuritiesTable, getFXData, getYearOptions } from '@/services/api/database'
-import { configurePortfolioContextBackend, getPortfolioContextBackend, createPortfolioContextBackend } from '@/services/api/context'
+import { configurePortfolioContextBackend, getPortfolioContextBackend, createPortfolioContextBackend as createBackend, type EffectiveDateRefresh } from '@/services/api/context'
 
+const createPortfolioContextBackend = (refresh: EffectiveDateRefresh) => createBackend(refresh, () => 0)
 const http = { get: vi.fn(), post: vi.fn() }
 beforeEach(() => {
   configureApiTransport(http as unknown as AxiosInstance)
@@ -55,8 +56,8 @@ describe('typed API transport', () => {
       : { settings: { table_date: '2025-12-31', default_currency: 'USD', digits: 2 }, choices: {} } }))
     await backend.updateSettings({ effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })
     expect(http.post).toHaveBeenCalledWith('/users/api/update_dashboard_settings/',
-      { table_date: '2025-12-31', default_currency: 'USD', digits: 2 })
-    expect(refresh).toHaveBeenCalledWith('2025-12-31')
+      { table_date: '2025-12-31', default_currency: 'USD', digits: 2 }, { _authEpoch: 0 })
+    expect(refresh).toHaveBeenCalledWith('2025-12-31', 0)
     expect(await backend.read()).toEqual({ accountSelection: { type: 'all', id: null }, effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })
   })
   it('normalizes transport failures without exposing request configuration', async () => {
@@ -167,7 +168,7 @@ describe('typed API transport', () => {
       ? { selected_account_type: 'all', selected_account_id: null }
       : { settings: { table_date: '2025-12-31', default_currency: 'USD', digits: 2 } } }))
     await backend.updateAccount({ type: 'all', id: null })
-    expect(http.post).toHaveBeenCalledWith('/users/api/update_user_data_for_new_account/', { type: 'all', id: null })
+    expect(http.post).toHaveBeenCalledWith('/users/api/update_user_data_for_new_account/', { type: 'all', id: null }, { _authEpoch: 0 })
     expect(http.get).toHaveBeenCalledTimes(2)
   })
   it('propagates an effective-date refresh failure', async () => {

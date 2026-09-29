@@ -6,7 +6,7 @@ import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
 import router from './router'
-import axiosInstance, { refreshTokenWithEffectiveDate } from './config/axiosConfig'
+import axiosInstance, { refreshTokenWithEffectiveDate, getAuthSessionEpoch } from './config/axiosConfig'
 import { configureApiTransport, configurePortfolioReadGuard } from './services/http/client'
 import { configurePortfolioContextBackend, createPortfolioContextBackend } from './services/api/context'
 import { usePortfolioContextStore } from './stores/portfolioContext'
@@ -47,7 +47,7 @@ app.use(vuetify)
 app.use(createPinia())
 configureApiTransport(axiosInstance)
 configurePortfolioReadGuard(() => usePortfolioContextStore().canRead)
-configurePortfolioContextBackend(createPortfolioContextBackend(refreshTokenWithEffectiveDate))
+configurePortfolioContextBackend(createPortfolioContextBackend(refreshTokenWithEffectiveDate, getAuthSessionEpoch))
 app.use(router)
 
 // Make debugging tools available globally for debugging in development
