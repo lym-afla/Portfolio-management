@@ -11,7 +11,14 @@ import {
   runBrowserHarnessLifecycle,
 } from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
+import { assertFocusedLayoutFlow, assertLayoutGeometry } from './layout.mjs'
 import { routes, viewports } from './routes.mjs'
+
+const caseIndex = process.argv.indexOf('--case')
+const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
+if (selectedCase !== null && selectedCase !== 'layout') {
+  throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
+}
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const browserDir = resolve(frontendRoot, 'tests/browser')
@@ -143,6 +150,11 @@ async function runRoute({ appOrigin, authenticated, route, session, viewport }) 
     throw new Error(`${context}: route probe failed: ${JSON.stringify({ expectedPath, probe })}`)
   }
 
+  let geometry
+  if (authenticated) {
+    geometry = await assertLayoutGeometry({ context, initScript, log, session })
+  }
+
   const errorData = await runAgentBrowser({
     args: ['errors'],
     context: `${context} page errors`,
@@ -154,9 +166,9 @@ async function runRoute({ appOrigin, authenticated, route, session, viewport }) 
     throw new Error(`${context}: page errors: ${JSON.stringify(errorData.errors)}`)
   }
 
-  await log({ authenticated, context, probe, status: 'passed' })
+  await log({ authenticated, context, geometry, probe, status: 'passed' })
   console.log(`PASS ${context}`)
-  return { context, probe }
+  return { context, geometry, probe }
 }
 
 async function main() {
@@ -166,7 +178,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer()
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -183,8 +195,12 @@ async function main() {
     appServer = await startBuiltAppServer(builtAppDir)
 
     for (const viewport of viewports) {
-      for (const authenticated of [false, true]) {
-        const selectedRoutes = routes.filter((route) => route.authenticated === authenticated)
+      for (const authenticated of selectedCase === 'layout' ? [true] : [false, true]) {
+        const selectedRoutes = routes.filter((route) =>
+          selectedCase === 'layout'
+            ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
+            : route.authenticated === authenticated,
+        )
         const session = `r1-${authenticated ? 'auth' : 'public'}-${viewport.name}-${process.pid}`
         const initScript = authenticated ? authInit : undefined
         sessions.set(session, initScript)
@@ -230,6 +246,22 @@ async function main() {
             } catch (screenshotError) {
               await log({ context: `${viewport.name} ${route.path}`, screenshotError: screenshotError.message })
             }
+          }
+        }
+        if (selectedCase === 'layout') {
+          try {
+            const flow = await assertFocusedLayoutFlow({
+              context: `${viewport.name} layout flow`,
+              initScript,
+              log,
+              session,
+              viewport,
+            })
+            await log({ context: `${viewport.name} layout flow`, flow, status: 'passed' })
+            console.log(`PASS ${viewport.name} layout flow`)
+          } catch (error) {
+            routeFailures.push({ route: 'layout flow', viewport: viewport.name, error: error.message })
+            console.error(`FAIL ${viewport.name} layout flow: ${error.message}`)
           }
         }
       }

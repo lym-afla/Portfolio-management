@@ -1,5 +1,5 @@
 [
-  { "file": "src/App.vue", "line": 87, "column": 7, "ruleId": "@typescript-eslint/no-unused-vars", "message": "'setUser' is assigned a value but never used. Allowed unused vars must match /^_/u.", "severity": 1 },
+  { "file": "src/App.vue", "line": 111, "column": 7, "ruleId": "@typescript-eslint/no-unused-vars", "message": "'setUser' is assigned a value but never used. Allowed unused vars must match /^_/u.", "severity": 1 },
   { "file": "src/components/AccountGroupManager.vue", "line": 264, "column": 7, "ruleId": "@typescript-eslint/no-unused-vars", "message": "'availableAccountsForGroup' is assigned a value but never used. Allowed unused vars must match /^_/u.", "severity": 1 },
   { "file": "src/components/BrokerTokenManager.vue", "line": 646, "column": 7, "ruleId": "@typescript-eslint/no-unused-vars", "message": "'brokerOptions' is assigned a value but never used. Allowed unused vars must match /^_/u.", "severity": 1 },
   { "file": "src/components/BrokerTokenManager.vue", "line": 885, "column": 10, "ruleId": "@typescript-eslint/no-unused-vars", "message": "'getTokenStatusText' is defined but never used. Allowed unused vars must match /^_/u.", "severity": 1 },

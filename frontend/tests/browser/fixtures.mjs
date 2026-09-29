@@ -161,8 +161,16 @@ const fixtures = new Map([
   ],
 ])
 
-export function resolveFixture(method, pathname) {
+export function resolveFixture(method, pathname, { longAccount = false } = {}) {
   const key = `${method.toUpperCase()} ${pathname}`
+  if (longAccount && key === 'GET /users/api/get_account_choices/') {
+    const selected = {
+      id: 1,
+      type: 'account',
+      display_name: 'Long synthetic investment account name for narrow viewport wrapping',
+    }
+    return { status: 200, body: { options: [['Account', selected]], selected } }
+  }
   if (!fixtures.has(key)) {
     throw new Error(`Unmatched fixture request: ${key}`)
   }

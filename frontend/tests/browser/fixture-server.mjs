@@ -16,7 +16,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer() {
+export async function startFixtureServer({ longAccount = false } = {}) {
   const requests = []
   const unmatchedRequests = []
   const sockets = new Set()
@@ -34,7 +34,7 @@ export async function startFixtureServer() {
     response.setHeader('Cache-Control', 'no-store')
 
     try {
-      const fixture = resolveFixture(fixtureMethod, url.pathname)
+      const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
       requests.push({ method: fixtureMethod, path: url.pathname })
 
       if (requestedMethod === 'OPTIONS') {
@@ -59,7 +59,7 @@ export async function startFixtureServer() {
   server.on('upgrade', (request, socket) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     try {
-      resolveFixture('GET', url.pathname)
+      resolveFixture('GET', url.pathname, { longAccount })
       const key = request.headers['sec-websocket-key']
       if (!key) {
         throw new Error('Missing Sec-WebSocket-Key')

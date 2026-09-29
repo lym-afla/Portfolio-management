@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-// The app bar is a real v-app-bar, so v-main must auto-offset via Vuetify's
-// layout system (--v-layout-top). No manual paddingTop compensation allowed.
-describe('App layout padding hack', () => {
+// Rendered app-bar/main rectangles are the acceptance gate in tests/browser/layout.mjs.
+// These source checks only guard against reintroducing manual offset workarounds.
+describe('App layout source hygiene', () => {
   it('App.vue does not use paddingTop / mainPadding compensation', () => {
     const src = readFileSync('src/App.vue', 'utf-8')
     expect(src).not.toContain('mainPadding')

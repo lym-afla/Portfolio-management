@@ -8,26 +8,28 @@
       <template v-if="isAuthenticated">
         <Navigation @logout="handleLogout" />
 
-        <v-app-bar elevation="1" height="auto">
-          <v-container fluid class="py-2">
-            <div class="d-flex">
-              <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
-              <SettingsDialog v-if="showSettingsDialog" class="ml-auto" />
-            </div>
-            <v-divider v-if="pageTitle" class="mb-2" />
-            <div v-if="showComponents" class="d-flex align-center mb-2">
-              <AccountSelection class="flex-grow-1" />
-              <v-divider vertical class="mx-2" />
-              <div>
-                <SettingsDialog />
+        <v-app-bar elevation="1" :height="appBarHeight">
+          <div ref="appBarContent" class="app-bar-content" data-testid="app-bar-content">
+            <v-container fluid class="py-2">
+              <div class="d-flex">
+                <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
+                <SettingsDialog v-if="showSettingsDialog" class="ml-auto" />
               </div>
-            </div>
-            <v-divider v-if="showComponents" />
-          </v-container>
+              <v-divider v-if="pageTitle" class="mb-2" />
+              <div v-if="showComponents" class="d-flex align-center flex-wrap mb-2">
+                <AccountSelection class="flex-grow-1 app-bar-account-selection" />
+                <div class="d-flex align-center">
+                  <v-divider vertical class="mx-2" />
+                  <SettingsDialog />
+                </div>
+              </div>
+              <v-divider v-if="showComponents" />
+            </v-container>
+          </div>
         </v-app-bar>
 
         <v-main>
-          <v-container fluid class="pa-4">
+          <v-container fluid class="pa-4" data-testid="route-content">
             <router-view @update-page-title="updatePageTitle" />
           </v-container>
         </v-main>
@@ -58,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { provide, ref, onMounted, computed } from 'vue'
+import { provide, ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -74,6 +76,28 @@ const user = ref<Record<string, unknown> | null>(null)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const layoutLoading = ref(true)
 const pageTitle = ref('')
+const appBarHeight = ref(144)
+const appBarContent = ref<HTMLElement | null>(null)
+let appBarObserver: ResizeObserver | null = null
+
+watch(
+  appBarContent,
+  (element) => {
+    appBarObserver?.disconnect()
+    if (!element) return
+
+    const measure = () => {
+      // offsetHeight is in layout pixels, including when CSS zoom scales the rectangle.
+      const height = element.offsetHeight
+      if (height > 0 && height !== appBarHeight.value) appBarHeight.value = height
+    }
+    appBarObserver = new ResizeObserver(measure)
+    appBarObserver.observe(element)
+    measure()
+  },
+  { flush: 'post' },
+)
+onUnmounted(() => appBarObserver?.disconnect())
 
 const isProfilePage = computed(() => route.path.startsWith('/profile'))
 const isDatabasePage = computed(() => route.path.startsWith('/database'))
@@ -130,6 +154,15 @@ body {
 
 .v-application {
   overflow-x: hidden;
+}
+
+.app-bar-content {
+  width: 100%;
+  height: max-content;
+}
+
+.app-bar-account-selection {
+  min-width: min(100%, 320px);
 }
 
 .v-data-table th {
