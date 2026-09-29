@@ -74,23 +74,31 @@ const fixtures = new Map([
     {
       portfolio_open: [],
       portfolio_open_totals: {},
-      cash_balances: [],
+      cash_balances: {},
       total_items: 0,
+      current_page: 1,
+      total_pages: 1,
     },
   ],
   [
     'POST /closed_positions/api/get_closed_positions_table/',
-    { portfolio_closed: [], portfolio_closed_totals: {}, total_items: 0 },
+    { portfolio_closed: [], portfolio_closed_totals: {}, cash_balances: null, total_items: 0, current_page: 1, total_pages: 1 },
   ],
   [
     'POST /transactions/api/get_transactions_table/',
-    { transactions: [], total_items: 0, currencies: ['USD'] },
+    { transactions: [], total_items: 0, current_page: 1, total_pages: 1, currencies: ['USD'] },
   ],
   ['GET /transactions/api/form_structure/', { fields: [] }],
   ['GET /transactions/api/fx/form_structure/', { fields: [] }],
   ['GET /ws/transactions/', null],
-  ['POST /database/api/accounts/list_accounts/', { accounts: [], total_items: 0, totals: {} }],
-  ['POST /database/api/brokers/list_brokers/', { items: [], total_items: 0, totals: {} }],
+  ['POST /database/api/accounts/list_accounts/', {
+    accounts: [{ id: 1, name: 'Main', broker_name: 'Fixture Broker', no_of_securities: 1, first_investment: '01-Jan-25', nav: '$100.00', cash: { USD: '$50.00' }, irr: null }],
+    totals: {}, total_items: 1, current_page: 1, total_pages: 1,
+  }],
+  ['POST /database/api/brokers/list_brokers/', {
+    items: [{ id: 1, name: 'Fixture Broker', country: 'US', no_of_accounts: 1, no_of_securities: 1, first_investment: '01-Jan-25', nav: '$100.00', cash: '$50.00', irr: null }],
+    totals: {}, total_items: 1, current_page: 1, total_pages: 1,
+  }],
   ['GET /database/api/get-asset-types/', []],
   ['GET /database/api/get-securities/', []],
   ['GET /database/api/accounts/', []],
@@ -104,12 +112,18 @@ const fixtures = new Map([
   ],
   ['GET /database/api/fx/form_structure/', { fields: [] }],
   ['GET /database/api/fx/import_stats/', { total_records: 0, latest_date: null }],
-  ['POST /database/api/get-prices-table/', { prices: [], total_items: 0 }],
+  ['POST /database/api/get-prices-table/', {
+    prices: [{ id: 1, date: '01-Jan-25', security__name: 'Fixture Security', security__type: 'Stock', security__currency: '$', security__id: 1, price: '100.00' }],
+    total_items: 1, current_page: 1, total_pages: 1,
+  }],
   [
     'POST /database/api/get-securities-for-database/',
-    { securities: [], total_items: 0 },
+    {
+      securities: [{ id: 1, type: 'Stock', ISIN: 'US0000000001', name: 'Fixture Security', first_investment: '01-Jan-25', currency: '$', open_position: '1.000000000', current_value: '$100.00', realized: '$0.00', unrealized: '$0.00', capital_distribution: '$0.00', irr: null }],
+      total_items: 1, current_page: 1, total_pages: 1,
+    },
   ],
-  ['POST /database/api/fx/list_fx/', { results: [], count: 0 }],
+  ['POST /database/api/fx/list_fx/', { results: [], count: 0, current_page: 1, total_pages: 1 }],
   [
     'GET /database/api/securities/1/',
     {

@@ -71,14 +71,24 @@ export function createPortfolioContextBackend(refreshTokenWithEffectiveDate: Eff
         default_currency: settings.currency,
         digits: settings.digits,
       })
-      if (!isRecord(response)) throw new ApiError('Invalid dashboard settings update response')
-      if (response.requires_token_refresh === true) {
-        if (typeof response.new_effective_date !== 'string') {
-          throw new ApiError('Invalid dashboard settings update response')
-        }
-        await refreshTokenWithEffectiveDate(response.new_effective_date)
+      if (!isRecord(response) ||
+          response.table_date !== settings.effectiveCurrentDate ||
+          response.default_currency !== settings.currency ||
+          response.digits !== settings.digits ||
+          (response.requires_token_refresh !== undefined && typeof response.requires_token_refresh !== 'boolean') ||
+          (response.new_effective_date !== undefined && response.new_effective_date !== settings.effectiveCurrentDate) ||
+          (response.requires_token_refresh === true && response.new_effective_date !== settings.effectiveCurrentDate)) {
+        throw new ApiError('Invalid dashboard settings update response')
       }
-      await backend.read()
+      if (response.requires_token_refresh === true) {
+        await refreshTokenWithEffectiveDate(settings.effectiveCurrentDate)
+      }
+      const confirmed = await backend.read()
+      if (confirmed.effectiveCurrentDate !== settings.effectiveCurrentDate ||
+          confirmed.currency !== settings.currency ||
+          confirmed.digits !== settings.digits) {
+        throw new ApiError('Dashboard settings were not confirmed')
+      }
     },
   }
   return backend

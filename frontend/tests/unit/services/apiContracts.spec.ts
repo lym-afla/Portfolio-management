@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AxiosInstance } from 'axios'
 import { configureApiTransport, getApiTransport } from '@/services/http/client'
+import { ApiError, toApiError } from '@/services/http/errors'
 import { decodeOpenPositions, decodeClosedPositions, getOpenPositions } from '@/services/api/portfolio'
 import { decodeDashboardSummary } from '@/services/api/dashboard'
 import { decodeTransactions, getTransactions } from '@/services/api/transactions'
@@ -48,7 +49,7 @@ describe('typed API transport', () => {
   it('uses dashboard settings names and awaits effective-date refresh', async () => {
     const refresh = vi.fn().mockResolvedValue(undefined)
     const backend = createPortfolioContextBackend(refresh)
-    http.post.mockResolvedValue({ data: { requires_token_refresh: true, new_effective_date: '2025-12-31' } })
+    http.post.mockResolvedValue({ data: { table_date: '2025-12-31', default_currency: 'USD', digits: 2, requires_token_refresh: true, new_effective_date: '2025-12-31' } })
     http.get.mockImplementation((url: string) => Promise.resolve({ data: url.includes('user_settings')
       ? { selected_account_type: 'all', selected_account_id: null }
       : { settings: { table_date: '2025-12-31', default_currency: 'USD', digits: 2 }, choices: {} } }))
@@ -61,6 +62,57 @@ describe('typed API transport', () => {
   it('normalizes transport failures without exposing request configuration', async () => {
     http.post.mockRejectedValue({ response: { status: 422, data: { code: 'invalid', field: ['required'], headers: { Authorization: 'secret' } } }, config: { headers: { Authorization: 'secret' } } })
     await expect(getOpenPositions(null, null, 1, 25)).rejects.toMatchObject({ name: 'ApiError', status: 422, code: 'invalid', details: { field: ['required'] } })
+  })
+  it('redacts credential-bearing error messages and nested validation strings', async () => {
+    const credential = 'Bearer eyJhbGci.eyJzdWI.abc123'
+    http.post.mockRejectedValue({ response: { status: 422, data: {
+      code: 'invalid', message: `Authorization: ${credential}`,
+      field: [{ problem: `refresh_token=${credential}` }, 'safe validation'],
+    } } })
+    try {
+      await getOpenPositions(null, null, 1, 25)
+      throw new Error('Expected request to fail')
+    } catch (error) {
+      expect(error).toMatchObject({ name: 'ApiError', status: 422 })
+      expect(JSON.stringify(error)).not.toContain(credential)
+      expect((error as Error).message).not.toContain(credential)
+      expect(JSON.stringify(error)).toContain('safe validation')
+    }
+    expect(toApiError(`Authorization: ${credential}`).message).not.toContain(credential)
+    const direct = new ApiError(`refresh token: ${credential}`, 400, 'invalid', { nested: [`Cookie: ${credential}`] })
+    expect(direct.message).not.toContain(credential)
+    expect(JSON.stringify(direct.details)).not.toContain(credential)
+  })
+  it('rejects a malformed settings confirmation before reading canonical state', async () => {
+    const backend = createPortfolioContextBackend(async () => undefined)
+    http.post.mockResolvedValue({ data: {} })
+    await expect(backend.updateSettings({ effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })).rejects.toThrow('Invalid dashboard settings update response')
+    expect(http.get).not.toHaveBeenCalled()
+  })
+  it('accepts unchanged-date settings without a refresh flag', async () => {
+    const refresh = vi.fn()
+    const backend = createPortfolioContextBackend(refresh)
+    http.post.mockResolvedValue({ data: { table_date: '2025-12-31', default_currency: 'USD', digits: 2 } })
+    http.get.mockImplementation((url: string) => Promise.resolve({ data: url.includes('user_settings')
+      ? { selected_account_type: 'all', selected_account_id: null }
+      : { settings: { table_date: '2025-12-31', default_currency: 'USD', digits: 2 } } }))
+    await backend.updateSettings({ effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })
+    expect(refresh).not.toHaveBeenCalled()
+  })
+  it('rejects a settings readback that differs from the requested tuple', async () => {
+    const backend = createPortfolioContextBackend(async () => undefined)
+    http.post.mockResolvedValue({ data: { table_date: '2025-12-31', default_currency: 'USD', digits: 2 } })
+    http.get.mockImplementation((url: string) => Promise.resolve({ data: url.includes('user_settings')
+      ? { selected_account_type: 'all', selected_account_id: null }
+      : { settings: { table_date: '2025-12-30', default_currency: 'USD', digits: 2 } } }))
+    await expect(backend.updateSettings({ effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })).rejects.toThrow('Dashboard settings were not confirmed')
+  })
+  it('rejects a mismatched refresh date before refreshing', async () => {
+    const refresh = vi.fn()
+    const backend = createPortfolioContextBackend(refresh)
+    http.post.mockResolvedValue({ data: { table_date: '2025-12-31', default_currency: 'USD', digits: 2, requires_token_refresh: true, new_effective_date: '2025-12-30' } })
+    await expect(backend.updateSettings({ effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })).rejects.toThrow('Invalid dashboard settings update response')
+    expect(refresh).not.toHaveBeenCalled()
   })
   it('preserves formatted position values and rejects incomplete rows', () => {
     const page = { total_items: 1, current_page: 1, total_pages: 1 }
@@ -88,10 +140,18 @@ describe('typed API transport', () => {
     expect((await getFXData({ startDate: '', endDate: '', page: 1, itemsPerPage: 25, sortBy: {}, search: '' })).results[0].rate).toBe('0.912345678')
     expect(http.post).toHaveBeenCalledWith('/database/api/fx/list_fx/', { startDate: '', endDate: '', page: 1, itemsPerPage: 25, sortBy: {}, search: '' })
     expect(() => decodeFxTable({ ...fx, count: '1' })).toThrow('Invalid FX table response')
-    expect(decodeAccountsTable({ ...page, accounts: [{ id: 1, nav: '1,000.00' }], totals: { nav: '1,000.00' } }).totals).toEqual({ nav: '1,000.00' })
-    expect(decodeBrokersTable({ ...page, items: [{ id: 1 }], totals: {} }).items).toHaveLength(1)
-    expect(decodePricesTable({ ...page, prices: [{ id: 1, price: '10.00' }] }).prices).toHaveLength(1)
-    expect(decodeSecuritiesTable({ ...page, securities: [{ id: 1, name: 'Bond' }] }).securities).toHaveLength(1)
+    const account = { id: 1, name: 'Main', broker_name: 'Broker', no_of_securities: 2, first_investment: '01-Jan-25', nav: '1,000.00', cash: { USD: '50.00' }, irr: null }
+    const broker = { id: 2, name: 'Broker', country: 'US', no_of_accounts: 1, no_of_securities: 2, first_investment: '01-Jan-25', nav: '1,000.00', cash: '50.00', irr: null }
+    const price = { id: 3, date: '2025-01-01', security__name: 'Bond', security__type: 'Bond', security__currency: '$', security__id: 4, price: '10.00' }
+    const security = { id: 4, type: 'Bond', ISIN: null, name: 'Bond', first_investment: '01-Jan-25', currency: '$', open_position: '2.00', current_value: '20.00', realized: '0.00', unrealized: '0.00', capital_distribution: '0.00', irr: null }
+    expect(decodeAccountsTable({ ...page, accounts: [account], totals: { nav: '1,000.00' } }).accounts).toEqual([account])
+    expect(decodeBrokersTable({ ...page, items: [broker], totals: {} }).items).toEqual([broker])
+    expect(decodePricesTable({ ...page, prices: [price] }).prices).toEqual([price])
+    expect(decodeSecuritiesTable({ ...page, securities: [security] }).securities).toEqual([security])
+    expect(() => decodeAccountsTable({ ...page, accounts: [{ ...account, broker_name: undefined }], totals: {} })).toThrow('Invalid accounts table response')
+    expect(() => decodeBrokersTable({ ...page, items: [{ ...broker, no_of_accounts: '1' }], totals: {} })).toThrow('Invalid brokers table response')
+    expect(() => decodePricesTable({ ...page, prices: [{ ...price, security__id: null }] })).toThrow('Invalid prices table response')
+    expect(() => decodeSecuritiesTable({ ...page, securities: [{ ...security, currency: undefined }] })).toThrow('Invalid securities table response')
     expect(() => decodeAccountsTable({ ...page, totals: {}, accounts: 'missing' })).toThrow('Invalid accounts table response')
   })
   it('keeps year values numeric', async () => {
@@ -112,7 +172,7 @@ describe('typed API transport', () => {
   })
   it('propagates an effective-date refresh failure', async () => {
     const backend = createPortfolioContextBackend(async () => { throw new Error('refresh failed') })
-    http.post.mockResolvedValue({ data: { requires_token_refresh: true, new_effective_date: '2025-12-31' } })
+    http.post.mockResolvedValue({ data: { table_date: '2025-12-31', default_currency: 'USD', digits: 2, requires_token_refresh: true, new_effective_date: '2025-12-31' } })
     await expect(backend.updateSettings({ effectiveCurrentDate: '2025-12-31', currency: 'USD', digits: 2 })).rejects.toThrow('refresh failed')
     expect(http.get).not.toHaveBeenCalled()
   })

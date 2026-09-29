@@ -8,17 +8,60 @@ function withTotals<T>(value: unknown, label: string, key: string): T {
   if (!isRecord(page.totals)) throw new ApiError(`Invalid ${label} response`)
   return page as unknown as T
 }
+function isCount(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0
+}
+function isDisplay(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null
+}
 export function decodeAccountsTable(value: unknown): AccountsTableResponse {
-  return withTotals<AccountsTableResponse>(value, 'accounts table', 'accounts')
+  const page = withTotals<AccountsTableResponse>(value, 'accounts table', 'accounts')
+  if (!page.accounts.every((row) =>
+    isCount(row.id) && typeof row.name === 'string' &&
+    typeof row.broker_name === 'string' && isCount(row.no_of_securities) &&
+    typeof row.first_investment === 'string' && isDisplay(row.nav) &&
+    isRecord(row.cash) && Object.values(row.cash).every(isDisplay) &&
+    isDisplay(row.irr))) {
+    throw new ApiError('Invalid accounts table response')
+  }
+  return page
 }
 export function decodeBrokersTable(value: unknown): BrokersTableResponse {
-  return withTotals<BrokersTableResponse>(value, 'brokers table', 'items')
+  const page = withTotals<BrokersTableResponse>(value, 'brokers table', 'items')
+  if (!page.items.every((row) =>
+    isCount(row.id) && typeof row.name === 'string' &&
+    (typeof row.country === 'string' || row.country === null) &&
+    isCount(row.no_of_accounts) && isCount(row.no_of_securities) &&
+    typeof row.first_investment === 'string' && isDisplay(row.nav) &&
+    isDisplay(row.cash) && isDisplay(row.irr))) {
+    throw new ApiError('Invalid brokers table response')
+  }
+  return page
 }
 export function decodePricesTable(value: unknown): PricesTableResponse {
-  return decodePage(value, 'prices table', 'prices') as unknown as PricesTableResponse
+  const page = decodePage(value, 'prices table', 'prices') as unknown as PricesTableResponse
+  if (!page.prices.every((row) =>
+    isCount(row.id) && typeof row.date === 'string' &&
+    typeof row.security__name === 'string' && typeof row.security__type === 'string' &&
+    typeof row.security__currency === 'string' && isCount(row.security__id) &&
+    isDisplay(row.price))) {
+    throw new ApiError('Invalid prices table response')
+  }
+  return page
 }
 export function decodeSecuritiesTable(value: unknown): SecuritiesTableResponse {
-  return decodePage(value, 'securities table', 'securities') as unknown as SecuritiesTableResponse
+  const page = decodePage(value, 'securities table', 'securities') as unknown as SecuritiesTableResponse
+  if (!page.securities.every((row) =>
+    isCount(row.id) && typeof row.type === 'string' &&
+    (typeof row.ISIN === 'string' || row.ISIN === null) &&
+    typeof row.name === 'string' && typeof row.first_investment === 'string' &&
+    typeof row.currency === 'string' && isDisplay(row.open_position) &&
+    isDisplay(row.current_value) && isDisplay(row.realized) &&
+    isDisplay(row.unrealized) && isDisplay(row.capital_distribution) &&
+    isDisplay(row.irr))) {
+    throw new ApiError('Invalid securities table response')
+  }
+  return page
 }
 export function decodeFxTable(value: unknown): FxTableResponse {
   const page = decodePage(value, 'FX table', 'results', 'count')

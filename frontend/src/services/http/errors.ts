@@ -1,21 +1,33 @@
-export class ApiError extends Error {
-  constructor(message: string, readonly status?: number, readonly code?: string, readonly details?: unknown) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
-
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 const privateKey = /token|authorization|cookie|secret|password|headers|config|request/i
+const credentialText = /(?:authorization|(?:access|refresh|id)?[\s_-]*token|cookie|password|secret|api[\s_-]*key)\s*[:=]|bearer\s+\S+|eyJ[A-Za-z0-9_-]{8,}\.eyJ/i
+
+function safeText(value: string): string {
+  return credentialText.test(value) ? '[redacted]' : value
+}
 function safeDetails(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(safeDetails)
+  if (typeof value === 'string') return safeText(value)
   if (!record(value)) return value
   return Object.fromEntries(Object.entries(value)
     .filter(([key]) => !privateKey.test(key))
     .map(([key, item]) => [key, safeDetails(item)]))
 }
+
+export class ApiError extends Error {
+  readonly code?: string
+  readonly details?: unknown
+
+  constructor(message: string, readonly status?: number, code?: string, details?: unknown) {
+    super(safeText(message))
+    this.name = 'ApiError'
+    this.code = code ? safeText(code) : undefined
+    this.details = safeDetails(details)
+  }
+}
+
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) return error
   if (record(error)) {
