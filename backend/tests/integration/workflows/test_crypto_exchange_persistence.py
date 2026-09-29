@@ -690,7 +690,11 @@ def _option_settlement_event(**overrides):
 
 @pytest.mark.django_db
 def test_persist_option_settlement_uses_option_settlement_type(user, crypto_account):
-    created = persist_crypto_exchange_event(_option_settlement_event(), user, crypto_account)
+    with patch(
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
+        return_value=Decimal("60000"),
+    ):
+        created = persist_crypto_exchange_event(_option_settlement_event(), user, crypto_account)
 
     assert len(created) == 1
     assert created[0].type == TRANSACTION_TYPE_OPTION_SETTLEMENT
@@ -813,7 +817,11 @@ def test_crypto_crypto_trade_keeps_crypto_trade_type(user, crypto_account):
              "price_asset": "BTC", "role": "quote"},
         ],
     )
-    persist_crypto_exchange_event(event, user, crypto_account)
+    with patch(
+        "services.crypto_exchange.fetch_crypto_usd_price_from_yahoo",
+        return_value=Decimal("60000"),
+    ):
+        persist_crypto_exchange_event(event, user, crypto_account)
     types = {t.type for t in Transactions.objects.filter(investor=user, account=crypto_account)}
     assert types == {"Crypto trade in", "Crypto trade out"}
 
