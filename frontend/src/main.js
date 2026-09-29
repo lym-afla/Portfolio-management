@@ -7,8 +7,9 @@ import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
 import router from './router'
 import axiosInstance, { refreshTokenWithEffectiveDate } from './config/axiosConfig'
-import { configureApiTransport } from './services/http/client'
+import { configureApiTransport, configurePortfolioReadGuard } from './services/http/client'
 import { configurePortfolioContextBackend, createPortfolioContextBackend } from './services/api/context'
+import { usePortfolioContextStore } from './stores/portfolioContext'
 import { createPinia } from 'pinia'
 import './assets/fonts.css'
 import './plugins/vee-validate'
@@ -45,6 +46,7 @@ const app = createApp(App)
 app.use(vuetify)
 app.use(createPinia())
 configureApiTransport(axiosInstance)
+configurePortfolioReadGuard(() => usePortfolioContextStore().canRead)
 configurePortfolioContextBackend(createPortfolioContextBackend(refreshTokenWithEffectiveDate))
 app.use(router)
 

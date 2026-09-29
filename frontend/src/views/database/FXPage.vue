@@ -173,7 +173,6 @@ import {
   getFXData,
   deleteFXRate,
   getFXDetails,
-  getEffectiveCurrentDate,
 } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
@@ -267,8 +266,7 @@ const initializeDateRange = async () => {
 
   if (!effectiveCurrentDate.value) {
     try {
-      const fetchedDate = await getEffectiveCurrentDate()
-      appStore.setEffectiveCurrentDate(fetchedDate.effective_current_date)
+      await appStore.fetchEffectiveCurrentDate()
     } catch (error) {
       logger.error(
         'Unknown',

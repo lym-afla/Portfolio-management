@@ -3,9 +3,10 @@ export { getDashboardSummary } from '@/services/api/dashboard'
 export { getTransactions } from '@/services/api/transactions'
 export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions } from '@/services/api/database'
 
-import axiosInstance from '@/config/axiosConfig'
+import axiosInstance, { refreshSessionToken } from '@/config/axiosConfig'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import type { AccountSelection } from '@/types/portfolioContext'
 import { useAppStore } from '@/stores/app'
-import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 import type { components } from '@/types/api'
 
@@ -57,20 +58,8 @@ export const login = async (username: string, password: string): Promise<LoginRe
 }
 
 export const refreshToken = async (): Promise<{ access?: string; refresh?: string; effective_current_date?: string }> => {
-  const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) {
-    throw new Error('No refresh token available')
-  }
-
-  try {
-    const response = await axiosInstance.post('/users/api/refresh-token/', {
-      refresh: refreshToken,
-    })
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error refreshing token:', error)
-    throw error
-  }
+  const access = await refreshSessionToken()
+  return { access, refresh: localStorage.getItem('refreshToken') || undefined, effective_current_date: localStorage.getItem('effective_current_date') || undefined }
 }
 
 export const register = async (username: string, email: string, password: string, password2: string): Promise<ApiRecord> => {
@@ -102,19 +91,10 @@ export const getAccountChoices = async (): Promise<ApiRecord> => {
   }
 }
 
-export const updateUserDataForNewAccount = async (selection: { type: string; id: number }): Promise<ApiRecord> => {
-  try {
-    const response = await axiosInstance.post(
-      '/users/api/update_user_data_for_new_account/',
-      {
-        type: selection.type,
-        id: selection.id,
-      }
-    )
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
+export const updateUserDataForNewAccount = async (selection: AccountSelection): Promise<ApiRecord> => {
+  const context = usePortfolioContextStore()
+  await context.changeContext({ accountSelection: selection })
+  return { success: true, selected: context.committed.accountSelection }
 }
 
 export const getUserProfile = async (): Promise<UserProfile> => {
@@ -186,27 +166,13 @@ export const getSettingsChoices = async (): Promise<ApiRecord> => {
 }
 
 export const logout = async (): Promise<ApiRecord> => {
-  try {
-    const refreshToken = localStorage.getItem('refreshToken')
-    if (!refreshToken) {
-      throw new Error('No refresh token found')
-    }
-    const response = await axiosInstance.post('/users/api/logout/', {
-      refresh_token: refreshToken,
-    })
-
-    // Clear all authentication tokens
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error during logout:', error)
-    // Even if the server request fails, we should clear local tokens
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-    throw error.response ? error.response.data : error.message
-  }
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) throw new Error('No refresh token found')
+  const access = localStorage.getItem('accessToken')
+  const response = await axiosInstance.post('/users/api/logout/', { refresh_token: refreshToken }, { headers: { Authorization: `Bearer ${access}` } })
+  // Auth owns synchronous local invalidation; a late server response must not
+  // clear credentials from a newer session.
+  return response.data
 }
 
 export const deleteUserAccount = async (): Promise<ApiRecord> => {
@@ -235,70 +201,11 @@ export const getDashboardSettings = async (): Promise<ApiRecord> => {
   }
 }
 
-export const updateDashboardSettings = async (settings: ApiRecord): Promise<{ success: boolean; error?: ApiRecord; requires_token_refresh?: boolean; new_effective_date?: string; [key: string]: unknown }> => {
-  try {
-    const response = await axiosInstance.post(
-      '/users/api/update_dashboard_settings/',
-      settings
-    )
-
-    // Check if token refresh is required (effective_date changed)
-    if (
-      response.data.requires_token_refresh &&
-      response.data.new_effective_date
-    ) {
-      logger.log(
-        'Unknown',
-        `Effective date changed to ${response.data.new_effective_date}, refreshing JWT token...`
-      )
-
-      // Import the refresh function from axiosConfig
-      const { refreshTokenWithEffectiveDate } = await import(
-        '@/config/axiosConfig'
-      )
-
-      try {
-        // eslint-disable-next-line no-unused-vars
-        const newToken = await refreshTokenWithEffectiveDate(
-          response.data.new_effective_date
-        )
-        logger.log(
-          'Unknown',
-          `JWT token refreshed with new effective_date: ${response.data.new_effective_date}`
-        )
-
-        // Force update the auth store immediately with the refreshed tokens.
-        try {
-          const authStore = useAuthStore()
-          const accessToken = localStorage.getItem('accessToken')
-          const refreshToken = localStorage.getItem('refreshToken')
-          authStore.setTokens({
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-          })
-          logger.log('Unknown', 'Auth store updated with new tokens')
-        } catch (e) {
-          logger.warn('Unknown', 'Could not sync tokens to auth store:', e)
-        }
-
-        // Small delay to ensure token propagation
-        await new Promise((resolve) => setTimeout(resolve, 50))
-
-        logger.log('Unknown', 'Token refresh and store update complete')
-      } catch (refreshError) {
-        logger.error('Unknown', 'Failed to refresh JWT token:', refreshError)
-        // Don't fail the whole operation if refresh fails, just log it
-      }
-    }
-
-    return { success: true, ...response.data }
-  } catch (error) {
-    logger.error('Unknown', 'Error updating dashboard settings:', error)
-    return {
-      success: false,
-      error: error.response ? error.response.data : error.message,
-    }
-  }
+export const updateDashboardSettings = async (settings: ApiRecord): Promise<{ success: boolean; [key: string]: unknown }> => {
+  const context = usePortfolioContextStore()
+  await context.changeContext({ effectiveCurrentDate: String(settings.table_date), currency: String(settings.default_currency), digits: Number(settings.digits) })
+  const current = context.committed
+  return { success: true, table_date: current.effectiveCurrentDate, default_currency: current.currency, digits: current.digits }
 }
 
 export const getEffectiveCurrentDate = async (): Promise<{ date?: string; effective_current_date?: string; [key: string]: unknown }> => {

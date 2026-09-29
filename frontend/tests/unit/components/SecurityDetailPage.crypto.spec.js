@@ -1,3 +1,5 @@
+import { configureContextFixture } from '../context-fixture'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { mount } from '@vue/test-utils'
 import { vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -60,12 +62,13 @@ const flushPromises = async () => {
 }
 
 describe('SecurityDetailPage crypto rewards', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
     const appStore = useAppStore()
     // Seed the effective date so the page does not call the (mocked) API for it.
-    appStore.setEffectiveCurrentDate('2026-01-02')
+    configureContextFixture('2026-01-02')
+    await usePortfolioContextStore().reconcileContext()
     // Guard: spy on fetchEffectiveCurrentDate in case the page falls back to it.
     vi.spyOn(appStore, 'fetchEffectiveCurrentDate').mockResolvedValue()
 

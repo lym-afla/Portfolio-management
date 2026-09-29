@@ -163,6 +163,7 @@ const fixtures = new Map([
 
 export function resolveFixture(method, pathname, { longAccount = false } = {}) {
   const key = `${method.toUpperCase()} ${pathname}`
+  if (longAccount && key === 'GET /users/api/user_settings/') return { status: 200, body: { ...structuredClone(fixtures.get(key)), selected_account_type: 'account', selected_account_id: 1 } }
   if (longAccount && key === 'GET /users/api/get_account_choices/') {
     const selected = {
       id: 1,

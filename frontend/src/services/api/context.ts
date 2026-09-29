@@ -30,6 +30,17 @@ function selectionFrom(value: unknown): AccountSelection {
   }
   throw new ApiError('Invalid account selection response')
 }
+// A 4xx from the mutation POST is distinct from a later readback/refresh failure.
+// The store can retain known committed values only for this explicit rejection.
+async function postContextMutation(url: string, body: unknown): Promise<unknown> {
+  try { return await apiPost(url, body) }
+  catch (error) {
+    if (error instanceof ApiError && [400, 403, 404, 422].includes(error.status || 0)) {
+      throw new ApiError(error.message, error.status, 'context_mutation_rejected', error.details)
+    }
+    throw error
+  }
+}
 export function createPortfolioContextBackend(refreshTokenWithEffectiveDate: EffectiveDateRefresh): PortfolioContextBackend {
   const backend: PortfolioContextBackend = {
     async read(): Promise<ContextValues> {
@@ -54,7 +65,7 @@ export function createPortfolioContextBackend(refreshTokenWithEffectiveDate: Eff
       }
     },
     async updateAccount(selection: AccountSelection): Promise<void> {
-      const response = await apiPost('/users/api/update_user_data_for_new_account/',
+      const response = await postContextMutation('/users/api/update_user_data_for_new_account/',
         { type: selection.type, id: selection.id })
       if (!isRecord(response) || response.success !== true || !isRecord(response.selected)) {
         throw new ApiError('Invalid account update response')
@@ -66,7 +77,7 @@ export function createPortfolioContextBackend(refreshTokenWithEffectiveDate: Eff
       await backend.read()
     },
     async updateSettings(settings): Promise<void> {
-      const response = await apiPost('/users/api/update_dashboard_settings/', {
+      const response = await postContextMutation('/users/api/update_dashboard_settings/', {
         table_date: settings.effectiveCurrentDate,
         default_currency: settings.currency,
         digits: settings.digits,

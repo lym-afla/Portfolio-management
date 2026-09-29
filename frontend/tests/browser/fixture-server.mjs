@@ -16,7 +16,9 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false } = {}) {
+  let releaseMutation
+  let pendingMutation = false
   const requests = []
   const unmatchedRequests = []
   const sockets = new Set()
@@ -34,7 +36,11 @@ export async function startFixtureServer({ longAccount = false } = {}) {
     response.setHeader('Cache-Control', 'no-store')
 
     try {
-      const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+      const isContextMutation = contextFailures && ['/users/api/update_user_data_for_new_account/', '/users/api/update_dashboard_settings/'].includes(url.pathname)
+      const fixture = isContextMutation
+        ? { status: 400, body: { error: url.pathname.includes('new_account') ? 'Synthetic account denied' : 'Synthetic settings denied' } }
+        : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
+      if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') fixture.body.options.push(['Second', { type: 'account', id: 2, display_name: 'Second synthetic account' }])
       requests.push({ method: fixtureMethod, path: url.pathname })
 
       if (requestedMethod === 'OPTIONS') {
@@ -46,6 +52,7 @@ export async function startFixtureServer({ longAccount = false } = {}) {
       for await (const _chunk of request) {
         // Drain request bodies without persisting synthetic credentials or tokens.
       }
+      if (isContextMutation) { pendingMutation = true; await new Promise(resolve => { releaseMutation = resolve }); pendingMutation = false }
       response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
       response.end(JSON.stringify(fixture.body))
     } catch (error) {
@@ -86,6 +93,8 @@ export async function startFixtureServer({ longAccount = false } = {}) {
   const address = server.address()
 
   return {
+    get pendingMutation() { return pendingMutation },
+    releaseMutation: () => releaseMutation?.(),
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,

@@ -30,7 +30,13 @@
 
         <v-main>
           <v-container fluid class="pa-4" data-testid="route-content">
-            <router-view @update-page-title="updatePageTitle" />
+            <v-alert v-if="!context.isReady" type="warning" role="status" class="mb-4">
+              {{ context.transitionError?.message || 'Portfolio context is loading' }}
+              <v-btn :loading="context.isTransitioning" :disabled="context.isTransitioning" @click="recoverContext">Recover portfolio context</v-btn>
+            </v-alert>
+            <div :aria-busy="context.isTransitioning" :inert="context.isTransitioning || !context.isReady">
+              <router-view @update-page-title="updatePageTitle" />
+            </div>
           </v-container>
         </v-main>
       </template>
@@ -65,10 +71,13 @@ import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
 import { snackbarTimeout } from '@/utils/snackbarTimeout'
 
+const context = usePortfolioContextStore()
+async function recoverContext() { try { await context.reconcileContext() } catch { /* Error remains visible with retry available. */ } }
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()

@@ -1,3 +1,4 @@
+import { configureContextFixture } from '../context-fixture'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { readFileSync } from 'node:fs'
@@ -47,6 +48,7 @@ const makeWrapper = (props = {}) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  configureContextFixture()
 })
 
 describe('PositionsPageBase', () => {

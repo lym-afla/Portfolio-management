@@ -79,7 +79,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 // import store from '@/store'
-import { deleteUserAccount, logout } from '@/services/api'
+import { deleteUserAccount } from '@/services/api'
 import logger from '@/utils/logger'
 
 const emit = defineEmits(['update-page-title'])
@@ -116,9 +116,7 @@ const isActive = (routePath) => {
 const handleLogout = async () => {
   isLoading.value = true
   try {
-    await logout()
-    authStore.clearTokens()
-    router.push('/login')
+    await authStore.logout()
   } catch (error) {
     logger.error('Unknown', 'Error logging out:', error)
   } finally {

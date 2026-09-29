@@ -1,6 +1,12 @@
 <template>
   <div>
-    <v-btn icon @click="openDialog" elevation="2">
+    <v-btn
+      icon
+      @click="openDialog"
+      elevation="2"
+      aria-label="Portfolio settings"
+      :disabled="!context.canRead"
+    >
       <v-icon>mdi-cog</v-icon>
     </v-btn>
 
@@ -8,6 +14,9 @@
       <v-card>
         <v-card-title class="text-h5"> Settings </v-card-title>
         <v-card-text>
+          <v-alert v-if="errors.general" type="error" role="alert">{{
+            errors.general.join(' ')
+          }}</v-alert>
           <v-form @submit.prevent="saveSettings" ref="form">
             <v-select
               v-model="formData.default_currency"
@@ -59,192 +68,56 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { getDashboardSettings, updateDashboardSettings } from '@/services/api'
-import { useAuthStore } from '@/stores/auth'
+import { ref, reactive, computed } from 'vue'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAppStore } from '@/stores/app'
 import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
-import logger from '@/utils/logger'
 
-const authStore = useAuthStore()
+const context = usePortfolioContextStore()
 const appStore = useAppStore()
 const dialog = ref(false)
 const form = ref(null)
 const errors = ref({})
-const isUpdating = ref(false)
-const currencyChoices = ref([])
-const formData = reactive({
-  default_currency: '',
-  digits: 0,
-  table_date: '',
-})
-
-const fetchSettingsData = async () => {
-  try {
-    const response = await getDashboardSettings()
-    logger.log(
-      'Unknown',
-      '[SettingsDialog] Getting dashboard settings:',
-      response
-    )
-
-    // Update formData with settings
-    Object.assign(formData, response.settings)
-
-    // Format currency choices
-    currencyChoices.value = response.choices.default_currency.map(
-      ([value, text]) => ({ value, text })
-    )
-
-    // Find the list in choices.default_currency where the first element equals settings.default_currency
-    const selectedCurrency = response.choices.default_currency.find(
-      ([value]) => value === response.settings.default_currency
-    )
-    logger.log(
-      'Unknown',
-      '[SettingsDialog] Selected currency:',
-      selectedCurrency
-    )
-    // Set the currency in the store to the second element of the found list
-    if (
-      selectedCurrency &&
-      appStore.selectedCurrency !== selectedCurrency[1]
-    ) {
-      appStore.setSelectedCurrency(selectedCurrency[1])
-    }
-  } catch (error) {
-    logger.error('Unknown', 'Failed to fetch settings data:', error)
-  }
-}
-
-const openDialog = () => {
+const saving = ref(false)
+const isUpdating = computed(() => saving.value || context.isTransitioning)
+const currencyChoices = computed(() => context.currencyChoices)
+const formData = reactive({ default_currency: '', digits: 2, table_date: '' })
+function openDialog() {
+  const current = context.committed
+  Object.assign(formData, {
+    default_currency: current.currency,
+    digits: current.digits,
+    table_date: current.effectiveCurrentDate,
+  })
+  errors.value = {}
   dialog.value = true
-  fetchSettingsData()
 }
-
-const closeDialog = () => {
+function closeDialog() {
   dialog.value = false
-  clearErrors()
-}
-
-const clearErrors = () => {
   errors.value = {}
 }
-
-const saveSettings = async () => {
+async function saveSettings() {
+  if (isUpdating.value) return
+  errors.value = {}
+  saving.value = true
   try {
-    clearErrors()
-    isUpdating.value = true
-
-    // Enhanced authentication debugging before making API call
-    const accessToken = localStorage.getItem('accessToken')
-    const isAuthenticated = authStore.isAuthenticated
-
-    logger.log(
-      'SettingsDialog',
-      '[SettingsDialog] Pre-API authentication check:'
+    await context.changeContext({
+      effectiveCurrentDate: formData.table_date,
+      currency: formData.default_currency,
+      digits: Number(formData.digits),
+    })
+    const dateRange = calculateDateRangeFromTimespan(
+      appStore.tableSettings.timespan,
+      context.committed.effectiveCurrentDate
     )
-    logger.log('SettingsDialog', `- Has access token: ${!!accessToken}`)
-    logger.log(
-      'SettingsDialog',
-      `- Is authenticated in store: ${isAuthenticated}`
-    )
-    logger.log(
-      'SettingsDialog',
-      `- User data: ${authStore.user ? 'Present' : 'Missing'}`
-    )
-
-    if (!accessToken) {
-      logger.error(
-        'SettingsDialog',
-        '[SettingsDialog] ❌ No access token available'
-      )
-      console.error(
-        '[AuthDebugger] ❌ Settings update attempted without access token'
-      )
-    }
-    if (!isAuthenticated) {
-      logger.error(
-        'SettingsDialog',
-        '[SettingsDialog] ❌ Not authenticated in store'
-      )
-      console.error(
-        '[AuthDebugger] ❌ Settings update attempted by unauthenticated user'
-      )
-    }
-
-    logger.log('Unknown', '[SettingsDialog] Sending formData:', formData)
-
-    const response = await updateDashboardSettings(formData)
-    if (response.success) {
-      logger.log('Unknown', 'Settings updated successfully:', response)
-
-      // Update store with new currency
-      const selectedCurrencyOption = currencyChoices.value.find(
-        (option) => option.value === formData.default_currency
-      )
-      if (selectedCurrencyOption) {
-        appStore.setSelectedCurrency(selectedCurrencyOption.text)
-      }
-
-      appStore.updateEffectiveCurrentDate(response.table_date)
-
-      // Get the current state from the store
-      logger.log('Unknown', '[SettingsDialog] Current appStore state:', {
-        effectiveCurrentDate: appStore.effectiveCurrentDate,
-        selectedCurrency: appStore.selectedCurrency,
-        tableSettings: appStore.tableSettings,
-      })
-
-      // Calculate new date range based on the new effective date
-      const dateRange = calculateDateRangeFromTimespan(
-        appStore.tableSettings.timespan,
-        response.table_date
-      )
-
-      // Update table settings and trigger data refresh
-      appStore.updateTableSettings({
-        timespan: appStore.tableSettings.timespan,
-        dateFrom: dateRange.dateFrom,
-        dateTo: dateRange.dateTo,
-        page: appStore.tableSettings.page,
-        itemsPerPage: appStore.tableSettings.itemsPerPage,
-        search: appStore.tableSettings.search,
-        sortBy: appStore.tableSettings.sortBy,
-      })
-      appStore.triggerDataRefresh()
-
-      closeDialog()
-    } else {
-      handleErrors(response.errors)
-    }
+    if (dateRange) appStore.updateTableSettings({ ...dateRange })
+    closeDialog()
   } catch (error) {
-    logger.error('Unknown', 'Failed to save settings:', error)
-    if (
-      error.response &&
-      error.response.data &&
-      error.response.data.errors
-    ) {
-      handleErrors(error.response.data.errors)
-    } else {
-      errors.value = {
-        general: ['An unexpected error occurred. Please try again.'],
-      }
+    errors.value = {
+      general: [error.message || 'Could not save portfolio settings'],
     }
   } finally {
-    isUpdating.value = false
+    saving.value = false
   }
 }
-
-const handleErrors = (errorData) => {
-  Object.keys(errorData).forEach((field) => {
-    if (Array.isArray(errorData[field])) {
-      errors.value[field] = errorData[field]
-    } else {
-      errors.value[field] = [errorData[field]]
-    }
-  })
-}
-
-onMounted(fetchSettingsData)
 </script>

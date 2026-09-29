@@ -133,7 +133,7 @@
 
 <script setup>
 import { ref, reactive, provide, onMounted } from 'vue'
-import { useAppStore } from '@/stores/app'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import {
   getUserSettings,
   updateUserSettings,
@@ -144,7 +144,6 @@ import AccountGroupManager from '@/components/AccountGroupManager.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 import logger from '@/utils/logger'
 
-const appStore = useAppStore()
 
 const loading = ref(true)
 const settingsForm = reactive({
@@ -229,14 +228,7 @@ const loadData = async () => {
       getSettingsChoices(),
     ])
 
-    // Format choices and set initial currency in store
     currencyChoices.value = formatChoices(choices.currency_choices)
-    const selectedCurrencyOption = currencyChoices.value.find(
-      (option) => option.value === settings.default_currency
-    )
-    if (selectedCurrencyOption) {
-      appStore.setSelectedCurrency(selectedCurrencyOption.title)
-    }
 
     // Format all choices first
     frequencyChoices.value = formatChoices(choices.frequency_choices)
@@ -269,24 +261,20 @@ const loadData = async () => {
 
 const saveSettings = async () => {
   try {
-    // Transform the data before sending
-    const settingsToSave = {
-      ...settingsForm,
-      selected_account_type: settingsForm.selected_account.type,
-      selected_account_id: settingsForm.selected_account.id,
+    const context = usePortfolioContextStore()
+    const patch = {
+      accountSelection: { type: settingsForm.selected_account.type, id: settingsForm.selected_account.id },
+      effectiveCurrentDate: context.committed.effectiveCurrentDate,
+      currency: settingsForm.default_currency,
+      digits: Number(settingsForm.digits),
     }
-    delete settingsToSave.selected_account // Remove the combined field
-
+    // The profile endpoint still owns chart/display preferences. Financial
+    // context fields go through the same serialized confirmation as the header.
+    const settingsToSave = { ...settingsForm }
+    for (const key of ['selected_account', 'selected_account_type', 'selected_account_id', 'default_currency', 'digits']) delete settingsToSave[key]
     const response = await updateUserSettings(settingsToSave)
     if (response.success) {
-      // Update store with new currency
-      const selectedCurrencyOption = currencyChoices.value.find(
-        (option) => option.value === settingsForm.default_currency
-      )
-      if (selectedCurrencyOption) {
-        appStore.setSelectedCurrency(selectedCurrencyOption.title)
-      }
-
+      await context.changeContext(patch)
       showSuccessMessage('Settings saved successfully')
     } else {
       handleFieldErrors(response.errors)

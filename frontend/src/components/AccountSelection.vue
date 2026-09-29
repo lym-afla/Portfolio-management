@@ -5,14 +5,18 @@
         <div class="d-flex align-center">
           <v-btn
             @click="switchAccount(-1)"
-            :disabled="!canSwitchLeft"
+            :disabled="
+              context.isTransitioning || !context.isReady || !canSwitchLeft
+            "
             class="arrow-btn"
             variant="outlined"
           >
             <v-icon>mdi-chevron-left</v-icon>
           </v-btn>
           <v-select
-            v-model="selectedAccount"
+            :model-value="selectedAccount"
+            :disabled="context.isTransitioning || !context.isReady"
+            :loading="context.isTransitioning"
             :items="accountOptions"
             item-title="title"
             item-value="value"
@@ -41,119 +45,85 @@
           </v-select>
           <v-btn
             @click="switchAccount(1)"
-            :disabled="!canSwitchRight"
+            :disabled="
+              context.isTransitioning || !context.isReady || !canSwitchRight
+            "
             class="arrow-btn"
             variant="outlined"
           >
             <v-icon>mdi-chevron-right</v-icon>
           </v-btn>
         </div>
+        <v-alert v-if="context.transitionError" type="error" role="alert">{{
+          context.transitionError.message
+        }}</v-alert>
       </v-card-text>
     </v-card>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useAppStore } from '@/stores/app'
-import { getAccountChoices } from '@/services/api'
+import { computed } from 'vue'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { formatAccountChoices } from '@/utils/accountUtils'
-import logger from '@/utils/logger'
 
-const appStore = useAppStore()
-const accountOptions = ref([])
-const selectedAccount = ref(null)
-
-const currentIndex = computed(() => {
-  if (!selectedAccount.value) return -1
-  return accountOptions.value.findIndex(
+const context = usePortfolioContextStore()
+const accountOptions = computed(() =>
+  formatAccountChoices(context.accountOptions)
+)
+const selectedAccount = computed(() => {
+  const committed = context.committed.accountSelection
+  return (
+    accountOptions.value.find(
+      (option) =>
+        option.type === 'option' &&
+        option.value.type === committed.type &&
+        option.value.id === committed.id
+    )?.value || committed
+  )
+})
+const currentIndex = computed(() =>
+  accountOptions.value.findIndex(
     (option) =>
       option.type === 'option' &&
       option.value.type === selectedAccount.value.type &&
       option.value.id === selectedAccount.value.id
   )
-})
-
-const canSwitchLeft = computed(() => {
-  return accountOptions.value
-    .slice(0, currentIndex.value)
-    .some((option) => option.type === 'option')
-})
-
-const canSwitchRight = computed(() => {
-  return accountOptions.value
+)
+const canSwitchLeft = computed(
+  () =>
+    currentIndex.value > 0 &&
+    accountOptions.value
+      .slice(0, currentIndex.value)
+      .some((option) => option.type === 'option')
+)
+const canSwitchRight = computed(() =>
+  accountOptions.value
     .slice(currentIndex.value + 1)
     .some((option) => option.type === 'option')
-})
-
-const fetchAccounts = async () => {
+)
+async function handleAccountChange(value) {
+  if (!value || context.isTransitioning || !context.isReady) return
   try {
-    const data = await getAccountChoices()
-    accountOptions.value = formatAccountChoices(data.options)
-    // Find the option matching the selected type and id
-    const selected = data.selected
-    const matchingOption = accountOptions.value.find(
-      (option) =>
-        option.type === 'option' &&
-        option.value.type === selected.type &&
-        option.value.id === selected.id
-    )
-    selectedAccount.value = matchingOption?.value || null
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching accounts:', error)
+    await context.changeContext({
+      accountSelection: { type: value.type, id: value.id },
+    })
+  } catch {
+    /* The context store exposes the actual error and retains confirmed values. */
   }
 }
-
-const handleAccountChange = async (newValue) => {
-  logger.log('Unknown', 'handleAccountChange called with:', newValue)
-  selectedAccount.value = newValue
-
-  await appStore.updateAccountSelection({
-    type: newValue.type,
-    id: newValue.id,
-  })
-
-  // // Update data for the new account
-  // await updateDataForAccount(newValue)
-}
-
-// const updateDataForAccount = async (selection) => {
-//   try {
-//     logger.log('Unknown', 'updateDataForAccount called with:', selection)
-//     const response = await updateUserDataForNewAccount({
-//       type: selection.type,
-//       id: selection.id
-//     })
-//     logger.log('Unknown', 'updateForNewAccount response:', response)
-//     store.dispatch('triggerDataRefresh')
-//   } catch (error) {
-//     logger.error('Unknown', 'Error updating account selection:', error)
-//   }
-// }
-
-const switchAccount = (direction) => {
-  let newIndex = currentIndex.value + direction
-
-  // Skip dividers and headers
-  while (newIndex >= 0 && newIndex < accountOptions.value.length) {
-    const currentOption = accountOptions.value[newIndex]
-    if (currentOption.type === 'option') {
-      break
+function switchAccount(direction) {
+  if (context.isTransitioning || !context.isReady) return
+  let index = currentIndex.value + direction
+  while (index >= 0 && index < accountOptions.value.length) {
+    const option = accountOptions.value[index]
+    if (option.type === 'option') {
+      handleAccountChange(option.value)
+      return
     }
-    newIndex += direction
-  }
-
-  // Check if the new index is valid
-  if (newIndex >= 0 && newIndex < accountOptions.value.length) {
-    const newAccount = accountOptions.value[newIndex]
-    handleAccountChange(newAccount.value)
+    index += direction
   }
 }
-
-onMounted(() => {
-  logger.log('Unknown', 'AccountSelection component mounted')
-  fetchAccounts()
-})
 </script>
 
 <style scoped>

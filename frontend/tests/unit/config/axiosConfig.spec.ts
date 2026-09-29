@@ -160,3 +160,47 @@ describe('axios response interceptor — auth failure handling', () => {
     expect(window.location.href).toBe('')
   })
 })
+
+it('serializes a date refresh behind an in-flight 401 refresh using the rotated token', async () => {
+  let completeFirst: (value: unknown) => void = () => undefined
+  mockPost.mockImplementationOnce(() => new Promise(resolve => { completeFirst = resolve }))
+    .mockResolvedValueOnce({ data: { access: 'dated-access', refresh: 'dated-refresh', effective_current_date: '2025-12-31' } })
+  mockRequest.mockResolvedValue({ data: 'retried' })
+  const ordinary = responseErrorHandler({ config: { url: '/dashboard/api/get-summary/', method: 'get', headers: {} }, response: { status: 401 } })
+  const { refreshTokenWithEffectiveDate } = await import('@/config/axiosConfig')
+  const date = refreshTokenWithEffectiveDate('2025-12-31')
+  await Promise.resolve()
+  expect(mockPost).toHaveBeenCalledTimes(1)
+  completeFirst({ data: { access: 'fresh-access', refresh: 'rotated-refresh' } })
+  await Promise.all([ordinary, date])
+  expect(mockPost.mock.calls[1][1]).toEqual({ refresh: 'rotated-refresh', effective_current_date: '2025-12-31' })
+  expect(localStorage.getItem('accessToken')).toBe('dated-access')
+})
+it('joins a concurrent 401 to the active date refresh without a second rotation', async () => {
+  let complete: (value: unknown) => void = () => undefined
+  mockPost.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  mockRequest.mockResolvedValue({ data: 'retried' })
+  const { refreshTokenWithEffectiveDate } = await import('@/config/axiosConfig')
+  const date = refreshTokenWithEffectiveDate('2025-12-31')
+  const ordinary = responseErrorHandler({ config: { url: '/dashboard/api/get-summary/', headers: {} }, response: { status: 401 } })
+  await Promise.resolve(); expect(mockPost).toHaveBeenCalledTimes(1)
+  complete({ data: { access: 'dated-access', refresh: 'rotated-refresh' } })
+  await Promise.all([ordinary, date]); expect(mockPost).toHaveBeenCalledTimes(1)
+})
+it('does not restore tokens when logout occurs during a refresh', async () => {
+  let complete: (value: unknown) => void = () => undefined
+  mockPost.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  const { refreshTokenWithEffectiveDate } = await import('@/config/axiosConfig')
+  const pending = refreshTokenWithEffectiveDate('2025-12-31'); await Promise.resolve()
+  localStorage.clear(); complete({ data: { access: 'late-access', refresh: 'late-refresh' } })
+  await expect(pending).rejects.toThrow('session ended'); expect(localStorage.getItem('accessToken')).toBeNull()
+})
+
+it('ignores a late 401 from a previous session without clearing new credentials', async () => {
+  localStorage.setItem('accessToken', 'new-session-access')
+  localStorage.setItem('refreshToken', 'new-session-refresh')
+  const late = { config: { url: '/users/api/refresh-token/', _authEpoch: -1, headers: {} }, response: { status: 401 } }
+  await expect(responseErrorHandler(late)).rejects.toThrow('session ended')
+  expect(localStorage.getItem('accessToken')).toBe('new-session-access')
+  expect(window.location.href).toBe('')
+})

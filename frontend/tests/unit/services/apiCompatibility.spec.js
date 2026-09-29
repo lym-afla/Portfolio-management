@@ -31,3 +31,11 @@ describe('legacy API facade', () => {
       expect.objectContaining({ signal: controller.signal }))
   })
 })
+it('captures logout authorization before the auth store invalidates local credentials', async () => {
+  const api = await import('@/services/api')
+  localStorage.setItem('accessToken', 'synthetic-access')
+  localStorage.setItem('refreshToken', 'synthetic-refresh')
+  http.post.mockResolvedValue({ data: { success: true } })
+  const pending = api.logout(); localStorage.clear(); await pending
+  expect(http.post).toHaveBeenCalledWith('/users/api/logout/', { refresh_token: 'synthetic-refresh' }, { headers: { Authorization: 'Bearer synthetic-access' } })
+})

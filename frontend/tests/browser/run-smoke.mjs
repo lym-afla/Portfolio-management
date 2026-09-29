@@ -12,11 +12,12 @@ import {
 } from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
 import { assertFocusedLayoutFlow, assertLayoutGeometry } from './layout.mjs'
+import { assertContextFailureFlow } from './context.mjs'
 import { routes, viewports } from './routes.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && selectedCase !== 'layout') {
+if (selectedCase !== null && !['layout', 'context'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -178,7 +179,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -195,9 +196,9 @@ async function main() {
     appServer = await startBuiltAppServer(builtAppDir)
 
     for (const viewport of viewports) {
-      for (const authenticated of selectedCase === 'layout' ? [true] : [false, true]) {
+      for (const authenticated of selectedCase ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'layout'
+          selectedCase === 'context' ? route.path === '/dashboard' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -246,6 +247,16 @@ async function main() {
             } catch (screenshotError) {
               await log({ context: `${viewport.name} ${route.path}`, screenshotError: screenshotError.message })
             }
+          }
+        }
+        if (selectedCase === 'context') {
+          try {
+            await assertContextFailureFlow({ context: `${viewport.name} context failure`, initScript, log, session, fixtureServer })
+            console.log(`PASS ${viewport.name} context failure`)
+          } catch (error) {
+            fixtureServer.releaseMutation()
+            routeFailures.push({ route: 'context failure', viewport: viewport.name, error: error.message })
+            console.error(`FAIL ${viewport.name} context failure: ${error.message}`)
           }
         }
         if (selectedCase === 'layout') {

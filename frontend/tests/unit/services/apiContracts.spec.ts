@@ -178,3 +178,12 @@ describe('typed API transport', () => {
   })
 
 })
+
+it('distinguishes an explicit mutation rejection from a readback error', async () => {
+  const backend = createPortfolioContextBackend(vi.fn())
+  http.post.mockRejectedValueOnce(new ApiError('Denied', 400))
+  await expect(backend.updateAccount({ type: 'account', id: 2 })).rejects.toMatchObject({ code: 'context_mutation_rejected', message: 'Denied' })
+  http.post.mockResolvedValueOnce({ data: { success: true, selected: { type: 'account', id: 2 } } })
+  http.get.mockRejectedValue(new ApiError('Readback unavailable', 400))
+  await expect(backend.updateAccount({ type: 'account', id: 2 })).rejects.toMatchObject({ code: undefined, message: 'Readback unavailable' })
+})
