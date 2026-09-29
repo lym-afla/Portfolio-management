@@ -498,7 +498,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description List FX. */
+        /**
+         * @description List FX.
+         *
+         *     The grid shows one row per date with one column per currency pair, so
+         *     we paginate by **distinct date**, not by individual pair records.
+         *     Paginating per-record would split a date's pairs across pages (a date
+         *     appears as a half-empty row at the bottom of one page and again at the
+         *     top of the next). Null/empty currency pairs (legacy wide->long shells)
+         *     are excluded everywhere.
+         */
         post: operations["database_api_fx_list_fx_create"];
         delete?: never;
         options?: never;

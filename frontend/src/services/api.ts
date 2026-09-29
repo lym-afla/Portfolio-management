@@ -1,3 +1,8 @@
+export { getOpenPositions, getClosedPositions } from '@/services/api/portfolio'
+export { getDashboardSummary } from '@/services/api/dashboard'
+export { getTransactions } from '@/services/api/transactions'
+export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase, getFXData, getYearOptions } from '@/services/api/database'
+
 import axiosInstance from '@/config/axiosConfig'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -11,12 +16,11 @@ type Broker = components['schemas']['Broker']
 type FX = components['schemas']['FX']
 type TransactionForm = components['schemas']['TransactionForm']
 type FXTransactionForm = components['schemas']['FXTransactionForm']
-type DashboardSummaryResponse = components['schemas']['DashboardSummaryResponse']
 type User = components['schemas']['User']
 
-// The /users/api/profile/ endpoint returns the User schema plus extra
-// account-selection preference fields that aren't captured by the
-// generated OpenAPI schema.
+// The profile facade retains optional selection fields for existing callers.
+// Current profile responses omit them; canonical selection is read
+// from /users/api/user_settings/ by the strict context backend.
 type UserProfile = User & {
   selected_account_type?: string | null
   selected_account_id?: number | null
@@ -28,15 +32,6 @@ type UserProfile = User & {
 // honest about the fact that their shapes aren't in the OpenAPI spec.
 type ApiRecord = Record<string, unknown>
 
-// Sort descriptor shape used by the data-table endpoints (open/closed
-// positions, transactions, prices, FX). The backend accepts a single sort
-// object or an empty object.
-interface SortBy {
-  key?: string
-  order?: 'asc' | 'desc'
-  [key: string]: unknown
-}
-
 // Login response shape (JWT tokens + user info). The login FBV is not
 // described in the OpenAPI spec, but it is one of the most-used functions
 // so we type it explicitly.
@@ -45,14 +40,6 @@ interface LoginResponse {
   refresh?: string
   user?: User
   effective_current_date?: string
-  [key: string]: unknown
-}
-
-// Paginated table response used by open/closed positions and transactions.
-interface PaginatedTableResponse {
-  count?: number
-  page?: number
-  num_pages?: number
   [key: string]: unknown
 }
 
@@ -328,79 +315,6 @@ export const getAssetTypes = async (): Promise<ApiRecord | ApiRecord[]> => {
   }
 }
 
-export const getOpenPositions = async (
-  dateFrom: string,
-  dateTo: string,
-  page: number,
-  itemsPerPage: number,
-  search = '',
-  sortBy: SortBy = {}
-): Promise<PaginatedTableResponse> => {
-  try {
-    const response = await axiosInstance.post(
-      '/open_positions/api/get_open_positions_table/',
-      {
-        dateFrom,
-        dateTo,
-        page,
-        itemsPerPage,
-        search,
-        sortBy,
-      }
-    )
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching open positions:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getClosedPositions = async (
-  dateFrom: string,
-  dateTo: string,
-  page: number,
-  itemsPerPage: number,
-  search = '',
-  sortBy: SortBy = {}
-): Promise<{ portfolio_closed?: ApiRecord[]; [key: string]: unknown }> => {
-  try {
-    const response = await axiosInstance.post(
-      '/closed_positions/api/get_closed_positions_table/',
-      {
-        dateFrom,
-        dateTo,
-        page,
-        itemsPerPage,
-        search,
-        sortBy, // This will be a single object or an empty object
-      }
-    )
-    logger.log('Unknown', 'API response:', response.data)
-    if (
-      response.data &&
-      response.data.portfolio_closed &&
-      Array.isArray(response.data.portfolio_closed)
-    ) {
-      return response.data
-    } else {
-      logger.error('Unknown', 'Unexpected response format:', response.data)
-      throw new Error('Invalid response format')
-    }
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching closed positions:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getYearOptions = async (): Promise<number[]> => {
-  try {
-    const response = await axiosInstance.get('/api/get-year-options/')
-    return response.data.table_years
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
-
 export const getSecurities = async (assetTypes: string[] = [], accountId: number | null = null): Promise<ApiRecord[]> => {
   try {
     const params = new URLSearchParams()
@@ -413,31 +327,6 @@ export const getSecurities = async (assetTypes: string[] = [], accountId: number
     const response = await axiosInstance.get('/database/api/get-securities/', {
       params,
     })
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getPrices = async (params: ApiRecord): Promise<ApiRecord> => {
-  try {
-    const response = await axiosInstance.post(
-      '/database/api/get-prices-table/',
-      params
-    )
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching prices:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getSecuritiesForDatabase = async (params: ApiRecord): Promise<ApiRecord> => {
-  try {
-    const response = await axiosInstance.post(
-      '/database/api/get-securities-for-database/',
-      params
-    )
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -619,16 +508,6 @@ export const getNAVChartData = async (
     return response.data
   } catch (error) {
     logger.error('Unknown', 'Error fetching NAV chart data:', error)
-    throw error
-  }
-}
-
-export const getDashboardSummary = async (): Promise<DashboardSummaryResponse> => {
-  try {
-    const response = await axiosInstance.get('/dashboard/api/get-summary/')
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching dashboard summary:', error)
     throw error
   }
 }
@@ -900,18 +779,6 @@ export const importPrices = async (importData: ApiRecord): Promise<string | ApiR
   }
 }
 
-export const getAccountsTable = async (params: ApiRecord = {}): Promise<ApiRecord> => {
-  try {
-    const response = await axiosInstance.post(
-      '/database/api/accounts/list_accounts/',
-      params
-    )
-    return response.data
-  } catch (error) {
-    throw error.response ? error.response.data : error.message
-  }
-}
-
 export const getAccounts = async (): Promise<Account[]> => {
   try {
     const response = await axiosInstance.get('/database/api/accounts/')
@@ -980,37 +847,6 @@ export const getFXFormStructure = async (): Promise<ApiRecord> => {
     return response.data
   } catch (error) {
     logger.error('Unknown', 'Error fetching FX form structure:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getFXData = async ({
-  startDate,
-  endDate,
-  page,
-  itemsPerPage,
-  sortBy,
-  search,
-}: {
-  startDate: string
-  endDate: string
-  page: number
-  itemsPerPage: number
-  sortBy: SortBy
-  search: string
-}): Promise<ApiRecord> => {
-  try {
-    const response = await axiosInstance.post('/database/api/fx/list_fx/', {
-      startDate,
-      endDate,
-      page,
-      itemsPerPage,
-      sortBy,
-      search,
-    })
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching FX data:', error)
     throw error.response ? error.response.data : error.message
   }
 }
@@ -1130,34 +966,6 @@ export const cancelFXImport = async (): Promise<ApiRecord> => {
   } catch (error) {
     logger.error('Unknown', 'Error cancelling FX import:', error)
     throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getTransactions = async (
-  dateFrom: string,
-  dateTo: string,
-  page: number,
-  itemsPerPage: number,
-  search = '',
-  sortBy: SortBy = {}
-): Promise<PaginatedTableResponse> => {
-  try {
-    const response = await axiosInstance.post(
-      '/transactions/api/get_transactions_table/',
-      {
-        page,
-        itemsPerPage,
-        search,
-        dateFrom,
-        dateTo,
-        sortBy,
-      }
-    )
-    logger.log('Unknown', 'API response for transactions:', response.data)
-    return response.data
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching transactions:', error)
-    throw error
   }
 }
 
@@ -1553,18 +1361,6 @@ export const getAvailableBrokers = async (): Promise<Broker[]> => {
     return response.data
   } catch (error) {
     logger.error('Unknown', 'Error fetching brokers:', error)
-    throw error.response ? error.response.data : error.message
-  }
-}
-
-export const getBrokersTable = async (params: ApiRecord = {}): Promise<ApiRecord> => {
-  try {
-    const response = await axiosInstance.post(
-      '/database/api/brokers/list_brokers/',
-      params
-    )
-    return response.data
-  } catch (error) {
     throw error.response ? error.response.data : error.message
   }
 }

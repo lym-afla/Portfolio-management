@@ -6,6 +6,9 @@ import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
 import router from './router'
+import axiosInstance, { refreshTokenWithEffectiveDate } from './config/axiosConfig'
+import { configureApiTransport } from './services/http/client'
+import { configurePortfolioContextBackend, createPortfolioContextBackend } from './services/api/context'
 import { createPinia } from 'pinia'
 import './assets/fonts.css'
 import './plugins/vee-validate'
@@ -41,6 +44,8 @@ if (import.meta.env.DEV) {
 const app = createApp(App)
 app.use(vuetify)
 app.use(createPinia())
+configureApiTransport(axiosInstance)
+configurePortfolioContextBackend(createPortfolioContextBackend(refreshTokenWithEffectiveDate))
 app.use(router)
 
 // Make debugging tools available globally for debugging in development

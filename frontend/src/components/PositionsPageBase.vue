@@ -225,14 +225,11 @@ interface FetchPositionsResponse {
   [key: string]: unknown
 }
 
-// The year <v-select> items. The backend returns plain years, but the
-// template renders them as items with text/value and an optional divider, so
-// we widen the local ref to match what the template expects.
+// The backend returns numeric years; the select renders text/value items.
 interface YearOption {
   text: string
-  value: number | string
+  value: number
   divider?: boolean
-  [key: string]: unknown
 }
 
 interface Props {
@@ -390,9 +387,7 @@ const fetchData = async () => {
 const fetchYearOptions = async () => {
   try {
     const years = await getYearOptions()
-    // The backend returns plain years; the template consumes {text, value,
-    // divider} items, so cast through unknown to the expected shape.
-    yearOptions.value = years as unknown as YearOption[]
+    yearOptions.value = years.map((year) => ({ text: String(year), value: year }))
   } catch (error) {
     appStore.setError(error)
   } finally {

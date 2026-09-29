@@ -15,7 +15,9 @@
     "test:browser": "node tests/browser/run-smoke.mjs",
     "format": "prettier --write \"src/**/*.{js,ts,vue,json,css,scss}\"",
     "type-check": "vue-tsc --noEmit",
-    "type-check:reliability": "vue-tsc --noEmit -p tsconfig.reliability.json"
+    "type-check:reliability": "vue-tsc --noEmit -p tsconfig.reliability.json",
+    "api:types:generate": "node scripts/generate-api-types.mjs --write",
+    "api:types:check": "node scripts/generate-api-types.mjs --check"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

@@ -13,7 +13,7 @@ vi.mock('@/services/api', () => ({
     date: '2026-08-18',
     effective_current_date: '2026-08-18',
   }),
-  getYearOptions: vi.fn().mockResolvedValue(['2026', '2025']),
+  getYearOptions: vi.fn().mockResolvedValue([2026, 2025]),
 }))
 
 // Tests disable vite-plugin-vuetify's auto-import transform, so Vuetify
@@ -50,6 +50,15 @@ beforeEach(() => {
 })
 
 describe('PositionsPageBase', () => {
+  it('adapts numeric backend years into selector items', async () => {
+    const { wrapper } = makeWrapper()
+    await flushPromises()
+    expect(wrapper.vm.yearOptions).toEqual([
+      { text: '2026', value: 2026 },
+      { text: '2025', value: 2025 },
+    ])
+  })
+
   it('declares the defaultVisibleKeys prop (default null)', () => {
     const { wrapper } = makeWrapper()
     expect(wrapper.props('defaultVisibleKeys')).toBeUndefined()
