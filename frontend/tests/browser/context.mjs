@@ -10,16 +10,35 @@ export async function assertContextFailureFlow({
   const run = (args) =>
     runAgentBrowser({ args, context, initScript, log, session })
   async function click(role, name) {
-    const snapshot = await run(['snapshot', '-i'])
-    const ref = Object.entries(snapshot.refs).find(
-      ([, item]) =>
-        item.role === role && item.name.toLowerCase() === name.toLowerCase()
-    )?.[0]
-    assert.ok(ref, `Missing ${role} ${name}: ${JSON.stringify(snapshot)}`)
-    if (role === 'combobox') {
-      await run(['focus', `@${ref}`])
-      await run(['press', 'Enter'])
-    } else await run(['click', `@${ref}`])
+    // Vuetify teleports menus and dialogs, then animates them into place.
+    // Keep ordinary hit-tested clicks, but wait briefly for their controls to
+    // appear and become clickable after the opening transition.
+    let lastError
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const snapshot = await run(['snapshot', '-i'])
+      const ref = Object.entries(snapshot.refs).find(
+        ([, item]) =>
+          item.role === role && item.name.toLowerCase() === name.toLowerCase()
+      )?.[0]
+      if (ref) {
+        try {
+          await run([
+            'click',
+            role === 'combobox' ? '.account-selection .v-field' : `@${ref}`,
+          ])
+          return
+        } catch (error) {
+          if (!String(error.message).includes('is covered by')) throw error
+          lastError = error
+        }
+      } else {
+        lastError = new Error(
+          `Missing ${role} ${name}: ${JSON.stringify(snapshot)}`
+        )
+      }
+      await run(['wait', '100'])
+    }
+    assert.fail(lastError?.message ?? `Could not click ${role} ${name}`)
   }
   const probe = async () =>
     (
