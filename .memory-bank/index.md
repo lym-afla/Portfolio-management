@@ -38,6 +38,7 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
 
 - Tasks/
   - [Frontend modernization implementation plan (2026-09-08)](../docs/superpowers/plans/2026-09-08-frontend-modernization.md) — implementation started on codex/frontend-modernization; master plan and reliability, charting, and UI workstreams track the remaining work.
+  - [Frontend modernization progress (2026-09-30)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; financial PRs merged, C1 next, modernization not complete.
   - [Grouped table and allocation pie review (2026-09-08)](../docs/audits/2026-09-08-grouped-tables-and-allocation-pies.md) — proposed compact/grouped table views; explicit three-pie dashboard requirement supersedes the earlier bar decision.
   - `backlog.md` — initial backlog items derived from the interview.
   - `complexity-refactoring-task.md` — comprehensive task for reducing C901 complexity errors across the codebase.

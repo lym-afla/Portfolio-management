@@ -106,6 +106,8 @@ export function useLatestRequest<TParams, TData>(
 
 ## Task F1: Align category values to the complete sample index
 
+**Status (30 September 2026):** Implemented/reviewed and merged into `codex/frontend-modernization` in PR #46, merge `607f5383`. Historical task steps below retain their specification; current overall progress is in the [durable tracker](2026-09-30-frontend-modernization-progress.md).
+
 **Files:** modify `backend/services/charts.py:133-197,232-282`; create `backend/tests/unit/services/test_chart_alignment.py`.
 
 **Interfaces:** retain `get_nav_chart_data(...)` response shape. Add keyword-only `sample_index: int` to internal `add_breakdown_data(...)` and pass `enumerate(dates)` index. Every new category gets a list of `None` with exactly `len(chart_data['labels'])` entries; assign only its observed index. Explicit Decimal zero remains zero. Existing leading/trailing padding must not prepend a second offset.
@@ -166,6 +168,8 @@ Change the loop header to `for sample_index, d in enumerate(dates):`; preserve t
 
 ## Task F2: Include the first contribution day exactly once
 
+**Status (30 September 2026):** Implemented/reviewed and merged into `codex/frontend-modernization` in PR #47, merge `71eaa1d7`. Historical task steps below retain their specification; current overall progress is in the [durable tracker](2026-09-30-frontend-modernization-progress.md).
+
 **Files:** modify `backend/services/charts.py:193-194,414-459`; create `backend/tests/integration/services/test_chart_contribution_boundaries.py`.
 
 **Interfaces:** `previous_date` currently means the next interval's inclusive first day (`previous endpoint + 1 day`). Keep that convention and change the query lower bound to `date__date__gte`. IRR already uses the inclusive start with opening NAV on the previous endpoint; do not change its arguments.
@@ -224,6 +228,8 @@ if previous_date is not None:
 
 ## Task F3: Resolve allocation percentage scale before migration
 
+**Status (30 September 2026):** Implemented/reviewed and merged into `codex/frontend-modernization` in PR #48, merge `9b32d3d9`. Historical task steps below retain their specification; current overall progress is in the [durable tracker](2026-09-30-frontend-modernization-progress.md).
+
 **Files:** inspect `backend/services/performance.py:303-320`, `backend/core/formatting_utils.py:258-280`, `backend/dashboard/views.py:146-166`; create `backend/tests/unit/services/test_allocation_percentage_scale.py`. Modify a production file only in a separate reviewed fix if the investigation confirms the defect.
 
 **Interfaces:** establish one precise scale: raw share ratio `Decimal('0.25')`, display `25.0%` for amount 25 / complete positive NAV 100. Legacy formatted output is evidence to compare, not an authority that can redefine the unit.
@@ -260,6 +266,8 @@ data_dict[percentage_key][item] = format_percentage(percentage, digits=1)
 **Acceptance:** documented, tested raw ratio and percentage display contract, with human financial review for any correction. This is a bounded investigation prerequisite for C4, not permission for broader performance-formula cleanup.
 
 ## Task C1: Add an opt-in, exact chart contract without removing legacy responses
+
+**Status (30 September 2026):** Not implemented; dependencies F1/F2/F3 merged. Next executor assignment: [C1 handoff](2026-09-30-chart-contract-v2-handoff.md).
 
 **Files:** modify `backend/services/charts.py`, `backend/services/nav.py` (minimum optional diagnostics), `backend/dashboard/views.py`, `backend/database/views.py:90-178`; create `backend/tests/integration/api/test_chart_contract_v2.py`.
 
