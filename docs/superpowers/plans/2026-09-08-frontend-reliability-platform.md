@@ -453,7 +453,7 @@ mountDashboardWithRealStores is a local helper in DashboardPage.requests.spec.ts
 
 **Consumes:** Passing R1–R6 behavior gates and the master bundle budget. **Produces:** Lazy route boundaries, intentional Vuetify imports, used SVG icons and deterministic complete-route measurements.
 
-- [ ] **1. Add a failing delivery assertion before editing imports.** Build the production app and record the complete cold dashboard JS/CSS request graph, including lazy descendants. Repeat for login and profile. scripts/measure-route-bundles.mjs reads the Vite manifest and the browser-observed resource set, computes gzip byte totals once per unique asset, and emits JSON.
+- [x] **1. Add a failing delivery assertion before editing imports.** Build the production app and record the complete cold dashboard JS/CSS request graph, including lazy descendants. Repeat for login and profile. scripts/measure-route-bundles.mjs reads the Vite manifest and the browser-observed resource set, computes gzip byte totals once per unique asset, and emits JSON.
 
 ~~~js
 assert.equal(loginGraph.some(path => path.includes('dashboard')), false)
@@ -464,7 +464,7 @@ assert.ok(dashboardTotals.gzipJsCss > 0)
 
 Use module membership from the manifest to identify dashboard/chart ownership; filename matching above is illustrative until explicit chunk labels exist. Record current cold-route ownership in delivery.mjs and assert absence of the owned modules on login/profile.
 
-- [ ] **2. Convert ordinary route components to lazy imports, preserving routes/guards.**
+- [x] **2. Convert ordinary route components to lazy imports, preserving routes/guards.**
 
 ~~~js
 {
@@ -476,12 +476,12 @@ Use module membership from the manifest to identify dashboard/chart ownership; f
 ~~~
 
 Apply to every route view, including profile/database children. Do not add a second auth initializer or change redirects. Handle a failed lazy chunk load with a recoverable reload message, not an endless redirect loop.
-- [ ] **3. Make expensive dialogs genuinely on demand.** Use defineAsyncComponent in the owning view and mount on first open. Preserve imports whose continuing WebSocket/SSE session must survive the visible dialog closing; create on first open, then retain until session completion/unmount. Do not unmount an active import merely to reduce initial bytes.
-- [ ] **4. Remove blanket Vuetify registration after enumerating dynamic usages.** Keep vite-plugin-vuetify auto-import. Explicitly register only components/directives that are dynamically selected and cannot be discovered statically. Run all route/dialog smoke cases with real Vuetify and fail on unresolved components/directives.
-- [ ] **5. Replace full-font MDI usage with an explicit SVG icon registry.** Add the supported released @mdi/js package at an exact verified version during implementation. plugins/icons.ts maps every existing icon name used statically or dynamically to an imported SVG path and uses Vuetify's SVG icon set; preserve the default Vuetify aliases required by built-in inputs. Unknown icon names throw in tests and use a visible fallback with logging in development. Remove @mdi/font and its CSS only when the registry inventory and browser route tests pass.
-- [ ] **6. Gate development debug imports themselves.** Move authDebugConsole, authDebug and axiosDebug imports under import.meta.env.DEV dynamic loading; production must not register window.authDebug or download their code. Preserve deliberate development diagnostics without printing tokens in production.
-- [ ] **7. Measure complete graphs and validate interactions.** Run production build, delivery measurement and route/dialog matrix on the same fixtures/runtime; compare desktop/mobile interaction and rendering. Engineering target: at least 25% lower combined cold dashboard JS+CSS gzip than the audit's approximately 535 kB, targeting at most 401 kB, and no MDI font request. A missed target requires an explicit measured tradeoff review; it is not a promised speedup. The later chart pilot must keep the entire dashboard dependency graph within the master's 535 kB budget or obtain a reviewed variance.
-- [ ] **8. Run all R1 gates and full pytest.**
+- [x] **3. Make expensive dialogs genuinely on demand.** Use defineAsyncComponent in the owning view and mount on first open. Preserve imports whose continuing WebSocket/SSE session must survive the visible dialog closing; create on first open, then retain until session completion/unmount. Do not unmount an active import merely to reduce initial bytes.
+- [x] **4. Remove blanket Vuetify registration after enumerating dynamic usages.** Keep vite-plugin-vuetify auto-import. Explicitly register only components/directives that are dynamically selected and cannot be discovered statically. Run all route/dialog smoke cases with real Vuetify and fail on unresolved components/directives.
+- [x] **5. Replace full-font MDI usage with an explicit SVG icon registry.** Add the supported released @mdi/js package at an exact verified version during implementation. plugins/icons.ts maps every existing icon name used statically or dynamically to an imported SVG path and uses Vuetify's SVG icon set; preserve the default Vuetify aliases required by built-in inputs. Unknown icon names throw in tests and use a visible fallback with logging in development. Remove @mdi/font and its CSS only when the registry inventory and browser route tests pass.
+- [x] **6. Gate development debug imports themselves.** Move authDebugConsole, authDebug and axiosDebug imports under import.meta.env.DEV dynamic loading; production must not register window.authDebug or download their code. Preserve deliberate development diagnostics without printing tokens in production.
+- [x] **7. Measure complete graphs and validate interactions.** Run production build, delivery measurement and route/dialog matrix on the same fixtures/runtime; compare desktop/mobile interaction and rendering. Engineering target: at least 25% lower combined cold dashboard JS+CSS gzip than the audit's approximately 535 kB, targeting at most 401 kB, and no MDI font request. A missed target requires an explicit measured tradeoff review; it is not a promised speedup. The later chart pilot must keep the entire dashboard dependency graph within the master's 535 kB budget or obtain a reviewed variance.
+- [x] **8. Run all R1 gates and full pytest.**
 
 **Acceptance:** Existing routes/dialogs render correctly; imports remain operational; no font request or production debug bundle; dashboard modules stay off login/profile; before/after complete-route artifact is attached to the PR. **Commit/PR:** codex/frontend-r7-route-delivery; perf: split route delivery and use explicit UI imports. **Rollback:** route, Vuetify and icon subchanges are separate commits; revert the failing layer with its dependency/lockfile change, preserving verified behavior fixes.
 
