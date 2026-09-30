@@ -20,9 +20,7 @@ from services.nav import IRR, NAV_at_date, get_fx_rate
 logger = logging.getLogger("dashboard")
 
 
-def get_nav_chart_data(
-    user_id, account_ids, frequency, from_date, to_date, currency, breakdown
-):
+def get_nav_chart_data(user_id, account_ids, frequency, from_date, to_date, currency, breakdown):
     """Calculate NAV chart data for a given user and date range.
 
     Args:
@@ -130,7 +128,7 @@ def get_nav_chart_data(
             ]
         )
 
-    for d in dates:
+    for sample_index, d in enumerate(dates):
         NAV_data = NAV_at_date(
             user_id,
             tuple(account_ids),
@@ -188,7 +186,15 @@ def get_nav_chart_data(
             )
         else:
             breakdown_data = NAV_data.get(breakdown, {})
-            add_breakdown_data(chart_data, IRR_value, IRR_rolling, breakdown_data, categories, d)
+            add_breakdown_data(
+                chart_data,
+                IRR_value,
+                IRR_rolling,
+                breakdown_data,
+                categories,
+                d,
+                sample_index=sample_index,
+            )
 
         NAV_previous_date = NAV
         previous_date = d + timedelta(days=1)
@@ -230,7 +236,7 @@ def _add_contributions_data(
 
 
 def add_breakdown_data(
-    chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date
+    chart_data, IRR, IRR_rolling, breakdown_data, categories, current_date, *, sample_index: int
 ):
     """Add breakdown data to chart datasets.
 
@@ -241,19 +247,30 @@ def add_breakdown_data(
         breakdown_data: Dictionary of category breakdown values.
         categories: Dictionary tracking categories and their first occurrence dates.
         current_date: Current date for the chart data point.
+        sample_index: Index into the complete chart sample/label sequence.
     """
+    sample_count = len(chart_data["labels"])
+    if not 0 <= sample_index < sample_count:
+        raise ValueError("Category sample index is outside the chart labels")
     for key, value in breakdown_data.items():
         if key not in categories:
             categories[key] = current_date
             chart_data["datasets"].insert(
                 -2,
-                _create_dataset(key, [], get_color(len(categories)), "bar", "y", stack="combined"),
+                _create_dataset(
+                    key,
+                    [None] * sample_count,
+                    get_color(len(categories)),
+                    "bar",
+                    "y",
+                    stack="combined",
+                ),
             )
 
         dataset_index = next(
             i for i, dataset in enumerate(chart_data["datasets"]) if dataset["label"] == key
         )
-        chart_data["datasets"][dataset_index]["data"].append(value / 1000)
+        chart_data["datasets"][dataset_index]["data"][sample_index] = value / Decimal("1000")
 
     # Add IRR data
     chart_data["datasets"][-2]["data"].append(IRR)
@@ -268,18 +285,13 @@ def fill_missing_historical_data(chart_data, categories, frequency):
         categories: Dictionary tracking categories and their first occurrence dates.
         frequency: The frequency of data points.
     """
-    for dataset in chart_data["datasets"][:-2]:  # Exclude IRR datasets
-        label = dataset["label"]
-        if label in categories:
-            first_data_index = find_first_data_index(
-                chart_data["labels"], categories[label], frequency
-            )
-            dataset["data"] = [None] * first_data_index + dataset["data"]
-
-    # Ensure all datasets have the same length
-    max_length = len(chart_data["labels"])
+    # Category series already occupy their exact sample indices. Leading padding
+    # would shift late-entry categories a second time; only complete short series.
+    sample_count = len(chart_data["labels"])
     for dataset in chart_data["datasets"]:
-        dataset["data"] += [None] * (max_length - len(dataset["data"]))
+        if len(dataset["data"]) > sample_count:
+            raise ValueError("Chart series has more values than sample labels")
+        dataset["data"] += [None] * (sample_count - len(dataset["data"]))
 
 
 def find_first_data_index(labels, category_date, frequency):
