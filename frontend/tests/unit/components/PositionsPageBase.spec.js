@@ -8,6 +8,7 @@ import * as directives from 'vuetify/directives'
 import { createPinia } from 'pinia'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { useAppStore } from '@/stores/app'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 
 vi.mock('@/services/api', () => ({
   getEffectiveCurrentDate: vi.fn().mockResolvedValue({
@@ -52,10 +53,66 @@ beforeEach(() => {
 })
 
 describe('PositionsPageBase', () => {
+  it('rebases a saved relative range before the first query on route entry', async () => {
+    const pinia = createPinia()
+    configureContextFixture('2025-12-31')
+    const context = usePortfolioContextStore(pinia)
+    const appStore = useAppStore(pinia)
+    await context.reconcileContext()
+    appStore.updateTableSettings({ timespan: 'ytd', dateFrom: '2026-01-01', dateTo: '2026-08-18', page: 3 })
+    const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
+    const wrapper = mount(PositionsPageBase, {
+      global: { plugins: [vuetify, pinia] },
+      props: { fetchPositions, headers, pageTitle: 'Test' },
+    })
+    await flushPromises()
+    expect(fetchPositions).toHaveBeenCalledTimes(1)
+    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }))
+    wrapper.unmount()
+  })
+  it('accepts null all-time start and issues one initial mounted request', async () => {
+    const pinia = createPinia()
+    const context = usePortfolioContextStore(pinia)
+    const appStore = useAppStore(pinia)
+    await context.reconcileContext()
+    appStore.updateTableSettings({ timespan: 'all_time', dateFrom: null, dateTo: '2026-08-18' })
+    const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
+    const wrapper = mount(PositionsPageBase, {
+      global: { plugins: [vuetify, pinia] },
+      props: { fetchPositions, headers, pageTitle: 'Test' },
+    })
+    await flushPromises()
+    expect(fetchPositions).toHaveBeenCalledTimes(1)
+    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: null, dateTo: '2026-08-18' }))
+    wrapper.unmount()
+  })
+  it('fetches once with the new YTD range while mounted after a context date commit', async () => {
+    const pinia = createPinia()
+    const context = usePortfolioContextStore(pinia)
+    const appStore = useAppStore(pinia)
+    await context.reconcileContext()
+    appStore.updateTableSettings({ timespan: 'ytd', dateFrom: '2026-01-01', dateTo: '2026-08-18', page: 3 })
+    const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
+    const wrapper = mount(PositionsPageBase, {
+      global: { plugins: [vuetify, pinia] },
+      props: { fetchPositions, headers, pageTitle: 'Test' },
+    })
+    await flushPromises()
+    fetchPositions.mockClear()
+    configureContextFixture('2025-12-31')
+    await context.reconcileContext()
+    await flushPromises()
+    expect(appStore.tableSettings).toMatchObject({ timespan: 'ytd', dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 })
+    expect(fetchPositions).toHaveBeenCalledTimes(1)
+    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }))
+    wrapper.unmount()
+  })
   it('adapts numeric backend years into selector items', async () => {
     const { wrapper } = makeWrapper()
     await flushPromises()
     expect(wrapper.vm.yearOptions).toEqual([
+      { text: 'YTD', value: 'ytd' },
+      { text: 'All time', value: 'all_time' },
       { text: '2026', value: 2026 },
       { text: '2025', value: 2025 },
     ])

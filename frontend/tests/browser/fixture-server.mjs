@@ -16,9 +16,10 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
+  let currentDate = '2026-09-08'
   const requests = []
   const unmatchedRequests = []
   const sockets = new Set()
@@ -37,11 +38,19 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
 
     try {
       const isContextMutation = contextFailures && ['/users/api/update_user_data_for_new_account/', '/users/api/update_dashboard_settings/'].includes(url.pathname)
+      const dateSettingsPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/'
+      const dateRefreshPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/refresh-token/'
       const fixture = isContextMutation
         ? { status: 400, body: { error: url.pathname.includes('new_account') ? 'Synthetic account denied' : 'Synthetic settings denied' } }
-        : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
+        : dateSettingsPost
+          ? { status: 200, body: {} }
+          : dateRefreshPost
+            ? { status: 200, body: { access: 'fixture-new-access-token', refresh: 'fixture-new-refresh-token', effective_current_date: currentDate } }
+            : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
       if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') fixture.body.options.push(['Second', { type: 'account', id: 2, display_name: 'Second synthetic account' }])
-      requests.push({ method: fixtureMethod, path: url.pathname })
+      if (dateFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') fixture.body.settings.table_date = currentDate
+      const record = { method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname }
+      requests.push(record)
 
       if (requestedMethod === 'OPTIONS') {
         response.writeHead(204)
@@ -49,8 +58,27 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         return
       }
 
-      for await (const _chunk of request) {
-        // Drain request bodies without persisting synthetic credentials or tokens.
+      const captureBody = dateFlow && (dateSettingsPost || dateRefreshPost || url.pathname === '/open_positions/api/get_open_positions_table/')
+      const chunks = []
+      for await (const chunk of request) {
+        if (captureBody) chunks.push(chunk)
+      }
+      if (captureBody) {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        record.body = dateRefreshPost ? { effective_current_date: body.effective_current_date } : body
+      }
+      if (dateSettingsPost) {
+        fixture.body = {
+          table_date: record.body.table_date,
+          default_currency: record.body.default_currency,
+          digits: record.body.digits,
+          requires_token_refresh: true,
+          new_effective_date: record.body.table_date,
+        }
+      }
+      if (dateRefreshPost) {
+        currentDate = record.body.effective_current_date
+        fixture.body.effective_current_date = currentDate
       }
       if (isContextMutation) { pendingMutation = true; await new Promise(resolve => { releaseMutation = resolve }); pendingMutation = false }
       response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })

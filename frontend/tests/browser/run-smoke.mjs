@@ -13,11 +13,12 @@ import {
 import { runAgentBrowser } from './protocol.mjs'
 import { assertFocusedLayoutFlow, assertLayoutGeometry } from './layout.mjs'
 import { assertContextFailureFlow } from './context.mjs'
+import { assertMountedDateFlow } from './dates.mjs'
 import { routes, viewports } from './routes.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -179,7 +180,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -195,10 +196,10 @@ async function main() {
     })
     appServer = await startBuiltAppServer(builtAppDir)
 
-    for (const viewport of viewports) {
+    for (const viewport of selectedCase === 'dates' ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'context' ? route.path === '/dashboard' : selectedCase === 'layout'
+          selectedCase === 'dates' ? route.path === '/open-positions' : selectedCase === 'context' ? route.path === '/dashboard' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -259,6 +260,16 @@ async function main() {
             console.error(`FAIL ${viewport.name} context failure: ${error.message}`)
           }
         }
+        if (selectedCase === 'dates') {
+          try {
+            const flow = await assertMountedDateFlow({ context: `${viewport.name} mounted date flow`, initScript, log, session, fixtureServer })
+            await log({ context: `${viewport.name} mounted date flow`, flow, status: 'passed' })
+            console.log(`PASS ${viewport.name} mounted date flow`)
+          } catch (error) {
+            routeFailures.push({ route: 'mounted date flow', viewport: viewport.name, error: error.message })
+            console.error(`FAIL ${viewport.name} mounted date flow: ${error.message}`)
+          }
+        }
         if (selectedCase === 'layout') {
           try {
             const flow = await assertFocusedLayoutFlow({
@@ -283,8 +294,9 @@ async function main() {
       fixtureMismatches: fixtureServer.unmatchedRequests,
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
-      routes: routes.length,
-      viewports: viewports.length,
+      routeManifestCount: routes.length,
+      routes: selectedCase === 'dates' || selectedCase === 'context' ? 1 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: selectedCase === 'dates' ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))

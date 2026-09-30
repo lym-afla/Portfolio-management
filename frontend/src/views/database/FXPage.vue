@@ -42,7 +42,7 @@
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
               <DateRangeSelector
-                v-model="dateRangeForSelector"
+                :model-value="dateRangeForSelector"
                 @update:model-value="handleDateRangeChange"
               />
               <v-col cols="12" sm="5" md="6" lg="7" class="px-8">
@@ -73,7 +73,6 @@
                   variant="outlined"
                   hide-details
                   class="rows-per-page-select"
-                  @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
                 />
               </v-col>
@@ -120,7 +119,6 @@
                 :length="pageCount"
                 :total-visible="7"
                 rounded="circle"
-                @update:model-value="handlePageChange"
               />
             </div>
           </template>
@@ -169,6 +167,7 @@
 <script setup>
 import { ref, computed, watch, watchEffect, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import {
   getFXData,
   deleteFXRate,
@@ -184,6 +183,7 @@ import { pivotFxRows, splitPairLabel } from '@/utils/fxPivot'
 import logger from '@/utils/logger'
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
 
 const dateRange = ref('ytd')
 const {
@@ -193,10 +193,9 @@ const {
   currentPage,
   sortBy,
   search,
-  handlePageChange,
-  handleItemsPerPageChange,
   handleSortChange,
-} = useTableSettings()
+  updateDateRange,
+} = useTableSettings({ syncRelativeDate: false })
 
 const { handleApiError } = useErrorHandler()
 
@@ -286,11 +285,11 @@ const initializeDateRange = async () => {
     )
     logger.log('Unknown', 'Calculated date range:', { from, to })
 
-    dateFrom.value = from
-    dateTo.value = to
-
-    // Trigger table update after initialization
-    await fetchFXData()
+    updateDateRange({
+      timespan: ['ytd', 'all_time'].includes(dateRange.value) ? dateRange.value : 'custom',
+      dateFrom: from,
+      dateTo: to,
+    })
   } else {
     logger.error(
       'Unknown',
@@ -302,9 +301,11 @@ const initializeDateRange = async () => {
 const handleDateRangeChange = (newDateRange) => {
   logger.log('Unknown', 'Date range changed:', newDateRange)
   dateRange.value = newDateRange.dateRange
-  dateFrom.value = newDateRange.dateFrom
-  dateTo.value = newDateRange.dateTo
-  fetchFXData()
+  updateDateRange({
+    timespan: ['ytd', 'all_time'].includes(dateRange.value) ? dateRange.value : 'custom',
+    dateFrom: newDateRange.dateFrom,
+    dateTo: newDateRange.dateTo,
+  })
 }
 
 // Initialize the date range exactly once. `watchEffect` covers the case where
@@ -324,12 +325,25 @@ watchEffect(async () => {
 // Re-fetch on genuine user-driven changes only. NOTE: `loading` is
 // intentionally excluded — it flips during init, and having it here caused the
 // watch to re-fire and issue a second, duplicate `list_fx/` POST.
-watch([currentPage, itemsPerPage, sortBy, search], () => {
-  if (loading.value && didInit) return
-  if (dateTo.value) {
-    fetchFXData()
+watch(effectiveCurrentDate, (date) => {
+  if (!didInit || !date || dateRange.value === 'custom') return
+  const { from, to } = calculateDateRange(dateRange.value, date)
+  if (from !== dateFrom.value || to !== dateTo.value) {
+    updateDateRange({
+      timespan: ['ytd', 'all_time'].includes(dateRange.value) ? dateRange.value : 'custom',
+      dateFrom: from,
+      dateTo: to,
+    })
   }
 })
+
+watch(
+  [() => context.canRead, () => appStore.dataRefreshTrigger, dateFrom, dateTo, currentPage, itemsPerPage, sortBy, search],
+  () => {
+    if (didInit && context.canRead && dateTo.value) fetchFXData()
+  },
+  { immediate: true }
+)
 
 onMounted(async () => {
   logger.log('Unknown', 'Mounting FXPage')

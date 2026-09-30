@@ -12,7 +12,7 @@
   {"file":"src/components/dialogs/PriceImportDialog.vue","line":275,"column":42,"ruleId":"@typescript-eslint/no-unused-vars","message":"'singleDateError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
   {"file":"src/components/dialogs/PriceImportDialog.vue","line":280,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'isImporting' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
   {"file":"src/components/dialogs/TransactionFormDialog.vue","line":233,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'clearFieldError' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/components/PositionsPageBase.vue","line":361,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'error' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
+  {"file":"src/components/PositionsPageBase.vue","line":359,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'error' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
   {"file":"src/config/chartConfig.js","line":206,"column":19,"ruleId":"prefer-const","message":"'label' is never reassigned. Use 'const' instead.","severity":1},
   {"file":"src/config/chartConfig.js","line":207,"column":19,"ruleId":"prefer-const","message":"'value' is never reassigned. Use 'const' instead.","severity":1},
   {"file":"src/services/api.ts","line":682,"column":7,"ruleId":"preserve-caught-error","message":"There is no `cause` attached to the symptom error being thrown.","severity":1},
@@ -36,7 +36,5 @@
   {"file":"src/views/profile/ProfilePage.vue","line":229,"column":10,"ruleId":"no-empty","message":"Empty block statement.","severity":1},
   {"file":"src/views/SummaryPage.vue","line":322,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'accountPerformanceHeaders' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
   {"file":"src/views/SummaryPage.vue","line":334,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'accountPerformanceSubHeaders' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/SummaryPage.vue","line":477,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'portfolioBreakdownItems' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/TransactionsPage.vue","line":338,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'formatDate' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1},
-  {"file":"src/views/TransactionsPage.vue","line":342,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'formatExchangeRate' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1}
+  {"file":"src/views/SummaryPage.vue","line":477,"column":7,"ruleId":"@typescript-eslint/no-unused-vars","message":"'portfolioBreakdownItems' is assigned a value but never used. Allowed unused vars must match /^_/u.","severity":1}
 ]

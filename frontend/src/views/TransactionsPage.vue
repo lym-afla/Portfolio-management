@@ -60,7 +60,7 @@
           <template #top>
             <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
               <DateRangeSelector
-                v-model="dateRangeModel"
+                :model-value="dateRangeModel"
                 @update:model-value="handleDateRangeChange"
               />
               <v-col cols="12" sm="5" md="6" lg="7" class="px-2">
@@ -91,7 +91,6 @@
                   variant="outlined"
                   hide-details
                   class="rows-per-page-select"
-                  @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
                 />
               </v-col>
@@ -148,7 +147,6 @@
                 :length="pageCount"
                 :total-visible="7"
                 rounded="circle"
-                @update:model-value="handlePageChange"
               />
             </div>
           </template>
@@ -204,7 +202,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
-import { format } from 'date-fns'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { calculateDateRange } from '@/utils/dateRangeUtils'
 import {
   getTransactions,
   deleteTransaction,
@@ -228,6 +227,7 @@ defineOptions({ name: 'TransactionsPage' })
 const emit = defineEmits(['update-page-title'])
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
 const { handleApiError } = useErrorHandler()
 
 const {
@@ -237,16 +237,16 @@ const {
   currentPage,
   sortBy,
   search,
-  handlePageChange,
-  handleItemsPerPageChange,
   handleSortChange,
-} = useTableSettings()
+  updateDateRange,
+} = useTableSettings({ syncRelativeDate: false })
 
 const dateRangeModel = ref({
   dateRange: 'all_time',
   dateFrom: null,
   dateTo: null,
 })
+const initialized = ref(false)
 
 const fetchTransactions = async () => {
   tableLoading.value = true
@@ -271,10 +271,24 @@ const fetchTransactions = async () => {
 
 const handleDateRangeChange = (newDateRange) => {
   dateRangeModel.value = newDateRange
-  dateFrom.value = newDateRange.dateFrom
-  dateTo.value = newDateRange.dateTo
-  currentPage.value = 1
-  fetchTransactions()
+  updateDateRange({
+    timespan: ['ytd', 'all_time'].includes(newDateRange.dateRange) ? newDateRange.dateRange : 'custom',
+    dateFrom: newDateRange.dateFrom,
+    dateTo: newDateRange.dateTo,
+  })
+}
+
+const syncRelativeDate = (date) => {
+  if (!date || dateRangeModel.value.dateRange === 'custom') return
+  const { from, to } = calculateDateRange(dateRangeModel.value.dateRange, date)
+  dateRangeModel.value = { ...dateRangeModel.value, dateFrom: from, dateTo: to }
+  if (from !== dateFrom.value || to !== dateTo.value) {
+    updateDateRange({
+      timespan: ['ytd', 'all_time'].includes(dateRangeModel.value.dateRange) ? dateRangeModel.value.dateRange : 'custom',
+      dateFrom: from,
+      dateTo: to,
+    })
+  }
 }
 
 const loading = ref(false)
@@ -335,37 +349,27 @@ const headers = computed(() => [
   { title: 'Actions', align: 'end', key: 'actions', sortable: false },
 ])
 
-const formatDate = (date) => {
-  return format(new Date(date), 'yyyy-MM-dd')
-}
-
-const formatExchangeRate = (rate) => {
-  // If rate is a string, parse it to a number
-  const rateNum = parseFloat(rate)
-
-  // If rate is less than 1, display as 1/x for better readability
-  if (rateNum < 1 && rateNum > 0) {
-    const inverted = 1 / rateNum
-    return `${inverted.toFixed(4)}`
-  }
-
-  // Otherwise, display the rate as-is, rounded to 4 decimals
-  return rateNum.toFixed(4)
-}
-
 watch(
   [
+    initialized,
+    () => context.canRead,
     () => appStore.dataRefreshTrigger,
+    dateFrom,
+    dateTo,
     itemsPerPage,
     currentPage,
     sortBy,
     search,
   ],
   () => {
-    fetchTransactions()
+    if (initialized.value && context.canRead && dateTo.value) fetchTransactions()
   },
   { deep: true }
 )
+
+watch(effectiveCurrentDate, (date) => {
+  if (initialized.value) syncRelativeDate(date)
+})
 
 const openAddTransactionDialog = () => {
   editedTransaction.value = null
@@ -476,7 +480,8 @@ onMounted(async () => {
   if (!effectiveCurrentDate.value) {
     await appStore.fetchEffectiveCurrentDate()
   }
-  fetchTransactions()
+  syncRelativeDate(effectiveCurrentDate.value)
+  initialized.value = true
 })
 
 onUnmounted(() => {

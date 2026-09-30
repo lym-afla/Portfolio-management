@@ -137,7 +137,6 @@
                   variant="outlined"
                   hide-details
                   class="mr-2 rows-per-page-select"
-                  @update:model-value="handleItemsPerPageChange"
                   bg-color="white"
                 />
               </v-col>
@@ -157,7 +156,6 @@
                 :length="pageCount"
                 :total-visible="7"
                 rounded="circle"
-                @update:model-value="handlePageChange"
               />
             </div>
           </template>
@@ -190,6 +188,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '@/stores/app'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { getYearOptions } from '@/services/api'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { flattenHeaders } from '@/config/positionsHeaders'
@@ -228,7 +227,7 @@ interface FetchPositionsResponse {
 // The backend returns numeric years; the select renders text/value items.
 interface YearOption {
   text: string
-  value: number
+  value: number | string
   divider?: boolean
 }
 
@@ -245,6 +244,7 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
 const positions = ref<Record<string, unknown>[]>([])
 const totals = ref<Record<string, unknown>>({})
 const tableLoading = ref(true)
@@ -260,8 +260,6 @@ const {
   currentPage,
   sortBy,
   search,
-  handlePageChange,
-  handleItemsPerPageChange,
   handleSortChange,
   handleTimespanChange,
 } = useTableSettings()
@@ -387,7 +385,11 @@ const fetchData = async () => {
 const fetchYearOptions = async () => {
   try {
     const years = await getYearOptions()
-    yearOptions.value = years.map((year) => ({ text: String(year), value: year }))
+    yearOptions.value = [
+      { text: 'YTD', value: 'ytd' },
+      { text: 'All time', value: 'all_time' },
+      ...years.map((year) => ({ text: String(year), value: year })),
+    ]
   } catch (error) {
     appStore.setError(error)
   } finally {
@@ -397,6 +399,8 @@ const fetchYearOptions = async () => {
 
 watch(
   [
+    () => context.canRead,
+    () => appStore.effectiveCurrentDate,
     () => appStore.dataRefreshTrigger,
     search,
     itemsPerPage,
@@ -407,9 +411,9 @@ watch(
     dateTo,
   ],
   () => {
-    fetchData()
+    if (context.canRead && dateTo.value) fetchData()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 
 // This watch is used to update the year options when the selected account changes.
@@ -429,20 +433,13 @@ const initializeData = async () => {
   }
 
   // Check if dateFrom and dateTo are already set in the store
-  if (
-    !appStore.tableSettings.dateFrom ||
-    !appStore.tableSettings.dateTo
-  ) {
+  if (!appStore.tableSettings.dateTo && appStore.tableSettings.timespan !== 'custom') {
     // If not set, use the default 'ytd' timespan
     await handleTimespanChange(appStore.tableSettings.timespan)
-  } else {
-    // If already set, update the local timespan value
-    timespan.value = appStore.tableSettings.timespan
   }
 
   // Fetch year options
   await fetchYearOptions()
-  await fetchData()
 }
 
 onMounted(() => {

@@ -1,12 +1,15 @@
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
-import { debounce } from 'lodash'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
 import logger from '@/utils/logger'
 
-export function useTableSettings() {
+export function useTableSettings({ syncRelativeDate = true } = {}) {
   const appStore = useAppStore()
-  const effectiveCurrentDate = ref(appStore.effectiveCurrentDate)
+  const context = usePortfolioContextStore()
+  const effectiveCurrentDate = computed(
+    () => context.committed.effectiveCurrentDate
+  )
 
   const tableSettings = computed(() => appStore.tableSettings)
 
@@ -17,17 +20,17 @@ export function useTableSettings() {
 
   const dateFrom = computed({
     get: () => tableSettings.value.dateFrom,
-    set: (value) => appStore.updateTableSettings({ dateFrom: value }),
+    set: (value) => appStore.updateTableSettings({ dateFrom: value, timespan: 'custom', page: 1 }),
   })
 
   const dateTo = computed({
     get: () => tableSettings.value.dateTo,
-    set: (value) => appStore.updateTableSettings({ dateTo: value }),
+    set: (value) => appStore.updateTableSettings({ dateTo: value, timespan: 'custom', page: 1 }),
   })
 
   const itemsPerPage = computed({
     get: () => tableSettings.value.itemsPerPage,
-    set: (value) => appStore.updateTableSettings({ itemsPerPage: value }),
+    set: (value) => appStore.updateTableSettings({ itemsPerPage: value, page: 1 }),
   })
 
   const currentPage = computed({
@@ -37,24 +40,54 @@ export function useTableSettings() {
 
   const sortBy = computed({
     get: () => tableSettings.value.sortBy,
-    set: (value) => appStore.updateTableSettings({ sortBy: value }),
+    set: (value) => appStore.updateTableSettings({ sortBy: value, page: 1 }),
   })
 
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  const delayedSearch = (value: string) => {
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => {
+      appStore.updateTableSettings({ search: value, page: 1 })
+      searchTimer = undefined
+    }, 500)
+  }
+  onScopeDispose(() => clearTimeout(searchTimer), true)
   const search = computed({
     get: () => tableSettings.value.search,
-    set: debounce(
-      (value) => appStore.updateTableSettings({ search: value }),
-      500
-    ),
+    set: delayedSearch,
   })
 
+  const updateDateRange = (range: { dateFrom: string | null; dateTo: string | null; timespan?: string }) => {
+    appStore.updateTableSettings({ ...range, page: 1 })
+  }
+
+  if (syncRelativeDate) {
+    watch(
+      [effectiveCurrentDate, () => context.canRead],
+      ([currentDate, canRead]) => {
+        if (!canRead || !currentDate) return
+        const span = String(tableSettings.value.timespan)
+        if (span === 'custom') return
+        const range = calculateDateRangeFromTimespan(span, currentDate)
+        if (!range) return
+        if (range.dateFrom !== tableSettings.value.dateFrom || range.dateTo !== tableSettings.value.dateTo) {
+          updateDateRange(range)
+        }
+      },
+      { immediate: true }
+    )
+  }
+
   const handleTimespanChange = async (value: string) => {
+    if (value === 'custom') {
+      appStore.updateTableSettings({ timespan: value, page: 1 })
+      return
+    }
     let currentDate = effectiveCurrentDate.value
 
-    if (!currentDate) {
-      await appStore.fetchEffectiveCurrentDate()
-      currentDate = appStore.effectiveCurrentDate
-      effectiveCurrentDate.value = currentDate
+    if (!context.canRead) {
+      await context.reconcileContext()
+      currentDate = effectiveCurrentDate.value
     }
 
     if (!currentDate) {
@@ -65,7 +98,7 @@ export function useTableSettings() {
     const dateRange = calculateDateRangeFromTimespan(value, currentDate)
     if (!dateRange) return
 
-    appStore.updateTableSettings({
+    updateDateRange({
       timespan: value,
       dateFrom: dateRange.dateFrom,
       dateTo: dateRange.dateTo,
@@ -78,18 +111,16 @@ export function useTableSettings() {
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
     itemsPerPage.value = newItemsPerPage
-    currentPage.value = 1
   }
 
   const handleSortChange = (newSortBy: unknown) => {
     if (Array.isArray(newSortBy) && newSortBy.length > 0) {
       sortBy.value = [newSortBy[0]]
     } else if (typeof newSortBy === 'object' && newSortBy !== null) {
-      sortBy.value = [newSortBy]
+      sortBy.value = [newSortBy as { key: string; order?: boolean | 'asc' | 'desc' }]
     } else {
       sortBy.value = []
     }
-    currentPage.value = 1
   }
 
   return {
@@ -104,5 +135,6 @@ export function useTableSettings() {
     handleItemsPerPageChange,
     handleSortChange,
     handleTimespanChange,
+    updateDateRange,
   }
 }

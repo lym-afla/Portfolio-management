@@ -70,11 +70,8 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
-import { useAppStore } from '@/stores/app'
-import { calculateDateRangeFromTimespan } from '@/utils/dateUtils'
 
 const context = usePortfolioContextStore()
-const appStore = useAppStore()
 const dialog = ref(false)
 const form = ref(null)
 const errors = ref({})
@@ -106,11 +103,6 @@ async function saveSettings() {
       currency: formData.default_currency,
       digits: Number(formData.digits),
     })
-    const dateRange = calculateDateRangeFromTimespan(
-      appStore.tableSettings.timespan,
-      context.committed.effectiveCurrentDate
-    )
-    if (dateRange) appStore.updateTableSettings({ ...dateRange })
     closeDialog()
   } catch (error) {
     errors.value = {
