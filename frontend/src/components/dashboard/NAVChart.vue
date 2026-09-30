@@ -34,7 +34,7 @@
       </v-row>
       <div class="chart-wrapper" v-if="!hasNoData">
         <StackedBarLineChart
-          v-if="!loading && chartDataComputed && chartOptionsComputed"
+          v-if="chartDataComputed && chartOptionsComputed"
           :chart-data="chartDataComputed"
           :options="chartOptionsComputed"
         />

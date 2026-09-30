@@ -374,9 +374,9 @@ export const deleteSecurity = async (securityId: number): Promise<ApiRecord> => 
   }
 }
 
-export const getDashboardBreakdown = async (): Promise<ApiRecord> => {
+export const getDashboardBreakdown = async (options?: RequestOptions): Promise<ApiRecord> => {
   try {
-    const response = await axiosInstance.get('/dashboard/api/get-breakdown/')
+    const response = await axiosInstance.get('/dashboard/api/get-breakdown/', { signal: options?.signal })
     return response.data
   } catch (error) {
     logger.error('Unknown', 'Error fetching breakdown data:', error)
@@ -384,10 +384,10 @@ export const getDashboardBreakdown = async (): Promise<ApiRecord> => {
   }
 }
 
-export const getDashboardSummaryOverTime = async (): Promise<ApiRecord> => {
+export const getDashboardSummaryOverTime = async (options?: RequestOptions): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
-      '/dashboard/api/get-summary-over-time/'
+      '/dashboard/api/get-summary-over-time/', { signal: options?.signal }
     )
     return response.data
   } catch (error) {
@@ -399,13 +399,15 @@ export const getDashboardSummaryOverTime = async (): Promise<ApiRecord> => {
 export const getNAVChartData = async (
   breakdown: string,
   frequency: string,
-  dateFrom: string,
-  dateTo: string
+  dateFrom: string | null,
+  dateTo: string | null,
+  options?: RequestOptions
 ): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       '/dashboard/api/get-nav-chart-data/',
       {
+        signal: options?.signal,
         params: {
           breakdown,
           frequency,

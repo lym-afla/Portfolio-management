@@ -3,6 +3,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import DashboardPage from '@/views/DashboardPage.vue'
 import { generateVuetifyStubs } from '../test-utils'
+import { configureContextFixture } from '../context-fixture'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
 
 // All dashboard services reject so every widget renders its error alert.
 const mocks = vi.hoisted(() => ({
@@ -17,20 +19,6 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/api', () => mocks)
-
-// Store fetches (effective date) would also hit the api mock; patch them out.
-vi.mock('@/stores/app', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    useAppStore: () => ({
-      ...actual.useAppStore(),
-      fetchEffectiveCurrentDate: vi.fn().mockResolvedValue(undefined),
-      updateNavChartParams: vi.fn().mockResolvedValue(undefined),
-      updateUserDataForNewAccount: vi.fn().mockResolvedValue(undefined),
-    }),
-  }
-})
 
 const mountPage = () =>
   mount(DashboardPage, {
@@ -54,9 +42,12 @@ const retryButtons = (wrapper) =>
   wrapper.findAll('.v-btn').filter((b) => b.text().includes('Retry'))
 
 describe('DashboardPage widget error retry', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
+    localStorage.clear()
+    configureContextFixture()
     setActivePinia(createPinia())
+    await usePortfolioContextStore().reconcileContext()
   })
 
   it('renders a Retry button in every widget error alert', async () => {
@@ -70,6 +61,7 @@ describe('DashboardPage widget error retry', () => {
     expect(wrapper.text()).toContain('summary over time failed')
     expect(wrapper.text()).toContain('nav chart failed')
     expect(retryButtons(wrapper).length).toBe(6)
+    wrapper.unmount()
   })
 
   it('re-invokes the matching fetch when Retry is clicked', async () => {
@@ -93,5 +85,6 @@ describe('DashboardPage widget error retry', () => {
     expect(mocks.getDashboardBreakdown).toHaveBeenCalledTimes(2)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(2)
     expect(mocks.getNAVChartData).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
   })
 })

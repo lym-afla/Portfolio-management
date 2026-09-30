@@ -11,16 +11,18 @@
           <v-skeleton-loader v-if="loading.summary" type="card" class="h-100" />
           <SummaryCard
             v-else-if="!error.summary"
+            data-testid="summary-card"
             :summary="summary"
             :currency="userCurrency"
             class="h-100"
           />
-          <v-alert v-else type="error" class="h-100">
+          <v-alert v-else type="error" class="h-100" data-testid="summary-error">
             {{ error.summary }}
             <v-btn
               color="error"
               variant="outlined"
               class="ml-2"
+              data-testid="summary-retry"
               @click="fetchSummaryData"
             >
               Retry
@@ -42,18 +44,20 @@
               />
               <BreakdownChart
                 v-else-if="!error.breakdownCharts"
+                :data-testid="`allocation-${chart}-card`"
                 :title="chartTitles[chart]"
                 :data="breakdownData[chart]"
                 :currency="userCurrency"
                 :totalNAV="totalNAV"
                 class="h-100"
               />
-              <v-alert v-else type="error" class="h-100">
+              <v-alert v-else type="error" class="h-100" :data-testid="`allocation-${chart}-error`">
                 {{ error.breakdownCharts }}
                 <v-btn
                   color="error"
                   variant="outlined"
                   class="ml-2"
+                  :data-testid="`allocation-${chart}-retry`"
                   @click="fetchBreakdownData"
                 >
                   Retry
@@ -67,21 +71,23 @@
       <v-row>
         <v-col cols="12">
           <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
+          <div v-else-if="!error.summaryOverTime" data-testid="history-table">
           <SummaryOverTimeTable
-            v-else-if="!error.summaryOverTime"
-            :lines="summaryOverTimeData ? summaryOverTimeData.lines : []"
-            :years="summaryOverTimeData ? summaryOverTimeData.years : []"
+            :lines="summaryOverTimeData?.lines ?? []"
+            :years="summaryOverTimeData?.years ?? []"
             :currentYear="
-              summaryOverTimeData ? summaryOverTimeData.currentYear : ''
+              String(summaryOverTimeData?.currentYear ?? '')
             "
             @refresh-data="fetchSummaryOverTimeData"
           />
-          <v-alert v-else type="error">
+          </div>
+          <v-alert v-else type="error" data-testid="history-error">
             {{ error.summaryOverTime }}
             <v-btn
               color="error"
               variant="outlined"
               class="ml-2"
+              data-testid="history-retry"
               @click="fetchSummaryOverTimeData"
             >
               Retry
@@ -92,20 +98,22 @@
 
       <v-row>
         <v-col cols="12">
-          <v-alert v-if="error.navChart" type="error" class="mb-2">
+          <v-alert v-if="error.navChart" type="error" class="mb-2" data-testid="nav-error">
             {{ error.navChart }}
             <v-btn
               color="error"
               variant="outlined"
               class="ml-2"
-              @click="fetchNAVChartData(navChartInitialParams, true)"
+              data-testid="nav-retry"
+              @click="fetchNAVChartData()"
             >
               Retry
             </v-btn>
           </v-alert>
           <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
           <NAVChart
-            v-else
+            v-else-if="navChartData"
+            data-testid="nav-chart"
             :chartData="navChartData"
             :loading="updating.navChart"
             :initialParams="navChartInitialParams"
@@ -119,8 +127,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, inject, watch, computed } from 'vue'
+import { onMounted, onUnmounted, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotContext } from '@/types/query'
+import type { PortfolioContext } from '@/types/portfolioContext'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
 import SummaryCard from '@/components/dashboard/SummaryCard.vue'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
@@ -132,279 +144,126 @@ import {
   getDashboardSummaryOverTime,
   getNAVChartData,
 } from '@/services/api'
-import { useErrorHandler } from '@/composables/useErrorHandler'
-import logger from '@/utils/logger'
 
 defineOptions({ name: 'DashboardPage' })
-
 const emit = defineEmits<{
   (e: 'update-page-title', title: string): void
 }>()
 
-// Shape of the breakdown payload (one entry per chart type). The backend
-// returns an opaque record, plus a top-level totalNAV string.
 interface BreakdownData {
   assetType: Record<string, unknown>
   assetClass: Record<string, unknown>
   currency: Record<string, unknown>
   totalNAV?: string
-  [key: string]: unknown
 }
-
-// Chart.js-compatible shape returned by getNAVChartData / summary endpoints.
 interface ChartData {
   labels: unknown[]
   datasets: unknown[]
   [key: string]: unknown
 }
-
-// Shape consumed by SummaryOverTimeTable (lines/years/currentYear). The
-// backend returns an opaque record, but the template reads these fields.
 interface SummaryOverTimeData {
   lines?: unknown[]
   years?: unknown[]
-  currentYear?: string
-  [key: string]: unknown
+  currentYear?: string | number
 }
-
-// Parameters driving the NAV chart request (mirrors appStore.navChartParams).
 interface NavChartParams {
-  frequency?: string
-  breakdown?: string
-  dateRange?: string
-  dateFrom?: string | null
-  dateTo?: string | null
-  [key: string]: unknown
+  frequency: string
+  breakdown: string
+  dateRange: string
+  dateFrom: string | null
+  dateTo: string | null
+}
+interface NavQueryParams {
+  readonly context: PortfolioContext
+  readonly chart: NavChartParams
 }
 
 const appStore = useAppStore()
-const { handleApiError } = useErrorHandler()
-const clearErrors = inject<() => void>('clearErrors')
-const summary = ref<Record<string, unknown>>({})
-
-const breakdownData = ref<BreakdownData>({
-  assetType: {},
-  assetClass: {},
-  currency: {},
-})
-const totalNAV = ref('')
-const summaryOverTimeData = ref<SummaryOverTimeData | null>({})
-const navChartData = ref<ChartData>({
-  labels: [],
-  datasets: [],
-})
-// const navChartInitialParams = computed(() => appStore.navChartParams)
-
-const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
-
-const isEffectiveDateLoading = ref(true)
-
-const navChartInitialParams = computed<NavChartParams>(() => {
-  const params = appStore.navChartParams
-  const defaultDateRange = 'ytd'
-
-  if (!effectiveCurrentDate.value) {
-    return params
-  }
-
-  if (!params.dateFrom || !params.dateTo) {
-    const calculatedRange = calculateDateRange(
-      params.dateRange || defaultDateRange,
-      effectiveCurrentDate.value
-    )
-    return {
-      ...params,
-      dateRange: params.dateRange || defaultDateRange,
-      dateFrom: calculatedRange.from,
-      dateTo: calculatedRange.to,
-    }
-  }
-  return params
-})
-const loading = ref({
-  summary: false,
-  breakdownCharts: false,
-  summaryOverTime: false,
-  navChart: false,
-})
-const updating = ref({ navChart: false })
-const error = ref<{
-  summary: string | null
-  breakdownCharts: string | null
-  summaryOverTime: string | null
-  navChart: string | null
-}>({
-  summary: null,
-  breakdownCharts: null,
-  summaryOverTime: null,
-  navChart: null,
-})
-
-const chartTypes = ['assetType', 'assetClass', 'currency'] as const
-const chartTitles: Record<string, string> = {
-  assetType: 'Asset Type',
-  assetClass: 'Asset Class',
-  currency: 'Currency',
-}
-
-const userCurrency = computed(() => appStore.selectedCurrency)
-
-const fetchSummaryData = async () => {
-  try {
-    clearErrors?.()
-    loading.value.summary = true
-    logger.log('Unknown', 'Fetching dashboard summary...')
-    const data = await getDashboardSummary()
-    logger.log('Unknown', 'Received summary data:', data)
-    summary.value = data
-    loading.value.summary = false
-  } catch (err) {
-    logger.error('Unknown', 'Error fetching summary:', err)
-    error.value.summary = handleApiError(err)
-    loading.value.summary = false
-  }
-}
-
-const fetchBreakdownData = () => {
-  loading.value.breakdownCharts = true
-  getDashboardBreakdown()
-    .then((data) => {
-      breakdownData.value = data as unknown as BreakdownData
-      totalNAV.value = (data as unknown as BreakdownData).totalNAV ?? ''
-    })
-    .catch((err) => {
-      logger.error('Unknown', 'Error fetching breakdown data:', err)
-      error.value.breakdownCharts = handleApiError(err)
-    })
-    .finally(() => {
-      loading.value.breakdownCharts = false
-    })
-}
-
-const fetchSummaryOverTimeData = async () => {
-  try {
-    clearErrors?.()
-    loading.value.summaryOverTime = true
-    logger.log('Unknown', 'Fetching summary over time data...')
-    const data = await getDashboardSummaryOverTime()
-    logger.log('Unknown', 'Received summary over time data:', data)
-    summaryOverTimeData.value = data
-    loading.value.summaryOverTime = false
-  } catch (err) {
-    logger.error('Unknown', 'Error fetching summary over time:', err)
-    const axiosErr = err as { response?: { status?: number } }
-    if (axiosErr.response && axiosErr.response.status === 404) {
-      // Handle 404 as "no data" instead of an error
-      summaryOverTimeData.value = null
-    } else {
-      error.value.summaryOverTime = handleApiError(err)
-    }
-    loading.value.summaryOverTime = false
-  }
-}
-
-const fetchNAVChartData = async (
-  params: NavChartParams = navChartInitialParams.value,
-  isInitialLoad = false
-) => {
-  try {
-    clearErrors?.()
-    // Use skeleton loader for initial load/account change, overlay for chart updates
-    if (isInitialLoad) {
-      loading.value.navChart = true
-    } else {
-      updating.value.navChart = true
-    }
-
-    logger.log('Unknown', 'Fetching NAV chart data...')
-    const data = await getNAVChartData(
-      params.breakdown,
-      params.frequency,
-      params.dateFrom,
-      params.dateTo
-    )
-    logger.log('Unknown', 'Received NAV chart data:', data)
-    navChartData.value = data as unknown as ChartData
-  } catch (err) {
-    logger.error('Unknown', 'Error fetching NAV chart data:', err)
-    error.value.navChart = handleApiError(err)
-  } finally {
-    updating.value.navChart = false
-    loading.value.navChart = false
-  }
-}
-
-const initializeData = async () => {
-  try {
-    if (!effectiveCurrentDate.value) {
-      await appStore.fetchEffectiveCurrentDate()
-    }
-
-    if (
-      !appStore.navChartParams.dateFrom ||
-      !appStore.navChartParams.dateTo
-    ) {
-      const defaultDateRange = 'ytd'
-      const calculatedDateRange = calculateDateRange(
-        defaultDateRange,
-        effectiveCurrentDate.value
-      )
-      await appStore.updateNavChartParams({
-        dateRange: defaultDateRange,
-        dateFrom: calculatedDateRange.from,
-        dateTo: calculatedDateRange.to,
-      })
-    }
-  } catch (error) {
-    logger.error('Unknown', 'Error initializing dashboard:', error)
-  } finally {
-    isEffectiveDateLoading.value = false
-  }
-}
-
-const refreshAllData = () => {
-  // Clear previous data to default state
-  summary.value = {}
-  breakdownData.value = {
-    assetType: {},
-    assetClass: {},
-    currency: {},
-  }
-  summaryOverTimeData.value = {}
-  navChartData.value = {
-    labels: [],
-    datasets: [],
-  }
-
-  // Then fetch new data
-  fetchSummaryData()
-  fetchBreakdownData()
-  fetchSummaryOverTimeData()
-  fetchNAVChartData(navChartInitialParams.value, true) // Pass true for initial load
-}
-
-// Replace the account selection watcher with dataRefreshTrigger watcher
-watch(
-  () => appStore.dataRefreshTrigger,
-  () => {
-    logger.log(
-      'Unknown',
-      'Data refresh triggered, refreshing dashboard data...'
-    )
-    refreshAllData()
-  }
+const context = usePortfolioContextStore()
+const summaryQuery = usePortfolioRequest(
+  (_params: PortfolioContext, options) => getDashboardSummary(options),
+  snapshotContext
 )
-
-onMounted(async () => {
-  emit('update-page-title', 'Dashboard')
-  await initializeData()
-  // Initial data load
-  refreshAllData()
+const breakdownQuery = usePortfolioRequest(
+  async (_params: PortfolioContext, options) =>
+    await getDashboardBreakdown(options) as unknown as BreakdownData,
+  snapshotContext
+)
+const historyQuery = usePortfolioRequest(
+  async (_params: PortfolioContext, options): Promise<SummaryOverTimeData | null> => {
+    try {
+      return await getDashboardSummaryOverTime(options)
+    } catch (error) {
+      // Only this endpoint documents 404 as an empty history.
+      if ((error as { response?: { status?: number } }).response?.status === 404) return null
+      throw error
+    }
+  },
+  snapshotContext
+)
+const navQuery = usePortfolioRequest(
+  async (params: NavQueryParams, options) => await getNAVChartData(
+    params.chart.breakdown, params.chart.frequency,
+    params.chart.dateFrom, params.chart.dateTo, options
+  ) as unknown as ChartData,
+  (params: NavQueryParams) => Object.freeze({
+    context: snapshotContext(params.context),
+    chart: Object.freeze({ ...params.chart }),
+  })
+)
+const summary = computed(() => summaryQuery.data.value ?? {})
+const breakdownData = computed(() => breakdownQuery.data.value ?? {
+  assetType: {}, assetClass: {}, currency: {},
 })
+const totalNAV = computed(() => breakdownQuery.data.value?.totalNAV ?? '')
+const summaryOverTimeData = historyQuery.data
+const navChartData = navQuery.data
+const navChartInitialParams = computed(() => appStore.navChartParams)
+const effectiveCurrentDate = computed(() => context.committed.effectiveCurrentDate)
+const isEffectiveDateLoading = computed(() => !context.canRead)
+const userCurrency = computed(() => context.committed.currency)
+const loading = computed(() => ({
+  summary: summaryQuery.loading.value,
+  breakdownCharts: breakdownQuery.loading.value,
+  summaryOverTime: historyQuery.loading.value,
+  navChart: navQuery.loading.value && !navQuery.data.value,
+}))
+const updating = computed(() => ({ navChart: navQuery.loading.value && !!navQuery.data.value }))
+const error = computed(() => ({
+  summary: summaryQuery.error.value?.message,
+  breakdownCharts: breakdownQuery.error.value?.message,
+  summaryOverTime: historyQuery.error.value?.message,
+  navChart: navQuery.error.value?.message,
+}))
+const chartTypes = ['assetType', 'assetClass', 'currency'] as const
+const chartTitles = { assetType: 'Asset Type', assetClass: 'Asset Class', currency: 'Currency' }
+const fetchSummaryData = () => summaryQuery.run(context.committed)
+const fetchBreakdownData = () => breakdownQuery.run(context.committed)
+const fetchSummaryOverTimeData = () => historyQuery.run(context.committed)
+const fetchNAVChartData = (params: NavChartParams = navChartInitialParams.value) =>
+  navQuery.run({ context: context.committed, chart: params })
 
-onUnmounted(() => {
-  emit('update-page-title', '')
-})
+// One watcher owns initial/context/explicit refresh reads. Child parameter changes
+// already persist their tuple and emit once; observing that tuple too would double-fetch.
+watch(
+  [() => context.canRead, () => context.dataRefreshTrigger],
+  ([ready]) => {
+    if (!ready) return
+    const params = appStore.navChartParams
+    const date = context.committed.effectiveCurrentDate
+    if (date) {
+      const range = calculateDateRange(params.dateRange, date, params.dateFrom, params.dateTo)
+      appStore.updateNavChartParams({ dateFrom: range.from, dateTo: range.to })
+    }
+    fetchSummaryData()
+    fetchBreakdownData()
+    fetchSummaryOverTimeData()
+    fetchNAVChartData()
+  },
+  { immediate: true }
+)
+onMounted(() => emit('update-page-title', 'Dashboard'))
+onUnmounted(() => emit('update-page-title', ''))
 </script>
 <style scoped>
 .equal-height-row {

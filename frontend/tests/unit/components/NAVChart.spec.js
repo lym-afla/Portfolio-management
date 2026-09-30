@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createVuetify } from 'vuetify'
 import { createPinia } from 'pinia'
 import NAVChart from '@/components/dashboard/NAVChart.vue'
@@ -55,4 +55,19 @@ describe('NAVChart', () => {
     const toggle = wrapper.find('[aria-label="Chart frequency"]')
     expect(toggle.exists()).toBe(true)
   })
+})
+
+it('keeps the accepted chart renderer mounted under the updating overlay', async () => {
+  const wrapper = mountNAVChart({
+    currency: 'USD', labels: ['2026-01-01'],
+    datasets: [{ label: 'NAV', type: 'bar', data: [100] }],
+  })
+  await flushPromises()
+  const renderer = wrapper.get('.chart-stub').element
+  await wrapper.setProps({ loading: true })
+  expect(wrapper.find('.chart-overlay').exists()).toBe(true)
+  expect(wrapper.get('.chart-stub').element).toBe(renderer)
+  await wrapper.setProps({ loading: false })
+  expect(wrapper.get('.chart-stub').element).toBe(renderer)
+  wrapper.unmount()
 })

@@ -16,7 +16,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -24,6 +24,13 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   const unmatchedRequests = []
   const sockets = new Set()
   const heldReads = new Map()
+  const recoveredWidgets = new Set()
+  const recoveryPayloads = {
+    '/dashboard/api/get-summary/': { 'Current NAV': '$100.00', Invested: '$90.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R' },
+    '/dashboard/api/get-breakdown/': { assetType: { data: { Stocks: '100.00' }, percentage: { Stocks: '100%' } }, assetClass: { data: { Equity: '100.00' }, percentage: { Equity: '100%' } }, currency: { data: { USD: '100.00' }, percentage: { USD: '100%' } }, totalNAV: '$100.00' },
+    '/dashboard/api/get-summary-over-time/': { lines: [{ name: 'EoP NAV', data: { YTD: '$100.00', 'All-time': '$100.00' } }], years: [], currentYear: 2026 },
+    '/dashboard/api/get-nav-chart-data/': { currency: 'USD', labels: ['2026-09-08'], datasets: [{ label: 'NAV', type: 'bar', data: [100] }] },
+  }
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     const requestedMethod = request.method?.toUpperCase() || 'GET'
@@ -50,6 +57,10 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
             : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
       if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') fixture.body.options.push(['Second', { type: 'account', id: 2, display_name: 'Second synthetic account' }])
       if (dateFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') fixture.body.settings.table_date = currentDate
+      if (recoveryFlow && fixtureMethod === 'GET' && recoveryPayloads[url.pathname]) {
+        fixture.status = recoveredWidgets.has(url.pathname) ? 200 : 503
+        fixture.body = recoveredWidgets.has(url.pathname) ? recoveryPayloads[url.pathname] : { detail: 'Synthetic widget unavailable' }
+      }
       const record = { method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname }
       requests.push(record)
 
@@ -135,6 +146,8 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
 
   return {
     heldReads,
+    recoverWidget: (path) => recoveredWidgets.add(path),
+    resetRecovery: () => recoveredWidgets.clear(),
     releaseRead: (path) => heldReads.get(path)?.(),
     get pendingMutation() { return pendingMutation },
     releaseMutation: () => releaseMutation?.(),

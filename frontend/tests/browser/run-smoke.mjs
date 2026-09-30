@@ -15,11 +15,12 @@ import { assertFocusedLayoutFlow, assertLayoutGeometry } from './layout.mjs'
 import { assertContextFailureFlow } from './context.mjs'
 import { assertMountedDateFlow } from './dates.mjs'
 import { assertRequestOrderFlow } from './requests.mjs'
+import { assertDashboardRecoveryFlow } from './recovery.mjs'
 import { routes, viewports } from './routes.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -181,7 +182,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -197,10 +198,10 @@ async function main() {
     })
     appServer = await startBuiltAppServer(builtAppDir)
 
-    for (const viewport of ['dates', 'requests'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+    for (const viewport of ['dates', 'requests', 'recovery'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : selectedCase === 'context' ? route.path === '/dashboard' : selectedCase === 'layout'
+          selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -231,6 +232,10 @@ async function main() {
               session,
               viewport,
             })
+            if (selectedCase === 'recovery') {
+              await assertDashboardRecoveryFlow({ context: `${viewport.name} dashboard recovery`, initScript, log, session, fixtureServer })
+              console.log(`PASS ${viewport.name} dashboard recovery`)
+            }
             if (selectedCase === 'requests') {
               await assertRequestOrderFlow({ context: `${viewport.name} ${route.path} request order`, initScript, log, session, fixtureServer, route })
               console.log(`PASS ${viewport.name} ${route.path} request order`)
@@ -300,8 +305,8 @@ async function main() {
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
       routeManifestCount: routes.length,
-      routes: selectedCase === 'requests' ? 2 : selectedCase === 'dates' || selectedCase === 'context' ? 1 : selectedCase === 'layout' ? 4 : routes.length,
-      viewports: ['dates', 'requests'].includes(selectedCase) ? 1 : viewports.length,
+      routes: selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: ['dates', 'requests', 'recovery'].includes(selectedCase) ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))
