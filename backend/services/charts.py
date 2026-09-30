@@ -443,7 +443,8 @@ def _calculate_contributions(
             "date__date__lte": d,
         }
         if previous_date is not None:
-            filter_conditions["date__date__gt"] = previous_date
+            # previous_date is the first included day, not the previous sample endpoint.
+            filter_conditions["date__date__gte"] = previous_date
         transactions = Transactions.objects.filter(**filter_conditions)
 
     total_contributions = Decimal(0)
