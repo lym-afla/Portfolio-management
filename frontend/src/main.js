@@ -9,6 +9,7 @@ import { configurePortfolioContextBackend, createPortfolioContextBackend } from 
 import { usePortfolioContextStore } from './stores/portfolioContext'
 import { createPinia } from 'pinia'
 import './assets/fonts.css'
+import './assets/workspace.css'
 import './plugins/vee-validate'
 import logger from './utils/logger'
 import { createAppTheme } from './theme'

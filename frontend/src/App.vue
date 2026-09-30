@@ -12,10 +12,10 @@
           <div ref="appBarContent" class="app-bar-content" data-testid="app-bar-content">
             <v-container fluid class="py-2">
               <div class="d-flex">
-                <h2 v-if="pageTitle" class="text-h4 mb-2">{{ pageTitle }}</h2>
+                <h2 v-if="pageTitle && !workspaceHeadingCount" class="text-h4 mb-2">{{ pageTitle }}</h2>
                 <SettingsDialog v-if="showSettingsDialog" class="ml-auto" />
               </div>
-              <v-divider v-if="pageTitle" class="mb-2" />
+              <v-divider v-if="pageTitle && !workspaceHeadingCount" class="mb-2" />
               <div v-if="showComponents" class="d-flex align-center flex-wrap mb-2">
                 <AccountSelection class="flex-grow-1 app-bar-account-selection" />
                 <div class="d-flex align-center">
@@ -76,6 +76,7 @@
 <script setup lang="ts">
 import { provide, ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { routeChunkRecovery } from './router/chunkRecovery'
+import { workspaceHeadingKey } from './components/workspace/types'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -86,6 +87,11 @@ import logger from '@/utils/logger'
 import { snackbarTimeout } from '@/utils/snackbarTimeout'
 
 const context = usePortfolioContextStore()
+const workspaceHeadingCount = ref(0)
+provide(workspaceHeadingKey, () => {
+  workspaceHeadingCount.value += 1
+  return () => { workspaceHeadingCount.value -= 1 }
+})
 async function recoverContext() { try { await context.reconcileContext() } catch { /* Error remains visible with retry available. */ } }
 const authStore = useAuthStore()
 const router = useRouter()

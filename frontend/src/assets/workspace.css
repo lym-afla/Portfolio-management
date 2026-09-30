@@ -1,0 +1,29 @@
+.workspace-ui {
+  --workspace-gap: 24px;
+  --workspace-section-gap: 16px;
+  --workspace-radius: 8px;
+  --workspace-page-title: 1.5rem;
+  --workspace-metric: clamp(1.75rem, 3vw, 2.25rem);
+  color: rgb(var(--v-theme-text-primary));
+}
+
+.workspace-page { display: grid; gap: var(--workspace-gap); }
+.workspace-page__header,
+.workspace-section__header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--workspace-section-gap); }
+.workspace-page h1 { font-size: var(--workspace-page-title); line-height: 1.3; font-weight: 650; }
+.workspace-section { display: grid; gap: var(--workspace-section-gap); min-width: 0; }
+.workspace-section h2 { font-size: 1.125rem; line-height: 1.4; font-weight: 600; }
+.workspace-ui p { margin: 4px 0 0; max-width: 70ch; }
+.workspace-ui .workspace-number { text-align: right; font-variant-numeric: tabular-nums; }
+.workspace-ui .workspace-meta { color: rgb(var(--v-theme-text-secondary)); }
+.workspace-ui :focus-visible { outline: 2px solid rgb(var(--v-theme-focus)); outline-offset: 3px; }
+.workspace-ui .workspace-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.workspace-ui .workspace-table-region { max-width: 100%; overflow-x: auto; }
+.workspace-ui input,
+.workspace-ui textarea { caret-color: rgb(var(--v-theme-focus)); }
+.workspace-ui ::selection { background: rgb(var(--v-theme-primary)); color: rgb(var(--v-theme-surface)); }
+
+@media (max-width: 599px) {
+  .workspace-ui { --workspace-gap: 16px; --workspace-section-gap: 12px; }
+  .workspace-ui .workspace-touch-action { min-width: 44px; min-height: 44px; }
+}

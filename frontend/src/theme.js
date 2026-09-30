@@ -9,6 +9,11 @@ export const palette = {
   error: '#B3261E',
   info: '#0B5FA5',
   warning: '#9A6700',
+  'text-primary': '#172B4D',
+  'text-secondary': '#526477',
+  border: '#E2E6EB',
+  'surface-muted': '#F2F4F7',
+  focus: '#0F4C81',
 }
 
 export function createAppTheme() {
