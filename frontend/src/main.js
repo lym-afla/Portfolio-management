@@ -1,7 +1,5 @@
 import { createApp } from 'vue'
 import { createVuetify } from 'vuetify'
-import * as components from 'vuetify/components'
-import * as directives from 'vuetify/directives'
 import 'vuetify/styles'
 import App from './App.vue'
 import router from './router'
@@ -17,8 +15,6 @@ import { createAppTheme } from './theme'
 import { appIcons } from './plugins/icons'
 
 const vuetify = createVuetify({
-  components,
-  directives,
   icons: appIcons,
   theme: createAppTheme(),
 })
