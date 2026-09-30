@@ -415,7 +415,7 @@ Declare data/error with shallowRef, loading with ref, return readonly refs, and 
 
 **Consumes:** R3 context and R5 runner. **Produces:** Dashboard loader integration and recovery.mjs; no change to backend NAV error semantics in this PR.
 
-- [ ] **1. Extend the current retry tests past request-count assertions.**
+- [x] **1. Extend the current retry tests past request-count assertions.**
 
 ~~~ts
 // Synthetic display data; these are the current backend's dictionary keys.
@@ -440,10 +440,10 @@ it('restores summary content after failure then successful retry', async () => {
 
 mountDashboardWithRealStores is a local helper in DashboardPage.requests.spec.ts: install Pinia/Vuetify, configure the synthetic context backend and mock the four dashboard endpoints. The Current NAV/Invested/Cash-out/total_return/irr keys come from backend/dashboard/views.py:63-113; their amounts above are synthetic presentation inputs, not claimed calculated results. The generated DashboardSummaryResponse currently advertises a metrics envelope while this view returns the dictionary directly; R8 must characterize and type the actual response rather than wrapping data to satisfy a stale schema. Repeat the full recovery assertion for allocations, history and NAV. Run npm run test:unit -- DashboardPage.retry DashboardPage.requests; expect the current retained error to fail.
 
-- [ ] **2. Replace four independent ad hoc loaders with four runner instances.** Bind each widget's data/error/loading to its runner; remove retained error flags that can hide successful content. Starting retry clears that widget's error; accepted data clears it permanently; failure sets only that widget error. Do not rely on clearErrors(), which only clears the global snackbar.
-- [ ] **3. Preserve same-context chart presentation and explicit empty states.** Keep existing NAV data mounted during parameter updates and expose an updating overlay. A context invalidation removes the old context's result. Preserve the current history 404/no-data convention only for that documented endpoint; distinguish a request error from empty successful data. The chart/backend plan owns the separate HTTP-200 empty-on-error backend defect.
-- [ ] **4. Add the real-browser failure/recovery case.** recovery.mjs injects one failure, switches the fixture to success, clicks the actual Retry button and asserts visible content, absent inline error and no duplicate fetch burst. Verify each widget can recover while another remains failed.
-- [ ] **5. Run complete R1 gates and full pytest.** Chart migration work must preserve these tests, not replace them with wrapper-call counts.
+- [x] **2. Replace four independent ad hoc loaders with four runner instances.** Bind each widget's data/error/loading to its runner; remove retained error flags that can hide successful content. Starting retry clears that widget's error; accepted data clears it permanently; failure sets only that widget error. Do not rely on clearErrors(), which only clears the global snackbar.
+- [x] **3. Preserve same-context chart presentation and explicit empty states.** Keep existing NAV data mounted during parameter updates and expose an updating overlay. A context invalidation removes the old context's result. Preserve the current history 404/no-data convention only for that documented endpoint; distinguish a request error from empty successful data. The chart/backend plan owns the separate HTTP-200 empty-on-error backend defect.
+- [x] **4. Add the real-browser failure/recovery case.** recovery.mjs injects one failure, switches the fixture to success, clicks the actual Retry button and asserts visible content, absent inline error and no duplicate fetch burst. Verify each widget can recover while another remains failed.
+- [x] **5. Run complete R1 gates and full pytest.** Chart migration work must preserve these tests, not replace them with wrapper-call counts.
 
 **Acceptance:** The exact audited failed-summary → successful-HTTP-response → still-hidden-content case is fixed; rejected/aborted old attempts cannot reintroduce errors. **Commit/PR:** codex/frontend-r6-dashboard-recovery; fix: restore dashboard widgets after successful retries. **Rollback:** revert loader integration as a coherent batch; preserve any separately merged chart rendering changes.
 
@@ -594,7 +594,7 @@ Use the project's commit body fields: What changed; Why; Numerical impact / exam
 - [ ] R3 retains broker/group/all/account variants and commits date/currency/digits atomically, including session refresh.
 - [ ] R4 reproduces effective-date changes without navigation and avoids duplicate fetch triggers.
 - [ ] R5 rejects obsolete responses for all dependent side effects and never drops FX parameter changes.
-- [ ] R6 verifies content recovery after success, not only that Retry invokes the API.
+- [x] R6 verifies content recovery after success, not only that Retry invokes the API.
 - [ ] R7 measures complete cold-route dependency graphs and protects active import sessions during lazy mounting.
 - [ ] R8 preserves api.ts exports, request bodies, raw financial value semantics and an acyclic strict boundary.
 - [ ] The master/design/chart plans use these exact shared interfaces; conflicting file edits are sequenced through the master.
