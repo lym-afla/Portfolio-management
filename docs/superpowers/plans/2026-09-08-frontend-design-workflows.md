@@ -808,7 +808,7 @@ Expected: all checks pass. Record command exit status and failing tests precisel
 ## Completion checklist for this plan
 
 - [x] D1 tokens/defaults preserve the palette/system font and existing numeric formatting.
-- [ ] D2 displays R's committed context and keeps labels/navigation usable at narrow widths.
+- [x] D2 displays R's committed context and keeps labels/navigation usable at narrow widths.
 - [ ] D3 desktop/mobile rendered pilot is reviewed before global propagation.
 - [ ] D4 shared table/action/dialog patterns preserve financial table utility and improve keyboard operation.
 - [ ] D5 covers every route family, including profile/auth and all database pages.

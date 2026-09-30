@@ -1,180 +1,113 @@
-<template>
-  <v-navigation-drawer v-model="drawer" :rail="!extended" permanent>
-    <v-list-item @click="toggleExtended" prepend-icon="mdi-menu" title="Menu" />
-
-    <v-divider />
-
-    <v-list density="compact" nav>
-      <v-list-item
-        prepend-icon="mdi-apps"
-        title="Summary"
-        value="summary"
-        to="/summary"
-        :active="isActive('/summary')"
-        @click="goToPage('/summary')"
-      />
-    </v-list>
-
-    <v-divider />
-
-    <v-list density="compact" nav>
-      <v-list-item
-        v-for="item in menuItems"
-        :key="item.title"
-        :prepend-icon="item.icon"
-        :title="item.title"
-        :value="item.value"
-        :to="item.to"
-        :active="isActive(item.to)"
-        @click="goToPage(item.to)"
-      />
-    </v-list>
-
-    <v-divider />
-
-    <v-list density="compact" nav>
-      <v-list-group value="database" :mandatory="false">
-        <template v-slot:activator="{ props }">
-          <v-list-item
-            v-bind="props"
-            prepend-icon="mdi-database"
-            title="Database"
-            :active="isActive('/database')"
-            @click="handleDatabaseClick"
-          />
-        </template>
-
-        <div v-if="extended">
-          <v-list-item
-            v-for="subItem in databaseSubItems"
-            :key="subItem.title"
-            :prepend-icon="subItem.icon"
-            :title="subItem.title"
-            :to="subItem.to"
-            :active="isActive(subItem.to)"
-            @click="goToPage(subItem.to)"
-          />
-        </div>
-      </v-list-group>
-    </v-list>
-
-    <template v-slot:append>
-      <v-divider />
-      <v-list density="compact" nav>
-        <v-list-item
-          prepend-icon="mdi-calendar"
-          :title="effectiveCurrentDate || 'No date set'"
-          value="effective-date"
-        />
-        <v-list-item
-          prepend-icon="mdi-account-circle"
-          title="Profile"
-          value="profile"
-          to="/profile"
-          :active="isActive('/profile')"
-        >
-          <!-- <template v-slot:append>
-            <v-avatar size="36">
-              <v-img
-                src="https://randomuser.me/api/portraits/men/85.jpg"
-                alt="User"
-              ></v-img>
-            </v-avatar>
-          </template> -->
-        </v-list-item>
-      </v-list>
-    </template>
-  </v-navigation-drawer>
-</template>
-
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
-import { useAppStore } from '@/stores/app'
-
-interface NavItem {
-  title: string
-  icon: string
-  value?: string
-  to: string
-}
-
-const drawer = ref(true)
-const extended = ref(false)
+import { workspaceNavigation } from './workspace/navigation'
+const { mdAndUp } = useDisplay()
 const route = useRoute()
 const router = useRouter()
-const appStore = useAppStore()
-const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
-
-const menuItems: NavItem[] = [
-  {
-    title: 'Dashboard',
-    icon: 'mdi-monitor-dashboard',
-    value: 'dashboard',
-    to: '/dashboard',
+const opened = ref(false)
+const trigger = ref<{ $el: HTMLElement } | HTMLElement | null>(null)
+const drawer = computed({
+  get: () => mdAndUp.value || opened.value,
+  set: (value: boolean) => {
+    opened.value = value
   },
-  {
-    title: 'Open Positions',
-    icon: 'mdi-clipboard-check',
-    value: 'open',
-    to: '/open-positions',
-  },
-  {
-    title: 'Closed Positions',
-    icon: 'mdi-clipboard-remove',
-    value: 'closed',
-    to: '/closed-positions',
-  },
-  {
-    title: 'Transactions',
-    icon: 'mdi-swap-horizontal',
-    value: 'transactions',
-    to: '/transactions',
-  },
-]
-
-const databaseSubItems: NavItem[] = [
-  {
-    title: 'Brokers',
-    icon: 'mdi-office-building',
-    to: '/database/brokers',
-  },
-  { title: 'Accounts', icon: 'mdi-bank', to: '/database/accounts' },
-  {
-    title: 'Prices',
-    icon: 'mdi-file-document-outline',
-    to: '/database/prices',
-  },
-  {
-    title: 'Securities',
-    icon: 'mdi-chart-line',
-    to: '/database/securities',
-  },
-  { title: 'FX', icon: 'mdi-currency-usd', to: '/database/fx' },
-]
-
-const toggleExtended = () => {
-  extended.value = !extended.value
+})
+async function closeNavigation() {
+  if (mdAndUp.value) return
+  opened.value = false
+  await nextTick()
+  const element =
+    trigger.value &&
+    ('$el' in trigger.value ? trigger.value.$el : trigger.value)
+  element?.focus()
 }
-
-const isActive = (path: string) => {
-  if (path === '/database') {
-    // Check if current route is database or any of its children
-    return route.path.startsWith('/database')
-  }
-  return route.path === path
+async function navigate(path: string) {
+  await router.push(path)
+  await closeNavigation()
 }
-
-const goToPage = (path: string) => {
-  router.push(path)
+function onEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && opened.value && !mdAndUp.value)
+    void closeNavigation()
 }
-
-const handleDatabaseClick = () => {
-  if (!extended.value) {
-    extended.value = true
-    // } else {
-    //   // If already extended, navigate to a default database page or toggle the group
-    //   router.push('/database') // or any default database route
-  }
+onMounted(() => document.addEventListener('keydown', onEscape))
+onUnmounted(() => document.removeEventListener('keydown', onEscape))
+watch(mdAndUp, () => {
+  opened.value = false
+})
+watch(opened, (value, previous) => {
+  if (!value && previous && !mdAndUp.value) void closeNavigation()
+})
+function active(path: string) {
+  return path === '/profile'
+    ? route.path.startsWith('/profile')
+    : route.path === path
 }
 </script>
+<template>
+  <v-btn
+    v-if="!mdAndUp"
+    ref="trigger"
+    class="workspace-navigation-trigger"
+    icon
+    variant="text"
+    aria-label="Open navigation"
+    :aria-expanded="opened"
+    aria-controls="workspace-navigation"
+    @click="opened = true"
+    ><v-icon>mdi-menu</v-icon></v-btn
+  >
+  <v-navigation-drawer
+    v-model="drawer"
+    id="workspace-navigation"
+    :rail="false"
+    :permanent="mdAndUp"
+    :temporary="!mdAndUp"
+    width="224"
+    aria-label="Main navigation"
+    @keydown.esc="closeNavigation"
+  >
+    <v-list density="compact" nav>
+      <template v-for="(item, index) in workspaceNavigation" :key="item.to">
+        <v-list-subheader v-if="index === 0">Portfolio</v-list-subheader>
+        <v-list-subheader v-if="item.to === '/open-positions'"
+          >Positions</v-list-subheader
+        >
+        <v-divider
+          v-if="
+            item.section !== workspaceNavigation[index - 1]?.section &&
+            index > 0
+          "
+          class="my-2"
+        />
+        <v-list-subheader
+          v-if="
+            item.section === 'data' &&
+            workspaceNavigation[index - 1]?.section !== 'data'
+          "
+          >Data</v-list-subheader
+        >
+        <v-list-subheader v-if="item.section === 'personal'"
+          >Personal</v-list-subheader
+        >
+        <v-list-item
+          :to="item.to"
+          :title="item.label"
+          :prepend-icon="item.icon"
+          :active="active(item.to)"
+          :aria-current="active(item.to) ? 'page' : undefined"
+          @click.prevent="navigate(item.to)"
+        />
+      </template>
+    </v-list>
+  </v-navigation-drawer>
+</template>
+<style scoped>
+.workspace-navigation-trigger {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 1010;
+}
+</style>

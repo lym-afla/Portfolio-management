@@ -44,7 +44,7 @@ export async function assertContextFailureFlow({
     (
       await run([
         'eval',
-        `({ label: document.querySelector('.account-selection .v-select__selection-text')?.textContent, disabled: !!document.querySelector('.account-selection input')?.disabled, text: document.body.innerText, dialog: !!document.querySelector('.v-dialog.v-overlay--active'), busy: document.querySelector('[aria-busy="true"]') !== null })`,
+        `({ label: document.querySelector('.account-selection .v-select__selection-text')?.textContent, disabled: !!document.querySelector('.account-selection input')?.disabled, text: document.body.innerText, dialog: !!document.querySelector('.v-dialog.v-overlay--active'), busy: document.querySelector('[data-testid="route-content"] [aria-busy="true"]') !== null, loading: !!document.querySelector('[data-testid="route-content"] .v-skeleton-loader'), inert: !!document.querySelector('[data-testid="route-content"] [inert]') })`,
       ])
     ).result
   const before = await probe()
@@ -57,15 +57,29 @@ export async function assertContextFailureFlow({
   assert.equal(during.disabled, true)
   assert.equal(during.busy, true)
   assert.ok(
-    during.text.includes('100.00'),
-    'Prior confirmed portfolio result should remain visible'
+    before.text.includes('100.00'),
+    'Confirmed result must be loaded before the transition'
+  )
+  assert.equal(
+    during.loading,
+    true,
+    'R6 deliberately invalidates old-context results while saving'
+  )
+  assert.equal(
+    during.inert,
+    true,
+    'Pending route content must not accept actions'
+  )
+  assert.ok(
+    during.text.includes('Updating to Second synthetic account'),
+    'Pending choice must be distinct from the confirmed label'
   )
   fixtureServer.releaseMutation()
   await run(['wait', '300'])
   const failed = await probe()
   assert.equal(failed.label, before.label)
   assert.ok(failed.text.includes('Synthetic account denied'))
-  await click('button', 'Portfolio settings')
+  await click('button', 'Display preferences')
   await click('button', 'Update')
   assert.equal(fixtureServer.pendingMutation, true)
   const saving = await probe()

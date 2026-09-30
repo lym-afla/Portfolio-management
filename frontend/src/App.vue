@@ -9,20 +9,66 @@
         <Navigation @logout="handleLogout" />
 
         <v-app-bar elevation="1" :height="appBarHeight">
-          <div ref="appBarContent" class="app-bar-content" data-testid="app-bar-content">
+          <div
+            ref="appBarContent"
+            class="app-bar-content"
+            data-testid="app-bar-content"
+          >
             <v-container fluid class="py-2">
-              <div class="d-flex">
-                <h2 v-if="pageTitle && !workspaceHeadingCount" class="text-h4 mb-2">{{ pageTitle }}</h2>
-                <SettingsDialog v-if="showSettingsDialog" class="ml-auto" />
+              <div class="d-flex app-bar-title">
+                <SettingsDialog
+                  v-if="showSettingsDialog"
+                  class="ml-auto"
+                  :request-change="requestContextChange"
+                />
               </div>
-              <v-divider v-if="pageTitle && !workspaceHeadingCount" class="mb-2" />
-              <div v-if="showComponents" class="d-flex align-center flex-wrap mb-2">
-                <AccountSelection class="flex-grow-1 app-bar-account-selection" />
-                <div class="d-flex align-center">
-                  <v-divider vertical class="mx-2" />
-                  <SettingsDialog />
-                </div>
-              </div>
+              <WorkspaceContextStrip
+                v-if="showComponents"
+                :view="contextView"
+                @open-preferences="preferences?.openDialog()"
+              >
+                <template #controls>
+                  <div class="workspace-context-controls">
+                    <AccountSelection
+                      class="workspace-context-account"
+                      intent-only
+                      @request-change="handleContextChange"
+                    />
+                    <div class="workspace-context-settings">
+                      <v-text-field
+                        v-model="dateDraft"
+                        label="Valuation date"
+                        type="date"
+                        density="compact"
+                        hide-details
+                        :disabled="!context.canRead"
+                        @blur="saveDate"
+                        @keydown.enter.prevent="saveDate"
+                      />
+                      <v-select
+                        :model-value="context.committed.currency"
+                        :items="context.currencyChoices"
+                        item-title="text"
+                        item-value="value"
+                        label="Reporting currency"
+                        density="compact"
+                        hide-details
+                        :disabled="!context.canRead"
+                        @update:model-value="
+                          handleContextChange({ currency: $event })
+                        "
+                      />
+                    </div>
+                  </div>
+                </template>
+              </WorkspaceContextStrip>
+              <SettingsDialog
+                v-if="showComponents"
+                ref="preferences"
+                hide-activator
+                preferences-only
+                :request-change="requestContextChange"
+              />
               <v-divider v-if="showComponents" />
             </v-container>
           </div>
@@ -30,15 +76,46 @@
 
         <v-main>
           <v-container fluid class="pa-4" data-testid="route-content">
-            <v-alert v-if="routeChunkRecovery.error.value" type="error" role="alert" class="mb-4" data-testid="route-load-error">
+            <h1
+              v-if="pageTitle && !workspaceHeadingCount"
+              class="text-h5 mb-4"
+              data-testid="legacy-page-heading"
+            >
+              {{ pageTitle }}
+            </h1>
+            <v-alert
+              v-if="routeChunkRecovery.error.value"
+              type="error"
+              role="alert"
+              class="mb-4"
+              data-testid="route-load-error"
+            >
               {{ routeChunkRecovery.error.value }}
-              <v-btn @click="routeChunkRecovery.reload">Reload application</v-btn>
+              <v-btn @click="routeChunkRecovery.reload"
+                >Reload application</v-btn
+              >
             </v-alert>
-            <v-alert v-if="!context.isReady" type="warning" role="status" class="mb-4">
-              {{ context.transitionError?.message || 'Portfolio context is loading' }}
-              <v-btn :loading="context.isTransitioning" :disabled="context.isTransitioning" @click="recoverContext">Recover portfolio context</v-btn>
+            <v-alert
+              v-if="!context.isReady"
+              type="warning"
+              role="status"
+              class="mb-4"
+            >
+              {{
+                context.transitionError?.message ||
+                'Portfolio context is loading'
+              }}
+              <v-btn
+                :loading="context.isTransitioning"
+                :disabled="context.isTransitioning"
+                @click="recoverContext"
+                >Recover portfolio context</v-btn
+              >
             </v-alert>
-            <div :aria-busy="context.isTransitioning" :inert="context.isTransitioning || !context.isReady">
+            <div
+              :aria-busy="context.isTransitioning"
+              :inert="context.isTransitioning || !context.isReady"
+            >
               <router-view @update-page-title="updatePageTitle" />
             </div>
           </v-container>
@@ -46,7 +123,13 @@
       </template>
       <template v-else>
         <v-main>
-          <v-alert v-if="routeChunkRecovery.error.value" type="error" role="alert" class="ma-4" data-testid="route-load-error">
+          <v-alert
+            v-if="routeChunkRecovery.error.value"
+            type="error"
+            role="alert"
+            class="ma-4"
+            data-testid="route-load-error"
+          >
             {{ routeChunkRecovery.error.value }}
             <v-btn @click="routeChunkRecovery.reload">Reload application</v-btn>
           </v-alert>
@@ -76,10 +159,17 @@
 <script setup lang="ts">
 import { provide, ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { routeChunkRecovery } from './router/chunkRecovery'
-import { workspaceHeadingKey } from './components/workspace/types'
+import {
+  workspaceHeadingKey,
+  type ContextIntent,
+} from './components/workspace/types'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import WorkspaceContextStrip from './components/workspace/WorkspaceContextStrip.vue'
+import { toContextPatch } from './components/workspace/contextIntent'
+import { useWorkspaceContextView } from './components/workspace/useWorkspaceContextView'
+import { formatAccountChoices } from './utils/accountUtils'
 import { useRouter, useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAuthStore } from '@/stores/auth'
@@ -87,12 +177,79 @@ import logger from '@/utils/logger'
 import { snackbarTimeout } from '@/utils/snackbarTimeout'
 
 const context = usePortfolioContextStore()
+const preferences = ref<InstanceType<typeof SettingsDialog> | null>(null)
+const pendingLabel = ref<string | null>(null)
+const dateDraft = ref(context.committed.effectiveCurrentDate ?? '')
+watch(
+  () => context.committed.effectiveCurrentDate,
+  (date) => {
+    dateDraft.value = date ?? ''
+  }
+)
+async function saveDate() {
+  if (
+    !context.canRead ||
+    dateDraft.value === context.committed.effectiveCurrentDate
+  )
+    return
+  try {
+    await requestContextChange({ effectiveCurrentDate: dateDraft.value })
+  } catch {
+    /* Committed context and transition error remain authoritative. */
+  } finally {
+    dateDraft.value = context.committed.effectiveCurrentDate ?? ''
+  }
+}
+const accountChoices = computed(() =>
+  formatAccountChoices(context.accountOptions)
+)
+function accountLabel(selection: typeof context.committed.accountSelection) {
+  return (
+    accountChoices.value.find(
+      (option) =>
+        option.type === 'option' &&
+        option.value?.type === selection.type &&
+        option.value?.id === selection.id
+    )?.title ?? (selection.type === 'all' ? 'All accounts' : 'Unavailable')
+  )
+}
+const contextView = useWorkspaceContextView(
+  context,
+  () => accountLabel(context.committed.accountSelection),
+  () => pendingLabel.value
+)
+async function requestContextChange(intent: ContextIntent): Promise<void> {
+  if (context.isTransitioning) return
+  const patch = toContextPatch(intent, context.committed, context.isReady)
+  pendingLabel.value =
+    'accountSelection' in intent
+      ? accountLabel(intent.accountSelection)
+      : 'updated portfolio settings'
+  try {
+    await context.changeContext(patch)
+  } finally {
+    pendingLabel.value = null
+  }
+}
+function handleContextChange(intent: ContextIntent) {
+  void requestContextChange(intent).catch(() => {
+    /* The store exposes the error while retaining committed data. */
+  })
+}
 const workspaceHeadingCount = ref(0)
 provide(workspaceHeadingKey, () => {
   workspaceHeadingCount.value += 1
-  return () => { workspaceHeadingCount.value -= 1 }
+  return () => {
+    workspaceHeadingCount.value -= 1
+  }
 })
-async function recoverContext() { try { await context.reconcileContext() } catch { /* Error remains visible with retry available. */ } }
+async function recoverContext() {
+  try {
+    await context.reconcileContext()
+  } catch {
+    /* Error remains visible with retry available. */
+  }
+}
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
@@ -113,13 +270,14 @@ watch(
     const measure = () => {
       // offsetHeight is in layout pixels, including when CSS zoom scales the rectangle.
       const height = element.offsetHeight
-      if (height > 0 && height !== appBarHeight.value) appBarHeight.value = height
+      if (height > 0 && height !== appBarHeight.value)
+        appBarHeight.value = height
     }
     appBarObserver = new ResizeObserver(measure)
     appBarObserver.observe(element)
     measure()
   },
-  { flush: 'post' },
+  { flush: 'post' }
 )
 onUnmounted(() => appBarObserver?.disconnect())
 
@@ -185,8 +343,43 @@ body {
   height: max-content;
 }
 
-.app-bar-account-selection {
-  min-width: min(100%, 320px);
+.workspace-context-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.workspace-context-account {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.workspace-context-settings {
+  display: flex;
+  gap: 12px;
+  flex: 0 1 360px;
+  min-width: 0;
+}
+.workspace-context-settings > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+@media (max-width: 959px) {
+  .app-bar-title {
+    padding-left: 48px;
+    min-height: 44px;
+  }
+}
+@media (max-width: 599px) {
+  .workspace-context-controls {
+    gap: 12px;
+  }
+  .workspace-context-account,
+  .workspace-context-settings {
+    flex-basis: 100%;
+  }
+  .workspace-context-settings .v-field {
+    min-height: 44px;
+  }
 }
 
 .v-data-table th {

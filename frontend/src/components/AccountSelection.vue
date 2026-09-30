@@ -4,6 +4,7 @@
       <v-card-text class="pa-0">
         <div class="d-flex align-center">
           <v-btn
+            aria-label="Previous account"
             @click="switchAccount(-1)"
             :disabled="
               context.isTransitioning || !context.isReady || !canSwitchLeft
@@ -44,6 +45,7 @@
             </template>
           </v-select>
           <v-btn
+            aria-label="Next account"
             @click="switchAccount(1)"
             :disabled="
               context.isTransitioning || !context.isReady || !canSwitchRight
@@ -54,9 +56,12 @@
             <v-icon>mdi-chevron-right</v-icon>
           </v-btn>
         </div>
-        <v-alert v-if="context.transitionError" type="error" role="alert">{{
-          context.transitionError.message
-        }}</v-alert>
+        <v-alert
+          v-if="!intentOnly && context.transitionError"
+          type="error"
+          role="alert"
+          >{{ context.transitionError.message }}</v-alert
+        >
       </v-card-text>
     </v-card>
   </div>
@@ -67,6 +72,8 @@ import { computed } from 'vue'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { formatAccountChoices } from '@/utils/accountUtils'
 
+const props = defineProps({ intentOnly: Boolean })
+const emit = defineEmits(['request-change'])
 const context = usePortfolioContextStore()
 const accountOptions = computed(() =>
   formatAccountChoices(context.accountOptions)
@@ -104,6 +111,12 @@ const canSwitchRight = computed(() =>
 )
 async function handleAccountChange(value) {
   if (!value || context.isTransitioning || !context.isReady) return
+  if (props.intentOnly) {
+    emit('request-change', {
+      accountSelection: { type: value.type, id: value.id },
+    })
+    return
+  }
   try {
     await context.changeContext({
       accountSelection: { type: value.type, id: value.id },
@@ -148,6 +161,7 @@ function switchAccount(direction) {
 }
 
 .account-select {
+  min-width: 0;
   flex-grow: 1;
 }
 
@@ -161,5 +175,13 @@ function switchAccount(direction) {
 
 :deep(.v-field__outline) {
   --v-field-border-width: 1px;
+}
+@media (max-width: 599px) {
+  .arrow-btn {
+    display: none;
+  }
+  .account-select {
+    margin: 0 !important;
+  }
 }
 </style>

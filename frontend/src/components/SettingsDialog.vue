@@ -1,24 +1,33 @@
 <template>
   <div>
     <v-btn
+      v-if="!hideActivator"
       icon
       @click="openDialog"
       elevation="2"
-      aria-label="Portfolio settings"
+      aria-label="Display preferences"
       :disabled="!context.canRead"
     >
       <v-icon>mdi-cog</v-icon>
     </v-btn>
 
-    <v-dialog v-model="dialog" max-width="400px" persistent>
+    <v-dialog
+      v-model="dialog"
+      max-width="400px"
+      persistent
+      aria-labelledby="display-preferences-heading"
+    >
       <v-card>
-        <v-card-title class="text-h5"> Settings </v-card-title>
+        <v-card-title id="display-preferences-heading" class="text-h5"
+          >Display preferences</v-card-title
+        >
         <v-card-text>
           <v-alert v-if="errors.general" type="error" role="alert">{{
             errors.general.join(' ')
           }}</v-alert>
           <v-form @submit.prevent="saveSettings" ref="form">
             <v-select
+              v-if="!preferencesOnly"
               v-model="formData.default_currency"
               :items="currencyChoices"
               item-title="text"
@@ -35,6 +44,7 @@
               :disabled="isUpdating"
             />
             <v-text-field
+              v-if="!preferencesOnly"
               v-model="formData.table_date"
               label="Date"
               type="date"
@@ -71,6 +81,11 @@
 import { ref, reactive, computed } from 'vue'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 
+const props = defineProps({
+  hideActivator: Boolean,
+  preferencesOnly: Boolean,
+  requestChange: Function,
+})
 const context = usePortfolioContextStore()
 const dialog = ref(false)
 const form = ref(null)
@@ -80,6 +95,7 @@ const isUpdating = computed(() => saving.value || context.isTransitioning)
 const currencyChoices = computed(() => context.currencyChoices)
 const formData = reactive({ default_currency: '', digits: 2, table_date: '' })
 function openDialog() {
+  if (!context.canRead) return
   const current = context.committed
   Object.assign(formData, {
     default_currency: current.currency,
@@ -94,15 +110,19 @@ function closeDialog() {
   errors.value = {}
 }
 async function saveSettings() {
-  if (isUpdating.value) return
+  if (isUpdating.value || !context.isReady) return
   errors.value = {}
   saving.value = true
   try {
-    await context.changeContext({
-      effectiveCurrentDate: formData.table_date,
-      currency: formData.default_currency,
-      digits: Number(formData.digits),
-    })
+    const intent = props.preferencesOnly
+      ? { digits: Number(formData.digits) }
+      : {
+          effectiveCurrentDate: formData.table_date,
+          currency: formData.default_currency,
+          digits: Number(formData.digits),
+        }
+    if (props.requestChange) await props.requestChange(intent)
+    else await context.changeContext(intent)
     closeDialog()
   } catch (error) {
     errors.value = {
@@ -112,4 +132,5 @@ async function saveSettings() {
     saving.value = false
   }
 }
+defineExpose({ openDialog })
 </script>
