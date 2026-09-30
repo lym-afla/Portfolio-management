@@ -128,7 +128,7 @@
     </v-row>
 
     <!-- Add/edit dialog. editItem drives Edit mode; prefill seeds Add-from-cell. -->
-    <FXDialog
+    <FXDialog v-if="showFXDialogMounted"
       v-model="showFXDialog"
       :edit-item="editedItem"
       :prefill="dialogPrefill"
@@ -136,7 +136,7 @@
       @fx-updated="fetchFXData"
       @fx-delete="onDeleteFromDialog"
     />
-    <FXImportDialog
+    <FXImportDialog v-if="showImportDialogMounted"
       v-model="showImportDialog"
       @import-completed="fetchFXData"
       @refresh-table="fetchFXData"
@@ -166,6 +166,8 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, computed, watch, watchEffect, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
@@ -179,8 +181,8 @@ import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
-import FXDialog from '@/components/dialogs/FXDialog.vue'
-import FXImportDialog from '@/components/dialogs/FXImportDialog.vue'
+const FXDialog = defineAppDialog(() => import('@/components/dialogs/FXDialog.vue'))
+const FXImportDialog = defineAppDialog(() => import('@/components/dialogs/FXImportDialog.vue'))
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import { pivotFxRows, splitPairLabel } from '@/utils/fxPivot'
 import logger from '@/utils/logger'
@@ -342,7 +344,9 @@ onMounted(async () => {
 })
 
 const showFXDialog = ref(false)
+const showFXDialogMounted = useFirstOpen(showFXDialog)
 const showImportDialog = ref(false)
+const showImportDialogMounted = useFirstOpen(showImportDialog)
 const showDeleteDialog = ref(false)
 const editedItem = ref(null)
 // Prefill for Add-from-cell: { date, from_currency, to_currency }. Null when

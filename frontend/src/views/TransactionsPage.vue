@@ -23,7 +23,8 @@
         >
           Add FX Transaction
         </v-btn>
-        <MergerDialog @created="onMergerCreated" />
+        <v-btn color="primary" prepend-icon="mdi-swap-horizontal" class="mr-2" @click="showMergerDialog = true">Record Merger</v-btn>
+            <MergerDialog v-if="showMergerDialogMounted" v-model="showMergerDialog" @created="onMergerCreated" />
         <v-btn
           color="secondary"
           prepend-icon="mdi-upload"
@@ -155,14 +156,14 @@
       </v-col>
     </v-row>
 
-    <TransactionFormDialog
+    <TransactionFormDialog v-if="showTransactionDialogMounted"
       v-model="showTransactionDialog"
       :edit-item="editedTransaction"
       @transaction-added="fetchTransactions"
       @transaction-updated="fetchTransactions"
     />
 
-    <FXTransactionFormDialog
+    <FXTransactionFormDialog v-if="showFXTransactionDialogMounted"
       v-model="showFXTransactionDialog"
       :edit-item="editedTransaction"
       @transaction-added="fetchTransactions"
@@ -188,12 +189,12 @@
       </v-card>
     </v-dialog>
 
-    <TransactionImportDialog
+    <TransactionImportDialog v-if="showImportDialogMounted"
       v-model="showImportDialog"
       @import-completed="handleImportCompleted"
     />
 
-    <AssetTransferDialog
+    <AssetTransferDialog v-if="showTransferDialogMounted"
       v-model="showTransferDialog"
       @transfer-completed="handleTransferCompleted"
     />
@@ -201,6 +202,8 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
@@ -217,11 +220,11 @@ import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
-import TransactionFormDialog from '@/components/dialogs/TransactionFormDialog.vue'
-import FXTransactionFormDialog from '@/components/dialogs/FXTransactionFormDialog.vue'
-import TransactionImportDialog from '@/components/dialogs/TransactionImportDialog.vue'
-import AssetTransferDialog from '@/components/dialogs/AssetTransferDialog.vue'
-import MergerDialog from '@/components/dialogs/MergerDialog.vue'
+const TransactionFormDialog = defineAppDialog(() => import('@/components/dialogs/TransactionFormDialog.vue'))
+const FXTransactionFormDialog = defineAppDialog(() => import('@/components/dialogs/FXTransactionFormDialog.vue'))
+const TransactionImportDialog = defineAppDialog(() => import('@/components/dialogs/TransactionImportDialog.vue'))
+const AssetTransferDialog = defineAppDialog(() => import('@/components/dialogs/AssetTransferDialog.vue'))
+const MergerDialog = defineAppDialog(() => import('@/components/dialogs/MergerDialog.vue'))
 import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import logger from '@/utils/logger'
 
@@ -231,6 +234,8 @@ const emit = defineEmits(['update-page-title'])
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
+const showMergerDialog = ref(false)
+const showMergerDialogMounted = useFirstOpen(showMergerDialog)
 const { handleApiError } = useErrorHandler()
 
 const {
@@ -292,12 +297,16 @@ const transactions = computed(() => transactionsQuery.data.value?.transactions ?
 const totalItems = computed(() => transactionsQuery.data.value?.total_items ?? 0)
 const currencies = computed(() => transactionsQuery.data.value?.currencies ?? [])
 const showTransactionDialog = ref(false)
+const showTransactionDialogMounted = useFirstOpen(showTransactionDialog)
 const showFXTransactionDialog = ref(false)
+const showFXTransactionDialogMounted = useFirstOpen(showFXTransactionDialog)
 const editedTransaction = ref(null)
 const deleteDialog = ref(false)
 const transactionToDelete = ref(null)
 const showImportDialog = ref(false)
+const showImportDialogMounted = useFirstOpen(showImportDialog)
 const showTransferDialog = ref(false)
+const showTransferDialogMounted = useFirstOpen(showTransferDialog)
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)

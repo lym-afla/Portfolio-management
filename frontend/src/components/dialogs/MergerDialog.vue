@@ -1,6 +1,6 @@
 <template>
   <v-dialog v-model="dialog" max-width="600px">
-    <template v-slot:activator="{ props }">
+    <template v-if="modelValue === undefined" v-slot:activator="{ props }">
       <v-btn color="primary" v-bind="props" prepend-icon="mdi-swap-horizontal" class="mr-2">
         Record Merger
       </v-btn>
@@ -103,9 +103,17 @@ import { getSecurities } from '@/services/api'
 import { createMerger } from '@/services/api'
 import logger from '@/utils/logger'
 
-const emit = defineEmits(['created'])
+const props = defineProps({ modelValue: { type: Boolean, default: undefined } })
+const emit = defineEmits(['created', 'update:modelValue'])
 
-const dialog = ref(false)
+const internalDialog = ref(false)
+const dialog = computed({
+  get: () => props.modelValue ?? internalDialog.value,
+  set: value => {
+    internalDialog.value = value
+    emit('update:modelValue', value)
+  },
+})
 const isSubmitting = ref(false)
 const error = ref(null)
 const securities = shallowRef([])
@@ -204,5 +212,5 @@ const submitForm = async () => {
 
 watch(dialog, (val) => {
   if (val) fetchData()
-})
+}, { immediate: true })
 </script>

@@ -104,7 +104,7 @@ const fetchFormStructure = async () => {
   try {
     const response = await getFXTransactionFormStructure()
     formFields.value = response.fields
-    initializeForm()
+    applyEditItem(props.editItem)
   } catch (error) {
     logger.error('Unknown', 'Error fetching form structure:', error)
     generalError.value = 'Failed to load form structure. Please try again.'
@@ -152,27 +152,26 @@ const submitForm = async () => {
 
 onMounted(fetchFormStructure)
 
-watch(
-  () => props.editItem,
-  (newValue) => {
-    if (newValue) {
-      logger.log('Unknown', 'newValue', newValue)
-      form.value = { ...newValue }
-      Object.keys(form.value).forEach((key) => {
-        if (
-          typeof form.value[key] === 'object' &&
-          form.value[key] !== null
-        ) {
-          form.value[key] = String(form.value[key].id)
-        }
-      })
-      if (form.value.date) {
-        form.value.date = form.value.date.split('T')[0]
+function applyEditItem(newValue) {
+  if (newValue) {
+    logger.log('Unknown', 'newValue', newValue)
+    form.value = { ...newValue }
+    Object.keys(form.value).forEach((key) => {
+      if (
+        typeof form.value[key] === 'object' &&
+        form.value[key] !== null
+      ) {
+        form.value[key] = String(form.value[key].id)
       }
-      logger.log('Unknown', 'form', form.value)
-    } else {
-      initializeForm()
+    })
+    if (form.value.date) {
+      form.value.date = form.value.date.split('T')[0]
     }
+    logger.log('Unknown', 'form', form.value)
+  } else {
+    initializeForm()
   }
-)
+}
+
+watch(() => props.editItem, applyEditItem, { immediate: true })
 </script>

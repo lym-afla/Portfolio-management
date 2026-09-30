@@ -237,6 +237,7 @@ const fetchFormStructure = async () => {
     formFields.value = structure.fields as any[]
     logger.log('Unknown', 'SecurityFormDialog formFields', formFields.value)
     initializeForm()
+    if (props.editItem) form.value = { ...props.editItem }
   } catch (error) {
     logger.error('Unknown', 'Error fetching form structure:', error)
     generalError.value = 'Failed to load form structure'

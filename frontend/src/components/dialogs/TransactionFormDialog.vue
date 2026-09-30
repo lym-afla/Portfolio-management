@@ -282,7 +282,8 @@ const fetchFormStructure = async () => {
         )
       }
     }
-    initializeForm()
+    if (props.editItem) populateFormWithEditItem()
+    else initializeForm()
   } catch (error) {
     logger.error('Unknown', 'Error fetching form structure:', error)
     handleApiError(error)

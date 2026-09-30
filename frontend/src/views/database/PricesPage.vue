@@ -271,7 +271,7 @@
       </v-card>
     </v-dialog>
 
-    <PriceFormDialog
+    <PriceFormDialog v-if="showPriceDialogMounted"
       v-model="showPriceDialog"
       :edit-item="editingPrice"
       :securities="securities"
@@ -279,9 +279,9 @@
       @price-updated="handlePriceUpdated"
     />
 
-    <SecurityFormDialog v-model="showSecurityDialog" :edit-item="null" />
+    <SecurityFormDialog v-if="showSecurityDialogMounted" v-model="showSecurityDialog" :edit-item="null" />
 
-    <PriceImportDialog
+    <PriceImportDialog v-if="showImportDialogMounted"
       v-model="showImportDialog"
       @prices-imported="handlePricesImported"
     />
@@ -289,6 +289,8 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, watch, computed, onScopeDispose, inject } from 'vue'
 import { useAppStore } from '@/stores/app'
 import {
@@ -306,9 +308,9 @@ import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
 import { snapshotContext, snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
-import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
-import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
-import PriceImportDialog from '@/components/dialogs/PriceImportDialog.vue'
+const PriceFormDialog = defineAppDialog(() => import('@/components/dialogs/PriceFormDialog.vue'))
+const SecurityFormDialog = defineAppDialog(() => import('@/components/dialogs/SecurityFormDialog.vue'))
+const PriceImportDialog = defineAppDialog(() => import('@/components/dialogs/PriceImportDialog.vue'))
 import { getChartOptions, colorPalette } from '@/config/chartConfig'
 import logger from '@/utils/logger'
 import {
@@ -346,8 +348,11 @@ const deleteDialog = ref(false)
 const deletedItem = ref({})
 const editingPrice = ref(null)
 const showPriceDialog = ref(false)
+const showPriceDialogMounted = useFirstOpen(showPriceDialog)
 const showSecurityDialog = ref(false)
+const showSecurityDialogMounted = useFirstOpen(showSecurityDialog)
 const showImportDialog = ref(false)
+const showImportDialogMounted = useFirstOpen(showImportDialog)
 const isDeleting = ref(false)
 const showError = inject('showError')
 

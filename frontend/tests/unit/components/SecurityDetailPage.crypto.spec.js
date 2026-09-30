@@ -23,6 +23,7 @@ vi.mock('vue-router', () => ({
   createRouter: () => ({
     beforeEach: () => {},
     afterEach: () => {},
+    onError: () => {},
   }),
   createWebHistory: () => ({}),
 }))

@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
+import { defineComponent, h } from 'vue'
 import { configureContextFixture } from '../context-fixture'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAppStore } from '@/stores/app'
@@ -18,6 +19,22 @@ beforeEach(() => {
   vi.clearAllMocks()
   configureContextFixture('2026-09-08')
   mocks.getFXData.mockResolvedValue({ results: [], count: 0 })
+})
+
+it('renders a readable missing-rate dash for an absent date/pair cell', async () => {
+  mocks.getFXData.mockResolvedValue({ results: [
+    { id: 1, date: '2026-09-08', from_currency: 'USD', to_currency: 'EUR', rate: '0.95' },
+    { id: 2, date: '2026-09-07', from_currency: 'USD', to_currency: 'GBP', rate: '0.80' },
+  ], count: 2 })
+  const pinia = createPinia()
+  await usePortfolioContextStore(pinia).reconcileContext()
+  const table = defineComponent({ props: ['items'], setup(props, { slots }) {
+    return () => h('table', props.items.flatMap(item => slots.item({ item })))
+  } })
+  const wrapper = mount(FXPage, { shallow: true, global: { plugins: [pinia], stubs: { VDataTable: table } } })
+  await flushPromises()
+  expect(wrapper.findAll('.cell-btn').map(cell => cell.text())).toContain('\u2014')
+  wrapper.unmount()
 })
 
 it('commits one FX range tuple and makes one request for an applied range', async () => {

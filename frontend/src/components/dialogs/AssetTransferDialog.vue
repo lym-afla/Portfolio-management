@@ -326,6 +326,7 @@ watch(
     if (newVal) {
       fetchFormChoices()
     }
-  }
+  },
+  { immediate: true }
 )
 </script>

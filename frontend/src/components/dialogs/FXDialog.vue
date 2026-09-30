@@ -124,7 +124,7 @@ const fetchFormStructure = async () => {
     const structure = await getFXFormStructure()
     if (structure && structure.fields) {
       formFields.value = structure.fields
-      initializeForm()
+      applyEditItem(props.editItem)
     } else {
       throw new Error('Invalid form structure received')
     }
@@ -179,12 +179,24 @@ const submitForm = async () => {
 
 onMounted(fetchFormStructure)
 
-watch(
-  () => props.editItem,
-  (newValue) => {
-    if (newValue) {
-      form.value = { ...newValue }
-      // Ensure the date is not editable when editing
+function applyEditItem(newValue) {
+  if (newValue) {
+    form.value = { ...newValue }
+    // Ensure the date is not editable when editing
+    if (formFields.value) {
+      const dateField = formFields.value.find(
+        (field) => field.name === 'date'
+      )
+      if (dateField) {
+        dateField.disabled = true
+      }
+    }
+  } else {
+    initializeForm()
+    // Add-from-cell: seed the form with the prefilled date/pair so the user
+    // only has to enter the rate. Date is also fixed (it's the cell's date).
+    if (props.prefill) {
+      form.value = { ...form.value, ...props.prefill }
       if (formFields.value) {
         const dateField = formFields.value.find(
           (field) => field.name === 'date'
@@ -193,40 +205,26 @@ watch(
           dateField.disabled = true
         }
       }
-    } else {
-      initializeForm()
-      // Add-from-cell: seed the form with the prefilled date/pair so the user
-      // only has to enter the rate. Date is also fixed (it's the cell's date).
-      if (props.prefill) {
-        form.value = { ...form.value, ...props.prefill }
-        if (formFields.value) {
-          const dateField = formFields.value.find(
-            (field) => field.name === 'date'
-          )
-          if (dateField) {
-            dateField.disabled = true
-          }
-        }
-      } else if (formFields.value) {
-        // Plain Add (from the toolbar): date is editable.
-        const dateField = formFields.value.find(
-          (field) => field.name === 'date'
-        )
-        if (dateField) {
-          dateField.disabled = false
-        }
+    } else if (formFields.value) {
+      // Plain Add (from the toolbar): date is editable.
+      const dateField = formFields.value.find(
+        (field) => field.name === 'date'
+      )
+      if (dateField) {
+        dateField.disabled = false
       }
     }
-    if (formFields.value && formFields.value.length > 0) {
-      errorMessages.value = formFields.value.reduce((acc, field) => {
-        acc[field.name] = []
-        return acc
-      }, {})
-    }
-    generalError.value = ''
-  },
-  { immediate: true }
-)
+  }
+  if (formFields.value && formFields.value.length > 0) {
+    errorMessages.value = formFields.value.reduce((acc, field) => {
+      acc[field.name] = []
+      return acc
+    }, {})
+  }
+  generalError.value = ''
+}
+
+watch(() => props.editItem, applyEditItem, { immediate: true })
 
 // React to `prefill` changes too (e.g. the parent sets a prefill without
 // changing editItem). Only applies in Add mode.

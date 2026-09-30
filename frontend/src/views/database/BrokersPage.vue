@@ -143,7 +143,7 @@
       </template>
     </v-data-table>
 
-    <BrokerFormDialog
+    <BrokerFormDialog v-if="showBrokerDialogMounted"
       v-model="showBrokerDialog"
       :edit-item="editingBroker"
       @broker-added="handleBrokerAdded"
@@ -153,6 +153,8 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { getBrokersTable, deleteBroker } from '@/services/api'
@@ -161,7 +163,7 @@ import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
 import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
-import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
+const BrokerFormDialog = defineAppDialog(() => import('@/components/dialogs/BrokerFormDialog.vue'))
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
@@ -183,6 +185,7 @@ const tableLoading = tableQuery.loading
 const brokers = computed(() => tableQuery.data.value?.items ?? [])
 const totalItems = computed(() => tableQuery.data.value?.total_items ?? 0)
 const showBrokerDialog = ref(false)
+const showBrokerDialogMounted = useFirstOpen(showBrokerDialog)
 const editingBroker = ref(null)
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const pageCount = computed(() =>

@@ -65,12 +65,12 @@
     </v-card-text>
   </v-card>
 
-  <UpdateAccountPerformanceDialog
+  <UpdateAccountPerformanceDialog v-if="showDialogMounted"
     v-model="showDialog"
     @update-started="handleUpdateStarted"
     @update-error="handleUpdateError"
   />
-  <ProgressDialog
+  <ProgressDialog v-if="showProgressDialogMounted"
     v-model="showProgressDialog"
     :title="'Updating Account Performance'"
     :progress="updateProgress"
@@ -83,9 +83,11 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, onMounted, onUnmounted } from 'vue'
-import UpdateAccountPerformanceDialog from '@/components/dialogs/UpdateAccountPerformanceDialog.vue'
-import ProgressDialog from '@/components/dialogs/ProgressDialog.vue'
+const UpdateAccountPerformanceDialog = defineAppDialog(() => import('@/components/dialogs/UpdateAccountPerformanceDialog.vue'))
+const ProgressDialog = defineAppDialog(() => import('@/components/dialogs/ProgressDialog.vue'))
 import { updateAccountPerformance } from '@/services/api'
 import logger from '@/utils/logger'
 
@@ -110,7 +112,9 @@ defineProps({
 const emit = defineEmits(['refresh-data'])
 
 const showDialog = ref(false)
+const showDialogMounted = useFirstOpen(showDialog)
 const showProgressDialog = ref(false)
+const showProgressDialogMounted = useFirstOpen(showProgressDialog)
 const updateProgress = ref(0)
 const currentOperation = ref(0)
 const totalOperations = ref(0)

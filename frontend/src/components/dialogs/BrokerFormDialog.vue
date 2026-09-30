@@ -112,6 +112,7 @@ const fetchFormStructure = async () => {
     if (structure && structure.fields) {
       formFields.value = structure.fields
       initializeForm()
+      if (props.editItem) form.value = { ...props.editItem }
     } else {
       throw new Error('Invalid form structure received')
     }

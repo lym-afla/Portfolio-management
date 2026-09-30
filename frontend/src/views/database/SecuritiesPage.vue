@@ -12,7 +12,8 @@
               <v-icon left>mdi-plus</v-icon>
               Add Security
             </v-btn>
-            <MergerDialog @created="onMergerCreated" />
+            <v-btn color="primary" prepend-icon="mdi-swap-horizontal" class="mr-2" @click="showMergerDialog = true">Record Merger</v-btn>
+            <MergerDialog v-if="showMergerDialogMounted" v-model="showMergerDialog" @created="onMergerCreated" />
           </v-col>
         </v-row>
       </v-card-text>
@@ -109,7 +110,7 @@
       </template>
     </v-data-table>
 
-    <SecurityFormDialog
+    <SecurityFormDialog v-if="showSecurityDialogMounted"
       v-model="showSecurityDialog"
       :edit-item="editingSecurity"
       @security-added="handleSecurityAdded"
@@ -119,10 +120,12 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, computed, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
-import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
-import MergerDialog from '@/components/dialogs/MergerDialog.vue'
+const SecurityFormDialog = defineAppDialog(() => import('@/components/dialogs/SecurityFormDialog.vue'))
+const MergerDialog = defineAppDialog(() => import('@/components/dialogs/MergerDialog.vue'))
 import {
   getSecuritiesForDatabase,
   deleteSecurity,
@@ -137,6 +140,8 @@ import logger from '@/utils/logger'
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
+const showMergerDialog = ref(false)
+const showMergerDialogMounted = useFirstOpen(showMergerDialog)
 const tableQuery = usePortfolioRequest((params, options) => getSecuritiesForDatabase({ page: params.page, itemsPerPage: params.itemsPerPage, sortBy: params.sortBy, search: params.search }, options), snapshotTableQuery)
 const {
   itemsPerPage,
@@ -234,6 +239,7 @@ const fetchSecurities = async () => {
   })
 }
 const showSecurityDialog = ref(false)
+const showSecurityDialogMounted = useFirstOpen(showSecurityDialog)
 const editingSecurity = ref(null)
 
 const addSecurity = () => {

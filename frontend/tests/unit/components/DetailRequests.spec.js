@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 let route
 vi.mock('vue-router', () => ({
   useRoute: () => route, useRouter: () => ({ push: vi.fn() }),
-  createRouter: () => ({ beforeEach() {}, afterEach() {} }), createWebHistory: () => ({}),
+  createRouter: () => ({ beforeEach() {}, afterEach() {}, onError() {} }), createWebHistory: () => ({}),
 }))
 vi.mock('@/services/api', () => ({
   ...mocks, getPriceDetails: vi.fn(), deletePrice: vi.fn(),

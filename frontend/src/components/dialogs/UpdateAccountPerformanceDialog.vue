@@ -268,7 +268,8 @@ watch(
     if (isOpen && accountOptions.value.length === 0) {
       await fetchFormData()
     }
-  }
+  },
+  { immediate: true }
 )
 
 // Add watchers for each form field to clear its error

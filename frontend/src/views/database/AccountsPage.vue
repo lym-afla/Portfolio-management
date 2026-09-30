@@ -142,7 +142,7 @@
       </template>
     </v-data-table>
 
-    <AccountFormDialog
+    <AccountFormDialog v-if="showAccountDialogMounted"
       v-model="showAccountDialog"
       :edit-item="editingAccount"
       @account-added="handleAccountAdded"
@@ -152,9 +152,11 @@
 </template>
 
 <script setup>
+import { defineAppDialog } from '@/composables/asyncDialog'
+import { useFirstOpen } from '@/composables/useFirstOpen'
 import { ref, computed, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
-import AccountFormDialog from '@/components/dialogs/AccountFormDialog.vue'
+const AccountFormDialog = defineAppDialog(() => import('@/components/dialogs/AccountFormDialog.vue'))
 import {
   getAccountsTable,
   deleteAccount,
@@ -261,6 +263,7 @@ const fetchAccounts = async () => {
   })
 }
 const showAccountDialog = ref(false)
+const showAccountDialogMounted = useFirstOpen(showAccountDialog)
 const editingAccount = ref(null)
 
 const openAddDialog = () => {

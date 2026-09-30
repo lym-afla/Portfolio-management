@@ -1,24 +1,25 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import logger from '@/utils/logger'
-import OpenPositionsPage from '../views/OpenPositionsPage.vue'
-import LoginPage from '../views/LoginPage.vue'
-import RegisterPage from '../views/RegisterPage.vue'
-import ProfileLayout from '../views/profile/ProfileLayout.vue'
-import ProfilePage from '../views/profile/ProfilePage.vue'
-import ProfileEdit from '../views/profile/ProfileEdit.vue'
-import ProfileSettings from '../views/profile/ProfileSettings.vue'
-import ClosedPositionsPage from '../views/ClosedPositionsPage.vue'
-import TransactionsPage from '../views/TransactionsPage.vue'
-import DatabasePage from '../views/DatabasePage.vue'
-import PricesPage from '../views/database/PricesPage.vue'
-import AccountsPage from '../views/database/AccountsPage.vue'
-import SecuritiesPage from '../views/database/SecuritiesPage.vue'
-import DashboardPage from '../views/DashboardPage.vue'
-import FXPage from '../views/database/FXPage.vue'
-import SummaryPage from '../views/SummaryPage.vue'
-import SecurityDetailPage from '../views/database/SecurityDetailPage.vue'
-import BrokersPage from '../views/database/BrokersPage.vue'
+import { routeChunkRecovery } from './chunkRecovery'
+const OpenPositionsPage = () => import('../views/OpenPositionsPage.vue')
+const LoginPage = () => import('../views/LoginPage.vue')
+const RegisterPage = () => import('../views/RegisterPage.vue')
+const ProfileLayout = () => import('../views/profile/ProfileLayout.vue')
+const ProfilePage = () => import('../views/profile/ProfilePage.vue')
+const ProfileEdit = () => import('../views/profile/ProfileEdit.vue')
+const ProfileSettings = () => import('../views/profile/ProfileSettings.vue')
+const ClosedPositionsPage = () => import('../views/ClosedPositionsPage.vue')
+const TransactionsPage = () => import('../views/TransactionsPage.vue')
+const DatabasePage = () => import('../views/DatabasePage.vue')
+const PricesPage = () => import('../views/database/PricesPage.vue')
+const AccountsPage = () => import('../views/database/AccountsPage.vue')
+const SecuritiesPage = () => import('../views/database/SecuritiesPage.vue')
+const DashboardPage = () => import('../views/DashboardPage.vue')
+const FXPage = () => import('../views/database/FXPage.vue')
+const SummaryPage = () => import('../views/SummaryPage.vue')
+const SecurityDetailPage = () => import('../views/database/SecurityDetailPage.vue')
+const BrokersPage = () => import('../views/database/BrokersPage.vue')
 
 // Development-only debug components
 const AuthDebugPanel =
@@ -153,6 +154,9 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
+
+router.onError(error => routeChunkRecovery.capture(error))
+router.afterEach((_to, _from, failure) => { if (!failure) routeChunkRecovery.clear() })
 
 router.beforeEach(async (to, from, next) => {
   const guardId = Date.now()

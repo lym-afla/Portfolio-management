@@ -30,6 +30,10 @@
 
         <v-main>
           <v-container fluid class="pa-4" data-testid="route-content">
+            <v-alert v-if="routeChunkRecovery.error.value" type="error" role="alert" class="mb-4" data-testid="route-load-error">
+              {{ routeChunkRecovery.error.value }}
+              <v-btn @click="routeChunkRecovery.reload">Reload application</v-btn>
+            </v-alert>
             <v-alert v-if="!context.isReady" type="warning" role="status" class="mb-4">
               {{ context.transitionError?.message || 'Portfolio context is loading' }}
               <v-btn :loading="context.isTransitioning" :disabled="context.isTransitioning" @click="recoverContext">Recover portfolio context</v-btn>
@@ -42,6 +46,10 @@
       </template>
       <template v-else>
         <v-main>
+          <v-alert v-if="routeChunkRecovery.error.value" type="error" role="alert" class="ma-4" data-testid="route-load-error">
+            {{ routeChunkRecovery.error.value }}
+            <v-btn @click="routeChunkRecovery.reload">Reload application</v-btn>
+          </v-alert>
           <router-view />
         </v-main>
       </template>
@@ -67,6 +75,7 @@
 
 <script setup lang="ts">
 import { provide, ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { routeChunkRecovery } from './router/chunkRecovery'
 import Navigation from './components/Navigation.vue'
 import AccountSelection from './components/AccountSelection.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
