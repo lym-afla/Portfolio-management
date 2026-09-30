@@ -1,5 +1,9 @@
 <template>
   <div>
+    <v-alert v-if="tableQuery.error.value" type="error" class="mb-4">
+      Unable to load this table. The displayed rows may be from the previous request.
+      <v-btn data-testid="table-retry" :disabled="!context.canRead" @click="fetchSecurities">Retry</v-btn>
+    </v-alert>
     <v-card class="mb-4">
       <v-card-text>
         <v-row align="center" justify="space-between">

@@ -18,9 +18,10 @@ import SecuritiesPage from '@/views/database/SecuritiesPage.vue'
 const mocks = vi.hoisted(() => ({
   getFXData: vi.fn(), getTransactions: vi.fn(), getOpenPositions: vi.fn(), getClosedPositions: vi.fn(),
   getAccountsTable: vi.fn(), getBrokersTable: vi.fn(), getSecuritiesForDatabase: vi.fn(),
+  getYearOptions: vi.fn(),
 }))
 vi.mock('@/services/api', () => ({
-  ...mocks, getYearOptions: vi.fn().mockResolvedValue([2026]),
+  ...mocks,
   deleteFXRate: vi.fn(), getFXDetails: vi.fn(),
   deleteTransaction: vi.fn(), deleteFXTransaction: vi.fn(),
   getTransactionDetails: vi.fn(), getFXTransactionDetails: vi.fn(),
@@ -33,6 +34,43 @@ beforeEach(() => {
   localStorage.clear()
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
+  mocks.getYearOptions.mockResolvedValue([2026])
+})
+
+it.each([
+  [AccountsPage, 'getAccountsTable', 'accounts'],
+  [BrokersPage, 'getBrokersTable', 'items'],
+  [SecuritiesPage, 'getSecuritiesForDatabase', 'securities'],
+])('shows a recoverable failed-refresh error for %s', async (component, key, rows) => {
+  mocks[key].mockResolvedValueOnce({ [rows]: [], total_items: 0, totals: {} })
+    .mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ [rows]: [], total_items: 0, totals: {} })
+  const { wrapper, app } = await setup(component)
+  app.updateTableSettings({ page: 2 })
+  await flushPromises()
+  expect(wrapper.text()).toContain('Unable to load this table')
+  await wrapper.get('[data-testid="table-retry"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).not.toContain('Unable to load this table')
+  expect(mocks[key]).toHaveBeenCalledTimes(3)
+  wrapper.unmount()
+})
+
+it('shows a recoverable positions year-options error independently of rows', async () => {
+  mocks.getYearOptions.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([2026])
+  const pinia = createPinia()
+  await usePortfolioContextStore(pinia).reconcileContext()
+  const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
+  const wrapper = mount(PositionsPageBase, {
+    shallow: true, global: { plugins: [pinia], renderStubDefaultSlot: true }, props: { fetchPositions, headers: [], pageTitle: 'Test' },
+  })
+  await flushPromises()
+  expect(wrapper.text()).toContain('Unable to load positions or year options')
+  await wrapper.get('[data-testid="positions-retry"]').trigger('click')
+  await flushPromises()
+  expect(mocks.getYearOptions).toHaveBeenCalledTimes(2)
+  expect(fetchPositions).toHaveBeenCalledTimes(1)
+  expect(wrapper.text()).not.toContain('Unable to load positions or year options')
+  wrapper.unmount()
 })
 
 it.each([

@@ -4,7 +4,10 @@
       <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
-    <v-alert v-if="positionsQuery.error.value" type="error" class="mb-4">Unable to load positions. Change the filters or try again.</v-alert>
+    <v-alert v-if="positionsQuery.error.value || yearsQuery.error.value" type="error" class="mb-4">
+      Unable to load positions or year options. The displayed data may be from the previous request.
+      <v-btn data-testid="positions-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
+    </v-alert>
     <slot name="above-table" :loading="tableLoading" />
 
     <v-row no-gutters>
@@ -372,6 +375,11 @@ const fetchData = async () => {
 
 const fetchYearOptions = async () => {
   await yearsQuery.run(context.committed)
+}
+const retryFailedResources = () => {
+  if (!context.canRead) return
+  if (positionsQuery.error.value) fetchData()
+  if (yearsQuery.error.value) fetchYearOptions()
 }
 watch(yearsQuery.data, (years) => {
   yearOptions.value = [

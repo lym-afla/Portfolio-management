@@ -1,5 +1,9 @@
 <template>
   <div>
+    <v-alert v-if="pricesQuery.error.value || securitiesQuery.error.value || assetTypesQuery.error.value || accountsQuery.error.value" type="error" class="mb-4">
+      Unable to load prices or filters. The displayed data may be from the previous request.
+      <v-btn data-testid="prices-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
+    </v-alert>
     <v-overlay :model-value="loading" class="align-center justify-center">
       <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
@@ -435,6 +439,13 @@ const fetchPriceData = () => pricesQuery.run({
 const applyFilters = () => {
   appliedFilters.value = { assetTypes: [...selectedAssetTypes.value], account: selectedAccount.value, securities: [...selectedSecurities.value] }
   currentPage.value = 1
+}
+const retryFailedResources = () => {
+  if (!context.canRead) return
+  if (pricesQuery.error.value) fetchPriceData()
+  if (assetTypesQuery.error.value) assetTypesQuery.run(context.committed)
+  if (accountsQuery.error.value) accountsQuery.run(context.committed)
+  if (securitiesQuery.error.value) securitiesQuery.run({ context: context.committed, assetTypes: selectedAssetTypes.value, account: selectedAccount.value })
 }
 const openImportDialog = () => {
   showImportDialog.value = true
