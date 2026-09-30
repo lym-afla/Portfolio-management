@@ -17,10 +17,12 @@ import { assertMountedDateFlow } from './dates.mjs'
 import { assertRequestOrderFlow } from './requests.mjs'
 import { assertDashboardRecoveryFlow } from './recovery.mjs'
 import { routes, viewports } from './routes.mjs'
+import { measureRouteBundles, assertRouteDelivery } from '../../scripts/measure-route-bundles.mjs'
+import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } from './dialogs.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -55,11 +57,17 @@ function close(server) {
   })
 }
 
-async function startBuiltAppServer(root) {
+async function startBuiltAppServer(root, failDialogChunk = false) {
   const indexPath = resolve(root, 'index.html')
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname)
+      if (failDialogChunk && /^\/assets\/TransactionImportDialog-[^/]+\.js$/.test(pathname)) {
+        failDialogChunk = false
+        response.writeHead(503)
+        response.end('Synthetic dialog download failure')
+        return
+      }
       const requestedPath = resolve(root, `.${pathname}`)
       const safePath = requestedPath === root || requestedPath.startsWith(`${root}${sep}`)
       if (!safePath) {
@@ -100,6 +108,7 @@ function routeSlug(routePath) {
 async function runRoute({ appOrigin, authenticated, route, session, viewport }) {
   const context = `${viewport.name} ${route.path}`
   const initScript = authenticated ? authInit : undefined
+  await runAgentBrowser({ args: ['console', '--clear'], context: `${context} clear console`, initScript, log, session })
   await runAgentBrowser({
     args: ['errors', '--clear'],
     context: `${context} clear errors`,
@@ -169,6 +178,10 @@ async function runRoute({ appOrigin, authenticated, route, session, viewport }) 
   if (errorData.errors.length > 0) {
     throw new Error(`${context}: page errors: ${JSON.stringify(errorData.errors)}`)
   }
+  const consoleData = await runAgentBrowser({ args: ['console'], context: `${context} UI registration`, initScript, log, session })
+  if (/Failed to resolve component|Failed to resolve directive|Unknown icon:/.test(JSON.stringify(consoleData))) {
+    throw new Error(`${context}: unresolved UI registration: ${JSON.stringify(consoleData)}`)
+  }
 
   await log({ authenticated, context, geometry, probe, status: 'passed' })
   console.log(`PASS ${context}`)
@@ -186,6 +199,7 @@ async function main() {
   let appServer
   const sessions = new Map()
   const routeFailures = []
+  const deliveryGraphs = {}
 
   await runBrowserHarnessLifecycle({
     run: async () => {
@@ -196,12 +210,12 @@ async function main() {
       root: frontendRoot,
       build: { emptyOutDir: true, outDir: builtAppDir },
     })
-    appServer = await startBuiltAppServer(builtAppDir)
+    appServer = await startBuiltAppServer(builtAppDir, selectedCase === 'dialog-recovery')
 
-    for (const viewport of ['dates', 'requests', 'recovery'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
-      for (const authenticated of selectedCase ? [true] : [false, true]) {
+    for (const viewport of selectedCase === 'dialogs' ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+      for (const authenticated of selectedCase && selectedCase !== 'delivery' ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
+          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -232,6 +246,21 @@ async function main() {
               session,
               viewport,
             })
+            if (selectedCase === 'dialog-recovery') await assertDialogChunkRecovery({ context: `${viewport.name} dialog download recovery`, initScript, log, session })
+            if (selectedCase === 'dialogs') {
+              await assertDialogDeliveryFlow({ context: `${viewport.name} ${route.path} dialogs`, initScript, log, session, route })
+            }
+            if (selectedCase === 'delivery') {
+              await runAgentBrowser({ args: ['wait', '--load', 'networkidle'], context: `Settle cold resource graph ${route.path}`, initScript, log, session })
+              const observed = await runAgentBrowser({
+                args: ['eval', `performance.getEntriesByType('resource').map(entry => entry.name).filter(name => new URL(name).origin === location.origin)`],
+                context: `Cold resource graph ${route.path}`, initScript, log, session,
+              })
+              const graph = await measureRouteBundles({ root: builtAppDir, resources: observed.result })
+              deliveryGraphs[route.path] = graph
+              await writeFile(resolve(artifactsDir, 'delivery.json'), JSON.stringify(deliveryGraphs, null, 2))
+              assertRouteDelivery(route.path, graph)
+            }
             if (selectedCase === 'recovery') {
               await assertDashboardRecoveryFlow({ context: `${viewport.name} dashboard recovery`, initScript, log, session, fixtureServer })
               console.log(`PASS ${viewport.name} dashboard recovery`)
@@ -305,8 +334,8 @@ async function main() {
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
       routeManifestCount: routes.length,
-      routes: selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
-      viewports: ['dates', 'requests', 'recovery'].includes(selectedCase) ? 1 : viewports.length,
+      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: selectedCase === 'dialogs' ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery'].includes(selectedCase) ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))

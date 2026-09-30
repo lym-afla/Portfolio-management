@@ -3,7 +3,6 @@ import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import 'vuetify/styles'
-import '@mdi/font/css/materialdesignicons.css'
 import App from './App.vue'
 import router from './router'
 import axiosInstance, { refreshTokenWithEffectiveDate, getAuthSessionEpoch } from './config/axiosConfig'
@@ -14,17 +13,13 @@ import { createPinia } from 'pinia'
 import './assets/fonts.css'
 import './plugins/vee-validate'
 import logger from './utils/logger'
-import './utils/authDebugConsole'
-import authDebug from './utils/authDebug'
-import './utils/axiosDebug'
 import { createAppTheme } from './theme'
+import { appIcons } from './plugins/icons'
 
 const vuetify = createVuetify({
   components,
   directives,
-  icons: {
-    defaultSet: 'mdi',
-  },
+  icons: appIcons,
   theme: createAppTheme(),
 })
 
@@ -53,7 +48,8 @@ app.use(router)
 // Make debugging tools available globally for debugging in development
 if (import.meta.env.DEV) {
   window.$logger = logger
-  window.$authDebug = authDebug
+  import('./utils/authDebugConsole')
+  import('./utils/authDebug').then(module => { window.$authDebug = module.default })
   import('./utils/axiosDebug').then((module) => {
     window.$debugAxios = module.debugAxiosConfiguration
   })

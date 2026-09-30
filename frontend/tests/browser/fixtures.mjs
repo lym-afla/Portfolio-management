@@ -104,6 +104,7 @@ const fixtures = new Map([
   ['GET /database/api/accounts/', []],
   ['GET /database/api/brokers/', []],
   ['GET /database/api/brokers/form_structure/', { fields: [] }],
+  ['GET /database/api/update-account-performance/', { account_choices: [], currency_choices: {}, is_restricted_choices: {} }],
   ['GET /database/api/accounts/form_structure/', { fields: [] }],
   ['GET /database/api/security-form-structure/', { fields: [] }],
   [

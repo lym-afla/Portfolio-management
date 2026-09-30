@@ -13,6 +13,8 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:browser": "node tests/browser/run-smoke.mjs",
+    "test:delivery": "node tests/browser/run-smoke.mjs --case delivery",
+    "test:dialogs": "node tests/browser/run-smoke.mjs --case dialogs",
     "format": "prettier --write \"src/**/*.{js,ts,vue,json,css,scss}\"",
     "type-check": "vue-tsc --noEmit",
     "type-check:reliability": "vue-tsc --noEmit -p tsconfig.reliability.json",
@@ -20,7 +22,7 @@
     "api:types:check": "node scripts/generate-api-types.mjs --check"
   },
   "dependencies": {
-    "@mdi/font": "^7.4.47",
+    "@mdi/js": "7.4.47",
     "@vee-validate/i18n": "^4.13.2",
     "@vee-validate/rules": "^4.13.2",
     "axios": "^1.7.3",
