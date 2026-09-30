@@ -313,7 +313,7 @@ def calculate_percentage_shares(data_dict, selected_keys):
 
         for item in data_dict[key]:
             if total_nav > 0:
-                percentage = data_dict[key][item] / total_nav * 100
+                percentage = data_dict[key][item] / total_nav
                 data_dict[percentage_key][item] = format_percentage(percentage, digits=1)
             else:
                 data_dict[percentage_key][item] = "–"
