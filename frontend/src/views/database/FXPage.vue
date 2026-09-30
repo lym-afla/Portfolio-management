@@ -1,5 +1,6 @@
 <template>
   <v-container fluid class="pa-0">
+    <v-alert v-if="fxQuery.error.value" type="error" class="mb-4">Unable to load exchange rates. Change the filters or try again.</v-alert>
     <v-overlay :model-value="loading" class="align-center justify-center">
       <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
@@ -173,6 +174,8 @@ import {
   deleteFXRate,
   getFXDetails,
 } from '@/services/api'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
@@ -200,13 +203,12 @@ const {
 const { handleApiError } = useErrorHandler()
 
 const loading = ref(true)
-const tableLoading = ref(false)
+const tableLoading = computed(() => fxQuery.loading.value)
 const deleteLoading = ref(false)
-const fxData = ref([])
-const totalItems = ref(0)
-const currencies = ref([])
-// Guards against overlapping triggers issuing duplicate `list_fx/` requests.
-const fetchInFlight = ref(false)
+const fxData = computed(() => fxQuery.data.value?.pivoted ?? [])
+const totalItems = computed(() => fxQuery.data.value?.count ?? 0)
+const currencies = computed(() => fxQuery.data.value?.pairLabels ?? [])
+
 let didInit = false
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
@@ -225,39 +227,23 @@ const headers = computed(() => [
   })),
 ])
 
-const fetchFXData = async () => {
-  if (!dateTo.value) return
-  // Dedupe: if a previous fetch is still in flight (e.g. triggered by an
-  // overlapping reactivity hook), skip this one rather than firing a second
-  // identical `list_fx/` request.
-  if (fetchInFlight.value) {
-    logger.log('Unknown', 'fetchFXData already in flight, skipping')
-    return
-  }
-  fetchInFlight.value = true
-  tableLoading.value = true
-  try {
-    const response = await getFXData({
-      startDate: dateFrom.value,
-      endDate: dateTo.value,
-      page: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      sortBy: sortBy.value[0] || {},
-      search: search.value,
-    })
-    logger.log('Unknown', 'FX data received:', response)
-    const { pivoted, pairLabels } = pivotFxRows(response.results || [])
-    fxData.value = pivoted
-    currencies.value = pairLabels
-    totalItems.value = response.count
-  } catch (error) {
-    handleApiError(error)
-  } finally {
-    tableLoading.value = false
-    fetchInFlight.value = false
-  }
-}
+const fxQuery = usePortfolioRequest(async (params, options) => {
+  const response = await getFXData({
+    startDate: params.dateFrom, endDate: params.dateTo,
+    page: params.page, itemsPerPage: params.itemsPerPage,
+    sortBy: params.sortBy, search: params.search,
+  }, options)
+  return { ...pivotFxRows(response.results), count: response.count }
+}, snapshotTableQuery)
 
+const fetchFXData = async () => {
+  if (!context.canRead || !dateTo.value) return
+  await fxQuery.run({
+    context: context.committed, dateFrom: dateFrom.value, dateTo: dateTo.value,
+    page: currentPage.value, itemsPerPage: itemsPerPage.value,
+    sortBy: sortBy.value[0] || {}, search: search.value,
+  })
+}
 const initializeDateRange = async () => {
   logger.log('Unknown', 'Initializing date range')
   logger.log('Unknown', 'effectiveCurrentDate:', effectiveCurrentDate.value)

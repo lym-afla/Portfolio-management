@@ -5,6 +5,7 @@ export { getAccountsTable, getBrokersTable, getPrices, getSecuritiesForDatabase,
 
 import axiosInstance, { refreshSessionToken } from '@/config/axiosConfig'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import type { RequestOptions } from '@/services/http/client'
 import type { AccountSelection } from '@/types/portfolioContext'
 import { useAppStore } from '@/stores/app'
 import logger from '@/utils/logger'
@@ -82,9 +83,9 @@ export const register = async (username: string, email: string, password: string
   }
 }
 
-export const getAccountChoices = async (): Promise<ApiRecord> => {
+export const getAccountChoices = async (options?: RequestOptions): Promise<ApiRecord> => {
   try {
-    const response = await axiosInstance.get('/users/api/get_account_choices/')
+    const response = await axiosInstance.get('/users/api/get_account_choices/', { signal: options?.signal })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -213,16 +214,16 @@ export const getEffectiveCurrentDate = async (): Promise<{ date?: string; effect
   return response.data
 }
 
-export const getAssetTypes = async (): Promise<ApiRecord | ApiRecord[]> => {
+export const getAssetTypes = async (options?: RequestOptions): Promise<ApiRecord | ApiRecord[]> => {
   try {
-    const response = await axiosInstance.get('/database/api/get-asset-types/')
+    const response = await axiosInstance.get('/database/api/get-asset-types/', { signal: options?.signal })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
   }
 }
 
-export const getSecurities = async (assetTypes: string[] = [], accountId: number | null = null): Promise<ApiRecord[]> => {
+export const getSecurities = async (assetTypes: string[] = [], accountId: number | null = null, options?: RequestOptions): Promise<ApiRecord[]> => {
   try {
     const params = new URLSearchParams()
     if (assetTypes.length > 0) {
@@ -233,6 +234,7 @@ export const getSecurities = async (assetTypes: string[] = [], accountId: number
     }
     const response = await axiosInstance.get('/database/api/get-securities/', {
       params,
+      signal: options?.signal,
     })
     return response.data
   } catch (error) {
@@ -280,13 +282,13 @@ export const createSecurity = async (securityData: ApiRecord): Promise<ApiRecord
   }
 }
 
-export const getSecurityDetail = async (securityId: number, accountId: number | null = null): Promise<ApiRecord> => {
+export const getSecurityDetail = async (securityId: number, accountId: number | null = null, requestOptions?: RequestOptions): Promise<ApiRecord> => {
   try {
     const params: Record<string, number> = {}
     if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/`,
-      { params }
+      { params, signal: requestOptions?.signal }
     )
     return response.data
   } catch (error) {
@@ -295,12 +297,13 @@ export const getSecurityDetail = async (securityId: number, accountId: number | 
   }
 }
 
-export const getSecurityPriceHistory = async (securityId: number, period: string): Promise<ApiRecord> => {
+export const getSecurityPriceHistory = async (securityId: number, period: string, requestOptions?: RequestOptions): Promise<ApiRecord> => {
   try {
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/price-history/`,
       {
         params: { period },
+        signal: requestOptions?.signal,
       }
     )
     logger.log('Unknown', '[api.js] Security price history:', response.data)
@@ -311,13 +314,13 @@ export const getSecurityPriceHistory = async (securityId: number, period: string
   }
 }
 
-export const getSecurityPositionHistory = async (securityId: number, period: string, accountId: number | null = null): Promise<ApiRecord> => {
+export const getSecurityPositionHistory = async (securityId: number, period: string, accountId: number | null = null, requestOptions?: RequestOptions): Promise<ApiRecord> => {
   try {
     const params: Record<string, string | number> = { period }
     if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/position-history/`,
-      { params }
+      { params, signal: requestOptions?.signal }
     )
     logger.log('Unknown', '[api.js] Security position history:', response.data)
     return response.data
@@ -327,7 +330,7 @@ export const getSecurityPositionHistory = async (securityId: number, period: str
   }
 }
 
-export const getSecurityTransactions = async (securityId: number, options: { page: number; itemsPerPage: number }, period: string, accountId: number | null = null): Promise<ApiRecord> => {
+export const getSecurityTransactions = async (securityId: number, options: { page: number; itemsPerPage: number }, period: string, accountId: number | null = null, requestOptions?: RequestOptions): Promise<ApiRecord> => {
   try {
     const { page, itemsPerPage } = options
     const params: Record<string, number | string> = {
@@ -338,7 +341,7 @@ export const getSecurityTransactions = async (securityId: number, options: { pag
     if (accountId) params.account_id = accountId
     const response = await axiosInstance.get(
       `/database/api/securities/${securityId}/transactions/`,
-      { params }
+      { params, signal: requestOptions?.signal }
     )
     logger.log('Unknown', '[api.js] Security transactions:', response.data)
     return response.data
@@ -686,9 +689,9 @@ export const importPrices = async (importData: ApiRecord): Promise<string | ApiR
   }
 }
 
-export const getAccounts = async (): Promise<Account[]> => {
+export const getAccounts = async (options?: RequestOptions): Promise<Account[]> => {
   try {
-    const response = await axiosInstance.get('/database/api/accounts/')
+    const response = await axiosInstance.get('/database/api/accounts/', { signal: options?.signal })
     return response.data
   } catch (error) {
     throw error.response ? error.response.data : error.message
@@ -1052,9 +1055,9 @@ export const analyzeFile = async (formData: FormData): Promise<ApiRecord> => {
   }
 }
 
-export async function getAccountPerformanceSummary(): Promise<ApiRecord> {
+export async function getAccountPerformanceSummary(options?: RequestOptions): Promise<ApiRecord> {
   try {
-    const response = await axiosInstance.get('/summary/api/summary_data/')
+    const response = await axiosInstance.get('/summary/api/summary_data/', { signal: options?.signal })
     return response.data
   } catch (error) {
     if (error.response && error.response.status === 401) {
@@ -1064,12 +1067,13 @@ export async function getAccountPerformanceSummary(): Promise<ApiRecord> {
   }
 }
 
-export async function getPortfolioBreakdownSummary(year: number): Promise<ApiRecord> {
+export async function getPortfolioBreakdownSummary(year: number, requestOptions?: RequestOptions): Promise<ApiRecord> {
   try {
     const response = await axiosInstance.get(
       '/summary/api/portfolio_breakdown/',
       {
         params: { year: year },
+        signal: requestOptions?.signal,
       }
     )
     return response.data

@@ -9,6 +9,8 @@
     "src/types/portfolioContext.ts",
     "src/stores/portfolioContext.ts",
     "src/composables/useLatestRequest.ts",
+    "src/composables/usePortfolioRequest.ts",
+    "src/types/query.ts",
     "src/services/http/**/*.ts",
     "src/services/api/**/*.ts",
     "src/types/portfolioTables.ts",

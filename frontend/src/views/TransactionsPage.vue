@@ -1,5 +1,6 @@
 <template>
   <v-container fluid class="pa-0">
+    <v-alert v-if="transactionsQuery.error.value" type="error" class="mb-4">Unable to load transactions. Change the filters or try again.</v-alert>
     <v-overlay :model-value="loading" class="align-center justify-center">
       <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
@@ -211,6 +212,8 @@ import {
   getTransactionDetails,
   getFXTransactionDetails,
 } from '@/services/api'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
@@ -248,27 +251,19 @@ const dateRangeModel = ref({
 })
 const initialized = ref(false)
 
-const fetchTransactions = async () => {
-  tableLoading.value = true
-  try {
-    const response = await getTransactions(
-      dateFrom.value,
-      dateTo.value,
-      currentPage.value,
-      itemsPerPage.value,
-      search.value,
-      sortBy.value[0] || {}
-    )
-    transactions.value = response.transactions
-    totalItems.value = response.total_items
-    currencies.value = response.currencies || []
-  } catch (error) {
-    handleApiError(error)
-  } finally {
-    tableLoading.value = false
-  }
-}
+const transactionsQuery = usePortfolioRequest((params, options) => getTransactions(
+  params.dateFrom, params.dateTo, params.page, params.itemsPerPage,
+  params.search, params.sortBy, options
+), snapshotTableQuery)
 
+const fetchTransactions = async () => {
+  if (!context.canRead || !dateTo.value) return
+  await transactionsQuery.run({
+    context: context.committed, dateFrom: dateFrom.value, dateTo: dateTo.value,
+    page: currentPage.value, itemsPerPage: itemsPerPage.value,
+    search: search.value, sortBy: sortBy.value[0] || {},
+  })
+}
 const handleDateRangeChange = (newDateRange) => {
   dateRangeModel.value = newDateRange
   updateDateRange({
@@ -292,10 +287,10 @@ const syncRelativeDate = (date) => {
 }
 
 const loading = ref(false)
-const tableLoading = ref(false)
-const transactions = ref([])
-const totalItems = ref(0)
-const currencies = ref([])
+const tableLoading = transactionsQuery.loading
+const transactions = computed(() => transactionsQuery.data.value?.transactions ?? [])
+const totalItems = computed(() => transactionsQuery.data.value?.total_items ?? 0)
+const currencies = computed(() => transactionsQuery.data.value?.currencies ?? [])
 const showTransactionDialog = ref(false)
 const showFXTransactionDialog = ref(false)
 const editedTransaction = ref(null)

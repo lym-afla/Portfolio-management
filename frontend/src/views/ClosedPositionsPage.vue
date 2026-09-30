@@ -1,6 +1,7 @@
 <template>
   <PositionsPageBase
     :fetch-positions="fetchClosedPositions"
+    @accepted-result="acceptPositions"
     :headers="closedPositionsHeaders"
     page-title="Closed Positions"
   >
@@ -48,6 +49,8 @@ const totals = ref({})
 
 const percentageColumns = closedPercentageColumns
 
+const acceptPositions = (result) => { totals.value = result?.totals ?? {} }
+
 const fetchClosedPositions = async ({
   dateFrom,
   dateTo,
@@ -55,20 +58,21 @@ const fetchClosedPositions = async ({
   itemsPerPage,
   search,
   sortBy,
-}) => {
+}, options) => {
   const data = await getClosedPositions(
     dateFrom,
     dateTo,
     page,
     itemsPerPage,
     search,
-    sortBy
+    sortBy,
+    options
   )
-  totals.value = data.portfolio_closed_totals
   return {
     positions: data.portfolio_closed,
     totals: data.portfolio_closed_totals,
     total_items: data.total_items,
+    cash_balances: data.cash_balances,
   }
 }
 </script>

@@ -149,14 +149,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { getBrokersTable, deleteBroker } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import BrokerFormDialog from '@/components/dialogs/BrokerFormDialog.vue'
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
+const tableQuery = usePortfolioRequest((params, options) => getBrokersTable({ page: params.page, itemsPerPage: params.itemsPerPage, sortBy: params.sortBy, search: params.search }, options), snapshotTableQuery)
 const { handleApiError } = useErrorHandler()
 
 const {
@@ -170,16 +175,16 @@ const {
 } = useTableSettings()
 
 const loading = ref(false)
-const tableLoading = ref(false)
-const brokers = ref([])
-const totalItems = ref(0)
+const tableLoading = tableQuery.loading
+const brokers = computed(() => tableQuery.data.value?.items ?? [])
+const totalItems = computed(() => tableQuery.data.value?.total_items ?? 0)
 const showBrokerDialog = ref(false)
 const editingBroker = ref(null)
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const pageCount = computed(() =>
   Math.ceil(totalItems.value / itemsPerPage.value)
 )
-const totals = ref({})
+const totals = computed(() => tableQuery.data.value?.totals ?? {})
 
 const headers = [
   { title: 'Name', key: 'name', align: 'start', sortable: true },
@@ -217,24 +222,12 @@ const headerAlignments = computed(() => {
 })
 
 const fetchBrokers = async () => {
-  tableLoading.value = true
-  try {
-    const response = await getBrokersTable({
-      page: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      sortBy: sortBy.value[0] || {},
-      search: search.value,
-    })
-    brokers.value = response.items
-    totalItems.value = response.total_items
-    totals.value = response.totals
-  } catch (error) {
-    handleApiError(error)
-  } finally {
-    tableLoading.value = false
-  }
+  await tableQuery.run({
+    context: context.committed, dateFrom: null, dateTo: context.committed.effectiveCurrentDate,
+    page: currentPage.value, itemsPerPage: itemsPerPage.value,
+    sortBy: sortBy.value[0] || {}, search: search.value,
+  })
 }
-
 const openAddDialog = () => {
   editingBroker.value = null
   showBrokerDialog.value = true
@@ -264,12 +257,9 @@ const handleBrokerUpdated = () => {
   fetchBrokers()
 }
 
-onMounted(() => {
-  fetchBrokers()
-})
-
 watch(
   [
+    () => context.canRead,
     () => appStore.dataRefreshTrigger,
     search,
     itemsPerPage,
@@ -277,9 +267,9 @@ watch(
     sortBy,
   ],
   () => {
-    fetchBrokers()
+    if (context.canRead) fetchBrokers()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 </script>
 

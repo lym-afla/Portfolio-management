@@ -67,7 +67,7 @@ describe('PositionsPageBase', () => {
     })
     await flushPromises()
     expect(fetchPositions).toHaveBeenCalledTimes(1)
-    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }))
+    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     wrapper.unmount()
   })
   it('accepts null all-time start and issues one initial mounted request', async () => {
@@ -83,7 +83,7 @@ describe('PositionsPageBase', () => {
     })
     await flushPromises()
     expect(fetchPositions).toHaveBeenCalledTimes(1)
-    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: null, dateTo: '2026-08-18' }))
+    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: null, dateTo: '2026-08-18' }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     wrapper.unmount()
   })
   it('fetches once with the new YTD range while mounted after a context date commit', async () => {
@@ -104,7 +104,7 @@ describe('PositionsPageBase', () => {
     await flushPromises()
     expect(appStore.tableSettings).toMatchObject({ timespan: 'ytd', dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 })
     expect(fetchPositions).toHaveBeenCalledTimes(1)
-    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }))
+    expect(fetchPositions).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2025-01-01', dateTo: '2025-12-31', page: 1 }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     wrapper.unmount()
   })
   it('adapts numeric backend years into selector items', async () => {

@@ -36,7 +36,7 @@ it('commits one FX range tuple and makes one request for an applied range', asyn
   await flushPromises()
   expect(app.tableSettings).toMatchObject({ dateFrom: '2020-01-01', dateTo: '2020-03-31', page: 1 })
   expect(mocks.getFXData).toHaveBeenCalledTimes(1)
-  expect(mocks.getFXData).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2020-01-01', endDate: '2020-03-31', page: 1 }))
+  expect(mocks.getFXData).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2020-01-01', endDate: '2020-03-31', page: 1 }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
   wrapper.unmount()
 })
 
@@ -68,6 +68,6 @@ it('recomputes mounted FX YTD once after a committed date change', async () => {
   await context.reconcileContext()
   await flushPromises()
   expect(mocks.getFXData).toHaveBeenCalledTimes(1)
-  expect(mocks.getFXData).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2025-01-01', endDate: '2025-12-31' }))
+  expect(mocks.getFXData).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2025-01-01', endDate: '2025-12-31' }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
   wrapper.unmount()
 })

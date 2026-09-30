@@ -4,7 +4,8 @@
       <v-progress-circular color="primary" indeterminate size="64" />
     </v-overlay>
 
-    <slot name="above-table" />
+    <v-alert v-if="positionsQuery.error.value" type="error" class="mb-4">Unable to load positions. Change the filters or try again.</v-alert>
+    <slot name="above-table" :loading="tableLoading" />
 
     <v-row no-gutters>
       <v-col cols="12">
@@ -190,9 +191,11 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { getYearOptions } from '@/services/api'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotTableQuery, snapshotContext, type TableQueryParams } from '@/types/query'
+import type { RequestOptions } from '@/services/http/client'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { flattenHeaders } from '@/config/positionsHeaders'
-import logger from '@/utils/logger'
 
 // A column header may group children (parent header) or be a leaf column.
 // `align` mirrors Vuetify's accepted values so the prop type is compatible
@@ -205,22 +208,14 @@ interface TableHeader {
   [key: string]: unknown
 }
 
-// Query params passed to the parent-provided fetchPositions function.
-interface FetchPositionsParams {
-  dateFrom: string | null
-  dateTo: string | null
-  page: number
-  itemsPerPage: number
-  search: string
-  sortBy: Record<string, unknown>
-  [key: string]: unknown
-}
+type FetchPositionsParams = TableQueryParams
 
 // Response returned by fetchPositions (shape of the paginated table payload).
 interface FetchPositionsResponse {
   positions: Record<string, unknown>[]
   totals: Record<string, unknown>
   total_items: number
+  cash_balances?: Record<string, unknown> | null
   [key: string]: unknown
 }
 
@@ -232,7 +227,7 @@ interface YearOption {
 }
 
 interface Props {
-  fetchPositions: (params: FetchPositionsParams) => Promise<FetchPositionsResponse>
+  fetchPositions: (params: FetchPositionsParams, options: RequestOptions) => Promise<FetchPositionsResponse>
   headers: TableHeader[]
   pageTitle: string
   defaultVisibleKeys?: string[] | null
@@ -241,16 +236,18 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'update-page-title', title: string): void
+  (e: 'accepted-result', result: FetchPositionsResponse | null): void
 }>()
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
-const positions = ref<Record<string, unknown>[]>([])
-const totals = ref<Record<string, unknown>>({})
-const tableLoading = ref(true)
+const positionsQuery = usePortfolioRequest(props.fetchPositions, snapshotTableQuery)
+const positions = computed(() => positionsQuery.data.value?.positions ?? [])
+const totals = computed(() => positionsQuery.data.value?.totals ?? {})
+const tableLoading = positionsQuery.loading
 const yearOptions = ref<YearOption[]>([])
-const totalItems = ref(0)
-const initialLoading = ref(true)
+const totalItems = computed(() => positionsQuery.data.value?.total_items ?? 0)
+const initialLoading = computed(() => !context.canRead || (positionsQuery.loading.value && positionsQuery.data.value === null))
 
 const {
   timespan,
@@ -356,75 +353,44 @@ const visibleHeaders = computed<TableHeader[]>(() => {
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 
 const loading = computed(() => appStore.loading)
-const error = computed(() => appStore.error)
+
+watch(positionsQuery.data, (result) => emit('accepted-result', result), { flush: 'sync' })
+const yearsQuery = usePortfolioRequest(getYearOptionsForContext, snapshotContext)
+async function getYearOptionsForContext(_params: TableQueryParams['context'], options: RequestOptions) {
+  return getYearOptions(options)
+}
 
 const fetchData = async () => {
-  tableLoading.value = true
-  try {
-    const data = await props.fetchPositions({
-      // timespan: timespan.value,
-      dateFrom: dateFrom.value,
-      dateTo: dateTo.value,
-      page: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      search: search.value,
-      sortBy: sortBy.value[0] || {},
-    })
-    positions.value = data.positions
-    totals.value = data.totals
-    totalItems.value = data.total_items
-  } catch (error) {
-    appStore.setError(error)
-    logger.error('Unknown', 'Error fetching positions:', error)
-  } finally {
-    tableLoading.value = false
-    initialLoading.value = false
-  }
+  if (!context.canRead || !dateTo.value) return
+  await positionsQuery.run({
+    context: context.committed,
+    dateFrom: dateFrom.value, dateTo: dateTo.value,
+    page: currentPage.value, itemsPerPage: itemsPerPage.value,
+    search: search.value, sortBy: sortBy.value[0] || {},
+  })
 }
 
 const fetchYearOptions = async () => {
-  try {
-    const years = await getYearOptions()
-    yearOptions.value = [
-      { text: 'YTD', value: 'ytd' },
-      { text: 'All time', value: 'all_time' },
-      ...years.map((year) => ({ text: String(year), value: year })),
-    ]
-  } catch (error) {
-    appStore.setError(error)
-  } finally {
-    initialLoading.value = false
-  }
+  await yearsQuery.run(context.committed)
 }
+watch(yearsQuery.data, (years) => {
+  yearOptions.value = [
+    { text: 'YTD', value: 'ytd' }, { text: 'All time', value: 'all_time' },
+    ...(years ?? []).map((year) => ({ text: String(year), value: year })),
+  ]
+}, { flush: 'sync' })
 
 watch(
-  [
-    () => context.canRead,
-    () => appStore.effectiveCurrentDate,
-    () => appStore.dataRefreshTrigger,
-    search,
-    itemsPerPage,
-    currentPage,
-    sortBy,
-    timespan,
-    dateFrom,
-    dateTo,
-  ],
-  () => {
-    if (context.canRead && dateTo.value) fetchData()
-  },
+  [() => context.canRead, () => appStore.dataRefreshTrigger,
+    search, itemsPerPage, currentPage, sortBy, timespan, dateFrom, dateTo],
+  () => { if (context.canRead && dateTo.value) fetchData() },
   { deep: true, immediate: true }
 )
-
-// This watch is used to update the year options when the selected account changes.
-// Data refresh is handled in AccountSelection.vue, triggering dataRefreshTrigger.
 watch(
-  () => appStore.accountSelection,
-  () => {
-    fetchYearOptions()
-  }
+  [() => context.canRead, () => appStore.dataRefreshTrigger],
+  () => { if (context.canRead) fetchYearOptions() },
+  { immediate: true }
 )
-
 const initializeData = async () => {
   emit('update-page-title', props.pageTitle)
 
@@ -439,7 +405,7 @@ const initializeData = async () => {
   }
 
   // Fetch year options
-  await fetchYearOptions()
+  // Year options follow committed context through their own request watcher.
 }
 
 onMounted(() => {

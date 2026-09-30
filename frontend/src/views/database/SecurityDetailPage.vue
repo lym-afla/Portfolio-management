@@ -1,5 +1,6 @@
 <template>
   <v-container fluid class="pa-0">
+    <v-alert v-if="loadError" type="error" class="mb-4">Unable to load part of this security. Change the selection or try again.</v-alert>
     <!-- Account filter -->
     <v-row class="mb-4">
       <v-col cols="12" sm="6" md="4">
@@ -342,7 +343,9 @@
                 :effective-current-date="effectiveCurrentDate"
               />
               <div style="height: 400px">
+                <v-skeleton-loader v-if="loadingPriceChart" type="image" />
                 <LineChart
+                  v-else
                   :chart-data="priceChartData"
                   :options="priceChartOptions"
                 />
@@ -362,7 +365,9 @@
                 :effective-current-date="effectiveCurrentDate"
               />
               <div style="height: 400px">
+                <v-skeleton-loader v-if="loadingPositionChart" type="image" />
                 <LineChart
+                  v-else
                   :chart-data="positionChartData"
                   :options="positionChartOptions"
                 />
@@ -450,8 +455,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotContext } from '@/types/query'
 import { useAppStore } from '@/stores/app'
 import {
   getSecurityDetail,
@@ -482,7 +490,7 @@ import {
   startOfYear,
   differenceInDays,
 } from 'date-fns'
-import logger from '@/utils/logger'
+
 import TransactionRow from '@/components/transactions/TransactionRow.vue'
 
 defineOptions({ name: 'SecurityDetailPage' })
@@ -505,21 +513,36 @@ Chart.defaults.locale = 'en-US'
 
 const route = useRoute()
 const appStore = useAppStore()
-const security = ref(null)
-const priceHistory = ref([])
-const positionHistory = ref([])
-const transactions = ref([])
-const chartOptions = ref(null)
-const chartOptionsLoaded = ref(false)
-const loading = ref(true)
-const loadingPriceChart = ref(true)
-const loadingPositionChart = ref(true)
-const loadingTransactions = ref(true)
-const totalTransactions = ref(0)
-
+const context = usePortfolioContextStore()
+const snapshotDetail = (params) => Object.freeze({
+  ...params, context: snapshotContext(params.context),
+  ...(params.pagination ? { pagination: Object.freeze({ ...params.pagination }) } : {}),
+})
+const detailQuery = usePortfolioRequest(async (params, options) => {
+  const security = await getSecurityDetail(params.id, params.account, options)
+  const chartOptions = await getChartOptions(security.currency)
+  return { security, chartOptions }
+}, snapshotDetail)
+const priceQuery = usePortfolioRequest((params, options) => getSecurityPriceHistory(params.id, params.period, options), snapshotDetail)
+const positionQuery = usePortfolioRequest((params, options) => getSecurityPositionHistory(params.id, params.period, params.account, options), snapshotDetail)
+const transactionsQuery = usePortfolioRequest((params, options) => getSecurityTransactions(params.id, params.pagination, params.period, params.account, options), snapshotDetail)
+const accountsQuery = usePortfolioRequest((_params, options) => getAccountChoices(options), snapshotContext)
+const security = computed(() => detailQuery.data.value?.security ?? null)
+const priceHistory = computed(() => priceQuery.data.value ?? [])
+const positionHistory = computed(() => positionQuery.data.value ?? [])
+const transactions = computed(() => transactionsQuery.data.value?.transactions ?? [])
+const chartOptions = computed(() => detailQuery.data.value?.chartOptions ?? null)
+const chartOptionsLoaded = computed(() => chartOptions.value !== null)
+const loading = computed(() => !context.canRead || detailQuery.loading.value)
+const loadingPriceChart = priceQuery.loading
+const loadingPositionChart = positionQuery.loading
+const loadingTransactions = transactionsQuery.loading
+const totalTransactions = computed(() => transactionsQuery.data.value?.total_items ?? 0)
+const loadError = computed(() => detailQuery.error.value || priceQuery.error.value || positionQuery.error.value || transactionsQuery.error.value || accountsQuery.error.value)
+watch(security, (value) => { emit('update-page-title', value?.name ?? '') }, { flush: 'sync' })
 // Account filtering
 const selectedAccount = ref(null)
-const accountOptions = ref([])
+const accountOptions = computed(() => formatAccountChoices(accountsQuery.data.value?.options ?? []))
 
 const selectedAccountId = computed(() => {
   if (!selectedAccount.value || selectedAccount.value.type === 'all')
@@ -610,115 +633,33 @@ const filteredPositionHistory = computed(() => {
   )
 })
 
-const fetchSecurityData = async () => {
-  try {
-    const securityId = route.params.id
-
-    // Debug logging - Log current effective date before API calls
-    logger.log(
-      'SecurityDetailPage',
-      '[DEBUG] fetchSecurityData - Current effectiveCurrentDate from store:',
-      appStore.effectiveCurrentDate
-    )
-
-    // loading.value = true
-    loadingPriceChart.value = true
-    loadingPositionChart.value = true
-
-    if (!security.value) {
-      const securityResponse = await getSecurityDetail(
-        securityId,
-        selectedAccountId.value
-      )
-      security.value = securityResponse
-      emit('update-page-title', security.value.name)
-    }
-
-    // Always fetch the effective current date to ensure it's up-to-date
-    logger.log(
-      'SecurityDetailPage',
-      '[DEBUG] fetchSecurityData - Fetching effective current date from backend...'
-    )
-    await appStore.fetchEffectiveCurrentDate()
-    logger.log(
-      'SecurityDetailPage',
-      '[DEBUG] fetchSecurityData - Updated effectiveCurrentDate from store:',
-      appStore.effectiveCurrentDate
-    )
-
-    const [priceHistoryResponse, positionHistoryResponse] =
-      await Promise.all([
-        getSecurityPriceHistory(securityId, selectedPeriod.value),
-        getSecurityPositionHistory(
-          securityId,
-          selectedPeriod.value,
-          selectedAccountId.value
-        ),
-      ])
-
-    priceHistory.value = priceHistoryResponse || []
-    positionHistory.value = positionHistoryResponse || []
-
-    if (!chartOptionsLoaded.value) {
-      chartOptions.value = await getChartOptions(security.value.currency)
-      chartOptionsLoaded.value = true
-    }
-
-    loadingPriceChart.value = false
-    loadingPositionChart.value = false
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching security data:', error)
-    // } finally {
-    //   loading.value = false
-  }
-}
-
-const fetchTransactions = async () => {
-  try {
-    loadingTransactions.value = true
-    const securityId = route.params.id
-    const response = await getSecurityTransactions(
-      securityId,
-      {
-        page: transactionOptions.value.page,
-        itemsPerPage: transactionOptions.value.itemsPerPage,
-      },
-      selectedPeriod.value,
-      selectedAccountId.value
-    )
-    transactions.value = response.transactions
-    totalTransactions.value = response.total_items
-  } catch (error) {
-    logger.error('Unknown', 'Error fetching transactions:', error)
-  } finally {
-    loadingTransactions.value = false
-  }
-}
-
-watch(selectedPeriod, () => {
-  fetchSecurityData()
-  transactionOptions.value.page = 1
-  fetchTransactions()
+const detailParams = () => ({
+  context: context.committed, id: Number(route.params.id),
+  account: selectedAccountId.value, period: selectedPeriod.value,
 })
-
-watch(selectedAccount, async () => {
-  // Reset and refetch all data for the new account
-  loading.value = true
-  security.value = null
-  await fetchSecurityData()
-  transactionOptions.value.page = 1
-  await fetchTransactions()
-  loading.value = false
-})
-
-watch(
-  transactionOptions,
-  () => {
-    fetchTransactions()
-  },
-  { deep: true }
-)
-
+watch([() => route.params.id, selectedAccount, selectedPeriod], () => {
+  transactionOptions.value = { ...transactionOptions.value, page: 1 }
+}, { flush: 'sync' })
+watch(() => route.params.id, () => {
+  detailQuery.invalidate()
+  priceQuery.invalidate()
+  positionQuery.invalidate()
+  transactionsQuery.invalidate()
+}, { flush: 'sync' })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId], () => {
+  if (context.canRead) detailQuery.run(detailParams())
+}, { immediate: true })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId, selectedPeriod], () => {
+  if (!context.canRead) return
+  priceQuery.run(detailParams())
+  positionQuery.run(detailParams())
+}, { immediate: true })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger, () => route.params.id, selectedAccountId, selectedPeriod, transactionOptions], () => {
+  if (context.canRead) transactionsQuery.run({ ...detailParams(), pagination: transactionOptions.value })
+}, { immediate: true, deep: true })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger], () => {
+  if (context.canRead) accountsQuery.run(context.committed)
+}, { immediate: true })
 const getLastAvailableDataPoint = (data, targetDate) => {
   const sortedData = [...data].sort(
     (a, b) => new Date(b.date) - new Date(a.date)
@@ -905,40 +846,6 @@ const positionChartOptions = computed(() => ({
   },
 }))
 
-onMounted(async () => {
-  // Fetch account options for the filter
-  try {
-    const data = await getAccountChoices()
-    accountOptions.value = formatAccountChoices(data.options)
-  } catch (error) {
-    logger.error(
-      'SecurityDetailPage',
-      'Error fetching account choices:',
-      error
-    )
-  }
-
-  logger.log('SecurityDetailPage', '[DEBUG] onMounted - Starting...')
-  logger.log(
-    'SecurityDetailPage',
-    '[DEBUG] onMounted - Initial effectiveCurrentDate from store:',
-    appStore.effectiveCurrentDate
-  )
-  loading.value = true
-  await fetchSecurityData()
-  logger.log(
-    'SecurityDetailPage',
-    '[DEBUG] onMounted - After fetchSecurityData, effectiveCurrentDate from store:',
-    appStore.effectiveCurrentDate
-  )
-  await fetchTransactions()
-  loading.value = false
-  logger.log(
-    'SecurityDetailPage',
-    '[DEBUG] onMounted - Completed, final effectiveCurrentDate from store:',
-    appStore.effectiveCurrentDate
-  )
-})
 </script>
 
 <style scoped>

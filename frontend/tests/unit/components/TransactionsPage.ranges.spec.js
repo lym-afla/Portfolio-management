@@ -34,7 +34,7 @@ it('applies a transaction range through one watcher request and resets paginatio
   await flushPromises()
   expect(app.tableSettings).toMatchObject({ timespan: 'custom', dateFrom: '2020-01-01', dateTo: '2020-03-31', page: 1 })
   expect(mocks.getTransactions).toHaveBeenCalledTimes(1)
-  expect(mocks.getTransactions).toHaveBeenCalledWith('2020-01-01', '2020-03-31', 1, expect.any(Number), expect.any(String), expect.any(Object))
+  expect(mocks.getTransactions).toHaveBeenCalledWith('2020-01-01', '2020-03-31', 1, expect.any(Number), expect.any(String), expect.any(Object), expect.objectContaining({ signal: expect.any(AbortSignal) }))
   wrapper.unmount()
 })
 

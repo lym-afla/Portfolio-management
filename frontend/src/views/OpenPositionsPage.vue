@@ -1,11 +1,12 @@
 <template>
   <PositionsPageBase
     :fetch-positions="fetchOpenPositions"
+    @accepted-result="acceptPositions"
     :headers="openPositionsHeaders"
     :default-visible-keys="openDefaultVisibleKeys"
     page-title="Open Positions"
   >
-    <template #above-table>
+    <template #above-table="{ loading: cashBalancesLoading }">
       <v-card class="mb-4">
         <v-card-title class="text-h6">Cash Balances</v-card-title>
         <v-card-text>
@@ -99,40 +100,22 @@ import {
 
 const totals = ref({})
 const cashBalances = ref({})
-const cashBalancesLoading = ref(true)
+
 
 const percentageColumns = openPercentageColumns
 
-const fetchOpenPositions = async ({
-  dateFrom,
-  dateTo,
-  page,
-  itemsPerPage,
-  search,
-  sortBy,
-}) => {
-  cashBalancesLoading.value = true
-  try {
-    const data = await getOpenPositions(
-      dateFrom,
-      dateTo,
-      page,
-      itemsPerPage,
-      search,
-      sortBy
-    )
-    totals.value = data.portfolio_open_totals
-    cashBalances.value = data.cash_balances
-    return {
-      positions: data.portfolio_open,
-      totals: data.portfolio_open_totals,
-      total_items: data.total_items,
-    }
-  } finally {
-    cashBalancesLoading.value = false
-  }
+const acceptPositions = (result) => {
+  totals.value = result?.totals ?? {}
+  cashBalances.value = result?.cash_balances ?? {}
 }
-</script>
+
+const fetchOpenPositions = async ({ dateFrom, dateTo, page, itemsPerPage, search, sortBy }, options) => {
+  const data = await getOpenPositions(dateFrom, dateTo, page, itemsPerPage, search, sortBy, options)
+  return {
+    positions: data.portfolio_open, totals: data.portfolio_open_totals,
+    total_items: data.total_items, cash_balances: data.cash_balances,
+  }
+}</script>
 
 <style scoped>
 .v-card-title {

@@ -285,7 +285,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted, inject } from 'vue'
+import { ref, watch, computed, onScopeDispose, inject } from 'vue'
 import { useAppStore } from '@/stores/app'
 import {
   getAssetTypes,
@@ -298,6 +298,9 @@ import {
 import debounce from 'lodash/debounce'
 // import LineChart from '@/components/charts/LineChart.vue'
 // import TimelineSelector from '@/components/TimelineSelector.vue'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotContext, snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import PriceFormDialog from '@/components/dialogs/PriceFormDialog.vue'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
@@ -313,6 +316,7 @@ import {
 } from 'date-fns'
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
 const {
   dateFrom,
   dateTo,
@@ -322,19 +326,18 @@ const {
   handlePageChange,
   handleItemsPerPageChange,
   handleSortChange,
-  handleTimespanChange,
 } = useTableSettings()
 
-const assetTypes = ref([])
-const accounts = ref([])
-const securities = ref([])
+const assetTypes = computed(() => assetTypesQuery.data.value ?? [])
+const accounts = computed(() => accountsQuery.data.value ?? [])
+const securities = computed(() => securitiesQuery.data.value ?? [])
 const selectedAssetTypes = ref([])
 const selectedAccount = ref(null)
 const selectedSecurities = ref([])
-const priceData = ref([])
+const priceData = computed(() => pricesQuery.data.value?.prices ?? [])
 const loading = ref(false)
-const tableLoading = ref(false)
-const totalItems = ref(0)
+const tableLoading = computed(() => pricesQuery.loading.value)
+const totalItems = computed(() => pricesQuery.data.value?.total_items ?? 0)
 const deleteDialog = ref(false)
 const deletedItem = ref({})
 const editingPrice = ref(null)
@@ -390,61 +393,49 @@ const toggleSelectAllSecurities = () => {
   }
 }
 
-const fetchSecurities = debounce(async () => {
-  try {
-    securities.value = await getSecurities(
-      selectedAssetTypes.value,
-      selectedAccount.value
-    )
-    // Reset securities if they are no longer in the list
-    selectedSecurities.value = selectedSecurities.value.filter((id) =>
-      securities.value.some((security) => security.id === id)
-    )
-    // Automatically select all securities if a account is selected
-    if (selectedAccount.value) {
-      selectedSecurities.value = securities.value.map((item) => item.id)
-    }
-  } catch (error) {
-    logger.error('PricesPage', 'Error fetching securities:', error)
-  }
-}, 300) // 300ms debounce
-
+const assetTypesQuery = usePortfolioRequest((_params, options) => getAssetTypes(options), snapshotContext)
+const accountsQuery = usePortfolioRequest((_params, options) => getAccounts(options), snapshotContext)
+const securitiesQuery = usePortfolioRequest((params, options) => getSecurities(params.assetTypes, params.account, options),
+  (params) => Object.freeze({ ...params, context: snapshotContext(params.context), assetTypes: Object.freeze([...params.assetTypes]) }))
+const pricesQuery = usePortfolioRequest((params, options) => getPrices({
+  assetTypes: params.assetTypes, account: params.account, securities: params.securities,
+  startDate: params.dateFrom, endDate: params.dateTo,
+  page: params.page, itemsPerPage: params.itemsPerPage, sortBy: params.sortBy,
+}, options), (params) => Object.freeze({
+  ...snapshotTableQuery(params), assetTypes: Object.freeze([...params.assetTypes]), securities: Object.freeze([...params.securities]),
+}))
+const appliedFilters = ref({ assetTypes: [], account: null, securities: [] })
+const fetchSecurities = debounce(() => securitiesQuery.run({
+  context: context.committed, assetTypes: selectedAssetTypes.value, account: selectedAccount.value,
+}), 300)
+onScopeDispose(() => fetchSecurities.cancel())
 watch([selectedAssetTypes, selectedAccount], () => {
+  securitiesQuery.invalidate()
   fetchSecurities()
+}, { flush: 'sync', deep: true })
+watch(securitiesQuery.data, (available) => {
+  if (!available) return
+  selectedSecurities.value = selectedAccount.value
+    ? available.map((item) => item.id)
+    : selectedSecurities.value.filter((id) => available.some((item) => item.id === id))
+}, { flush: 'sync' })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger], () => {
+  fetchSecurities.cancel()
+  if (!context.canRead) return
+  assetTypesQuery.run(context.committed)
+  accountsQuery.run(context.committed)
+  securitiesQuery.run({ context: context.committed, assetTypes: selectedAssetTypes.value, account: selectedAccount.value })
+}, { immediate: true })
+const fetchPriceData = () => pricesQuery.run({
+  context: context.committed, ...appliedFilters.value,
+  dateFrom: dateFrom.value, dateTo: dateTo.value,
+  page: currentPage.value, itemsPerPage: itemsPerPage.value,
+  sortBy: sortBy.value[0] || {}, search: '',
 })
-
-const isApplyingFilters = ref(false)
-
-const fetchPriceData = async () => {
-  tableLoading.value = true
-  try {
-    const response = await getPrices({
-      assetTypes: selectedAssetTypes.value,
-      account: selectedAccount.value,
-      securities: selectedSecurities.value,
-      startDate: dateFrom.value,
-      endDate: dateTo.value,
-      page: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      sortBy: sortBy.value[0] || {},
-    })
-    logger.log('PricesPage', 'API Response:', response) // Log the response
-    priceData.value = response.prices
-    totalItems.value = response.total_items
-  } catch (error) {
-    logger.error('PricesPage', 'Error fetching price data:', error)
-  } finally {
-    tableLoading.value = false
-    isApplyingFilters.value = false
-  }
-}
-
 const applyFilters = () => {
-  isApplyingFilters.value = true
+  appliedFilters.value = { assetTypes: [...selectedAssetTypes.value], account: selectedAccount.value, securities: [...selectedSecurities.value] }
   currentPage.value = 1
-  fetchPriceData()
 }
-
 const openImportDialog = () => {
   showImportDialog.value = true
 }
@@ -510,17 +501,10 @@ const addSecurity = () => {
   showSecurityDialog.value = true
 }
 
-watch(
-  [() => appStore.dataRefreshTrigger, itemsPerPage, currentPage, sortBy],
-  () => {
-    if (!isApplyingFilters.value) {
-      fetchPriceData()
-    }
-    isApplyingFilters.value = false
-  },
-  { deep: true }
-)
-
+watch([() => context.canRead, () => appStore.dataRefreshTrigger, appliedFilters,
+  dateFrom, dateTo, itemsPerPage, currentPage, sortBy], () => {
+  if (context.canRead && dateTo.value) fetchPriceData()
+}, { deep: true, immediate: true })
 const chartOptions = ref({})
 const selectedPeriod = ref('1Y')
 const chartOptionsLoaded = ref(false)
@@ -693,28 +677,4 @@ const updateChartOptions = async () => {
 
 watch(selectedPeriod, updateChartOptions)
 
-onMounted(async () => {
-  try {
-    const [assetTypesData, accountsData, securitiesData] = await Promise.all([
-      getAssetTypes(),
-      getAccounts(),
-      getSecurities(),
-    ])
-    logger.log('PricesPage', 'accountsData', accountsData)
-    logger.log('PricesPage', 'securitiesData', securitiesData)
-    logger.log('PricesPage', 'assetTypesData', assetTypesData)
-    assetTypes.value = assetTypesData
-    accounts.value = accountsData
-    securities.value = securitiesData
-
-    await handleTimespanChange('ytd')
-  } catch (error) {
-    logger.error('PricesPage', 'Error fetching initial data:', error)
-  }
-
-  if (!effectiveCurrentDate.value) {
-    await appStore.fetchEffectiveCurrentDate()
-  }
-  await applyFilters()
-})
 </script>

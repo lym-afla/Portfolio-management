@@ -8,7 +8,7 @@ export type RecordCount = number
 
 export interface SortBy {
   key?: string
-  order?: 'asc' | 'desc'
+  order?: 'asc' | 'desc' | boolean
   [key: string]: unknown
 }
 

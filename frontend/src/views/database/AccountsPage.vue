@@ -148,7 +148,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import AccountFormDialog from '@/components/dialogs/AccountFormDialog.vue'
 import {
@@ -156,10 +156,15 @@ import {
   deleteAccount,
   getAccountDetails,
 } from '@/services/api'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
+const tableQuery = usePortfolioRequest((params, options) => getAccountsTable({ page: params.page, itemsPerPage: params.itemsPerPage, sortBy: params.sortBy, search: params.search }, options), snapshotTableQuery)
 const {
   itemsPerPage,
   currentPage,
@@ -172,12 +177,12 @@ const {
 
 const { handleApiError } = useErrorHandler()
 
-const accounts = ref([])
+const accounts = computed(() => tableQuery.data.value?.accounts ?? [])
 const loading = ref(false)
-const tableLoading = ref(false)
+const tableLoading = tableQuery.loading
 
-const currencies = ref([])
-const totalItems = ref(0)
+const currencies = computed(() => [...new Set(accounts.value.flatMap((account) => Object.keys(account.cash)))])
+const totalItems = computed(() => tableQuery.data.value?.total_items ?? 0)
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const pageCount = computed(() =>
   Math.ceil(totalItems.value / itemsPerPage.value)
@@ -228,7 +233,7 @@ const headerAlignments = computed(() => {
   return alignments
 })
 
-const totals = ref({})
+const totals = computed(() => tableQuery.data.value?.totals ?? {})
 
 const flattenedHeaders = computed(() => {
   const flattened = []
@@ -245,29 +250,12 @@ const flattenedHeaders = computed(() => {
 })
 
 const fetchAccounts = async () => {
-  tableLoading.value = true
-  try {
-    const response = await getAccountsTable({
-      page: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      sortBy: sortBy.value[0] || {},
-      search: search.value,
-    })
-    accounts.value = response.accounts
-    totalItems.value = response.total_items
-    currencies.value = [
-      ...new Set(
-        accounts.value.flatMap((account) => Object.keys(account.cash))
-      ),
-    ]
-    totals.value = response.totals
-  } catch (error) {
-    handleApiError(error)
-  } finally {
-    tableLoading.value = false
-  }
+  await tableQuery.run({
+    context: context.committed, dateFrom: null, dateTo: context.committed.effectiveCurrentDate,
+    page: currentPage.value, itemsPerPage: itemsPerPage.value,
+    sortBy: sortBy.value[0] || {}, search: search.value,
+  })
 }
-
 const showAccountDialog = ref(false)
 const editingAccount = ref(null)
 
@@ -313,12 +301,9 @@ const addAccount = () => {
   showAccountDialog.value = true
 }
 
-onMounted(() => {
-  fetchAccounts()
-})
-
 watch(
   [
+    () => context.canRead,
     () => appStore.dataRefreshTrigger,
     search,
     itemsPerPage,
@@ -326,8 +311,8 @@ watch(
     sortBy,
   ],
   () => {
-    fetchAccounts()
+    if (context.canRead) fetchAccounts()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 </script>

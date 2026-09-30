@@ -115,7 +115,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import SecurityFormDialog from '@/components/dialogs/SecurityFormDialog.vue'
 import MergerDialog from '@/components/dialogs/MergerDialog.vue'
@@ -124,11 +124,16 @@ import {
   deleteSecurity,
   getSecurityDetails,
 } from '@/services/api'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotTableQuery } from '@/types/query'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { useErrorHandler } from '@/composables/useErrorHandler'
 import logger from '@/utils/logger'
 
 const appStore = useAppStore()
+const context = usePortfolioContextStore()
+const tableQuery = usePortfolioRequest((params, options) => getSecuritiesForDatabase({ page: params.page, itemsPerPage: params.itemsPerPage, sortBy: params.sortBy, search: params.search }, options), snapshotTableQuery)
 const {
   itemsPerPage,
   currentPage,
@@ -141,9 +146,9 @@ const {
 
 const { handleApiError } = useErrorHandler()
 
-const securities = ref([])
+const securities = computed(() => tableQuery.data.value?.securities ?? [])
 const loading = ref(false)
-const tableLoading = ref(false)
+const tableLoading = tableQuery.loading
 const dialog = ref(false)
 const editedIndex = ref(-1)
 const editedItem = ref({
@@ -211,30 +216,19 @@ const formTitle = computed(() => {
   return editedIndex.value === -1 ? 'New Security' : 'Edit Security'
 })
 
-const totalItems = ref(0)
+const totalItems = computed(() => tableQuery.data.value?.total_items ?? 0)
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const pageCount = computed(() =>
   Math.ceil(totalItems.value / itemsPerPage.value)
 )
 
 const fetchSecurities = async () => {
-  tableLoading.value = true
-  try {
-    const response = await getSecuritiesForDatabase({
-      page: currentPage.value,
-      itemsPerPage: itemsPerPage.value,
-      sortBy: sortBy.value[0] || {},
-      search: search.value,
-    })
-    securities.value = response.securities
-    totalItems.value = response.total_items
-  } catch (error) {
-    handleApiError(error)
-  } finally {
-    tableLoading.value = false
-  }
+  await tableQuery.run({
+    context: context.committed, dateFrom: null, dateTo: context.committed.effectiveCurrentDate,
+    page: currentPage.value, itemsPerPage: itemsPerPage.value,
+    sortBy: sortBy.value[0] || {}, search: search.value,
+  })
 }
-
 const showSecurityDialog = ref(false)
 const editingSecurity = ref(null)
 
@@ -282,12 +276,9 @@ const processDeleteSecurity = async (item) => {
   }
 }
 
-onMounted(() => {
-  fetchSecurities()
-})
-
 watch(
   [
+    () => context.canRead,
     () => appStore.dataRefreshTrigger,
     search,
     itemsPerPage,
@@ -295,8 +286,8 @@ watch(
     sortBy,
   ],
   () => {
-    fetchSecurities()
+    if (context.canRead) fetchSecurities()
   },
-  { deep: true }
+  { deep: true, immediate: true }
 )
 </script>

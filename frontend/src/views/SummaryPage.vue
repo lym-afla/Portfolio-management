@@ -276,37 +276,49 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
-import { useRouter } from 'vue-router'
-import { useErrorHandler } from '@/composables/useErrorHandler'
+import { usePortfolioContextStore } from '@/stores/portfolioContext'
+import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
+import { snapshotContext } from '@/types/query'
+
 import {
   getAccountPerformanceSummary,
   getYearOptions,
   getPortfolioBreakdownSummary,
 } from '@/services/api'
-import logger from '@/utils/logger'
+
 
 defineOptions({ name: 'SummaryPage' })
 
 const emit = defineEmits(['update-page-title'])
 
 const appStore = useAppStore()
-const router = useRouter()
-const { handleApiError } = useErrorHandler()
-const loading = ref({
-  accountPerformance: true,
-  portfolioBreakdown: true,
+const context = usePortfolioContextStore()
+
+const performanceQuery = usePortfolioRequest(async (_params, options) => {
+  const data = await getAccountPerformanceSummary(options)
+  if (!data?.public_markets_context || !data?.restricted_investments_context || !data?.total_context) {
+    throw new Error('Invalid account performance response')
+  }
+  return data
+}, snapshotContext)
+const breakdownQuery = usePortfolioRequest((params, options) => getPortfolioBreakdownSummary(params.year, options),
+  (params) => Object.freeze({ ...params, context: snapshotContext(params.context) }))
+const yearsQuery = usePortfolioRequest((_params, options) => getYearOptions(options), snapshotContext)
+const loading = computed(() => ({
+  accountPerformance: performanceQuery.loading.value, portfolioBreakdown: breakdownQuery.loading.value,
+}))
+const accountPerformanceData = computed(() => {
+  const data = performanceQuery.data.value
+  return data ? ['public_markets_context', 'restricted_investments_context'].map((name) => ({
+    name, lines: data[name].lines || [], subtotal: data[name].subtotal || null,
+  })) : []
 })
-const accountPerformanceData = ref([])
-const emptyBreakdownData = () => ({
-  consolidated_context: [],
-  unrestricted_context: [],
-  restricted_context: [],
-})
-const portfolioBreakdownData = ref(emptyBreakdownData())
-const years = ref([])
+const emptyBreakdownData = () => ({ consolidated_context: [], unrestricted_context: [], restricted_context: [] })
+const portfolioBreakdownData = computed(() => breakdownQuery.data.value ?? emptyBreakdownData())
+const years = computed(() => performanceQuery.data.value?.total_context.years ?? [])
 const currentYear = new Date().getFullYear()
 const selectedYear = ref(currentYear.toString())
-const yearOptions = ref([])
+const yearOptions = computed(() => yearsQuery.data.value ?? [])
 
 const subHeaders = ref([
   { text: 'BoP NAV', value: 'BoP NAV' },
@@ -390,81 +402,13 @@ const portfolioBreakdownCategories = [
   'restricted',
 ]
 
-const totalData = ref({})
-
-const fetchYearOptions = async () => {
-  try {
-    const years = await getYearOptions()
-    yearOptions.value = years
-  } catch (error) {
-    handleApiError(error)
-  }
-}
-
-const fetchAccountPerformanceData = async () => {
-  try {
-    loading.value.accountPerformance = true
-    const data = await getAccountPerformanceSummary()
-    if (
-      data &&
-      data.public_markets_context &&
-      data.restricted_investments_context &&
-      data.total_context
-    ) {
-      accountPerformanceData.value = [
-        {
-          name: 'public_markets_context',
-          lines: data.public_markets_context.lines || [],
-          subtotal: data.public_markets_context.subtotal || null,
-        },
-        {
-          name: 'restricted_investments_context',
-          lines: data.restricted_investments_context.lines || [],
-          subtotal: data.restricted_investments_context.subtotal || null,
-        },
-      ]
-      totalData.value = data.total_context.line || {}
-      years.value = data.total_context.years || []
-    } else {
-      logger.error('Unknown', 'Unexpected data structure:', data)
-    }
-  } catch (error) {
-    if (error.message === 'Authentication required') {
-      router.push('/login')
-    } else {
-      handleApiError(error)
-    }
-  } finally {
-    loading.value.accountPerformance = false
-  }
-}
-
-const fetchPortfolioBreakdown = async (year) => {
-  try {
-    loading.value.portfolioBreakdown = true
-    const data = await getPortfolioBreakdownSummary(year)
-    portfolioBreakdownData.value = data
-    if (!data || !data.consolidated_context) {
-      console.error(
-        'Unexpected data structure for portfolio breakdown:',
-        data
-      )
-    }
-  } catch (error) {
-    portfolioBreakdownData.value = emptyBreakdownData()
-    handleApiError(error)
-  } finally {
-    loading.value.portfolioBreakdown = false
-  }
-}
-
-const handleYearChange = (year) => {
-  selectedYear.value = year
-  fetchPortfolioBreakdown(year)
-}
-
-const error = ref(null)
-
+const totalData = computed(() => performanceQuery.data.value?.total_context.line ?? {})
+const fetchYearOptions = () => yearsQuery.run(context.committed)
+const fetchAccountPerformanceData = () => performanceQuery.run(context.committed)
+const fetchPortfolioBreakdown = (year) => breakdownQuery.run({ context: context.committed, year })
+const handleYearChange = (year) => { selectedYear.value = year }
+const error = computed(() => (performanceQuery.error.value || breakdownQuery.error.value || yearsQuery.error.value)
+  ? 'Unable to load part of the summary. Change the selection or try again.' : null)
 const hasBreakdownData = computed(() => {
   const d = portfolioBreakdownData.value
   return (
@@ -497,30 +441,15 @@ const portfolioBreakdownItems = computed(() => {
   return result
 })
 
-onMounted(async () => {
-  emit('update-page-title', 'Summary Analysis')
-  await fetchYearOptions()
-  await fetchAccountPerformanceData()
-  await fetchPortfolioBreakdown(selectedYear.value)
-})
-
-// Watch for changes in the store that should trigger a data refresh
-watch(
-  () => appStore.dataRefreshTrigger,
-  () => {
-    fetchAccountPerformanceData()
-    fetchPortfolioBreakdown(selectedYear.value)
-  }
-)
-
-// This watch is used to update the year options when the selected account changes.
-watch(
-  () => appStore.accountSelection,
-  () => {
-    fetchYearOptions()
-  }
-)
-</script>
+onMounted(() => { emit('update-page-title', 'Summary Analysis') })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger], () => {
+  if (!context.canRead) return
+  fetchYearOptions()
+  fetchAccountPerformanceData()
+}, { immediate: true })
+watch([() => context.canRead, () => appStore.dataRefreshTrigger, selectedYear], () => {
+  if (context.canRead) fetchPortfolioBreakdown(selectedYear.value)
+}, { immediate: true })</script>
 
 <style scoped>
 .table-wrapper {

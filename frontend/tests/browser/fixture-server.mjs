@@ -16,13 +16,14 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
   const requests = []
   const unmatchedRequests = []
   const sockets = new Set()
+  const heldReads = new Map()
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     const requestedMethod = request.method?.toUpperCase() || 'GET'
@@ -58,7 +59,8 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         return
       }
 
-      const captureBody = dateFlow && (dateSettingsPost || dateRefreshPost || url.pathname === '/open_positions/api/get_open_positions_table/')
+      const requestTable = requestFlow && ['/database/api/fx/list_fx/', '/transactions/api/get_transactions_table/'].includes(url.pathname)
+      const captureBody = (dateFlow && (dateSettingsPost || dateRefreshPost || url.pathname === '/open_positions/api/get_open_positions_table/')) || requestTable
       const chunks = []
       for await (const chunk of request) {
         if (captureBody) chunks.push(chunk)
@@ -79,6 +81,17 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
       if (dateRefreshPost) {
         currentDate = record.body.effective_current_date
         fixture.body.effective_current_date = currentDate
+      }
+      if (requestTable && ['GBP', 'EUR'].includes(record.body.search)) {
+        const currency = record.body.search
+        fixture.body = url.pathname.includes('list_fx')
+          ? { results: [{ id: 1, date: '2026-09-08', from_currency: currency, to_currency: 'USD', rate: currency === 'EUR' ? '1.25' : '0.5' }], count: 1, current_page: 1, total_pages: 1 }
+          : { transactions: [{ id: currency, transaction_type: 'regular', date: '08-Sep-26', type: 'Buy', security: { id: 1, name: `${currency} synthetic holding` }, quantity: '1', price: '1', cur: currency, balances: {} }], total_items: 1, current_page: 1, total_pages: 1, currencies: [currency] }
+        if (currency === 'GBP') {
+          await new Promise((resolve) => { heldReads.set(url.pathname, resolve) })
+          heldReads.delete(url.pathname)
+        }
+        record.completed = true
       }
       if (isContextMutation) { pendingMutation = true; await new Promise(resolve => { releaseMutation = resolve }); pendingMutation = false }
       response.writeHead(fixture.status, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -121,12 +134,15 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   const address = server.address()
 
   return {
+    heldReads,
+    releaseRead: (path) => heldReads.get(path)?.(),
     get pendingMutation() { return pendingMutation },
     releaseMutation: () => releaseMutation?.(),
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,
     close: async () => {
+      for (const release of heldReads.values()) release()
       for (const socket of sockets) {
         socket.destroy()
       }
