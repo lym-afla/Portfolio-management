@@ -1,15 +1,15 @@
 # Frontend modernization progress
 
-Updated 30 September 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
+Updated 1 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `9b32d3d9dbe0e8f46b7f37786e5da2bd8b79f5ae`.
-- Compared with `origin/main`: 34 commits ahead, 0 behind at this checkpoint. This is a snapshot, not a completion measure.
+- Verified remote and synchronized local code checkpoint: `7481e060850e3becdbfb4be2a5006867b91e1f77`, the PR #49 merge. The D3 handoff documentation follows this checkpoint; pull the latest branch rather than checking out the earlier code hash.
+- The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 13 of 24 planned tasks have implementation/review evidence. Eleven remain, including C1, which is now unblocked.
+- 14 of 24 planned tasks have implementation/review evidence. C1 is integrated; ten remain. D3 is the next executor assignment and visual milestone.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -26,11 +26,11 @@ Updated 30 September 2026. This is the durable, human-facing status tracker for 
 | 8 | F1 | Chart sample alignment | Merged PR #46: `607f5383` |
 | 9 | F2 | Contribution boundary inclusion | Merged PR #47: `71eaa1d7` |
 | 10 | F3 | Allocation percentage scale | Merged PR #48: `9b32d3d9` |
-| 11 | C1 | Opt-in exact chart contract | Implemented on `codex/chart-contract-v2` (base `671026da`, implementation `600fc9f7`): review-ready, awaiting human approval — see [C1 record](#c1-implementation-record) |
+| 11 | C1 | Opt-in exact chart contract | Merged PR #49 at `7481e060`, including reviewed corrections `213e70bf`; see [C1 record](#c1-implementation-record) |
 | 12 | R7 | Route/dialog/icon delivery | Implemented, review findings corrected: `c9711d33`, `7c1473cc`, `a1ab7ff8`; measured dashboard delivery 36.57% lower |
 | 13 | D1 | Semantic tokens and scoped components | Implemented/reviewed: `55bbdaca`; rendered visual acceptance remains D3 |
 | 14 | D2 | Context controls and responsive navigation | Implemented/reviewed: `deea60df`; Performance settings finding corrected, full browser gates passed |
-| 15 | D3 | NAV-first dashboard/positions visual pilot | Not implemented; accepted brief prepared |
+| 15 | D3 | NAV-first dashboard/positions visual pilot | Not implemented; [implementation handoff](2026-10-01-dashboard-visual-pilot-handoff.md) and [GLM prompt](2026-10-01-dashboard-visual-pilot-glm-prompt.md) prepared |
 | 16 | D4 | Grouped-table views, controls/actions/dialog accessibility | Not implemented |
 | 17 | C2 | Typed chart adapters and lifecycle | Not implemented; follows C1 |
 | 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | Not implemented; follows C1/C2 |
@@ -43,11 +43,11 @@ Updated 30 September 2026. This is the durable, human-facing status tracker for 
 
 ## Next execution and boundaries
 
-Execute only C1 using the [30 September handoff plan](2026-09-30-chart-contract-v2-handoff.md) and [GLM executor prompt](2026-09-30-chart-contract-v2-glm-prompt.md). The accepted full contract remains in [chart workstream C1](2026-09-08-chart-correctness-echarts.md#task-c1-add-an-opt-in-exact-chart-contract-without-removing-legacy-responses).
+Execute only D3 using the [1 October handoff plan](2026-10-01-dashboard-visual-pilot-handoff.md) and [GLM executor prompt](2026-10-01-dashboard-visual-pilot-glm-prompt.md). Create `codex/dashboard-visual-pilot` from the latest implementation branch; submit a separate draft PR back to it. The 30 September C1 handoff is historical and must not be executed again.
 
-D3 can proceed independently with the incumbent Chart.js renderer, but is a separate assignment. After C1 is reviewed/integrated, continue D3/D4 and C2/C3 according to the master dependencies. Do not fold these tasks into the C1 PR.
+D3 uses the incumbent Chart.js renderer and establishes the rendered dashboard/positions reference. D4 grouped-table behavior and C2/C3 adapter/ECharts work follow as separate assignments according to the master dependencies. Do not fold them into D3.
 
-C1 touches the protected `NAV_at_date` function for optional diagnostics. Earlier financial approvals do not approve this new proposal. Require a separate reviewed PR with `needs-approval`; no auto-merge into the implementation branch or main.
+C1's protected `NAV_at_date` diagnostics were reviewed and PR #49 was merged by the user. That approval does not authorize future financial changes. D3 is presentation-only; main has not received the modernization branch.
 
 The final release gate is not just passing unit tests: it includes the dashboard/positions visual pilot, grouped column views, actual three solid pies, both IRRs with exact horizons, accessible chart legend/table/tooltip/zoom, complete workflow/route rollout, and D8 acceptance. CSS zoom evidence does not substitute for native browser zoom or production delivery verification.
 
@@ -63,7 +63,8 @@ The final release gate is not just passing unit tests: it includes the dashboard
 - Deliberate contract decisions recorded for review: allocation envelope is keyed `assetType`/`assetClass`/`currency` (one singular allocation ChartDocument per legacy response key); unidentifiable category labels return 500 `CHART_CALCULATION_FAILED` retryable=false (identity cannot be certified, generic message); DB column scales are preserved verbatim in raw strings (bond price `98.500000`, value exact; display `98.5% of nominal`); position legacy array stays Decimal-as-string to remain wire-identical inside the v2 envelope.
 - Known limitations for the reviewer: `dashboard/views.py` 76% and `database/views.py` 68% whole-module coverage are inherited gaps (summary-over-time and unrelated endpoints untested), not introduced by this change; the executor machine only had Node 24.15.0 installed, so a portable official Node v24.20.0 was used from the ignored `temp_files/` directory; no browser automation was run for this backend-only task.
 - Review corrections applied (round 1, commit `213e70bf`): valuation completeness now propagates by dependency (opening NAV ← previous endpoint; period return and interval IRR ← both endpoints; cumulative return and since-inception IRR ← terminal value only; contributions/net investments stay observed — RED confirmed then GREEN), price/position documents carry the required `partition` field, and allocation calculation/document-building failures return the generic v2 `CHART_CALCULATION_FAILED` envelope (identity failures non-retryable) while legacy breakdown errors keep their incumbent uncaught behavior. Four new regression tests. Gates after corrections: full backend 1386 passed / 10 skipped, coverage 83.23% (`services/nav.py` 90%, `services/charts.py` 92%), F regressions 27 passed, frontend gates on Node v24.20.0 (`api:types:check` match, `test:unit` 263 passed — one transient unrelated flake observed once, not reproducible in two consecutive green reruns — type-checks, lint 0 errors, build OK).
-- Integration state: NOT integrated — draft PR [#49](https://github.com/lym-afla/Portfolio-management/pull/49) open (`needs-approval`, `area:calculations`, `risk:high`), human financial approval of the protected `NAV_at_date` diagnostics still required; earlier F1/F2/F3 approvals do not cover it.
+- Independent review: four findings verified and returned for correction; fixes at `213e70bf` verified at `0eb10864`. Root independently ran 125 focused contract/chart tests and an additional 49 diagnostics/NAV/IRR/option/crypto/bond regressions, all passing. These are scoped results; the full-suite/coverage/frontend results above are executor-reported.
+- Integration state: user merged [PR #49](https://github.com/lym-afla/Portfolio-management/pull/49) into `codex/frontend-modernization` on 1 October 2026 at `7481e060850e3becdbfb4be2a5006867b91e1f77`, verified against GitHub. C1 is integrated. No main merge or deployment.
 
 - [Master plan](2026-09-08-frontend-modernization.md): overall scope/dependencies and release criteria.
 - [Reliability plan](2026-09-08-frontend-reliability-platform.md), [chart plan](2026-09-08-chart-correctness-echarts.md), [design/workflow plan](2026-09-08-frontend-design-workflows.md): accepted task specifications.
