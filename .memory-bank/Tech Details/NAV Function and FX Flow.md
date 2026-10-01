@@ -32,6 +32,60 @@ This file documents the concrete implementation of the NAV calculation and relat
 - When converting prices, the code uses the asset's currency and multiplies price by FX factor (except bonds where FX rate may be handled differently per context).
 - **FX Convention**: For each currency pair `CUR1CUR2` in the database, the value represents the number of `CUR1` units per 1 `CUR2` unit. For example, `RUBUSD = 75` means 75 RUB = 1 USD.
 
+## NAV omission diagnostics and the chart contract v2 (C1)
+
+`NAV_at_date` in `backend/services/nav.py` accepts an optional keyword-only
+`diagnostics: list | None = None`. When a list is supplied, each valuation
+source the function **omits** appends one provenance dict immediately before
+the existing `continue`:
+
+- Unpriced crypto coin (USD price unavailable via `price_at_date` FX raise):
+  `reason: 'missing_price'`, `account_id`, `asset_id`, `currency`,
+  `asset_type`, `asset_class`.
+- Option settle coin without an FX rate: `reason: 'missing_fx'` with the same
+  source fields.
+- Option cash flow in an unconvertible coin (Crypto-bucket routing): `reason:
+  'missing_fx'`, `account_id`/`asset_id` from the transaction, `currency`.
+- Cash balance currency without an FX rate: `reason: 'missing_fx'`,
+  `account_id`, `currency`, `asset_type`/`asset_class` `'Cash'`.
+
+The argument is pure instrumentation: no formula, fallback, cache or
+return-shape change, and the default call is output-identical (regressions:
+`tests/unit/calculations/test_nav_diagnostics_equivalence.py` plus the
+existing option/crypto/bond NAV suites).
+
+The chart endpoints negotiate the opt-in contract via `chart_contract=2`:
+
+- `dashboard/api/get-nav-chart-data/` keeps its legacy payload and adds a
+  `chartV2` document (exact Decimal `value`/backend-scaled `plotValue`
+  strings, exact sampled ISO periods, stable series identity, units,
+  statuses/reasons, display strings). Assembly happens in
+  `services/charts.py` (`_NavV2Collector`, `decimal_chart_value`,
+  `unavailable_chart_value`); the dashboard view supplies the context and the
+  v2 error contract (`400 INVALID_CHART_QUERY`, `500
+  CHART_CALCULATION_FAILED`, `200 outcome:'empty'`).
+- `dashboard/api/get-breakdown/` adds `chartV2` with one `kind='allocation'`
+  document per dimension (`assetType`/`assetClass`/`currency` keys):
+  denominator = full reporting NAV, raw-ratio shares, deterministic ranks and
+  backend-certified `pieEligibility` (`eligible` only for a known complete
+  nonnegative partition of a positive NAV; otherwise `incomplete` >
+  `nonpositive_total` > `signed` > `nonpartitioning`).
+- Security price/position histories return `{legacy: <unchanged array>,
+  chartV2: document}`; the legacy array is wire-identical (positions remain
+  Decimal-as-string per `JsonResponse`'s encoder).
+- Unknown is never zero: omitted valuations surface as `partial` values with
+  `knownSubtotal`, absent categories stay `absent_unclassified`, and IRRs
+  against an incomplete terminal NAV are `partial` with null `value`.
+- Completeness propagates by dependency, not blanket-flagging: the
+  since-inception IRR at a sample depends only on that sample's terminal NAV;
+  the interval IRR additionally prices the opening portfolio value at the
+  previous endpoint; the contributions-mode opening NAV carries the previous
+  endpoint's completeness; the period return prices both endpoints; the
+  cumulative return prices only the terminal value; contributions and
+  cumulative net investments come from canonical transactions and stay
+  observed. Security price/position documents carry `partition: 'complete'`
+  (single observed series, no cross-series partition question).
+
 ## Performance & scaling notes
 - Currently using SQLite: acceptable for local dev, not for production scale. Expect query slowdowns for `_portfolio_at_date` and any annotation queries as transaction counts grow.
 - Derived computations (positions, NAV) are computed on-demand: consider materializing some snapshots (e.g., daily NAV snapshots) if UI performance becomes an issue.

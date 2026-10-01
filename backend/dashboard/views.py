@@ -22,7 +22,14 @@ from common.schema_serializers import (
     MessageResponseSerializer,
     NavChartDataResponseSerializer,
 )
-from services.charts import get_nav_chart_data
+from services.charts import (
+    CHART_CONTRACT_VERSION,
+    CHART_FREQUENCIES,
+    CHART_NAV_MODES,
+    build_allocation_document,
+    chart_error_body,
+    get_nav_chart_data,
+)
 from core.formatting_utils import currency_format, format_percentage, format_table_data
 from services.fx import get_rate as fx_get_rate
 from services.nav import IRR, NAV_at_date
@@ -34,6 +41,40 @@ from services.performance import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _requested_chart_contract(request):
+    """Parse the explicit chart contract negotiation parameter.
+
+    Returns ``(version, error_response)`` — exactly one is None. Absent means
+    legacy; anything other than the supported version is an explicit client
+    error, never a silent downgrade to legacy.
+    """
+    raw = request.GET.get("chart_contract")
+    if raw is None:
+        return None, None
+    if raw != str(CHART_CONTRACT_VERSION):
+        return None, Response(
+            chart_error_body(
+                "INVALID_CHART_QUERY",
+                "Unsupported chart contract version; this server serves version "
+                f"{CHART_CONTRACT_VERSION}.",
+                False,
+            ),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return CHART_CONTRACT_VERSION, None
+
+
+def _chart_context(user, account_selection_type, account_selection_id, account_ids,
+                   effective_date, currency, digits):
+    return {
+        "accountSelection": {"type": account_selection_type, "id": account_selection_id},
+        "accountIds": list(account_ids),
+        "effectiveDate": effective_date,
+        "currency": currency,
+        "digits": digits,
+    }
 
 
 @extend_schema(
@@ -120,6 +161,9 @@ def get_dashboard_summary_api(request):
 def get_dashboard_breakdown_api(request):
     """Get dashboard breakdown API."""
     user = request.user
+    contract_version, contract_error = _requested_chart_contract(request)
+    if contract_error is not None:
+        return contract_error
     # Use JWT middleware instead of session
     effective_current_date_str = getattr(
         request, "effective_current_date", datetime.now().date().isoformat()
@@ -132,13 +176,80 @@ def get_dashboard_breakdown_api(request):
         user, user.selected_account_type, user.selected_account_id
     )
 
-    analysis = NAV_at_date(
-        user.id,
-        tuple(selected_account_ids),
-        effective_current_date,
-        currency_target,
-        tuple(["asset_type", "currency", "asset_class"]),
-    )
+    breakdown_diagnostics = [] if contract_version is not None else None
+    nav_kwargs = {"diagnostics": breakdown_diagnostics} if contract_version is not None else {}
+    try:
+        analysis = NAV_at_date(
+            user.id,
+            tuple(selected_account_ids),
+            effective_current_date,
+            currency_target,
+            tuple(["asset_type", "currency", "asset_class"]),
+            **nav_kwargs,
+        )
+    except Exception:
+        if contract_version is None:
+            raise  # legacy keeps its incumbent uncaught behavior
+        logger.exception("Error calculating breakdown for chart contract v2")
+        return Response(
+            chart_error_body(
+                "CHART_CALCULATION_FAILED",
+                "Breakdown could not be calculated. Please try again.",
+                True,
+            ),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    if contract_version is not None:
+        context = _chart_context(
+            user,
+            user.selected_account_type,
+            user.selected_account_id,
+            selected_account_ids,
+            effective_current_date_str,
+            currency_target,
+            number_of_digits,
+        )
+        dimensions = {"assetType": "asset_type", "assetClass": "asset_class",
+                      "currency": "currency"}
+        try:
+            chart_v2 = {
+                key: build_allocation_document(
+                    dimension,
+                    analysis,
+                    currency=currency_target,
+                    digits=number_of_digits,
+                    diagnostics=breakdown_diagnostics,
+                    effective_date=effective_current_date,
+                    context=context,
+                )
+                for key, dimension in dimensions.items()
+            }
+        except ValueError:
+            # A category label without authoritative membership/code cannot
+            # be certified; never fabricate an identity or leak the label.
+            logger.error("Chart allocation category identity failure")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Allocation data could not be certified for this selection.",
+                    False,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception:
+            logger.exception("Error building allocation documents for chart contract v2")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Allocation data could not be calculated. Please try again.",
+                    True,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+    else:
+        chart_v2 = None
+
     print(f"Analysis: {analysis}")
     # Extract 'Total NAV' from the analysis
     total_nav = analysis.get("Total NAV", None)
@@ -149,23 +260,24 @@ def get_dashboard_breakdown_api(request):
     # Format the values
     analysis = format_table_data(analysis, currency_target, number_of_digits)
 
-    return Response(
-        {
-            "assetType": {
-                "data": analysis["asset_type"],
-                "percentage": analysis["asset_type_percentage"],
-            },
-            "currency": {
-                "data": analysis["currency"],
-                "percentage": analysis["currency_percentage"],
-            },
-            "assetClass": {
-                "data": analysis["asset_class"],
-                "percentage": analysis["asset_class_percentage"],
-            },
-            "totalNAV": currency_format(total_nav, currency_target, number_of_digits),
-        }
-    )
+    payload = {
+        "assetType": {
+            "data": analysis["asset_type"],
+            "percentage": analysis["asset_type_percentage"],
+        },
+        "currency": {
+            "data": analysis["currency"],
+            "percentage": analysis["currency_percentage"],
+        },
+        "assetClass": {
+            "data": analysis["asset_class"],
+            "percentage": analysis["asset_class_percentage"],
+        },
+        "totalNAV": currency_format(total_nav, currency_target, number_of_digits),
+    }
+    if chart_v2 is not None:
+        payload["chartV2"] = chart_v2
+    return Response(payload)
 
 
 @api_view(["GET"])
@@ -322,6 +434,8 @@ def get_dashboard_summary_over_time_api(request):
 @permission_classes([IsAuthenticated])
 def api_nav_chart_data(request):
     """Prepare API nav chart data."""
+    currency = None  # bound on the legacy error path below
+    contract_version = None
     try:
         user = request.user
         frequency = request.GET.get("frequency")
@@ -329,20 +443,12 @@ def api_nav_chart_data(request):
         to_date = request.GET.get("dateTo")
         breakdown = request.GET.get("breakdown")
         currency = user.default_currency
+        contract_version, contract_error = _requested_chart_contract(request)
+        if contract_error is not None:
+            return contract_error
         selected_account_ids = get_selected_account_ids(
             user, user.selected_account_type, user.selected_account_id
         )
-
-        # Handle case where no accounts are selected
-        if not selected_account_ids:
-            return Response(
-                {
-                    "labels": [],
-                    "datasets": [],
-                    "currency": currency + "k",
-                    "empty": True,
-                }
-            )
 
         if not to_date:
             # Use JWT middleware instead of session
@@ -351,18 +457,127 @@ def api_nav_chart_data(request):
             )
             to_date = datetime.strptime(effective_current_date_str, "%Y-%m-%d").date().isoformat()
 
+        if contract_version is not None:
+            # v2 validates the query explicitly instead of returning an empty
+            # legacy payload for invalid inputs.
+            if frequency not in CHART_FREQUENCIES:
+                return Response(
+                    chart_error_body(
+                        "INVALID_CHART_QUERY", "Unsupported chart frequency.", False
+                    ),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if breakdown not in CHART_NAV_MODES:
+                return Response(
+                    chart_error_body(
+                        "INVALID_CHART_QUERY", "Unsupported chart breakdown mode.", False
+                    ),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                parsed_from = date.fromisoformat(from_date) if from_date else None
+                parsed_to = date.fromisoformat(to_date)
+            except (TypeError, ValueError):
+                return Response(
+                    chart_error_body(
+                        "INVALID_CHART_QUERY", "Chart dates must be ISO dates.", False
+                    ),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if parsed_from is not None and parsed_from > parsed_to:
+                return Response(
+                    chart_error_body(
+                        "INVALID_CHART_QUERY",
+                        "Chart start date must not be after the end date.",
+                        False,
+                    ),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Handle case where no accounts are selected
+        if not selected_account_ids:
+            payload = {
+                "labels": [],
+                "datasets": [],
+                "currency": currency + "k",
+                "empty": True,
+            }
+            if contract_version is not None:
+                payload["chartV2"] = {
+                    "version": 2,
+                    "kind": "nav",
+                    "outcome": "empty",
+                    "context": _chart_context(
+                        user,
+                        user.selected_account_type,
+                        user.selected_account_id,
+                        [],
+                        to_date,
+                        currency,
+                        user.digits,
+                    ),
+                    "periods": [],
+                    "series": [],
+                    "totals": [],
+                    "partition": "complete",
+                }
+            return Response(payload)
+
+        chart_v2 = None
+        if contract_version is not None:
+            chart_v2 = {
+                "version": 2,
+                "kind": "nav",
+                "context": _chart_context(
+                    user,
+                    user.selected_account_type,
+                    user.selected_account_id,
+                    selected_account_ids,
+                    to_date,
+                    currency,
+                    user.digits,
+                ),
+            }
+
         # from_date can be None, it will be handled in get_nav_chart_data
-        chart_data = get_nav_chart_data(
-            user.id,
-            selected_account_ids,
-            frequency,
-            from_date,
-            to_date,
-            currency,
-            breakdown,
-        )
+        try:
+            chart_data = get_nav_chart_data(
+                user.id,
+                selected_account_ids,
+                frequency,
+                from_date,
+                to_date,
+                currency,
+                breakdown,
+                chart_v2=chart_v2,
+                display_digits=user.digits,
+            )
+        except ValueError as identity_error:
+            if contract_version is not None:
+                logger.error(f"Chart category identity failure: {identity_error}")
+                return Response(
+                    chart_error_body(
+                        "CHART_CALCULATION_FAILED",
+                        "Chart data could not be certified for this selection.",
+                        False,
+                    ),
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            raise
+        if contract_version is not None:
+            chart_data["chartV2"] = chart_v2
         return Response(chart_data)
 
     except Exception as e:
+        if contract_version is not None:
+            logger.error(f"Error generating NAV chart data: {e}")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Chart data could not be calculated. Please try again.",
+                    True,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         logger.error(f"Error generating NAV chart data: {e}")
         return Response({"labels": [], "datasets": [], "currency": currency + "k", "empty": True})
