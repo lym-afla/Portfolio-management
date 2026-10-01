@@ -1,78 +1,121 @@
 <template>
-  <v-container fluid class="pa-0">
+  <WorkspacePage title="Dashboard">
     <v-skeleton-loader
       v-if="isEffectiveDateLoading"
       type="article"
       class="my-4"
     />
     <template v-else>
-      <v-row class="equal-height-row">
-        <v-col cols="12" md="3">
-          <v-skeleton-loader v-if="loading.summary" type="card" class="h-100" />
-          <SummaryCard
-            v-else-if="!error.summary"
-            data-testid="summary-card"
-            :summary="summary"
-            :currency="userCurrency"
-            class="h-100"
-          />
-          <v-alert v-else type="error" class="h-100" data-testid="summary-error">
-            {{ error.summary }}
-            <v-btn
-              color="error"
-              variant="outlined"
-              class="ml-2"
-              data-testid="summary-retry"
-              @click="fetchSummaryData"
-            >
-              Retry
-            </v-btn>
-          </v-alert>
-        </v-col>
-        <v-col cols="12" md="9">
-          <v-row class="equal-height-row h-100">
-            <v-col
-              v-for="(chart, index) in chartTypes"
-              :key="index"
-              cols="12"
-              md="4"
-            >
-              <v-skeleton-loader
-                v-if="loading.breakdownCharts"
-                type="card"
-                class="h-100"
-              />
-              <BreakdownChart
-                v-else-if="!error.breakdownCharts"
-                :data-testid="`allocation-${chart}-card`"
-                :title="chartTitles[chart]"
-                :data="breakdownData[chart]"
-                :currency="userCurrency"
-                :totalNAV="totalNAV"
-                class="h-100"
-              />
-              <v-alert v-else type="error" class="h-100" :data-testid="`allocation-${chart}-error`">
-                {{ error.breakdownCharts }}
-                <v-btn
-                  color="error"
-                  variant="outlined"
-                  class="ml-2"
-                  :data-testid="`allocation-${chart}-retry`"
-                  @click="fetchBreakdownData"
-                >
-                  Retry
-                </v-btn>
-              </v-alert>
-            </v-col>
-          </v-row>
-        </v-col>
-      </v-row>
+      <PortfolioMetrics
+        v-if="!loading.summary && !error.summary"
+        data-testid="summary-card"
+        :metrics="metrics"
+        :context-label="contextLabel"
+      />
+      <v-skeleton-loader v-else-if="loading.summary" type="card" />
+      <v-alert v-else type="error" data-testid="summary-error">
+        {{ error.summary }}
+        <v-btn
+          color="error"
+          variant="outlined"
+          class="ml-2"
+          data-testid="summary-retry"
+          @click="fetchSummaryData"
+        >
+          Retry
+        </v-btn>
+      </v-alert>
 
-      <v-row>
-        <v-col cols="12">
-          <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
-          <div v-else-if="!error.summaryOverTime" data-testid="history-table">
+      <div class="dashboard-trajectory">
+        <v-alert v-if="error.navChart" type="error" class="mb-2" data-testid="nav-error">
+          {{ error.navChart }}
+          <v-btn
+            color="error"
+            variant="outlined"
+            class="ml-2"
+            data-testid="nav-retry"
+            @click="fetchNAVChartData()"
+          >
+            Retry
+          </v-btn>
+        </v-alert>
+        <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
+        <NAVChart
+          v-else-if="navChartData"
+          data-testid="nav-chart"
+          :chartData="navChartData"
+          :loading="updating.navChart"
+          :initialParams="navChartInitialParams"
+          :effectiveCurrentDate="effectiveCurrentDate"
+          @update-params="fetchNAVChartData"
+        />
+      </div>
+
+      <WorkspaceSection
+        heading-id="allocation-section"
+        title="Allocation"
+        description="Composition of total NAV; each card keeps its Table view for exact values."
+        data-testid="allocation-section"
+      >
+        <v-row class="equal-height-row">
+          <v-col
+            v-for="chart in chartTypes"
+            :key="chart"
+            cols="12"
+            md="4"
+          >
+            <v-skeleton-loader
+              v-if="loading.breakdownCharts"
+              type="card"
+              class="h-100"
+            />
+            <BreakdownChart
+              v-else-if="!error.breakdownCharts"
+              :data-testid="`allocation-${chart}-card`"
+              :title="chartTitles[chart]"
+              :data="breakdownData[chart]"
+              :currency="userCurrency"
+              :totalNAV="totalNAV"
+              class="h-100"
+            />
+            <v-alert v-else type="error" class="h-100" :data-testid="`allocation-${chart}-error`">
+              {{ error.breakdownCharts }}
+              <v-btn
+                color="error"
+                variant="outlined"
+                class="ml-2"
+                :data-testid="`allocation-${chart}-retry`"
+                @click="fetchBreakdownData"
+              >
+                Retry
+              </v-btn>
+            </v-alert>
+          </v-col>
+        </v-row>
+      </WorkspaceSection>
+
+      <WorkspaceSection
+        heading-id="history-section"
+        title="Historical reconciliation"
+        description="Year-end performance history with year-to-date and all-time columns."
+        data-testid="history-section"
+      >
+        <template #actions>
+          <v-btn
+            v-if="historyReady"
+            data-testid="update-performance"
+            variant="tonal"
+            color="primary"
+            size="small"
+            @click="historyTable?.openUpdateDialog()"
+          >
+            Update Account Performance
+          </v-btn>
+        </template>
+        <v-skeleton-loader v-if="loading.summaryOverTime" type="table" />
+        <div v-else-if="!error.summaryOverTime" data-testid="history-table">
           <SummaryOverTimeTable
+            ref="historyTable"
             :lines="summaryOverTimeData?.lines ?? []"
             :years="summaryOverTimeData?.years ?? []"
             :currentYear="
@@ -80,61 +123,37 @@
             "
             @refresh-data="fetchSummaryOverTimeData"
           />
-          </div>
-          <v-alert v-else type="error" data-testid="history-error">
-            {{ error.summaryOverTime }}
-            <v-btn
-              color="error"
-              variant="outlined"
-              class="ml-2"
-              data-testid="history-retry"
-              @click="fetchSummaryOverTimeData"
-            >
-              Retry
-            </v-btn>
-          </v-alert>
-        </v-col>
-      </v-row>
-
-      <v-row>
-        <v-col cols="12">
-          <v-alert v-if="error.navChart" type="error" class="mb-2" data-testid="nav-error">
-            {{ error.navChart }}
-            <v-btn
-              color="error"
-              variant="outlined"
-              class="ml-2"
-              data-testid="nav-retry"
-              @click="fetchNAVChartData()"
-            >
-              Retry
-            </v-btn>
-          </v-alert>
-          <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
-          <NAVChart
-            v-else-if="navChartData"
-            data-testid="nav-chart"
-            :chartData="navChartData"
-            :loading="updating.navChart"
-            :initialParams="navChartInitialParams"
-            :effectiveCurrentDate="effectiveCurrentDate"
-            @update-params="fetchNAVChartData"
-          />
-        </v-col>
-      </v-row>
+        </div>
+        <v-alert v-else type="error" data-testid="history-error">
+          {{ error.summaryOverTime }}
+          <v-btn
+            color="error"
+            variant="outlined"
+            class="ml-2"
+            data-testid="history-retry"
+            @click="fetchSummaryOverTimeData"
+          >
+            Retry
+          </v-btn>
+        </v-alert>
+      </WorkspaceSection>
     </template>
-  </v-container>
+  </WorkspacePage>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch, computed } from 'vue'
+import { onMounted, onUnmounted, watch, computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
 import { snapshotContext } from '@/types/query'
 import type { PortfolioContext } from '@/types/portfolioContext'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
-import SummaryCard from '@/components/dashboard/SummaryCard.vue'
+import { committedAccountLabel } from '@/utils/accountUtils'
+import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
+import PortfolioMetrics from '@/components/dashboard/PortfolioMetrics.vue'
+import { summaryMetrics } from '@/components/dashboard/summaryMetrics'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
 import NAVChart from '@/components/dashboard/NAVChart.vue'
@@ -180,6 +199,7 @@ interface NavQueryParams {
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
+const historyTable = ref<{ openUpdateDialog: () => void } | null>(null)
 const summaryQuery = usePortfolioRequest(
   (_params: PortfolioContext, options) => getDashboardSummary(options),
   snapshotContext
@@ -211,7 +231,9 @@ const navQuery = usePortfolioRequest(
     chart: Object.freeze({ ...params.chart }),
   })
 )
-const summary = computed(() => summaryQuery.data.value ?? {})
+const metrics = computed(() =>
+  summaryQuery.data.value ? summaryMetrics(summaryQuery.data.value) : []
+)
 const breakdownData = computed(() => breakdownQuery.data.value ?? {
   assetType: {}, assetClass: {}, currency: {},
 })
@@ -222,6 +244,17 @@ const navChartInitialParams = computed(() => appStore.navChartParams)
 const effectiveCurrentDate = computed(() => context.committed.effectiveCurrentDate)
 const isEffectiveDateLoading = computed(() => !context.canRead)
 const userCurrency = computed(() => context.committed.currency)
+// Account label follows the accepted committed presentation shared with the shell.
+const accountLabel = computed(() =>
+  committedAccountLabel(context.accountOptions, context.committed.accountSelection)
+)
+const contextLabel = computed(() =>
+  [
+    accountLabel.value,
+    context.committed.effectiveCurrentDate ?? 'Unavailable',
+    context.committed.currency ?? 'Unavailable',
+  ].join(' · ')
+)
 const loading = computed(() => ({
   summary: summaryQuery.loading.value,
   breakdownCharts: breakdownQuery.loading.value,
@@ -235,6 +268,9 @@ const error = computed(() => ({
   summaryOverTime: historyQuery.error.value?.message,
   navChart: navQuery.error.value?.message,
 }))
+const historyReady = computed(() =>
+  !loading.value.summaryOverTime && !error.value.summaryOverTime
+)
 const chartTypes = ['assetType', 'assetClass', 'currency'] as const
 const chartTitles = { assetType: 'Asset Type', assetClass: 'Asset Class', currency: 'Currency' }
 const fetchSummaryData = () => summaryQuery.run(context.committed)
@@ -266,6 +302,10 @@ onMounted(() => emit('update-page-title', 'Dashboard'))
 onUnmounted(() => emit('update-page-title', ''))
 </script>
 <style scoped>
+.dashboard-trajectory {
+  min-width: 0;
+}
+
 .equal-height-row {
   display: flex;
   flex-wrap: wrap;

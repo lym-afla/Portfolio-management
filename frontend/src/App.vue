@@ -169,7 +169,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import WorkspaceContextStrip from './components/workspace/WorkspaceContextStrip.vue'
 import { toContextPatch } from './components/workspace/contextIntent'
 import { useWorkspaceContextView } from './components/workspace/useWorkspaceContextView'
-import { formatAccountChoices } from './utils/accountUtils'
+import { committedAccountLabel } from './utils/accountUtils'
 import { useRouter, useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAuthStore } from '@/stores/auth'
@@ -200,18 +200,8 @@ async function saveDate() {
     dateDraft.value = context.committed.effectiveCurrentDate ?? ''
   }
 }
-const accountChoices = computed(() =>
-  formatAccountChoices(context.accountOptions)
-)
 function accountLabel(selection: typeof context.committed.accountSelection) {
-  return (
-    accountChoices.value.find(
-      (option) =>
-        option.type === 'option' &&
-        option.value?.type === selection.type &&
-        option.value?.id === selection.id
-    )?.title ?? (selection.type === 'all' ? 'All accounts' : 'Unavailable')
-  )
+  return committedAccountLabel(context.accountOptions, selection)
 }
 const contextView = useWorkspaceContextView(
   context,
@@ -253,7 +243,6 @@ async function recoverContext() {
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const user = ref<Record<string, unknown> | null>(null)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const layoutLoading = ref(true)
 const pageTitle = ref('')
@@ -289,10 +278,6 @@ const showComponents = computed(
   () => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value
 )
 const showSettingsDialog = computed(() => isSummaryPage.value)
-
-const setUser = (userData: Record<string, unknown> | null) => {
-  user.value = userData
-}
 
 const handleLogout = async () => {
   await authStore.logout()

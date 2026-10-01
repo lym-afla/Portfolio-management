@@ -67,33 +67,33 @@ Dashboard reading order: committed context; portfolio values; **Value and return
 
 ## Task 1: Display-only portfolio metrics
 
-- [ ] Inspect actual summary decoder, workspace types, existing SummaryCard callers and tests; record differences from the older D3 pointers.
-- [ ] Write failing `DashboardComposition.spec.ts` tests for IDs `nav, invested, cash-out, total-return, irr`, labels/horizons and exact rendering of `$0.00`, `$100.00`, `($100.00)`, `−2.40%`, `N/A`. Add null and `N/R` fixtures. Assert semantic `dt`/`dd`, all five entries and no double currency decoration. Use `decodeDashboardSummary` for fixtures.
-- [ ] Run the focused test and record a genuine missing-adapter/component failure.
-- [ ] Add `MetricDisplay`, `summaryMetrics` and `PortfolioMetrics` with D1 scoped styling. Keep SummaryCard as a compatible adapter if still used; switch the dashboard consumer without duplicating the metrics.
-- [ ] Run the focused tests plus existing SummaryCard tests; resolve failures without deleting assertions for preserved behavior. Commit this presentation unit using the project commit template.
+- [x] Inspect actual summary decoder, workspace types, existing SummaryCard callers and tests; record differences from the older D3 pointers.
+- [x] Write failing `DashboardComposition.spec.ts` tests for IDs `nav, invested, cash-out, total-return, irr`, labels/horizons and exact rendering of `$0.00`, `$100.00`, `($100.00)`, `−2.40%`, `N/A`. Add null and `N/R` fixtures. Assert semantic `dt`/`dd`, all five entries and no double currency decoration. Use `decodeDashboardSummary` for fixtures.
+- [x] Run the focused test and record a genuine missing-adapter/component failure.
+- [x] Add `MetricDisplay`, `summaryMetrics` and `PortfolioMetrics` with D1 scoped styling. Keep SummaryCard as a compatible adapter if still used; switch the dashboard consumer without duplicating the metrics.
+- [x] Run the focused tests plus existing SummaryCard tests; resolve failures without deleting assertions for preserved behavior. Commit this presentation unit using the project commit template.
 
 ## Task 2: NAV-first dashboard composition
 
-- [ ] Extend the composition tests to assert the section reading order and secondary Account Performance action. Retain the existing request/retry tests for all four widget families and committed context; add a targeted assertion if the new context markup is not covered.
-- [ ] Verify the new assertions fail against the incumbent layout.
-- [ ] Compose the dashboard using existing workspace components and committed context helpers. Do not duplicate shell headings or controls; account/date/currency labels come from accepted committed state, with pending state separate.
-- [ ] Move NAV before allocations/history; preserve its update-params event, current data, errors and retained rendering during updates. Fit existing frequency controls with a scoped wrapping layout or labelled select on narrow screens; no chart data/adapters change.
-- [ ] Integrate the historical table as a secondary reconciliation section and keep allocation table access discoverable. Preserve empty, loading, failed and retry states; do not use visual polish to conceal failures.
-- [ ] Run composition, SummaryCard, DashboardPage request/retry tests, both type checks and build. Commit the layout unit. Do not claim visual acceptance from component tests alone.
+- [x] Extend the composition tests to assert the section reading order and secondary Account Performance action. Retain the existing request/retry tests for all four widget families and committed context; add a targeted assertion if the new context markup is not covered.
+- [x] Verify the new assertions fail against the incumbent layout.
+- [x] Compose the dashboard using existing workspace components and committed context helpers. Do not duplicate shell headings or controls; account/date/currency labels come from accepted committed state, with pending state separate.
+- [x] Move NAV before allocations/history; preserve its update-params event, current data, errors and retained rendering during updates. Fit existing frequency controls with a scoped wrapping layout or labelled select on narrow screens; no chart data/adapters change.
+- [x] Integrate the historical table as a secondary reconciliation section and keep allocation table access discoverable. Preserve empty, loading, failed and retry states; do not use visual polish to conceal failures.
+- [x] Run composition, SummaryCard, DashboardPage request/retry tests, both type checks and build. Commit the layout unit. Do not claim visual acceptance from component tests alone.
 
 ## Task 3: Rendered desktop/mobile pilot and positions integration
 
-- [ ] Apply D1 scoped defaults/classes to PositionsPageBase without rebuilding its toolbar, grouped headers or financial fields. Any functional table change belongs to D4; keep all existing columns, totals, sticky identity and sorting.
-- [ ] Inspect `frontend/tests/browser/run-smoke.mjs`, `fixture-server.mjs`, `fixtures.mjs`, `auth-init.js` and the installed agent-browser skill/help. Reuse their authenticated synthetic setup and cleanup rather than inventing endpoints or touching real accounts.
-- [ ] Supply complete valid synthetic dashboard and dense Open Positions fixtures: long account/security names, at least two currencies, zero/negative/unavailable values, sufficient rows and columns for scrolling; NAV with its existing series including both IRRs. Verify the displayed endpoints and selection/date/currency provenance. Changes to shared fixtures must retain all browser cases.
-- [ ] Start a local preview/dev server with a recorded session/process handle. Use `agent-browser --help` (or `npx --no-install agent-browser --help` from frontend), a dedicated `design-pilot` session, observed `snapshot -i` refs, and re-snapshot after navigation/actions.
-- [ ] Review populated dashboard and positions at 1440×1000, 1024×768, 390×844 and 768×1024. Confirm header clearance; readable committed context; dominant NAV trajectory; reachable controls and allocation tables; no page-level horizontal clipping; table-local scrolling with sticky identity and usable headers/totals.
-- [ ] Verify keyboard navigation/menu open-close, visible focus and actions at **actual browser 200% zoom**. CSS zoom or viewport scaling is not equivalent evidence. If native zoom is unavailable, report that gate as unverified; do not mark it passed.
-- [ ] Inspect computed contrast against WCAG AA: normal text >=4.5:1, large text >=3:1, and relevant control/focus contrast >=3:1. Document actual measured pairs, not just token names.
-- [ ] Save real rendered images: `pilot-desktop.png`, `pilot-mobile.png`, `pilot-mobile-nav.png`, `pilot-positions-desktop.png`, `pilot-positions-mobile.png` in the evidence directory. Capture mobile navigation open. Label all evidence synthetic and record viewport/zoom/commit.
-- [ ] Batch the first desktop/mobile review, fix the identified defects together, then make one confirmation pass; perform further checks only for unresolved behavior or newly introduced defects. Image generation/mockups/empty screens cannot replace rendered QA.
-- [ ] Write `docs/design/frontend-workspace.md` with hierarchy, spacing, density, action placement, reproduction steps, screenshots, failures/corrections and acceptance limits. The incumbent NAV lacks the equivalent accessible data table: record it as outstanding C3 work, not as a passed chart accessibility gate. D4 grouped presets and C4 three solid pies remain outstanding too.
+- [x] Apply D1 scoped defaults/classes to PositionsPageBase without rebuilding its toolbar, grouped headers or financial fields. Any functional table change belongs to D4; keep all existing columns, totals, sticky identity and sorting.
+- [x] Inspect `frontend/tests/browser/run-smoke.mjs`, `fixture-server.mjs`, `fixtures.mjs`, `auth-init.js` and the installed agent-browser skill/help. Reuse their authenticated synthetic setup and cleanup rather than inventing endpoints or touching real accounts.
+- [x] Supply complete valid synthetic dashboard and dense Open Positions fixtures: long account/security names, at least two currencies, zero/negative/unavailable values, sufficient rows and columns for scrolling; NAV with its existing series including both IRRs. Verify the displayed endpoints and selection/date/currency provenance. Changes to shared fixtures must retain all browser cases.
+- [x] Start a local preview/dev server with a recorded session/process handle. Use `agent-browser --help` (or `npx --no-install agent-browser --help` from frontend), a dedicated `design-pilot` session, observed `snapshot -i` refs, and re-snapshot after navigation/actions.
+- [x] Review populated dashboard and positions at 1440×1000, 1024×768, 390×844 and 768×1024. Confirm header clearance; readable committed context; dominant NAV trajectory; reachable controls and allocation tables; no page-level horizontal clipping; table-local scrolling with sticky identity and usable headers/totals.
+- [x] Verify keyboard navigation/menu open-close, visible focus and actions at **actual browser 200% zoom**. CSS zoom or viewport scaling is not equivalent evidence. If native zoom is unavailable, report that gate as unverified; do not mark it passed.
+- [x] Inspect computed contrast against WCAG AA: normal text >=4.5:1, large text >=3:1, and relevant control/focus contrast >=3:1. Document actual measured pairs, not just token names.
+- [x] Save real rendered images: `pilot-desktop.png`, `pilot-mobile.png`, `pilot-mobile-nav.png`, `pilot-positions-desktop.png`, `pilot-positions-mobile.png` in the evidence directory. Capture mobile navigation open. Label all evidence synthetic and record viewport/zoom/commit.
+- [x] Batch the first desktop/mobile review, fix the identified defects together, then make one confirmation pass; perform further checks only for unresolved behavior or newly introduced defects. Image generation/mockups/empty screens cannot replace rendered QA.
+- [x] Write `docs/design/frontend-workspace.md` with hierarchy, spacing, density, action placement, reproduction steps, screenshots, failures/corrections and acceptance limits. The incumbent NAV lacks the equivalent accessible data table: record it as outstanding C3 work, not as a passed chart accessibility gate. D4 grouped presets and C4 three solid pies remain outstanding too.
 
 ## Verification and delivery
 
@@ -112,10 +112,10 @@ npm run test:browser
 
 The browser smoke suite validates route/layout/context/date/request/recovery regressions; it does not replace populated visual review or native zoom. Inspect its current supported `--case` values before using focused cases. Run full pytest from backend with test settings, live external tests disabled and `uv run python -m pytest`, as required by project rules. Record all command exit codes, test counts, lint baseline and any transient failure honestly. No generated API drift or additional lint warnings accepted. Do not change protected financial code to fix an unrelated baseline failure.
 
-- [ ] Obtain scoped technical review of final UI/lifecycle changes, plus inspect rendered evidence; correct important findings with focused regressions. Do not substitute technical review for human visual acceptance.
-- [ ] Close the agent-browser session and stop all servers/processes started for this task; verify cleanup.
-- [ ] Update the durable progress tracker and D3 checkboxes with base/head, tests, visual evidence, review findings and deferred acceptance. Distinguish implemented/review-ready, human visual acceptance, integration and release.
-- [ ] Push `codex/dashboard-visual-pilot` and open a draft PR into `codex/frontend-modernization`. Include screenshots, display-value preservation, tested states and remaining C3/D4/C4 gates. No financial approval label is needed solely for presentation; if scope unexpectedly touches protected logic, stop that change and propose it separately under project rules.
-- [ ] Stop after the review-ready D3 PR. Do not merge, deploy, start D4/C2/C3 or claim the whole modernization complete. If publication/browser capability is unavailable, preserve completed work and state exactly which evidence remains missing.
+- [x] Obtain scoped technical review of final UI/lifecycle changes, plus inspect rendered evidence; correct important findings with focused regressions. Do not substitute technical review for human visual acceptance.
+- [x] Close the agent-browser session and stop all servers/processes started for this task; verify cleanup.
+- [x] Update the durable progress tracker and D3 checkboxes with base/head, tests, visual evidence, review findings and deferred acceptance. Distinguish implemented/review-ready, human visual acceptance, integration and release.
+- [x] Push `codex/dashboard-visual-pilot` and open a draft PR into `codex/frontend-modernization`. Include screenshots, display-value preservation, tested states and remaining C3/D4/C4 gates. No financial approval label is needed solely for presentation; if scope unexpectedly touches protected logic, stop that change and propose it separately under project rules.
+- [x] Stop after the review-ready D3 PR. Do not merge, deploy, start D4/C2/C3 or claim the whole modernization complete. If publication/browser capability is unavailable, preserve completed work and state exactly which evidence remains missing.
 
 **Completion:** D3 is review-ready only with preserved values/lifecycle, passing gates, populated rendered desktop/mobile dashboard and positions evidence, and documented limitations. Human visual acceptance precedes D5 rollout. Main release still requires the remaining master tasks.

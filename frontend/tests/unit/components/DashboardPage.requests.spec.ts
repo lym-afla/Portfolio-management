@@ -46,10 +46,10 @@ beforeEach(() => {
 })
 
 it.each([
-  ['getDashboardSummary', 0, 'Portfolio Summary'],
-  ['getDashboardBreakdown', 1, 'Stocks'],
-  ['getDashboardSummaryOverTime', 4, 'EoP NAV'],
-  ['getNAVChartData', 5, '2026-09-08'],
+  ['getDashboardSummary', 0, 'Total NAV'],
+  ['getDashboardBreakdown', 2, 'Stocks'],
+  ['getDashboardSummaryOverTime', 5, 'EoP NAV'],
+  ['getNAVChartData', 1, '2026-09-08'],
 ] as const)('restores visible %s content after a successful retry while other widgets stay failed', async (name, buttonIndex, content) => {
   const wrapper = await mountDashboardWithRealStores()
   expect(wrapper.text()).toContain(`${name} temporarily failed`)

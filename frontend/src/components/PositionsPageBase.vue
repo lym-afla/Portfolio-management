@@ -1,14 +1,15 @@
 <template>
-  <v-container fluid class="pa-0">
-    <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64" />
-    </v-overlay>
+  <v-defaults-provider :defaults="workspaceDefaults">
+    <v-container fluid class="pa-0 workspace-ui positions-workspace">
+      <v-overlay :model-value="loading" class="align-center justify-center">
+        <v-progress-circular color="primary" indeterminate size="64" />
+      </v-overlay>
 
-    <v-alert v-if="positionsQuery.error.value || yearsQuery.error.value" type="error" class="mb-4">
-      Unable to load positions or year options. The displayed data may be from the previous request.
-      <v-btn data-testid="positions-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
-    </v-alert>
-    <slot name="above-table" :loading="tableLoading" />
+      <v-alert v-if="positionsQuery.error.value || yearsQuery.error.value" type="error" class="mb-4">
+        Unable to load positions or year options. The displayed data may be from the previous request.
+        <v-btn data-testid="positions-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
+      </v-alert>
+      <slot name="above-table" :loading="tableLoading" />
 
     <v-row no-gutters>
       <v-col cols="12">
@@ -94,7 +95,10 @@
                   </template>
                 </v-select>
               </v-col>
-              <v-col cols="12" sm="6" md="7" lg="8">
+              <!-- Basis narrowed from sm6/md7/lg8: Year + Search + Columns
+                   button + Rows select exceeded the toolbar row and pushed the
+                   Rows control past the viewport edge at sm/md widths. -->
+              <v-col cols="12" sm="5" md="6">
                 <v-text-field
                   v-model="search"
                   append-icon="mdi-magnify"
@@ -115,6 +119,7 @@
                     density="compact"
                     variant="text"
                     aria-label="Show or hide columns"
+                    class="workspace-touch-action"
                   />
                 </template>
                 <v-list density="compact" max-height="360px">
@@ -132,7 +137,10 @@
                   </v-list-item>
                 </v-list>
               </v-menu>
-              <v-col cols="12" sm="3" md="3" lg="2">
+              <!-- sm="auto": fixed 12-col rows (Year+Search) plus this column
+                   and the Columns button overflowed the row at sm/md widths,
+                   pushing the select past the viewport edge. -->
+              <v-col cols="12" sm="auto">
                 <v-select
                   v-model="itemsPerPage"
                   :items="itemsPerPageOptions"
@@ -186,7 +194,8 @@
         </v-data-table>
       </v-col>
     </v-row>
-  </v-container>
+    </v-container>
+  </v-defaults-provider>
 </template>
 
 <script setup lang="ts">
@@ -199,6 +208,7 @@ import { snapshotTableQuery, snapshotContext, type TableQueryParams } from '@/ty
 import type { RequestOptions } from '@/services/http/client'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { flattenHeaders } from '@/config/positionsHeaders'
+import { workspaceDefaults } from '@/theme/defaults'
 
 // A column header may group children (parent header) or be a leaf column.
 // `align` mirrors Vuetify's accepted values so the prop type is compatible
@@ -425,6 +435,31 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
+/* Toolbar control strip: the v-cols live directly in the toolbar flex box
+   (no v-row), so a row that exceeds the content width overflows the page
+   instead of wrapping. Wrap at every width and let the box grow with its
+   rows; Vuetify fixes .v-toolbar__content at an inline 64px height with
+   overflow hidden, which silently clips every control after the first
+   row. Dense table scrolling stays local to the table below. */
+.positions-workspace :deep(.v-toolbar) {
+  height: auto;
+  min-height: 64px;
+}
+
+.positions-workspace :deep(.v-toolbar__content) {
+  height: auto !important;
+  min-height: 64px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 599px) {
+  .positions-workspace :deep(.v-toolbar__content) {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+
 .nowrap-table :deep(td),
 .nowrap-table :deep(th) {
   white-space: nowrap;
@@ -454,6 +489,16 @@ onUnmounted(() => {
   z-index: 2;
   background: rgb(var(--v-theme-surface));
   min-width: 160px;
+}
+/* Narrow screens: cap the sticky Name column so the pinned identity pair
+   never covers the whole viewport and hides the columns being scrolled to;
+   the shared nowrap/ellipsis rule truncates very long security names. */
+@media (max-width: 599px) {
+  .nowrap-table :deep(tbody td:nth-child(2)),
+  .nowrap-table :deep(tfoot td:nth-child(2)),
+  .nowrap-table :deep(thead tr:first-child th:nth-child(2)) {
+    max-width: calc(100vw - 176px);
+  }
 }
 .nowrap-table :deep(thead tr:first-child th:nth-child(-n+2)) {
   z-index: 3; /* leaf header row above sticky body cells */

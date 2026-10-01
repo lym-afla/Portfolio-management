@@ -49,3 +49,17 @@ export const formatAccountChoices = (choices) => {
     }
   })
 }
+
+// Single source for the committed-context account label: the matching choice
+// title with the shared All accounts/Unavailable fallbacks. Used by the shell
+// context strip and by pages that repeat committed provenance.
+export const committedAccountLabel = (choices, selection) => {
+  const options = formatAccountChoices(choices)
+  const matched = options.find(
+    (option) =>
+      option.type === 'option' &&
+      option.value?.type === selection.type &&
+      option.value?.id === selection.id
+  )
+  return matched?.title ?? (selection.type === 'all' ? 'All accounts' : 'Unavailable')
+}

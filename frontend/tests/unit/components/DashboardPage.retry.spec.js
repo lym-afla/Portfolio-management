@@ -26,7 +26,9 @@ const mountPage = () =>
       stubs: {
         ...generateVuetifyStubs(),
         'v-skeleton-loader': true,
-        SummaryCard: true,
+        'v-defaults-provider': {
+          template: '<div class="v-defaults-provider"><slot /></div>',
+        },
         BreakdownChart: true,
         SummaryOverTimeTable: true,
         NAVChart: true,
@@ -73,8 +75,8 @@ describe('DashboardPage widget error retry', () => {
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(1)
     expect(mocks.getNAVChartData).toHaveBeenCalledTimes(1)
 
-    // Buttons render in template order: summary, breakdown x3, sot, nav.
-    // Click one Retry per widget service.
+    // Buttons render in template order: summary, nav, breakdown x3, sot.
+    // Click one Retry per widget service (summary, nav, third breakdown, sot).
     const buttons = retryButtons(wrapper)
     for (const idx of [0, 1, 4, 5]) {
       await buttons[idx].trigger('click')
