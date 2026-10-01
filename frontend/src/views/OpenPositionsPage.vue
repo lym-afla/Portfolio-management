@@ -2,7 +2,7 @@
   <PositionsPageBase
     :fetch-positions="fetchOpenPositions"
     @accepted-result="acceptPositions"
-    :headers="openPositionsHeaders"
+    table-id="open-positions"
     page-title="Open Positions"
   >
     <template #above-table="{ loading: cashBalancesLoading }">
@@ -43,21 +43,23 @@
       >
         {{ item.name }}
       </router-link>
+      <div class="text-caption text-medium-emphasis">{{ item.type }}</div>
     </template>
 
-    <template #tfoot-type>Total for assets</template>
+    <template #tfoot-label>Total for assets</template>
 
     <!-- Cash / TOTAL footer rows: one cell per *visible* leaf column, so the
          rows stay aligned with the table at every column-toggle combination
-         without any hardcoded colspan. -->
-    <template #tfoot-extra="{ flattenedHeaders: flatHeaders }">
+         without any hardcoded colspan. Row labels render in the current
+         label column (Type when visible, otherwise Security). -->
+    <template #tfoot-extra="{ flattenedHeaders: flatHeaders, labelKey }">
       <tr>
         <td
           v-for="header in flatHeaders"
           :key="`cash-${header.key}`"
           class="text-end"
         >
-          <span v-if="header.key === 'type'" class="text-start">Cash</span>
+          <span v-if="header.key === labelKey" class="text-start">Cash</span>
           <template v-else-if="header.key === 'current_value'">{{
             totals.cash
           }}</template>
@@ -74,7 +76,7 @@
           :key="`total-${header.key}`"
           class="text-end"
         >
-          <span v-if="header.key === 'type'" class="text-start">TOTAL</span>
+          <span v-if="header.key === labelKey" class="text-start">TOTAL</span>
           <template v-else-if="header.key === 'current_value'">{{
             totals.total_nav
           }}</template>
@@ -91,10 +93,7 @@
 import { ref } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getOpenPositions } from '@/services/api'
-import {
-  openPositionsHeaders,
-  openPercentageColumns,
-} from '@/config/positionsHeaders'
+import { openPercentageColumns } from '@/config/positionsHeaders'
 
 const totals = ref({})
 const cashBalances = ref({})

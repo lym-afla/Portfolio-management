@@ -23,17 +23,6 @@ vi.mock('@/services/api', () => ({
 // resolve and actually render.
 const vuetify = createVuetify({ components, directives })
 
-const headers = [
-  { title: 'Type', key: 'type', align: 'start', sortable: true },
-  {
-    title: 'Entry', key: 'entry', align: 'end', sortable: false,
-    children: [
-      { title: 'Investment date', key: 'investment_date', align: 'end', sortable: true },
-      { title: 'Value', key: 'entry_value', align: 'end', sortable: true },
-    ],
-  },
-]
-
 const makeWrapper = (props = {}) => {
   const fetchPositions = vi.fn().mockResolvedValue({
     positions: [{ type: 'Stock', name: 'ACME', entry_value: 10 }],
@@ -41,8 +30,9 @@ const makeWrapper = (props = {}) => {
     total_items: 1,
   })
   const wrapper = mount(PositionsPageBase, {
+    attachTo: document.body,
     global: { plugins: [vuetify, createPinia()] },
-    props: { fetchPositions, headers, pageTitle: 'Test', ...props },
+    props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test', ...props },
   })
   return { wrapper, fetchPositions }
 }
@@ -50,6 +40,8 @@ const makeWrapper = (props = {}) => {
 beforeEach(() => {
   vi.clearAllMocks()
   configureContextFixture()
+  localStorage.clear()
+  document.body.innerHTML = ''
 })
 
 describe('PositionsPageBase', () => {
@@ -63,7 +55,7 @@ describe('PositionsPageBase', () => {
     const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
     const wrapper = mount(PositionsPageBase, {
       global: { plugins: [vuetify, pinia] },
-      props: { fetchPositions, headers, pageTitle: 'Test' },
+      props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test' },
     })
     await flushPromises()
     expect(fetchPositions).toHaveBeenCalledTimes(1)
@@ -79,7 +71,7 @@ describe('PositionsPageBase', () => {
     const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
     const wrapper = mount(PositionsPageBase, {
       global: { plugins: [vuetify, pinia] },
-      props: { fetchPositions, headers, pageTitle: 'Test' },
+      props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test' },
     })
     await flushPromises()
     expect(fetchPositions).toHaveBeenCalledTimes(1)
@@ -95,7 +87,7 @@ describe('PositionsPageBase', () => {
     const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
     const wrapper = mount(PositionsPageBase, {
       global: { plugins: [vuetify, pinia] },
-      props: { fetchPositions, headers, pageTitle: 'Test' },
+      props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test' },
     })
     await flushPromises()
     fetchPositions.mockClear()
@@ -118,11 +110,6 @@ describe('PositionsPageBase', () => {
     ])
   })
 
-  it('declares the defaultVisibleKeys prop (default null)', () => {
-    const { wrapper } = makeWrapper()
-    expect(wrapper.props('defaultVisibleKeys')).toBeUndefined()
-  })
-
   it('sort change reaches the fetch with the sorted key (server sort wired)', async () => {
     const { wrapper, fetchPositions } = makeWrapper()
     await flushPromises()
@@ -132,35 +119,14 @@ describe('PositionsPageBase', () => {
     expect(fetchPositions).toHaveBeenCalled()
     const lastCall = fetchPositions.mock.calls.at(-1)[0]
     expect(lastCall.sortBy).toEqual({ key: 'entry_value', order: 'desc' })
+    wrapper.unmount()
   })
 
-  it('renders grouped header leaves when no defaultVisibleKeys given', async () => {
+  it('renders the Overview preset leaves for an unconfigured table', async () => {
     const { wrapper } = makeWrapper()
     await flushPromises()
-    expect(wrapper.text()).toContain('Investment date')
-    expect(wrapper.text()).toContain('Type')
-  })
-
-  it('hides leaves not in defaultVisibleKeys', async () => {
-    const { wrapper } = makeWrapper({
-      defaultVisibleKeys: ['type', 'name', 'entry_value'],
-    })
-    await flushPromises()
-    expect(wrapper.text()).not.toContain('Investment date')
-    expect(wrapper.text()).toContain('Value')
-    expect(wrapper.text()).toContain('Type')
-  })
-
-  it('toggleColumn hides and shows a leaf column', async () => {
-    const { wrapper } = makeWrapper()
-    await flushPromises()
-    expect(wrapper.text()).toContain('Investment date')
-    wrapper.vm.toggleColumn('investment_date')
-    await flushPromises()
-    expect(wrapper.text()).not.toContain('Investment date')
-    wrapper.vm.toggleColumn('investment_date')
-    await flushPromises()
-    expect(wrapper.text()).toContain('Investment date')
+    expect(wrapper.text()).toContain('Security')
+    expect(wrapper.text()).toContain('Entry value')
   })
 
   it('has a column visibility menu button in the toolbar', async () => {
@@ -173,9 +139,9 @@ describe('PositionsPageBase', () => {
   it('marks group header boundaries with a group-start class', async () => {
     const { wrapper } = makeWrapper()
     await flushPromises()
-    // The Entry group header and its first leaf should both carry the class.
+    // Flat Overview still draws boundaries between visible groups.
     const marked = wrapper.findAll('th.group-start')
-    expect(marked.length).toBeGreaterThanOrEqual(2)
+    expect(marked.length).toBeGreaterThanOrEqual(1)
   })
 
   it('right-aligns footer totals via text-<align> classes', async () => {
@@ -188,27 +154,17 @@ describe('PositionsPageBase', () => {
   })
 
   it('renders a glossary tooltip on a described header column and keeps the sort icon', async () => {
-    const described = [
-      { title: 'Type', key: 'type', align: 'start', sortable: true },
-      {
-        title: 'IRR', key: 'irr', align: 'end', sortable: true,
-        description: 'Money-weighted internal rate of return.',
-      },
-    ]
-    const { wrapper } = makeWrapper({ headers: described })
+    const { wrapper } = makeWrapper()
     await flushPromises()
 
-    // Vuetify 3.12 exposes per-column `header.<key>` slots; custom props
-    // (description) are spread directly onto `column`. The tooltip must be
-    // attached to the described column only.
+    // IRR is a described leaf on the open table's Overview preset.
     const tooltips = wrapper.findAllComponents({ name: 'VTooltip' })
-    expect(tooltips).toHaveLength(1)
-    expect(tooltips[0].props('text')).toBe(
-      'Money-weighted internal rate of return.'
-    )
+    expect(tooltips.length).toBeGreaterThanOrEqual(1)
+    const irrTooltip = tooltips.find((t) => t.props('text')?.includes('Money-weighted'))
+    expect(irrTooltip).toBeTruthy()
     // Sort affordance preserved: the described th is still sortable and its
     // content row still carries the sort icon class.
-    const th = tooltips[0].element.closest('th')
+    const th = wrapper.element.querySelector('th[data-leaf-key="irr"]')
     expect(th.className).toContain('v-data-table__th--sortable')
     expect(th.querySelector('.v-data-table-header__sort-icon')).not.toBeNull()
     expect(th.textContent).toContain('IRR')
@@ -225,7 +181,7 @@ describe('PositionsPageBase', () => {
         plugins: [vuetify, createPinia()],
         stubs: { RouterLink: { template: '<a><slot /></a>' } },
       },
-      props: { fetchPositions, headers, pageTitle: 'Test' },
+      props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test' },
     })
     await flushPromises()
     expect(wrapper.text()).toContain('No positions yet')
@@ -244,7 +200,7 @@ describe('PositionsPageBase', () => {
     appStore.tableSettings.search = 'nomatch'
     const wrapper = mount(PositionsPageBase, {
       global: { plugins: [vuetify, pinia] },
-      props: { fetchPositions, headers, pageTitle: 'Test' },
+      props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test' },
     })
     await flushPromises()
     expect(wrapper.text()).toContain('No positions match your search')
@@ -257,23 +213,31 @@ describe('PositionsPageBase sticky-column and divider CSS (source assertions)', 
   // sticky/divider CSS is asserted against the SFC source directly.
   const src = readFileSync('src/components/PositionsPageBase.vue', 'utf-8')
 
-  it('sticks the first two identity columns with opaque backgrounds', () => {
+  it('sticks key-pinned identity columns with opaque backgrounds and a measured offset', () => {
     expect(src).toContain('position: sticky')
     expect(src).toContain('left: 0')
-    expect(src).toContain('left: 90px')
+    expect(src).toContain('--positions-pin-offset')
     expect(src).toContain('rgb(var(--v-theme-surface))')
+    // Offsets are measured from the rendered first pinned column.
+    expect(src).toContain('ResizeObserver')
   })
 
-  it('scopes sticky cells to body/footer cells and the first header row', () => {
-    // Row 2 of a grouped header must not become sticky.
-    expect(src).toContain('tbody td:nth-child(1)')
-    expect(src).toContain('tfoot td:nth-child(1)')
-    expect(src).toContain('thead tr:first-child th:nth-child(1)')
+  it('pins by column key classes, never nth-child positions', () => {
+    expect(src).toContain('col-pin-1')
+    expect(src).toContain('col-pin-2')
+    expect(src).not.toContain('nth-child')
   })
 
-  it('separates groups with a vertical rule via th.group-start', () => {
-    expect(src).toContain('th.group-start')
-    expect(src).toMatch(/th\.group-start[^}]*border-left/)
+  it('separates groups with a vertical rule via .group-start', () => {
+    expect(src).toContain('group-start')
+    expect(src).toMatch(/group-start[^}]*border-left/)
+  })
+
+  it('keeps the table from re-sorting or re-filtering the received page', () => {
+    // The neutral customKeySort repair plus no :search binding.
+    expect(src).toContain('neutralSorters')
+    expect(src).not.toMatch(/:search="search"/)
+    expect(src).toContain(':items-length="totalItems"')
   })
 
   it('no longer relies on the non-existent Vuetify divider class', () => {

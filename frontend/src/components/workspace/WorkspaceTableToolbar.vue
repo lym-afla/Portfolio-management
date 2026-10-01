@@ -46,7 +46,7 @@
 <script setup lang="ts">
 import type { TableQueryView } from '@/components/workspace/types'
 
-const props = defineProps<{
+defineProps<{
   query: TableQueryView
   searchLabel: string
   searchPlaceholder?: string
