@@ -27,3 +27,7 @@
   .workspace-ui { --workspace-gap: 16px; --workspace-section-gap: 12px; }
   .workspace-ui .workspace-touch-action { min-width: 44px; min-height: 44px; }
 }
+
+/* Icon-only row/toolbar controls keep a 44px hit area at every width, not
+   just inside .workspace-ui pages (rows also render on detail routes). */
+.workspace-row-action { min-width: 44px; min-height: 44px; }

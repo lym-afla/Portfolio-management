@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="pa-0">
+  <v-container fluid class="pa-0 workspace-ui">
     <v-alert v-if="transactionsQuery.error.value" type="error" class="mb-4">Unable to load transactions. Change the filters or try again.</v-alert>
     <v-overlay :model-value="loading" class="align-center justify-center">
       <v-progress-circular color="primary" indeterminate size="64" />
@@ -7,39 +7,17 @@
 
     <v-card class="mb-4">
       <v-card-text>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-plus"
-          class="mr-2"
-          @click="openAddTransactionDialog"
-        >
-          Add Transaction
-        </v-btn>
-        <v-btn
-          color="primary"
-          prepend-icon="mdi-plus"
-          class="mr-2"
-          @click="openAddFXTransactionDialog"
-        >
-          Add FX Transaction
-        </v-btn>
-        <v-btn color="primary" prepend-icon="mdi-swap-horizontal" class="mr-2" @click="showMergerDialog = true">Record Merger</v-btn>
+        <workspace-actions
+          :primary="{ id: 'add-transaction', label: 'Add transaction', icon: 'mdi-plus' }"
+          :secondary="[{ id: 'import-transactions', label: 'Import transactions', icon: 'mdi-upload' }]"
+          :overflow="[
+            { id: 'add-fx-transaction', label: 'Add FX transaction', icon: 'mdi-swap-horizontal' },
+            { id: 'transfer-asset', label: 'Transfer asset', icon: 'mdi-swap-horizontal' },
+            { id: 'record-merger', label: 'Record merger', icon: 'mdi-call-merge' },
+          ]"
+          @action="handleWorkspaceAction"
+        />
             <MergerDialog v-if="showMergerDialogMounted" v-model="showMergerDialog" @created="onMergerCreated" />
-        <v-btn
-          color="secondary"
-          prepend-icon="mdi-upload"
-          @click="openImportDialog"
-        >
-          Import Transactions
-        </v-btn>
-        <v-btn
-          color="info"
-          prepend-icon="mdi-swap-horizontal"
-          class="ml-2"
-          @click="openTransferDialog"
-        >
-          Transfer Asset
-        </v-btn>
       </v-card-text>
     </v-card>
 
@@ -50,53 +28,28 @@
           :items="transactions"
           :loading="tableLoading"
           :items-per-page="itemsPerPage"
+          :items-length="totalItems"
           class="elevation-1 nowrap-table"
           density="compact"
           :sort-by="sortBy"
           @update:sort-by="handleSortChange"
-          :server-items-length="totalItems"
-          :items-length="totalItems"
           disable-sort
           item-key="id"
         >
           <template #top>
-            <v-toolbar flat class="bg-grey-lighten-4 border-b px-2">
-              <DateRangeSelector
-                :model-value="dateRangeModel"
-                @update:model-value="handleDateRangeChange"
-              />
-              <v-col cols="12" sm="5" md="6" lg="7" class="px-2">
-                <v-text-field
-                  v-model="search"
-                  append-icon="mdi-magnify"
-                  label="Search"
-                  single-line
-                  hide-details
-                  density="compact"
-                  bg-color="white"
-                  class="rounded-lg"
+            <workspace-table-toolbar
+              :query="{ search, page: currentPage, itemsPerPage }"
+              search-label="Search transactions"
+              :rows-per-page-options="itemsPerPageOptions"
+              @update:query="handleQueryIntent"
+            >
+              <template #filters>
+                <DateRangeSelector
+                  :model-value="dateRangeModel"
+                  @update:model-value="handleDateRangeChange"
                 />
-              </v-col>
-              <v-spacer />
-              <v-col
-                cols="12"
-                sm="4"
-                md="3"
-                lg="2"
-                class="d-flex align-center justify-end px-2"
-              >
-                <v-select
-                  v-model="itemsPerPage"
-                  :items="itemsPerPageOptions"
-                  label="Rows per page"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  class="rows-per-page-select"
-                  bg-color="white"
-                />
-              </v-col>
-            </v-toolbar>
+              </template>
+            </workspace-table-toolbar>
           </template>
 
           <template #header>
@@ -226,6 +179,8 @@ const TransactionImportDialog = defineAppDialog(() => import('@/components/dialo
 const AssetTransferDialog = defineAppDialog(() => import('@/components/dialogs/AssetTransferDialog.vue'))
 const MergerDialog = defineAppDialog(() => import('@/components/dialogs/MergerDialog.vue'))
 import TransactionRow from '@/components/transactions/TransactionRow.vue'
+import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
+import WorkspaceTableToolbar from '@/components/workspace/WorkspaceTableToolbar.vue'
 import logger from '@/utils/logger'
 
 defineOptions({ name: 'TransactionsPage' })
@@ -383,6 +338,25 @@ const openAddTransactionDialog = () => {
 const openAddFXTransactionDialog = () => {
   editedTransaction.value = null
   showFXTransactionDialog.value = true
+}
+
+// WorkspaceActions emits exact ids; each maps to the existing handler and
+// its lazy dialog/completion payload, keeping all five flows reachable.
+const handleWorkspaceAction = (id) => {
+  switch (id) {
+    case 'add-transaction': return openAddTransactionDialog()
+    case 'import-transactions': return openImportDialog()
+    case 'add-fx-transaction': return openAddFXTransactionDialog()
+    case 'transfer-asset': return openTransferDialog()
+    case 'record-merger': return (showMergerDialog.value = true)
+    default: logger.error('Unknown', `Unknown workspace action: ${id}`)
+  }
+}
+
+const handleQueryIntent = (patch) => {
+  if (typeof patch.search === 'string') search.value = patch.search
+  if (typeof patch.itemsPerPage === 'number') itemsPerPage.value = patch.itemsPerPage
+  if (typeof patch.page === 'number') currentPage.value = patch.page
 }
 
 const extractTransactionId = (prefixedId) => {
