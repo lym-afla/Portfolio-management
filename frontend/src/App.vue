@@ -169,7 +169,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import WorkspaceContextStrip from './components/workspace/WorkspaceContextStrip.vue'
 import { toContextPatch } from './components/workspace/contextIntent'
 import { useWorkspaceContextView } from './components/workspace/useWorkspaceContextView'
-import { formatAccountChoices } from './utils/accountUtils'
+import { committedAccountLabel } from './utils/accountUtils'
 import { useRouter, useRoute } from 'vue-router'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { useAuthStore } from '@/stores/auth'
@@ -200,18 +200,8 @@ async function saveDate() {
     dateDraft.value = context.committed.effectiveCurrentDate ?? ''
   }
 }
-const accountChoices = computed(() =>
-  formatAccountChoices(context.accountOptions)
-)
 function accountLabel(selection: typeof context.committed.accountSelection) {
-  return (
-    accountChoices.value.find(
-      (option) =>
-        option.type === 'option' &&
-        option.value?.type === selection.type &&
-        option.value?.id === selection.id
-    )?.title ?? (selection.type === 'all' ? 'All accounts' : 'Unavailable')
-  )
+  return committedAccountLabel(context.accountOptions, selection)
 }
 const contextView = useWorkspaceContextView(
   context,

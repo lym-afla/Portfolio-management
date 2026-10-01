@@ -1,9 +1,6 @@
 <template>
   <div class="summary-over-time">
-    <v-alert v-if="error" type="error" dismissible>
-      {{ error }}
-    </v-alert>
-    <div v-else class="workspace-table-region">
+    <div class="workspace-table-region">
       <v-table v-if="lines && years && currentYear" density="compact">
         <thead>
           <tr>
@@ -89,10 +86,6 @@ defineProps({
     default: () => [],
   },
   currentYear: {
-    type: String,
-    default: '',
-  },
-  error: {
     type: String,
     default: '',
   },

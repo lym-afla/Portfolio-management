@@ -26,7 +26,9 @@ const mountPage = () =>
       stubs: {
         ...generateVuetifyStubs(),
         'v-skeleton-loader': true,
-        SummaryCard: true,
+        'v-defaults-provider': {
+          template: '<div class="v-defaults-provider"><slot /></div>',
+        },
         BreakdownChart: true,
         SummaryOverTimeTable: true,
         NAVChart: true,

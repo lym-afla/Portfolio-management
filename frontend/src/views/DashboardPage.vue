@@ -149,7 +149,7 @@ import { usePortfolioRequest } from '@/composables/usePortfolioRequest'
 import { snapshotContext } from '@/types/query'
 import type { PortfolioContext } from '@/types/portfolioContext'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
-import { formatAccountChoices } from '@/utils/accountUtils'
+import { committedAccountLabel } from '@/utils/accountUtils'
 import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 import PortfolioMetrics from '@/components/dashboard/PortfolioMetrics.vue'
@@ -244,23 +244,10 @@ const navChartInitialParams = computed(() => appStore.navChartParams)
 const effectiveCurrentDate = computed(() => context.committed.effectiveCurrentDate)
 const isEffectiveDateLoading = computed(() => !context.canRead)
 const userCurrency = computed(() => context.committed.currency)
-// Account label follows the accepted committed presentation: the matching
-// choice title, with the same All accounts/Unavailable fallbacks as the shell.
-const accountLabel = computed(() => {
-  const selection = context.committed.accountSelection
-  const options = formatAccountChoices(context.accountOptions) as Array<{
-    type: string
-    title: string
-    value?: { type: string; id: number | string | null }
-  }>
-  const matched = options.find(
-    (option) =>
-      option.type === 'option' &&
-      option.value?.type === selection.type &&
-      option.value?.id === selection.id
-  )
-  return matched?.title ?? (selection.type === 'all' ? 'All accounts' : 'Unavailable')
-})
+// Account label follows the accepted committed presentation shared with the shell.
+const accountLabel = computed(() =>
+  committedAccountLabel(context.accountOptions, context.committed.accountSelection)
+)
 const contextLabel = computed(() =>
   [
     accountLabel.value,
