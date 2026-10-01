@@ -1,49 +1,25 @@
 <template>
-  <v-dialog v-model="dialog" max-width="500px">
+  <v-dialog
+    v-model="dialog"
+    max-width="500px"
+    aria-labelledby="fx-transaction-form-title"
+  >
     <v-card>
-      <v-card-title>
+      <v-card-title id="fx-transaction-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit FX Transaction' : 'Add FX Transaction'
         }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
-          <template v-for="field in formFields" :key="field.name">
-            <v-text-field
-              v-if="field.type === 'datepicker'"
-              v-model="form[field.name]"
-              :label="field.label"
-              type="date"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-            />
-            <v-autocomplete
-              v-else-if="field.type === 'select'"
-              v-model="form[field.name]"
-              :items="field.choices"
-              item-title="text"
-              item-value="value"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-            />
-            <v-text-field
-              v-else-if="field.type === 'number'"
-              v-model="form[field.name]"
-              :label="field.label"
-              type="number"
-              step="0.01"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-            />
-            <v-textarea
-              v-else-if="field.type === 'textarea'"
-              v-model="form[field.name]"
-              :label="field.label"
-              :required="field.required"
-              :error-messages="errorMessages[field.name]"
-            />
-          </template>
+          <section v-if="detailFields.length">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Transaction details</h3>
+            <FormFields :fields="detailFields" :value-for="(name) => form[name]" :error-for="(name) => errorMessages[name]" :update="setField" />
+          </section>
+          <section v-if="amountFields.length" class="mt-4">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Amounts</h3>
+            <FormFields :fields="amountFields" :value-for="(name) => form[name]" :error-for="(name) => errorMessages[name]" :update="setField" />
+          </section>
         </v-form>
         <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
@@ -65,7 +41,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import FormFields from './TransactionFormFields.vue'
 import {
   getFXTransactionFormStructure,
   addFXTransaction,
@@ -99,6 +76,38 @@ const initializeForm = () => {
   errorMessages.value = {}
   generalError.value = ''
 }
+
+// Visible section grouping and v-model plumbing for the shared renderer.
+const AMOUNT_FIELD_NAMES = ['from_amount', 'to_amount', 'commission', 'rate', 'exchange_rate']
+const isAmountField = (field) => AMOUNT_FIELD_NAMES.includes(field.name)
+const detailFields = computed(() => formFields.value.filter((field) => !isAmountField(field)))
+const amountFields = computed(() => formFields.value.filter((field) => isAmountField(field)))
+const setField = (name, value) => {
+  form.value = { ...form.value, [name]: value }
+}
+
+// Initial focus goes to the first field; closing returns focus to the
+// invoking control.
+let previouslyFocused = null
+watch(dialog, async (open) => {
+  if (open) {
+    previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await nextTick()
+    // The teleported overlay becomes active asynchronously; wait briefly
+    // for the first field rather than racing Vuetify's mount sequence.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const first = document.querySelector('.v-overlay--active[role="dialog"] input')
+      if (first) {
+        first.focus()
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  } else if (previouslyFocused?.isConnected) {
+    previouslyFocused.focus()
+    previouslyFocused = null
+  }
+}, { immediate: true })
 
 const fetchFormStructure = async () => {
   try {

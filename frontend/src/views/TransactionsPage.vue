@@ -123,24 +123,16 @@
       @transaction-updated="fetchTransactions"
     />
 
-    <v-dialog v-model="deleteDialog" max-width="500px">
-      <v-card>
-        <v-card-title class="text-h5">Delete Transaction</v-card-title>
-        <v-card-text
-          >Are you sure you want to delete this transaction?</v-card-text
-        >
-        <v-card-actions>
-          <v-spacer />
-          <v-btn color="blue darken-1" text @click="closeDeleteDialog"
-            >Cancel</v-btn
-          >
-          <v-btn color="red darken-1" text @click="deleteTransactionConfirm"
-            >OK</v-btn
-          >
-          <v-spacer />
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmActionDialog
+      :model-value="deleteDialog"
+      :subject="deleteSubject"
+      :busy="deleteBusy"
+      :error="deleteError"
+      :details-pending="detailsPending"
+      :confirm-disabled="detailsFailed"
+      @update:model-value="onConfirmDialogChange"
+      @confirm="deleteTransactionConfirm"
+    />
 
     <TransactionImportDialog v-if="showImportDialogMounted"
       v-model="showImportDialog"
@@ -157,7 +149,7 @@
 <script setup>
 import { defineAppDialog } from '@/composables/asyncDialog'
 import { useFirstOpen } from '@/composables/useFirstOpen'
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { usePortfolioContextStore } from '@/stores/portfolioContext'
 import { calculateDateRange } from '@/utils/dateRangeUtils'
@@ -181,6 +173,9 @@ const MergerDialog = defineAppDialog(() => import('@/components/dialogs/MergerDi
 import TransactionRow from '@/components/transactions/TransactionRow.vue'
 import WorkspaceActions from '@/components/workspace/WorkspaceActions.vue'
 import WorkspaceTableToolbar from '@/components/workspace/WorkspaceTableToolbar.vue'
+import ConfirmActionDialog from '@/components/workspace/ConfirmActionDialog.vue'
+import { useAuthStore } from '@/stores/auth'
+import { displayTransactionType } from '@/utils/formatUtils'
 import logger from '@/utils/logger'
 
 defineOptions({ name: 'TransactionsPage' })
@@ -256,12 +251,170 @@ const showTransactionDialogMounted = useFirstOpen(showTransactionDialog)
 const showFXTransactionDialog = ref(false)
 const showFXTransactionDialogMounted = useFirstOpen(showFXTransactionDialog)
 const editedTransaction = ref(null)
-const deleteDialog = ref(false)
-const transactionToDelete = ref(null)
 const showImportDialog = ref(false)
 const showImportDialogMounted = useFirstOpen(showImportDialog)
 const showTransferDialog = ref(false)
 const showTransferDialogMounted = useFirstOpen(showTransferDialog)
+
+const authStore = useAuthStore()
+
+// --- Exact-identity delete confirmation. The snapshot (kind + numeric id +
+// display details) is fixed when the dialog opens; list filters, delayed
+// detail replies and later selections can never retarget it. -------------
+const deleteDialog = ref(false)
+const deleteSubject = ref(null)
+const deleteError = ref(null)
+const deleteBusy = ref(false)
+const detailsPending = ref(false)
+const detailsFailed = ref(false)
+const deleteSnapshot = ref(null)
+let deleteGeneration = 0
+
+const hasValue = (value) => value !== undefined && value !== null && value !== ''
+const accountLabelOf = (item) =>
+  item.account ? [item.account.broker_name, item.account.name].filter(Boolean).join(' — ') : ''
+
+const detailsFromListItem = (item, kind) => {
+  const details = [{ label: 'Date', value: String(item.date ?? '') }]
+  if (item.type) details.push({ label: 'Type', value: displayTransactionType(item.type) })
+  const account = accountLabelOf(item)
+  if (account) details.push({ label: 'Account', value: account })
+  const securityName = item.security?.name
+  if (securityName) details.push({ label: 'Security', value: securityName })
+  if (kind === 'fx') {
+    if (hasValue(item.from_amount)) {
+      details.push({ label: 'From', value: `${item.from_amount}${item.from_cur ? ` ${item.from_cur}` : ''}` })
+    }
+    if (hasValue(item.to_amount)) {
+      details.push({ label: 'To', value: `${item.to_amount}${item.to_cur ? ` ${item.to_cur}` : ''}` })
+    }
+    if (hasValue(item.commission)) details.push({ label: 'Commission', value: String(item.commission) })
+  } else {
+    if (hasValue(item.quantity)) details.push({ label: 'Quantity', value: String(item.quantity) })
+    if (hasValue(item.price)) details.push({ label: 'Price', value: String(item.price) })
+    if (hasValue(item.cash_flow)) {
+      details.push({ label: 'Cash flow', value: `${item.cash_flow}${item.cur ? ` ${item.cur}` : ''}` })
+    }
+  }
+  return details
+}
+
+const detailsFromDetail = (kind, detail) => {
+  const details = []
+  if (kind === 'fx') {
+    if (hasValue(detail.from_amount)) {
+      details.push({ label: 'From', value: `${detail.from_amount}${detail.from_cur ? ` ${detail.from_cur}` : ''}` })
+    }
+    if (hasValue(detail.to_amount)) {
+      details.push({ label: 'To', value: `${detail.to_amount}${detail.to_cur ? ` ${detail.to_cur}` : ''}` })
+    }
+    if (hasValue(detail.commission)) details.push({ label: 'Commission', value: String(detail.commission) })
+  } else {
+    if (hasValue(detail.quantity)) details.push({ label: 'Quantity', value: String(detail.quantity) })
+    if (hasValue(detail.price)) details.push({ label: 'Price', value: String(detail.price) })
+    if (hasValue(detail.cash_flow)) {
+      details.push({ label: 'Cash flow', value: `${detail.cash_flow}${detail.cur ? ` ${detail.cur}` : ''}` })
+    }
+  }
+  return details
+}
+
+const processDeleteTransaction = (item) => {
+  const kind = item.transaction_type === 'fx' ? 'fx' : 'regular'
+  const numericId = extractTransactionId(item.id)
+  deleteGeneration += 1
+  const generation = deleteGeneration
+  deleteSnapshot.value = { kind, numericId }
+  deleteSubject.value = {
+    title: 'Delete transaction',
+    confirmLabel: 'Delete transaction',
+    details: detailsFromListItem(item, kind),
+  }
+  deleteError.value = null
+  deleteBusy.value = false
+  detailsFailed.value = false
+
+  // List rows already carry amount fields for most transactions; only load
+  // the existing detail endpoint when they genuinely lack them.
+  const needsDetail = kind === 'fx'
+    ? ![item.from_amount, item.to_amount, item.commission].some(hasValue)
+    : !hasValue(item.cash_flow)
+  detailsPending.value = needsDetail
+  deleteDialog.value = true
+
+  if (!needsDetail) return
+  const loader = kind === 'fx' ? getFXTransactionDetails : getTransactionDetails
+  loader(numericId)
+    .then((detail) => {
+      if (generation !== deleteGeneration || !deleteDialog.value) return
+      const extra = detailsFromDetail(kind, detail)
+      if (extra.length) {
+        deleteSubject.value = { ...deleteSubject.value, details: [...deleteSubject.value.details, ...extra] }
+      }
+      detailsPending.value = false
+    })
+    .catch((error) => {
+      if (generation !== deleteGeneration || !deleteDialog.value) return
+      logger.error('Unknown', 'Error loading transaction details for deletion:', error)
+      detailsPending.value = false
+      detailsFailed.value = true
+      deleteError.value = 'Could not load the transaction details, so deletion is disabled. Cancel and try again.'
+    })
+}
+
+const closeDeleteDialog = () => {
+  // Bumping the generation invalidates any in-flight detail reply. The
+  // subject object is kept (not nulled): the closing overlay keeps
+  // rendering briefly and a null subject would crash its template; the
+  // snapshot below is what gates deletion.
+  deleteGeneration += 1
+  deleteDialog.value = false
+  deleteSnapshot.value = null
+  deleteError.value = null
+  detailsPending.value = false
+  detailsFailed.value = false
+}
+
+const onConfirmDialogChange = (value) => {
+  if (!value) closeDeleteDialog()
+}
+
+const deleteTransactionConfirm = async () => {
+  const snapshot = deleteSnapshot.value
+  if (!snapshot || deleteBusy.value || detailsPending.value || detailsFailed.value) return
+  deleteBusy.value = true
+  deleteError.value = null
+  try {
+    if (snapshot.kind === 'fx') {
+      await deleteFXTransaction(snapshot.numericId)
+    } else {
+      await deleteTransaction(snapshot.numericId)
+    }
+    closeDeleteDialog()
+    await fetchTransactions()
+  } catch (error) {
+    logger.error('Unknown', 'Error deleting transaction:', error)
+    handleApiError(error)
+    deleteError.value = 'The transaction could not be deleted. Please try again.'
+  } finally {
+    deleteBusy.value = false
+  }
+}
+
+// The dialog returns focus to the invoking row button; if that row was just
+// deleted, fall back to the page's primary action.
+watch(deleteDialog, async (open) => {
+  if (open) return
+  await nextTick()
+  if (!document.activeElement || document.activeElement === document.body) {
+    document.querySelector('[data-action="add-transaction"]')?.focus()
+  }
+})
+
+// A session change invalidates any open confirmation and its pending replies.
+watch(() => authStore.sessionEpoch, () => {
+  if (deleteDialog.value) closeDeleteDialog()
+})
 
 const itemsPerPageOptions = computed(() => appStore.itemsPerPageOptions)
 const effectiveCurrentDate = computed(() => appStore.effectiveCurrentDate)
@@ -395,34 +548,6 @@ const editTransaction = async (item) => {
     }
   } catch (error) {
     handleApiError(error)
-  }
-}
-
-const processDeleteTransaction = (item) => {
-  transactionToDelete.value = item
-  deleteDialog.value = true
-}
-
-const closeDeleteDialog = () => {
-  deleteDialog.value = false
-  transactionToDelete.value = null
-}
-
-const deleteTransactionConfirm = async () => {
-  if (transactionToDelete.value) {
-    try {
-      const actualId = extractTransactionId(transactionToDelete.value.id)
-      if (transactionToDelete.value.transaction_type === 'fx') {
-        await deleteFXTransaction(actualId)
-      } else {
-        await deleteTransaction(actualId)
-      }
-      await fetchTransactions()
-    } catch (error) {
-      handleApiError(error)
-    } finally {
-      closeDeleteDialog()
-    }
   }
 }
 

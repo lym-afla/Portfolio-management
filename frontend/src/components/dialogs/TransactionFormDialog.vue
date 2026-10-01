@@ -1,67 +1,39 @@
 <template>
-  <v-dialog v-model="dialog" max-width="600px">
+  <v-dialog
+    v-model="dialog"
+    max-width="600px"
+    aria-labelledby="transaction-form-title"
+  >
     <v-card>
-      <v-card-title>
+      <v-card-title id="transaction-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit Transaction' : 'Add Transaction'
         }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
-          <template v-for="field in formFields" :key="field.name">
-            <!-- Skip fields that are conditional on transaction type -->
-            <template v-if="shouldShowField(field)">
-              <v-text-field
-                v-if="field.type === 'datepicker'"
-                :model-value="form[field.name]"
-                :label="field.label"
-                type="date"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              />
-
-              <v-autocomplete
-                v-else-if="field.type === 'select'"
-                :model-value="form[field.name]"
-                :items="field.choices"
-                item-title="text"
-                item-value="value"
-                :label="field.label"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                clearable
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              >
-                <template v-slot:selection="{ item }">
-                  {{ item.raw ? item.raw.text : '' }}
-                </template>
-              </v-autocomplete>
-
-              <v-text-field
-                v-else-if="field.type === 'number'"
-                :model-value="form[field.name]"
-                :label="field.label"
-                type="number"
-                :step="['split_from', 'split_to'].includes(field.name) ? '1' : '0.01'"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                :hint="field.helper_text"
-                :persistent-hint="!!field.helper_text"
-                :suffix="field.name === 'price' && isBondSelected ? '%' : ''"
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              />
-
-              <v-textarea
-                v-else-if="field.type === 'textarea'"
-                :model-value="form[field.name]"
-                :label="field.label"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              />
-            </template>
-          </template>
+          <!-- Visible section labels group the server-driven fields:
+               identification vs. amounts. Sections with no visible field
+               (conditional types) collapse entirely. -->
+          <section v-if="detailFields.length">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Transaction details</h3>
+            <FormFields
+              :fields="detailFields"
+              :value-for="(name) => form[name]"
+              :error-for="(name) => errors[name]"
+              :update="setFieldValue"
+            />
+          </section>
+          <section v-if="amountFields.length" class="mt-4">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Amounts</h3>
+            <FormFields
+              :fields="amountFields"
+              :value-for="(name) => form[name]"
+              :error-for="(name) => errors[name]"
+              :update="setFieldValue"
+              :bond-price="isBondSelected"
+            />
+          </section>
         </v-form>
         <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
@@ -85,7 +57,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import FormFields from './TransactionFormFields.vue'
 import { useForm } from 'vee-validate'
 import * as yup from 'yup'
 import {
@@ -230,10 +203,6 @@ const {
   validateOnChange: true,
 })
 
-const clearFieldError = (fieldName) => {
-  setFieldError(fieldName, '')
-}
-
 const isFormValid = computed(() => {
   return Object.keys(errors.value).length === 0
 })
@@ -258,6 +227,37 @@ const shouldShowField = (field) => {
   // Otherwise, show only if current type is in the allowed types
   return field.show_for_types.includes(form.type)
 }
+
+// Visible section grouping: identification vs. amounts.
+const AMOUNT_FIELD_NAMES = ['quantity', 'price', 'commission', 'cash_flow', 'split_from', 'split_to']
+const isAmountField = (field) => AMOUNT_FIELD_NAMES.includes(field.name)
+const detailFields = computed(() =>
+  formFields.value.filter((field) => shouldShowField(field) && !isAmountField(field)))
+const amountFields = computed(() =>
+  formFields.value.filter((field) => shouldShowField(field) && isAmountField(field)))
+
+// Initial focus goes to the first field; closing returns focus to the
+// invoking control (the dialog component stays mounted after first open).
+let previouslyFocused = null
+watch(dialog, async (open) => {
+  if (open) {
+    previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await nextTick()
+    // The teleported overlay becomes active asynchronously; wait briefly
+    // for the first field rather than racing Vuetify's mount sequence.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const first = document.querySelector('.v-overlay--active[role="dialog"] input')
+      if (first) {
+        first.focus()
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  } else if (previouslyFocused?.isConnected) {
+    previouslyFocused.focus()
+    previouslyFocused = null
+  }
+}, { immediate: true })
 
 const initializeForm = () => {
   const initialValues = formFields.value.reduce((acc, field) => {
