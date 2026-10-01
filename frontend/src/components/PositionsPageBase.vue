@@ -1,14 +1,15 @@
 <template>
-  <v-container fluid class="pa-0">
-    <v-overlay :model-value="loading" class="align-center justify-center">
-      <v-progress-circular color="primary" indeterminate size="64" />
-    </v-overlay>
+  <v-defaults-provider :defaults="workspaceDefaults">
+    <v-container fluid class="pa-0 workspace-ui positions-workspace">
+      <v-overlay :model-value="loading" class="align-center justify-center">
+        <v-progress-circular color="primary" indeterminate size="64" />
+      </v-overlay>
 
-    <v-alert v-if="positionsQuery.error.value || yearsQuery.error.value" type="error" class="mb-4">
-      Unable to load positions or year options. The displayed data may be from the previous request.
-      <v-btn data-testid="positions-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
-    </v-alert>
-    <slot name="above-table" :loading="tableLoading" />
+      <v-alert v-if="positionsQuery.error.value || yearsQuery.error.value" type="error" class="mb-4">
+        Unable to load positions or year options. The displayed data may be from the previous request.
+        <v-btn data-testid="positions-retry" :disabled="!context.canRead" @click="retryFailedResources">Retry</v-btn>
+      </v-alert>
+      <slot name="above-table" :loading="tableLoading" />
 
     <v-row no-gutters>
       <v-col cols="12">
@@ -186,7 +187,8 @@
         </v-data-table>
       </v-col>
     </v-row>
-  </v-container>
+    </v-container>
+  </v-defaults-provider>
 </template>
 
 <script setup lang="ts">
@@ -199,6 +201,7 @@ import { snapshotTableQuery, snapshotContext, type TableQueryParams } from '@/ty
 import type { RequestOptions } from '@/services/http/client'
 import { useTableSettings } from '@/composables/useTableSettings'
 import { flattenHeaders } from '@/config/positionsHeaders'
+import { workspaceDefaults } from '@/theme/defaults'
 
 // A column header may group children (parent header) or be a leaf column.
 // `align` mirrors Vuetify's accepted values so the prop type is compatible
@@ -425,6 +428,22 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
+/* Narrow screens: the control strip wraps inside its own rows instead of
+   overflowing the viewport; dense table scrolling stays local to the table. */
+@media (max-width: 599px) {
+  .positions-workspace :deep(.v-toolbar),
+  .positions-workspace :deep(.v-toolbar__content) {
+    height: auto;
+    min-height: 64px;
+  }
+
+  .positions-workspace :deep(.v-toolbar__content) {
+    flex-wrap: wrap;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+
 .nowrap-table :deep(td),
 .nowrap-table :deep(th) {
   white-space: nowrap;
