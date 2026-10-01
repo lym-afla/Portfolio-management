@@ -319,12 +319,27 @@ class _NavV2Collector:
             self.money_point(raw, omitted_reason=omitted_reason)
         )
 
-    def record_irrs(self, irr_inception, irr_interval, *, omitted=False, reason="omitted_valuation"):
+    def record_irrs(
+        self,
+        irr_inception,
+        irr_interval,
+        *,
+        inception_omitted=False,
+        interval_omitted=False,
+        reason="omitted_valuation",
+    ):
+        """Record both IRR horizons with their own dependency completeness.
+
+        The since-inception IRR at a sample depends only on that sample's
+        terminal NAV; the interval IRR additionally prices the opening
+        portfolio value at the previous endpoint, so an omission at either
+        endpoint makes it partial.
+        """
         self.series_by_id["metric:irr_inception"]["points"].append(
-            _irr_chart_value(irr_inception, omitted=omitted, reason=reason)
+            _irr_chart_value(irr_inception, omitted=inception_omitted, reason=reason)
         )
         self.series_by_id["metric:irr_interval"]["points"].append(
-            _irr_chart_value(irr_interval, omitted=omitted, reason=reason)
+            _irr_chart_value(irr_interval, omitted=interval_omitted, reason=reason)
         )
 
     def record_absent(self, series_id):
@@ -470,6 +485,7 @@ def get_nav_chart_data(
     previous_date = None
     NAV_previous_date = None
     raw_nav_previous = None
+    previous_day_diagnostics = None
     categories = {}
 
     # Initialize datasets based on breakdown type
@@ -572,6 +588,12 @@ def get_nav_chart_data(
         )
 
         omitted_reason = day_diagnostics[0]["reason"] if day_diagnostics else None
+        # Completeness of the previous endpoint: opening NAV, period return
+        # and the interval IRR all price the previous sample's NAV, so its
+        # omission propagates into this sample's dependents.
+        previous_omitted_reason = (
+            previous_day_diagnostics[0]["reason"] if previous_day_diagnostics else None
+        )
 
         if collector is not None:
             collector.record_period(d, frequency, previous_date)
@@ -611,9 +633,19 @@ def get_nav_chart_data(
             if collector is not None:
                 opening_raw = Decimal(0) if raw_nav_previous is None else raw_nav_previous
                 return_raw = NAV_data["Total NAV"] - opening_raw - contributions_raw
-                collector.record_money_series("metric:opening_nav", opening_raw)
+                # Opening NAV carries the previous endpoint's completeness;
+                # the period return prices both endpoints.
+                collector.record_money_series(
+                    "metric:opening_nav",
+                    opening_raw,
+                    omitted_reason=previous_omitted_reason,
+                )
                 collector.record_money_series("metric:contributions", contributions_raw)
-                collector.record_money_series("metric:return", return_raw)
+                collector.record_money_series(
+                    "metric:return",
+                    return_raw,
+                    omitted_reason=omitted_reason or previous_omitted_reason,
+                )
         elif breakdown == "value_contributions_cumulative":
             cumulative_raw = (
                 _calculate_contributions(
@@ -644,7 +676,11 @@ def get_nav_chart_data(
             if collector is not None:
                 return_raw = NAV_data["Total NAV"] - cumulative_raw
                 collector.record_money_series("metric:net_investments", cumulative_raw)
-                collector.record_money_series("metric:return", return_raw)
+                # Cumulative return prices only the terminal value; the
+                # cumulative contributions come from canonical transactions.
+                collector.record_money_series(
+                    "metric:return", return_raw, omitted_reason=omitted_reason
+                )
         else:
             breakdown_data = NAV_data.get(breakdown, {})
             add_breakdown_data(
@@ -678,12 +714,14 @@ def get_nav_chart_data(
             collector.record_irrs(
                 IRR_value,
                 IRR_rolling,
-                omitted=bool(day_diagnostics),
-                reason=omitted_reason or "omitted_valuation",
+                inception_omitted=bool(day_diagnostics),
+                interval_omitted=bool(day_diagnostics or previous_day_diagnostics),
+                reason=omitted_reason or previous_omitted_reason or "omitted_valuation",
             )
 
         NAV_previous_date = NAV
         raw_nav_previous = NAV_data["Total NAV"]
+        previous_day_diagnostics = day_diagnostics
         previous_date = d + timedelta(days=1)
 
     # Fill in missing historical data for categories
@@ -1293,6 +1331,8 @@ def build_security_price_document(
                 "points": points,
             }
         ],
+        # A single observed series has no cross-series partition question.
+        "partition": "complete",
     }
 
 
@@ -1343,4 +1383,6 @@ def build_security_position_document(
                 "points": points,
             }
         ],
+        # A single observed series has no cross-series partition question.
+        "partition": "complete",
     }

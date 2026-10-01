@@ -178,14 +178,27 @@ def get_dashboard_breakdown_api(request):
 
     breakdown_diagnostics = [] if contract_version is not None else None
     nav_kwargs = {"diagnostics": breakdown_diagnostics} if contract_version is not None else {}
-    analysis = NAV_at_date(
-        user.id,
-        tuple(selected_account_ids),
-        effective_current_date,
-        currency_target,
-        tuple(["asset_type", "currency", "asset_class"]),
-        **nav_kwargs,
-    )
+    try:
+        analysis = NAV_at_date(
+            user.id,
+            tuple(selected_account_ids),
+            effective_current_date,
+            currency_target,
+            tuple(["asset_type", "currency", "asset_class"]),
+            **nav_kwargs,
+        )
+    except Exception:
+        if contract_version is None:
+            raise  # legacy keeps its incumbent uncaught behavior
+        logger.exception("Error calculating breakdown for chart contract v2")
+        return Response(
+            chart_error_body(
+                "CHART_CALCULATION_FAILED",
+                "Breakdown could not be calculated. Please try again.",
+                True,
+            ),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
     if contract_version is not None:
         context = _chart_context(
@@ -199,18 +212,41 @@ def get_dashboard_breakdown_api(request):
         )
         dimensions = {"assetType": "asset_type", "assetClass": "asset_class",
                       "currency": "currency"}
-        chart_v2 = {
-            key: build_allocation_document(
-                dimension,
-                analysis,
-                currency=currency_target,
-                digits=number_of_digits,
-                diagnostics=breakdown_diagnostics,
-                effective_date=effective_current_date,
-                context=context,
+        try:
+            chart_v2 = {
+                key: build_allocation_document(
+                    dimension,
+                    analysis,
+                    currency=currency_target,
+                    digits=number_of_digits,
+                    diagnostics=breakdown_diagnostics,
+                    effective_date=effective_current_date,
+                    context=context,
+                )
+                for key, dimension in dimensions.items()
+            }
+        except ValueError:
+            # A category label without authoritative membership/code cannot
+            # be certified; never fabricate an identity or leak the label.
+            logger.error("Chart allocation category identity failure")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Allocation data could not be certified for this selection.",
+                    False,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-            for key, dimension in dimensions.items()
-        }
+        except Exception:
+            logger.exception("Error building allocation documents for chart contract v2")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Allocation data could not be calculated. Please try again.",
+                    True,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     else:
         chart_v2 = None
 

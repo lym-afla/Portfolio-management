@@ -423,6 +423,124 @@ class TestNavContractV2:
             == call_nav_chart(user, breakdown="asset_type").data["datasets"]
         )
 
+    def test_completeness_propagates_to_dependents_of_partial_valuations(
+        self, user, account, monkeypatch
+    ):
+        """Dependency-based propagation of valuation omissions.
+
+        Contributions/net investments come from transactions and stay observed.
+        Opening NAV carries the previous endpoint's completeness; period return
+        and interval IRR depend on both endpoints; cumulative return and
+        since-inception IRR depend only on the terminal value.
+        """
+        omission = [{
+            "reason": "missing_price",
+            "account_id": account.id,
+            "asset_id": 9,
+            "currency": "USD",
+            "asset_type": "Stock",
+        }]
+        values = {
+            date(2026, 1, 31): Decimal("90000"),
+            date(2026, 2, 28): Decimal("110000"),
+        }
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2026, 2, 5, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("100"),
+        )
+
+        def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
+            if diagnostics is not None and day == date(2026, 1, 31):
+                diagnostics.extend(omission)
+            return {"Total NAV": values[day]}
+
+        monkeypatch.setattr(charts, "NAV_at_date", pinned_nav)
+        monkeypatch.setattr(
+            charts, "IRR", lambda uid, day, cur, **kwargs: Decimal("0.1234")
+        )
+        doc = call_nav_chart(
+            user, breakdown="value_contributions", date_from="2026-01-31",
+            date_to="2026-02-28", contract=2,
+        ).data["chartV2"]
+        series = series_by_metric(doc)
+
+        # Terminal values: sample 0 partial, sample 1 observed again.
+        assert series["opening_nav"]["points"][0]["status"] == "ok"
+        assert series["opening_nav"]["points"][0]["value"] == "0"
+        assert series["opening_nav"]["points"][1]["status"] == "partial"
+        assert series["opening_nav"]["points"][1]["value"] is None
+        assert series["opening_nav"]["points"][1]["knownSubtotal"] == "90000"
+        assert series["opening_nav"]["points"][1]["reason"] == "missing_price"
+
+        # Transaction-derived: observed at both samples.
+        assert [p["status"] for p in series["contributions"]["points"]] == ["ok", "ok"]
+
+        # Period return depends on both endpoints: partial at both samples
+        # (sample 0 via its own terminal value, sample 1 via the opening).
+        assert series["return"]["points"][0]["status"] == "partial"
+        assert series["return"]["points"][1]["status"] == "partial"
+        # The cash-flow storage scale (9dp) carries through the subtraction.
+        assert series["return"]["points"][1]["knownSubtotal"] == "19900.000000000"
+        assert series["return"]["points"][1]["reason"] == "missing_price"
+
+        # Since-inception IRR depends only on the terminal value.
+        irr = [p["status"] for p in series["irr_inception"]["points"]]
+        assert irr == ["partial", "ok"]
+        # Interval IRR depends on the opening value too: both partial (the
+        # first sample is inception-horizon over its own partial terminal).
+        interval = [p["status"] for p in series["irr_interval"]["points"]]
+        assert interval == ["partial", "partial"]
+        assert series["irr_interval"]["points"][1]["reason"] == "missing_price"
+
+    def test_cumulative_return_propagates_only_terminal_completeness(
+        self, user, account, monkeypatch
+    ):
+        omission = [{
+            "reason": "missing_fx",
+            "account_id": account.id,
+            "currency": "GBP",
+            "asset_type": "Cash",
+            "asset_class": "Cash",
+        }]
+        values = {
+            date(2026, 1, 31): Decimal("90000"),
+            date(2026, 2, 28): Decimal("110000"),
+        }
+        Transactions.objects.create(
+            investor=user,
+            account=account,
+            type="Cash in",
+            currency="USD",
+            date=datetime(2026, 1, 15, 12, tzinfo=timezone.utc),
+            cash_flow=Decimal("1000"),
+        )
+
+        def pinned_nav(uid, ids, day, cur, breakdown=(), diagnostics=None):
+            if diagnostics is not None and day == date(2026, 1, 31):
+                diagnostics.extend(omission)
+            return {"Total NAV": values[day]}
+
+        monkeypatch.setattr(charts, "NAV_at_date", pinned_nav)
+        monkeypatch.setattr(
+            charts, "IRR", lambda uid, day, cur, **kwargs: Decimal("0.1234")
+        )
+        doc = call_nav_chart(
+            user, breakdown="value_contributions_cumulative", date_from="2026-01-31",
+            date_to="2026-02-28", contract=2,
+        ).data["chartV2"]
+        series = series_by_metric(doc)
+        # Net investments are transaction-derived: observed throughout.
+        assert [p["status"] for p in series["net_investments"]["points"]] == ["ok", "ok"]
+        # Cumulative return depends on the terminal value only: the clean
+        # February endpoint is observed even though January was partial.
+        assert [p["status"] for p in series["return"]["points"]] == ["partial", "ok"]
+        assert series["return"]["points"][0]["knownSubtotal"] == "89000.000000000"
+        assert series["return"]["points"][0]["reason"] == "missing_fx"
+
 
 # ---------------------------------------------------------------------------
 # NAV endpoint: v2 errors and emptiness
@@ -626,6 +744,38 @@ class TestAllocationContractV2:
         assert doc["partition"] == "legacy_non_partitioning"
         assert doc["allocationSummary"]["pieEligibility"] == "nonpartitioning"
 
+    def test_unknown_category_returns_generic_v2_error_and_legacy_bar(
+        self, user, account, monkeypatch
+    ):
+        fixture = breakdown_fixture(asset_type={"Mystery": Decimal("25")})
+        pin_breakdown(monkeypatch, fixture)
+        legacy = call_breakdown(user)
+        assert legacy.status_code == 200
+        assert "Mystery" in legacy.data["assetType"]["data"]
+
+        modern = call_breakdown(user, contract=2)
+        assert modern.status_code == 500
+        assert modern.data["error"]["code"] == "CHART_CALCULATION_FAILED"
+        assert "Mystery" not in str(modern.data["error"]["message"])
+
+    def test_calculation_failure_returns_generic_v2_error_only(
+        self, user, account, monkeypatch
+    ):
+        def explode(*args, **kwargs):
+            raise RuntimeError("secret internal detail")
+
+        monkeypatch.setattr(dashboard_views, "NAV_at_date", explode)
+        modern = call_breakdown(user, contract=2)
+        assert modern.status_code == 500
+        assert modern.data["error"]["code"] == "CHART_CALCULATION_FAILED"
+        assert modern.data["error"]["retryable"] is True
+        assert "secret" not in str(modern.data["error"]["message"])
+
+        # Legacy keeps its incumbent behavior: the exception propagates
+        # uncaught exactly as before the contract existed.
+        with pytest.raises(RuntimeError):
+            call_breakdown(user)
+
 
 # ---------------------------------------------------------------------------
 # Security history endpoints
@@ -655,6 +805,7 @@ class TestSecurityContractV2:
         doc = modern.data["chartV2"]
         assert doc["kind"] == "price"
         assert doc["security"] == {"id": bond_asset.id, "instrumentType": "Bond"}
+        assert doc["partition"] == "complete"
         series = doc["series"][0]
         assert series["id"] == f"security:{bond_asset.id}:price"
         assert series["metric"] == "price"
@@ -714,6 +865,7 @@ class TestSecurityContractV2:
         assert modern.data["legacy"] == json.loads(legacy.content)
         doc = modern.data["chartV2"]
         assert doc["kind"] == "position"
+        assert doc["partition"] == "complete"
         series = doc["series"][0]
         assert series["metric"] == "position"
         assert series["axis"] == "quantity"

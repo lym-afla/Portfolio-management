@@ -76,6 +76,15 @@ The chart endpoints negotiate the opt-in contract via `chart_contract=2`:
 - Unknown is never zero: omitted valuations surface as `partial` values with
   `knownSubtotal`, absent categories stay `absent_unclassified`, and IRRs
   against an incomplete terminal NAV are `partial` with null `value`.
+- Completeness propagates by dependency, not blanket-flagging: the
+  since-inception IRR at a sample depends only on that sample's terminal NAV;
+  the interval IRR additionally prices the opening portfolio value at the
+  previous endpoint; the contributions-mode opening NAV carries the previous
+  endpoint's completeness; the period return prices both endpoints; the
+  cumulative return prices only the terminal value; contributions and
+  cumulative net investments come from canonical transactions and stay
+  observed. Security price/position documents carry `partition: 'complete'`
+  (single observed series, no cross-series partition question).
 
 ## Performance & scaling notes
 - Currently using SQLite: acceptable for local dev, not for production scale. Expect query slowdowns for `_portfolio_at_date` and any annotation queries as transaction counts grow.
