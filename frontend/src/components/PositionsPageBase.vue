@@ -474,6 +474,16 @@ onUnmounted(() => {
   background: rgb(var(--v-theme-surface));
   min-width: 160px;
 }
+/* Narrow screens: cap the sticky Name column so the pinned identity pair
+   never covers the whole viewport and hides the columns being scrolled to;
+   the shared nowrap/ellipsis rule truncates very long security names. */
+@media (max-width: 599px) {
+  .nowrap-table :deep(tbody td:nth-child(2)),
+  .nowrap-table :deep(tfoot td:nth-child(2)),
+  .nowrap-table :deep(thead tr:first-child th:nth-child(2)) {
+    max-width: calc(100vw - 176px);
+  }
+}
 .nowrap-table :deep(thead tr:first-child th:nth-child(-n+2)) {
   z-index: 3; /* leaf header row above sticky body cells */
 }
