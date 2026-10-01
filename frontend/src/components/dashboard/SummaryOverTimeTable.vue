@@ -1,11 +1,10 @@
 <template>
-  <v-card v-if="lines && years && currentYear">
-    <v-card-title>Summary Over Time</v-card-title>
-    <v-card-text>
-      <v-alert v-if="error" type="error" dismissible>
-        {{ error }}
-      </v-alert>
-      <v-table v-if="!error" density="compact">
+  <div class="summary-over-time">
+    <v-alert v-if="error" type="error" dismissible>
+      {{ error }}
+    </v-alert>
+    <div v-else class="workspace-table-region">
+      <v-table v-if="lines && years && currentYear" density="compact">
         <thead>
           <tr>
             <th />
@@ -49,21 +48,10 @@
           </tr>
         </tbody>
       </v-table>
-      <v-btn @click="showUpdateDialog" color="primary" class="mt-4"
-        >Update Account Performance</v-btn
-      >
-    </v-card-text>
-  </v-card>
-  <v-card v-else>
-    <v-card-title>Summary Over Time</v-card-title>
-    <v-card-text>
-      <v-alert type="info" variant="tonal" density="compact"
+      <v-alert v-else type="info" variant="tonal" density="compact"
         text="No data for the selected account and period. Adjust the date range or select another account." />
-      <v-btn @click="showUpdateDialog" color="primary" class="mt-4"
-        >Update Account Performance</v-btn
-      >
-    </v-card-text>
-  </v-card>
+    </div>
+  </div>
 
   <UpdateAccountPerformanceDialog v-if="showDialogMounted"
     v-model="showDialog"
@@ -124,6 +112,10 @@ const errors = ref([])
 function showUpdateDialog() {
   showDialog.value = true
 }
+
+// The Update Account Performance action lives in the surrounding history
+// section header; this exposes the dialog opener to that parent.
+defineExpose({ openUpdateDialog: showUpdateDialog })
 
 async function handleUpdateStarted(formData) {
   showDialog.value = false

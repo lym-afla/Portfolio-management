@@ -211,6 +211,19 @@ const dateRangeForSelector = computed(() => ({
   padding: 16px; /* Add some padding */
 }
 
+/* Narrow pilots: the five frequency options wrap instead of overflowing the
+   viewport; the canvas keeps a usable height. Data and options are unchanged. */
+.v-btn-toggle {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+@media (max-width: 599px) {
+  .chart-wrapper {
+    height: 360px;
+  }
+}
+
 .chart-overlay {
   position: absolute;
   top: 0;
