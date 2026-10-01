@@ -3,7 +3,6 @@
     :fetch-positions="fetchOpenPositions"
     @accepted-result="acceptPositions"
     :headers="openPositionsHeaders"
-    :default-visible-keys="openDefaultVisibleKeys"
     page-title="Open Positions"
   >
     <template #above-table="{ loading: cashBalancesLoading }">
@@ -95,7 +94,6 @@ import { getOpenPositions } from '@/services/api'
 import {
   openPositionsHeaders,
   openPercentageColumns,
-  openDefaultVisibleKeys,
 } from '@/config/positionsHeaders'
 
 const totals = ref({})
