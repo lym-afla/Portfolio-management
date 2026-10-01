@@ -98,6 +98,10 @@ class NavChartDataResponseSerializer(serializers.Serializer):
     datasets = serializers.ListField(child=serializers.DictField())
     currency = serializers.CharField(allow_null=True)
     empty = serializers.BooleanField(required=False)
+    # Opt-in chart contract v2: exact raw values, dates, identity and status
+    # metadata negotiated via ``chart_contract=2``. The typed shape is owned
+    # by the frontend chart feature (implemented in C2), not this schema.
+    chartV2 = serializers.JSONField(required=False)
 
 
 # ---------------------------------------------------------------------------

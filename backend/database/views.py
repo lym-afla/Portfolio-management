@@ -19,6 +19,12 @@ from rest_framework.views import APIView
 
 from common.models import FX, Accounts, Assets, Brokers, Prices, Transactions
 from constants import ASSET_TYPE_CHOICES, DATA_SOURCE_CHOICES
+from services.charts import (
+    CHART_CONTRACT_VERSION,
+    build_security_position_document,
+    build_security_price_document,
+    chart_error_body,
+)
 from services.corporate_actions import (
     CorporateActionError,
     execute_merger,
@@ -48,6 +54,46 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _requested_chart_contract(request):
+    """Parse the explicit chart contract negotiation parameter.
+
+    Returns ``(version, error_response)`` — exactly one is None. Absent means
+    legacy; anything other than the supported version is an explicit client
+    error, never a silent downgrade to legacy.
+    """
+    raw = request.GET.get("chart_contract")
+    if raw is None:
+        return None, None
+    if raw != str(CHART_CONTRACT_VERSION):
+        return None, Response(
+            chart_error_body(
+                "INVALID_CHART_QUERY",
+                "Unsupported chart contract version; this server serves version "
+                f"{CHART_CONTRACT_VERSION}.",
+                False,
+            ),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return CHART_CONTRACT_VERSION, None
+
+
+def _security_chart_context(request, effective_date_str, account_ids=None):
+    """Chart context for security documents from the requesting user."""
+    user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+    account_selection = (
+        {"type": user.selected_account_type, "id": user.selected_account_id}
+        if user
+        else {"type": "all", "id": None}
+    )
+    return {
+        "accountSelection": account_selection,
+        "accountIds": list(account_ids or []),
+        "effectiveDate": effective_date_str,
+        "currency": (user.default_currency if user else None) or "USD",
+        "digits": user.digits if user else 2,
+    }
 
 
 @api_view(["GET"])
@@ -90,6 +136,9 @@ def api_get_security_detail(request, security_id):
 def api_get_security_price_history(request, security_id):
     """Get security price history."""
     try:
+        contract_version, contract_error = _requested_chart_contract(request)
+        if contract_error is not None:
+            return contract_error
         security = Assets.objects.get(id=security_id)
         period = request.GET.get("period", "1Y")
         # Use JWT middleware instead of session
@@ -115,7 +164,24 @@ def api_get_security_price_history(request, security_id):
             {"date": price.date.strftime("%Y-%m-%d"), "price": float(price.price)}
             for price in prices
         ]
-        return JsonResponse(price_history, safe=False)
+        if contract_version is None:
+            return JsonResponse(price_history, safe=False)
+        try:
+            context = _security_chart_context(request, effective_current_date_str)
+            document = build_security_price_document(
+                security, list(prices), digits=context["digits"], context=context
+            )
+        except Exception:
+            logger.exception("Failed to assemble v2 price history document")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Security price history could not be calculated.",
+                    True,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"legacy": price_history, "chartV2": document})
     except Assets.DoesNotExist:
         return JsonResponse({"error": "Security not found"}, status=404)
 
@@ -124,6 +190,9 @@ def api_get_security_price_history(request, security_id):
 def api_get_security_position_history(request, security_id):
     """Get security position history."""
     try:
+        contract_version, contract_error = _requested_chart_contract(request)
+        if contract_error is not None:
+            return contract_error
         security = Assets.objects.get(id=security_id, investors=request.user)
         period = request.GET.get("period", "1Y")
         account_id = request.GET.get("account_id")
@@ -161,6 +230,15 @@ def api_get_security_position_history(request, security_id):
         logger.info(
             f"Current position for {security.name} " f"as of {start_date} is {current_position}"
         )
+        v2_rows = []
+        if contract_version is not None and start_date:
+            v2_rows.append(
+                (
+                    f"security:{security.id}:position:opening:{start_date.isoformat()}",
+                    start_date,
+                    current_position,
+                )
+            )
         for transaction in transactions:
             if transaction.type == "Buy":
                 current_position += transaction.quantity
@@ -172,8 +250,41 @@ def api_get_security_position_history(request, security_id):
                     "position": current_position,
                 }
             )
+            if contract_version is not None:
+                v2_rows.append(
+                    (
+                        f"security:{security.id}:position:row:{transaction.pk}",
+                        transaction.date.date(),
+                        current_position,
+                    )
+                )
 
-        return JsonResponse(position_history, safe=False)
+        if contract_version is None:
+            return JsonResponse(position_history, safe=False)
+        # The legacy array must stay wire-identical to the no-contract
+        # response: JsonResponse's DjangoJSONEncoder renders Decimals as
+        # strings, so stringify before the DRF response (whose encoder
+        # would otherwise emit floats).
+        legacy_wire = [
+            {"date": row["date"], "position": str(row["position"])}
+            for row in position_history
+        ]
+        try:
+            context = _security_chart_context(
+                request, effective_current_date_str, account_ids=account_ids
+            )
+            document = build_security_position_document(security, v2_rows, context=context)
+        except Exception:
+            logger.exception("Failed to assemble v2 position history document")
+            return Response(
+                chart_error_body(
+                    "CHART_CALCULATION_FAILED",
+                    "Security position history could not be calculated.",
+                    True,
+                ),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"legacy": legacy_wire, "chartV2": document})
     except Assets.DoesNotExist:
         return JsonResponse({"error": "Security not found"}, status=404)
 

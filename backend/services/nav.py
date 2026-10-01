@@ -154,6 +154,8 @@ def NAV_at_date(
     date: date,
     target_currency: str,
     breakdown: Tuple[str] = (),
+    *,
+    diagnostics: Optional[List[Dict]] = None,
 ) -> Dict:
     """Calculate NAV breakdown for selected accounts at a given date.
 
@@ -163,6 +165,12 @@ def NAV_at_date(
         date: The date for NAV calculation.
         target_currency: Target currency for NAV values.
         breakdown: Tuple of breakdown categories (optional).
+        diagnostics: Optional list that, when provided, receives one dict per
+            valuation source omitted from the result (unpriced crypto, option
+            settle coin without FX, option cash flow without FX, cash currency
+            without FX). Pure instrumentation for the chart contract: no
+            formula, fallback or return-shape change; the default call behaves
+            exactly as before.
 
     Returns:
         dict: Dictionary containing Total NAV and breakdown values by category.
@@ -263,6 +271,15 @@ def NAV_at_date(
                                 "Option %s settle coin %s unpriced at %s — excluded from NAV",
                                 security.name, security.currency, date,
                             )
+                            if diagnostics is not None:
+                                diagnostics.append({
+                                    'reason': 'missing_fx',
+                                    'account_id': account.id,
+                                    'asset_id': security.id,
+                                    'currency': security.currency,
+                                    'asset_type': security.type,
+                                    'asset_class': security.exposure,
+                                })
                             continue
                     else:
                         fx = get_fx_rate(security.currency, target_currency, date)
@@ -294,6 +311,15 @@ def NAV_at_date(
                         security.name,
                         date,
                     )
+                    if diagnostics is not None:
+                        diagnostics.append({
+                            'reason': 'missing_price',
+                            'account_id': account.id,
+                            'asset_id': security.id,
+                            'currency': security.currency,
+                            'asset_type': security.type,
+                            'asset_class': security.exposure,
+                        })
                     continue
                 raise
 
@@ -363,6 +389,13 @@ def NAV_at_date(
                 "skipping from Crypto bucket",
                 coin, target_currency, date,
             )
+            if diagnostics is not None:
+                diagnostics.append({
+                    'reason': 'missing_fx',
+                    'account_id': tx.account_id,
+                    'asset_id': tx.security_id,
+                    'currency': coin,
+                })
             continue
         cf_value = (tx.cash_flow or Decimal(0)) * coin_to_target
         if cf_value == 0:
@@ -390,6 +423,14 @@ def NAV_at_date(
                     target_currency,
                     date,
                 )
+                if diagnostics is not None:
+                    diagnostics.append({
+                        'reason': 'missing_fx',
+                        'account_id': account.id,
+                        'currency': currency,
+                        'asset_type': 'Cash',
+                        'asset_class': 'Cash',
+                    })
                 continue
             converted_balance = balance * fx_rate
             analysis["Total NAV"] += converted_balance
