@@ -264,7 +264,9 @@ export async function assertFocusedLayoutFlow({
     args: [
       'eval',
       `(() => {
-      const title = document.querySelector('[data-testid="legacy-page-heading"]')
+      // The shell releases its duplicate heading when the route owns one
+      // (D1 heading ownership); either element is the single page title.
+      const title = document.querySelector('[data-testid="legacy-page-heading"], [data-testid="workspace-page-heading"]')
       if (!title) throw new Error('Scrollable page title missing')
       title.textContent = 'Consolidated portfolio for international and restricted investments across multiple accounts and currencies, with a longer descriptive title for this view'
     })()`,
@@ -298,7 +300,7 @@ export async function assertFocusedLayoutFlow({
   const heading = await runAgentBrowser({
     args: [
       'eval',
-      `(() => { const h = document.querySelector('[data-testid="legacy-page-heading"]'); const r = h.getBoundingClientRect(); return { inMain: !!h.closest('.v-main'), count: document.querySelectorAll('h1').length, bottom: r.bottom, top: r.top, right: r.right, contentRight: h.parentElement.getBoundingClientRect().right } })()`,
+      `(() => { const h = document.querySelector('[data-testid="legacy-page-heading"], [data-testid="workspace-page-heading"]'); const r = h.getBoundingClientRect(); return { inMain: !!h.closest('.v-main'), count: document.querySelectorAll('h1').length, bottom: r.bottom, top: r.top, right: r.right, contentRight: h.parentElement.getBoundingClientRect().right } })()`,
     ],
     context,
     initScript,

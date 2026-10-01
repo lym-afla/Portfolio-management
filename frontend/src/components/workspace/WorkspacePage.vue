@@ -15,7 +15,7 @@ onUnmounted(() => releaseHeading?.())
     <div class="workspace-ui workspace-page">
       <header class="workspace-page__header">
         <div>
-          <h1>{{ title }}</h1>
+          <h1 data-testid="workspace-page-heading">{{ title }}</h1>
           <p v-if="description" class="workspace-meta">{{ description }}</p>
         </div>
         <div v-if="$slots.actions" class="workspace-actions"><slot name="actions" /></div>
