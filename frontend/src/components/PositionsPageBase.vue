@@ -95,7 +95,10 @@
                   </template>
                 </v-select>
               </v-col>
-              <v-col cols="12" sm="6" md="7" lg="8">
+              <!-- Basis narrowed from sm6/md7/lg8: Year + Search + Columns
+                   button + Rows select exceeded the toolbar row and pushed the
+                   Rows control past the viewport edge at sm/md widths. -->
+              <v-col cols="12" sm="5" md="6">
                 <v-text-field
                   v-model="search"
                   append-icon="mdi-magnify"
@@ -116,6 +119,7 @@
                     density="compact"
                     variant="text"
                     aria-label="Show or hide columns"
+                    class="workspace-touch-action"
                   />
                 </template>
                 <v-list density="compact" max-height="360px">
@@ -133,7 +137,10 @@
                   </v-list-item>
                 </v-list>
               </v-menu>
-              <v-col cols="12" sm="3" md="3" lg="2">
+              <!-- sm="auto": fixed 12-col rows (Year+Search) plus this column
+                   and the Columns button overflowed the row at sm/md widths,
+                   pushing the select past the viewport edge. -->
+              <v-col cols="12" sm="auto">
                 <v-select
                   v-model="itemsPerPage"
                   :items="itemsPerPageOptions"
@@ -428,17 +435,26 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
-/* Narrow screens: the control strip wraps inside its own rows instead of
-   overflowing the viewport; dense table scrolling stays local to the table. */
-@media (max-width: 599px) {
-  .positions-workspace :deep(.v-toolbar),
-  .positions-workspace :deep(.v-toolbar__content) {
-    height: auto;
-    min-height: 64px;
-  }
+/* Toolbar control strip: the v-cols live directly in the toolbar flex box
+   (no v-row), so a row that exceeds the content width overflows the page
+   instead of wrapping. Wrap at every width and let the box grow with its
+   rows; Vuetify fixes .v-toolbar__content at an inline 64px height with
+   overflow hidden, which silently clips every control after the first
+   row. Dense table scrolling stays local to the table below. */
+.positions-workspace :deep(.v-toolbar) {
+  height: auto;
+  min-height: 64px;
+}
 
+.positions-workspace :deep(.v-toolbar__content) {
+  height: auto !important;
+  min-height: 64px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 599px) {
   .positions-workspace :deep(.v-toolbar__content) {
-    flex-wrap: wrap;
     padding-top: 8px;
     padding-bottom: 8px;
   }

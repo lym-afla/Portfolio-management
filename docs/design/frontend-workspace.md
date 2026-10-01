@@ -48,16 +48,18 @@ cd frontend
 node scripts/qa-preview.mjs            # fixture API + built app on http://127.0.0.1:5189
 npx --no-install agent-browser --session design-pilot --init-script tests/browser/auth-init.js open http://127.0.0.1:5189/dashboard
 npx --no-install agent-browser --session design-pilot set viewport 390 844
-# native zoom (Ctrl+0 then 5× Ctrl+Plus via CDP): scripts/qa-native-zoom.mjs / Input.dispatchKeyEvent rawKeyDown
+# native zoom (Ctrl+0 then N× Ctrl+Plus key events via CDP, verified by devicePixelRatio):
+node scripts/qa-native-zoom.mjs "$(npx --no-install agent-browser --session design-pilot get cdp-url)" http://127.0.0.1:5189 200
 ```
 
-The full browser case matrix (`npm run test:browser`, plus `--case layout|context|dates|requests|recovery|delivery|dialogs|dialog-recovery`) was run green before and after the sticky-identity fix.
+The full browser case matrix (`npm run test:browser`, plus `--case layout|context|dates|requests|recovery|delivery|dialogs|dialog-recovery`) was run green before and after the sticky-identity fix and again after the toolbar correction; the `layout` case now also asserts that every positions toolbar control is really visible (elementFromPoint hit-test, inside the toolbar box, within the viewport) and that the Columns menu opens, at all four viewports.
 
 ## Failures and corrections during the pilot
 
 1. **Browser layout case failed after the dashboard switch** — its long-title check targeted the shell's legacy h1, which the shell correctly no longer renders once the route owns its heading. The check now accepts either heading (`legacy-page-heading` or `workspace-page-heading`); intent (single h1 in main, no fixed-header growth) unchanged.
 2. **Mobile sticky Name column covering the viewport** — found in the first mobile positions review, fixed with the narrow-screen cap, re-verified (see above). Positions screenshots retaken after the fix.
 3. **`vite preview`/static build path errors on Windows** (rolldown entry resolution with backslash roots; QA script initially served the wrong directory) — fixed inside the throwaway QA script only; no app change.
+4. **Positions toolbar controls clipped/off-screen (PR review round)** — my first mobile verification only measured bounding boxes and missed that Vuetify's `.v-toolbar__content` is a fixed inline 64px box with `overflow: hidden`: below 600px only the Year select was really visible, and hit-tests at the Search/Columns/Rows positions returned table cells. The correction makes the toolbar box grow and wrap at every width (`height: auto !important` against the inline style), gives the Columns button a 44px touch target, narrows the Search column basis and makes the Rows column content-sized — the old 12-column basis sum plus the Columns button had also been pushing the Rows-per-page select past the right viewport edge at sm/md widths (1024/720 CSS px included). A rendered regression now runs in the browser `layout` case at all four viewports: each control must be inside the toolbar box, within the viewport, and actually hittable (`elementFromPoint`), and the Columns menu must open with its 20 column entries. Observed RED against the unfixed markup (mobile: clipped Columns button; desktop/tablet/zoom-200: Rows select past the viewport), GREEN after the fix. The committed `qa-native-zoom.mjs` was also rewritten to the documented key-event method (the first committed version used `Emulation.setDeviceMetricsOverride`, which does not reproduce Chrome's zoom devicePixelRatio in this build); it now reaches exactly 200% (dpr 2.0, CSS 720×500) and exits non-zero otherwise, verified live.
 
 ## Deliberate decisions and acceptance limits
 
@@ -66,6 +68,6 @@ The full browser case matrix (`npm run test:browser`, plus `--case layout|contex
 - **Table controls remain incumbent:** grouped presets, organized column chooser, aria-sort and pinned-identity-by-key are **D4**; this pilot deliberately changed none of that behavior (the sticky-width cap is a defect fix, not a redesign).
 - **Mobile name truncation:** very long security names ellipsize in the capped sticky column below 600px; the full name is available on desktop and via the security link. D4's preset work revisits mobile density.
 - **`SummaryCard`** is retained unchanged (with its tests) as a compatibility adapter; no view consumes it now. Deleting it is cleanup for a later task.
-- **Native zoom via CDP key events:** agent-browser's `press Control+=` does not trigger browser zoom in this headless build; the CDP `Input.dispatchKeyEvent` route does (verified by devicePixelRatio 2.0). Documented here so the reviewer can distinguish it from the rejected CSS-zoom evidence path.
+- **Native zoom via CDP key events:** agent-browser's `press Control+=` does not trigger browser zoom in this headless build; the committed `scripts/qa-native-zoom.mjs` drives `Input.dispatchKeyEvent` (Ctrl+0 reset, then Ctrl+Plus steps) and self-verifies `devicePixelRatio` so the documented evidence is reproducible from the repository.
 
 Human visual acceptance of these captures precedes any D5 rollout.

@@ -11,7 +11,7 @@ import {
   runBrowserHarnessLifecycle,
 } from './lifecycle.mjs'
 import { runAgentBrowser } from './protocol.mjs'
-import { assertFocusedLayoutFlow, assertLayoutGeometry } from './layout.mjs'
+import { assertFocusedLayoutFlow, assertLayoutGeometry, assertPositionsToolbarFlow } from './layout.mjs'
 import { assertContextFailureFlow } from './context.mjs'
 import { assertMountedDateFlow } from './dates.mjs'
 import { assertRequestOrderFlow } from './requests.mjs'
@@ -323,6 +323,19 @@ async function main() {
           } catch (error) {
             routeFailures.push({ route: 'layout flow', viewport: viewport.name, error: error.message })
             console.error(`FAIL ${viewport.name} layout flow: ${error.message}`)
+          }
+          try {
+            await assertPositionsToolbarFlow({
+              appOrigin: appServer.origin,
+              context: `${viewport.name} positions toolbar`,
+              initScript,
+              log,
+              session,
+              viewport,
+            })
+          } catch (error) {
+            routeFailures.push({ route: 'positions toolbar', viewport: viewport.name, error: error.message })
+            console.error(`FAIL ${viewport.name} positions toolbar: ${error.message}`)
           }
         }
       }

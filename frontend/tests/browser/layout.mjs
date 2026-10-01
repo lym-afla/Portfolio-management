@@ -321,3 +321,73 @@ export async function assertFocusedLayoutFlow({
   assert.doesNotMatch(JSON.stringify(consoleData), /ResizeObserver loop/i)
   return { base, wrapped }
 }
+
+/** Positions toolbar: every control must be really visible (hit-test, not
+    clipped by the fixed-height toolbar box) and the Columns menu usable. */
+export async function assertPositionsToolbarFlow({ appOrigin, context, initScript, log, session, viewport }) {
+  const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
+  await run(['open', `${appOrigin}/open-positions`])
+  await run(['wait', '--fn', "document.querySelectorAll('.v-data-table tbody tr').length > 1"])
+  await run(['eval', "document.querySelector('.v-data-table .v-toolbar')?.scrollIntoView({ block: 'center' })"])
+  await run(['wait', '150'])
+
+  const controls = await runAgentBrowser({
+    args: [
+      'eval',
+      `(() => {
+        const toolbar = document.querySelector('.v-data-table .v-toolbar')
+        const box = toolbar.querySelector('.v-toolbar__content').getBoundingClientRect()
+        const year = toolbar.querySelector('.v-select:not(.rows-per-page-select)')
+        const search = toolbar.querySelector('.v-text-field')
+        const columns = toolbar.querySelector('button[aria-label="Show or hide columns"]')
+        const rows = toolbar.querySelector('.rows-per-page-select')
+        const measure = (name, el) => {
+          if (!el) return { name, missing: true }
+          const r = el.getBoundingClientRect()
+          const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + Math.min(r.height / 2, 24))
+          const hit = document.elementFromPoint(cx, cy)
+          return {
+            name,
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            withinViewport: r.left >= -1 && r.right <= window.innerWidth + 1,
+            insideToolbarBox: r.top >= box.top - 1 && r.bottom <= box.bottom + 1,
+            hitIsControlOrChild: !!hit && !!el.contains(hit),
+            hitTag: hit ? hit.tagName : null,
+          }
+        }
+        return {
+          toolbarBox: { top: Math.round(box.top), height: Math.round(box.height) },
+          controls: [
+            measure('year', year),
+            measure('search', search),
+            measure('columns', columns),
+            measure('rows-per-page', rows),
+          ],
+        }
+      })()`,
+    ],
+    context: `${context} positions toolbar probe`,
+    initScript,
+    log,
+    session,
+  })
+  const probe = controls.result
+  assert.ok(probe.toolbarBox.height > 0, `${context}: toolbar box missing`)
+  for (const control of probe.controls) {
+    assert.ok(!control.missing, `${context}: positions toolbar control missing: ${JSON.stringify(control)}`)
+    assert.ok(control.width > 0 && control.height >= 24, `${context}: ${control.name} has no usable target: ${JSON.stringify(control)}`)
+    assert.ok(control.withinViewport, `${context}: ${control.name} extends past the viewport: ${JSON.stringify(control)}`)
+    assert.ok(control.insideToolbarBox, `${context}: ${control.name} is clipped outside the toolbar box: ${JSON.stringify({ ...control, toolbarBox: probe.toolbarBox })}`)
+    assert.ok(control.hitIsControlOrChild, `${context}: ${control.name} is not really visible — center point is covered by ${control.hitTag}: ${JSON.stringify(control)}`)
+  }
+
+  const menu = await run(['eval', `(() => { const btn = document.querySelector('.v-data-table .v-toolbar button[aria-label="Show or hide columns"]'); btn.click(); return true })()`])
+  assert.equal(menu.result, true)
+  await run(['wait', '--fn', "document.querySelector('.v-overlay--active .v-list-item') !== null"])
+  await run(['press', 'Escape'])
+  await run(['wait', '--fn', "document.querySelector('.v-overlay--active .v-list-item') === null"])
+  await log({ context, viewport: viewport.name, probe, status: 'passed' })
+  console.log(`PASS ${viewport.name} positions toolbar usable`)
+  return probe
+}

@@ -243,7 +243,6 @@ async function recoverContext() {
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const user = ref<Record<string, unknown> | null>(null)
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const layoutLoading = ref(true)
 const pageTitle = ref('')
@@ -279,10 +278,6 @@ const showComponents = computed(
   () => !isProfilePage.value && !isDatabasePage.value && !isSummaryPage.value
 )
 const showSettingsDialog = computed(() => isSummaryPage.value)
-
-const setUser = (userData: Record<string, unknown> | null) => {
-  user.value = userData
-}
 
 const handleLogout = async () => {
   await authStore.logout()
