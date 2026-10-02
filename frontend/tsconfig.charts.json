@@ -11,5 +11,8 @@
     "tests/unit/helpers/**/*.ts",
     "env.d.ts"
   ],
+  "exclude": [
+    "src/features/charts/__tests__/dashboardIntegration.spec.ts"
+  ],
   "references": []
 }

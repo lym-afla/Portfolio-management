@@ -235,9 +235,9 @@ describe('DashboardPage NAV chart wiring', () => {
     chartApi.fetchNavChart.mockRejectedValue(new Error('nav chart failed'))
     const wrapper = await mountDashboard()
     expect(wrapper.get('[data-testid="nav-error"]').text()).toContain('nav chart failed')
-    expect(wrapper.get('[data-testid="summary-card"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="summary-card"]').exists()).toBe(true)
     expect(wrapper.get('.allocation-content').text()).toBe('Asset Type')
-    expect(wrapper.get('[data-testid="history-table"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="history-table"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
