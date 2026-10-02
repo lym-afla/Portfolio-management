@@ -68,14 +68,20 @@ function fixturePeriods(frequency: FixtureFrequency, count = 3): FixturePeriod[]
     for (let index = 0; index < count; index += 1) endDates.push(plusDays('2026-09-05', index * 7)), partials.push(false)
     endDates.push('2026-09-29'), partials.push(true) // mid-week endpoint
   } else if (frequency === 'M') {
-    endDates.push('2026-06-30', '2026-07-31', '2026-08-31'), partials.push(false, false, false)
-    endDates.push('2026-09-10'), partials.push(true) // mid-month endpoint
+    endDates.push('2026-06-30', '2026-07-31', '2026-08-31')
+    partials.push(false, false, false)
+    endDates.push('2026-09-10') // mid-month endpoint
+    partials.push(true)
   } else if (frequency === 'Q') {
-    endDates.push('2026-03-31', '2026-06-30'), partials.push(false, false)
-    endDates.push('2026-09-10'), partials.push(true)
+    endDates.push('2026-03-31', '2026-06-30')
+    partials.push(false, false)
+    endDates.push('2026-09-10')
+    partials.push(true)
   } else {
-    endDates.push('2024-12-31', '2025-12-31'), partials.push(false, false)
-    endDates.push('2026-06-30'), partials.push(true)
+    endDates.push('2024-12-31', '2025-12-31')
+    partials.push(false, false)
+    endDates.push('2026-06-30')
+    partials.push(true)
   }
   return endDates.map((endDate, index) => ({
     key: `nav:${endDate}${index}`,
