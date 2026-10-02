@@ -282,6 +282,37 @@ describe('context mismatch reconciliation', () => {
     scope.stop()
   })
 
+  it('never reconciles twice in one divergence episode; success lifts the suppression', async () => {
+    const { scope, api } = mountNavChart()
+    const context = usePortfolioContextStore()
+    const spy = vi.spyOn(context, 'reconcileContext')
+    respond = () => Promise.resolve({ data: mismatchEnvelope() })
+    await api.run(makeQuery())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(spy).toHaveBeenCalledTimes(1)
+    // Let the fired reconciliation finish before observing the episode.
+    for (let attempt = 0; !context.canRead && attempt < 50; attempt++) await Promise.resolve()
+    // The reconciliation refresh refetches and still mismatches (the fixture
+    // keeps disagreeing): no second reconciliation may fire.
+    const queries = chartCalls.length
+    respond = () => Promise.resolve({ data: mismatchEnvelope() })
+    await api.run(makeQuery())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(chartCalls.length).toBe(queries + 1)
+    // An accepted result resets the episode; a later mismatch reconciles again.
+    respond = () => Promise.resolve({ data: successEnvelope() })
+    await api.run(makeQuery())
+    respond = () => Promise.resolve({ data: mismatchEnvelope() })
+    await api.run(makeQuery())
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(spy).toHaveBeenCalledTimes(2)
+    scope.stop()
+  })
+
   it('never reconcines for ordinary transport failures', async () => {
     const { scope, api } = mountNavChart()
     const context = usePortfolioContextStore()

@@ -40,6 +40,10 @@ export function useNavChart() {
   const context = usePortfolioContextStore()
   const runner = usePortfolioRequest<NavQuery, NavResult>(fetchNavChart, snapshotNavQuery)
   let disposed = false
+  // One reconciliation per divergence episode: if the refreshed context still
+  // disagrees, the error stays visible until an accepted result (or explicit
+  // user action) resets the suppression — never an automatic retry loop.
+  let mismatchReconciled = false
   if (getCurrentScope()) {
     onScopeDispose(() => {
       disposed = true
@@ -59,6 +63,10 @@ export function useNavChart() {
       return { status: 'discarded' }
     }
     const result = await runner.run({ ...query, context: ready })
+    if (result.status === 'accepted') {
+      mismatchReconciled = false
+      return result
+    }
     if (result.status === 'failed' && result.error instanceof ChartContextMismatchError) {
       // Only a mismatch that still belongs to the current generation, the
       // captured revision, this active scope and a readable store may ask the
@@ -69,7 +77,10 @@ export function useNavChart() {
         context.canRead &&
         context.committed.revision === ready.revision &&
         runner.error.value === result.error
-      if (stillCurrent) void context.reconcileContext()
+      if (stillCurrent && !mismatchReconciled) {
+        mismatchReconciled = true
+        void context.reconcileContext()
+      }
     }
     return result
   }

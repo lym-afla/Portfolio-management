@@ -39,6 +39,17 @@
             Retry
           </v-btn>
         </v-alert>
+        <v-alert
+          v-else-if="navChartLegacyOnly"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mb-2"
+          data-testid="nav-capability-notice"
+        >
+          Chart data comes from a legacy response without the exact chart contract; values are
+          unverified metadata.
+        </v-alert>
         <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
         <NAVChart
           v-else-if="navChartData"
@@ -161,8 +172,9 @@ import {
   getDashboardSummary,
   getDashboardBreakdown,
   getDashboardSummaryOverTime,
-  getNAVChartData,
 } from '@/services/api'
+import { useNavChart, requireReadyChartContext } from '@/features/charts/useNavChart'
+import type { Frequency, NavMode, NavQuery } from '@/features/charts/contracts'
 
 defineOptions({ name: 'DashboardPage' })
 const emit = defineEmits<{
@@ -174,11 +186,6 @@ interface BreakdownData {
   assetClass: Record<string, unknown>
   currency: Record<string, unknown>
   totalNAV?: string
-}
-interface ChartData {
-  labels: unknown[]
-  datasets: unknown[]
-  [key: string]: unknown
 }
 interface SummaryOverTimeData {
   lines?: unknown[]
@@ -192,10 +199,12 @@ interface NavChartParams {
   dateFrom: string | null
   dateTo: string | null
 }
-interface NavQueryParams {
-  readonly context: PortfolioContext
-  readonly chart: NavChartParams
-}
+
+const CHART_MODES: readonly NavMode[] = [
+  'none', 'account', 'asset_type', 'asset_class', 'currency',
+  'value_contributions', 'value_contributions_cumulative',
+]
+const CHART_FREQUENCIES: readonly Frequency[] = ['D', 'W', 'M', 'Q', 'Y']
 
 const appStore = useAppStore()
 const context = usePortfolioContextStore()
@@ -221,16 +230,7 @@ const historyQuery = usePortfolioRequest(
   },
   snapshotContext
 )
-const navQuery = usePortfolioRequest(
-  async (params: NavQueryParams, options) => await getNAVChartData(
-    params.chart.breakdown, params.chart.frequency,
-    params.chart.dateFrom, params.chart.dateTo, options
-  ) as unknown as ChartData,
-  (params: NavQueryParams) => Object.freeze({
-    context: snapshotContext(params.context),
-    chart: Object.freeze({ ...params.chart }),
-  })
-)
+const navChartQuery = useNavChart()
 const metrics = computed(() =>
   summaryQuery.data.value ? summaryMetrics(summaryQuery.data.value) : []
 )
@@ -239,7 +239,13 @@ const breakdownData = computed(() => breakdownQuery.data.value ?? {
 })
 const totalNAV = computed(() => breakdownQuery.data.value?.totalNAV ?? '')
 const summaryOverTimeData = historyQuery.data
-const navChartData = navQuery.data
+const navChartResult = navChartQuery.data
+// The renderer owns a fresh copy; the retained validated NavResult must
+// survive renderer-side dataset mutation untouched.
+const navChartData = computed(() =>
+  navChartResult.value ? structuredClone(navChartResult.value.legacy) : null
+)
+const navChartLegacyOnly = computed(() => navChartResult.value?.capability === 'legacy_only')
 const navChartInitialParams = computed(() => appStore.navChartParams)
 const effectiveCurrentDate = computed(() => context.committed.effectiveCurrentDate)
 const isEffectiveDateLoading = computed(() => !context.canRead)
@@ -259,14 +265,14 @@ const loading = computed(() => ({
   summary: summaryQuery.loading.value,
   breakdownCharts: breakdownQuery.loading.value,
   summaryOverTime: historyQuery.loading.value,
-  navChart: navQuery.loading.value && !navQuery.data.value,
+  navChart: navChartQuery.loading.value && !navChartQuery.data.value,
 }))
-const updating = computed(() => ({ navChart: navQuery.loading.value && !!navQuery.data.value }))
+const updating = computed(() => ({ navChart: navChartQuery.loading.value && !!navChartQuery.data.value }))
 const error = computed(() => ({
   summary: summaryQuery.error.value?.message,
   breakdownCharts: breakdownQuery.error.value?.message,
   summaryOverTime: historyQuery.error.value?.message,
-  navChart: navQuery.error.value?.message,
+  navChart: navChartQuery.error.value?.message,
 }))
 const historyReady = computed(() =>
   !loading.value.summaryOverTime && !error.value.summaryOverTime
@@ -276,8 +282,27 @@ const chartTitles = { assetType: 'Asset Type', assetClass: 'Asset Class', curren
 const fetchSummaryData = () => summaryQuery.run(context.committed)
 const fetchBreakdownData = () => breakdownQuery.run(context.committed)
 const fetchSummaryOverTimeData = () => historyQuery.run(context.committed)
-const fetchNAVChartData = (params: NavChartParams = navChartInitialParams.value) =>
-  navQuery.run({ context: context.committed, chart: params })
+type NavRunResult = Awaited<ReturnType<typeof navChartQuery.run>>
+function fetchNAVChartData(params: NavChartParams = navChartInitialParams.value): Promise<NavRunResult> {
+  const committed = context.committed
+  if (!committed.effectiveCurrentDate || !committed.currency) {
+    return Promise.resolve({ status: 'discarded' } as NavRunResult)
+  }
+  if (!CHART_MODES.includes(params.breakdown as NavMode) ||
+      !CHART_FREQUENCIES.includes(params.frequency as Frequency)) {
+    return Promise.resolve({ status: 'discarded' } as NavRunResult)
+  }
+  // The guards above make this refinement total; the backend treats an
+  // absent end date as the effective date.
+  const query: NavQuery = {
+    context: requireReadyChartContext(committed),
+    mode: params.breakdown as NavMode,
+    frequency: params.frequency as Frequency,
+    fromDate: params.dateFrom,
+    toDate: params.dateTo ?? committed.effectiveCurrentDate,
+  }
+  return navChartQuery.run(query)
+}
 
 // One watcher owns initial/context/explicit refresh reads. Child parameter changes
 // already persist their tuple and emit once; observing that tuple too would double-fetch.
