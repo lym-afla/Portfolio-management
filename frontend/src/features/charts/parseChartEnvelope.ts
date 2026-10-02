@@ -4,6 +4,8 @@
 // coercion. ISO dates are validated with an exclusive UTC year/month/day
 // round-trip. Allocation and security document specifics are Task 2.
 import type {
+  ChartAllocation,
+  ChartAllocationSummary,
   ChartDocument,
   ChartPeriod,
   ChartSeries,
@@ -31,6 +33,8 @@ const SERIES_METRICS = [
 ] as const
 const SERIES_AXES = ['money', 'return', 'price', 'quantity'] as const
 const CATEGORY_KINDS = ['account_group', 'asset_type', 'asset_class', 'currency'] as const
+const ALLOCATION_DIMENSIONS = ['asset_type', 'asset_class', 'currency'] as const
+const PIE_ELIGIBILITIES = ['eligible', 'signed', 'nonpositive_total', 'incomplete', 'nonpartitioning'] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -111,6 +115,9 @@ function parseChartUnit(input: unknown, axis: ChartSeries['axis'], where: string
       if (input.plotDivisor !== '1' && input.plotDivisor !== '1000') {
         throw new ChartContractError(`${where} money unit plotDivisor must be '1' or '1000'`)
       }
+      if (axis === 'price' && input.plotDivisor !== '1') {
+        throw new ChartContractError(`${where} price money unit plotDivisor must be '1'`)
+      }
       return { kind: 'money', currency: input.currency, plotDivisor: input.plotDivisor }
     }
     case 'ratio':
@@ -153,7 +160,12 @@ function parseChartCategory(input: unknown, where: string): ChartSeriesCategory 
   return category
 }
 
-function parseChartSeries(input: unknown, periodCount: number, contextCurrency: string, index: number): ChartSeries {
+function parseChartSeries(
+  input: unknown,
+  periodCount: number,
+  contextCurrency: string | null,
+  index: number
+): ChartSeries {
   const where = `Chart series ${index}`
   if (!isRecord(input)) throw new ChartContractError(`${where} must be an object`)
   if (typeof input.id !== 'string' || input.id === '') {
@@ -164,7 +176,9 @@ function parseChartSeries(input: unknown, periodCount: number, contextCurrency: 
   const role = member(['bar', 'line'] as const, input.role, `${where} role`)
   const axis = member(SERIES_AXES, input.axis, `${where} axis`)
   const unit = parseChartUnit(input.unit, axis, where)
-  if (unit.kind === 'money' && unit.currency !== contextCurrency) {
+  // NAV/allocation money is reporting currency; security instruments keep
+  // their own trading currency, so no context match is enforced there.
+  if (contextCurrency !== null && unit.kind === 'money' && unit.currency !== contextCurrency) {
     throw new ChartContractError(
       `${where} money unit currency ${unit.currency} does not match document currency ${contextCurrency}`
     )
@@ -293,17 +307,23 @@ export function parseChartDocument(input: unknown): ChartDocument {
     periodKeys.add(parsed.key)
     return parsed
   })
+  const seriesCurrencyCheck = kind === 'nav' || kind === 'allocation' ? context.currency : null
   const seriesIds = new Set<string>()
   const series = input.series.map((seriesInput, index) => {
-    const parsed = parseChartSeries(seriesInput, periods.length, context.currency, index)
+    const parsed = parseChartSeries(seriesInput, periods.length, seriesCurrencyCheck, index)
     if (seriesIds.has(parsed.id)) {
       throw new ChartContractError(`Chart series identity ${parsed.id} is duplicated`)
     }
     seriesIds.add(parsed.id)
     return parsed
   })
-  if (outcome === 'empty' && (periods.length > 0 || series.length > 0)) {
-    throw new ChartContractError('An empty chart document must not carry periods or series')
+  if (outcome === 'empty' && series.length > 0) {
+    throw new ChartContractError('An empty chart document must not carry series')
+  }
+  // Only allocation documents keep their single sampling period when empty;
+  // nav/security emptiness has no periods either.
+  if (outcome === 'empty' && kind !== 'allocation' && periods.length > 0) {
+    throw new ChartContractError('An empty chart document must not carry periods')
   }
   let totals: readonly ChartValue[] | undefined
   if (input.totals !== undefined) {
@@ -312,6 +332,39 @@ export function parseChartDocument(input: unknown): ChartDocument {
       throw new ChartContractError(`Chart totals length ${input.totals.length} does not match ${periods.length} periods`)
     }
     totals = input.totals.map((total, index) => parseChartValue(total, `Chart total ${index}`))
+  }
+  let security: ChartDocument['security']
+  if (input.security !== undefined) security = parseSecurity(input.security)
+  else if (kind === 'price' || kind === 'position') {
+    throw new ChartContractError(`Chart ${kind} document requires security identity`)
+  }
+  if (kind === 'price') {
+    for (const entry of series) {
+      if (entry.metric !== 'price' || entry.axis !== 'price') {
+        throw new ChartContractError(`Chart price document series ${entry.id} must be metric price on the price axis`)
+      }
+    }
+  }
+  if (kind === 'position') {
+    for (const entry of series) {
+      if (entry.metric !== 'position' || entry.axis !== 'quantity') {
+        throw new ChartContractError(`Chart position document series ${entry.id} must be metric position on the quantity axis`)
+      }
+    }
+  }
+  let allocations: readonly ChartAllocation[] | undefined
+  if (input.allocations !== undefined) allocations = parseAllocations(input.allocations, seriesIds)
+  let allocationSummary: ChartAllocationSummary | undefined
+  if (input.allocationSummary !== undefined) {
+    allocationSummary = parseAllocationSummary(input.allocationSummary, context.currency)
+  }
+  if (kind === 'allocation') {
+    if (allocations === undefined || allocationSummary === undefined) {
+      throw new ChartContractError('Chart allocation document requires allocations and allocationSummary')
+    }
+    validateAllocationConsistency(allocations, allocationSummary, partition, series)
+  } else if (allocations !== undefined || allocationSummary !== undefined) {
+    throw new ChartContractError('allocations and allocationSummary are permitted only for allocation documents')
   }
   if (kind === 'nav' && series.length > 0) {
     for (const metric of ['irr_inception', 'irr_interval'] as const) {
@@ -322,7 +375,121 @@ export function parseChartDocument(input: unknown): ChartDocument {
   }
   const document: ChartDocument = { version: 2, kind, outcome, context, periods, series, partition }
   if (totals !== undefined) document.totals = totals
+  if (security !== undefined) document.security = security
+  if (allocations !== undefined) document.allocations = allocations
+  if (allocationSummary !== undefined) document.allocationSummary = allocationSummary
   return document
+}
+
+function parseAllocations(input: unknown, seriesIds: ReadonlySet<string>): readonly ChartAllocation[] {
+  if (!Array.isArray(input)) throw new ChartContractError('Chart allocations must be an array')
+  const referenced = new Set<string>()
+  let previousRank = 0
+  return input.map((allocation, index) => {
+    const where = `Chart allocation ${index}`
+    if (!isRecord(allocation)) throw new ChartContractError(`${where} must be an object`)
+    if (typeof allocation.seriesId !== 'string' || !seriesIds.has(allocation.seriesId)) {
+      throw new ChartContractError(
+        `Chart allocation references an unknown series: ${String(allocation.seriesId)}`
+      )
+    }
+    if (referenced.has(allocation.seriesId)) {
+      throw new ChartContractError(`Chart allocation references series ${allocation.seriesId} twice`)
+    }
+    referenced.add(allocation.seriesId)
+    if (!Number.isInteger(allocation.rank) || (allocation.rank as number) < 1) {
+      throw new ChartContractError(`${where} rank must be a positive integer`)
+    }
+    if ((allocation.rank as number) <= previousRank) {
+      throw new ChartContractError(
+        `${where} rank ${String(allocation.rank)} does not follow the previous rank ${previousRank} in server order`
+      )
+    }
+    previousRank = allocation.rank as number
+    return {
+      seriesId: allocation.seriesId,
+      rank: allocation.rank as number,
+      amount: parseChartValue(allocation.amount, `${where} amount`),
+      share: parseChartValue(allocation.share, `${where} share`),
+    }
+  })
+}
+
+function parseAllocationSummary(input: unknown, contextCurrency: string): ChartAllocationSummary {
+  if (!isRecord(input)) throw new ChartContractError('Chart allocationSummary must be an object')
+  const dimension = member(ALLOCATION_DIMENSIONS, input.dimension, 'allocationSummary dimension')
+  const unit = parseChartUnit(input.unit, 'money', 'allocationSummary unit')
+  if (unit.kind !== 'money' || unit.plotDivisor !== '1') {
+    throw new ChartContractError('allocationSummary unit must be reporting money with plotDivisor 1')
+  }
+  if (unit.currency !== contextCurrency) {
+    throw new ChartContractError(
+      `allocationSummary unit currency ${unit.currency} does not match document currency ${contextCurrency}`
+    )
+  }
+  return {
+    dimension,
+    unit,
+    denominator: parseChartValue(input.denominator, 'allocationSummary denominator'),
+    totalShare: parseChartValue(input.totalShare, 'allocationSummary totalShare'),
+    pieEligibility: member(PIE_ELIGIBILITIES, input.pieEligibility, 'allocationSummary pieEligibility'),
+  }
+}
+
+function parseSecurity(input: unknown): { id: number; instrumentType: string } {
+  if (!isRecord(input)) throw new ChartContractError('Chart security must be an object')
+  if (!Number.isInteger(input.id) || (input.id as number) <= 0) {
+    throw new ChartContractError('Chart security id must be a positive integer')
+  }
+  if (typeof input.instrumentType !== 'string' || input.instrumentType === '') {
+    throw new ChartContractError('Chart security instrumentType must be a non-empty string')
+  }
+  return { id: input.id as number, instrumentType: input.instrumentType }
+}
+
+// Backend ownership of arithmetic certification: the adapter checks structural
+// consistency only and never sums amounts or recalculates shares.
+function validateAllocationConsistency(
+  allocations: readonly ChartAllocation[],
+  summary: ChartAllocationSummary,
+  partition: ChartDocument['partition'],
+  series: readonly ChartSeries[],
+): void {
+  const byId = new Map(series.map((entry) => [entry.id, entry]))
+  if (allocations.length !== series.length) {
+    throw new ChartContractError(
+      `Chart allocation document references ${allocations.length} of ${series.length} category series`
+    )
+  }
+  for (const allocation of allocations) {
+    const referenced = byId.get(allocation.seriesId)!
+    if (referenced.metric !== 'category_nav') {
+      throw new ChartContractError(
+        `Chart allocation series ${allocation.seriesId} must be metric category_nav`
+      )
+    }
+    if (referenced.category?.kind !== summary.dimension) {
+      throw new ChartContractError(
+        `Chart allocation series ${allocation.seriesId} category kind does not match dimension ${summary.dimension}`
+      )
+    }
+    if (referenced.unit.kind !== 'money' || referenced.unit.plotDivisor !== '1') {
+      throw new ChartContractError('Allocation category series must use reporting money with plotDivisor 1')
+    }
+  }
+  if (summary.pieEligibility === 'eligible') {
+    if (partition !== 'complete') {
+      throw new ChartContractError('An eligible pie claim requires partition complete')
+    }
+    if (summary.denominator.status !== 'ok' || summary.totalShare.status !== 'ok') {
+      throw new ChartContractError('An eligible pie claim requires ok denominator and totalShare')
+    }
+    for (const allocation of allocations) {
+      if (allocation.amount.status !== 'ok' || allocation.share.status !== 'ok') {
+        throw new ChartContractError('An eligible pie claim requires ok contributing amounts and shares')
+      }
+    }
+  }
 }
 
 /** Validate a NAV endpoint envelope into the v2/legacy_only discriminant. */

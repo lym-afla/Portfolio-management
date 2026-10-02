@@ -4,7 +4,7 @@
 // plot '100', both first-point IRRs '0.1234', period endpoint '2026-01-31',
 // fixed decimal notation with meaningful trailing zeros. Every call returns
 // fresh objects; no user portfolio data. Values are never recalculated here.
-import type { ChartDocument, ChartSeries, ChartValue, LegacyNav } from '../contracts'
+import type { ChartDocument, ChartPeriod, ChartSeries, ChartValue, LegacyNav } from '../contracts'
 
 function point(value: string, plotValue: string, display: string): ChartValue {
   return { value, plotValue, display, status: 'ok', reason: 'observed' }
@@ -110,5 +110,156 @@ export function emptyNavFixture(): LegacyNav & { chartV2: ChartDocument } {
         effectiveDate: '2026-01-31', currency: 'USD', digits: 2 },
       periods: [], series: [], totals: [],
     },
+  }
+}
+
+// ---- Allocation documents (breakdown endpoint chartV2.<dimension>) --------
+// Grounded in TestAllocationContractV2: amounts '25'/'75' against denominator
+// '100', raw ratio shares '0.25'/'0.75', totalShare '1', money divisor '1'.
+// The fixture never sums or recalculates; it pins the backend's certification.
+
+export type AllocationFixtureDimension = 'asset_type' | 'asset_class' | 'currency'
+
+const allocationCategories: Record<AllocationFixtureDimension, { code: string; amount: string; plot: string; share: string; amountDisplay: string; shareDisplay: string }[]> = {
+  asset_type: [
+    { code: 'Stock', amount: '25', plot: '25', share: '0.25', amountDisplay: 'USD 25.00', shareDisplay: '25.0%' },
+    { code: 'Cash', amount: '75', plot: '75', share: '0.75', amountDisplay: 'USD 75.00', shareDisplay: '75.0%' },
+  ],
+  asset_class: [
+    { code: 'Equity', amount: '25', plot: '25', share: '0.25', amountDisplay: 'USD 25.00', shareDisplay: '25.0%' },
+    { code: 'Cash', amount: '75', plot: '75', share: '0.75', amountDisplay: 'USD 75.00', shareDisplay: '75.0%' },
+  ],
+  currency: [
+    { code: 'USD', amount: '25', plot: '25', share: '0.25', amountDisplay: 'USD 25.00', shareDisplay: '25.0%' },
+    { code: 'EUR', amount: '75', plot: '75', share: '0.75', amountDisplay: 'USD 75.00', shareDisplay: '75.0%' },
+  ],
+}
+
+export interface AllocationFixtureOptions {
+  dimension?: AllocationFixtureDimension
+  pieEligibility?: 'eligible' | 'signed' | 'nonpositive_total' | 'incomplete' | 'nonpartitioning'
+  partition?: 'complete' | 'legacy_non_partitioning' | 'unknown'
+}
+
+export function allocationFixture(options: AllocationFixtureOptions = {}): ChartDocument {
+  const dimension = options.dimension ?? 'asset_type'
+  const pieEligibility = options.pieEligibility ?? 'eligible'
+  const partition = options.partition ?? 'complete'
+  const rows = allocationCategories[dimension]
+  const moneyUnit = { kind: 'money', currency: 'USD', plotDivisor: '1' } as const
+  const ranked = [...rows].reverse() // Cash 75 first, Stock 25 second
+  const amountFor = (row: (typeof rows)[number]): ChartValue => {
+    if (pieEligibility === 'incomplete') {
+      return row === rows[0]
+        ? { value: null, plotValue: null, knownSubtotal: row.amount, status: 'partial', reason: 'missing_price', display: row.amountDisplay }
+        : point(row.amount, row.plot, row.amountDisplay)
+    }
+    if (pieEligibility === 'signed' && row.code === 'Stock') {
+      return { value: '-25', plotValue: '-25', status: 'ok', reason: 'observed', display: '(USD 25.00)' }
+    }
+    return point(row.amount, row.plot, row.amountDisplay)
+  }
+  const shareFor = (row: (typeof rows)[number]): ChartValue => {
+    if (pieEligibility === 'incomplete') {
+      return row === rows[0]
+        ? { value: null, plotValue: null, status: 'unknown', reason: 'missing_price', display: '–' }
+        : point('0.75', '0.75', '75.0%')
+    }
+    if (pieEligibility === 'signed' && row.code === 'Stock') {
+      return point('-0.25', '-0.25', '-25.0%')
+    }
+    if (pieEligibility === 'nonpositive_total' || pieEligibility === 'nonpartitioning') {
+      return { value: null, plotValue: null, status: 'not_available', reason: 'not_relevant', display: '–' }
+    }
+    return point(row.share, row.share, row.shareDisplay)
+  }
+  const denominator: ChartValue =
+    pieEligibility === 'incomplete'
+      ? { value: null, plotValue: null, knownSubtotal: '100', status: 'partial', reason: 'missing_price', display: 'USD 100.00' }
+      : pieEligibility === 'nonpositive_total'
+        ? point('0', '0', 'USD 0.00')
+        : point('100', '100', 'USD 100.00')
+  const totalShare: ChartValue =
+    pieEligibility === 'eligible'
+      ? point('1', '1', '100.0%')
+      : pieEligibility === 'signed'
+        ? point('1', '1', '100.0%')
+        : { value: null, plotValue: null, status: 'not_available', reason: 'not_relevant', display: '–' }
+  return {
+    version: 2, kind: 'allocation',
+    outcome: pieEligibility === 'incomplete' ? 'partial' : 'ready',
+    partition,
+    context: { accountSelection: { type: 'all', id: null }, accountIds: [7],
+      effectiveDate: '2026-01-31', currency: 'USD', digits: 2 },
+    periods: [{ key: `allocation:${dimension}:2026-01-31`, endDate: '2026-01-31',
+      displayLabel: '31 Jan 2026',
+      interval: { startDate: '2026-01-31', endDate: '2026-01-31', kind: 'sample_interval' },
+      partialPeriod: false }],
+    series: ranked.map((row) => ({
+      id: `${dimension}:${row.code}`, label: row.code, metric: 'category_nav', role: 'bar',
+      axis: 'money', unit: moneyUnit, points: [amountFor(row)],
+      category: { kind: dimension, code: row.code },
+    })),
+    totals: [denominator],
+    allocations: ranked.map((row, index) => ({
+      seriesId: `${dimension}:${row.code}`, rank: index + 1,
+      amount: amountFor(row), share: shareFor(row),
+    })),
+    allocationSummary: { dimension, unit: moneyUnit, denominator, totalShare, pieEligibility },
+  }
+}
+
+// ---- Security documents (price/position histories) ------------------------
+// Grounded in TestSecurityContractV2: bond price keeps the stored 6dp scale
+// with percent_of_nominal; positions keep 9dp quantities and same-date events
+// stay separate rows under distinct server keys.
+
+export function securityFixture(
+  kind: 'price' | 'position',
+  unit: 'percent_of_nominal' | 'quantity' | 'money',
+  value: string,
+): ChartDocument {
+  const base = navFixture().chartV2
+  const security = { id: 9, instrumentType: unit === 'percent_of_nominal' ? 'Bond' : 'Stock' }
+  const axis = kind === 'price' ? 'price' : 'quantity'
+  const unitObject =
+    unit === 'percent_of_nominal'
+      ? { kind: 'percent_of_nominal', plotDivisor: '1' } as const
+      : unit === 'quantity'
+        ? { kind: 'quantity', plotDivisor: '1' } as const
+        : { kind: 'money', currency: 'EUR', plotDivisor: '1' } as const
+  const displayFor = () =>
+    unit === 'percent_of_nominal' ? '98.5% of nominal' : unit === 'quantity' ? value : `€${value}`
+  const periods: ChartPeriod[] =
+    kind === 'price'
+      ? [{ key: 'security:9:price:row:1', endDate: '2026-01-31', displayLabel: '31 Jan 2026',
+          interval: { startDate: '2026-01-31', endDate: '2026-01-31', kind: 'sample_interval' }, partialPeriod: false }]
+      : [ // Same-date position events stay separate ordered rows under distinct keys.
+        { key: 'security:9:position:row:1', endDate: '2026-01-31', displayLabel: '31 Jan 2026',
+          interval: { startDate: '2026-01-31', endDate: '2026-01-31', kind: 'sample_interval' }, partialPeriod: false },
+        { key: 'security:9:position:row:2', endDate: '2026-01-31', displayLabel: '31 Jan 2026',
+          interval: { startDate: '2026-01-31', endDate: '2026-01-31', kind: 'sample_interval' }, partialPeriod: false }]
+  const points = [point(value, value, displayFor())]
+  if (kind === 'position') {
+    // An unavailable observation stays explicit; never a zero fill.
+    points.push({ value: null, plotValue: null, status: 'not_available', reason: 'not_relevant', display: 'N/R' })
+  }
+  return {
+    ...base, kind, totals: undefined, security,
+    context: { ...base.context, currency: 'USD' },
+    periods,
+    series: [{
+      id: `security:9:${kind}`, label: kind === 'price' ? 'Price' : 'Position',
+      metric: kind, role: 'line', axis, unit: unitObject, points,
+    }],
+    partition: 'complete', outcome: 'ready',
+  }
+}
+
+export function emptySecurityFixture(): ChartDocument {
+  const base = navFixture().chartV2
+  return {
+    ...base, kind: 'price', outcome: 'empty', series: [], periods: [], totals: undefined,
+    security: { id: 9, instrumentType: 'Bond' }, partition: 'complete',
   }
 }
