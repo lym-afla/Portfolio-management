@@ -5,12 +5,12 @@ Updated 2 October 2026. This is the durable, human-facing status tracker for the
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `297fb95c73124a9e05c103a4df8e1ed3eaa87286`, the user-merged PR #51/D4, plus the C2 handoff at `15533ba0`.
-- C2 (typed chart adapters and lifecycle) is implemented on `codex/chart-adapters-c2` from `15533ba0` and open as draft PR [#52](https://github.com/lym-afla/Portfolio-management/pull/52) into `codex/frontend-modernization`; see the [C2 record](#c2-implementation-record). Not yet reviewed or merged.
+- Verified remote and synchronized local code checkpoint: `2424edbf0239f7b3c22dbd34177eb52aa89e77b3`, the user-merged PR #52/C2 on 2 October 2026. The subsequent C3 handoff is documentation only.
+- C2 (typed chart adapters and lifecycle) is reviewed and integrated through final correction `5d4c5a87`; see the [C2 record](#c2-implementation-record). C3 is the next bounded executor assignment.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 17 of 24 planned tasks have implementation/review evidence (16 integrated plus C2 pending review); seven remain after C2 integration. C3 is the next executor assignment once C2 merges. Main/release completion remains outstanding.
+- 17 of 24 planned tasks are integrated; seven remain, beginning with C3. Main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -33,8 +33,8 @@ Updated 2 October 2026. This is the durable, human-facing status tracker for the
 | 14 | D2 | Context controls and responsive navigation | Implemented/reviewed: `deea60df`; Performance settings finding corrected, full browser gates passed |
 | 15 | D3 | NAV-first dashboard/positions visual pilot | User-merged PR #50 at `2238ef3e`, reviewed through final correction `112ab3b3`; see [D3 record](#d3-implementation-record) |
 | 16 | D4 | Grouped-table views, controls/actions/dialog accessibility | User-merged PR #51 at `297fb95c`, reviewed through `c0bab763`; see [D4 record](#d4-implementation-record) |
-| 17 | C2 | Typed chart adapters and lifecycle | Implemented, pending review: branch `codex/chart-adapters-c2`, commits `39234f9d`–`292413dc` plus evidence, draft PR [#52](https://github.com/lym-afla/Portfolio-management/pull/52) to `codex/frontend-modernization`; see [C2 record](#c2-implementation-record) |
-| 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | Not implemented; follows C1/C2 |
+| 17 | C2 | Typed chart adapters and lifecycle | User-merged PR #52 at `2424edbf`, reviewed through `5d4c5a87`; see [C2 record](#c2-implementation-record) |
+| 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | Ready for execution: [handoff](2026-10-02-nav-echarts-pilot-c3-handoff.md) and [GLM prompt](2026-10-02-nav-echarts-pilot-c3-glm-prompt.md); not implemented |
 | 19 | D5 | Visual system across route families | Not implemented; follows accepted D3/D4 pilot |
 | 20 | D6 | Transaction import workflow extraction | Not implemented |
 | 21 | D7 | Broker/security workflow extraction | Not implemented |
@@ -44,11 +44,11 @@ Updated 2 October 2026. This is the durable, human-facing status tracker for the
 
 ## Next execution and boundaries
 
-C2 is implemented on `codex/chart-adapters-c2` (based on `15533ba0`, the D4 merge plus the C2 handoff) and open as a draft PR into `codex/frontend-modernization`; it awaits review/integration. C1/D3/D4 handoffs are historical; do not re-execute them.
+C2 is merged. Execute the [C3 handoff](2026-10-02-nav-echarts-pilot-c3-handoff.md) on a new `codex/nav-echarts-pilot-c3` branch from the latest implementation branch including the handoff documents. C1/D3/D4/C2 handoffs are historical; do not re-execute them.
 
-C3 ECharts NAV pilot follows C2 integration as a separate assignment. Three solid allocation pies remain C4; D5 route rollout remains separate. Do not fold these into C2.
+C3 is the gated, default-off NAV ECharts pilot with both IRRs and accessible inspection. Three solid allocation pies remain C4; D5 route rollout remains separate. No default-on cutover, main merge or deployment is authorized by this handoff.
 
-Known inherited issue surfaced by C2's gate run (not caused by it): the focused browser cases `--case requests` and `--case dates` fail identically on the pristine `15533ba0` baseline — their selectors predate the D4 toolbar replacement and were not updated when D4 ran its gates (full matrix + `d4` only). Correction belongs to a D4 follow-up, not C2.
+Known inherited issue surfaced by C2's gate run (not caused by it): the focused browser cases `--case requests` and `--case dates` fail identically on the pristine `15533ba0` baseline — their selectors predate the D4 toolbar replacement. C3 handoff task 0 explicitly carries a separate test-only D4 follow-up commit to restore these gates without weakening assertions or redesigning the toolbar; the correction is not yet implemented.
 
 C1's protected `NAV_at_date` diagnostics were reviewed and PR #49 was merged by the user. That approval does not authorize future financial changes. D3 is presentation-only; main has not received the modernization branch.
 
@@ -57,6 +57,8 @@ The final release gate is not just passing unit tests: it includes the dashboard
 ## Detailed records
 
 ### C2 implementation record
+
+- Integration: user merged [PR #52](https://github.com/lym-afla/Portfolio-management/pull/52) on 2 October 2026 at `2424edbf0239f7b3c22dbd34177eb52aa89e77b3`, verified against GitHub and synchronized locally. Final proposal head `5d4c5a87`. Root independently verified 100 focused tests (97 committed chart tests plus three review probes), all three type checks, lint and build after the corrections. Final executor evidence: 468 unit tests, full 72-profile browser matrix, backend 1386 passed/10 skipped; those full suites were not independently repeated on the final head. Both review findings are resolved. Historical proposal entries below describe earlier states, not current PR status. No application gates were rerun during this documentation-only C3 handoff; main unchanged, no deployment.
 
 - Base: `origin/codex/frontend-modernization` at `15533ba0` (user-merged PR #51/D4 at `297fb95c` plus the C2 handoff documents). Branch `codex/chart-adapters-c2`, five implementation commits: `39234f9d` (contracts/parser/legacy adapter), `0e01dcc4` (allocation/security validation), `4aad1e37` (opt-in transport, typed errors, tsconfig.charts.json), `204276f2` (useNavChart lifecycle), `292413dc` (dashboard wiring + rendered acceptance) plus the evidence commit `b9bdadd7`; draft PR [#52](https://github.com/lym-afla/Portfolio-management/pull/52).
 - Scope delivered: typed chart-v2 boundary (`src/features/charts/`: contracts.ts, parseChartEnvelope.ts, adaptLegacyNav.ts, chartApi.ts, useNavChart.ts) validating the merged C1 wire contract as unknown into exact documents — decimal strings preserved verbatim (incl. `9007199254740993.123456789`), server-issued identity/dates, statuses/knownSubtotal rules, allocation eligibility checked structurally with backend arithmetic ownership, security kind/metric/axis/unit pairs; one-request v2 transport with C1 error envelopes, captured-context check (`effectiveDate === query.toDate`, historical ranges valid) and a discriminable mismatch error; lifecycle on `usePortfolioRequest` with detached frozen snapshots and guarded, once-per-episode reconciliation (the rendered run exposed a real reconcile→refresh→mismatch loop without the guard — fixed and regression-pinned); DashboardPage rewired with a fresh renderer copy, legacy-only capability notice, sole watcher preserved; `getNAVChartData` facade untouched for remaining callers. Chart.js and all financial semantics unchanged; no ECharts/pies/security rollout, no backend change.

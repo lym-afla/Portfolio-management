@@ -1,0 +1,7 @@
+# GLM-5.3 executor prompt — C3 gated NAV pilot
+
+Pull latest `origin/codex/frontend-modernization`, including merged PR #52 (`2424edbf`) and this handoff. Read AGENTS.md, `.memory-bank/index.md`, the mandatory NAV/calculation/FX documents, `docs/superpowers/plans/2026-10-02-nav-echarts-pilot-c3-handoff.md`, its linked C3 spec and the progress tracker. Create `codex/nav-echarts-pilot-c3` from that updated base.
+
+Execute handoff tasks 0–5 with failing regressions first and scoped commits. Task 0 repairs only the two inherited D4 browser selectors while preserving their assertions. C3 delivers the default-off, lazy ECharts NAV pilot with both independently controlled IRRs, exact-value table/inspection, keyboard viewport controls and owned lifecycle. Preserve C2's validated contract, single-request behavior, error sanitization and financial semantics. Verify current compatible ECharts/vue-echarts versions and licenses before pinning them.
+
+Run all specified gates with actual exit codes, both renderer flag states, rendered desktop/mobile/native-200%-zoom checks and cold-route delivery measurements. Update portable evidence/screenshots and the tracker honestly. Keep `VITE_NAV_ECHARTS_ENABLED` false by default; no backend/formula changes, allocation pies, security migration, Chart.js removal or C4 work. Push the branch and open a draft PR into `codex/frontend-modernization`; report commits, results and unmet acceptance, then stop for review. Do not merge or deploy.
