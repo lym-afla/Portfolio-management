@@ -1,15 +1,15 @@
 # Frontend modernization progress
 
-Updated 1 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
+Updated 2 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `2238ef3e6789b552f497cfbaef1976fabf02d719`, the PR #50/D3 merge. The D4 handoff documentation follows this checkpoint; pull the latest branch rather than checking out the earlier code hash.
+- Verified remote and synchronized local code checkpoint: `297fb95c73124a9e05c103a4df8e1ed3eaa87286`, the user-merged PR #51/D4. Pull the latest branch including the C2 handoff documents after this checkpoint.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 16 of 24 planned tasks have implementation/review evidence. C1 and D3 are integrated; D4 is implemented on `codex/grouped-tables-actions` awaiting review/merge; eight remain. C2 is the next executor assignment after D4 integration.
+- 16 of 24 planned tasks have implementation/review evidence and are integrated in the modernization branch; eight remain. C2 is the next executor assignment. Main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -31,8 +31,8 @@ Updated 1 October 2026. This is the durable, human-facing status tracker for the
 | 13 | D1 | Semantic tokens and scoped components | Implemented/reviewed: `55bbdaca`; rendered visual acceptance remains D3 |
 | 14 | D2 | Context controls and responsive navigation | Implemented/reviewed: `deea60df`; Performance settings finding corrected, full browser gates passed |
 | 15 | D3 | NAV-first dashboard/positions visual pilot | User-merged PR #50 at `2238ef3e`, reviewed through final correction `112ab3b3`; see [D3 record](#d3-implementation-record) |
-| 16 | D4 | Grouped-table views, controls/actions/dialog accessibility | Implemented on `codex/grouped-tables-actions`, draft PR open into `codex/frontend-modernization`; see [D4 record](#d4-implementation-record) |
-| 17 | C2 | Typed chart adapters and lifecycle | Not implemented; follows C1 |
+| 16 | D4 | Grouped-table views, controls/actions/dialog accessibility | User-merged PR #51 at `297fb95c`, reviewed through `c0bab763`; see [D4 record](#d4-implementation-record) |
+| 17 | C2 | Typed chart adapters and lifecycle | Not implemented; [handoff](2026-10-02-chart-adapters-c2-handoff.md) and [GLM prompt](2026-10-02-chart-adapters-c2-glm-prompt.md) prepared |
 | 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | Not implemented; follows C1/C2 |
 | 19 | D5 | Visual system across route families | Not implemented; follows accepted D3/D4 pilot |
 | 20 | D6 | Transaction import workflow extraction | Not implemented |
@@ -43,9 +43,9 @@ Updated 1 October 2026. This is the durable, human-facing status tracker for the
 
 ## Next execution and boundaries
 
-D3 is user-merged: see the [D3 record](#d3-implementation-record). Execute D4 only using the [grouped-tables/actions handoff](2026-10-01-grouped-tables-actions-handoff.md) and [GLM prompt](2026-10-01-grouped-tables-actions-glm-prompt.md). Create `codex/grouped-tables-actions` from the latest implementation branch and submit a draft PR back to it. The C1/D3 handoffs are historical and must not be executed again.
+D4 is user-merged and its review findings are resolved. Execute C2 only using the [typed chart adapters handoff](2026-10-02-chart-adapters-c2-handoff.md) and [GLM prompt](2026-10-02-chart-adapters-c2-glm-prompt.md). Create `codex/chart-adapters-c2` from the latest implementation branch and submit a draft PR back to it. C1/D3/D4 handoffs are historical; do not re-execute them.
 
-After D4 integration, C2 typed chart adapters and C3 ECharts NAV work follow as separate assignments. D5 route rollout requires accepted D3/D4 pilots first. Do not fold chart work or route-wide rollout into D4.
+C3 ECharts NAV pilot follows C2 integration as a separate assignment. Three solid allocation pies remain C4; D5 route rollout remains separate. Do not fold these into C2.
 
 C1's protected `NAV_at_date` diagnostics were reviewed and PR #49 was merged by the user. That approval does not authorize future financial changes. D3 is presentation-only; main has not received the modernization branch.
 
@@ -68,6 +68,8 @@ The final release gate is not just passing unit tests: it includes the dashboard
 - Deferred acceptance / boundaries: allocation cards are still incumbent horizontal bars — the three solid pies are mandatory C4 work; the NAV chart's missing accessible data table and dense canvas labels are C3 work (C3 must repeat the captures after renderer replacement); grouped presets/chooser/aria-sort are D4. D3 was subsequently reviewed and integrated by the user (see integration record above); D5 rollout still requires accepted D4 patterns. Main merge, deployment and D4/C2/C3 implementation have not occurred in this handoff turn.
 
 ### D4 implementation record
+
+- Integration: user merged [PR #51](https://github.com/lym-afla/Portfolio-management/pull/51) on 2 October 2026 at `297fb95c73124a9e05c103a4df8e1ed3eaa87286`, verified against GitHub. Final proposal head `c0bab763`; all root review findings resolved. Root independently reran 26 focused regressions (including same-form remount and DELETE ownership), both type checks, lint exit 0 (35 warnings), and build. Final full executor results: 371 frontend tests, full browser matrix 72 profiles, backend 1386 passed/10 skipped. Root did not repeat those full suites on the final head. Main not merged, no deployment. Historical proposal/checkpoint entries below describe the implementation sequence, not current PR status. Screen-reader audit remains D8.
 
 - Base: `origin/codex/frontend-modernization` at `4d44f34d` (the committed D4 handoff, on top of the user-merged PR #50/D3 at `2238ef3e`). Branch `codex/grouped-tables-actions`, six implementation commits (column model/preset derivation, shared toolbar + preferences, table integration/semantics/pinning, action hierarchy + row controls, exact confirmation + form sections, rendered acceptance/fixtures).
 - Scope delivered: both position tables now render Overview (flat, qualified labels, Type as secondary identity), Entry & valuation / Entry & exit comparison, two-tier Full ledger and persistent Custom views from one ordered visible-column model (`positionsTableViews.ts` over metadata-extended `positionsHeaders.js`; all 20 open / 16 closed keys unchanged and reachable). Key-based pinning (Type+Security, measured second offset via ResizeObserver), caption/colgroup/scope/headers/aria-sort semantics, named focusable scroll region and glossary triggers, hidden-sort summary with Clear sort, and per-user/per-table persisted preferences (versioned, corrupt-tolerant, resize-safe). Vuetify's client-side re-sort/re-filter of the received page is neutralized (`customKeySort` no-ops + `itemsLength`, no `:search`), keeping displayed order server-owned (pinned by fixtures whose order ignores the requested sort). Shared `WorkspaceTableToolbar`/`WorkspaceActions`/`WorkspaceEmptyState`/`ConfirmActionDialog`; Transactions page: primary Add transaction, secondary Import transactions, overflow Add FX transaction/Transfer asset/Record merger over the existing handlers; named 44px row Edit/Delete controls with unchanged payloads; identified deletion with fixed kind+numeric-id snapshot, detail loading only when the list row lacks amounts, generation-guarded late replies, retained subject/error after rejection, single correct-endpoint deletion, session-change invalidation and focus fallback. Both transaction forms: visible section labels, first-field focus with return focus, rejected-save field preservation, and change-revalidation so corrections can actually be saved (same Yup schema/payloads; bond % hint kept).

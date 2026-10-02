@@ -38,9 +38,10 @@ This repository of `.md` files is the canonical memory bank for the portfolio ma
 
 - Tasks/
   - [Frontend modernization implementation plan (2026-09-08)](../docs/superpowers/plans/2026-09-08-frontend-modernization.md) — implementation started on codex/frontend-modernization; master plan and reliability, charting, and UI workstreams track the remaining work.
-  - [Frontend modernization progress (updated 2026-10-01)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; C1/PR #49 integrated, D3 implemented on `codex/dashboard-visual-pilot` awaiting human visual acceptance and merge; modernization not complete.
+  - [Frontend modernization progress (updated 2026-10-02)](../docs/superpowers/plans/2026-09-30-frontend-modernization-progress.md) — durable 24-task status tracker; C1/PR #49, D3/PR #50 and D4/PR #51 integrated; C2 is next; modernization not complete.
   - [D3 dashboard visual pilot handoff](../docs/superpowers/plans/2026-10-01-dashboard-visual-pilot-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-dashboard-visual-pilot-glm-prompt.md) — executed 1 October 2026; historical, do not re-execute.
-  - [D4 grouped tables/actions handoff](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-glm-prompt.md) — next bounded implementation assignment.
+  - [D4 grouped tables/actions handoff](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-01-grouped-tables-actions-glm-prompt.md) — user-merged 2 October 2026 in PR #51; historical, do not re-execute.
+  - [C2 typed chart adapters handoff](../docs/superpowers/plans/2026-10-02-chart-adapters-c2-handoff.md) and [GLM executor prompt](../docs/superpowers/plans/2026-10-02-chart-adapters-c2-glm-prompt.md) — next bounded implementation assignment.
   - [Grouped table and allocation pie review (2026-09-08)](../docs/audits/2026-09-08-grouped-tables-and-allocation-pies.md) — proposed compact/grouped table views; explicit three-pie dashboard requirement supersedes the earlier bar decision.
   - `backlog.md` — initial backlog items derived from the interview.
   - `complexity-refactoring-task.md` — comprehensive task for reducing C901 complexity errors across the codebase.
