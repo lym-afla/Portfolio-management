@@ -17,6 +17,7 @@
         <v-data-table
           v-else
           ref="tableRef"
+          fixed-header
           :headers="tableHeaders"
           :items="positions"
           :loading="tableLoading"

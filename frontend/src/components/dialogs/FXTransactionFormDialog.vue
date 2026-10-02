@@ -84,6 +84,13 @@ const detailFields = computed(() => formFields.value.filter((field) => !isAmount
 const amountFields = computed(() => formFields.value.filter((field) => isAmountField(field)))
 const setField = (name, value) => {
   form.value = { ...form.value, [name]: value }
+  // Editing a field clears its server-set error so a rejected save can be
+  // corrected without reopening the dialog.
+  if (errorMessages.value[name]) {
+    const next = { ...errorMessages.value }
+    delete next[name]
+    errorMessages.value = next
+  }
 }
 
 // Initial focus goes to the first field; closing returns focus to the

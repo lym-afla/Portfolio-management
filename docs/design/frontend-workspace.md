@@ -71,3 +71,58 @@ The full browser case matrix (`npm run test:browser`, plus `--case layout|contex
 - **Native zoom via CDP key events:** agent-browser's `press Control+=` does not trigger browser zoom in this headless build; the committed `scripts/qa-native-zoom.mjs` drives `Input.dispatchKeyEvent` (Ctrl+0 reset, then Ctrl+Plus steps) and self-verifies `devicePixelRatio` so the documented evidence is reproducible from the repository.
 
 Human visual acceptance of these captures precedes any D5 rollout.
+
+---
+
+# D4 — grouped tables, controls and accessible actions
+
+Date: 1 October 2026. Scope: task 16/D4 of the [design/workflow plan](../superpowers/plans/2026-09-08-frontend-design-workflows.md), executed on branch `codex/grouped-tables-actions` (base `4d44f34d` on `codex/frontend-modernization`). All captures use the complete synthetic D4 fixtures (`tests/browser/d4-datasets.mjs`): 12 open positions across two server pages (long names, three currencies, zero/negative/`N/R` values), 5 closed positions, transactions with duplicate numeric ids (`regular_5`/`fx_5`), a slow detail reply, a failing detail endpoint and a first-failing deletion. **Everything in the screenshots is synthetic data.**
+
+## What shipped
+
+1. **One ordered visible-column model.** Every original leaf (20 open / 16 closed) now carries `groupId`/`fullTitle`/`unitKind`/`identity`/`pinned`/`description` metadata in `positionsHeaders.js`; `positionsTableViews.ts` derives presets and headers from it. Overview is a single flat header row with fully qualified labels (`Security`, `Entry value (USD)` …); Comparison (`Entry & valuation` / `Entry & exit`) shows both sides with quiet group bands; Full ledger is exactly two structural rows (Identity · Entry · Current/Exit · Performance); closed Amount/% groups flatten into qualified Performance leaves. No invented closed price fields; every original key stays reachable.
+2. **Server-owned rendering.** Vuetify 3.12 always re-sorts and re-filters the items it is handed; `customKeySort` no-ops plus `itemsLength` (and no `:search` binding) make the displayed order exactly the server's page order while header clicks still cycle asc→desc→none through the existing query pipeline. The D4 browser case pins this with a fixture whose order deliberately ignores the requested sort.
+3. **Presentation preferences.** `usePositionsTableView` persists `{version, preset, visibleKeys}` per table and per authenticated user (`positionsTableView.v1.u<id>.<table>`), validates/corrupts-to-Overview, always keeps `name` visible, never writes on resize or route changes, and resets in memory (never touching stored data) when the session ends.
+4. **Semantics.** Real `<caption>` (e.g. "Open Positions — Full ledger view") via Vuetify's colgroup slot, per-group `<colgroup>`, `scope="colgroup"` bands, `scope="col"` leaves with stable ids, `headers=` associations on every body cell, `scope="row"` on the Security cell, `aria-sort` on the actually sorted leaf, a focusable named scroll region (`tabindex=0` + aria-label), focusable glossary triggers whose accessible names carry the full title, unit and description.
+5. **Key-based pinning with measured offsets.** `col-pin-1`/`col-pin-2` classes come from the leaf model (Type+Security; Security alone when Type is hidden — Currency can never become sticky), and the second offset is the ResizeObserver-measured width of the first pinned column (verified equal to the rendered Type width in the browser run).
+6. **Toolbar and choosers.** The shared `WorkspaceTableToolbar` wraps outside the table's scroll region (the D3 clipping lesson); preset select with visible labels; the grouped Columns chooser lists every leaf by lifecycle group with qualified names (money columns append the reporting currency), keeps the Security checkbox locked, stays open across repeated changes and closes on an explicit **Done**.
+7. **Hidden sort.** Hiding the sorted leaf keeps a visible `Sorted by Entry price — ascending` summary with **Clear sort**; the server sort is untouched until Clear (verified against the recorded outbound request bodies).
+8. **Actions and rows.** `WorkspaceActions` renders primary Add transaction, secondary Import transactions and overflow Add FX transaction / Transfer asset / Record merger, all mapped to the existing handlers and lazy dialogs. Row icons became named Vuetify buttons ("Delete Buy transaction on 08-Sep-26: Fixture Broker — Main — ACME Corp") with 44px `workspace-row-action` targets and unchanged payloads.
+9. **Exact-identity deletion.** `ConfirmActionDialog` shows date/account/security/type/amount(s) with currency, focuses Cancel first, restores focus on close, blocks duplicates while busy, and supports detail-loading/detail-failed states. TransactionsPage snapshots kind+numeric id at open, loads `getTransactionDetails`/`getFXTransactionDetails` only when the list row lacks amounts, drops late replies by generation, keeps subject+error after a rejected delete (retry verified: exactly two DELETE attempts — one 400, one 204 — after fixing the fixture to stop counting CORS preflights as deletes), deletes `regular_5` vs `fx_5` through their own endpoints, refreshes once on success, closes on auth session change, and falls back to the primary action for focus when the invoking row is gone.
+10. **Forms.** Both transaction forms gained visible section labels (Transaction details / Amounts) via a shared renderer, first-field focus with return-focus, and field updates that revalidate (regular) / clear the field error (FX) so a rejected save can actually be corrected — the browser flow proves the corrected payload is sent verbatim. Yup rules, payload shapes (numbers cross the wire as strings, as today) and the bond `%` price hint are unchanged.
+
+## Rendered evidence
+
+- **Browser case `d4`** (`npm run test:browser -- --case d4`): tables flow (caption, flat/grouped rows, colgroup/scopes/ids, cell associations, server order at page 1 and 2, rows-per-page 10, aria-sort cycling, sticky pair + measured offset under horizontal scroll, both header tiers below the app bar under vertical scroll, footer-under-leaf alignment, chooser stay-open/Done, navigation/resize persistence, hidden sort + Clear, EUR currency reactivity via the context strip with instrument prices unchanged), transactions flow (hierarchy + keyboard-opened overflow, Cancel-first focus, Escape focus return, rejected-then-successful deletion, FX endpoint, slow detail, failing detail, rejected save with preserved fields and corrected retry), per-viewport hit-tests at 1440×1000, 1024×768, 390×844, 768×1024, and the seven captures below. Green: tables flow, transactions flow, screenshots, all viewport checks, zero fixture mismatches.
+- **Native 200% zoom** (`scripts/qa-native-zoom.mjs`, CDP Ctrl+Plus ×5 after Ctrl+0, `devicePixelRatio` 2.0, CSS viewport 720×500 — not CSS zoom): no page-level horizontal overflow on positions or transactions; after normal scrolling clears the (taller at 200%) fixed app bar, every toolbar control (Year, Search, View, Columns, Rows) and the primary/secondary/overflow actions plus row delete buttons are `elementFromPoint`-hittable; glossary triggers remain focusable; caption still present. Zoom reset verified (`dpr` 1).
+- **Screen-reader pass: not performed.** No assistive-technology tooling (NVDA/JAWS/VoiceOver) is available in this execution environment, and DOM-level associations are not a substitute for a screen-reader audit; D8 owns the real pass.
+
+### Screenshots (synthetic fixtures)
+
+| File | Content |
+|---|---|
+| `assets/frontend-workspace/d4-open-overview-desktop.png` | Open Positions, Overview, 1440×1000 |
+| `assets/frontend-workspace/d4-open-ledger-desktop.png` | Open Positions, Full ledger (two-tier headers, pinned identity), 1440×1000 |
+| `assets/frontend-workspace/d4-open-overview-mobile.png` | Open Positions, Overview, 390×844 |
+| `assets/frontend-workspace/d4-closed-comparison-desktop.png` | Closed Positions, Entry & exit, 1440×1000 |
+| `assets/frontend-workspace/d4-closed-overview-mobile.png` | Closed Positions, Overview, 390×844 |
+| `assets/frontend-workspace/d4-columns-mobile.png` | Grouped Columns chooser open, 390×844 |
+| `assets/frontend-workspace/d4-transaction-confirmation.png` | Identified delete confirmation, 1440×1000 |
+
+ductions
+
+```text
+cd frontend
+npm run test:browser -- --case d4        # full rendered flow + captures
+node scripts/qa-preview.mjs              # manual review against static dense fixtures
+# native 200% zoom (dpr self-verifying):
+node scripts/qa-native-zoom.mjs "$(npx --no-install agent-browser --session d4zoom get cdp-url)" http://127.0.0.1:5189 200
+```
+
+## Deliberate decisions and limits (D4)
+
+- **Reporting-money labels:** money leaves' descriptions resolve the committed currency ("in your reporting currency (USD/EUR)"); instrument prices stay "in the security's trading currency" with the bond percent-of-nominal note and never follow the reporting currency. Row values keep arriving as backend-formatted strings (mixed local symbols under the "prefer security currency" setting) - displayed verbatim, never parsed.
+- **Pre-existing Save-button recovery gap, minimally fixed:** after a server field rejection the Save button stayed disabled because manual setFieldValue never revalidated the field; the D4 correction revalidates on change (regular) / clears that field's error (FX) using the SAME Yup schema and payload shapes. Validation rules themselves are untouched.
+- **Summary tables, dashboard, C2/C3/C4 pies:** untouched (D5/C2-C4 scope).
+- **Third-tier nesting:** none anywhere - wrapping a header label over two text lines is allowed, structural rows never exceed two.
+- **Screen-reader audit:** unavailable in this environment (recorded above); DOM/ARIA structure is verified and honest about that limit.

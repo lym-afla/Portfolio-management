@@ -21,7 +21,7 @@
               :fields="detailFields"
               :value-for="(name) => form[name]"
               :error-for="(name) => errors[name]"
-              :update="setFieldValue"
+              :update="updateField"
             />
           </section>
           <section v-if="amountFields.length" class="mt-4">
@@ -30,7 +30,7 @@
               :fields="amountFields"
               :value-for="(name) => form[name]"
               :error-for="(name) => errors[name]"
-              :update="setFieldValue"
+              :update="updateField"
               :bond-price="isBondSelected"
             />
           </section>
@@ -226,6 +226,14 @@ const shouldShowField = (field) => {
   }
   // Otherwise, show only if current type is in the allowed types
   return field.show_for_types.includes(form.type)
+}
+
+// Field updates revalidate their field so a server-set error clears as
+// soon as the user corrects the value (the same Yup schema decides; only
+// the change-validation wiring was missing, which left rejected saves
+// uncorrectable while the dialog stayed open).
+const updateField = (name, value) => {
+  setFieldValue(name, value, true)
 }
 
 // Visible section grouping: identification vs. amounts.
