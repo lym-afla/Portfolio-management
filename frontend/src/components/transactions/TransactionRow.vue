@@ -62,12 +62,26 @@
       </td>
     </template>
 
-    <!-- Actions -->
+    <!-- Actions: named Vuetify buttons whose accessible identity carries the
+         row's date plus available account/security text; the emitted payload
+         stays the unchanged transaction object. -->
     <td v-if="showActions" class="text-end">
-      <v-icon small class="mr-2" @click="$emit('edit', transaction)">
-        mdi-pencil
-      </v-icon>
-      <v-icon small @click="$emit('delete', transaction)"> mdi-delete </v-icon>
+      <v-btn
+        icon="mdi-pencil"
+        variant="text"
+        size="small"
+        :aria-label="editActionLabel"
+        class="workspace-row-action"
+        @click="$emit('edit', transaction)"
+      />
+      <v-btn
+        icon="mdi-delete"
+        variant="text"
+        size="small"
+        :aria-label="deleteActionLabel"
+        class="workspace-row-action"
+        @click="$emit('delete', transaction)"
+      />
     </td>
   </tr>
 </template>
@@ -120,4 +134,16 @@ const brokerAccountLabel = computed(() => {
 
 // Display the type label (crypto trades show 'Buy'/'Sell'; stored type unchanged).
 const displayType = computed(() => displayTransactionType(props.transaction.type))
+
+// Accessible action identity: date always, account/security when available.
+const rowIdentity = computed(() => {
+  const parts = []
+  if (brokerAccountLabel.value) parts.push(brokerAccountLabel.value)
+  const securityName = props.transaction.security?.name
+  if (securityName) parts.push(securityName)
+  const identity = parts.join(' — ')
+  return `${displayType.value} transaction on ${props.transaction.date}${identity ? `: ${identity}` : ''}`
+})
+const editActionLabel = computed(() => `Edit ${rowIdentity.value}`)
+const deleteActionLabel = computed(() => `Delete ${rowIdentity.value}`)
 </script>

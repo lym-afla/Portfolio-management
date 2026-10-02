@@ -19,10 +19,11 @@ import { assertDashboardRecoveryFlow } from './recovery.mjs'
 import { routes, viewports } from './routes.mjs'
 import { measureRouteBundles, assertRouteDelivery } from '../../scripts/measure-route-bundles.mjs'
 import { assertDialogDeliveryFlow, assertDialogChunkRecovery, dialogRoutes } from './dialogs.mjs'
+import { assertD4TablesFlow, assertD4TransactionsFlow, assertD4ViewportChecks, captureD4Screenshots } from './d4.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -195,7 +196,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -212,10 +213,10 @@ async function main() {
     })
     appServer = await startBuiltAppServer(builtAppDir, selectedCase === 'dialog-recovery')
 
-    for (const viewport of selectedCase === 'dialogs' ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+    for (const viewport of ['dialogs', 'd4'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase && selectedCase !== 'delivery' ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
+          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -268,6 +269,15 @@ async function main() {
             if (selectedCase === 'requests') {
               await assertRequestOrderFlow({ context: `${viewport.name} ${route.path} request order`, initScript, log, session, fixtureServer, route })
               console.log(`PASS ${viewport.name} ${route.path} request order`)
+            }
+            if (selectedCase === 'd4') {
+              if (viewport.name === 'desktop' && route.path === '/open-positions') {
+                await assertD4TablesFlow({ appOrigin: appServer.origin, context: `${viewport.name} d4 tables`, initScript, log, session, fixtureServer })
+              }
+              if (viewport.name === 'desktop' && route.path === '/transactions') {
+                await assertD4TransactionsFlow({ appOrigin: appServer.origin, context: `${viewport.name} d4 transactions`, initScript, log, session, fixtureServer })
+              }
+              await assertD4ViewportChecks({ appOrigin: appServer.origin, context: `${viewport.name} ${route.path} d4 viewport`, initScript, log, session, viewport, route: route.path })
             }
           } catch (error) {
             routeFailures.push({ route: route.path, viewport: viewport.name, error: error.message })
@@ -341,14 +351,27 @@ async function main() {
       }
     }
 
+    if (selectedCase === 'd4') {
+      // Register the screenshot session with the harness so the guaranteed
+      // cleanup closes it even when the capture throws mid-way.
+      const d4ShotsSession = `d4-shots-${process.pid}`
+      sessions.set(d4ShotsSession, authInit)
+      try {
+        await captureD4Screenshots({ appOrigin: appServer.origin, context: 'd4 screenshots', initScript: authInit, log, session: d4ShotsSession })
+      } catch (error) {
+        routeFailures.push({ route: 'd4 screenshots', viewport: 'desktop', error: error.message })
+        console.error(`FAIL d4 screenshots: ${error.message}`)
+      }
+    }
+
     const summary = {
       cssZoomMechanism: 'document.documentElement.style.zoom',
       fixtureMismatches: fixtureServer.unmatchedRequests,
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
       routeManifestCount: routes.length,
-      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
-      viewports: selectedCase === 'dialogs' ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery'].includes(selectedCase) ? 1 : viewports.length,
+      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: ['d4', 'dialogs'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery'].includes(selectedCase) ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))

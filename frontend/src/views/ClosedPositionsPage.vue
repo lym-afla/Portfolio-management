@@ -2,7 +2,7 @@
   <PositionsPageBase
     :fetch-positions="fetchClosedPositions"
     @accepted-result="acceptPositions"
-    :headers="closedPositionsHeaders"
+    table-id="closed-positions"
     page-title="Closed Positions"
   >
     <template
@@ -23,12 +23,13 @@
       >
         {{ item.name }}
       </router-link>
+      <div class="text-caption text-medium-emphasis">{{ item.type }}</div>
     </template>
 
-    <template #tfoot-type>TOTAL</template>
+    <template #tfoot-label>TOTAL</template>
     <template
       v-for="key in percentageColumns"
-      :key="`tfoot-${key}`"
+      :key="key"
       #[`tfoot-${key}`]
     >
       <span class="font-italic">{{ totals[key] }}</span>
@@ -40,10 +41,7 @@
 import { ref } from 'vue'
 import PositionsPageBase from '@/components/PositionsPageBase.vue'
 import { getClosedPositions } from '@/services/api'
-import {
-  closedPositionsHeaders,
-  closedPercentageColumns,
-} from '@/config/positionsHeaders'
+import { closedPercentageColumns } from '@/config/positionsHeaders'
 
 const totals = ref({})
 

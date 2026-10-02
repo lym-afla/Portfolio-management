@@ -323,24 +323,28 @@ export async function assertFocusedLayoutFlow({
 }
 
 /** Positions toolbar: every control must be really visible (hit-test, not
-    clipped by the fixed-height toolbar box) and the Columns menu usable. */
+    clipped) and the Columns menu usable. D4 moved the controls into the
+    wrapping WorkspaceTableToolbar strip (Year/View selects, search, Columns
+    button, Rows select). */
 export async function assertPositionsToolbarFlow({ appOrigin, context, initScript, log, session, viewport }) {
   const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
   await run(['open', `${appOrigin}/open-positions`])
   await run(['wait', '--fn', "document.querySelectorAll('.v-data-table tbody tr').length > 1"])
-  await run(['eval', "document.querySelector('.v-data-table .v-toolbar')?.scrollIntoView({ block: 'center' })"])
+  await run(['eval', "document.querySelector('.positions-table')?.scrollIntoView({ block: 'center' })"])
   await run(['wait', '150'])
 
   const controls = await runAgentBrowser({
     args: [
       'eval',
       `(() => {
-        const toolbar = document.querySelector('.v-data-table .v-toolbar')
-        const box = toolbar.querySelector('.v-toolbar__content').getBoundingClientRect()
-        const year = toolbar.querySelector('.v-select:not(.rows-per-page-select)')
-        const search = toolbar.querySelector('.v-text-field')
+        const toolbar = document.querySelector('.positions-workspace .workspace-table-toolbar')
+        if (!toolbar) return { missing: 'toolbar' }
+        const box = toolbar.getBoundingClientRect()
+        const year = toolbar.querySelector('.positions-year-select')
+        const search = toolbar.querySelector('.workspace-table-toolbar__search')
+        const view = toolbar.querySelector('.positions-view-select')
         const columns = toolbar.querySelector('button[aria-label="Show or hide columns"]')
-        const rows = toolbar.querySelector('.rows-per-page-select')
+        const rows = toolbar.querySelector('.workspace-table-toolbar__rows')
         const measure = (name, el) => {
           if (!el) return { name, missing: true }
           const r = el.getBoundingClientRect()
@@ -361,6 +365,7 @@ export async function assertPositionsToolbarFlow({ appOrigin, context, initScrip
           controls: [
             measure('year', year),
             measure('search', search),
+            measure('view', view),
             measure('columns', columns),
             measure('rows-per-page', rows),
           ],
@@ -373,6 +378,7 @@ export async function assertPositionsToolbarFlow({ appOrigin, context, initScrip
     session,
   })
   const probe = controls.result
+  assert.ok(!probe.missing, `${context}: positions toolbar missing: ${JSON.stringify(probe)}`)
   assert.ok(probe.toolbarBox.height > 0, `${context}: toolbar box missing`)
   for (const control of probe.controls) {
     assert.ok(!control.missing, `${context}: positions toolbar control missing: ${JSON.stringify(control)}`)
@@ -382,11 +388,11 @@ export async function assertPositionsToolbarFlow({ appOrigin, context, initScrip
     assert.ok(control.hitIsControlOrChild, `${context}: ${control.name} is not really visible — center point is covered by ${control.hitTag}: ${JSON.stringify(control)}`)
   }
 
-  const menu = await run(['eval', `(() => { const btn = document.querySelector('.v-data-table .v-toolbar button[aria-label="Show or hide columns"]'); btn.click(); return true })()`])
+  const menu = await run(['eval', `(() => { const btn = document.querySelector('.positions-workspace .workspace-table-toolbar button[aria-label="Show or hide columns"]'); btn.click(); return true })()`])
   assert.equal(menu.result, true)
-  await run(['wait', '--fn', "document.querySelector('.v-overlay--active .v-list-item') !== null"])
+  await run(['wait', '--fn', "document.querySelector('.v-overlay--active .positions-columns-menu') !== null"])
   await run(['press', 'Escape'])
-  await run(['wait', '--fn', "document.querySelector('.v-overlay--active .v-list-item') === null"])
+  await run(['wait', '--fn', "document.querySelector('.v-overlay--active .positions-columns-menu') === null"])
   await log({ context, viewport: viewport.name, probe, status: 'passed' })
   console.log(`PASS ${viewport.name} positions toolbar usable`)
   return probe

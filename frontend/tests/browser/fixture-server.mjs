@@ -2,6 +2,16 @@ import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 
 import { resolveFixture } from './fixtures.mjs'
+import {
+  d4ClosedRows,
+  d4ClosedTotals,
+  d4FxFormStructure,
+  d4OpenRows,
+  d4OpenTotals,
+  d4RegularDetail,
+  d4RegularFormStructure,
+  d4Transactions,
+} from './d4-datasets.mjs'
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -16,7 +26,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -25,6 +35,15 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   const sockets = new Set()
   const heldReads = new Map()
   const recoveredWidgets = new Set()
+  // D4 mutation bookkeeping: positions params (server ownership), recorded
+  // mutations, and a mutable reporting currency.
+  const d4 = {
+    mutations: [],
+    positionRequests: [],
+    currency: 'USD',
+    deletes5: 0,
+    addAttempts: 0,
+  }
   const recoveryPayloads = {
     '/dashboard/api/get-summary/': { 'Current NAV': '$100.00', Invested: '$90.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R' },
     '/dashboard/api/get-breakdown/': { assetType: { data: { Stocks: '100.00' }, percentage: { Stocks: '100%' } }, assetClass: { data: { Equity: '100.00' }, percentage: { Equity: '100%' } }, currency: { data: { USD: '100.00' }, percentage: { USD: '100%' } }, totalNAV: '$100.00' },
@@ -45,6 +64,175 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     response.setHeader('Cache-Control', 'no-store')
 
     try {
+      const readBody = async () => {
+        const chunks = []
+        for await (const chunk of request) chunks.push(chunk)
+        return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+      }
+
+      // ---- D4 flow: server-owned pages, held/failing details, recorded
+      // mutations and a mutable reporting currency. ------------------------
+      if (d4Flow && requestedMethod === 'OPTIONS') {
+        requests.push({ method: 'OPTIONS', path: url.pathname })
+        response.writeHead(204)
+        response.end()
+        return
+      }
+      if (d4Flow) {
+        if (fixtureMethod === 'POST' && ['/open_positions/api/get_open_positions_table/', '/closed_positions/api/get_closed_positions_table/'].includes(url.pathname)) {
+          const body = await readBody()
+          const isOpen = url.pathname.includes('open')
+          const allRows = isOpen ? d4OpenRows : d4ClosedRows
+          const search = String(body.search ?? '').toLowerCase()
+          // Server-side search on name/type; the SERVER ORDER is a fixed
+          // shuffle that deliberately ignores the requested sort so the
+          // rendered page proves display order is server-owned.
+          const filtered = allRows.filter((row) =>
+            !search || row.name.toLowerCase().includes(search) || row.type.toLowerCase().includes(search))
+          const itemsPerPage = Number(body.itemsPerPage ?? 25) || 25
+          const page = Number(body.page ?? 1) || 1
+          const start = (page - 1) * itemsPerPage
+          d4.positionRequests.push({ path: url.pathname, body })
+          const payload = {
+            [isOpen ? 'portfolio_open' : 'portfolio_closed']: filtered.slice(start, start + itemsPerPage),
+            [isOpen ? 'portfolio_open_totals' : 'portfolio_closed_totals']: structuredClone(isOpen ? d4OpenTotals : d4ClosedTotals),
+            total_items: filtered.length,
+            current_page: page,
+            total_pages: Math.max(1, Math.ceil(filtered.length / itemsPerPage)),
+            cash_balances: isOpen ? { USD: '$12,500.00', EUR: '€5,100.00', GBP: '£1,150.00' } : null,
+          }
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(payload))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'POST' && url.pathname === '/transactions/api/get_transactions_table/') {
+          await readBody()
+          // Successfully deleted transactions disappear from later listings.
+          const visible = d4Transactions.filter((row) => {
+            if (row.id === 'regular_5') return d4.deletes5 < 2
+            if (row.id === 'fx_5') return !d4.mutations.some((m) => m.method === 'DELETE' && m.path === '/transactions/api/fx/5/')
+            return true
+          })
+          const payload = { transactions: structuredClone(visible), total_items: visible.length, current_page: 1, total_pages: 1, currencies: ['USD', 'EUR'] }
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(payload))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && url.pathname === '/transactions/api/7/') {
+          // Slow detail reply: held until the test releases it.
+          await readBody()
+          await new Promise((resolve) => { heldReads.set(url.pathname, resolve) })
+          heldReads.delete(url.pathname)
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(structuredClone(d4RegularDetail)))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && url.pathname === '/transactions/api/8/') {
+          await readBody()
+          d4.mutations.push({ method: 'GET', path: url.pathname, outcome: 500 })
+          response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ detail: 'Synthetic detail failure' }))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && url.pathname === '/transactions/api/fx/5/') {
+          await readBody()
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({ id: 5, account: 1, date: '2026-09-01', from_currency: 'EUR', to_currency: 'USD', commission_currency: 'GBP', from_amount: '-1000.00', to_amount: '1080.00', exchange_rate: '1.08', commission: '-8.00' }))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'DELETE' && url.pathname === '/transactions/api/5/') {
+          d4.deletes5 += 1
+          d4.mutations.push({ method: 'DELETE', path: url.pathname, outcome: d4.deletes5 === 1 ? 400 : 204, at: Date.now() })
+          if (d4.deletes5 === 1) {
+            response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            response.end(JSON.stringify({ detail: 'Synthetic deletion denied' }))
+          } else {
+            response.writeHead(204)
+            response.end()
+          }
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'DELETE' && url.pathname === '/transactions/api/fx/5/') {
+          d4.mutations.push({ method: 'DELETE', path: url.pathname, outcome: 204 })
+          response.writeHead(204)
+          response.end()
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && url.pathname === '/transactions/api/form_structure/') {
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(structuredClone(d4RegularFormStructure)))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && url.pathname === '/transactions/api/fx/form_structure/') {
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(structuredClone(d4FxFormStructure)))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'POST' && url.pathname === '/transactions/api/') {
+          const body = await readBody()
+          d4.addAttempts += 1
+          d4.mutations.push({ method: 'POST', path: url.pathname, body, outcome: d4.addAttempts === 1 ? 400 : 201 })
+          if (d4.addAttempts === 1) {
+            response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            response.end(JSON.stringify({ quantity: ['Synthetic quantity rejection'], __all__: ['Synthetic server rejection.'] }))
+          } else {
+            response.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' })
+            response.end(JSON.stringify({ id: 99, ...body }))
+          }
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && url.pathname === '/users/api/user_settings_choices/') {
+          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+          // The context strip's Reporting currency select is driven by these
+          // choices; the D4 currency-reactivity flow needs a second option.
+          fixture.body.currency_choices = [['USD', 'US Dollar'], ['EUR', 'Euro']]
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(fixture.body))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'GET' && ['/users/api/dashboard_settings/', '/users/api/user_settings/', '/users/api/profile/'].includes(url.pathname)) {
+          const fixture = resolveFixture(fixtureMethod, url.pathname, { longAccount })
+          if (url.pathname.includes('dashboard_settings')) {
+            // The context strip's Reporting currency select binds to these
+            // choices; expose EUR for the D4 currency-reactivity flow.
+            fixture.body.choices.default_currency = [['USD', 'US Dollar'], ['EUR', 'Euro']]
+          }
+          if (d4.currency !== 'USD') {
+            if (url.pathname.includes('dashboard_settings')) fixture.body.settings.default_currency = d4.currency
+            else if (url.pathname.includes('user_settings')) fixture.body.default_currency = d4.currency
+            else fixture.body.default_currency = d4.currency
+          }
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(fixture.body))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+        if (fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/') {
+          const body = await readBody()
+          if (body.default_currency) d4.currency = body.default_currency
+          if (body.table_date) currentDate = body.table_date
+          d4.mutations.push({ method: 'POST', path: url.pathname, body: { default_currency: body.default_currency } })
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify({
+            table_date: body.table_date, default_currency: body.default_currency, digits: body.digits,
+            requires_token_refresh: false,
+          }))
+          requests.push({ method: fixtureMethod, path: url.pathname })
+          return
+        }
+      }
+
       const isContextMutation = contextFailures && ['/users/api/update_user_data_for_new_account/', '/users/api/update_dashboard_settings/'].includes(url.pathname)
       const dateSettingsPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/update_dashboard_settings/'
       const dateRefreshPost = dateFlow && fixtureMethod === 'POST' && url.pathname === '/users/api/refresh-token/'
@@ -151,6 +339,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     releaseRead: (path) => heldReads.get(path)?.(),
     get pendingMutation() { return pendingMutation },
     releaseMutation: () => releaseMutation?.(),
+    d4,
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,

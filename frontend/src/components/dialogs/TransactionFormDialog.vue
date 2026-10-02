@@ -1,67 +1,39 @@
 <template>
-  <v-dialog v-model="dialog" max-width="600px">
-    <v-card>
-      <v-card-title>
+  <v-dialog
+    v-model="dialog"
+    max-width="600px"
+    aria-labelledby="transaction-form-title"
+  >
+    <v-card :id="formInstanceId">
+      <v-card-title id="transaction-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit Transaction' : 'Add Transaction'
         }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
-          <template v-for="field in formFields" :key="field.name">
-            <!-- Skip fields that are conditional on transaction type -->
-            <template v-if="shouldShowField(field)">
-              <v-text-field
-                v-if="field.type === 'datepicker'"
-                :model-value="form[field.name]"
-                :label="field.label"
-                type="date"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              />
-
-              <v-autocomplete
-                v-else-if="field.type === 'select'"
-                :model-value="form[field.name]"
-                :items="field.choices"
-                item-title="text"
-                item-value="value"
-                :label="field.label"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                clearable
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              >
-                <template v-slot:selection="{ item }">
-                  {{ item.raw ? item.raw.text : '' }}
-                </template>
-              </v-autocomplete>
-
-              <v-text-field
-                v-else-if="field.type === 'number'"
-                :model-value="form[field.name]"
-                :label="field.label"
-                type="number"
-                :step="['split_from', 'split_to'].includes(field.name) ? '1' : '0.01'"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                :hint="field.helper_text"
-                :persistent-hint="!!field.helper_text"
-                :suffix="field.name === 'price' && isBondSelected ? '%' : ''"
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              />
-
-              <v-textarea
-                v-else-if="field.type === 'textarea'"
-                :model-value="form[field.name]"
-                :label="field.label"
-                :required="field.required"
-                :error-messages="errors[field.name]"
-                @update:model-value="(value) => setFieldValue(field.name, value)"
-              />
-            </template>
-          </template>
+          <!-- Visible section labels group the server-driven fields:
+               identification vs. amounts. Sections with no visible field
+               (conditional types) collapse entirely. -->
+          <section v-if="detailFields.length">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Transaction details</h3>
+            <FormFields
+              :fields="detailFields"
+              :value-for="(name) => form[name]"
+              :error-for="(name) => errors[name]"
+              :update="updateField"
+            />
+          </section>
+          <section v-if="amountFields.length" class="mt-4">
+            <h3 class="text-subtitle-1 font-weight-medium mb-2">Amounts</h3>
+            <FormFields
+              :fields="amountFields"
+              :value-for="(name) => form[name]"
+              :error-for="(name) => errors[name]"
+              :update="updateField"
+              :bond-price="isBondSelected"
+            />
+          </section>
         </v-form>
         <v-alert v-if="generalError" type="error" class="mt-4">
           {{ generalError }}
@@ -85,7 +57,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, getCurrentInstance } from 'vue'
+import FormFields from './TransactionFormFields.vue'
 import { useForm } from 'vee-validate'
 import * as yup from 'yup'
 import {
@@ -230,10 +203,6 @@ const {
   validateOnChange: true,
 })
 
-const clearFieldError = (fieldName) => {
-  setFieldError(fieldName, '')
-}
-
 const isFormValid = computed(() => {
   return Object.keys(errors.value).length === 0
 })
@@ -258,6 +227,72 @@ const shouldShowField = (field) => {
   // Otherwise, show only if current type is in the allowed types
   return field.show_for_types.includes(form.type)
 }
+
+// Field updates revalidate their field so a server-set error clears as
+// soon as the user corrects the value (the same Yup schema decides; only
+// the change-validation wiring was missing, which left rejected saves
+// uncorrectable while the dialog stayed open).
+const updateField = (name, value) => {
+  setFieldValue(name, value, true)
+}
+
+// Visible section grouping: identification vs. amounts.
+const AMOUNT_FIELD_NAMES = ['quantity', 'price', 'commission', 'cash_flow', 'split_from', 'split_to']
+const isAmountField = (field) => AMOUNT_FIELD_NAMES.includes(field.name)
+const detailFields = computed(() =>
+  formFields.value.filter((field) => shouldShowField(field) && !isAmountField(field)))
+const amountFields = computed(() =>
+  formFields.value.filter((field) => shouldShowField(field) && isAmountField(field)))
+
+// Initial focus goes to the first field; closing returns focus to the
+// invoking control (the dialog component stays mounted after first open).
+let previouslyFocused = null
+// Fields can arrive after the open-time focus window (slow form structure):
+// focus then, but only while this dialog instance is still the open one.
+// The token cancels superseded loops (reopen, a later structure load) and
+// the whole pending focus on unmount; the query is scoped to THIS dialog's
+// overlay via its title id so a concurrently open sibling never receives
+// the focus.
+let focusToken = 0
+// Permanent once the instance is gone: a structure response arriving after
+// unmount must not START new focus work, and no poll may continue.
+let focusDisposed = false
+// Unique per component instance: the focus target is looked up inside THIS
+// instance's own card element, so a replacement dialog of the same type
+// (which shares the title id and DOM patterns) can never be matched.
+const formInstanceId = `transaction-form-${getCurrentInstance()?.uid ?? 'unknown'}-card`
+const focusFirstField = async () => {
+  if (focusDisposed) return
+  const token = ++focusToken
+  await nextTick()
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (focusDisposed || token !== focusToken || !dialog.value) return
+    const first = document.getElementById(formInstanceId)?.querySelector('input')
+    if (first) {
+      first.focus()
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
+watch(dialog, async (open) => {
+  if (open) {
+    previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    await focusFirstField()
+  } else if (previouslyFocused?.isConnected) {
+    previouslyFocused.focus()
+    previouslyFocused = null
+  }
+}, { immediate: true })
+
+// A dialog unmounted while its structure is still loading must never
+// focus anything afterwards - not in this instance, whose late responses
+// are now permanently disposed.
+onUnmounted(() => {
+  focusDisposed = true
+  focusToken++
+})
 
 const initializeForm = () => {
   const initialValues = formFields.value.reduce((acc, field) => {
@@ -284,6 +319,10 @@ const fetchFormStructure = async () => {
     }
     if (props.editItem) populateFormWithEditItem()
     else initializeForm()
+    // The fields (and with them the first focusable input) may only exist
+    // now; a dialog closed in the meantime cancels via focusFirstField's
+    // open check.
+    if (dialog.value) focusFirstField()
   } catch (error) {
     logger.error('Unknown', 'Error fetching form structure:', error)
     handleApiError(error)

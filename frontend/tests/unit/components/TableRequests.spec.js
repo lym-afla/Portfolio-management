@@ -61,7 +61,7 @@ it('shows a recoverable positions year-options error independently of rows', asy
   await usePortfolioContextStore(pinia).reconcileContext()
   const fetchPositions = vi.fn().mockResolvedValue({ positions: [], totals: {}, total_items: 0 })
   const wrapper = mount(PositionsPageBase, {
-    shallow: true, global: { plugins: [pinia], renderStubDefaultSlot: true }, props: { fetchPositions, headers: [], pageTitle: 'Test' },
+    shallow: true, global: { plugins: [pinia], renderStubDefaultSlot: true }, props: { fetchPositions, tableId: 'open-positions', pageTitle: 'Test' },
   })
   await flushPromises()
   expect(wrapper.text()).toContain('Unable to load positions or year options')

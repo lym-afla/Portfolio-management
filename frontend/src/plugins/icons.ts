@@ -1,7 +1,7 @@
 import { h } from "vue"
 import { aliases, mdi } from "vuetify/iconsets/mdi-svg"
 type IconValue = typeof aliases.close
-import { mdiAccountCircle, mdiAccountGroup, mdiAlertCircle, mdiApi, mdiApps, mdiArrowLeft, mdiArrowRightBold, mdiBank, mdiBankMinus, mdiBankPlus, mdiBitcoin, mdiCalendar, mdiCalendarRange, mdiCancel, mdiCash, mdiCashMultiple, mdiChartBox, mdiChartLine, mdiCheck, mdiCheckAll, mdiCheckCircle, mdiCheckCircleOutline, mdiChevronLeft, mdiChevronRight, mdiClipboardCheck, mdiClipboardRemove, mdiClose, mdiCloseCircle, mdiCog, mdiCounter, mdiCurrencyUsd, mdiCurrencyUsdOff, mdiDatabase, mdiDatabaseImport, mdiDelete, mdiFileDocumentOutline, mdiFileUpload, mdiImport, mdiInformation, mdiKeyRemove, mdiLinkVariant, mdiLockCheck, mdiMagnify, mdiMenu, mdiMonitorDashboard, mdiNumeric, mdiOfficeBuilding, mdiPencil, mdiPercent, mdiPlus, mdiPlusCircle, mdiSwapHorizontal, mdiTableColumn, mdiUpdate, mdiUpload, mdiHelpCircleOutline } from "@mdi/js"
+import { mdiAccountCircle, mdiAccountGroup, mdiAlertCircle, mdiApi, mdiApps, mdiArrowLeft, mdiArrowRightBold, mdiArrowUp, mdiArrowDown, mdiUnfoldMoreVertical, mdiBank, mdiBankMinus, mdiBankPlus, mdiBitcoin, mdiCalendar, mdiCalendarRange, mdiCancel, mdiCash, mdiCashMultiple, mdiChartBox, mdiChartLine, mdiCheck, mdiCheckAll, mdiCheckCircle, mdiCheckCircleOutline, mdiChevronLeft, mdiChevronRight, mdiClipboardCheck, mdiClipboardRemove, mdiClose, mdiCloseCircle, mdiCog, mdiCallMerge, mdiDotsHorizontal, mdiCounter, mdiCurrencyUsd, mdiCurrencyUsdOff, mdiDatabase, mdiDatabaseImport, mdiDelete, mdiFileDocumentOutline, mdiFileUpload, mdiImport, mdiInformation, mdiKeyRemove, mdiLinkVariant, mdiLockCheck, mdiMagnify, mdiMenu, mdiMonitorDashboard, mdiNumeric, mdiOfficeBuilding, mdiPencil, mdiPercent, mdiPlus, mdiPlusCircle, mdiSwapHorizontal, mdiTableColumn, mdiUpdate, mdiUpload, mdiHelpCircleOutline } from "@mdi/js"
 
 export const iconRegistry: Record<string, string> = {
   'mdi-account-circle': mdiAccountCircle,
@@ -11,6 +11,9 @@ export const iconRegistry: Record<string, string> = {
   'mdi-apps': mdiApps,
   'mdi-arrow-left': mdiArrowLeft,
   'mdi-arrow-right-bold': mdiArrowRightBold,
+  'mdi-arrow-up': mdiArrowUp,
+  'mdi-arrow-down': mdiArrowDown,
+  'mdi-unfold-more-vertical': mdiUnfoldMoreVertical,
   'mdi-bank': mdiBank,
   'mdi-bank-minus': mdiBankMinus,
   'mdi-bank-plus': mdiBankPlus,
@@ -33,6 +36,8 @@ export const iconRegistry: Record<string, string> = {
   'mdi-close': mdiClose,
   'mdi-close-circle': mdiCloseCircle,
   'mdi-cog': mdiCog,
+  'mdi-call-merge': mdiCallMerge,
+  'mdi-dots-horizontal': mdiDotsHorizontal,
   'mdi-counter': mdiCounter,
   'mdi-currency-usd': mdiCurrencyUsd,
   'mdi-currency-usd-off': mdiCurrencyUsdOff,

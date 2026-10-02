@@ -28,3 +28,27 @@ export interface WorkspaceContextView {
   isTransitioning: boolean
   errorMessage: string | null
 }
+
+// D4 shared toolbar/action/confirmation presentation contracts. Components
+// carrying these types emit intent only; parents own data, requests and
+// selection identity.
+export interface WorkspaceAction {
+  id: string
+  label: string
+  icon?: string
+  disabled?: boolean
+  loading?: boolean
+}
+
+export interface TableQueryView {
+  search: string
+  page: number
+  itemsPerPage: number
+}
+
+export interface ConfirmationSubject {
+  title: string
+  confirmLabel: string
+  details: readonly { label: string; value: string }[]
+}
+
