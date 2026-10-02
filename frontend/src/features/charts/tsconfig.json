@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "checkJs": false,
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "./**/*.ts",
+    "../../../tests/unit/helpers/**/*.ts",
+    "../../../env.d.ts"
+  ],
+  "references": []
+}
