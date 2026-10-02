@@ -4,7 +4,7 @@
     max-width="600px"
     aria-labelledby="transaction-form-title"
   >
-    <v-card>
+    <v-card :id="formInstanceId">
       <v-card-title id="transaction-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit Transaction' : 'Add Transaction'
@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, getCurrentInstance } from 'vue'
 import FormFields from './TransactionFormFields.vue'
 import { useForm } from 'vee-validate'
 import * as yup from 'yup'
@@ -254,14 +254,20 @@ let previouslyFocused = null
 // overlay via its title id so a concurrently open sibling never receives
 // the focus.
 let focusToken = 0
+// Permanent once the instance is gone: a structure response arriving after
+// unmount must not START new focus work, and no poll may continue.
+let focusDisposed = false
+// Unique per component instance: the focus target is looked up inside THIS
+// instance's own card element, so a replacement dialog of the same type
+// (which shares the title id and DOM patterns) can never be matched.
+const formInstanceId = `transaction-form-${getCurrentInstance()?.uid ?? 'unknown'}-card`
 const focusFirstField = async () => {
+  if (focusDisposed) return
   const token = ++focusToken
   await nextTick()
   for (let attempt = 0; attempt < 20; attempt++) {
-    if (token !== focusToken || !dialog.value) return
-    const overlay = [...document.querySelectorAll('.v-overlay--active[role="dialog"]')]
-      .find((element) => element.querySelector('#transaction-form-title'))
-    const first = overlay?.querySelector('input')
+    if (focusDisposed || token !== focusToken || !dialog.value) return
+    const first = document.getElementById(formInstanceId)?.querySelector('input')
     if (first) {
       first.focus()
       return
@@ -269,6 +275,7 @@ const focusFirstField = async () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
+
 watch(dialog, async (open) => {
   if (open) {
     previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -280,8 +287,12 @@ watch(dialog, async (open) => {
 }, { immediate: true })
 
 // A dialog unmounted while its structure is still loading must never
-// focus anything afterwards.
-onUnmounted(() => { focusToken++ })
+// focus anything afterwards - not in this instance, whose late responses
+// are now permanently disposed.
+onUnmounted(() => {
+  focusDisposed = true
+  focusToken++
+})
 
 const initializeForm = () => {
   const initialValues = formFields.value.reduce((acc, field) => {

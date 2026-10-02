@@ -141,6 +141,14 @@ Two follow-up corrections, each with regressions observed RED against the unfixe
 
 Gates after the round (actual exit codes): unit 369 passed (0), both type-checks (0), lint 0 errors / 35 warnings (0), api:types (0), build (0), `--case d4` green (0), full browser matrix green (0), backend pytest 1386 passed / 10 skipped (0).
 
+### Third review round (2 October 2026): focus lifecycle
+
+The remaining focus-lifecycle defect in both transaction forms is closed:
+
+9. **Permanent disposal + instance-scoped focus target** — the delayed first-field focus now checks a permanent `focusDisposed` guard set in `onUnmounted` (a late structure response can no longer *start* focus work after unmount; the token only cancelled already-running polls, and its entry bump let new calls self-validate), and the focus target is looked up inside this instance's own card element, identified by a per-instance id derived from Vue's component `uid` (a template ref proved unreliable inside teleported overlay content). A replacement dialog of the same type can therefore never be matched. Regressions for BOTH forms: open with a delayed structure, unmount, mount the same form type, focus its second field, resolve the OLD response — focus must remain unchanged (observed RED: the dead instance stole focus into the replacement's first field; GREEN after the fix). The DELETE request-ownership fix from the previous round is untouched and still green.
+
+Gates after the round (actual exit codes): unit 371 passed (0), both type-checks (0), lint 0 errors / 35 warnings (0), api:types (0), build (0), `--case d4` green (0), full browser matrix green (0), backend pytest 1386 passed / 10 skipped (0).
+
 ## Deliberate decisions and limits (D4)
 
 - **Reporting-money labels:** money leaves' descriptions resolve the committed currency ("in your reporting currency (USD/EUR)"); instrument prices stay "in the security's trading currency" with the bond percent-of-nominal note and never follow the reporting currency. Row values keep arriving as backend-formatted strings (mixed local symbols under the "prefer security currency" setting) - displayed verbatim, never parsed.
