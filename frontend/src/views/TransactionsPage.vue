@@ -372,11 +372,14 @@ const closeDeleteDialog = () => {
   // Bumping the generation invalidates any in-flight detail reply. The
   // subject object is kept (not nulled): the closing overlay keeps
   // rendering briefly and a null subject would crash its template; the
-  // snapshot below is what gates deletion.
+  // snapshot below is what gates deletion. A closing dialog also releases
+  // the busy lock so a late outcome of a PREVIOUS request can never hold
+  // a future confirmation disabled.
   deleteGeneration += 1
   deleteDialog.value = false
   deleteSnapshot.value = null
   deleteError.value = null
+  deleteBusy.value = false
   detailsPending.value = false
   detailsFailed.value = false
 }
@@ -409,7 +412,10 @@ const deleteTransactionConfirm = async () => {
     handleApiError(error)
     deleteError.value = 'The transaction could not be deleted. Please try again.'
   } finally {
-    deleteBusy.value = false
+    // Only the request that still owns this dialog may release its busy
+    // lock — an older request settling during a newer pending one must
+    // leave that lock in place.
+    if (!isStale()) deleteBusy.value = false
   }
 }
 

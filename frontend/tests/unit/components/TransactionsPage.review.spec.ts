@@ -166,6 +166,58 @@ describe('review 1: delayed DELETE outcome is generation/session-guarded', () =>
   })
 })
 
+describe('review 1b: busy cleanup follows request ownership', () => {
+  it('keeps the newer confirmation disabled when an older DELETE settles late', async () => {
+    const secondRow = {
+      ...regularRow, id: 'regular_6', date: '2026-07-04', type: 'Dividend',
+      security: { id: 3, name: 'TSMC ADR' }, cash_flow: '$42.00',
+    }
+    const deleteA = deferred()
+    const deleteB = deferred()
+    mocks.deleteTransaction.mockReturnValueOnce(deleteA.promise).mockReturnValueOnce(deleteB.promise)
+    const { wrapper, pinia } = await mountPage([regularRow, secondRow])
+
+    // DELETE A issued, then the session ends while it is in flight.
+    await openDeleteFor('ACME Corp')
+    confirmButton().click()
+    await flushPromises()
+    expect(mocks.deleteTransaction).toHaveBeenCalledTimes(1)
+    const auth = useAuthStore(pinia)
+    auth.clearTokens()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(document.querySelector('.v-overlay--active[role="dialog"]')).toBeNull()
+
+    // A fresh session restores the table; a newer dialog then issues
+    // DELETE B on another subject while A is still pending.
+    auth.setTokens({ accessToken: 'fixture-second-token', refreshToken: 'fixture-second-refresh' })
+    auth.setUser({ id: 7, username: 'alice' })
+    configureContextFixture('2026-09-08')
+    await usePortfolioContextStore(pinia).reconcileContext()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await openDeleteFor('TSMC ADR')
+    confirmButton().click()
+    await flushPromises()
+    expect(mocks.deleteTransaction).toHaveBeenCalledTimes(2)
+
+    // The OLD delete settles late: it must not release the newer
+    // confirmation's busy lock.
+    deleteA.resolve(undefined)
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(dialogElement()).toBeTruthy()
+    expect(confirmButton().disabled).toBe(true)
+
+    // The owning delete closes its own dialog when it settles.
+    deleteB.resolve(undefined)
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(document.querySelector('.v-overlay--active[role="dialog"]')).toBeNull()
+    wrapper.unmount()
+  })
+})
+
 describe('review 2: detail subjects use the actual detail-API currency fields', () => {
   it('suffixes the regular cash flow with the serializer currency field', async () => {
     mocks.getTransactionDetails.mockResolvedValue(structuredClone(regularDetailPayload))

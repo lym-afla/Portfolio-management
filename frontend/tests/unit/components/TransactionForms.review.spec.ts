@@ -96,6 +96,72 @@ describe('review 5: focus follows delayed fields; close cancels it', () => {
     wrapper.unmount()
   })
 
+  it('cancels delayed focus on unmount: another open dialog keeps its focus', async () => {
+    // The OTHER dialog is open with two fields; the user is focused on its
+    // second field when the form in question unmounts.
+    const fxStructure = deferred()
+    mocks.getFXTransactionFormStructure.mockReturnValue(fxStructure.promise)
+    const fxWrapper = await mountForm(FXTransactionFormDialog)
+    fxStructure.resolve({
+      fields: [
+        { name: 'date', label: 'Date', type: 'datepicker', required: true },
+        { name: 'from_amount', label: 'From amount', type: 'number', required: true },
+      ],
+    })
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    const secondInput = [...activeDialog().querySelectorAll('input')]
+      .find((input) => input.closest('.v-input')?.textContent?.includes('From amount')) as HTMLInputElement
+    secondInput.focus()
+    const focusedBefore = document.activeElement
+
+    // The regular form mounts with a structure that never loads in time,
+    // then unmounts (route change) before the response arrives.
+    const pending = deferred()
+    mocks.getTransactionFormStructure.mockReturnValue(pending.promise)
+    const wrapper = await mountForm(TransactionFormDialog)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    wrapper.unmount()
+
+    pending.resolve({ fields: regularFields })
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    // The unmounted form must not move focus at all - an unscoped fallback
+    // would have refocused the other dialog's FIRST field.
+    expect(document.activeElement).toBe(focusedBefore)
+    fxWrapper.unmount()
+  })
+
+  it('scopes delayed focus to the owning dialog, not the first active overlay', async () => {
+    // The FX dialog is mounted FIRST so its overlay precedes the regular
+    // dialog's in DOM order - an unscoped querySelector would hit it.
+    const fxStructure = deferred()
+    mocks.getFXTransactionFormStructure.mockReturnValue(fxStructure.promise)
+    const fxWrapper = await mountForm(FXTransactionFormDialog)
+    fxStructure.resolve({
+      fields: [{ name: 'date', label: 'Date', type: 'datepicker', required: true }],
+    })
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 350))
+
+    const pending = deferred()
+    mocks.getTransactionFormStructure.mockReturnValue(pending.promise)
+    const wrapper = await mountForm(TransactionFormDialog)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    pending.resolve({ fields: regularFields })
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    const focused = document.activeElement as HTMLElement | null
+    expect(focused).toBeTruthy()
+    // Focus lands inside the regular form's OWN overlay (identified by its
+    // title id), never inside the FX dialog.
+    const owner = focused?.closest('.v-overlay--active[role="dialog"]') as HTMLElement | null
+    expect(owner?.querySelector('#transaction-form-title')).toBeTruthy()
+    fxWrapper.unmount()
+    wrapper.unmount()
+  })
+
   it('applies the same delayed-focus behavior to the FX form', async () => {
     const pending = deferred()
     mocks.getFXTransactionFormStructure.mockReturnValue(pending.promise)

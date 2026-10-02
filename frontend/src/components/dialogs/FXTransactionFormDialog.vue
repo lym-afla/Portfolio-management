@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import FormFields from './TransactionFormFields.vue'
 import {
   getFXTransactionFormStructure,
@@ -97,12 +97,20 @@ const setField = (name, value) => {
 // invoking control.
 let previouslyFocused = null
 // Fields can arrive after the open-time focus window (slow form structure):
-// focus then, but only while this dialog is still the open one.
+// focus then, but only while this dialog instance is still the open one.
+// The token cancels superseded loops (reopen, a later structure load) and
+// the whole pending focus on unmount; the query is scoped to THIS dialog's
+// overlay via its title id so a concurrently open sibling never receives
+// the focus.
+let focusToken = 0
 const focusFirstField = async () => {
+  const token = ++focusToken
   await nextTick()
   for (let attempt = 0; attempt < 20; attempt++) {
-    if (!dialog.value) return
-    const first = document.querySelector('.v-overlay--active[role="dialog"] input')
+    if (token !== focusToken || !dialog.value) return
+    const overlay = [...document.querySelectorAll('.v-overlay--active[role="dialog"]')]
+      .find((element) => element.querySelector('#fx-transaction-form-title'))
+    const first = overlay?.querySelector('input')
     if (first) {
       first.focus()
       return
@@ -119,6 +127,10 @@ watch(dialog, async (open) => {
     previouslyFocused = null
   }
 }, { immediate: true })
+
+// A dialog unmounted while its structure is still loading must never
+// focus anything afterwards.
+onUnmounted(() => { focusToken++ })
 
 const fetchFormStructure = async () => {
   try {

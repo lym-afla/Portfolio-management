@@ -132,6 +132,15 @@ Six reviewer findings corrected, each with a regression (12 new tests, 8 observe
 
 Gates after the round (actual exit codes): unit 366 passed (0), both type-checks (0), lint 0 errors / 35 warnings (0), api:types (0), build (0), `--case d4` green (0) with the slow-detail subject now asserting `498.25 EUR` — the detail payload's own serializer currency — full browser matrix green (0), backend pytest 1386 passed / 10 skipped (0).
 
+### Second review round (2 October 2026)
+
+Two follow-up corrections, each with regressions observed RED against the unfixed code:
+
+7. **DELETE busy cleanup follows request ownership** — `closeDeleteDialog` now also releases the busy lock (a closed dialog can never hold a future confirmation disabled), and the confirm handler's `finally` clears `deleteBusy` only when the request still owns the current dialog generation/session. Regression: DELETE A issued, session ends, a fresh session opens DELETE B on another subject, and A settles in between — B's confirmation stays disabled until B itself settles and closes its own dialog (the unguarded `finally` re-enables it; verified RED, then GREEN).
+8. **Delayed form focus is unmount-cancellable and scoped to its owning dialog** — the first-field focus poll runs under a cancellation token (bumped on reopen and on component unmount) and its target query is scoped to the overlay containing that dialog's own title id, so a concurrently open sibling dialog can never receive the focus. Regressions: a form unmounted before its structure arrives leaves another dialog's focused field untouched; a late structure focuses the form's own overlay even when a sibling's overlay precedes it in DOM order (both RED, then GREEN).
+
+Gates after the round (actual exit codes): unit 369 passed (0), both type-checks (0), lint 0 errors / 35 warnings (0), api:types (0), build (0), `--case d4` green (0), full browser matrix green (0), backend pytest 1386 passed / 10 skipped (0).
+
 ## Deliberate decisions and limits (D4)
 
 - **Reporting-money labels:** money leaves' descriptions resolve the committed currency ("in your reporting currency (USD/EUR)"); instrument prices stay "in the security's trading currency" with the bond percent-of-nominal note and never follow the reporting currency. Row values keep arriving as backend-formatted strings (mixed local symbols under the "prefer security currency" setting) - displayed verbatim, never parsed.
