@@ -65,8 +65,12 @@ function fixturePeriods(frequency: FixtureFrequency, count = 3): FixturePeriod[]
       partials.push(false)
     }
   } else if (frequency === 'W') {
-    for (let index = 0; index < count; index += 1) endDates.push(plusDays('2026-09-05', index * 7)), partials.push(false)
-    endDates.push('2026-09-29'), partials.push(true) // mid-week endpoint
+    for (let index = 0; index < count; index += 1) {
+      endDates.push(plusDays('2026-09-05', index * 7))
+      partials.push(false)
+    }
+    endDates.push('2026-09-29') // mid-week endpoint
+    partials.push(true)
   } else if (frequency === 'M') {
     endDates.push('2026-06-30', '2026-07-31', '2026-08-31')
     partials.push(false, false, false)
