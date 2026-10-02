@@ -6,35 +6,30 @@
 // transport performs no state changes or context reconciliation.
 import type { AxiosRequestConfig } from 'axios'
 import { getApiTransport } from '@/services/http/client'
-import { toApiError } from '@/services/http/errors'
+import { ApiError, toApiError } from '@/services/http/errors'
 import type { ChartDocument, NavQuery, NavResult } from './contracts'
 import { parseNavEnvelope } from './parseChartEnvelope'
 
 const NAV_CHART_ENDPOINT = '/dashboard/api/get-nav-chart-data/'
 
+// Extending ApiError keeps the shared sanitizing constructor in the path for
+// every message and code this boundary emits, including nested C1 envelopes.
 /** A C1 chart error or a locally sanitized transport failure. */
-export class ChartApiError extends Error {
-  readonly status?: number
-  readonly code?: string
+export class ChartApiError extends ApiError {
   readonly retryable: boolean
 
-  constructor(message: string, status: number | undefined, code: string | undefined, retryable: boolean) {
-    super(message)
+  constructor(message: string, status?: number, code?: string, retryable = false) {
+    super(message, status, code)
     this.name = 'ChartApiError'
-    this.status = status
-    this.code = code
     this.retryable = retryable
   }
 }
 
 /** The response disagrees with the captured request context. */
-export class ChartContextMismatchError extends Error {
-  readonly status?: number
-
+export class ChartContextMismatchError extends ApiError {
   constructor(message: string, status?: number) {
-    super(message)
+    super(message, status)
     this.name = 'ChartContextMismatchError'
-    this.status = status
   }
 }
 

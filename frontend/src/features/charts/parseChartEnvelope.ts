@@ -317,13 +317,17 @@ export function parseChartDocument(input: unknown): ChartDocument {
     seriesIds.add(parsed.id)
     return parsed
   })
-  if (outcome === 'empty' && series.length > 0) {
-    throw new ChartContractError('An empty chart document must not carry series')
-  }
-  // Only allocation documents keep their single sampling period when empty;
-  // nav/security emptiness has no periods either.
-  if (outcome === 'empty' && kind !== 'allocation' && periods.length > 0) {
-    throw new ChartContractError('An empty chart document must not carry periods')
+  if (outcome === 'empty') {
+    // Allocation keeps its single sampling period when empty; every other
+    // kind has no periods. Price/position documents keep their identified
+    // series with zero points (the backend always emits the series); nav and
+    // allocation empties carry no series. Points already match the periods.
+    if (periods.length > 0 && kind !== 'allocation') {
+      throw new ChartContractError('An empty chart document must not carry periods')
+    }
+    if (series.length > 0 && (kind === 'nav' || kind === 'allocation')) {
+      throw new ChartContractError(`An empty ${kind} document must not carry series`)
+    }
   }
   let totals: readonly ChartValue[] | undefined
   if (input.totals !== undefined) {

@@ -148,6 +148,33 @@ describe('fetchNavChart responses', () => {
     expect(transport).toHaveBeenCalledTimes(1)
   })
 
+  it('sanitizes credential-bearing nested C1 messages while preserving code/status/retryable', async () => {
+    const leaked = 'request rejected: bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig'
+    transport.mockRejectedValue({
+      response: {
+        status: 500,
+        data: { error: { code: 'CHART_CALCULATION_FAILED', message: leaked, retryable: true } },
+      },
+    })
+    const failure = await fetchNavChart(baseQuery, { signal: new AbortController().signal }).catch((error) => error)
+    expect(failure).toBeInstanceOf(ChartApiError)
+    expect(failure.message).not.toContain('eyJhbGciOiJIUzI1NiJ9')
+    expect(failure.message).not.toContain('bearer')
+    expect(failure).toMatchObject({ code: 'CHART_CALCULATION_FAILED', status: 500, retryable: true })
+    expect(transport).toHaveBeenCalledTimes(1)
+    const headerLeak = 'failed while refreshing: Authorization: Bearer abcdef123456'
+    transport.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { error: { code: 'INVALID_CHART_QUERY', message: headerLeak, retryable: false } },
+      },
+    })
+    const redacted = await fetchNavChart(baseQuery, { signal: new AbortController().signal }).catch((error) => error)
+    expect(redacted).toBeInstanceOf(ChartApiError)
+    expect(redacted.message).not.toContain('Bearer abcdef123456')
+    expect(redacted).toMatchObject({ code: 'INVALID_CHART_QUERY', status: 400, retryable: false })
+  })
+
   it('fails a malformed error body as a local non-retryable error, once', async () => {
     transport.mockRejectedValue({ response: { status: 500, data: { detail: 'Synthetic widget unavailable' } } })
     const failure = await fetchNavChart(baseQuery, { signal: new AbortController().signal }).catch((error) => error)

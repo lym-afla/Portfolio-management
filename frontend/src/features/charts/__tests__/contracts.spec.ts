@@ -400,11 +400,24 @@ describe('parseChartDocument: security documents', () => {
     expect(document.series[0].points[1]).toMatchObject({ value: null, status: 'not_available' })
   })
 
-  it('accepts empty histories without inventing observations', () => {
-    const document = parseChartDocument(emptySecurityFixture())
-    expect(document.outcome).toBe('empty')
-    expect(document.series).toEqual([])
-    expect(document.periods).toEqual([])
+  it('accepts empty histories while preserving their identified empty series', () => {
+    for (const kind of ['price', 'position'] as const) {
+      const document = parseChartDocument(emptySecurityFixture(kind))
+      expect(document.outcome).toBe('empty')
+      expect(document.periods).toEqual([])
+      expect(document.series).toHaveLength(1)
+      expect(document.series[0]).toMatchObject({
+        id: `security:9:${kind}`, metric: kind,
+        axis: kind === 'price' ? 'price' : 'quantity',
+      })
+      expect(document.series[0].points).toEqual([])
+    }
+  })
+
+  it('still rejects an empty nav document that carries series', () => {
+    const source = clone(emptyNavFixture().chartV2) as unknown as { series?: unknown[] }
+    source.series = [{ id: 'metric:nav', label: 'NAV', metric: 'nav', role: 'bar', axis: 'money', unit: { kind: 'money', currency: 'USD', plotDivisor: '1000' }, points: [] }]
+    expect(() => parseChartDocument(source)).toThrow(/empty|series/i)
   })
 
   it('rejects missing or malformed security identity', () => {

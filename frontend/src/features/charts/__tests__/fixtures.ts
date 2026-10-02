@@ -256,10 +256,20 @@ export function securityFixture(
   }
 }
 
-export function emptySecurityFixture(): ChartDocument {
+// Empty security histories keep their identified series with zero points
+// (backend: build_security_price/position_document always emits the series).
+export function emptySecurityFixture(kind: 'price' | 'position' = 'price'): ChartDocument {
   const base = navFixture().chartV2
   return {
-    ...base, kind: 'price', outcome: 'empty', series: [], periods: [], totals: undefined,
+    ...base, kind, outcome: 'empty', periods: [], totals: undefined,
     security: { id: 9, instrumentType: 'Bond' }, partition: 'complete',
+    series: [{
+      id: `security:9:${kind}`, label: kind === 'price' ? 'Price' : 'Position',
+      metric: kind, role: 'line', axis: kind === 'price' ? 'price' : 'quantity',
+      unit: kind === 'price'
+        ? { kind: 'percent_of_nominal', plotDivisor: '1' }
+        : { kind: 'quantity', plotDivisor: '1' },
+      points: [],
+    }],
   }
 }
