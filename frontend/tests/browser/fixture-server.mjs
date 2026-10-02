@@ -26,7 +26,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false, chartsC3Flow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -92,9 +92,9 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
       }
 
-      // ---- C2 charts flow: scenario-driven NAV envelopes with held reads.
+      // ---- C2/C3 charts flow: scenario-driven NAV envelopes with held reads.
       // Only real GETs: CORS preflights keep the generic 204 path.
-      if (chartsC2Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-nav-chart-data/') {
+      if ((chartsC2Flow || chartsC3Flow) && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-nav-chart-data/') {
         await readBody()
         charts.navRequests += 1
         requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, chartsScenario: charts.scenario })
@@ -113,6 +113,10 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           body.chartV2.version = 3
         } else if (charts.scenario === 'mismatch') {
           body = withEffectiveDate(body, '2026-01-31')
+        } else if (charts.scenario === 'outrange') {
+          // Valid contract, unplotably large plotValue: the renderer boundary
+          // must fail recoverably (RangeError), never silently truncate.
+          body.chartV2.series[0].points[0].plotValue = '9'.repeat(400)
         } else if (charts.scenario === 'hold') {
           await new Promise((resolve) => { heldReads.set(url.pathname, resolve) })
           heldReads.delete(url.pathname)

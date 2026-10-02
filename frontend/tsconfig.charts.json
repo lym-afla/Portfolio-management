@@ -15,7 +15,8 @@
   "exclude": [
     "src/features/charts/NavChartPanel.vue",
     "src/features/charts/__tests__/dashboardIntegration.spec.ts",
-    "src/features/charts/__tests__/navIntegration.spec.ts"
+    "src/features/charts/__tests__/navIntegration.spec.ts",
+    "src/features/charts/__tests__/render"
   ],
   "references": []
 }
