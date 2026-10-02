@@ -27,38 +27,16 @@
       </v-alert>
 
       <div class="dashboard-trajectory">
-        <v-alert v-if="error.navChart" type="error" class="mb-2" data-testid="nav-error">
-          {{ error.navChart }}
-          <v-btn
-            color="error"
-            variant="outlined"
-            class="ml-2"
-            data-testid="nav-retry"
-            @click="fetchNAVChartData()"
-          >
-            Retry
-          </v-btn>
-        </v-alert>
-        <v-alert
-          v-else-if="navChartLegacyOnly"
-          type="info"
-          variant="tonal"
-          density="compact"
-          class="mb-2"
-          data-testid="nav-capability-notice"
-        >
-          Chart data comes from a legacy response without the exact chart contract; values are
-          unverified metadata.
-        </v-alert>
-        <v-skeleton-loader v-if="loading.navChart" type="card" height="400" />
-        <NAVChart
-          v-else-if="navChartData"
-          data-testid="nav-chart"
-          :chartData="navChartData"
-          :loading="updating.navChart"
-          :initialParams="navChartInitialParams"
-          :effectiveCurrentDate="effectiveCurrentDate"
+        <NavChartPanel
+          :result="navChartResult"
+          :loading="navChartQuery.loading.value"
+          :updating="updating.navChart"
+          :error="error.navChart"
+          :initial-params="navChartInitialParams"
+          :effective-current-date="effectiveCurrentDate"
+          data-testid="nav-chart-panel"
           @update-params="fetchNAVChartData"
+          @retry="fetchNAVChartData()"
         />
       </div>
 
@@ -167,7 +145,7 @@ import PortfolioMetrics from '@/components/dashboard/PortfolioMetrics.vue'
 import { summaryMetrics } from '@/components/dashboard/summaryMetrics'
 import BreakdownChart from '@/components/dashboard/BreakdownChart.vue'
 import SummaryOverTimeTable from '@/components/dashboard/SummaryOverTimeTable.vue'
-import NAVChart from '@/components/dashboard/NAVChart.vue'
+import NavChartPanel from '@/features/charts/NavChartPanel.vue'
 import {
   getDashboardSummary,
   getDashboardBreakdown,
@@ -240,12 +218,6 @@ const breakdownData = computed(() => breakdownQuery.data.value ?? {
 const totalNAV = computed(() => breakdownQuery.data.value?.totalNAV ?? '')
 const summaryOverTimeData = historyQuery.data
 const navChartResult = navChartQuery.data
-// The renderer owns a fresh copy; the retained validated NavResult must
-// survive renderer-side dataset mutation untouched.
-const navChartData = computed(() =>
-  navChartResult.value ? structuredClone(navChartResult.value.legacy) : null
-)
-const navChartLegacyOnly = computed(() => navChartResult.value?.capability === 'legacy_only')
 const navChartInitialParams = computed(() => appStore.navChartParams)
 const effectiveCurrentDate = computed(() => context.committed.effectiveCurrentDate)
 const isEffectiveDateLoading = computed(() => !context.canRead)

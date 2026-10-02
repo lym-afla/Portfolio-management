@@ -32,18 +32,23 @@
           />
         </v-col>
       </v-row>
-      <div class="chart-wrapper" v-if="!hasNoData">
-        <StackedBarLineChart
-          v-if="chartDataComputed && chartOptionsComputed"
-          :chart-data="chartDataComputed"
-          :options="chartOptionsComputed"
-        />
-        <div v-if="loading" class="chart-overlay">
-          <v-progress-circular indeterminate color="primary" size="64" />
+      <!-- Named chart slot (C3): the complete incumbent chart/no-data body is
+           the default content; the ECharts pilot may replace exactly this
+           area. Query controls above stay single-owned here. -->
+      <slot name="chart">
+        <div class="chart-wrapper" v-if="!hasNoData">
+          <StackedBarLineChart
+            v-if="chartDataComputed && chartOptionsComputed"
+            :chart-data="chartDataComputed"
+            :options="chartOptionsComputed"
+          />
+          <div v-if="loading" class="chart-overlay">
+            <v-progress-circular indeterminate color="primary" size="64" />
+          </div>
         </div>
-      </div>
-      <v-alert v-else type="info" variant="tonal" density="compact"
-        text="No data for the selected account and period. Adjust the date range or select another account." />
+        <v-alert v-else type="info" variant="tonal" density="compact"
+          text="No data for the selected account and period. Adjust the date range or select another account." />
+      </slot>
     </v-card-text>
   </v-card>
 </template>
