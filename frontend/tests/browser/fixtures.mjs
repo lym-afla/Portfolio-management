@@ -105,44 +105,95 @@ const fixtures = new Map([
   ],
   // NAV series mirrors the legacy chart contract: NAV bars on the primary
   // axis plus both since-inception and rolling IRR lines on the secondary
-  // axis, with unavailable early values as null.
+  // axis, with unavailable early values as null. chartV2 carries the exact
+  // C1 contract beside it (raw values, plot values /1000, month-end ISO
+  // endpoints, both IRR horizons) so the default matrix exercises the C2
+  // typed boundary end to end.
   [
     'GET /dashboard/api/get-nav-chart-data/',
-    {
-      currency: 'USDk',
-      labels: ['Jan-26', 'Feb-26', 'Mar-26', 'Apr-26', 'May-26', 'Jun-26', 'Jul-26', 'Aug-26', 'Sep-26'],
-      datasets: [
-        {
-          label: 'NAV',
-          type: 'bar',
-          yAxisID: 'y',
-          data: [80.2, 81.5, 79.8, 83.2, 84.9, 83.1, 86.4, 87.8, 89.2],
-          backgroundColor: '#1976d2',
-          borderColor: '#1976d2',
-          datalabels: { display: 'true' },
+    (() => {
+      const labels = ['Jan-26', 'Feb-26', 'Mar-26', 'Apr-26', 'May-26', 'Jun-26', 'Jul-26', 'Aug-26', 'Sep-26']
+      const endDates = ['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31', '2026-06-30', '2026-07-31', '2026-08-31', '2026-09-08']
+      const starts = [null, '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01']
+      const navPlot = [80.2, 81.5, 79.8, 83.2, 84.9, 83.1, 86.4, 87.8, 89.2]
+      const irr = [null, 1.2, 1.1, 2.4, 3.1, 2.8, 3.9, 4.2, 4.6]
+      const rolling = [null, null, 1.8, 2.1, 2.6, 2.4, 3.0, 3.3, 3.5]
+      const raw = (plot) => String(Math.round(plot * 1000))
+      const ok = (value, plot, display) => ({ value, plotValue: plot, status: 'ok', reason: 'observed', display })
+      const unavailable = () => ({ value: null, plotValue: null, status: 'not_available', reason: 'solver_unavailable', display: 'N/A' })
+      const irrPoints = (values) => values.map((value) => (value === null ? unavailable() : ok(`0.0${String(value).replace('.', '')}`, `0.0${String(value).replace('.', '')}`, `${value}%`)))
+      return {
+        currency: 'USDk',
+        labels,
+        datasets: [
+          {
+            label: 'NAV',
+            type: 'bar',
+            yAxisID: 'y',
+            data: [...navPlot],
+            backgroundColor: '#1976d2',
+            borderColor: '#1976d2',
+            datalabels: { display: 'true' },
+          },
+          {
+            label: 'IRR (RHS)',
+            type: 'line',
+            yAxisID: 'y1',
+            data: [...irr],
+            backgroundColor: '#ef5350',
+            borderColor: '#ef5350',
+            fill: false,
+            datalabels: { display: 'true' },
+          },
+          {
+            label: 'Rolling IRR (RHS)',
+            type: 'line',
+            yAxisID: 'y1',
+            data: [...rolling],
+            backgroundColor: '#66bb6a',
+            borderColor: '#66bb6a',
+            fill: false,
+            datalabels: { display: 'true' },
+          },
+        ],
+        chartV2: {
+          version: 2,
+          kind: 'nav',
+          outcome: 'ready',
+          partition: 'complete',
+          context: {
+            accountSelection: { type: 'all', id: null },
+            accountIds: [],
+            effectiveDate: '2026-09-08',
+            currency: 'USD',
+            digits: 2,
+          },
+          periods: endDates.map((endDate, index) => ({
+            key: `nav:${endDate}`,
+            endDate,
+            displayLabel: labels[index],
+            interval: { startDate: starts[index], endDate, kind: index === 0 ? 'inception' : 'sample_interval' },
+            partialPeriod: endDate === '2026-09-08',
+          })),
+          series: [
+            {
+              id: 'metric:nav', label: 'NAV', metric: 'nav', role: 'bar', axis: 'money',
+              unit: { kind: 'money', currency: 'USD', plotDivisor: '1000' },
+              points: navPlot.map((plot) => ok(raw(plot), String(plot), `$${raw(plot)}.00`)),
+            },
+            {
+              id: 'metric:irr_inception', label: 'IRR (RHS)', metric: 'irr_inception', role: 'line', axis: 'return',
+              unit: { kind: 'ratio', plotDivisor: '1' }, points: irrPoints(irr),
+            },
+            {
+              id: 'metric:irr_interval', label: 'Rolling IRR (RHS)', metric: 'irr_interval', role: 'line', axis: 'return',
+              unit: { kind: 'ratio', plotDivisor: '1' }, points: irrPoints(rolling),
+            },
+          ],
+          totals: navPlot.map((plot) => ok(raw(plot), String(plot), `$${raw(plot)}.00`)),
         },
-        {
-          label: 'IRR (RHS)',
-          type: 'line',
-          yAxisID: 'y1',
-          data: [null, 1.2, 1.1, 2.4, 3.1, 2.8, 3.9, 4.2, 4.6],
-          backgroundColor: '#ef5350',
-          borderColor: '#ef5350',
-          fill: false,
-          datalabels: { display: 'true' },
-        },
-        {
-          label: 'Rolling IRR (RHS)',
-          type: 'line',
-          yAxisID: 'y1',
-          data: [null, null, 1.8, 2.1, 2.6, 2.4, 3.0, 3.3, 3.5],
-          backgroundColor: '#66bb6a',
-          borderColor: '#66bb6a',
-          fill: false,
-          datalabels: { display: 'true' },
-        },
-      ],
-    },
+      }
+    })(),
   ],
   // Dense synthetic Open Positions: long security names, two currencies,
   // zero/negative/unavailable display values and every leaf column populated

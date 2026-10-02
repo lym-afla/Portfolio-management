@@ -17,6 +17,7 @@
     "test:dialogs": "node tests/browser/run-smoke.mjs --case dialogs",
     "format": "prettier --write \"src/**/*.{js,ts,vue,json,css,scss}\"",
     "type-check": "vue-tsc --noEmit",
+    "type-check:charts": "vue-tsc --noEmit -p tsconfig.charts.json",
     "type-check:reliability": "vue-tsc --noEmit -p tsconfig.reliability.json",
     "api:types:generate": "node scripts/generate-api-types.mjs --write",
     "api:types:check": "node scripts/generate-api-types.mjs --check"

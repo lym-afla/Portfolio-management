@@ -111,9 +111,15 @@ const api = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(),
   getDashboardBreakdown: vi.fn(),
   getDashboardSummaryOverTime: vi.fn(),
-  getNAVChartData: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
+
+const chartApi = vi.hoisted(() => ({
+  fetchNavChart: vi.fn(),
+  ChartApiError: class ChartApiError extends Error {},
+  ChartContextMismatchError: class ChartContextMismatchError extends Error {},
+}))
+vi.mock('@/features/charts/chartApi', () => chartApi)
 
 const summaryFixture = decodeDashboardSummary({
   'Current NAV': '$1,000.00',
@@ -160,7 +166,10 @@ beforeEach(() => {
     years: [2026],
     currentYear: 2026,
   })
-  api.getNAVChartData.mockResolvedValue({ labels: ['2026-09-08'], datasets: [{ label: 'NAV', data: [1000] }] })
+  chartApi.fetchNavChart.mockResolvedValue({
+    capability: 'legacy_only',
+    legacy: { labels: ['2026-09-08'], currency: 'USDk', datasets: [{ label: 'NAV', type: 'bar', data: [1000] }] },
+  })
 })
 
 describe('DashboardPage NAV-first composition', () => {

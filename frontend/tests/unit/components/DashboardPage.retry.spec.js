@@ -15,10 +15,18 @@ const mocks = vi.hoisted(() => ({
   getDashboardSummaryOverTime: vi
     .fn()
     .mockRejectedValue(new Error('summary over time failed')),
-  getNAVChartData: vi.fn().mockRejectedValue(new Error('nav chart failed')),
 }))
 
 vi.mock('@/services/api', () => mocks)
+
+const chartMocks = vi.hoisted(() => ({
+  fetchNavChart: vi.fn().mockRejectedValue(new Error('nav chart failed')),
+}))
+vi.mock('@/features/charts/chartApi', () => ({
+  ...chartMocks,
+  ChartApiError: class ChartApiError extends Error {},
+  ChartContextMismatchError: class ChartContextMismatchError extends Error {},
+}))
 
 const mountPage = () =>
   mount(DashboardPage, {
@@ -73,7 +81,7 @@ describe('DashboardPage widget error retry', () => {
     expect(mocks.getDashboardSummary).toHaveBeenCalledTimes(1)
     expect(mocks.getDashboardBreakdown).toHaveBeenCalledTimes(1)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(1)
-    expect(mocks.getNAVChartData).toHaveBeenCalledTimes(1)
+    expect(chartMocks.fetchNavChart).toHaveBeenCalledTimes(1)
 
     // Buttons render in template order: summary, nav, breakdown x3, sot.
     // Click one Retry per widget service (summary, nav, third breakdown, sot).
@@ -86,7 +94,7 @@ describe('DashboardPage widget error retry', () => {
     expect(mocks.getDashboardSummary).toHaveBeenCalledTimes(2)
     expect(mocks.getDashboardBreakdown).toHaveBeenCalledTimes(2)
     expect(mocks.getDashboardSummaryOverTime).toHaveBeenCalledTimes(2)
-    expect(mocks.getNAVChartData).toHaveBeenCalledTimes(2)
+    expect(chartMocks.fetchNavChart).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 })

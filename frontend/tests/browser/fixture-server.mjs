@@ -26,7 +26,7 @@ function close(server) {
   })
 }
 
-export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false } = {}) {
+export async function startFixtureServer({ longAccount = false, contextFailures = false, dateFlow = false, requestFlow = false, recoveryFlow = false, d4Flow = false, chartsC2Flow = false } = {}) {
   let releaseMutation
   let pendingMutation = false
   let currentDate = '2026-09-08'
@@ -35,6 +35,14 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
   const sockets = new Set()
   const heldReads = new Map()
   const recoveredWidgets = new Set()
+  // C2 chart negotiation scenarios: which envelope the nav endpoint serves
+  // next, plus counters for the case's no-retry assertions. `hold` parks the
+  // response until released (releaseWith decides the payload late).
+  const charts = {
+    scenario: 'v2',
+    navRequests: 0,
+    releaseWith: 'v2',
+  }
   // D4 mutation bookkeeping: positions params (server ownership), recorded
   // mutations, and a mutable reporting currency.
   const d4 = {
@@ -44,11 +52,25 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     deletes5: 0,
     addAttempts: 0,
   }
+  const baseNavFixture = () => structuredClone(resolveFixture('GET', '/dashboard/api/get-nav-chart-data/', { longAccount }).body)
+  const withEffectiveDate = (envelope, effectiveDate) => {
+    envelope.chartV2.context.effectiveDate = effectiveDate
+    return envelope
+  }
   const recoveryPayloads = {
     '/dashboard/api/get-summary/': { 'Current NAV': '$100.00', Invested: '$90.00', 'Cash-out': '$0.00', total_return: '11.11%', irr: 'N/R' },
     '/dashboard/api/get-breakdown/': { assetType: { data: { Stocks: '100.00' }, percentage: { Stocks: '100%' } }, assetClass: { data: { Equity: '100.00' }, percentage: { Equity: '100%' } }, currency: { data: { USD: '100.00' }, percentage: { USD: '100%' } }, totalNAV: '$100.00' },
     '/dashboard/api/get-summary-over-time/': { lines: [{ name: 'EoP NAV', data: { YTD: '$100.00', 'All-time': '$100.00' } }], years: [], currentYear: 2026 },
-    '/dashboard/api/get-nav-chart-data/': { currency: 'USD', labels: ['2026-09-08'], datasets: [{ label: 'NAV', type: 'bar', data: [100] }] },
+    '/dashboard/api/get-nav-chart-data/': (() => {
+      const envelope = structuredClone(resolveFixture('GET', '/dashboard/api/get-nav-chart-data/', { longAccount }).body)
+      // Single-point variant matching the recovery widget's one label.
+      envelope.labels = ['2026-09-08']
+      envelope.datasets = envelope.datasets.map((dataset) => ({ ...dataset, data: dataset.data.slice(0, 1) }))
+      envelope.chartV2.periods = envelope.chartV2.periods.slice(0, 1)
+      envelope.chartV2.series = envelope.chartV2.series.map((series) => ({ ...series, points: series.points.slice(0, 1) }))
+      envelope.chartV2.totals = envelope.chartV2.totals.slice(0, 1)
+      return envelope
+    })(),
   }
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
@@ -68,6 +90,40 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         const chunks = []
         for await (const chunk of request) chunks.push(chunk)
         return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+      }
+
+      // ---- C2 charts flow: scenario-driven NAV envelopes with held reads.
+      // Only real GETs: CORS preflights keep the generic 204 path.
+      if (chartsC2Flow && requestedMethod === 'GET' && fixtureMethod === 'GET' && url.pathname === '/dashboard/api/get-nav-chart-data/') {
+        await readBody()
+        charts.navRequests += 1
+        requests.push({ method: fixtureMethod, actualMethod: requestedMethod, path: url.pathname, chartsScenario: charts.scenario })
+        const send = (status, body) => {
+          response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+          response.end(JSON.stringify(body))
+        }
+        if (charts.scenario === 'fail500') {
+          send(500, { error: { code: 'CHART_CALCULATION_FAILED', message: 'Chart data could not be calculated. Please try again.', retryable: true } })
+          return
+        }
+        let body = baseNavFixture()
+        if (charts.scenario === 'legacy') {
+          delete body.chartV2
+        } else if (charts.scenario === 'malformed') {
+          body.chartV2.version = 3
+        } else if (charts.scenario === 'mismatch') {
+          body = withEffectiveDate(body, '2026-01-31')
+        } else if (charts.scenario === 'hold') {
+          await new Promise((resolve) => { heldReads.set(url.pathname, resolve) })
+          heldReads.delete(url.pathname)
+          const released = baseNavFixture()
+          if (charts.releaseWith === 'mismatch') withEffectiveDate(released, '2026-01-31')
+          else if (charts.releaseWith === 'legacy') delete released.chartV2
+          send(200, released)
+          return
+        }
+        send(200, body)
+        return
       }
 
       // ---- D4 flow: server-owned pages, held/failing details, recorded
@@ -340,6 +396,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
     get pendingMutation() { return pendingMutation },
     releaseMutation: () => releaseMutation?.(),
     d4,
+    charts,
     origin: `http://127.0.0.1:${address.port}`,
     requests,
     unmatchedRequests,

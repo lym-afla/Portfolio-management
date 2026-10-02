@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "checkJs": false,
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "src/features/charts/**/*.ts",
+    "tests/unit/helpers/**/*.ts",
+    "env.d.ts"
+  ],
+  "exclude": [
+    "src/features/charts/__tests__/dashboardIntegration.spec.ts"
+  ],
+  "references": []
+}

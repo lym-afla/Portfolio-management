@@ -11,15 +11,27 @@ import { useAppStore } from '@/stores/app'
 
 const api = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(), getDashboardBreakdown: vi.fn(),
-  getDashboardSummaryOverTime: vi.fn(), getNAVChartData: vi.fn(),
+  getDashboardSummaryOverTime: vi.fn(),
 }))
 vi.mock('@/services/api', () => api)
+
+const chartApi = vi.hoisted(() => ({
+  fetchNavChart: vi.fn(),
+  ChartApiError: class ChartApiError extends Error {},
+  ChartContextMismatchError: class ChartContextMismatchError extends Error {},
+}))
+vi.mock('@/features/charts/chartApi', () => chartApi)
+
 const summaryFixture = { 'Current NAV': '1,000.00', Invested: '900.00', 'Cash-out': '0.00', total_return: '11.11%', irr: 'N/R' }
+const legacyOnlyResult = (labels: string[] = ['2026-09-08']) => ({
+  capability: 'legacy_only',
+  legacy: { labels, currency: 'USDk', datasets: [{ label: 'NAV', type: 'bar', data: [1000] }] },
+})
 const fixtures = {
   getDashboardSummary: summaryFixture,
   getDashboardBreakdown: { assetType: { data: { Stocks: '1,000.00' }, percentage: { Stocks: '100%' } }, assetClass: {}, currency: {}, totalNAV: '1,000.00' },
   getDashboardSummaryOverTime: { lines: [{ name: 'EoP NAV', data: { YTD: '1,000.00', 'All-time': '1,000.00' } }], years: [], currentYear: 2026 },
-  getNAVChartData: { labels: ['2026-09-08'], datasets: [{ label: 'NAV', data: [1000] }] },
+  fetchNavChart: legacyOnlyResult(),
 }
 const vuetify = createVuetify({ components, directives })
 async function mountDashboardWithRealStores() {
@@ -43,17 +55,20 @@ beforeEach(() => {
   vi.resetAllMocks()
   configureContextFixture('2026-09-08')
   Object.entries(api).forEach(([name, fetcher]) => fetcher.mockRejectedValue(new Error(`${name} temporarily failed`)))
+  chartApi.fetchNavChart.mockRejectedValue(new Error('fetchNavChart temporarily failed'))
 })
 
 it.each([
   ['getDashboardSummary', 0, 'Total NAV'],
   ['getDashboardBreakdown', 2, 'Stocks'],
   ['getDashboardSummaryOverTime', 5, 'EoP NAV'],
-  ['getNAVChartData', 1, '2026-09-08'],
+  ['fetchNavChart', 1, '2026-09-08'],
 ] as const)('restores visible %s content after a successful retry while other widgets stay failed', async (name, buttonIndex, content) => {
   const wrapper = await mountDashboardWithRealStores()
   expect(wrapper.text()).toContain(`${name} temporarily failed`)
-  api[name].mockResolvedValueOnce(fixtures[name])
+  const mock = name === 'fetchNavChart' ? chartApi.fetchNavChart : api[name as keyof typeof api]
+  const fixture = fixtures[name as keyof typeof fixtures]
+  mock.mockResolvedValueOnce(fixture)
   const buttons = wrapper.findAll('button').filter((button) => button.text().includes('Retry'))
   await buttons[buttonIndex].trigger('click')
   await flushPromises()
@@ -62,12 +77,15 @@ it.each([
   if (name === 'getDashboardSummary') expect(wrapper.text()).toContain(summaryFixture['Current NAV'])
   const other = name === 'getDashboardSummary' ? 'getDashboardBreakdown' : 'getDashboardSummary'
   expect(wrapper.text()).toContain(`${other} temporarily failed`)
-  expect(api[name]).toHaveBeenCalledTimes(2)
+  expect(mock).toHaveBeenCalledTimes(2)
   wrapper.unmount()
 })
 
 function resolveAllWidgets() {
-  Object.entries(fixtures).forEach(([name, value]) => api[name as keyof typeof api].mockResolvedValue(value))
+  Object.entries(fixtures).forEach(([name, value]) => {
+    if (name === 'fetchNavChart') chartApi.fetchNavChart.mockResolvedValue(value)
+    else api[name as keyof typeof api].mockResolvedValue(value)
+  })
 }
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -80,16 +98,16 @@ it('keeps accepted NAV mounted while replacing pending parameters and ignores th
   const wrapper = await mountDashboardWithRealStores()
   const chart = wrapper.getComponent({ name: 'NAVChart' })
   const original = wrapper.get('[data-testid="nav-chart"]').element
-  const old = deferred<typeof fixtures.getNAVChartData>()
-  const next = deferred<typeof fixtures.getNAVChartData>()
-  api.getNAVChartData.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise)
+  const old = deferred<typeof fixtures.fetchNavChart>()
+  const next = deferred<typeof fixtures.fetchNavChart>()
+  chartApi.fetchNavChart.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise)
   chart.vm.$emit('update-params', { ...useAppStore().navChartParams, frequency: 'M' })
   await flushPromises()
   expect(wrapper.get('[data-testid="nav-chart"]').element).toBe(original)
   chart.vm.$emit('update-params', { ...useAppStore().navChartParams, frequency: 'Y' })
   await flushPromises()
-  expect(api.getNAVChartData.mock.calls[1][4].signal.aborted).toBe(true)
-  next.resolve({ labels: ['new NAV'], datasets: [{ label: 'NAV', data: [5] }] })
+  expect(chartApi.fetchNavChart.mock.calls[1][1].signal.aborted).toBe(true)
+  next.resolve(legacyOnlyResult(['new NAV']))
   await flushPromises()
   old.reject(new Error('old NAV error'))
   await flushPromises()
@@ -127,11 +145,11 @@ it.each(['ytd', 'custom', 'all_time'])('invalidates old context content and rede
   expect(wrapper.find('[data-testid="nav-chart"]').exists()).toBe(false)
   await change
   await flushPromises()
-  expect(api.getNAVChartData).toHaveBeenCalledTimes(3)
-  const call = api.getNAVChartData.mock.calls[2]
-  expect(call.slice(2, 4)).toEqual(dateRange === 'custom' ? ['2024-02-01', '2024-07-01'] : [dateRange === 'all_time' ? null : '2025-01-01', '2025-12-31'])
-  expect(app.navChartParams.dateFrom).toBe(call[2])
-  expect(app.navChartParams.dateTo).toBe(call[3])
+  expect(chartApi.fetchNavChart).toHaveBeenCalledTimes(3)
+  const query = chartApi.fetchNavChart.mock.calls[2][0]
+  expect([query.fromDate, query.toDate]).toEqual(dateRange === 'custom' ? ['2024-02-01', '2024-07-01'] : [dateRange === 'all_time' ? null : '2025-01-01', '2025-12-31'])
+  expect(app.navChartParams.dateFrom).toBe(query.fromDate)
+  expect(app.navChartParams.dateTo).toBe(query.toDate)
   old.resolve({ ...summaryFixture, 'Current NAV': 'old context NAV' })
   await flushPromises()
   expect(wrapper.text()).not.toContain('old context NAV')
