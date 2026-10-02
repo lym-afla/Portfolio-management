@@ -60,7 +60,10 @@ function fixturePeriods(frequency: FixtureFrequency, count = 3): FixturePeriod[]
   const endDates: string[] = []
   const partials: boolean[] = []
   if (frequency === 'D') {
-    for (let index = 0; index < count; index += 1) endDates.push(plusDays('2026-09-22', index)), partials.push(false)
+    for (let index = 0; index < count; index += 1) {
+      endDates.push(plusDays('2026-09-22', index))
+      partials.push(false)
+    }
   } else if (frequency === 'W') {
     for (let index = 0; index < count; index += 1) endDates.push(plusDays('2026-09-05', index * 7)), partials.push(false)
     endDates.push('2026-09-29'), partials.push(true) // mid-week endpoint
