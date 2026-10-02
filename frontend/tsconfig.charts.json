@@ -9,7 +9,8 @@
   "include": [
     "src/features/charts/**/*.ts",
     "tests/unit/helpers/**/*.ts",
-    "env.d.ts"
+    "env.d.ts",
+    "src/features/charts/**/*.vue"
   ],
   "exclude": [
     "src/features/charts/__tests__/dashboardIntegration.spec.ts"
