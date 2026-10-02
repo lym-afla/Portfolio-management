@@ -23,7 +23,7 @@ export async function assertMountedDateFlow({
           await run([
             'click',
             role === 'combobox' && name === 'Year'
-              ? '.v-data-table .v-toolbar .v-select:not(.rows-per-page-select) .v-field'
+              ? '.workspace-table-toolbar .positions-year-select .v-field'
               : `@${ref}`,
           ])
           return
