@@ -1,5 +1,5 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
     "strict": true,
     "checkJs": false,
@@ -7,9 +7,9 @@
     "noEmit": true
   },
   "include": [
-    "./**/*.ts",
-    "../../../tests/unit/helpers/**/*.ts",
-    "../../../env.d.ts"
+    "src/features/charts/**/*.ts",
+    "tests/unit/helpers/**/*.ts",
+    "env.d.ts"
   ],
   "references": []
 }
