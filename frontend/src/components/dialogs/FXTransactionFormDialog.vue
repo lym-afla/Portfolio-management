@@ -96,20 +96,24 @@ const setField = (name, value) => {
 // Initial focus goes to the first field; closing returns focus to the
 // invoking control.
 let previouslyFocused = null
+// Fields can arrive after the open-time focus window (slow form structure):
+// focus then, but only while this dialog is still the open one.
+const focusFirstField = async () => {
+  await nextTick()
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (!dialog.value) return
+    const first = document.querySelector('.v-overlay--active[role="dialog"] input')
+    if (first) {
+      first.focus()
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
 watch(dialog, async (open) => {
   if (open) {
     previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    await nextTick()
-    // The teleported overlay becomes active asynchronously; wait briefly
-    // for the first field rather than racing Vuetify's mount sequence.
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const first = document.querySelector('.v-overlay--active[role="dialog"] input')
-      if (first) {
-        first.focus()
-        return
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
+    await focusFirstField()
   } else if (previouslyFocused?.isConnected) {
     previouslyFocused.focus()
     previouslyFocused = null
@@ -121,6 +125,9 @@ const fetchFormStructure = async () => {
     const response = await getFXTransactionFormStructure()
     formFields.value = response.fields
     applyEditItem(props.editItem)
+    // Delayed fields get their first-field focus now unless the dialog was
+    // closed in the meantime (focusFirstField cancels then).
+    if (dialog.value) focusFirstField()
   } catch (error) {
     logger.error('Unknown', 'Error fetching form structure:', error)
     generalError.value = 'Failed to load form structure. Please try again.'

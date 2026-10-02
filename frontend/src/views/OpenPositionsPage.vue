@@ -48,16 +48,18 @@
 
     <template #tfoot-label>Total for assets</template>
 
-    <!-- Cash / TOTAL footer rows: one cell per *visible* leaf column, so the
-         rows stay aligned with the table at every column-toggle combination
-         without any hardcoded colspan. Row labels render in the current
-         label column (Type when visible, otherwise Security). -->
-    <template #tfoot-extra="{ flattenedHeaders: flatHeaders, labelKey }">
+    <!-- Cash / TOTAL footer rows: one cell per *visible* leaf column, bound
+         with the base row's shared header associations and key-based pin
+         classes, so the rows stay aligned with the table at every
+         column-toggle combination without any hardcoded colspan. Row labels
+         render in the current label column (Type when visible, otherwise
+         Security). -->
+    <template #tfoot-extra="{ flattenedHeaders: flatHeaders, labelKey, footerCellProps }">
       <tr>
         <td
           v-for="header in flatHeaders"
           :key="`cash-${header.key}`"
-          class="text-end"
+          v-bind="footerCellProps(header)"
         >
           <span v-if="header.key === labelKey" class="text-start">Cash</span>
           <template v-else-if="header.key === 'current_value'">{{
@@ -74,7 +76,7 @@
         <td
           v-for="header in flatHeaders"
           :key="`total-${header.key}`"
-          class="text-end"
+          v-bind="footerCellProps(header)"
         >
           <span v-if="header.key === labelKey" class="text-start">TOTAL</span>
           <template v-else-if="header.key === 'current_value'">{{

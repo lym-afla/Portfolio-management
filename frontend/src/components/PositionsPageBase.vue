@@ -274,12 +274,16 @@
                 </td>
               </tr>
               <!-- Extra footer rows (e.g. Cash / TOTAL on the Open page).
-                   Receives the visible leaf headers plus the key of the cell
-                   that carries row labels — never a literal colspan. -->
+                   Receives the visible leaf headers, the key of the cell
+                   that carries row labels, and a per-leaf binding helper so
+                   page-rendered cells share the base row's header
+                   associations and key-based pin classes — never a literal
+                   colspan. -->
               <slot
                 name="tfoot-extra"
                 :flattened-headers="positionView.leaves"
                 :label-key="labelKey"
+                :footer-cell-props="toFooterCellProps"
               />
             </tfoot>
           </template>
@@ -493,6 +497,15 @@ const captionText = computed(() =>
   `${props.pageTitle} — ${positionPresetLabel(props.tableId, view.preset.value)} view`,
 )
 
+// Shared cell binding for page-rendered footer rows: the same header
+// association, leaf identity, alignment and key-based pin class the base
+// totals row applies.
+const toFooterCellProps = (leaf: PositionViewLeaf) => ({
+  headers: leaf.headerId,
+  'data-leaf-key': leaf.key,
+  class: cellClasses(leaf),
+})
+
 // Chooser lists every original leaf grouped by lifecycle group, with fully
 // qualified names, regardless of the current visibility.
 const chooserGroups = computed(() => {
@@ -582,6 +595,13 @@ watch(
   () => { measurePins() },
   { immediate: true },
 )
+
+// The table itself renders late (skeleton while loading): initialize the
+// caption-era accessibility attributes and pin offsets on FIRST render too,
+// not only after a view change.
+watch(tableRef, (table) => {
+  if (table) measurePins()
+})
 
 onMounted(() => {
   measurePins()

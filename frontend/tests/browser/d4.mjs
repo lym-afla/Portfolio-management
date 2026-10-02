@@ -378,7 +378,7 @@ export async function assertD4TransactionsFlow({ appOrigin, context, initScript,
   fixtureServer.releaseRead('/transactions/api/7/')
   await run(['wait', '600'])
   probe = await dialogText()
-  assert.match(probe ?? '', /498\.25 USD/, `${context}: loaded detail amounts complete the subject`)
+  assert.match(probe ?? '', /498\.25 EUR/, `${context}: loaded detail amounts carry their own serializer currency`)
   probe = await evalProbe(run, `document.querySelector('.v-overlay--active [data-testid="confirm-confirm"]').disabled`, context)
   assert.equal(probe, false, `${context}: confirmation enabled after details load`)
   await run(['press', 'Escape'])

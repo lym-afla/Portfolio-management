@@ -274,6 +274,10 @@ const hasValue = (value) => value !== undefined && value !== null && value !== '
 const accountLabelOf = (item) =>
   item.account ? [item.account.broker_name, item.account.name].filter(Boolean).join(' — ') : ''
 
+// Wire-contract note: LIST rows carry cur/from_cur/to_cur, while the DETAIL
+// endpoints return the serializer fields (currency / from_currency /
+// to_currency / commission_currency) — each mapping reads its own shape and
+// displays values verbatim.
 const detailsFromListItem = (item, kind) => {
   const details = [{ label: 'Date', value: String(item.date ?? '') }]
   if (item.type) details.push({ label: 'Type', value: displayTransactionType(item.type) })
@@ -303,17 +307,19 @@ const detailsFromDetail = (kind, detail) => {
   const details = []
   if (kind === 'fx') {
     if (hasValue(detail.from_amount)) {
-      details.push({ label: 'From', value: `${detail.from_amount}${detail.from_cur ? ` ${detail.from_cur}` : ''}` })
+      details.push({ label: 'From', value: `${detail.from_amount}${detail.from_currency ? ` ${detail.from_currency}` : ''}` })
     }
     if (hasValue(detail.to_amount)) {
-      details.push({ label: 'To', value: `${detail.to_amount}${detail.to_cur ? ` ${detail.to_cur}` : ''}` })
+      details.push({ label: 'To', value: `${detail.to_amount}${detail.to_currency ? ` ${detail.to_currency}` : ''}` })
     }
-    if (hasValue(detail.commission)) details.push({ label: 'Commission', value: String(detail.commission) })
+    if (hasValue(detail.commission)) {
+      details.push({ label: 'Commission', value: `${detail.commission}${detail.commission_currency ? ` ${detail.commission_currency}` : ''}` })
+    }
   } else {
     if (hasValue(detail.quantity)) details.push({ label: 'Quantity', value: String(detail.quantity) })
     if (hasValue(detail.price)) details.push({ label: 'Price', value: String(detail.price) })
     if (hasValue(detail.cash_flow)) {
-      details.push({ label: 'Cash flow', value: `${detail.cash_flow}${detail.cur ? ` ${detail.cur}` : ''}` })
+      details.push({ label: 'Cash flow', value: `${detail.cash_flow}${detail.currency ? ` ${detail.currency}` : ''}` })
     }
   }
   return details
@@ -382,6 +388,10 @@ const onConfirmDialogChange = (value) => {
 const deleteTransactionConfirm = async () => {
   const snapshot = deleteSnapshot.value
   if (!snapshot || deleteBusy.value || detailsPending.value || detailsFailed.value) return
+  // Delayed outcomes must land only on the dialog/session that issued them.
+  const generation = deleteGeneration
+  const epoch = authStore.sessionEpoch
+  const isStale = () => generation !== deleteGeneration || epoch !== authStore.sessionEpoch
   deleteBusy.value = true
   deleteError.value = null
   try {
@@ -390,9 +400,11 @@ const deleteTransactionConfirm = async () => {
     } else {
       await deleteTransaction(snapshot.numericId)
     }
+    if (isStale()) return
     closeDeleteDialog()
     await fetchTransactions()
   } catch (error) {
+    if (isStale()) return
     logger.error('Unknown', 'Error deleting transaction:', error)
     handleApiError(error)
     deleteError.value = 'The transaction could not be deleted. Please try again.'

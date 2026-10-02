@@ -119,6 +119,19 @@ node scripts/qa-preview.mjs              # manual review against static dense fi
 node scripts/qa-native-zoom.mjs "$(npx --no-install agent-browser --session d4zoom get cdp-url)" http://127.0.0.1:5189 200
 ```
 
+## PR #51 review round (2 October 2026)
+
+Six reviewer findings corrected, each with a regression (12 new tests, 8 observed RED first):
+
+1. **Delayed DELETE outcomes are generation/session-guarded** — `deleteTransactionConfirm` captures the dialog generation and auth epoch when the request is issued; a success or rejection that resolves after either changed no longer closes, refreshes or surfaces an error for state it no longer owns.
+2. **Detail subjects use the actual detail-API currency fields** — list rows carry `cur`/`from_cur`/`to_cur`, but the detail endpoints return the serializer fields; the regular mapping now reads `currency` and the FX mapping `from_currency`/`to_currency`/`commission_currency` (commission keeps its own currency). All browser/unit fixtures were reshaped to the real serializer wire contract.
+3. **Accessibility/pinning initialize on first render** — the caption, the named focusable scroll region and the measured pin offset are applied the moment the table appears after its loading skeleton, not only after a view change.
+4. **Cash/TOTAL footer rows share the base row's cell semantics** — the tfoot-extra slot now exposes a per-leaf binding helper and the Open page applies it, so every Cash/TOTAL cell carries the same `headers` association, leaf identity and key-based pin class as the totals cell above it.
+5. **Delayed form fields focus when ready, with close cancellation** — both transaction forms focus the first input when a slow form structure finally renders; a dialog closed in the meantime cancels the focus (no stealing from the restored invoker).
+6. **D4 screenshot session is registered for guaranteed cleanup** — the capture session joins the harness sessions map before the capture, so `cleanupBrowserHarness` closes it even when the capture throws.
+
+Gates after the round (actual exit codes): unit 366 passed (0), both type-checks (0), lint 0 errors / 35 warnings (0), api:types (0), build (0), `--case d4` green (0) with the slow-detail subject now asserting `498.25 EUR` — the detail payload's own serializer currency — full browser matrix green (0), backend pytest 1386 passed / 10 skipped (0).
+
 ## Deliberate decisions and limits (D4)
 
 - **Reporting-money labels:** money leaves' descriptions resolve the committed currency ("in your reporting currency (USD/EUR)"); instrument prices stay "in the security's trading currency" with the bond percent-of-nominal note and never follow the reporting currency. Row values keep arriving as backend-formatted strings (mixed local symbols under the "prefer security currency" setting) - displayed verbatim, never parsed.

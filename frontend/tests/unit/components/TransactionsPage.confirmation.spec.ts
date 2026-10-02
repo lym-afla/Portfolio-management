@@ -177,7 +177,7 @@ describe('TransactionsPage delete confirmation', () => {
     expect(dialogElement().textContent).toContain('2026-09-01')
 
     // The stale regular-detail reply finally lands: must not replace fx_5.
-    slowDetail.resolve({ id: 5, date: '2026-09-08', cash_flow: '($1,215.00)', quantity: '10' })
+    slowDetail.resolve({ id: 5, currency: 'USD', date: '2026-09-08', cash_flow: '($1,215.00)', quantity: '10' })
     await flushPromises()
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(dialogElement().textContent).not.toContain('ACME Corp')

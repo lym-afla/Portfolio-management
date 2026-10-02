@@ -352,8 +352,12 @@ async function main() {
     }
 
     if (selectedCase === 'd4') {
+      // Register the screenshot session with the harness so the guaranteed
+      // cleanup closes it even when the capture throws mid-way.
+      const d4ShotsSession = `d4-shots-${process.pid}`
+      sessions.set(d4ShotsSession, authInit)
       try {
-        await captureD4Screenshots({ appOrigin: appServer.origin, context: 'd4 screenshots', initScript: authInit, log, session: `d4-shots-${process.pid}` })
+        await captureD4Screenshots({ appOrigin: appServer.origin, context: 'd4 screenshots', initScript: authInit, log, session: d4ShotsSession })
       } catch (error) {
         routeFailures.push({ route: 'd4 screenshots', viewport: 'desktop', error: error.message })
         console.error(`FAIL d4 screenshots: ${error.message}`)

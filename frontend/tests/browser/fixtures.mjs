@@ -263,8 +263,8 @@ const fixtures = new Map([
   ],
   ['GET /transactions/api/form_structure/', structuredClone(d4RegularFormStructure)],
   ['GET /transactions/api/fx/form_structure/', structuredClone(d4FxFormStructure)],
-  ['GET /transactions/api/5/', { id: 5, date: '2026-09-08', type: 'Buy', security: '1', quantity: '10', price: '120.50', commission: '-15.00', cash_flow: '-1215.00', cur: 'USD' }],
-  ['GET /transactions/api/fx/5/', { id: 5, date: '2026-09-01', from_cur: 'EUR', to_cur: 'USD', from_amount: '-1000.00', to_amount: '1080.00', rate: '1.08' }],
+  ['GET /transactions/api/5/', { id: 5, account: 1, security: 1, currency: 'USD', date: '2026-09-08', type: 'Buy', quantity: '10', price: '120.50', commission: '-15.00', cash_flow: '-1215.00' }],
+  ['GET /transactions/api/fx/5/', { id: 5, account: 1, date: '2026-09-01', from_currency: 'EUR', to_currency: 'USD', commission_currency: 'GBP', from_amount: '-1000.00', to_amount: '1080.00', exchange_rate: '1.08', commission: '-8.00' }],
   ['GET /ws/transactions/', null],
   ['POST /database/api/accounts/list_accounts/', {
     accounts: [{ id: 1, name: 'Main', broker_name: 'Fixture Broker', no_of_securities: 1, first_investment: '01-Jan-25', nav: '$100.00', cash: { USD: '$50.00' }, irr: null }],

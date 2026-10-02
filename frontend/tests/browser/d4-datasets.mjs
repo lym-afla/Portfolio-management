@@ -153,9 +153,12 @@ export const d4Transactions = [
     cur: 'USD', balances: { USD: '$2,050.00' } },
 ]
 
+// TransactionFormSerializer shape (the actual getTransactionDetails wire
+// contract): currency — not the list row's cur.
 export const d4RegularDetail = {
-  id: 7, date: '2026-08-20', type: 'Sell', security: '2', quantity: '5', price: '99.75',
-  commission: '-7.50', cash_flow: '498.25', cur: 'USD',
+  id: 7, account: 2, security: 2, currency: 'EUR',
+  date: '2026-08-20', type: 'Sell', quantity: '5', price: '99.75',
+  commission: '-7.50', cash_flow: '498.25',
 }
 
 export const d4RegularFormStructure = {

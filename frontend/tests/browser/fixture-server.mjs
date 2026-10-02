@@ -141,7 +141,7 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
         if (fixtureMethod === 'GET' && url.pathname === '/transactions/api/fx/5/') {
           await readBody()
           response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-          response.end(JSON.stringify({ id: 5, date: '2026-09-01', from_cur: 'EUR', to_cur: 'USD', from_amount: '-1000.00', to_amount: '1080.00', rate: '1.08' }))
+          response.end(JSON.stringify({ id: 5, account: 1, date: '2026-09-01', from_currency: 'EUR', to_currency: 'USD', commission_currency: 'GBP', from_amount: '-1000.00', to_amount: '1080.00', exchange_rate: '1.08', commission: '-8.00' }))
           requests.push({ method: fixtureMethod, path: url.pathname })
           return
         }
