@@ -97,15 +97,18 @@ const selectedAccount = computed(() => {
         option.type === 'option' &&
         option.value.type === committed.type &&
         option.value.id === committed.id
-    )?.value || committed
+    )?.value || selectedAccountLabel.value
   )
 })
+// The arrow keys navigate relative to the COMMITTED selection, never the
+// display model: an unmatched selection falls back to the safe label string,
+// which carries no account identity to search for.
 const currentIndex = computed(() =>
   accountOptions.value.findIndex(
     (option) =>
       option.type === 'option' &&
-      option.value.type === selectedAccount.value.type &&
-      option.value.id === selectedAccount.value.id
+      option.value.type === context.committed.accountSelection.type &&
+      option.value.id === context.committed.accountSelection.id
   )
 )
 const canSwitchLeft = computed(

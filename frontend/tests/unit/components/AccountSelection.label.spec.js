@@ -103,34 +103,49 @@ const displayedLabel = (wrapper) => {
 
 const selectComponent = (wrapper) => wrapper.findComponent({ name: 'VSelect' })
 
+const inputValue = (wrapper) => wrapper.find('input').element.value
+
 const expectNoRawObject = (wrapper, context) => {
   expect(wrapper.text(), `${context}: no raw object label`).not.toContain('[object Object]')
   expect(wrapper.text(), `${context}: no raw JSON label`).not.toContain('"type"')
 }
 
+/** The concern is BOTH surfaces: Vuetify renders the visible selection from
+    the slot, but the underlying combobox input's value comes from the model
+    independently — a raw unmatched committed object stringifies there as
+    [object Object] even when the visible label is safe. */
+const expectSafeLabelAndInput = (wrapper, context, expectedLabel) => {
+  expect(displayedLabel(wrapper).text, `${context}: visible label`).toBe(expectedLabel)
+  expect(inputValue(wrapper), `${context}: input value never exposes a raw object`)
+    .not.toContain('[object Object]')
+  expect(inputValue(wrapper), `${context}: input value never exposes raw JSON`)
+    .not.toContain('"type"')
+  expectNoRawObject(wrapper, context)
+}
+
 describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
   it('renders All accounts for the all selection with full backend options', async () => {
     const { wrapper } = await mountSelector({ type: 'all', id: null })
-    expect(displayedLabel(wrapper).text).toBe('All accounts')
-    expectNoRawObject(wrapper, 'all selection')
+    expectSafeLabelAndInput(wrapper, 'all selection', 'All accounts')
+    expect(inputValue(wrapper)).toBe('All accounts')
     wrapper.unmount()
   })
 
   it('renders the display_name of a committed named account', async () => {
     const { wrapper } = await mountSelector({ type: 'account', id: 2 })
-    expect(displayedLabel(wrapper).text).toBe('Second Broker – Second account')
-    expectNoRawObject(wrapper, 'named account')
+    expectSafeLabelAndInput(wrapper, 'named account', 'Second Broker – Second account')
+    expect(inputValue(wrapper)).toBe('Second Broker – Second account')
     wrapper.unmount()
   })
 
   it('renders broker and group option titles', async () => {
     const { wrapper } = await mountSelector({ type: 'broker', id: 3 })
-    expect(displayedLabel(wrapper).text).toBe('All First Broker accounts')
-    expectNoRawObject(wrapper, 'broker selection')
+    expectSafeLabelAndInput(wrapper, 'broker selection', 'All First Broker accounts')
+    expect(inputValue(wrapper)).toBe('All First Broker accounts')
     wrapper.unmount()
     const { wrapper: groupWrapper } = await mountSelector({ type: 'group', id: 4 })
-    expect(displayedLabel(groupWrapper).text).toBe('Long Term')
-    expectNoRawObject(groupWrapper, 'group selection')
+    expectSafeLabelAndInput(groupWrapper, 'group selection', 'Long Term')
+    expect(inputValue(groupWrapper)).toBe('Long Term')
     groupWrapper.unmount()
   })
 
@@ -138,8 +153,7 @@ describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
     accountChoices = { options: [], selected: { type: 'all', id: null } }
     const requestsBefore = vi.mocked(apiGet).mock.calls.length
     const { wrapper } = await mountSelector({ type: 'all', id: null })
-    expect(displayedLabel(wrapper).text).toBe('All accounts')
-    expectNoRawObject(wrapper, 'empty options, all selection')
+    expectSafeLabelAndInput(wrapper, 'empty options, all selection', 'All accounts')
     await flushPromises()
     expect(vi.mocked(apiGet).mock.calls.length).toBe(requestsBefore + 2,
       'mounting and labelling adds no repair requests beyond the reconcile pair')
@@ -149,8 +163,7 @@ describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
   it('falls back to Unavailable for a committed account missing from the options', async () => {
     accountChoices = { options: [], selected: { type: 'account', id: 7 } }
     const { wrapper } = await mountSelector({ type: 'account', id: 7 })
-    expect(displayedLabel(wrapper).text).toBe('Unavailable')
-    expectNoRawObject(wrapper, 'missing committed account')
+    expectSafeLabelAndInput(wrapper, 'missing committed account', 'Unavailable')
     wrapper.unmount()
   })
 
@@ -165,15 +178,14 @@ describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
     })
     await flushPromises()
     // Pre-reconcile: committed cached selection, no options loaded yet.
-    expect(displayedLabel(wrapper).text).toBe('Unavailable')
-    expectNoRawObject(wrapper, 'delayed loading, before options')
+    expectSafeLabelAndInput(wrapper, 'delayed loading, before options', 'Unavailable')
     // Options arrive late (the reconcile that succeeds after the mount).
     accountChoices = { options: BACKEND_ACCOUNT_OPTIONS, selected: { type: 'account', id: 1 } }
     await store.reconcileContext()
     await flushPromises()
-    expect(displayedLabel(wrapper).text).toBe('First Broker – First account')
+    expectSafeLabelAndInput(wrapper, 'delayed loading, after options', 'First Broker – First account')
+    expect(inputValue(wrapper)).toBe('First Broker – First account')
     expect(store.committed.accountSelection).toEqual({ type: 'account', id: 1 })
-    expectNoRawObject(wrapper, 'delayed loading, after options')
     wrapper.unmount()
   })
 
@@ -190,9 +202,8 @@ describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
     expect(mockBackend.updateAccount).toHaveBeenCalledOnce()
     expect(store.committed.accountSelection).toEqual({ type: 'all', id: null },
       'a rejected change never adopts the failed selection')
-    expect(displayedLabel(wrapper).text).toBe('All accounts')
+    expectSafeLabelAndInput(wrapper, 'failed context change', 'All accounts')
     expect(wrapper.text()).toContain('Account denied')
-    expectNoRawObject(wrapper, 'failed context change')
     wrapper.unmount()
   })
 
@@ -203,8 +214,8 @@ describe('AccountSelection safe label fallbacks (real Vuetify select)', () => {
     })
     await flushPromises()
     expect(store.committed.accountSelection).toEqual({ type: 'account', id: 2 })
-    expect(displayedLabel(wrapper).text).toBe('Second Broker – Second account')
-    expectNoRawObject(wrapper, 'successful change')
+    expectSafeLabelAndInput(wrapper, 'successful change', 'Second Broker – Second account')
+    expect(inputValue(wrapper)).toBe('Second Broker – Second account')
     wrapper.unmount()
   })
 })
