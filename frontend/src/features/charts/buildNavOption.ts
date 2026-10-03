@@ -15,6 +15,7 @@ import type { ChartDocument, ChartSeries, ChartUnit, ChartValue } from './contra
 import { toPlotNumber } from './renderBoundary'
 import { irrLineStyle, seriesColor } from './seriesStyles'
 import { seriesControlName, seriesHorizon, type ChartInteraction } from './interaction'
+import { navTooltipPosition } from './tooltipPlacement'
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -55,7 +56,11 @@ interface TooltipParam {
   seriesId?: string
 }
 
-export function buildNavOption(document: ChartDocument, interaction: ChartInteraction): EChartsOption {
+export function buildNavOption(
+  document: ChartDocument,
+  interaction: ChartInteraction,
+  resolveContainer?: () => HTMLElement | null,
+): EChartsOption {
   const labelsByKey = new Map(document.periods.map((period) => [period.key, period.displayLabel]))
   const seriesById = new Map(document.series.map((series) => [series.id, series]))
   const visible = new Set(interaction.visibleSeriesIds)
@@ -81,13 +86,25 @@ export function buildNavOption(document: ChartDocument, interaction: ChartIntera
     animation: false,
     tooltip: {
       trigger: 'axis',
-      // Keep the tooltip inside the chart container on narrow viewports and
-      // let long IRR lines wrap: confine clamps position, the CSS caps width
-      // below the viewport and breaks over-long words. Removing clipping
-      // alone would leave an off-screen tooltip.
-      confine: true,
+      // Keep the tooltip wrap-friendly on narrow viewports: the CSS caps
+      // width below the viewport and breaks over-long words. `confine` must
+      // stay OFF — it re-clamps the placed box against the CHART CONTAINER
+      // after the position callback, which would push it back under the
+      // fixed header whenever the container scrolls beneath it.
       className: 'nav-chart-tooltip',
       extraCssText: 'max-width: min(340px, 92vw); white-space: normal; overflow-wrap: break-word;',
+      // Viewport containment is not visibility: the fixed workspace header
+      // overlays the viewport top and the chart container clips its own
+      // children, so the tooltip renders into document.body and the position
+      // callback pins it inside the unobscured viewport band — below the
+      // header's measured edge, horizontally within the chart.
+      appendTo: () => globalThis.document.body,
+      position: (point, params, dom, rect, size) => navTooltipPosition({
+        point,
+        dom: dom instanceof HTMLElement ? dom : null,
+        size,
+        resolveContainer,
+      }),
       formatter: (params: unknown) => navTooltip(document, seriesById, params),
     },
     xAxis: [{

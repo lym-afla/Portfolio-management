@@ -58,7 +58,7 @@ const host = ref<HTMLElement | null>(null)
 
 const option = computed<EChartsOption>(() => {
   try {
-    return buildNavOption(props.document, props.interaction)
+    return buildNavOption(props.document, props.interaction, () => host.value)
   } catch (error) {
     // Option construction failures (e.g. out-of-range plot values) are
     // recoverable rendering failures, never empty-success charts.

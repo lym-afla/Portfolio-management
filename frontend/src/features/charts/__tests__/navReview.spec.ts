@@ -11,6 +11,7 @@ import { parseNavEnvelope } from '../parseChartEnvelope'
 import type { ChartDocument, NavResult } from '../contracts'
 import type { ChartInteraction } from '../interaction'
 import { buildNavOption } from '../buildNavOption'
+import { clampTooltipPlacement } from '../tooltipPlacement'
 import { defaultInteraction } from '../interaction'
 import ChartInspection from '../ChartInspection.vue'
 import NavChartPanel from '../NavChartPanel.vue'
@@ -350,16 +351,111 @@ describe('round 2: monetary displays render verbatim with separators', () => {
 // Review round 3: the long axis tooltip must wrap and stay confined.
 
 describe('round 3: mobile tooltip wrapping and confinement', () => {
-  it('configures confine, a wrap-friendly max width and a stable class', () => {
+  it('configures a wrap-friendly max width and a stable class, without container confine', () => {
     const document = parsedDocument()
     const option = buildNavOption(document, defaultInteraction(document)) as {
       tooltip?: { confine?: boolean; className?: string; extraCssText?: string }
     }
-    expect(option.tooltip?.confine).toBe(true)
+    // Round 4: `confine` re-clamps the placed tooltip against the chart
+    // container after the position callback — exactly what pushed the box
+    // back under the fixed header — so placement is owned by the round-4
+    // body attachment + clamp instead.
+    expect(option.tooltip?.confine).toBeUndefined()
     expect(option.tooltip?.className).toBe('nav-chart-tooltip')
     const css = String(option.tooltip?.extraCssText ?? '')
     expect(css).toMatch(/white-space:\s*normal/)
     expect(css).toMatch(/max-width/)
     expect(css).toMatch(/break-word/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Review round 4: viewport containment is not visibility. The fixed workspace
+// header overlays the top of the viewport and the chart container clips its
+// own children, so the tooltip must escape the container (appendTo body) and
+// the placement math must pin it inside the unobscured viewport band.
+
+describe('round 4: tooltip clears the fixed header and container clipping', () => {
+  it('renders the tooltip outside the chart container and positions it deliberately', () => {
+    const document = parsedDocument()
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      tooltip?: { appendTo?: unknown; position?: unknown }
+    }
+    expect(typeof option.tooltip?.appendTo).toBe('function')
+    expect(typeof option.tooltip?.position).toBe('function')
+  })
+
+  it('places the box below the cursor when the whole box fits the unobscured band', () => {
+    // Container at viewport (33, 283), cursor mid-chart, header above 284.
+    const placed = clampTooltipPlacement({
+      pointX: 100,
+      pointY: 180,
+      contentWidth: 324,
+      contentHeight: 211,
+      containerLeft: 33,
+      containerTop: 283,
+      bounds: { left: 0, top: 284, right: 390, bottom: 844 },
+    })
+    expect(placed.y).toBe(180 + 18) // default below-cursor placement, container coords
+    expect(283 + placed.y).toBeGreaterThanOrEqual(284) // below the header
+    expect(placed.x).toBeGreaterThanOrEqual(2)
+    expect(placed.x + 324).toBeLessThanOrEqual(390 - 33)
+  })
+
+  it('flips above the cursor when below would overflow the unobscured band', () => {
+    // Cursor near the bottom of the band: below-cursor would overflow it.
+    const placed = clampTooltipPlacement({
+      pointX: 100,
+      pointY: 480,
+      contentWidth: 324,
+      contentHeight: 211,
+      containerLeft: 33,
+      containerTop: 283,
+      bounds: { left: 0, top: 284, right: 390, bottom: 844 },
+    })
+    expect(283 + placed.y).toBeGreaterThanOrEqual(284)
+    expect(283 + placed.y + 211).toBeLessThanOrEqual(844)
+  })
+
+  it('pushes the box below the header when the default spot is obscured', () => {
+    // Chart container scrolled mostly under the header: container top 120,
+    // header bottom 284, cursor at container y=20 (viewport 140 — obscured).
+    const placed = clampTooltipPlacement({
+      pointX: 100,
+      pointY: 20,
+      contentWidth: 324,
+      contentHeight: 211,
+      containerLeft: 33,
+      containerTop: 120,
+      bounds: { left: 0, top: 284, right: 390, bottom: 844 },
+    })
+    expect(120 + placed.y).toBeGreaterThanOrEqual(284) // never behind the header
+    expect(120 + placed.y + 211).toBeLessThanOrEqual(844) // inside the viewport
+  })
+
+  it('pins at the top of an unobscured band too short for the box (degenerate)', () => {
+    const placed = clampTooltipPlacement({
+      pointX: 100,
+      pointY: 30,
+      contentWidth: 324,
+      contentHeight: 211,
+      containerLeft: 33,
+      containerTop: 120,
+      bounds: { left: 0, top: 284, right: 390, bottom: 400 },
+    })
+    expect(120 + placed.y).toBe(286) // band top + 2px margin, nothing better exists
+  })
+
+  it('clamps horizontally inside the unobscured band', () => {
+    const placed = clampTooltipPlacement({
+      pointX: 350,
+      pointY: 180,
+      contentWidth: 324,
+      contentHeight: 211,
+      containerLeft: 33,
+      containerTop: 283,
+      bounds: { left: 0, top: 284, right: 390, bottom: 844 },
+    })
+    expect(placed.x).toBeLessThanOrEqual(390 - 33 - 324 - 2)
   })
 })

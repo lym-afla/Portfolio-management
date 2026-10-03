@@ -73,9 +73,9 @@ async function clickFrequency(run, label) {
   })()`])
 }
 
-/** Real CDP mouse move over the pilot canvas at a horizontal fraction. A
-    small two-step sweep guarantees the axis-pointer update fires. */
-async function hoverCanvasPoint(run, xFraction) {
+/** Real CDP mouse move over the pilot canvas at horizontal/vertical fractions.
+    A small two-step sweep guarantees the axis-pointer update fires. */
+async function hoverCanvasPoint(run, xFraction, yFraction = 0.5) {
   const point = await evalProbe(run, `(() => {
     const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
     if (!canvas) return { present: false }
@@ -83,7 +83,7 @@ async function hoverCanvasPoint(run, xFraction) {
     return {
       present: true,
       x: Math.round(rect.left + rect.width * ${xFraction}),
-      y: Math.round(rect.top + rect.height * 0.5),
+      y: Math.round(rect.top + rect.height * ${yFraction}),
       inView: rect.top < window.innerHeight && rect.bottom > 0,
     }
   })()`)
@@ -94,19 +94,28 @@ async function hoverCanvasPoint(run, xFraction) {
   await run(['mouse', 'move', String(point.x), String(point.y)])
 }
 
-/** Waits for a visible, non-empty tooltip and returns its geometry + text.
-    The tooltip is a child of the echarts init div (the canvas' grandparent). */
-async function waitForTooltip(run) {
-  await run(['wait', '--fn', `(() => {
-    const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
-    const init = canvas && canvas.parentElement && canvas.parentElement.parentElement
-    if (!init) return false
-    return [...init.children].some((child) => child.tagName === 'DIV' && !child.contains(canvas) && (child.innerText || '').trim().length > 0 && child.getBoundingClientRect().width > 0)
-  })()`, '--timeout', '8000'])
+/** Scrolls the page so the pilot canvas top sits at the given viewport y —
+    a controlled partially-scrolled position, not a screenshot-specific one. */
+async function scrollCanvasTopTo(run, canvasTopViewport) {
   return evalProbe(run, `(() => {
     const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
-    const init = canvas && canvas.parentElement && canvas.parentElement.parentElement
-    const tooltip = init && [...init.children].find((child) => child.tagName === 'DIV' && !child.contains(canvas) && (child.innerText || '').trim().length > 0)
+    if (!canvas) return { present: false }
+    const rect = canvas.getBoundingClientRect()
+    window.scrollBy(0, rect.top - ${canvasTopViewport})
+    return { present: true, scrollY: Math.round(window.scrollY), canvasTop: Math.round(canvas.getBoundingClientRect().top) }
+  })()`)
+}
+
+/** Waits for a visible, non-empty tooltip and returns its geometry + text.
+    Located by the stable nav-chart-tooltip class, wherever ECharts attached
+    it (chart container before the round-4 fix, document body after). */
+async function waitForTooltip(run) {
+  await run(['wait', '--fn', `(() => {
+    const tooltip = document.querySelector('.nav-chart-tooltip')
+    return !!tooltip && (tooltip.innerText || '').trim().length > 0 && tooltip.getBoundingClientRect().width > 0
+  })()`, '--timeout', '8000'])
+  return evalProbe(run, `(() => {
+    const tooltip = document.querySelector('.nav-chart-tooltip')
     if (!tooltip) return { present: false }
     const rect = tooltip.getBoundingClientRect()
     return {
@@ -117,6 +126,7 @@ async function waitForTooltip(run) {
       top: Math.round(rect.top),
       bottom: Math.round(rect.bottom),
       width: Math.round(rect.width),
+      attachedToBody: tooltip.parentElement === document.body,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
     }
@@ -131,6 +141,85 @@ function assertTooltipWithinViewport(tooltip, context) {
   assert.ok(tooltip.right <= tooltip.viewportWidth, `${context}: tooltip right ${tooltip.right}px within viewport`)
   assert.ok(tooltip.top >= 0 && tooltip.bottom <= tooltip.viewportHeight,
     `${context}: tooltip vertically within viewport (top ${tooltip.top}px, bottom ${tooltip.bottom}px)`)
+}
+
+const TOOLTIP_VISIBILITY_PROBE = `(() => {
+  const tooltip = document.querySelector('.nav-chart-tooltip')
+  if (!tooltip) return { present: false }
+  const rect = tooltip.getBoundingClientRect()
+  const isOverlay = (el) => {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const st = getComputedStyle(n)
+      if (st.position === 'fixed' || st.position === 'sticky') return true
+    }
+    return false
+  }
+  const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+  const canvasRect = canvas.getBoundingClientRect()
+  const centerX = Math.round(canvasRect.left + canvasRect.width / 2)
+  let headerBottom = 0
+  for (let y = 2; y < Math.min(canvasRect.bottom - 1, window.innerHeight - 1); y += 2) {
+    const el = document.elementFromPoint(centerX, y)
+    if (el && !isOverlay(el)) { headerBottom = y; break }
+  }
+  // ECharts tooltips are pointer-events:none, which elementFromPoint skips;
+  // make the box hittable for the sampling so it can prove it is topmost.
+  const previousPointerEvents = tooltip.style.pointerEvents
+  tooltip.style.pointerEvents = 'auto'
+  try {
+    const failures = []
+    const points = []
+    for (const [fx, fy, inset] of [[0, 0, 6], [1, 0, 6], [0, 1, 6], [1, 1, 6], [0.5, 0, 2], [0.5, 1, 2], [0, 0.5, 2], [1, 0.5, 2], [0.5, 0.5, 0]]) {
+      points.push([rect.left + inset + (rect.width - 2 * inset) * fx, rect.top + inset + (rect.height - 2 * inset) * fy])
+    }
+    for (const [px, py] of points) {
+      const el = document.elementFromPoint(Math.round(px), Math.round(py))
+      if (!el || !(el === tooltip || tooltip.contains(el))) {
+        failures.push({ px: Math.round(px), py: Math.round(py), coveredBy: el ? el.tagName + '.' + String(el.className).slice(0, 40) : 'none' })
+      }
+    }
+    return {
+      present: true,
+      top: Math.round(rect.top),
+      bottom: Math.round(rect.bottom),
+      left: Math.round(rect.left),
+      right: Math.round(rect.right),
+      headerBottom,
+      fullyVisible: failures.length === 0,
+      failures: failures.slice(0, 6),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }
+  } finally {
+    tooltip.style.pointerEvents = previousPointerEvents
+  }
+})()`
+
+/** Actual visibility, not merely viewport containment: every sampled point of
+    the tooltip box must hit-test to the tooltip itself, and the box must sit
+    below the fixed header's measured bottom edge. */
+async function assertTooltipFullyVisible(run, context) {
+  const probe = await evalProbe(run, TOOLTIP_VISIBILITY_PROBE)
+  assert.ok(probe.present, `${context}: tooltip present for visibility probe`)
+  assert.equal(probe.fullyVisible, true,
+    `${context}: tooltip fully visible (top ${probe.top}, headerBottom ${probe.headerBottom}, covered: ${JSON.stringify(probe.failures)})`)
+  assert.ok(probe.top >= probe.headerBottom - 1,
+    `${context}: tooltip top ${probe.top} clears the fixed header bottom ${probe.headerBottom}`)
+  return probe
+}
+
+/** Scrolls the canvas top to a partially-scrolled position, opens the tooltip
+    near the left edge and demands full visibility there. */
+async function assertTooltipAtPartialScroll(run, canvasTopViewport, context) {
+  const scrolled = await scrollCanvasTopTo(run, canvasTopViewport)
+  assert.ok(scrolled.present, `${context}: canvas present for scrolling`)
+  assert.ok(Math.abs(scrolled.canvasTop - canvasTopViewport) <= 2,
+    `${context}: canvas scrolled to ${canvasTopViewport} (got ${scrolled.canvasTop})`)
+  await hoverCanvasPoint(run, 0.16)
+  const tooltip = await waitForTooltip(run)
+  assertTooltipWithinViewport(tooltip, context)
+  const visibility = await assertTooltipFullyVisible(run, context)
+  return { tooltip, visibility }
 }
 
 async function measureDashboard({ run, label, root }) {
@@ -351,29 +440,34 @@ export async function runChartsC3PilotFlow({
     }
     await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
     await run(['wait', '150'])
-    // --- mobile tooltip containment: open near BOTH edges with both IRRs ----
+    // --- mobile tooltip containment AND visibility --------------------------
     // The long IRR lines previously produced a ~498px tooltip starting at
-    // x=-298, clipped by the container. Every line must stay readable and
-    // the whole tooltip within the viewport; chart/legend keep their sizes.
+    // x=-298 (fixed in round 3), and the confined box still slid UNDER the
+    // fixed header at partially scrolled positions (round 4). Each partial
+    // scroll position must show the COMPLETE tooltip — hit-tested, not just
+    // viewport-contained — with both IRRs, horizons and partial-value text.
     const cdpInfo = await runAgentBrowser({ args: ['get', 'cdp-url'], context: 'charts c3 cdp', initScript, log, session })
     const cdpUrl = cdpInfo.cdpUrl ?? (cdpInfo.result && cdpInfo.result.cdpUrl)
-    await hoverCanvasPoint(run, 0.16)
-    let tooltip = await waitForTooltip(run)
-    assertTooltipWithinViewport(tooltip, 'mobile left-edge tooltip')
-    assert.match(String(tooltip.text), /Since-inception IRR \(annualized\)/, 'tooltip: inception control name')
-    assert.match(String(tooltip.text), /Interval IRR \(annualized\)/, 'tooltip: interval control name')
-    assert.match(String(tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: inception horizon')
-    assert.match(String(tooltip.text), /N\/A — not_available \(solver_unavailable\)/, 'tooltip: unavailable IRR status text')
+    let lastMobile = null
+    for (const canvasTop of [242, 120, 283]) {
+      lastMobile = await assertTooltipAtPartialScroll(run, canvasTop, `mobile partial-scroll canvas-top ${canvasTop} left-edge tooltip`)
+    }
+    assert.match(String(lastMobile.tooltip.text), /Since-inception IRR \(annualized\)/, 'tooltip: inception control name')
+    assert.match(String(lastMobile.tooltip.text), /Interval IRR \(annualized\)/, 'tooltip: interval control name')
+    assert.match(String(lastMobile.tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: inception horizon')
+    assert.match(String(lastMobile.tooltip.text), /N\/A — not_available \(solver_unavailable\)/, 'tooltip: unavailable IRR status text')
     // agent-browser's own screenshot closes the tooltip before capture, so
     // the mobile artifact is taken over CDP: hover, verify open, capture in
-    // the same instant. The captured geometry is asserted like the live one.
-    // The marker planted here lets the capture script find THIS tab among any
-    // same-origin stale tabs; bringToFront forces a fresh compositor frame.
+    // the same instant. The marker planted here lets the capture script find
+    // THIS tab among any same-origin stale tabs; bringToFront forces a fresh
+    // compositor frame. The capture itself re-scrolls to the representative
+    // partially-scrolled position and verifies visibility before shooting.
     await run(['eval', `(() => { window.__c3CaptureTab = true; return true })()`])
     const mobileCapture = await new Promise((resolveSpawn, rejectSpawn) => {
       const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-tooltip-capture.mjs'), String(cdpUrl), pilotServer.origin, resolve(DESIGN_ASSETS, 'c3-nav-mobile-tooltip.png'), '0.16'], { stdio: 'pipe' })
       let out = ''
       child.stdout.on('data', (chunk) => { out += chunk })
+      child.stderr.on('data', (chunk) => { out += chunk })
       child.on('error', rejectSpawn)
       child.on('close', (code) => resolveSpawn({ code, out }))
     })
@@ -382,9 +476,13 @@ export async function runChartsC3PilotFlow({
     const capturedTooltip = JSON.parse((mobileCapture.out.match(/TOOLTIP_STATE (\{.*\})/) || [])[1] || 'null')
     assert.ok(capturedTooltip, 'mobile capture reports tooltip geometry')
     assertTooltipWithinViewport(capturedTooltip, 'captured mobile left-edge tooltip')
+    assert.equal(capturedTooltip.fullyVisible, true, `captured tooltip fully visible (failures: ${JSON.stringify(capturedTooltip.failures || [])})`)
+    assert.ok(capturedTooltip.top >= capturedTooltip.headerBottom - 1,
+      `captured tooltip top ${capturedTooltip.top} clears header bottom ${capturedTooltip.headerBottom}`)
     await hoverCanvasPoint(run, 0.84)
-    tooltip = await waitForTooltip(run)
+    let tooltip = await waitForTooltip(run)
     assertTooltipWithinViewport(tooltip, 'mobile right-edge tooltip')
+    await assertTooltipFullyVisible(run, 'mobile right-edge tooltip')
     assert.match(String(tooltip.text), /USD|N\/A/, 'tooltip: exact server displays present')
     // Sizing survives the tooltip interactions.
     const sizedAfterTooltips = await evalProbe(run, `(() => {
@@ -401,6 +499,7 @@ export async function runChartsC3PilotFlow({
     await hoverCanvasPoint(run, 0.84)
     tooltip = await waitForTooltip(run)
     assertTooltipWithinViewport(tooltip, 'desktop-restore right-edge tooltip')
+    await assertTooltipFullyVisible(run, 'desktop-restore right-edge tooltip')
 
     // --- native 200% zoom (CDP key events, dpr-verified) --------------------
     const zoom = await new Promise((resolveSpawn, rejectSpawn) => {
@@ -417,6 +516,7 @@ export async function runChartsC3PilotFlow({
     await hoverCanvasPoint(run, 0.16)
     tooltip = await waitForTooltip(run)
     assertTooltipWithinViewport(tooltip, '200% zoom left-edge tooltip')
+    await assertTooltipFullyVisible(run, '200% zoom left-edge tooltip')
     await new Promise((resolveSpawn, rejectSpawn) => {
       const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-native-zoom.mjs'), String(cdpUrl), pilotServer.origin, '100'], { stdio: 'ignore' })
       child.on('error', rejectSpawn)
