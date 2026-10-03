@@ -54,6 +54,10 @@ C1's protected `NAV_at_date` diagnostics were reviewed and PR #49 was merged by 
 
 The final release gate is not just passing unit tests: it includes the dashboard/positions visual pilot, grouped column views, actual three solid pies, both IRRs with exact horizons, accessible chart legend/table/tooltip/zoom, complete workflow/route rollout, and D8 acceptance. CSS zoom evidence does not substitute for native browser zoom or production delivery verification.
 
+## Supplementary settings-account correction
+
+PR #54's header account-label fix is user-merged at `610dff992d76fe4f9459f059c6810de2a4e58819` (3 October 2026), verified against GitHub. The separate Profile Settings silent fallback is not fixed: loading a saved identity absent from choices substitutes All accounts before save. Its [implementation handoff](2026-10-03-settings-account-fallback-handoff.md) and [GLM prompt](2026-10-03-settings-account-fallback-glm-prompt.md) are ready for a dedicated `codex/settings-account-selection-preservation` worktree/branch. Preserve identity, label unresolved state, and prevent writes until a valid available choice is resolved. Coordinate the shared ProfileSettings file with D5 through reviewed PR integration. This supplementary fix does not change the 18/24 master-plan count or complete D5. No application gates were run for this documentation-only handoff.
+
 ## Detailed records
 
 ### C2 implementation record
