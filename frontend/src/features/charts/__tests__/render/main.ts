@@ -130,4 +130,20 @@ const harness = createApp({
 
 harness.use(createPinia())
 harness.use(vuetify)
+
+// Cold frontend render timing for the pilot composition (no API involved):
+// script evaluation start to the first painted pilot canvas frame.
+const timing = (window.__harnessTiming = { scriptStart: performance.now(), chartReadyAt: null as number | null })
+const recordChartReady = () => {
+  if (timing.chartReadyAt !== null) return
+  if (document.querySelector('[data-testid="nav-echarts-pilot"] canvas, [data-testid="nav-chart"] canvas')) {
+    requestAnimationFrame(() => {
+      if (timing.chartReadyAt === null) timing.chartReadyAt = performance.now()
+    })
+  }
+}
+const chartObserver = new MutationObserver(recordChartReady)
+chartObserver.observe(document.documentElement, { childList: true, subtree: true })
+recordChartReady()
+
 harness.mount('#harness')

@@ -162,7 +162,7 @@ export async function runChartsC3PilotFlow({
     assert.equal(navRequestCount(fixtureServer) - beforeLegend, 0, 'legend toggles issue no requests')
 
     // --- keyboard/table inspection into the shared model ------------------
-    await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); return true })()`])
+    await run(['eval', `(() => { const row = document.querySelectorAll('[data-testid="nav-echarts-pilot"] tbody tr')[1]; row.focus(); row.click(); document.querySelector('.chart-inspection').scrollIntoView({ block: 'center' }); return true })()`])
     await run(['wait', '150'])
     state = await evalProbe(run, chartState)
     assert.match(String(state.inspection), /Jul-26/, 'inspection shows the selected period')
@@ -194,7 +194,18 @@ export async function runChartsC3PilotFlow({
     assert.equal(buttons.find((entry) => entry.id === 'metric:irr_interval').pressed, 'false', 'hidden IRR stays hidden across refresh')
     const tableText = await evalProbe(run, `document.querySelector('[data-testid="nav-echarts-pilot"] table').innerText`)
     assert.match(tableText, /partial|known subtotal|N\/A/, 'partial/unavailable points stay explicit')
+    // Distinct captures: partial state (table + inspection with partial text
+    // in view), then both IRRs re-shown with the chart, legend and frequency
+    // controls scrolled into view for the desktop capture.
+    await run(['eval', `(() => { document.querySelector('.chart-table').scrollIntoView({ block: 'start' }); return true })()`])
+    await run(['wait', '150'])
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-partial.png')])
+    await clickLegend(run, 'Interval IRR (annualized)')
+    await run(['wait', '150'])
+    buttons = (await evalProbe(run, chartState)).legendButtons
+    assert.equal(buttons.find((entry) => entry.id === 'metric:irr_interval').pressed, 'true', 'both IRRs visible for the desktop capture')
+    await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
+    await run(['wait', '150'])
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-desktop.png')])
 
     // --- mobile profile with real hit-testing ------------------------------
@@ -215,6 +226,8 @@ export async function runChartsC3PilotFlow({
       assert.equal(entry.present, true, `mobile: ${entry.selector} present`)
       assert.equal(entry.hittable, true, `mobile: ${entry.selector} actually hittable`)
     }
+    await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
+    await run(['wait', '150'])
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-mobile.png')])
     await run(['set', 'viewport', '1440', '1000'])
 
@@ -252,6 +265,8 @@ export async function runChartsC3PilotFlow({
     state = await evalProbe(run, chartState)
     assert.equal(state.pilot, false, 'legacy-only stays on the incumbent renderer')
     assert.equal(state.canvas, true, 'legacy-only still renders Chart.js')
+    await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
+    await run(['wait', '150'])
     await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-legacy.png')])
     fixtureServer.charts.scenario = 'malformed'
     const beforeMalformed = navRequestCount(fixtureServer)
@@ -285,15 +300,54 @@ export async function runChartsC3PilotFlow({
     await waitFor(run, `document.querySelector('[data-testid="nav-echarts-pilot"] canvas') !== null`)
     const onMeasurement = await measureDashboard({ run, label: 'dashboard-flag-on', root: pilotDir })
     const echartsFiles = onMeasurement.graph.files.filter((file) => /echarts/i.test(file.asset))
+    // Cold timing and font delivery without injected init scripts (they run
+    // in a separate agent-browser context and proved unreliable): the pilot
+    // renderer's frontend render time comes from the isolated harness's own
+    // same-world instrumentation (read after the harness section); the
+    // dashboards contribute standard navigation timings and the NAV API
+    // request duration from the performance API, keeping API time separate
+    // from render time.
+    const timed = {}
+    for (const [phase, origin, canvasWait] of [
+      ['flagOff', appOrigin, `document.querySelector('[data-testid="nav-chart"] canvas') !== null`],
+      ['flagOn', pilotServer.origin, `document.querySelector('[data-testid="nav-echarts-pilot"] canvas') !== null`],
+    ]) {
+      const measureSession = `c3-measure-${phase}-${process.pid}`
+      const authInitPath = resolve(here, 'auth-init.js')
+      registerSession(measureSession, authInitPath)
+      const timedContext = `charts c3 timing ${phase}`
+      // The init script rides ONLY the open: agent-browser re-executes
+      // --init-script on every command, which would re-run fixture auth.
+      const timedRun = (args, withInit = false) => runAgentBrowser({ args, context: timedContext, initScript: withInit ? authInitPath : undefined, log, session: measureSession })
+      await timedRun(['open', `${origin}/dashboard`], true)
+      await timedRun(['wait', '--fn', canvasWait, '--timeout', '20000'])
+      timed[phase] = await evalProbe(timedRun, `(() => {
+        const navigation = performance.getEntriesByType('navigation')[0] || {}
+        const api = performance.getEntriesByType('resource').find((entry) => entry.name.includes('get-nav-chart-data'))
+        const fonts = performance.getEntriesByType('resource')
+          .filter((entry) => /\\.(woff2?|ttf|otf)/i.test(new URL(entry.name).pathname))
+          .map((entry) => ({ file: new URL(entry.name).pathname.split('/').pop(), transferBytes: entry.transferSize || null }))
+        return {
+          apiMs: api ? Math.round(api.duration) : null,
+          domContentLoadedMs: Math.round(navigation.domContentLoadedEventEnd || 0),
+          loadEventMs: Math.round(navigation.loadEventEnd || 0),
+          canvasPresentMs: Math.round(performance.now()),
+          fonts,
+        }
+      })()`)
+    }
+    let harnessTiming = null
     const report = {
-      note: 'gzip JS/CSS only; fonts excluded (helper limitation); render timing not asserted here',
+      note: 'gzip JS/CSS via the R7 helper; render timing: harness = script start to first painted pilot canvas frame (same-world instrumentation, no API involved); dashboards = standard navigation timings plus the NAV API request duration (API time separate); fonts reported separately from resource timing',
       off: offMeasurement.graph,
       on: onMeasurement.graph,
       echartsFiles,
+      renderTiming: { dashboards: timed, harness: harnessTiming },
     }
     await mkdir(artifactsDir, { recursive: true })
     await writeFile(resolve(artifactsDir, 'charts-c3-delivery.json'), `${JSON.stringify(report, null, 2)}\n`)
     console.log(`MEASURE charts-c3 delivery: flag-off dashboard ${offMeasurement.graph.gzipJsCss} bytes gzip; flag-on ${onMeasurement.graph.gzipJsCss} bytes gzip (echarts assets: ${echartsFiles.length})`)
+    console.log(`MEASURE charts-c3 timing: api ${timed.flagOff.apiMs}/${timed.flagOn.apiMs}ms; domContentLoaded ${timed.flagOff.domContentLoadedMs}/${timed.flagOn.domContentLoadedMs}ms; fonts ${timed.flagOff.fonts.length}/${timed.flagOn.fonts.length}`)
 
     // --- isolated synthetic harness on a dedicated dev server ----------------
     const dev = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5199', '--strictPort'], {
@@ -320,6 +374,13 @@ export async function runChartsC3PilotFlow({
       }))()`)
       assert.match(String(harness.heading), /C3 NAV pilot render harness/, 'harness mounts')
       assert.equal(harness.pilot, true, 'harness renders the pilot')
+      // The harness records its own cold frontend render timing (script
+      // evaluation to first painted pilot canvas frame; no API involved).
+      await waitFor(run, `window.__harnessTiming && window.__harnessTiming.chartReadyAt !== null`)
+      harnessTiming = await evalProbe(run, `(() => {
+        const timing = window.__harnessTiming
+        return { scriptStartMs: Math.round(timing.scriptStart), chartReadyMs: Math.round(timing.chartReadyAt), renderMs: Math.round(timing.chartReadyAt - timing.scriptStart) }
+      })()`)
       // Scenario controls: empty and invalid-contract states.
       await run(['eval', `([...document.querySelectorAll('.harness__controls button')].find(el => el.textContent === 'Empty v2')?.click(), true)`])
       await waitFor(run, `document.querySelector('[data-testid="nav-echarts-pilot"]')?.innerText.includes('No data for the selected account') === true`)
@@ -330,6 +391,12 @@ export async function runChartsC3PilotFlow({
       if (process.platform === 'win32') spawn('taskkill', ['/pid', String(dev.pid), '/T', '/F'], { stdio: 'ignore' })
       else dev.kill('SIGTERM')
     }
+
+    // The report is completed after the harness so its render timing is
+    // included, then persisted for the evidence record.
+    report.renderTiming.harness = harnessTiming
+    await writeFile(resolve(artifactsDir, 'charts-c3-delivery.json'), `${JSON.stringify(report, null, 2)}\n`)
+    console.log(`MEASURE charts-c3 harness render: ${harnessTiming ? harnessTiming.renderMs : 'n/a'}ms (frontend only, no API)`)
 
     console.log('PASS charts-c3 pilot flow (dashboard, flag-on artifact)')
   } finally {

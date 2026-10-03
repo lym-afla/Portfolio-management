@@ -232,7 +232,7 @@ async function main() {
                 frontendRoot,
                 fixtureServer,
                 log,
-                registerSession: (extra) => sessions.set(extra, resolve(browserDir, 'auth-init.js')),
+                registerSession: (extra, extraInit) => sessions.set(extra, extraInit ?? resolve(browserDir, 'auth-init.js')),
                 artifactsDir,
               })
               console.log(`PASS ${viewport.name} charts c3 pilot flow`)
