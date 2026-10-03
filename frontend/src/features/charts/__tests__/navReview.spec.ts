@@ -345,3 +345,21 @@ describe('round 2: monetary displays render verbatim with separators', () => {
     expect(tooltip).not.toContain('USD 10000')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Review round 3: the long axis tooltip must wrap and stay confined.
+
+describe('round 3: mobile tooltip wrapping and confinement', () => {
+  it('configures confine, a wrap-friendly max width and a stable class', () => {
+    const document = parsedDocument()
+    const option = buildNavOption(document, defaultInteraction(document)) as {
+      tooltip?: { confine?: boolean; className?: string; extraCssText?: string }
+    }
+    expect(option.tooltip?.confine).toBe(true)
+    expect(option.tooltip?.className).toBe('nav-chart-tooltip')
+    const css = String(option.tooltip?.extraCssText ?? '')
+    expect(css).toMatch(/white-space:\s*normal/)
+    expect(css).toMatch(/max-width/)
+    expect(css).toMatch(/break-word/)
+  })
+})

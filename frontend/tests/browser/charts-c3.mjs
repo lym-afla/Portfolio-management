@@ -73,6 +73,66 @@ async function clickFrequency(run, label) {
   })()`])
 }
 
+/** Real CDP mouse move over the pilot canvas at a horizontal fraction. A
+    small two-step sweep guarantees the axis-pointer update fires. */
+async function hoverCanvasPoint(run, xFraction) {
+  const point = await evalProbe(run, `(() => {
+    const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+    if (!canvas) return { present: false }
+    const rect = canvas.getBoundingClientRect()
+    return {
+      present: true,
+      x: Math.round(rect.left + rect.width * ${xFraction}),
+      y: Math.round(rect.top + rect.height * 0.5),
+      inView: rect.top < window.innerHeight && rect.bottom > 0,
+    }
+  })()`)
+  assert.ok(point.present, 'pilot canvas present for tooltip hover')
+  assert.ok(point.inView, 'pilot canvas in view for tooltip hover')
+  await run(['mouse', 'move', String(Math.max(1, point.x - 12)), String(point.y)])
+  await run(['wait', '60'])
+  await run(['mouse', 'move', String(point.x), String(point.y)])
+}
+
+/** Waits for a visible, non-empty tooltip and returns its geometry + text.
+    The tooltip is a child of the echarts init div (the canvas' grandparent). */
+async function waitForTooltip(run) {
+  await run(['wait', '--fn', `(() => {
+    const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+    const init = canvas && canvas.parentElement && canvas.parentElement.parentElement
+    if (!init) return false
+    return [...init.children].some((child) => child.tagName === 'DIV' && !child.contains(canvas) && (child.innerText || '').trim().length > 0 && child.getBoundingClientRect().width > 0)
+  })()`, '--timeout', '8000'])
+  return evalProbe(run, `(() => {
+    const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+    const init = canvas && canvas.parentElement && canvas.parentElement.parentElement
+    const tooltip = init && [...init.children].find((child) => child.tagName === 'DIV' && !child.contains(canvas) && (child.innerText || '').trim().length > 0)
+    if (!tooltip) return { present: false }
+    const rect = tooltip.getBoundingClientRect()
+    return {
+      present: true,
+      text: tooltip.innerText,
+      left: Math.round(rect.left),
+      right: Math.round(rect.right),
+      top: Math.round(rect.top),
+      bottom: Math.round(rect.bottom),
+      width: Math.round(rect.width),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }
+  })()`)
+}
+
+function assertTooltipWithinViewport(tooltip, context) {
+  assert.ok(tooltip.present, `${context}: tooltip present`)
+  assert.ok(tooltip.width > 0 && tooltip.width <= tooltip.viewportWidth,
+    `${context}: tooltip width ${tooltip.width}px fits the ${tooltip.viewportWidth}px viewport`)
+  assert.ok(tooltip.left >= 0, `${context}: tooltip left ${tooltip.left}px not off-screen`)
+  assert.ok(tooltip.right <= tooltip.viewportWidth, `${context}: tooltip right ${tooltip.right}px within viewport`)
+  assert.ok(tooltip.top >= 0 && tooltip.bottom <= tooltip.viewportHeight,
+    `${context}: tooltip vertically within viewport (top ${tooltip.top}px, bottom ${tooltip.bottom}px)`)
+}
+
 async function measureDashboard({ run, label, root }) {
   await run(['wait', '--load', 'networkidle'])
   const observed = await run(['eval', `performance.getEntriesByType('resource').map(entry => entry.name).filter(name => new URL(name).origin === location.origin)`])
@@ -291,12 +351,58 @@ export async function runChartsC3PilotFlow({
     }
     await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
     await run(['wait', '150'])
-    await run(['screenshot', resolve(DESIGN_ASSETS, 'c3-nav-mobile.png')])
-    await run(['set', 'viewport', '1440', '1000'])
-
-    // --- native 200% zoom (CDP key events, dpr-verified) --------------------
+    // --- mobile tooltip containment: open near BOTH edges with both IRRs ----
+    // The long IRR lines previously produced a ~498px tooltip starting at
+    // x=-298, clipped by the container. Every line must stay readable and
+    // the whole tooltip within the viewport; chart/legend keep their sizes.
     const cdpInfo = await runAgentBrowser({ args: ['get', 'cdp-url'], context: 'charts c3 cdp', initScript, log, session })
     const cdpUrl = cdpInfo.cdpUrl ?? (cdpInfo.result && cdpInfo.result.cdpUrl)
+    await hoverCanvasPoint(run, 0.16)
+    let tooltip = await waitForTooltip(run)
+    assertTooltipWithinViewport(tooltip, 'mobile left-edge tooltip')
+    assert.match(String(tooltip.text), /Since-inception IRR \(annualized\)/, 'tooltip: inception control name')
+    assert.match(String(tooltip.text), /Interval IRR \(annualized\)/, 'tooltip: interval control name')
+    assert.match(String(tooltip.text), /Inception to \d{4}-\d{2}-\d{2}/, 'tooltip: inception horizon')
+    assert.match(String(tooltip.text), /N\/A — not_available \(solver_unavailable\)/, 'tooltip: unavailable IRR status text')
+    // agent-browser's own screenshot closes the tooltip before capture, so
+    // the mobile artifact is taken over CDP: hover, verify open, capture in
+    // the same instant. The captured geometry is asserted like the live one.
+    // The marker planted here lets the capture script find THIS tab among any
+    // same-origin stale tabs; bringToFront forces a fresh compositor frame.
+    await run(['eval', `(() => { window.__c3CaptureTab = true; return true })()`])
+    const mobileCapture = await new Promise((resolveSpawn, rejectSpawn) => {
+      const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-tooltip-capture.mjs'), String(cdpUrl), pilotServer.origin, resolve(DESIGN_ASSETS, 'c3-nav-mobile-tooltip.png'), '0.16'], { stdio: 'pipe' })
+      let out = ''
+      child.stdout.on('data', (chunk) => { out += chunk })
+      child.on('error', rejectSpawn)
+      child.on('close', (code) => resolveSpawn({ code, out }))
+    })
+    console.log(mobileCapture.out.trim())
+    assert.equal(mobileCapture.code, 0, `mobile screenshot captured with tooltip open (${mobileCapture.out.trim()})`)
+    const capturedTooltip = JSON.parse((mobileCapture.out.match(/TOOLTIP_STATE (\{.*\})/) || [])[1] || 'null')
+    assert.ok(capturedTooltip, 'mobile capture reports tooltip geometry')
+    assertTooltipWithinViewport(capturedTooltip, 'captured mobile left-edge tooltip')
+    await hoverCanvasPoint(run, 0.84)
+    tooltip = await waitForTooltip(run)
+    assertTooltipWithinViewport(tooltip, 'mobile right-edge tooltip')
+    assert.match(String(tooltip.text), /USD|N\/A/, 'tooltip: exact server displays present')
+    // Sizing survives the tooltip interactions.
+    const sizedAfterTooltips = await evalProbe(run, `(() => {
+      const panel = document.querySelector('.nav-chart-panel__pilot')
+      const canvas = document.querySelector('[data-testid="nav-echarts-pilot"] canvas')
+      return { panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : null, canvasWidth: canvas ? Math.round(canvas.getBoundingClientRect().width) : null }
+    })()`)
+    assert.ok(sizedAfterTooltips.panelWidth <= 392, `tooltip phase keeps mobile panel size (${sizedAfterTooltips.panelWidth}px)`)
+    assert.ok(sizedAfterTooltips.canvasWidth <= sizedAfterTooltips.panelWidth + 1, 'tooltip phase keeps canvas within panel')
+    await run(['set', 'viewport', '1440', '1000'])
+    await run(['wait', '400'])
+    // --- desktop restore: tooltip still confined at the right edge ----------
+    await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
+    await hoverCanvasPoint(run, 0.84)
+    tooltip = await waitForTooltip(run)
+    assertTooltipWithinViewport(tooltip, 'desktop-restore right-edge tooltip')
+
+    // --- native 200% zoom (CDP key events, dpr-verified) --------------------
     const zoom = await new Promise((resolveSpawn, rejectSpawn) => {
       const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-native-zoom.mjs'), String(cdpUrl), pilotServer.origin, '200'], { stdio: 'pipe' })
       let out = ''
@@ -305,6 +411,12 @@ export async function runChartsC3PilotFlow({
       child.on('close', (code) => resolveSpawn({ code, out }))
     })
     assert.equal(zoom.code, 0, `native 200% zoom must be dpr-verified (${zoom.out.trim()})`)
+    // At 200% the CSS viewport shrinks: the tooltip must still wrap and stay
+    // inside it near the left edge.
+    await run(['eval', `(() => { document.querySelector('[data-testid="nav-chart"]').scrollIntoView({ block: 'start' }); return true })()`])
+    await hoverCanvasPoint(run, 0.16)
+    tooltip = await waitForTooltip(run)
+    assertTooltipWithinViewport(tooltip, '200% zoom left-edge tooltip')
     await new Promise((resolveSpawn, rejectSpawn) => {
       const child = spawn(process.execPath, [resolve(here, '../../scripts/qa-native-zoom.mjs'), String(cdpUrl), pilotServer.origin, '100'], { stdio: 'ignore' })
       child.on('error', rejectSpawn)

@@ -62,9 +62,13 @@ const pressZoomKey = async (sessionId, virtualKeyCode) => {
 ws.onopen = async () => {
   try {
     const { targetInfos } = await send('Target.getTargets')
-    const page = targetInfos.find(
+    // Several page tabs can sit at the same origin (stale sessions from
+    // earlier runs); the harness-driven tab is the one its agent-browser
+    // connection is attached to, so prefer attached targets.
+    const pages = targetInfos.filter(
       (target) => target.type === 'page' && target.url.startsWith(pageOrigin),
     )
+    const page = pages.find((target) => target.attached === true) ?? pages[0]
     if (!page) throw new Error(`No page target for ${pageOrigin}`)
     const { sessionId } = await send('Target.attachToTarget', {
       targetId: page.targetId,

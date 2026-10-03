@@ -81,6 +81,13 @@ export function buildNavOption(document: ChartDocument, interaction: ChartIntera
     animation: false,
     tooltip: {
       trigger: 'axis',
+      // Keep the tooltip inside the chart container on narrow viewports and
+      // let long IRR lines wrap: confine clamps position, the CSS caps width
+      // below the viewport and breaks over-long words. Removing clipping
+      // alone would leave an off-screen tooltip.
+      confine: true,
+      className: 'nav-chart-tooltip',
+      extraCssText: 'max-width: min(340px, 92vw); white-space: normal; overflow-wrap: break-word;',
       formatter: (params: unknown) => navTooltip(document, seriesById, params),
     },
     xAxis: [{
