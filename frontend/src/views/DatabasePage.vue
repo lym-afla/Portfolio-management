@@ -64,7 +64,7 @@ const landingItems = [
   { to: '/database/accounts', title: 'Accounts', icon: 'mdi-wallet-outline', subtitle: 'Investment accounts per broker with cash balances by currency.' },
   { to: '/database/securities', title: 'Securities', icon: 'mdi-file-tree-outline', subtitle: 'The security catalog: identifiers, types, values and detail pages.' },
   { to: '/database/prices', title: 'Prices', icon: 'mdi-chart-line', subtitle: 'Price history per security and date, with imports.' },
-  { to: '/database/fx', title: 'FX', icon: 'mdi-currency-exchange', subtitle: 'Exchange-rate grid by date and currency pair.' },
+  { to: '/database/fx', title: 'FX', icon: 'mdi-swap-horizontal', subtitle: 'Exchange-rate grid by date and currency pair.' },
 ]
 
 const pageTitle = computed(() => {

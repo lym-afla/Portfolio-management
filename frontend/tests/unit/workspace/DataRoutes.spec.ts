@@ -16,8 +16,17 @@ import DatabasePage from '@/views/DatabasePage.vue'
 import BrokersPage from '@/views/database/BrokersPage.vue'
 import AccountsPage from '@/views/database/AccountsPage.vue'
 import SecuritiesPage from '@/views/database/SecuritiesPage.vue'
+import PricesPage from '@/views/database/PricesPage.vue'
+import FXPage from '@/views/database/FXPage.vue'
 
 const api = vi.hoisted(() => ({
+  getAssetTypes: vi.fn(),
+  getAccounts: vi.fn(),
+  getSecurities: vi.fn(),
+  getPrices: vi.fn(),
+  getPriceDetails: vi.fn(),
+  deletePrice: vi.fn(),
+  getFXData: vi.fn(),
   getBrokersTable: vi.fn(),
   deleteBroker: vi.fn(),
   getAccountsTable: vi.fn(),
@@ -70,6 +79,36 @@ const stubs = {
     emits: ['update:modelValue', 'created'],
     template: '<div data-testid="merger-dialog" />',
   },
+  PriceFormDialog: {
+    name: 'PriceFormDialog',
+    props: ['modelValue', 'editItem', 'securities'],
+    emits: ['update:modelValue', 'price-added', 'price-updated'],
+    template: '<div data-testid="price-dialog">{{ editItem ? editItem.date : "add" }}</div>',
+  },
+  PriceImportDialog: {
+    name: 'PriceImportDialog',
+    props: ['modelValue'],
+    emits: ['update:modelValue', 'prices-imported'],
+    template: '<div data-testid="price-import-dialog" />',
+  },
+  FXDialog: {
+    name: 'FXDialog',
+    props: ['modelValue', 'editItem', 'prefill'],
+    emits: ['update:modelValue', 'fx-added', 'fx-updated', 'fx-delete'],
+    template: '<div data-testid="fx-dialog">{{ editItem ? editItem.id : (prefill ? prefill.date : "add") }}</div>',
+  },
+  FXImportDialog: {
+    name: 'FXImportDialog',
+    props: ['modelValue'],
+    emits: ['update:modelValue', 'import-completed', 'refresh-table'],
+    template: '<div data-testid="fx-import-dialog" />',
+  },
+  DateRangeSelector: {
+    name: 'DateRangeSelector',
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<div data-testid="date-range-selector" />',
+  },
 }
 
 async function mountPage(path = '/database') {
@@ -85,8 +124,8 @@ async function mountPage(path = '/database') {
           { path: 'brokers', component: BrokersPage },
           { path: 'accounts', component: AccountsPage },
           { path: 'securities', component: SecuritiesPage },
-          { path: 'prices', component: { template: '<div />' } },
-          { path: 'fx', component: { template: '<div />' } },
+          { path: 'prices', component: PricesPage },
+          { path: 'fx', component: FXPage },
         ],
       },
       { path: '/database/securities/:id', name: 'SecurityDetail', component: { template: '<div />' } },
@@ -117,6 +156,22 @@ beforeEach(() => {
   api.deleteBroker.mockResolvedValue({})
   api.deleteAccount.mockResolvedValue({})
   api.deleteSecurity.mockResolvedValue({})
+  api.getAssetTypes.mockResolvedValue([{ text: 'Stock', value: 'Stock' }])
+  api.getAccounts.mockResolvedValue([{ id: 1, name: 'Main' }])
+  api.getSecurities.mockResolvedValue([{ id: 1, name: 'Fixture Security' }])
+  api.getPrices.mockResolvedValue({
+    prices: [{ id: 41, date: '01-Jan-25', security__name: 'Fixture Security', security__type: 'Bond', security__currency: '$', security__id: 31, price: '98.50' }],
+    total_items: 1, current_page: 1, total_pages: 1,
+  })
+  api.getPriceDetails.mockResolvedValue({ id: 41, date: '2025-01-01', security: 31, price: '98.50' })
+  api.deletePrice.mockResolvedValue({})
+  api.getFXData.mockResolvedValue({
+    results: [
+      { id: 51, date: '2026-09-08', from_currency: 'USD', to_currency: 'EUR', rate: '0.9500' },
+      { id: 52, date: '2026-09-07', from_currency: 'USD', to_currency: 'GBP', rate: '0.8000' },
+    ],
+    count: 2, current_page: 1, total_pages: 1,
+  })
 })
 
 describe('/database landing', () => {
@@ -245,5 +300,66 @@ describe('/database/securities', () => {
     await flushPromises()
     expect(api.deleteSecurity).toHaveBeenCalledWith(31)
     expect(api.getSecuritiesForDatabase).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('/database/prices', () => {
+  it('keeps the security/date filters, unit hint and primary actions with the exact price string', async () => {
+    const wrapper = await mountPage('/database/prices')
+    await flushPromises()
+    const text = wrapper.text()
+    expect(wrapper.find('h2').text()).toBe('Prices')
+    expect(text).toContain('Asset Types')
+    expect(text).toContain('Accounts')
+    expect(text).toContain('Securities')
+    expect(text).toContain('Start Date')
+    expect(text).toContain('End Date')
+    expect(text).toContain("security's trading currency")
+    expect(text).toContain('98.50')
+    const buttons = wrapper.findAll('button').map((b) => b.text())
+    expect(buttons).toContain('Add Price Entry')
+    expect(buttons).toContain('Import Prices')
+    expect(buttons).toContain('Apply Filters')
+  })
+
+  it('opens the import entrypoint and confirms price deletion with exact identity', async () => {
+    const wrapper = await mountPage('/database/prices')
+    await flushPromises()
+    await wrapper.findAll('button').find((b) => b.text() === 'Import Prices')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="price-import-dialog"]').exists()).toBe(true)
+
+    const deleteButton = wrapper
+      .findAll('button')
+      .find((b) => (b.attributes('aria-label') || '').includes('Fixture Security') && (b.attributes('aria-label') || '').includes('Delete'))
+    expect(deleteButton).toBeTruthy()
+    await deleteButton!.trigger('click')
+    await flushPromises()
+    const dialog = wrapper.findComponent({ name: 'ConfirmActionDialog' })
+    const subject = dialog.props('subject')
+    expect(subject.details.some((d: { value: string }) => d.value === '01-Jan-25')).toBe(true)
+    expect(subject.details.some((d: { value: string }) => d.value === '98.50 $')).toBe(true)
+    await dialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(api.deletePrice).toHaveBeenCalledWith(41)
+    expect(api.getPrices).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('/database/fx', () => {
+  it('renders the pivot with pair labels and orientation note, and confirms delete identity', async () => {
+    const wrapper = await mountPage('/database/fx')
+    await flushPromises()
+    await flushPromises()
+    const text = wrapper.text()
+    expect(wrapper.find('h2').text()).toBe('FX rates')
+    expect(text).toContain('USD/EUR')
+    expect(text).toContain('USD/GBP')
+    expect(text).toContain('0.9500')
+    expect(text).toContain('—')
+    expect(text).toContain('quoted from the first currency to the second')
+    expect(wrapper.find('[data-testid="date-range-selector"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').map((b) => b.text())).toContain('Add FX Rate')
+    expect(wrapper.findAll('button').map((b) => b.text())).toContain('Import FX Rates')
   })
 })

@@ -181,7 +181,7 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeSummaryDialog"
+        <v-btn color="primary" variant="tonal" @click="closeSummaryDialog"
           >Close</v-btn
         >
       </v-card-actions>

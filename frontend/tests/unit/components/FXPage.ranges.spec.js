@@ -31,7 +31,9 @@ it('renders a readable missing-rate dash for an absent date/pair cell', async ()
   const table = defineComponent({ props: ['items'], setup(props, { slots }) {
     return () => h('table', props.items.flatMap(item => slots.item({ item })))
   } })
-  const wrapper = mount(FXPage, { shallow: true, global: { plugins: [pinia], stubs: { VDataTable: table } } })
+  // The section wrapper owns the table slot in shallow mode; render it through.
+  const section = { template: '<section><slot /></section>' }
+  const wrapper = mount(FXPage, { shallow: true, global: { plugins: [pinia], stubs: { VDataTable: table, WorkspaceSection: section } } })
   await flushPromises()
   expect(wrapper.findAll('.cell-btn').map(cell => cell.text())).toContain('\u2014')
   wrapper.unmount()

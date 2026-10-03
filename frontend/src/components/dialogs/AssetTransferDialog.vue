@@ -110,7 +110,7 @@
 
       <v-card-actions>
         <v-spacer />
-        <v-btn color="grey" variant="text" @click="close">Cancel</v-btn>
+        <v-btn data-testid="dialog-cancel" color="grey" variant="text" @click="close">Cancel</v-btn>
         <v-btn
           color="primary"
           variant="elevated"

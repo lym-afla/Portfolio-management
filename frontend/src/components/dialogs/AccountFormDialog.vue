@@ -1,13 +1,14 @@
 <template>
-  <v-dialog v-model="dialog" max-width="500px">
-    <v-card>
-      <v-card-title>
+  <v-dialog v-model="dialog" max-width="500px" aria-labelledby="account-form-title">
+    <v-card :id="focusCardId">
+      <v-card-title id="account-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit Account' : 'Add Account'
         }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
+          <section aria-label="Account details">
           <template v-for="field in formFields" :key="field.name">
             <v-text-field
               v-if="field.type === 'textinput'"
@@ -40,17 +41,19 @@
               :error-messages="errorMessages[field.name]"
             />
           </template>
+          </section>
         </v-form>
-        <v-alert v-if="generalError" type="error" class="mt-3">
+        <v-alert v-if="generalError" type="error" class="mt-3" role="alert">
           {{ generalError }}
         </v-alert>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
+        <v-btn data-testid="dialog-cancel" :disabled="isSubmitting" @click="closeDialog">Cancel</v-btn>
         <v-btn
-          color="blue darken-1"
-          text
+          data-testid="dialog-save"
+          color="primary"
+          variant="tonal"
           @click="submitForm"
           :loading="isSubmitting"
           >Save</v-btn
@@ -68,6 +71,7 @@ import {
   getAccountFormStructure,
 } from '@/services/api'
 import { useErrorHandler } from '@/composables/useErrorHandler'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 import logger from '@/utils/logger'
 
 const props = defineProps({
@@ -84,6 +88,7 @@ const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'account-form')
 const isEdit = computed(() => !!props.editItem)
 const form = ref({})
 const formFields = ref([])

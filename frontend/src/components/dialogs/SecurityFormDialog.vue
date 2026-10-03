@@ -169,10 +169,11 @@
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
+        <v-btn data-testid="dialog-cancel" :disabled="isSubmitting" @click="closeDialog">Cancel</v-btn>
         <v-btn
-          color="blue darken-1"
-          text
+          data-testid="dialog-save"
+          color="primary"
+          variant="tonal"
           @click="submitForm"
           :loading="isSubmitting"
           >Save</v-btn

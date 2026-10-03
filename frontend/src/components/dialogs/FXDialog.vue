@@ -1,13 +1,17 @@
 <template>
-  <v-dialog v-model="dialog" max-width="500px">
-    <v-card>
-      <v-card-title>
+  <v-dialog v-model="dialog" max-width="500px" aria-labelledby="fx-form-title">
+    <v-card :id="focusCardId">
+      <v-card-title id="fx-form-title">
         <span class="text-h5">{{
           isEdit ? 'Edit FX Rate' : 'Add FX Rate'
         }}</span>
       </v-card-title>
       <v-card-text>
         <v-form @submit.prevent="submitForm">
+          <section aria-label="FX rate">
+          <p class="text-body-2 text-medium-emphasis mt-0 mb-2">
+            The rate is quoted from the first currency to the second.
+          </p>
           <template v-for="field in formFields" :key="field.name">
             <v-text-field
               v-if="field.type === 'datepicker'"
@@ -42,24 +46,26 @@
               :maxlength="3"
             />
           </template>
+          </section>
         </v-form>
-        <v-alert v-if="generalError" type="error" class="mt-3">
+        <v-alert v-if="generalError" type="error" class="mt-3" role="alert">
           {{ generalError }}
         </v-alert>
       </v-card-text>
       <v-card-actions>
         <v-btn
           v-if="isEdit"
-          color="red darken-1"
-          text
+          color="error"
+          variant="text"
           @click="$emit('fx-delete', editItem)"
           >Delete</v-btn
         >
         <v-spacer />
-        <v-btn color="blue darken-1" text @click="closeDialog">Cancel</v-btn>
+        <v-btn data-testid="dialog-cancel" :disabled="isSubmitting" @click="closeDialog">Cancel</v-btn>
         <v-btn
-          color="blue darken-1"
-          text
+          data-testid="dialog-save"
+          color="primary"
+          variant="tonal"
           @click="submitForm"
           :loading="isSubmitting"
           >Save</v-btn
@@ -72,6 +78,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { addFXRate, updateFXRate, getFXFormStructure } from '@/services/api'
+import { useDialogFormFocus } from '@/composables/useDialogFormFocus'
 import logger from '@/utils/logger'
 
 const props = defineProps({
@@ -92,6 +99,7 @@ const dialog = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+const { cardId: focusCardId } = useDialogFormFocus(dialog, 'fx-form')
 const isEdit = computed(() => !!props.editItem)
 // When a pair is preset (edit, or add-from-cell) the currency codes are fixed
 // by the cell the user clicked — keep them read-only to avoid pair drift.

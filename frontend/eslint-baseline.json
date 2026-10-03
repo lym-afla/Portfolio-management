@@ -160,14 +160,6 @@
     "severity": 1
   },
   {
-    "file": "src/views/database/PricesPage.vue",
-    "line": 574,
-    "column": 7,
-    "ruleId": "@typescript-eslint/no-unused-vars",
-    "message": "'chartData' is assigned a value but never used. Allowed unused vars must match /^_/u.",
-    "severity": 1
-  },
-  {
     "file": "src/views/profile/ProfilePage.vue",
     "line": 229,
     "column": 10,
