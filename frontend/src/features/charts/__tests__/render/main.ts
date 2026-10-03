@@ -133,6 +133,11 @@ harness.use(vuetify)
 
 // Cold frontend render timing for the pilot composition (no API involved):
 // script evaluation start to the first painted pilot canvas frame.
+declare global {
+  interface Window {
+    __harnessTiming?: { scriptStart: number; chartReadyAt: number | null }
+  }
+}
 const timing = (window.__harnessTiming = { scriptStart: performance.now(), chartReadyAt: null as number | null })
 const recordChartReady = () => {
   if (timing.chartReadyAt !== null) return
