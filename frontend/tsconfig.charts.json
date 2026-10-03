@@ -9,10 +9,15 @@
   "include": [
     "src/features/charts/**/*.ts",
     "tests/unit/helpers/**/*.ts",
-    "env.d.ts"
+    "env.d.ts",
+    "src/features/charts/**/*.vue"
   ],
   "exclude": [
-    "src/features/charts/__tests__/dashboardIntegration.spec.ts"
+    "src/features/charts/NavChartPanel.vue",
+    "src/features/charts/__tests__/dashboardIntegration.spec.ts",
+    "src/features/charts/__tests__/navIntegration.spec.ts",
+    "src/features/charts/__tests__/navReview.spec.ts",
+    "src/features/charts/__tests__/render"
   ],
   "references": []
 }

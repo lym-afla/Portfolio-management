@@ -12,7 +12,7 @@ describe('d4 screenshot session cleanup registration', () => {
     // The capture must run through a named session that is added to the
     // sessions map BEFORE the capture (inside its try), so the guaranteed
     // cleanup closes it even when the capture throws.
-    const registration = src.match(/sessions\.set\((\w+)[^\n]*\)\n\s*try \{\n\s*await captureD4Screenshots/)
+    const registration = src.match(/sessions\.set\((\w+)[^\n]*\)\r?\n\s*try \{\r?\n\s*await captureD4Screenshots/)
     expect(registration).toBeTruthy()
   })
 

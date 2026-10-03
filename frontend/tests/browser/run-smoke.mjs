@@ -1,11 +1,12 @@
-import { readFile, rm, mkdir, writeFile, appendFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
-import { dirname, extname, resolve, sep } from 'node:path'
+import { rm, mkdir, writeFile, appendFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { build } from 'vite'
 
 import { startFixtureServer } from './fixture-server.mjs'
+import { startBuiltAppServer } from './serve-app.mjs'
+import { assertChartsC3FlagOffFlow, runChartsC3PilotFlow } from './charts-c3.mjs'
 import {
   cleanupBrowserHarness,
   runBrowserHarnessLifecycle,
@@ -24,7 +25,7 @@ import { assertChartsC2Flow } from './charts-c2.mjs'
 
 const caseIndex = process.argv.indexOf('--case')
 const selectedCase = caseIndex < 0 ? null : process.argv[caseIndex + 1]
-if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2'].includes(selectedCase)) {
+if (selectedCase !== null && !['layout', 'context', 'dates', 'requests', 'recovery', 'delivery', 'dialogs', 'dialog-recovery', 'd4', 'charts-c2', 'charts-c3'].includes(selectedCase)) {
   throw new Error(`Unknown browser case: ${selectedCase || '(missing)'}`)
 }
 
@@ -35,69 +36,6 @@ const builtAppDir = resolve(artifactsDir, 'app')
 const screenshotsDir = resolve(artifactsDir, 'screenshots')
 const browserLog = resolve(artifactsDir, 'browser.log')
 const authInit = resolve(browserDir, 'auth-init.js')
-
-const contentTypes = {
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-}
-
-function listen(server) {
-  return new Promise((resolvePromise, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolvePromise())
-  })
-}
-
-function close(server) {
-  return new Promise((resolvePromise, reject) => {
-    server.close((error) => (error ? reject(error) : resolvePromise()))
-  })
-}
-
-async function startBuiltAppServer(root, failDialogChunk = false) {
-  const indexPath = resolve(root, 'index.html')
-  const server = createServer(async (request, response) => {
-    try {
-      const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname)
-      if (failDialogChunk && /^\/assets\/TransactionImportDialog-[^/]+\.js$/.test(pathname)) {
-        failDialogChunk = false
-        response.writeHead(503)
-        response.end('Synthetic dialog download failure')
-        return
-      }
-      const requestedPath = resolve(root, `.${pathname}`)
-      const safePath = requestedPath === root || requestedPath.startsWith(`${root}${sep}`)
-      if (!safePath) {
-        response.writeHead(400)
-        response.end('Invalid path')
-        return
-      }
-
-      let filePath = requestedPath
-      if (pathname === '/' || !extname(pathname)) {
-        filePath = indexPath
-      }
-      const body = await readFile(filePath)
-      response.writeHead(200, {
-        'Cache-Control': 'no-store',
-        'Content-Type': contentTypes[extname(filePath)] || 'application/octet-stream',
-      })
-      response.end(body)
-    } catch {
-      response.writeHead(404)
-      response.end('Not found')
-    }
-  })
-
-  await listen(server)
-  const address = server.address()
-  return { origin: `http://127.0.0.1:${address.port}`, close: () => close(server) }
-}
 
 async function log(entry) {
   await appendFile(browserLog, `${JSON.stringify(entry)}\n`, 'utf8')
@@ -197,7 +135,7 @@ async function main() {
   await mkdir(screenshotsDir, { recursive: true })
   await writeFile(browserLog, '', 'utf8')
 
-  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2' })
+  const fixtureServer = await startFixtureServer({ longAccount: selectedCase === 'layout', contextFailures: selectedCase === 'context', dateFlow: selectedCase === 'dates', requestFlow: selectedCase === 'requests', recoveryFlow: selectedCase === 'recovery', d4Flow: selectedCase === 'd4', chartsC2Flow: selectedCase === 'charts-c2', chartsC3Flow: selectedCase === 'charts-c3' })
   let appServer
   const sessions = new Map()
   const routeFailures = []
@@ -214,10 +152,10 @@ async function main() {
     })
     appServer = await startBuiltAppServer(builtAppDir, selectedCase === 'dialog-recovery')
 
-    for (const viewport of ['dialogs', 'd4'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
+    for (const viewport of ['dialogs', 'd4'].includes(selectedCase) ? viewports.filter(entry => ['desktop', 'mobile'].includes(entry.name)) : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? viewports.filter((entry) => entry.name === 'desktop') : viewports) {
       for (const authenticated of selectedCase && selectedCase !== 'delivery' ? [true] : [false, true]) {
         const selectedRoutes = routes.filter((route) =>
-          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : selectedCase === 'charts-c2' ? route.path === '/dashboard' : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
+          selectedCase === 'dialog-recovery' ? route.path === '/transactions' : selectedCase === 'dialogs' ? dialogRoutes.includes(route.path) : selectedCase === 'delivery' ? ['/login', '/profile', '/dashboard'].includes(route.path) && route.authenticated === authenticated : selectedCase === 'd4' ? ['/open-positions', '/closed-positions', '/transactions'].includes(route.path) : ['charts-c2', 'charts-c3'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'requests' ? ['/database/fx', '/transactions'].includes(route.path) : selectedCase === 'dates' ? route.path === '/open-positions' : ['context', 'recovery'].includes(selectedCase) ? route.path === '/dashboard' : selectedCase === 'layout'
             ? ['/dashboard', '/summary', '/profile', '/database'].includes(route.path)
             : route.authenticated === authenticated,
         )
@@ -283,6 +221,21 @@ async function main() {
             if (selectedCase === 'charts-c2') {
               await assertChartsC2Flow({ appOrigin: appServer.origin, context: `${viewport.name} charts c2`, initScript, log, session, fixtureServer })
               console.log(`PASS ${viewport.name} charts c2 flow`)
+            }
+            if (selectedCase === 'charts-c3') {
+              await assertChartsC3FlagOffFlow({ appOrigin: appServer.origin, context: `${viewport.name} charts c3 flag-off`, initScript, log, session })
+              // The flag-on pilot phase builds its own artifact; its extra
+              // session is registered up front for guaranteed cleanup.
+              await runChartsC3PilotFlow({
+                appOrigin: appServer.origin,
+                flagOffRoot: builtAppDir,
+                frontendRoot,
+                fixtureServer,
+                log,
+                registerSession: (extra, extraInit) => sessions.set(extra, extraInit ?? resolve(browserDir, 'auth-init.js')),
+                artifactsDir,
+              })
+              console.log(`PASS ${viewport.name} charts c3 pilot flow`)
             }
           } catch (error) {
             routeFailures.push({ route: route.path, viewport: viewport.name, error: error.message })
@@ -375,8 +328,8 @@ async function main() {
       fixtureRequests: fixtureServer.requests.length,
       routeFailures,
       routeManifestCount: routes.length,
-      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery', 'charts-c2'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
-      viewports: ['d4', 'dialogs'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2'].includes(selectedCase) ? 1 : viewports.length,
+      routes: selectedCase === 'dialog-recovery' ? 1 : selectedCase === 'd4' ? 3 : selectedCase === 'dialogs' ? dialogRoutes.length : selectedCase === 'delivery' ? 3 : selectedCase === 'requests' ? 2 : ['dates', 'context', 'recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? 1 : selectedCase === 'layout' ? 4 : routes.length,
+      viewports: ['d4', 'dialogs'].includes(selectedCase) ? 2 : ['dates', 'requests', 'recovery', 'delivery', 'dialog-recovery', 'charts-c2', 'charts-c3'].includes(selectedCase) ? 1 : viewports.length,
     }
     await writeFile(resolve(artifactsDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
     console.log(JSON.stringify(summary, null, 2))
