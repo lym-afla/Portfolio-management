@@ -1,16 +1,16 @@
 # Frontend modernization progress
 
-Updated 2 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
+Updated 3 October 2026. This is the durable, human-facing status tracker for the accepted [master plan](2026-09-08-frontend-modernization.md). The original task numbering is retained. Update this file after each independently verified task; commit evidence and distinguish implementation, review, merge and release.
 
 ## Current checkpoint
 
 - Implementation branch: `codex/frontend-modernization`.
-- Verified remote and synchronized local code checkpoint: `2424edbf0239f7b3c22dbd34177eb52aa89e77b3`, the user-merged PR #52/C2 on 2 October 2026. The subsequent C3 handoff is documentation only.
-- C2 (typed chart adapters and lifecycle) is reviewed and integrated through final correction `5d4c5a87`; see the [C2 record](#c2-implementation-record). C3 is the next bounded executor assignment.
+- Verified remote and synchronized local code checkpoint: `2e77e5c7edc9d485c37d3437e58857e6d938ad95`, the user-merged PR #53/C3 on 3 October 2026. The subsequent D5 handoff is documentation only.
+- C3 (default-off NAV ECharts pilot) is reviewed and integrated through final proposal head `3cd33c06`; see the [C3 record](#c3-implementation-record). D5 is the next bounded executor assignment.
 - The earlier `9b32d3d9` checkpoint was 34 commits ahead of main. That historical count is not a completion measure or the current branch count.
 - Financial fixes [#46](https://github.com/lym-afla/Portfolio-management/pull/46), [#47](https://github.com/lym-afla/Portfolio-management/pull/47) and [#48](https://github.com/lym-afla/Portfolio-management/pull/48) are merged into the implementation branch. Their source branches were deleted by the user.
 - Main has not received the modernization branch. No deployment performed.
-- 17 of 24 planned tasks are integrated; seven remain, beginning with C3. Main/release completion remains outstanding.
+- 18 of 24 planned tasks are integrated; six remain, beginning with D5. Main/release completion remains outstanding.
 - Last whole-foundation verification at `deea60df`: 262 frontend tests; 1261 backend tests / 10 skipped; both type checks, lint/build; 72 synthetic browser route profiles. These results predate the three merges. The combined `9b32d3d9` baseline has not been rerun in this planning turn.
 
 ## Task status
@@ -34,8 +34,8 @@ Updated 2 October 2026. This is the durable, human-facing status tracker for the
 | 15 | D3 | NAV-first dashboard/positions visual pilot | User-merged PR #50 at `2238ef3e`, reviewed through final correction `112ab3b3`; see [D3 record](#d3-implementation-record) |
 | 16 | D4 | Grouped-table views, controls/actions/dialog accessibility | User-merged PR #51 at `297fb95c`, reviewed through `c0bab763`; see [D4 record](#d4-implementation-record) |
 | 17 | C2 | Typed chart adapters and lifecycle | User-merged PR #52 at `2424edbf`, reviewed through `5d4c5a87`; see [C2 record](#c2-implementation-record) |
-| 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | Ready for execution: [handoff](2026-10-02-nav-echarts-pilot-c3-handoff.md) and [GLM prompt](2026-10-02-nav-echarts-pilot-c3-glm-prompt.md); not implemented |
-| 19 | D5 | Visual system across route families | Not implemented; follows accepted D3/D4 pilot |
+| 18 | C3 | ECharts NAV pilot, both IRRs and accessible inspection | User-merged PR #53 at `2e77e5c7`, reviewed through `3cd33c06`; see [C3 record](#c3-implementation-record) |
+| 19 | D5 | Visual system across route families | Ready for execution: [handoff](2026-10-03-frontend-route-rollout-d5-handoff.md) and [GLM prompt](2026-10-03-frontend-route-rollout-d5-glm-prompt.md); not implemented |
 | 20 | D6 | Transaction import workflow extraction | Not implemented |
 | 21 | D7 | Broker/security workflow extraction | Not implemented |
 | 22 | C4 | Three solid allocation pies and security histories | Not implemented; follows NAV acceptance and F3 |
@@ -44,11 +44,11 @@ Updated 2 October 2026. This is the durable, human-facing status tracker for the
 
 ## Next execution and boundaries
 
-C2 is merged. Execute the [C3 handoff](2026-10-02-nav-echarts-pilot-c3-handoff.md) on a new `codex/nav-echarts-pilot-c3` branch from the latest implementation branch including the handoff documents. C1/D3/D4/C2 handoffs are historical; do not re-execute them.
+C3 is merged. Execute the [D5 handoff](2026-10-03-frontend-route-rollout-d5-handoff.md) on a new `codex/frontend-route-rollout-d5` branch from the latest implementation branch including these documents. Earlier handoffs are historical; do not re-execute them.
 
-C3 is the gated, default-off NAV ECharts pilot with both IRRs and accessible inspection. Three solid allocation pies remain C4; D5 route rollout remains separate. No default-on cutover, main merge or deployment is authorized by this handoff.
+D5 rolls the accepted visual system across all route families, preserving existing workflows and financial displays. The account-selector `[object Object]` fix is being addressed separately per the user; do not duplicate it. C3 remains default-off. D6/D7 workflow extraction, C4's three solid allocation pies/security charts and C5 cutover remain separate. No main merge or deployment is authorized.
 
-Known inherited issue surfaced by C2's gate run (not caused by it): the focused browser cases `--case requests` and `--case dates` fail identically on the pristine `15533ba0` baseline — their selectors predate the D4 toolbar replacement. C3 handoff task 0 explicitly carries a separate test-only D4 follow-up commit to restore these gates without weakening assertions or redesigning the toolbar; the correction is not yet implemented.
+The inherited D4 `requests`/`dates` selector issue was closed by C3 task 0 (`2620c2fa`); do not reuse the historical baseline waiver. Real screen-reader testing remains unperformed and belongs to D8. No application gates were rerun for this documentation-only handoff.
 
 C1's protected `NAV_at_date` diagnostics were reviewed and PR #49 was merged by the user. That approval does not authorize future financial changes. D3 is presentation-only; main has not received the modernization branch.
 
@@ -69,6 +69,8 @@ The final release gate is not just passing unit tests: it includes the dashboard
 - Deferred acceptance / boundaries: the validated `document` is not rendered anywhere yet (C3 owns the ECharts pilot, its accessible table/legend/inspection); allocation/security transports and the three pies remain C4; renderBoundary number conversion happens only in C3; screen-reader audit remains D8. Draft PR, not merged; no deployment; main untouched.
 
 ### C3 implementation record
+
+- Integration: user merged [PR #53](https://github.com/lym-afla/Portfolio-management/pull/53) on 3 October 2026 at `2e77e5c7edc9d485c37d3437e58857e6d938ad95`, verified against GitHub and synchronized locally. Final proposal head `3cd33c06`, final tooltip implementation `7ae5627c`. C3 remains default-off. Historical draft/checkpoint entries below describe the implementation sequence, not current PR status. Final-round executor evidence: 174 chart tests (21 review cases), all three type checks, lint, build and `charts-c3` exit 0; the earlier full-suite record is 538 frontend tests, 72 route profiles and backend 1386 passed/10 skipped, not a final-round full-suite rerun. D5 handoff preparation reran no application gates. Main not merged; no deployment. Real screen-reader testing remains unperformed (D8).
 
 - Base: `origin/codex/frontend-modernization` at `bcee56d1` (C2 merge `2424edbf` plus the C3 handoff). Branch `codex/nav-echarts-pilot-c3`, commits `2620c2fa` (Task 0 selector repair, closure of the inherited D4 follow-up), `2565fa9c`..`e448fba5` (plotting boundary, styles, interaction, pure options; echarts 6.1.0 Apache-2.0 + vue-echarts 8.3.1 MIT pinned after registry verification), `12ed0892` (accessible legend/table/inspection), `4f92a0ff` (renderer policy, lazy EChartsNav, ChartHost failure boundary), `2348f9b0` (NavChartPanel + NAVChart chart slot + DashboardPage wiring), `8fc17e43` (both-flag charts-c3 browser case, isolated harness, measurements, captures) plus evidence.
 - Scope delivered: gated opt-in ECharts NAV pilot (`VITE_NAV_ECHARTS_ENABLED === 'true'` only, default off, no repository default enables it) reusing C2's NavResult and request lifecycle unchanged; sole plotting boundary `toPlotNumber`; server-key category axis with displayLabel formatter, stacked bars / unstacked raw-ratio IRRs (both, independently toggleable, connectNulls false); stable id-hashed theme colors; exact-value table with full-NAV column only from `document.totals`; shared inspection with inception/interval horizons and native viewport controls; lazily imported renderer (narrow module registration, vue-echarts owns disposal, notMerge updates, aria-busy retention, recoverable render failures with explicit known-data fallback and no extra requests); panel supplies NAVChart's new named chart slot only when eligible (v2 empty state notice, fallback notice); isolated synthetic harness; five captures under docs/design/assets/frontend-workspace/.
