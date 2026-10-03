@@ -303,7 +303,15 @@ export async function startFixtureServer({ longAccount = false, contextFailures 
           : dateRefreshPost
             ? { status: 200, body: { access: 'fixture-new-access-token', refresh: 'fixture-new-refresh-token', effective_current_date: currentDate } }
             : resolveFixture(fixtureMethod, url.pathname, { longAccount: longAccount || contextFailures })
-      if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') fixture.body.options.push(['Second', { type: 'account', id: 2, display_name: 'Second synthetic account' }])
+      if (contextFailures && fixtureMethod === 'GET' && url.pathname === '/users/api/get_account_choices/') {
+        // Append the newly available account inside the backend-faithful
+        // "Your Accounts" section (the backend never emits top-level pairs).
+        // id 9 keeps it unique against the base fixture's accounts 1/2 so the
+        // pending-label lookup cannot match a different account.
+        const accountsSection = fixture.body.options.find((entry) => entry[0] === 'Your Accounts')
+        const choicesTarget = accountsSection && Array.isArray(accountsSection[1]) ? accountsSection[1] : fixture.body.options
+        choicesTarget.push(['Second', { type: 'account', id: 9, display_name: 'Second synthetic account' }])
+      }
       if (dateFlow && fixtureMethod === 'GET' && url.pathname === '/users/api/dashboard_settings/') fixture.body.settings.table_date = currentDate
       if (recoveryFlow && fixtureMethod === 'GET' && recoveryPayloads[url.pathname]) {
         fixture.status = recoveredWidgets.has(url.pathname) ? 200 : 503
