@@ -75,9 +75,14 @@ function onPointClick(params: { dataIndex?: number }): void {
 }
 
 function onDataZoom(params: unknown): void {
-  const event = params as { start?: unknown; end?: unknown }
-  const start = typeof event.start === 'number' ? event.start : undefined
-  const end = typeof event.end === 'number' ? event.end : undefined
+  // Wheel/pinch on the inside zoom arrives as a batched event; slider and
+  // programmatic changes arrive flat. Normalize to the last dataZoom entry.
+  const event = params as { start?: unknown; end?: unknown; batch?: Array<{ componentType?: string; start?: unknown; end?: unknown }> }
+  const entries = Array.isArray(event.batch) ? event.batch.filter((entry) => entry.componentType !== 'toolbox') : [event]
+  const last = entries[entries.length - 1]
+  if (!last) return
+  const start = typeof last.start === 'number' ? last.start : undefined
+  const end = typeof last.end === 'number' ? last.end : undefined
   const { periods } = props.document
   if (periods.length === 0 || start === undefined || end === undefined) return
   const lastIndex = periods.length - 1

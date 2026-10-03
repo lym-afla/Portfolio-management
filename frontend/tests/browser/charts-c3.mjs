@@ -87,7 +87,7 @@ export async function assertChartsC3FlagOffFlow({ appOrigin, context, initScript
   const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
   await run(['open', `${appOrigin}/dashboard`])
   await waitFor(run, `document.querySelector('[data-testid="nav-chart"]') !== null`)
-  let state = await evalProbe(run, chartState)
+  const state = await evalProbe(run, chartState)
   assert.equal(state.pilot, false, 'flag off: no pilot artifacts')
   assert.equal(state.canvas, true, 'flag off: incumbent Chart.js canvas renders')
   assert.equal(state.notice, false, 'flag off: v2 responses show no notice')

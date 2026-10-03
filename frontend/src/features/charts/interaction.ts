@@ -1,7 +1,7 @@
 // Controlled interaction model for the NAV pilot (C3). One source of truth
 // for series visibility, inspected period and viewport; zoom never changes
 // values, queries or IRR horizons.
-import type { ChartDocument } from './contracts'
+import type { ChartDocument, ChartSeries } from './contracts'
 
 export interface ChartInteraction {
   visibleSeriesIds: readonly string[]
@@ -43,4 +43,12 @@ export function reconcileInteraction(
       ? state.inspectedPeriodKey
       : null,
   }
+}
+
+// Fixed control names for the two IRR horizons so naming never depends on
+// server label wording; data itself always comes from the document.
+export function seriesControlName(series: ChartSeries): string {
+  if (series.metric === 'irr_inception') return 'Since-inception IRR (annualized)'
+  if (series.metric === 'irr_interval') return 'Interval IRR (annualized)'
+  return series.label
 }

@@ -166,7 +166,7 @@ describe('ChartInspection', () => {
     expect(text).toContain(doc.periods[1].displayLabel)
     expect(text).toContain(`${doc.periods[1].interval.startDate} – ${doc.periods[1].interval.endDate}`)
     expect(text).toContain('reporting currency USD')
-    expect(text).toContain('raw ratio')
+    expect(text).toContain('annualized percentage')
     expect(text).toContain('Portfolio NAV (all categories)')
     expect(text).toContain(doc.totals![1].display)
     const inceptionInteraction = { ...interaction, inspectedPeriodKey: doc.periods[0].key }

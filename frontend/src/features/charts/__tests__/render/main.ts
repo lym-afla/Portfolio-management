@@ -3,6 +3,7 @@
 // controls; no production router or app shell is imported. The pilot
 // renderer requires VITE_NAV_ECHARTS_ENABLED=true at build/dev time.
 import { createApp, h, ref } from 'vue'
+import { createPinia } from 'pinia'
 import { createVuetify } from 'vuetify'
 import * as vuetifyComponents from 'vuetify/components'
 import * as vuetifyDirectives from 'vuetify/directives'
@@ -114,12 +115,12 @@ const harness = createApp({
         ]),
         h('div', { class: 'harness__panel' }, [
           h(NavChartPanel, {
-            result: result.value,
+            result: result.value as NavResult | null,
             loading: loading.value,
             error: error.value,
             initialParams,
             effectiveCurrentDate: '2026-09-08',
-            'onUpdate:params': () => undefined,
+            'onUpdate-params': () => undefined,
             onRetry: () => applyV2(),
           }),
         ]),
@@ -127,5 +128,6 @@ const harness = createApp({
   },
 })
 
+harness.use(createPinia())
 harness.use(vuetify)
 harness.mount('#harness')

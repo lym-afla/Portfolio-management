@@ -1,7 +1,9 @@
 <template>
   <!-- Shared pointer/keyboard inspection of one server period plus the native
-       viewport controls. All text is Vue-interpolated server data; actual
-       units and horizons are shown (first interval is inception). Zoom
+       viewport controls. All text is Vue-interpolated server data. Each value
+       line shows the exact display, its unit, and — for unavailable points —
+       status, reason and knownSubtotal; the two IRR lines carry their own
+       horizons (inception-to-endpoint vs the server-provided interval). Zoom
        changes only the viewport — never queries, values or IRR horizons. -->
   <section class="chart-inspection" aria-label="Chart inspection">
     <h3 class="chart-inspection__heading">Inspection</h3>
@@ -13,17 +15,21 @@
         <dt>Period</dt>
         <dd>{{ inspectedPeriod.displayLabel }} ({{ inspectedPeriod.endDate }})</dd>
       </div>
-      <div>
-        <dt>Horizon</dt>
-        <dd>{{ horizonText(inspectedPeriod) }}</dd>
-      </div>
       <div v-for="entry in inspectedValues" :key="entry.id">
         <dt>{{ entry.label }}</dt>
-        <dd>{{ entry.display }} <span class="chart-inspection__unit">{{ entry.unit }}</span></dd>
+        <dd>
+          {{ entry.display }}
+          <span v-if="entry.detail" class="chart-inspection__detail">{{ entry.detail }}</span>
+          <span v-if="entry.horizon" class="chart-inspection__horizon">{{ entry.horizon }}</span>
+          <span class="chart-inspection__unit">{{ entry.unit }}</span>
+        </dd>
       </div>
       <div v-if="total">
         <dt>Portfolio NAV (all categories)</dt>
-        <dd>{{ total.display }}</dd>
+        <dd>
+          {{ total.display }}
+          <span v-if="totalDetail" class="chart-inspection__detail">{{ totalDetail }}</span>
+        </dd>
       </div>
     </dl>
 
@@ -51,8 +57,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ChartDocument, ChartPeriod } from './contracts'
-import type { ChartInteraction } from './interaction'
+import type { ChartDocument, ChartPeriod, ChartSeries, ChartValue } from './contracts'
+import { seriesControlName, type ChartInteraction } from './interaction'
 
 const props = defineProps<{
   document: ChartDocument
@@ -70,6 +76,20 @@ const inspectedPeriod = computed<ChartPeriod | null>(() =>
 const firstKey = computed(() => props.document.periods[0]?.key ?? '')
 const lastKey = computed(() => props.document.periods[props.document.periods.length - 1]?.key ?? '')
 
+// Status detail is appended exactly as received; knownSubtotal is labelled as
+// explicitly incomplete information, never as a complete total.
+function valueDetail(point: ChartValue | undefined): string | null {
+  if (!point || point.status === 'ok') return null
+  const subtotal = 'knownSubtotal' in point ? `; known subtotal ${point.knownSubtotal}` : ''
+  return `${point.status} (${point.reason})${subtotal}`
+}
+
+function seriesHorizon(series: ChartSeries, period: ChartPeriod): string | null {
+  if (series.metric === 'irr_inception') return `Inception to ${period.endDate}`
+  if (series.metric === 'irr_interval') return horizonText(period)
+  return null
+}
+
 const inspectedValues = computed(() => {
   if (!inspectedPeriod.value) return []
   const index = props.document.periods.findIndex((period) => period.key === inspectedPeriod.value!.key)
@@ -78,8 +98,10 @@ const inspectedValues = computed(() => {
     .filter((series) => visible.has(series.id))
     .map((series) => ({
       id: series.id,
-      label: series.label,
+      label: seriesControlName(series),
       display: series.points[index]?.display ?? '–',
+      detail: valueDetail(series.points[index]),
+      horizon: seriesHorizon(series, inspectedPeriod.value!),
       unit: unitText(series.unit.kind, series.unit.kind === 'money' ? series.unit.currency : undefined),
     }))
 })
@@ -90,9 +112,11 @@ const total = computed(() => {
   return props.document.totals?.[index] ?? null
 })
 
+const totalDetail = computed(() => (total.value ? valueDetail(total.value) : null))
+
 function unitText(kind: string, currency?: string): string {
   if (kind === 'money') return `reporting currency ${currency ?? ''}`.trim()
-  if (kind === 'ratio') return 'raw ratio'
+  if (kind === 'ratio') return 'annualized percentage'
   if (kind === 'percent_of_nominal') return '% of nominal'
   return 'quantity'
 }
@@ -158,6 +182,16 @@ function resetZoom(): void {
 
 .chart-inspection__details dd {
   margin: 0 0 6px;
+}
+
+.chart-inspection__detail {
+  color: #9a6700;
+  font-size: 0.8125rem;
+}
+
+.chart-inspection__horizon {
+  color: #526477;
+  font-size: 0.8125rem;
 }
 
 .chart-inspection__unit {

@@ -159,6 +159,8 @@ const interaction = ref<ChartInteraction>({ visibleSeriesIds: [], viewport: null
 
 // Reconcile interaction across same-context refreshes; a context
 // invalidation (result cleared) resets state before new labels apply.
+// immediate: the panel can mount with an existing accepted result —
+// initialize visibility instead of rendering an empty pilot.
 watch(
   () => props.result,
   (next, previous) => {
@@ -171,6 +173,7 @@ watch(
       ? reconcileInteraction(previous.document, next.document, interaction.value)
       : defaultInteraction(next.document)
   },
+  { immediate: true },
 )
 
 function useFallback(): void {

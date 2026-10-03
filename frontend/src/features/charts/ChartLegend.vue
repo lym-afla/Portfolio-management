@@ -18,15 +18,15 @@
         :class="{ 'chart-legend__swatch--dashed': series.metric === 'irr_interval' }"
         :style="{ background: seriesColor(series.id) }"
       />
-      {{ controlName(series) }}
+      {{ seriesControlName(series) }}
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { seriesColor } from './seriesStyles'
-import type { ChartDocument, ChartSeries } from './contracts'
-import type { ChartInteraction } from './interaction'
+import type { ChartDocument } from './contracts'
+import { seriesControlName, type ChartInteraction } from './interaction'
 
 const props = defineProps<{
   document: ChartDocument
@@ -37,13 +37,6 @@ const emit = defineEmits<{
   (e: 'update:interaction', interaction: ChartInteraction): void
 }>()
 
-// Control names are fixed for the two horizons so they never depend on label
-// wording; values themselves always come from the server document.
-function controlName(series: ChartSeries): string {
-  if (series.metric === 'irr_inception') return 'Since-inception IRR (annualized)'
-  if (series.metric === 'irr_interval') return 'Interval IRR (annualized)'
-  return series.label
-}
 
 function isVisible(id: string): boolean {
   return props.interaction.visibleSeriesIds.includes(id)

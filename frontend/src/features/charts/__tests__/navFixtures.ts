@@ -161,7 +161,7 @@ const BIG_RAW = '9007199254740993.123456789'
 
 function moneyPoints(count: number, variant: number): ChartValue[] {
   const pattern: ChartValue[][] = [
-    [ok('100000', '100', 'USD 100,000.00'), ok('110000', '110', 'USD 110,000.00'), partial('90000', 'Partial USD 90,000.00'), ok('120000', '120', 'USD 120,000.00')],
+    [ok('100000', '100', 'USD 100,000.00'), ok('110000', '110', 'USD 110,000.00'), partial('90000', 'USD 90,000.00'), ok('120000', '120', 'USD 120,000.00')],
     [ok('60000', '60', 'USD 60,000.00'), ok(BIG_RAW, `${BIG_RAW}000`, 'USD 9,007,199,254,740,993.12'), ok('-25000', '-25', '(USD 25,000.00)'), ok('0', '0', 'USD 0.00')],
     [absent(), ok('40000', '40', 'USD 40,000.00'), ok('35000', '35', 'USD 35,000.00'), ok('5000', '5', 'USD 5,000.00')],
     [ok('-12000', '-12', '(USD 12,000.00)'), absent(), ok('8000', '8', 'USD 8,000.00'), ok('9000', '9', 'USD 9,000.00')],
@@ -177,7 +177,7 @@ function irrPoints(count: number, variant: number): ChartValue[] {
 }
 
 function totalPoints(count: number): ChartValue[] {
-  return [ok('100000', '100', 'USD 100,000.00'), ok('110000', '110', 'USD 110,000.00'), partial('90000', 'Partial USD 90,000.00'), ok('120000', '120', 'USD 120,000.00')].slice(0, count)
+  return [ok('100000', '100', 'USD 100,000.00'), ok('110000', '110', 'USD 110,000.00'), partial('90000', 'USD 90,000.00'), ok('120000', '120', 'USD 120,000.00')].slice(0, count)
 }
 
 /** Raw wire envelope (legacy payload + chartV2 document) for one mapping. */

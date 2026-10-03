@@ -1,6 +1,5 @@
-import { readFile, rm, mkdir, writeFile, appendFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
-import { dirname, extname, resolve, sep } from 'node:path'
+import { rm, mkdir, writeFile, appendFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { build } from 'vite'
@@ -37,29 +36,6 @@ const builtAppDir = resolve(artifactsDir, 'app')
 const screenshotsDir = resolve(artifactsDir, 'screenshots')
 const browserLog = resolve(artifactsDir, 'browser.log')
 const authInit = resolve(browserDir, 'auth-init.js')
-
-const contentTypes = {
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-}
-
-function listen(server) {
-  return new Promise((resolvePromise, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolvePromise())
-  })
-}
-
-function close(server) {
-  return new Promise((resolvePromise, reject) => {
-    server.close((error) => (error ? reject(error) : resolvePromise()))
-  })
-}
 
 async function log(entry) {
   await appendFile(browserLog, `${JSON.stringify(entry)}\n`, 'utf8')
