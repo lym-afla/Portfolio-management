@@ -1,5 +1,32 @@
 import { d4FxFormStructure, d4RegularFormStructure, d4Transactions } from './d4-datasets.mjs'
 
+// Backend-faithful prepare_account_choices output (backend/core/user_utils.py):
+// General/"All accounts", then Your Accounts/Brokers/Account Groups sections
+// separated by __SEPARATOR__ rows, each choice a [name, {type, id,
+// display_name}] pair. The browser fixtures previously supplied options: [],
+// which starved the account selector of "All accounts" and made an unmatched
+// committed selection render as Vuetify's raw [object Object].
+export function backendAccountOptions({ longAccountName = false } = {}) {
+  const displayName = longAccountName
+    ? 'Long synthetic investment account name for narrow viewport wrapping'
+    : 'First Broker – First account'
+  return [
+    ['General', [['All accounts', { type: 'all', id: null }]]],
+    ['__SEPARATOR__', '__SEPARATOR__'],
+    [
+      'Your Accounts',
+      [
+        [longAccountName ? 'Long' : 'First', { type: 'account', id: 1, display_name: displayName }],
+        ['Second', { type: 'account', id: 2, display_name: 'Second Broker – Second account' }],
+      ],
+    ],
+    ['__SEPARATOR__', '__SEPARATOR__'],
+    ['Brokers', [['First Broker', { type: 'broker', id: 3, display_name: 'All First Broker accounts' }]]],
+    ['__SEPARATOR__', '__SEPARATOR__'],
+    ['Account Groups', [['Long Term', { type: 'group', id: 4, display_name: 'Long Term' }]]],
+  ]
+}
+
 const profile = {
   id: 1,
   username: 'fixture-user',
@@ -14,7 +41,7 @@ const profile = {
 
 const fixtures = new Map([
   ['GET /users/api/profile/', profile],
-  ['GET /users/api/get_account_choices/', { options: [] }],
+  ['GET /users/api/get_account_choices/', { options: backendAccountOptions(), selected: { type: 'all', id: null } }],
   [
     'GET /users/api/dashboard_settings/',
     {
@@ -44,7 +71,7 @@ const fixtures = new Map([
       frequency_choices: [['M', 'Monthly']],
       timeline_choices: [['YTD', 'Year to date']],
       nav_breakdown_choices: [['none', 'No breakdown']],
-      account_choices: [],
+      account_choices: backendAccountOptions(),
     },
   ],
   ['GET /users/api/account-groups/', []],
@@ -407,7 +434,13 @@ export function resolveFixture(method, pathname, { longAccount = false } = {}) {
       type: 'account',
       display_name: 'Long synthetic investment account name for narrow viewport wrapping',
     }
-    return { status: 200, body: { options: [['Account', selected]], selected } }
+    return {
+      status: 200,
+      body: {
+        options: backendAccountOptions({ longAccountName: true }),
+        selected,
+      },
+    }
   }
   if (!fixtures.has(key)) {
     throw new Error(`Unmatched fixture request: ${key}`)

@@ -44,11 +44,16 @@ export async function assertContextFailureFlow({
     (
       await run([
         'eval',
-        `({ label: document.querySelector('.account-selection .v-select__selection-text')?.textContent, disabled: !!document.querySelector('.account-selection input')?.disabled, text: document.body.innerText, dialog: !!document.querySelector('.v-dialog.v-overlay--active'), busy: document.querySelector('[data-testid="route-content"] [aria-busy="true"]') !== null, loading: !!document.querySelector('[data-testid="route-content"] .v-skeleton-loader'), inert: !!document.querySelector('[data-testid="route-content"] [inert]') })`,
+        `({ label: document.querySelector('.account-selection .v-select__selection')?.textContent, disabled: !!document.querySelector('.account-selection input')?.disabled, text: document.body.innerText, dialog: !!document.querySelector('.v-dialog.v-overlay--active'), busy: document.querySelector('[data-testid="route-content"] [aria-busy="true"]') !== null, loading: !!document.querySelector('[data-testid="route-content"] .v-skeleton-loader'), inert: !!document.querySelector('[data-testid="route-content"] [inert]') })`,
       ])
     ).result
   const before = await probe()
   assert.match(before.label, /Long synthetic investment/)
+  assert.equal(
+    before.text.includes('[object Object]'),
+    false,
+    'A raw [object Object] label must never render, before any transition'
+  )
   await click('combobox', 'Account or Account group')
   await click('option', 'Second synthetic account')
   assert.equal(fixtureServer.pendingMutation, true)

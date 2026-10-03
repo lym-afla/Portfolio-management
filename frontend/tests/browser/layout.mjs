@@ -40,12 +40,13 @@ export async function assertLayoutGeometry({
           contentTop: contentRect.top,
           intrinsicBottom: intrinsic?.bottom ?? null,
           intrinsicHeight: intrinsic?.height ?? null,
-          accountName: bar.querySelector('.v-select__selection-text')?.textContent?.trim() ?? null,
+          accountName: bar.querySelector('.account-selection .v-select__selection')?.textContent?.trim() ?? null,
           accountTop: bar.querySelector('.account-selection')?.getBoundingClientRect().top ?? null,
           settingsTop: bar.querySelector('.account-selection + div')?.getBoundingClientRect().top ?? null,
           controlOverflow,
           layoutTop,
           scrollY,
+          rawObjectLabel: document.body.innerText.includes('[object Object]'),
         }
       })()`,
     ],
@@ -72,6 +73,11 @@ export async function assertLayoutGeometry({
   assert.ok(
     result.contentTop >= result.headerBottom - 1,
     `${context}: header covers route content: ${JSON.stringify(result)}`
+  )
+  assert.equal(
+    result.rawObjectLabel,
+    false,
+    `${context}: a raw [object Object] label must never render anywhere on the page`
   )
   if (result.intrinsicBottom !== null) {
     assert.ok(
@@ -330,7 +336,24 @@ export async function assertPositionsToolbarFlow({ appOrigin, context, initScrip
   const run = (args) => runAgentBrowser({ args, context, initScript, log, session })
   await run(['open', `${appOrigin}/open-positions`])
   await run(['wait', '--fn', "document.querySelectorAll('.v-data-table tbody tr').length > 1"])
-  await run(['eval', "document.querySelector('.positions-table')?.scrollIntoView({ block: 'center' })"])
+  // Center the TOOLBAR itself before measuring, then nudge it fully below
+  // the fixed header: centering the table left the toolbar wherever the
+  // remaining page height placed it — on short viewports that was underneath
+  // the fixed header, so the probe measured controls the header overlaid
+  // (pre-existing, scroll-dependent failure). The clearance precondition
+  // below keeps the check honest: it proves the measured controls sit below
+  // the header, not that the header shrank.
+  await run(['eval', `(() => {
+    const toolbar = document.querySelector('.workspace-table-toolbar')
+    if (!toolbar) return false
+    toolbar.scrollIntoView({ block: 'center' })
+    const header = document.querySelector('.v-app-bar')?.getBoundingClientRect()
+    const rect = toolbar.getBoundingClientRect()
+    if (header && rect.top < header.bottom + 8) {
+      window.scrollBy(0, -Math.ceil(header.bottom + 8 - rect.top))
+    }
+    return true
+  })()`])
   await run(['wait', '150'])
 
   const controls = await runAgentBrowser({
@@ -360,7 +383,9 @@ export async function assertPositionsToolbarFlow({ appOrigin, context, initScrip
             hitTag: hit ? hit.tagName : null,
           }
         }
+        const header = document.querySelector('.v-app-bar')?.getBoundingClientRect()
         return {
+          headerBottom: header ? Math.round(header.bottom) : null,
           toolbarBox: { top: Math.round(box.top), height: Math.round(box.height) },
           controls: [
             measure('year', year),
@@ -380,6 +405,10 @@ export async function assertPositionsToolbarFlow({ appOrigin, context, initScrip
   const probe = controls.result
   assert.ok(!probe.missing, `${context}: positions toolbar missing: ${JSON.stringify(probe)}`)
   assert.ok(probe.toolbarBox.height > 0, `${context}: toolbar box missing`)
+  assert.ok(
+    probe.headerBottom === null || probe.toolbarBox.top >= probe.headerBottom - 1,
+    `${context}: toolbar measured underneath the fixed header instead of the visible content area: ${JSON.stringify({ headerBottom: probe.headerBottom, toolbarBox: probe.toolbarBox })}`
+  )
   for (const control of probe.controls) {
     assert.ok(!control.missing, `${context}: positions toolbar control missing: ${JSON.stringify(control)}`)
     assert.ok(control.width > 0 && control.height >= 24, `${context}: ${control.name} has no usable target: ${JSON.stringify(control)}`)
