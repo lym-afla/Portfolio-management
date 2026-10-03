@@ -1,8 +1,10 @@
 <template>
   <div>
-    <v-card>
-      <v-card-title>User Settings</v-card-title>
-      <v-card-text>
+    <WorkspaceSection
+      heading-id="user-settings-section"
+      title="User Settings"
+      description="Display defaults applied across the workspace; saving re-commits the portfolio context."
+    >
         <v-progress-circular v-if="loading" indeterminate color="primary" />
         <v-form v-else @submit.prevent="saveSettings">
           <v-select
@@ -105,8 +107,7 @@
             <v-btn type="submit" color="primary">Save Settings</v-btn>
           </v-card-actions>
         </v-form>
-      </v-card-text>
-    </v-card>
+    </WorkspaceSection>
 
     <AccountGroupManager
       class="mt-4"
@@ -141,6 +142,7 @@ import {
 } from '@/services/api'
 import { formatAccountChoices } from '@/utils/accountUtils'
 import AccountGroupManager from '@/components/AccountGroupManager.vue'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 import BrokerTokenManager from '@/components/BrokerTokenManager.vue'
 import logger from '@/utils/logger'
 

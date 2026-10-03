@@ -158,13 +158,5 @@
     "ruleId": "no-unused-vars",
     "message": "'e' is defined but never used.",
     "severity": 1
-  },
-  {
-    "file": "src/views/profile/ProfilePage.vue",
-    "line": 229,
-    "column": 10,
-    "ruleId": "no-empty",
-    "message": "Empty block statement.",
-    "severity": 1
   }
 ]

@@ -1,8 +1,10 @@
 <template>
-  <v-card>
-    <v-card-title>Edit Profile</v-card-title>
-    <v-card-text>
-      <v-form @submit.prevent="saveProfile">
+  <WorkspaceSection
+    heading-id="edit-profile-section"
+    title="Edit profile"
+    description="Changes to your identity fields; the username is fixed."
+  >
+      <v-form class="edit-profile-form" @submit.prevent="saveProfile">
         <v-text-field
           v-for="(value, key) in profileForm"
           :key="key"
@@ -17,8 +19,6 @@
           <v-btn @click="cancel" color="secondary">Cancel</v-btn>
         </v-card-actions>
       </v-form>
-    </v-card-text>
-
     <!-- Success Snackbar -->
     <v-snackbar v-model="snackbar" :timeout="3000" :color="snackbarColor">
       {{ snackbarMessage }}
@@ -26,7 +26,7 @@
         <v-btn color="white" text @click="snackbar = false">Close</v-btn>
       </template>
     </v-snackbar>
-  </v-card>
+  </WorkspaceSection>
 </template>
 
 <script setup>
@@ -34,6 +34,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserProfile, editUserProfile } from '@/services/api'
 import logger from '@/utils/logger'
+import WorkspaceSection from '@/components/workspace/WorkspaceSection.vue'
 
 const router = useRouter()
 const profileForm = reactive({})

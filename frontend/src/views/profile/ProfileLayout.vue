@@ -1,69 +1,66 @@
 <template>
-  <v-container fluid class="mt-4">
-    <v-row>
-      <v-col cols="12" md="4">
-        <!-- Side Navigation -->
-        <v-card class="mb-4">
-          <v-list>
+  <WorkspacePage title="Profile" description="Your account identity, display defaults and broker connections.">
+    <div class="profile-layout">
+      <nav aria-label="Profile sections" class="profile-layout__nav">
+        <v-card border flat rounded="lg" class="profile-nav-card">
+          <v-list density="compact" nav>
             <v-list-item
-              v-for="(item, i) in menuItems"
-              :key="i"
+              v-for="item in menuItems"
+              :key="item.to"
               :to="item.to"
+              :title="item.title"
+              :prepend-icon="item.icon"
               :active="isActive(item.to)"
-              active-class="primary white--text"
-            >
-              <v-list-item-title>{{ item.title }}</v-list-item-title>
-            </v-list-item>
+              exact
+            />
+            <v-divider class="my-2" />
+            <v-list-item
+              title="Logout"
+              prepend-icon="mdi-logout"
+              :disabled="isLoading"
+              @click="handleLogout"
+            />
           </v-list>
-          <v-divider />
-          <v-list-item @click="handleLogout">
-            <v-list-item-title>Logout</v-list-item-title>
-          </v-list-item>
         </v-card>
-
-        <!-- Delete Account Button -->
-        <v-card flat class="pa-0">
-          <v-btn
-            @click="showDeleteConfirmation = true"
-            color="error"
-            outlined
-            block
-            class="mt-2"
-          >
-            <v-icon left>mdi-delete</v-icon>
-            Delete Account
-          </v-btn>
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="8">
-        <!-- Tab Content -->
+        <v-btn
+          color="error"
+          variant="outlined"
+          block
+          class="mt-2 workspace-touch-action"
+          prepend-icon="mdi-delete"
+          @click="showDeleteConfirmation = true"
+        >
+          Delete Account
+        </v-btn>
+      </nav>
+      <div class="profile-layout__content">
         <router-view />
-      </v-col>
-    </v-row>
+      </div>
+    </div>
 
-    <!-- Delete Account Confirmation Dialog -->
+    <!-- Delete Account Confirmation Dialog: the typed DELETE requirement is
+         the incumbent constraint and stays exactly as strict. -->
     <v-dialog v-model="showDeleteConfirmation" max-width="400">
       <v-card>
-        <v-card-title class="text-h5 error--text">Delete Account</v-card-title>
+        <v-card-title class="text-h5 text-error">Delete Account</v-card-title>
         <v-card-text>
-          <p>
-            Are you sure you want to delete your account? This action cannot be
-            undone.
-          </p>
+          Are you sure you want to delete your account? This action cannot be
+          undone.
           <v-text-field
             v-model="confirmationText"
             label="Type 'DELETE' to confirm"
             :rules="[(v) => v === 'DELETE' || 'Please type DELETE to confirm']"
+            class="mt-3"
           />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn color="primary" text @click="showDeleteConfirmation = false"
-            >Cancel</v-btn
-          >
+          <v-btn :disabled="isLoading" @click="cancelDelete">Cancel</v-btn>
           <v-btn
             color="error"
-            :disabled="confirmationText !== 'DELETE'"
+            variant="tonal"
+            :disabled="confirmationText !== 'DELETE' || isLoading"
+            :loading="isLoading"
             @click="processDeleteAccount"
           >
             Delete Account
@@ -71,16 +68,16 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-container>
+  </WorkspacePage>
 </template>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-// import store from '@/store'
 import { deleteUserAccount } from '@/services/api'
 import logger from '@/utils/logger'
+import WorkspacePage from '@/components/workspace/WorkspacePage.vue'
 
 const emit = defineEmits(['update-page-title'])
 
@@ -92,23 +89,10 @@ const confirmationText = ref('')
 const isLoading = ref(false)
 
 const menuItems = [
-  { title: 'User details', to: '/profile' },
-  { title: 'Settings', to: '/profile/settings' },
+  { title: 'User details', to: '/profile', icon: 'mdi-account-circle' },
+  { title: 'Settings', to: '/profile/settings', icon: 'mdi-cog' },
 ]
 
-// async logout() {
-//   try {
-//     await store.dispatch('logout')
-//     // if (response.success) {
-//     //   this.$emit('update-page-title', '') // Clear the page title
-//     //   this.router.push('/login')
-//     // } else {
-//     //   logger.error('Unknown', 'Logout failed:', response.error)
-//     // }
-//   } catch (error) {
-//     logger.error('Unknown', 'Logout error:', error)
-//   }
-// }
 const isActive = (routePath) => {
   return route.path === routePath
 }
@@ -124,6 +108,11 @@ const handleLogout = async () => {
   }
 }
 
+const cancelDelete = () => {
+  showDeleteConfirmation.value = false
+  confirmationText.value = ''
+}
+
 const processDeleteAccount = async () => {
   if (confirmationText.value !== 'DELETE') {
     return
@@ -137,7 +126,6 @@ const processDeleteAccount = async () => {
     router.push('/register')
   } catch (error) {
     logger.error('Unknown', 'Error deleting account:', error)
-    // Handle error (e.g., show error message to user)
   } finally {
     isLoading.value = false
     showDeleteConfirmation.value = false
@@ -155,7 +143,16 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.v-btn.error--text {
-  border-color: currentColor;
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 3fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 959px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
